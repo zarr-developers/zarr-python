@@ -30,6 +30,7 @@ from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsLike,
     FiltersLike,
+    SerializerLike,
     _get_default_chunk_encoding_v2,
     _get_default_chunk_encoding_v3,
     _parse_chunk_encoding_v2,
@@ -1025,6 +1026,15 @@ class TestCreateArray:
             ZstdCodec(level=3),
             {"name": "zstd", "configuration": {"level": 3}},
             ({"name": "zstd", "configuration": {"level": 3}},),
+            "zstd",
+            ("crc32c", "zstd"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "serializer",
+        [
+            "auto",
+            "bytes",
         ],
     )
     @pytest.mark.parametrize(
@@ -1065,6 +1075,7 @@ class TestCreateArray:
     async def test_v3_chunk_encoding(
         store: MemoryStore,
         compressors: CompressorsLike,
+        serializer: SerializerLike,
         filters: FiltersLike,
         dtype: str,
         chunks: tuple[int, ...],
@@ -1073,6 +1084,9 @@ class TestCreateArray:
         """
         Test various possibilities for the compressors and filters parameter to create_array
         """
+        if serializer == "bytes" and dtype == "str":
+            serializer = "vlen-utf8"
+
         arr = await create_array(
             store=store,
             dtype=dtype,
@@ -1081,10 +1095,11 @@ class TestCreateArray:
             shards=shards,
             zarr_format=3,
             filters=filters,
+            serializer=serializer,
             compressors=compressors,
         )
-        filters_expected, _, compressors_expected = _parse_chunk_encoding_v3(
-            filters=filters, compressors=compressors, serializer="auto", dtype=np.dtype(dtype)
+        filters_expected, serializer_expected, compressors_expected = _parse_chunk_encoding_v3(
+            filters=filters, compressors=compressors, serializer=serializer, dtype=np.dtype(dtype)
         )
         assert arr.filters == filters_expected
         assert arr.compressors == compressors_expected
@@ -1098,11 +1113,20 @@ class TestCreateArray:
             None,
             numcodecs.Zstd(level=3),
             (),
-            (numcodecs.Zstd(level=3),),
+            (numcodecs.Zstd(level=2),),
+            "zstd",
         ],
     )
     @pytest.mark.parametrize(
-        "filters", ["auto", None, numcodecs.GZip(level=1), (numcodecs.GZip(level=1),)]
+        "filters",
+        [
+            "auto",
+            None,
+            numcodecs.GZip(level=1),
+            (numcodecs.GZip(level=2)),
+            "gzip",
+            ("gzip", "zstd"),
+        ],
     )
     async def test_v2_chunk_encoding(
         store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
@@ -1128,6 +1152,30 @@ class TestCreateArray:
 
         assert arr.compressors == compressor_expected
         assert arr.filters == filters_expected
+
+    @staticmethod
+    async def test_bad_chunk_encoding(store: MemoryStore) -> None:
+        """
+        Test that passing an invalid compressor or filter to create_array raises an error.
+        """
+        bad_compressor = 2
+        msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Expected None, a numcodecs.abc.Codec, or a dict or str representation of a numcodecs.abc.Codec. Got {type(bad_compressor)} instead."
+        with pytest.raises(ValueError, match=msg):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=2,
+                compressors=bad_compressor,
+            )
+        with pytest.raises(KeyError):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=3,
+                filters="bad_filter",
+            )
 
     @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])

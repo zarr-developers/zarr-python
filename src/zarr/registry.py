@@ -166,7 +166,7 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
     return get_codec_class(data["name"]).from_dict(data)  # type: ignore[arg-type]
 
 
-def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
+def _parse_bytes_bytes_codec(data: dict[str, JSON] | str | Codec) -> BytesBytesCodec:
     """
     Normalize the input to a ``BytesBytesCodec`` instance.
     If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
@@ -174,6 +174,8 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     """
     from zarr.abc.codec import BytesBytesCodec
 
+    if isinstance(data, str):
+        data = {"name": data, "configuration": {}}
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, BytesBytesCodec):
@@ -186,7 +188,7 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     return result
 
 
-def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
+def _parse_array_bytes_codec(data: dict[str, JSON] | str | Codec) -> ArrayBytesCodec:
     """
     Normalize the input to a ``ArrayBytesCodec`` instance.
     If the input is already a ``ArrayBytesCodec``, it is returned as is. If the input is a dict, it
@@ -194,6 +196,8 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
     """
     from zarr.abc.codec import ArrayBytesCodec
 
+    if isinstance(data, str):
+        data = {"name": data, "configuration": {}}
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, ArrayBytesCodec):
@@ -206,7 +210,7 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
     return result
 
 
-def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
+def _parse_array_array_codec(data: dict[str, JSON] | str | Codec) -> ArrayArrayCodec:
     """
     Normalize the input to a ``ArrayArrayCodec`` instance.
     If the input is already a ``ArrayArrayCodec``, it is returned as is. If the input is a dict, it
@@ -214,6 +218,8 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
     """
     from zarr.abc.codec import ArrayArrayCodec
 
+    if isinstance(data, str):
+        data = {"name": data, "configuration": {}}
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, ArrayArrayCodec):
