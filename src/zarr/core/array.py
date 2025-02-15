@@ -4433,7 +4433,7 @@ async def create_array(
         store_path = await make_store_path(
             store, path=name, mode=mode, storage_options=storage_options
         )
-        result = await init_array(
+        return await init_array(
             store_path=store_path,
             shape=shape_parsed,
             dtype=dtype_parsed,
@@ -4449,8 +4449,8 @@ async def create_array(
             chunk_key_encoding=chunk_key_encoding,
             dimension_names=dimension_names,
             overwrite=overwrite,
-        config=config,)
-        return AsyncArray(metadata=meta, store_path=store_path, config=config_parsed)
+            config=config,
+        )
 
 
 def _parse_keep_array_attr(

@@ -927,7 +927,7 @@ def from_array(
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
 ) -> Array:
     """Create an array from an existing array or array-like.
 
