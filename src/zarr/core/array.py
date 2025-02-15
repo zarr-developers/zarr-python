@@ -4266,9 +4266,6 @@ def _parse_chunk_encoding_v2(
     elif isinstance(compressor, tuple | list) and len(compressor) == 1:
         _compressor = parse_compressor(compressor[0])
     else:
-        if isinstance(compressor, Iterable) and not isinstance(compressor, dict):
-            msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Got an iterable with type {type(compressor)} instead."
-            raise TypeError(msg)
         _compressor = parse_compressor(compressor)
 
     if filters is None:
@@ -4276,14 +4273,6 @@ def _parse_chunk_encoding_v2(
     elif filters == "auto":
         _filters = default_filters
     else:
-        if isinstance(filters, Iterable):
-            for idx, f in enumerate(filters):
-                if not isinstance(f, numcodecs.abc.Codec):
-                    msg = (
-                        "For Zarr format 2 arrays, all elements of `filters` must be numcodecs codecs. "
-                        f"Element at index {idx} has type {type(f)}, which is not a numcodecs codec."
-                    )
-                    raise TypeError(msg)
         _filters = parse_filters(filters)
 
     return _filters, _compressor
