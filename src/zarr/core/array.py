@@ -1319,7 +1319,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        NDArrayOrScalarLike
+        NDArrayLikeOrScalar
             The retrieved subset of the array's data.
 
         Examples
@@ -2289,7 +2289,7 @@ class Array:
 
         Returns
         -------
-        NDArrayOrScalarLike
+        NDArrayLikeOrScalar
              An array-like or scalar containing the data for the requested region.
 
         Examples
@@ -2554,7 +2554,7 @@ class Array:
 
         Returns
         -------
-        NDArrayOrScalarLike
+        NDArrayLikeOrScalar
             An array-like or scalar containing the data for the requested region.
 
         Examples
@@ -2778,7 +2778,7 @@ class Array:
 
         Returns
         -------
-        NDArrayOrScalarLike
+        NDArrayLikeOrScalar
             An array-like or scalar containing the data for the requested selection.
 
         Examples
@@ -3012,7 +3012,7 @@ class Array:
 
         Returns
         -------
-        NDArrayOrScalarLike
+        NDArrayLikeOrScalar
             An array-like or scalar containing the data for the requested selection.
 
         Examples
@@ -3172,7 +3172,7 @@ class Array:
 
         Returns
         -------
-        NDArrayOrScalarLike
+        NDArrayLikeOrScalar
             An array-like or scalar containing the data for the requested coordinate selection.
 
         Examples
@@ -3360,7 +3360,7 @@ class Array:
 
         Returns
         -------
-        NDArrayOrScalarLike
+        NDArrayLikeOrScalar
             An array-like or scalar containing the data for the requested block selection.
 
         Examples
