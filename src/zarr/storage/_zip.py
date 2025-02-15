@@ -244,9 +244,16 @@ class ZipStore(Store):
         # If key is present it is replaced by an empty byte literal as a way of representing it as deleted
         self._check_writable()
         if await self.exists(key):
+            keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
+            keyinfo.compress_type = self.compression
+            if keyinfo.filename[-1] == os.sep:
+                keyinfo.external_attr = 0o40775 << 16  # drwxrwxr-x
+                keyinfo.external_attr |= 0x10
+            else:
+                keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
+
             with self._lock:
-                empty_buffer = Buffer.from_bytes(b"")
-                self._set(key, empty_buffer)
+                self._zf.writestr(keyinfo, b"")
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
