@@ -19,7 +19,6 @@ from zarr.core.indexing import (
     OrthogonalSelection,
     Selection,
     _iter_grid,
-    is_total_slice,
     make_slice_selection,
     normalize_integer_selection,
     oindex,

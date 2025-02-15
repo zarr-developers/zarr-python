@@ -102,6 +102,11 @@ jobs:
     - name: Run Tests
       run: |
         hatch env run --env ${{ matrix.dependency-set }} run
+    - name: Upload coverage
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        verbose: true # optional (default = false)
 
   doctests:
     name: doctests

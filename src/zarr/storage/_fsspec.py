@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import (
@@ -285,6 +286,19 @@ class FsspecStore(Store):
             pass
         except self.allowed_exceptions:
             pass
+
+    async def delete_dir(self, prefix: str) -> None:
+        # docstring inherited
+        if not self.supports_deletes:
+            raise NotImplementedError(
+                "This method is only available for stores that support deletes."
+            )
+        self._check_writable()
+
+        path_to_delete = _dereference_path(self.path, prefix)
+
+        with suppress(*self.allowed_exceptions):
+            await self.fs._rm(path_to_delete, recursive=True)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited

@@ -3,6 +3,45 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.3 (2025-02-14)
+------------------
+
+Features
+~~~~~~~~
+
+- Improves performance of FsspecStore.delete_dir for remote filesystems supporting concurrent/batched deletes, e.g., s3fs. (:issue:`2661`)
+- Added :meth:`zarr.config.enable_gpu` to update Zarr's configuration to use GPUs. (:issue:`2751`)
+- Avoid reading chunks during writes where possible. :issue:`757` (:issue:`2784`)
+- :py:class:`LocalStore` learned to ``delete_dir``. This makes array and group deletes more efficient. (:issue:`2804`)
+- Add `zarr.testing.strategies.array_metadata` to generate ArrayV2Metadata and ArrayV3Metadata instances. (:issue:`2813`)
+- Add arbitrary `shards` to Hypothesis strategy for generating arrays. (:issue:`2822`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Fixed bug with Zarr using device memory, instead of host memory, for storing metadata when using GPUs. (:issue:`2751`)
+- The array returned by ``zarr.empty`` and an empty ``zarr.core.buffer.cpu.NDBuffer`` will now be filled with the
+  specified fill value, or with zeros if no fill value is provided.
+  This fixes a bug where Zarr format 2 data with no fill value was written with un-predictable chunk sizes. (:issue:`2755`)
+- Fix zip-store path checking for stores with directories listed as files. (:issue:`2758`)
+- Use removeprefix rather than replace when removing filename prefixes in `FsspecStore.list` (:issue:`2778`)
+- Enable automatic removal of `needs release notes` with labeler action (:issue:`2781`)
+- Use the proper label config (:issue:`2785`)
+- Alters the behavior of ``create_array`` to ensure that any groups implied by the array's name are created if they do not already exist. Also simplifies the type signature for any function that takes an ArrayConfig-like object. (:issue:`2795`)
+- Enitialise empty chunks to the default fill value during writing and add default fill values for datetime, timedelta, structured, and other (void* fixed size) data types (:issue:`2799`)
+- Ensure utf8 compliant strings are used to construct numpy arrays in property-based tests (:issue:`2801`)
+- Fix pickling for ZipStore (:issue:`2807`)
+- Update numcodecs to not overwrite codec configuration ever. Closes :issue:`2800`. (:issue:`2811`)
+- Fix fancy indexing (e.g. arr[5, [0, 1]]) with the sharding codec (:issue:`2817`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Added new user guide on :ref:`user-guide-gpu`. (:issue:`2751`)
+
+
 3.0.2 (2025-01-31)
 ------------------
 

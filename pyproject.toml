@@ -212,11 +212,7 @@ dependencies = [
     'typing_extensions @ git+https://github.com/python/typing_extensions',
     'donfig @ git+https://github.com/pytroll/donfig',
     # test deps
-    'hypothesis',
-    'pytest',
-    'pytest-cov',
-    'pytest-asyncio',
-    'moto[s3]',
+    'zarr[test]',
 ]
 
 [tool.hatch.envs.upstream.env-vars]
@@ -228,6 +224,9 @@ PIP_PRE = "1"
 run = "pytest --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 list-env = "pip list"
 
 [tool.hatch.envs.min_deps]
@@ -247,18 +246,16 @@ dependencies = [
     'typing_extensions==4.9.*',
     'donfig==0.8.*',
     # test deps
-    'hypothesis',
-    'pytest',
-    'pytest-cov',
-    'pytest-asyncio',
-    'moto[s3]',
+    'zarr[test]',
 ]
 
 [tool.hatch.envs.min_deps.scripts]
 run = "pytest --verbose"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
-
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 
 [tool.ruff]
 line-length = 100
