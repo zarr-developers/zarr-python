@@ -1069,7 +1069,6 @@ class TestCreateArray:
             ),
             {"name": "transpose", "configuration": {"order": [0]}},
             ({"name": "transpose", "configuration": {"order": [0]}},),
-            # is there a filter with no configuration?
         ],
     )
     @pytest.mark.parametrize(("chunks", "shards"), [((6,), None), ((3,), (6,))])
