@@ -35,7 +35,7 @@ from zarr.core.array import (
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
     chunks_initialized,
-    create_array,
+    create_array, SerializerLike,
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
@@ -1025,6 +1025,14 @@ class TestCreateArray:
             ZstdCodec(level=3),
             {"name": "zstd", "configuration": {"level": 3}},
             ({"name": "zstd", "configuration": {"level": 3}},),
+            "zstd",
+        ],
+    )
+    @pytest.mark.parametrize(
+        "serializer",
+        [
+            "auto",
+            "bytes",
         ],
     )
     @pytest.mark.parametrize(
@@ -1059,12 +1067,15 @@ class TestCreateArray:
             ),
             {"name": "transpose", "configuration": {"order": [0]}},
             ({"name": "transpose", "configuration": {"order": [0]}},),
+            "transpose",
         ],
     )
+
     @pytest.mark.parametrize(("chunks", "shards"), [((6,), None), ((3,), (6,))])
     async def test_v3_chunk_encoding(
         store: MemoryStore,
         compressors: CompressorsLike,
+        serializer: SerializerLike,
         filters: FiltersLike,
         dtype: str,
         chunks: tuple[int, ...],
@@ -1081,10 +1092,11 @@ class TestCreateArray:
             shards=shards,
             zarr_format=3,
             filters=filters,
+            serializer=serializer,
             compressors=compressors,
         )
-        filters_expected, _, compressors_expected = _parse_chunk_encoding_v3(
-            filters=filters, compressors=compressors, serializer="auto", dtype=np.dtype(dtype)
+        filters_expected, serializer_expected, compressors_expected = _parse_chunk_encoding_v3(
+            filters=filters, compressors=compressors, serializer=serializer, dtype=np.dtype(dtype)
         )
         assert arr.filters == filters_expected
         assert arr.compressors == compressors_expected
@@ -1099,10 +1111,11 @@ class TestCreateArray:
             numcodecs.Zstd(level=3),
             (),
             (numcodecs.Zstd(level=3),),
+            "zstd"
         ],
     )
     @pytest.mark.parametrize(
-        "filters", ["auto", None, numcodecs.GZip(level=1), (numcodecs.GZip(level=1),)]
+        "filters", ["auto", None, numcodecs.GZip(level=1), (numcodecs.GZip(level=1),"gzip")]
     )
     async def test_v2_chunk_encoding(
         store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
