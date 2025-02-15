@@ -3769,23 +3769,25 @@ def _get_default_codecs(
 
 
 FiltersLike: TypeAlias = (
-    Iterable[dict[str, JSON] | ArrayArrayCodec | numcodecs.abc.Codec]
+    Iterable[dict[str, JSON] | str | ArrayArrayCodec | numcodecs.abc.Codec]
     | ArrayArrayCodec
     | Iterable[numcodecs.abc.Codec]
     | numcodecs.abc.Codec
     | Literal["auto"]
+    | str
     | None
 )
 CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec | None
 CompressorsLike: TypeAlias = (
-    Iterable[dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec]
+    Iterable[dict[str, JSON] | str | BytesBytesCodec | numcodecs.abc.Codec]
     | dict[str, JSON]
     | BytesBytesCodec
     | numcodecs.abc.Codec
     | Literal["auto"]
+    | str
     | None
 )
-SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
+SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"] | str
 
 
 class ShardsConfigParam(TypedDict):
@@ -4305,6 +4307,8 @@ def _parse_chunk_encoding_v3(
         out_array_array: tuple[ArrayArrayCodec, ...] = ()
     elif filters == "auto":
         out_array_array = default_array_array
+    elif isinstance(filters, str):
+        out_array_array = (_parse_array_array_codec(filters),)
     else:
         maybe_array_array: Iterable[Codec | dict[str, JSON]]
         if isinstance(filters, dict | Codec):
@@ -4322,6 +4326,8 @@ def _parse_chunk_encoding_v3(
         out_bytes_bytes: tuple[BytesBytesCodec, ...] = ()
     elif compressors == "auto":
         out_bytes_bytes = default_bytes_bytes
+    elif isinstance(compressors, str):
+        out_bytes_bytes = (_parse_bytes_bytes_codec(compressors),)
     else:
         maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
         if isinstance(compressors, dict | Codec):

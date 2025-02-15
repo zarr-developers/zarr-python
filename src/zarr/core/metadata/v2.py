@@ -246,20 +246,24 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
 
     if data is None:
         return data
+    if isinstance(data, str):
+        return (numcodecs.get_codec({"id": data}),)
     if isinstance(data, Iterable):
         for idx, val in enumerate(data):
             if isinstance(val, numcodecs.abc.Codec):
                 out.append(val)
             elif isinstance(val, dict):
                 out.append(numcodecs.get_codec(val))
+            elif isinstance(val, str):
+                out.append(numcodecs.get_codec({"id": val}))
             else:
-                msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
+                msg = f"For Zarr format 2 arrays, all elements of `filters` must be a numcodecs.abc.Codec or a dict or str representation of numcodecs.abc.Codec. Got {type(val)} at index {idx} instead."
                 raise TypeError(msg)
         return tuple(out)
     # take a single codec instance and wrap it in a tuple
     if isinstance(data, numcodecs.abc.Codec):
         return (data,)
-    msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
+    msg = f"For Zarr format 2 arrays, all elements of `filters` must be None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
     raise TypeError(msg)
 
 
@@ -271,7 +275,9 @@ def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
         return data
     if isinstance(data, dict):
         return numcodecs.get_codec(data)
-    msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
+    if isinstance(data, str):
+        return numcodecs.get_codec({"id": data})
+    msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Expected None, a numcodecs.abc.Codec, or a dict or str representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 
 

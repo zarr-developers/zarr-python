@@ -30,12 +30,13 @@ from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsLike,
     FiltersLike,
+    SerializerLike,
     _get_default_chunk_encoding_v2,
     _get_default_chunk_encoding_v3,
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
     chunks_initialized,
-    create_array, SerializerLike,
+    create_array,
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
@@ -1026,6 +1027,7 @@ class TestCreateArray:
             {"name": "zstd", "configuration": {"level": 3}},
             ({"name": "zstd", "configuration": {"level": 3}},),
             "zstd",
+            ("crc32c", "zstd"),
         ],
     )
     @pytest.mark.parametrize(
@@ -1067,10 +1069,9 @@ class TestCreateArray:
             ),
             {"name": "transpose", "configuration": {"order": [0]}},
             ({"name": "transpose", "configuration": {"order": [0]}},),
-            "transpose",
+            # is there a filter with no configuration?
         ],
     )
-
     @pytest.mark.parametrize(("chunks", "shards"), [((6,), None), ((3,), (6,))])
     async def test_v3_chunk_encoding(
         store: MemoryStore,
@@ -1084,6 +1085,9 @@ class TestCreateArray:
         """
         Test various possibilities for the compressors and filters parameter to create_array
         """
+        if serializer == "bytes" and dtype == "str":
+            serializer = "vlen-utf8"
+
         arr = await create_array(
             store=store,
             dtype=dtype,
@@ -1111,11 +1115,19 @@ class TestCreateArray:
             numcodecs.Zstd(level=3),
             (),
             (numcodecs.Zstd(level=3),),
-            "zstd"
+            "zstd",
         ],
     )
     @pytest.mark.parametrize(
-        "filters", ["auto", None, numcodecs.GZip(level=1), (numcodecs.GZip(level=1),"gzip")]
+        "filters",
+        [
+            "auto",
+            None,
+            numcodecs.GZip(level=1),
+            (numcodecs.GZip(level=1)),
+            "gzip",
+            ("gzip", "zstd"),
+        ],
     )
     async def test_v2_chunk_encoding(
         store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
