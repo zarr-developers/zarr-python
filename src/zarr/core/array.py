@@ -4014,7 +4014,7 @@ async def from_array(
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
 
-    meta = await init_array(
+    result = await init_array(
         store_path=store_path,
         shape=data.shape,
         dtype=data.dtype,
@@ -4030,8 +4030,8 @@ async def from_array(
         chunk_key_encoding=chunk_key_encoding,
         dimension_names=dimension_names,
         overwrite=overwrite,
+        config=config_parsed,
     )
-    result = AsyncArray(metadata=meta, store_path=store_path, config=config_parsed)
 
     if write_data:
         if isinstance(data, Array):
