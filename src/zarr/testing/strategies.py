@@ -305,7 +305,7 @@ def orthogonal_indices(
             )
             | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
             .map(lambda x: (x,) if not isinstance(x, tuple) else x)  # bare ints, slices
-            .filter(lambda x: bool(x))  # skip empty tuple
+            .filter(bool)  # skip empty tuple
         )
         (idxr,) = val
         if isinstance(idxr, int):
