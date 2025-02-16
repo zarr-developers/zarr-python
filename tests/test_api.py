@@ -51,11 +51,11 @@ def test_create(memory_store: Store) -> None:
 
     # create array with float shape
     with pytest.raises(TypeError):
-        z = create(shape=(400.5, 100), store=store, overwrite=True)
+        z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore [arg-type]
 
     # create array with float chunk shape
     with pytest.raises(TypeError):
-        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)
+        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
 
 
 # TODO: parametrize over everything this function takes
@@ -200,7 +200,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
-        save(store, *args, **kwargs)
+        save(store, *args, **kwargs)  # type: ignore [arg-type]
         group = open(store)
         assert isinstance(group, Group)
         for array in group.array_values():
@@ -1104,13 +1104,13 @@ async def test_metadata_validation_error() -> None:
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_group(zarr_format="3.0")
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore [arg-type]
 
     with pytest.raises(
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore [arg-type]
 
 
 @pytest.mark.parametrize(
