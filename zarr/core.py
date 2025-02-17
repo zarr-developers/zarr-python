@@ -1,11 +1,10 @@
 import binascii
 import hashlib
-from inspect import stack
 import itertools
 import math
 import operator
 import re
-from functools import partial, reduce
+from functools import reduce
 from typing import Any
 import warnings
 

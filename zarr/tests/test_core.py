@@ -2,7 +2,6 @@ import atexit
 import sys
 import pickle
 import shutil
-import re
 
 from typing import Any, Literal, Optional, Tuple, Union, Sequence
 import unittest
