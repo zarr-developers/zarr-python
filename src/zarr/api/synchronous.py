@@ -26,7 +26,7 @@ if TYPE_CHECKING:
         SerializerLike,
         ShardsLike,
     )
-    from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
+    from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
@@ -627,7 +627,7 @@ def create(
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> Array:
     """Create an array.
@@ -697,7 +697,7 @@ def create(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    config : ArrayConfig or ArrayConfigLike, optional
+    config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
 
@@ -763,7 +763,7 @@ def create_array(
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
 ) -> Array:
     """Create an array.
 
@@ -855,7 +855,7 @@ def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfig or ArrayConfigLike, optional
+    config : ArrayConfigLike, optional
         Runtime configuration for the array.
 
     Returns

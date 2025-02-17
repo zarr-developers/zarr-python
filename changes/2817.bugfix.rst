@@ -1,1 +1,0 @@
-Fix fancy indexing (e.g. arr[5, [0, 1]]) with the sharding codec
