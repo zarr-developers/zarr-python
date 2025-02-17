@@ -466,7 +466,7 @@ def open_array(
     object_codec=None,
     chunk_store=None,
     storage_options=None,
-    partial_decompress=False,
+    partial_decompress=None,
     write_empty_chunks=True,
     *,
     zarr_version=None,
@@ -522,10 +522,6 @@ def open_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    partial_decompress : bool, optional
-        If True and while the chunk_store is a FSStore and the compression used
-        is Blosc, when getting data from the array chunks will be partially
-        read and decompressed when possible.
     write_empty_chunks : bool, optional
         If True (default), all chunks will be stored regardless of their
         contents. If False, each chunk is compared to the array's fill value

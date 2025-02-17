@@ -6,6 +6,7 @@ import operator
 import re
 from functools import reduce
 from typing import Any
+import warnings
 
 import numpy as np
 from numcodecs.compat import ensure_bytes
@@ -90,13 +91,6 @@ class Array:
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
         to all attribute read operations.
-    partial_decompress : bool, optional
-        If True and while the chunk_store is a FSStore and the compression used
-        is Blosc, when getting data from the array chunks will be partially
-        read and decompressed when possible.
-
-        .. versionadded:: 2.7
-
     write_empty_chunks : bool, optional
         If True, all chunks will be stored regardless of their contents. If
         False (default), each chunk is compared to the array's fill value prior
@@ -124,7 +118,7 @@ class Array:
         synchronizer=None,
         cache_metadata=True,
         cache_attrs=True,
-        partial_decompress=False,
+        partial_decompress=None,
         write_empty_chunks=True,
         zarr_version=None,
         meta_array=None,
@@ -154,6 +148,13 @@ class Array:
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
         self._is_view = False
+        if partial_decompress is not None:
+            warnings.warn(
+                "Support for partial decompression is no longer supported in numcodecs. "
+                "Support for partial decompression will be removed in a future version of zarr-python v2.",
+                DeprecationWarning,
+                stacklevel=1,
+            )
         self._partial_decompress = partial_decompress
         self._write_empty_chunks = write_empty_chunks
         if meta_array is not None:

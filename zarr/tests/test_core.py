@@ -2,6 +2,7 @@ import atexit
 import sys
 import pickle
 import shutil
+
 from typing import Any, Literal, Optional, Tuple, Union, Sequence
 import unittest
 from itertools import zip_longest
@@ -84,6 +85,11 @@ from zarr.types import DIMENSION_SEPARATOR
 
 # noinspection PyMethodMayBeStatic
 
+pytestmark = [
+    pytest.mark.filterwarnings("ignore:Call to deprecated function .* \_cbuffer\_sizes.*"),
+    pytest.mark.filterwarnings("ignore:Call to deprecated function .* \_cbuffer\_metainfo.*"),
+]
+
 
 class TestArray:
     version = 2
@@ -94,7 +100,7 @@ class TestArray:
     dimension_separator: Optional[DIMENSION_SEPARATOR] = None
     cache_metadata = True
     cache_attrs = True
-    partial_decompress: bool = False
+    partial_decompress: bool | None = None
     write_empty_chunks = True
     read_only = False
     storage_transformers: Tuple[Any, ...] = ()
@@ -2481,6 +2487,9 @@ class TestArrayWithFSStoreFromFilesystem(TestArray):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.filterwarnings(
+    "ignore:.*Support for partial decompression will be removed in a future version.*"
+)
 class TestArrayWithFSStorePartialRead(TestArray):
     compressor = Blosc(blocksize=256)
     partial_decompress = True
@@ -2547,6 +2556,9 @@ class TestArrayWithFSStoreNested(TestArrayWithFSStore):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+@pytest.mark.filterwarnings(
+    "ignore:.*Support for partial decompression will be removed in a future version.*"
+)
 class TestArrayWithFSStoreNestedPartialRead(TestArrayWithFSStore):
     compressor = Blosc()
     dimension_separator = "/"
@@ -3020,6 +3032,9 @@ class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithFSStoreV3):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.filterwarnings(
+    "ignore:.*Support for partial decompression will be removed in a future version.*"
+)
 class TestArrayWithFSStoreV3PartialRead(TestArrayWithFSStoreV3):
     partial_decompress = True
 
@@ -3038,6 +3053,9 @@ class TestArrayWithFSStoreV3PartialRead(TestArrayWithFSStoreV3):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 @pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
+@pytest.mark.filterwarnings(
+    "ignore:.*Support for partial decompression will be removed in a future version.*"
+)
 class TestArrayWithFSStoreV3PartialReadUncompressedSharded(TestArrayWithFSStoreV3):
     partial_decompress = True
     compressor = None
