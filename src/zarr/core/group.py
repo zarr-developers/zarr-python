@@ -1434,8 +1434,7 @@ class AsyncGroup:
                 )
                 raise ValueError(msg)
 
-        # insert ImplicitGroupMetadata to represent self
-        nodes_rooted = nodes | {"": ImplicitGroupMarker(zarr_format=self.metadata.zarr_format)}
+        nodes_rooted = nodes
 
         async for key, node in create_hierarchy(
             store=self.store,
@@ -2913,20 +2912,43 @@ async def create_hierarchy(
 
     # empty hierarchies should be a no-op
     if len(nodes_parsed) > 0:
-        if overwrite:
-            # only remove elements from the store  if they would be overwritten by nodes
-            should_delete_keys = (
-                k for k, v in nodes_parsed.items() if not isinstance(v, ImplicitGroupMarker)
-            )
-            await asyncio.gather(
-                *(store.delete_dir(key) for key in should_delete_keys), return_exceptions=True
-            )
-        else:
-            # attempt to fetch all of the metadata described in hierarchy
-            # first figure out which zarr format we are dealing with
-            sample, *_ = nodes_parsed.values()
+        # figure out which zarr format we are using
+        zarr_format = next(iter(nodes_parsed.values())).zarr_format
 
-            zarr_format = sample.zarr_format
+        # check which implicit groups will require materialization
+        implicit_group_keys = tuple(
+            filter(lambda k: isinstance(nodes_parsed[k], ImplicitGroupMarker), nodes_parsed)
+        )
+        # read potential group metadata for each implicit group
+        maybe_extant_group_coros = (
+            _read_group_metadata(store, k, zarr_format=zarr_format) for k in implicit_group_keys
+        )
+        maybe_extant_groups = await asyncio.gather(
+            *maybe_extant_group_coros, return_exceptions=True
+        )
+
+        for key, value in zip(implicit_group_keys, maybe_extant_groups, strict=True):
+            if isinstance(value, BaseException):
+                if isinstance(value, FileNotFoundError):
+                    # this is fine -- there was no group there, so we will create one
+                    pass
+                else:
+                    raise value
+            else:
+                # a loop exists already at ``key``, so we can avoid creating anything there
+                redundant_implicit_groups.append(key)
+
+        if overwrite:
+            # we will remove any nodes that collide with arrays and non-implicit groups defined in
+            # nodes
+
+            # track the keys of nodes we need to delete
+            to_delete_keys = []
+            to_delete_keys.extend(
+                [k for k, v in nodes_parsed.items() if k not in implicit_group_keys]
+            )
+            await asyncio.gather(*(store.delete_dir(key) for key in to_delete_keys))
+        else:
             # This type is long.
             coros: (
                 Generator[Coroutine[Any, Any, ArrayV2Metadata | GroupMetadata], None, None]
@@ -3084,7 +3106,7 @@ def _parse_hierarchy_dict(
     data: Mapping[str, ImplicitGroupMarker | GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
 ) -> dict[str, ImplicitGroupMarker | GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]:
     """
-    Take an input Mapping of str: node pairs, and parse it into
+    Take an input with type Mapping[str, ArrayMetadata | GroupMetadata] and parse it into
      a dict of str: node pairs that models a valid, complete Zarr hierarchy.
 
     If the input represents a complete Zarr hierarchy, i.e. one with no implicit groups,
@@ -3093,10 +3115,10 @@ def _parse_hierarchy_dict(
     Otherwise, return a dict derived from the input with GroupMetadata inserted as needed to make
     the hierarchy complete.
 
-    For example, an input of {'a/b/c': ArrayMetadata} is incomplete, because it references two
-    groups ('a' and 'a/b') that are not specified in the input. Applying this function
+    For example, an input of {'a/b': ArrayMetadata} is incomplete, because it references two
+    groups (the root group '' and a group at 'a') that are not specified in the input. Applying this function
     to that input will result in a return value of
-    {'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': ArrayMetadata}, i.e. the implied groups
+    {'': GroupMetadata, 'a': GroupMetadata, 'a/b': ArrayMetadata}, i.e. the implied groups
     were added.
 
     The input is also checked for the following conditions; an error is raised if any are violated:
@@ -3104,25 +3126,28 @@ def _parse_hierarchy_dict(
     - No arrays can contain group or arrays (i.e., all arrays must be leaf nodes).
     - All arrays and groups must have the same ``zarr_format`` value.
 
-    if ``allow_root`` is set to False, then the input is also checked to ensure that it does not
-    contain a key that normalizes to the empty string (''), as this is reserved for the root node,
-    and in some situations creating a root node is not permitted, for example, when creating a
-    hierarchy relative to an existing group.
-
     This function ensures that the input is transformed into a specification of a complete and valid
     Zarr hierarchy.
     """
 
+    # ensure that all nodes have the same zarr format
     data_purified = _ensure_consistent_zarr_format(data)
 
+    # ensure that keys are normalized to zarr paths
     data_normed_keys = _normalize_path_keys(data_purified)
 
-    out: dict[str, ImplicitGroupMarker | GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {
-        **data_normed_keys
-    }
+    # insert an implicit root group if a root was not specified
+    # but not if an empty dict was provided, because any empty hierarchy has no nodes
+    if len(data_normed_keys) > 0 and "" not in data_normed_keys:
+        z_format = next(iter(data_normed_keys.values())).zarr_format
+        data_normed_keys = data_normed_keys | {"": ImplicitGroupMarker(zarr_format=z_format)}
 
-    for k, v in data.items():
+    out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data_normed_keys}
+
+    for k, v in data_normed_keys.items():
         key_split = k.split("/")
+
+        # get every parent path
         *subpaths, _ = accumulate(key_split, lambda a, b: _join_paths([a, b]))
 
         for subpath in subpaths:
@@ -3136,7 +3161,6 @@ def _parse_hierarchy_dict(
                         "This is invalid. Only Zarr groups can contain other nodes."
                     )
                     raise ValueError(msg)
-
     return out
 
 
@@ -3336,6 +3360,34 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
             zmeta = json.loads(zgroup_bytes.to_bytes())
 
     return _build_metadata_v2(zmeta, zattrs)
+
+
+async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
+    """
+    Read group metadata or error
+    """
+    meta = await _read_metadata_v2(store=store, path=path)
+    if not isinstance(meta, GroupMetadata):
+        raise FileNotFoundError(f"Group metadata was not found in {store} at {path}")
+    return meta
+
+
+async def _read_group_metadata_v3(store: Store, path: str) -> GroupMetadata:
+    """
+    Read group metadata or error
+    """
+    meta = await _read_metadata_v3(store=store, path=path)
+    if not isinstance(meta, GroupMetadata):
+        raise FileNotFoundError(f"Group metadata was not found in {store} at {path}")
+    return meta
+
+
+async def _read_group_metadata(
+    store: Store, path: str, *, zarr_format: ZarrFormat
+) -> GroupMetadata:
+    if zarr_format == 2:
+        return await _read_group_metadata_v2(store=store, path=path)
+    return await _read_group_metadata_v3(store=store, path=path)
 
 
 def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMetadata:

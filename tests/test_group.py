@@ -26,8 +26,10 @@ from zarr.core.config import config as zarr_config
 from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
+    ImplicitGroupMarker,
     _build_metadata_v3,
     _get_roots,
+    _parse_hierarchy_dict,
     create_hierarchy,
     create_nodes,
     create_rooted_hierarchy,
@@ -38,7 +40,7 @@ from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
-from zarr.storage._utils import _join_paths
+from zarr.storage._utils import _join_paths, normalize_path
 from zarr.testing.store import LatencyStore
 
 from .conftest import meta_from_array, parse_store
@@ -1651,7 +1653,8 @@ async def test_group_create_hierarchy(
     Test that the Group.create_hierarchy method creates specified nodes and returns them in a dict.
     Also test that off-target nodes are not deleted, and that the root group is not deleted
     """
-    g = Group.from_store(store, zarr_format=zarr_format)
+    root_attrs = {"root": True}
+    g = Group.from_store(store, zarr_format=zarr_format, attributes=root_attrs)
 
     node_spec = {
         "a": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a"}),
@@ -1683,10 +1686,10 @@ async def test_group_create_hierarchy(
     for k, v in extant_spec.items():
         if overwrite:
             assert k in all_members
-            # check that we did not erase the root group
-            assert sync_group.get_node(store=store, path="", zarr_format=zarr_format) == g
         else:
             assert all_members[k].metadata == v == extant_created[k].metadata
+    # ensure that we left the root group as-is
+    assert sync_group.get_node(store=store, path="", zarr_format=zarr_format).attrs == root_attrs
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1705,6 +1708,50 @@ def test_group_create_hierarchy_no_root(
         ValueError, match="It is an error to use this method to create a root node. "
     ):
         _ = dict(g.create_hierarchy(tree, overwrite=overwrite))
+
+
+class TestParseHierarchyDict:
+    """
+    Tests for the function that parses dicts of str : Metadata pairs, ensuring that the output models a
+    valid Zarr hierarchy
+    """
+
+    @staticmethod
+    def test_normed_keys() -> None:
+        """
+        Test that keys get normalized properly
+        """
+
+        nodes = {
+            "a": GroupMetadata(),
+            "/b": GroupMetadata(),
+            "": GroupMetadata(),
+            "/a//c////": GroupMetadata(),
+        }
+        observed = _parse_hierarchy_dict(data=nodes)
+        expected = {normalize_path(k): v for k, v in nodes.items()}
+        assert observed == expected
+
+    @staticmethod
+    def test_empty() -> None:
+        """
+        Test that an empty dict passes through
+        """
+        assert _parse_hierarchy_dict(data={}) == {}
+
+    @staticmethod
+    def test_implicit_groups() -> None:
+        """
+        Test that implicit groups were added as needed.
+        """
+        requested = {"a/b/c": GroupMetadata()}
+        expected = requested | {
+            "": ImplicitGroupMarker(),
+            "a": ImplicitGroupMarker(),
+            "a/b": ImplicitGroupMarker(),
+        }
+        observed = _parse_hierarchy_dict(data=requested)
+        assert observed == expected
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
