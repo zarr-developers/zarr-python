@@ -3032,6 +3032,9 @@ class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithFSStoreV3):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.filterwarnings(
+    "ignore:.*Support for partial decompression will be removed in a future version.*"
+)
 class TestArrayWithFSStoreV3PartialRead(TestArrayWithFSStoreV3):
     partial_decompress = True
 
@@ -3050,6 +3053,9 @@ class TestArrayWithFSStoreV3PartialRead(TestArrayWithFSStoreV3):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 @pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
+@pytest.mark.filterwarnings(
+    "ignore:.*Support for partial decompression will be removed in a future version.*"
+)
 class TestArrayWithFSStoreV3PartialReadUncompressedSharded(TestArrayWithFSStoreV3):
     partial_decompress = True
     compressor = None
