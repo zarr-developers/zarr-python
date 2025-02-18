@@ -170,7 +170,7 @@ class ArrayV2Metadata(Metadata):
         if dtype.kind in "SV":
             fill_value_encoded = _data.get("fill_value")
             if fill_value_encoded is not None:
-                fill_value = base64.standard_b64decode(fill_value_encoded)
+                fill_value: Any = base64.standard_b64decode(fill_value_encoded)
                 _data["fill_value"] = fill_value
         else:
             fill_value = _data.get("fill_value")
@@ -180,13 +180,11 @@ class ArrayV2Metadata(Metadata):
                         _data["fill_value"] = np.array("NaT", dtype=dtype)[()]
                     else:
                         _data["fill_value"] = np.array(fill_value, dtype=dtype)[()]
-                elif dtype.kind == "c" and isinstance(fill_value, list):
-                    if len(fill_value) == 2:
-                        val = complex(float(fill_value[0]), float(fill_value[1]))
-                        _data["fill_value"] = np.array(val, dtype=dtype)[()]
-                elif dtype.kind in "f" and isinstance(fill_value, str):
-                    if fill_value in {"NaN", "Infinity", "-Infinity"}:
-                        _data["fill_value"] = np.array(fill_value, dtype=dtype)[()]
+                elif dtype.kind == "c" and isinstance(fill_value, list) and len(fill_value) == 2:
+                    val = complex(float(fill_value[0]), float(fill_value[1]))
+                    _data["fill_value"] = np.array(val, dtype=dtype)[()]
+                elif dtype.kind in "f" and fill_value in {"NaN", "Infinity", "-Infinity"}:
+                    _data["fill_value"] = np.array(fill_value, dtype=dtype)[()]
         # zarr v2 allowed arbitrary keys in the metadata.
         # Filter the keys to only those expected by the constructor.
         expected = {x.name for x in fields(cls)}
@@ -196,7 +194,7 @@ class ArrayV2Metadata(Metadata):
         return cls(**_data)
 
     def to_dict(self) -> dict[str, JSON]:
-        def _sanitize_fill_value(fv: Any):
+        def _sanitize_fill_value(fv: Any) -> JSON:
             if fv is None:
                 return fv
             elif isinstance(fv, np.datetime64):
@@ -204,13 +202,14 @@ class ArrayV2Metadata(Metadata):
                     return "NaT"
                 return np.datetime_as_string(fv)
             elif isinstance(fv, numbers.Real):
-                if np.isnan(fv):
+                float_fv = float(fv)
+                if np.isnan(float_fv):
                     fv = "NaN"
-                elif np.isinf(fv):
-                    fv = "Infinity" if fv > 0 else "-Infinity"
+                elif np.isinf(float_fv):
+                    fv = "Infinity" if float_fv > 0 else "-Infinity"
             elif isinstance(fv, numbers.Complex):
                 fv = [_sanitize_fill_value(fv.real), _sanitize_fill_value(fv.imag)]
-            return fv
+            return cast(JSON, fv)
 
         zarray_dict = super().to_dict()
 
