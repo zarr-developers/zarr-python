@@ -1,0 +1,1 @@
+Make warning filters in the tests more specific, so warnings emitted by tests added in the future are more likely to be caught instead of ignored.
