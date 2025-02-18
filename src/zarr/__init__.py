@@ -52,8 +52,6 @@ __all__ = [
     "create_array",
     "create_group",
     "create_hierarchy",
-    "create_nodes",
-    "create_rooted_hierarchy",
     "empty",
     "empty_like",
     "full",

@@ -57,25 +57,50 @@ def create_hierarchy(
     """
     Create a complete zarr hierarchy from a collection of metadata objects.
 
-    Groups that are implicitly defined by the input will be created as needed.
+    This function will parse its input to ensure that the hierarchy is complete. Any implicit groups
+    will be inserted as needed. For example, an input like
+    ```{'a/b': GroupMetadata}``` will be parsed to
+    ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```
 
-    This function takes a parsed hierarchy dictionary and creates all the nodes in the hierarchy
-    concurrently. Arrays and Groups are yielded in the order they are created.
+    After input parsing, this function then creates all the nodes in the hierarchy concurrently.
+
+    Arrays and Groups are yielded in the order they are created. This order is not stable and
+    should not be relied on.
 
     Parameters
     ----------
     store : Store
         The storage backend to use.
     nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
-        A dictionary defining the hierarchy. The keys are the paths of the nodes
-        in the hierarchy, and the values are the metadata of the nodes. The
-        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
-        or ArrayV2Metadata.
+        A dictionary defining the hierarchy. The keys are the paths of the nodes in the hierarchy,
+        relative to the root of the ``Store``. The root of the store can be specified with the empty
+        string ``''``. The values are instances of ``GroupMetadata`` or ``ArrayMetadata``. Note that
+        all values must have the same ``zarr_format`` -- it is an error to mix zarr versions in the
+        same hierarchy.
+    overwrite : bool
+        Whether to overwrite existing nodes. Defaults to ``False``, in which case an error is
+        raised instead of overwriting an existing array or group.
+
+        This function will not erase an existing group unless that group is explicitly named in
+        ``nodes``. If ``nodes`` defines implicit groups, e.g. ``{`'a/b/c': GroupMetadata}``, and a
+        group already exists at path ``a``, then this function will leave the group at ``a`` as-is.
 
     Yields
     ------
-    Group | Array
-        The created nodes in the order they are created.
+    tuple[str, Group | Array]
+        This function yields (path, node) pairs, in the order the nodes were created.
+
+    Examples
+    --------
+    from zarr import create_hierarchy
+    from zarr.storage import MemoryStore
+    from zarr.core.group import GroupMetadata
+
+    store = MemoryStore()
+    nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
+    nodes_created = dict(create_hierarchy(store=store, nodes=nodes))
+    print(nodes)
+    # {'a': GroupMetadata(attributes={'name': 'leaf'}, zarr_format=3, consolidated_metadata=None, node_type='group')}
     """
     coro = create_hierarchy_async(store=store, nodes=nodes, overwrite=overwrite)
 
