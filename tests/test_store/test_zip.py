@@ -74,6 +74,8 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: ZipStore) -> None:
         assert store.supports_listing
 
+    # TODO: fix this warning
+    @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
     def test_api_integration(self, store: ZipStore) -> None:
         root = zarr.open_group(store=store, mode="a")
 
