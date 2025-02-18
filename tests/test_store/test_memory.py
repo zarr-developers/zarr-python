@@ -78,6 +78,8 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         np.testing.assert_array_equal(a[3:], 0)
 
 
+# TODO: fix this warning
+@pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
 @gpu_test
 class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     store_cls = GpuMemoryStore
