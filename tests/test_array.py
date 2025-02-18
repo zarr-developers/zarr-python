@@ -1155,19 +1155,19 @@ class TestCreateArray:
         assert arr.filters == filters_expected
 
     @staticmethod
-    async def test_bad_chunk_encoding(store: MemoryStore) -> None:
+    async def test_invalid_chunk_encoding(store: MemoryStore) -> None:
         """
         Test that passing an invalid compressor or filter to create_array raises an error.
         """
-        bad_compressor = 2
-        msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Expected None, a numcodecs.abc.Codec, or a dict or str representation of a numcodecs.abc.Codec. Got {type(bad_compressor)} instead."
+        invalid_compressor_type = 2
+        msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Expected None, a numcodecs.abc.Codec, or a dict or str representation of a numcodecs.abc.Codec. Got {type(invalid_compressor_type)} instead."
         with pytest.raises(ValueError, match=msg):
             await create_array(
                 store=store,
                 dtype="uint8",
                 shape=(10,),
                 zarr_format=2,
-                compressors=bad_compressor,
+                compressors=invalid_compressor_type,
             )
         with pytest.raises(KeyError):
             await create_array(
@@ -1175,7 +1175,7 @@ class TestCreateArray:
                 dtype="uint8",
                 shape=(10,),
                 zarr_format=3,
-                filters="bad_filter",
+                filters="nonexistent_filter_name",
             )
 
     @staticmethod
