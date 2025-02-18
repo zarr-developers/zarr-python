@@ -1415,8 +1415,13 @@ class AsyncGroup:
 
         Parameters
         ----------
-        nodes : A dictionary representing the hierarchy to create. The keys should be paths relative to this group
-            and the values should be the metadata for the arrays or groups to create.
+        nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+            A dictionary defining the hierarchy. The keys are the paths of the nodes in the hierarchy,
+            relative to the path of the group. The values are instances of ``GroupMetadata`` or ``ArrayMetadata``. Note that
+            all values must have the same ``zarr_format`` as the parent group -- it is an error to mix zarr versions in the
+            same hierarchy.
+
+            Leading "/" characters from keys will be removed.
         overwrite : bool
             Whether to overwrite existing nodes. Defaults to ``False``, in which case an error is
             raised instead of overwriting an existing array or group.
@@ -2107,11 +2112,15 @@ class Group(SyncMixin):
         Arrays and Groups are yielded in the order they are created. This order is not stable and
         should not be relied on.
 
-
         Parameters
         ----------
-        nodes : A dictionary representing the hierarchy to create. The keys should be paths relative to this group
-            and the values should be the metadata for the arrays or groups to create.
+        nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+            A dictionary defining the hierarchy. The keys are the paths of the nodes in the hierarchy,
+            relative to the path of the group. The values are instances of ``GroupMetadata`` or ``ArrayMetadata``. Note that
+            all values must have the same ``zarr_format`` as the parent group -- it is an error to mix zarr versions in the
+            same hierarchy.
+
+            Leading "/" characters from keys will be removed.
         overwrite : bool
             Whether to overwrite existing nodes. Defaults to ``False``, in which case an error is
             raised instead of overwriting an existing array or group.
@@ -2906,7 +2915,7 @@ async def create_hierarchy(
     Arrays and Groups are yielded in the order they are created. This order is not stable and
     should not be relied on.
 
-    Parameters
+        Parameters
     ----------
     store : Store
         The storage backend to use.
@@ -2916,6 +2925,8 @@ async def create_hierarchy(
         string ``''``. The values are instances of ``GroupMetadata`` or ``ArrayMetadata``. Note that
         all values must have the same ``zarr_format`` -- it is an error to mix zarr versions in the
         same hierarchy.
+
+        Leading "/" characters from keys will be removed.
     overwrite : bool
         Whether to overwrite existing nodes. Defaults to ``False``, in which case an error is
         raised instead of overwriting an existing array or group.

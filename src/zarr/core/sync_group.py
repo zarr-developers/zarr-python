@@ -77,6 +77,8 @@ def create_hierarchy(
         string ``''``. The values are instances of ``GroupMetadata`` or ``ArrayMetadata``. Note that
         all values must have the same ``zarr_format`` -- it is an error to mix zarr versions in the
         same hierarchy.
+
+        Leading "/" characters from keys will be removed.
     overwrite : bool
         Whether to overwrite existing nodes. Defaults to ``False``, in which case an error is
         raised instead of overwriting an existing array or group.
