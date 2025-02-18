@@ -1102,6 +1102,7 @@ class TestCreateArray:
             filters=filters, compressors=compressors, serializer=serializer, dtype=np.dtype(dtype)
         )
         assert arr.filters == filters_expected
+        assert arr.serializer == serializer_expected
         assert arr.compressors == compressors_expected
 
     @staticmethod
