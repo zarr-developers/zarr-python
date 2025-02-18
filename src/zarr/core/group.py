@@ -2942,17 +2942,15 @@ async def create_hierarchy(
 
     Examples
     --------
-    from zarr.api.asynchronous import create_hierarchy
-    from zarr.storage import MemoryStore
-    from zarr.core.group import GroupMetadata
-    import asyncio
-    store = MemoryStore()
-    nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
-
-    async def run():
-        print(dict([x async for x in create_hierarchy(store=store, nodes=nodes)]))
-
-    asyncio.run(run())
+    >>> from zarr.api.asynchronous import create_hierarchy
+    >>> from zarr.storage import MemoryStore
+    >>> from zarr.core.group import GroupMetadata
+    >>> import asyncio
+    >>> store = MemoryStore()
+    >>> nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
+    >>> async def run():
+        ... print(dict([x async for x in create_hierarchy(store=store, nodes=nodes)]))
+    >>> asyncio.run(run())
     # {'a': <AsyncGroup memory://140345143770112/a>, '': <AsyncGroup memory://140345143770112>}
     """
     # normalize the keys to be valid paths
