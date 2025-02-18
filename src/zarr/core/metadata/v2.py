@@ -179,7 +179,7 @@ class ArrayV2Metadata(Metadata):
         # handle the renames
         expected |= {"dtype", "chunks"}
 
-        # check if `filters` is an empty tuple; if so use None instead and raise a warning
+        # check if `filters` is an empty sequence; if so use None instead and raise a warning
         if _data["filters"] is not None and len(_data["filters"]) == 0:
             msg = (
                 "Found an empty list of filters in the array metadata document. "
