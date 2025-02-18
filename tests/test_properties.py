@@ -113,6 +113,13 @@ async def test_roundtrip_array_metadata(
         assert actual == expected
 
 
+@given(store=stores, meta=array_metadata())  # type: ignore[misc]
+def test_array_metadata_meets_spec(store: Store, meta: ArrayV2Metadata | ArrayV3Metadata) -> None:
+    asdict = meta.to_dict()
+    if isinstance(meta, ArrayV2Metadata):
+        assert asdict["filters"] != ()
+
+
 # @st.composite
 # def advanced_indices(draw, *, shape):
 #     basic_idxr = draw(
