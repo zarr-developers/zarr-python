@@ -97,6 +97,7 @@ async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> 
     assert await store_wrapped.get(key, buffer_prototype) == value
 
 
+@pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> None:
     # define a class that prints when it sets
