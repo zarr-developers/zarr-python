@@ -15,6 +15,10 @@ if TYPE_CHECKING:
     from zarr.core.buffer.core import BufferPrototype
 
 
+# TODO: fix this warning
+@pytest.mark.filterwarnings(
+    "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
+)
 class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
     store_cls = WrapperStore
     buffer_cls = Buffer
