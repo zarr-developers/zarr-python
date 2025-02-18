@@ -1400,21 +1400,34 @@ class AsyncGroup:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
-        This method takes a dictionary where the keys are the names of the arrays or groups
-        to create and the values are the metadata or objects representing the arrays or groups.
+        This function will parse its input to ensure that the hierarchy is complete. Any implicit groups
+        will be inserted as needed. For example, an input like
+        ```{'a/b': GroupMetadata}``` will be parsed to
+        ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```.
 
-        The method returns an asynchronous iterator over the created nodes.
+        Explicitly specifying a root group, e.g. with ``nodes = {'': GroupMetadata()}`` is an error
+        because this group instance is the root group.
+
+        After input parsing, this function then creates all the nodes in the hierarchy concurrently.
+
+        Arrays and Groups are yielded in the order they are created. This order is not stable and
+        should not be relied on.
 
         Parameters
         ----------
-        nodes : A dictionary representing the hierarchy to create
-
+        nodes : A dictionary representing the hierarchy to create. The keys should be paths relative to this group
+            and the values should be the metadata for the arrays or groups to create.
         overwrite : bool
-            Whether or not existing arrays / groups should be replaced.
+            Whether to overwrite existing nodes. Defaults to ``False``, in which case an error is
+            raised instead of overwriting an existing array or group.
 
-        Returns
+            This function will not erase an existing group unless that group is explicitly named in
+            ``nodes``. If ``nodes`` defines implicit groups, e.g. ``{`'a/b/c': GroupMetadata}``, and a
+            group already exists at path ``a``, then this function will leave the group at ``a`` as-is.
+
+        Yields
         -------
-            An asynchronous iterator of (str, AsyncArray | AsyncGroup) pairs.
+            tuple[str, AsyncArray | AsyncGroup].
         """
         # check that all the nodes have the same zarr_format as Self
         prefix = self.path
@@ -2081,24 +2094,35 @@ class Group(SyncMixin):
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
-        This method takes a dictionary where the keys are the names of the arrays or groups
-        to create and the values are the metadata objects for the arrays or groups.
+        This function will parse its input to ensure that the hierarchy is complete. Any implicit groups
+        will be inserted as needed. For example, an input like
+        ```{'a/b': GroupMetadata}``` will be parsed to
+        ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```.
 
-        This method returns an iterator of created Group or Array objects.
+        Explicitly specifying a root group, e.g. with ``nodes = {'': GroupMetadata()}`` is an error
+        because this group instance is the root group.
 
-        Note: this method will create additional groups as needed to ensure that a hierarchy is
-        complete. Usage like ``create_hierarchy({'a/b': GroupMetadata()})`` defines an implicit
-        group at ``a``. This function will ensure that the group at ``a`` exists, first by checking
-        if one already exists, and if not, creating one.
+        After input parsing, this function then creates all the nodes in the hierarchy concurrently.
+
+        Arrays and Groups are yielded in the order they are created. This order is not stable and
+        should not be relied on.
+
 
         Parameters
         ----------
-        nodes : A dictionary representing the hierarchy to create. The keys should be relative paths
+        nodes : A dictionary representing the hierarchy to create. The keys should be paths relative to this group
             and the values should be the metadata for the arrays or groups to create.
+        overwrite : bool
+            Whether to overwrite existing nodes. Defaults to ``False``, in which case an error is
+            raised instead of overwriting an existing array or group.
 
-        Returns
+            This function will not erase an existing group unless that group is explicitly named in
+            ``nodes``. If ``nodes`` defines implicit groups, e.g. ``{`'a/b/c': GroupMetadata}``, and a
+            group already exists at path ``a``, then this function will leave the group at ``a`` as-is.
+
+        Yields
         -------
-            An iterator of (name, Array or Group) tuples.
+            tuple[str, Array | Group].
 
         Examples
         --------
