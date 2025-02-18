@@ -115,9 +115,16 @@ async def test_roundtrip_array_metadata(
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
 def test_array_metadata_meets_spec(store: Store, meta: ArrayV2Metadata | ArrayV3Metadata) -> None:
+    # TODO: fill this out
     asdict = meta.to_dict()
     if isinstance(meta, ArrayV2Metadata):
         assert asdict["filters"] != ()
+        assert asdict["filters"] is None or isinstance(asdict["filters"], tuple)
+        assert asdict["zarr_format"] == 2
+    elif isinstance(meta, ArrayV3Metadata):
+        assert asdict["zarr_format"] == 3
+    else:
+        raise NotImplementedError
 
 
 # @st.composite
