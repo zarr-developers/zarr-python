@@ -1414,9 +1414,11 @@ class AsyncGroup:
 
         Returns
         -------
-            An asynchronous iterator over the created arrays and / or groups.
+            An asynchronous iterator of (str, AsyncArray | AsyncGroup) pairs.
         """
         # check that all the nodes have the same zarr_format as Self
+        prefix = self.path
+        nodes_parsed = {}
         for key, value in nodes.items():
             if value.zarr_format != self.metadata.zarr_format:
                 msg = (
@@ -1433,15 +1435,19 @@ class AsyncGroup:
                     "create_rooted_hierarchy to create a rooted hierarchy."
                 )
                 raise ValueError(msg)
-
-        nodes_rooted = nodes
+            else:
+                nodes_parsed[_join_paths([prefix, key])] = value
 
         async for key, node in create_hierarchy(
             store=self.store,
-            nodes=nodes_rooted,
+            nodes=nodes_parsed,
             overwrite=overwrite,
         ):
-            yield key, node
+            if prefix == "":
+                out_key = key
+            else:
+                out_key = key.removeprefix(prefix + "/")
+            yield out_key, node
 
     async def keys(self) -> AsyncGenerator[str, None]:
         """Iterate over member names."""

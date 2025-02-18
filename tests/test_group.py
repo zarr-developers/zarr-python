@@ -1645,17 +1645,24 @@ async def test_create_hierarchy_existing_nodes(
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("overwrite", [True, False])
+@pytest.mark.parametrize("group_path", ["", "foo"])
 @pytest.mark.parametrize("impl", ["async", "sync"])
 async def test_group_create_hierarchy(
-    store: Store, zarr_format: ZarrFormat, overwrite: bool, impl: Literal["async", "sync"]
+    store: Store,
+    zarr_format: ZarrFormat,
+    overwrite: bool,
+    group_path: str,
+    impl: Literal["async", "sync"],
 ) -> None:
     """
     Test that the Group.create_hierarchy method creates specified nodes and returns them in a dict.
     Also test that off-target nodes are not deleted, and that the root group is not deleted
     """
     root_attrs = {"root": True}
-    g = Group.from_store(store, zarr_format=zarr_format, attributes=root_attrs)
-
+    g = sync_group.create_rooted_hierarchy(
+        store=store,
+        nodes={group_path: GroupMetadata(zarr_format=zarr_format, attributes=root_attrs)},
+    )
     node_spec = {
         "a": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a"}),
         "a/b": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a/b"}),
@@ -1689,7 +1696,10 @@ async def test_group_create_hierarchy(
         else:
             assert all_members[k].metadata == v == extant_created[k].metadata
     # ensure that we left the root group as-is
-    assert sync_group.get_node(store=store, path="", zarr_format=zarr_format).attrs == root_attrs
+    assert (
+        sync_group.get_node(store=store, path=group_path, zarr_format=zarr_format).attrs.asdict()
+        == root_attrs
+    )
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
