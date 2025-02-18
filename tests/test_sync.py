@@ -90,6 +90,7 @@ def test_sync_raises_if_loop_is_closed() -> None:
     foo.assert_not_awaited()
 
 
+@pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
 @pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
 def test_sync_raises_if_calling_sync_from_within_a_running_loop(
     sync_loop: asyncio.AbstractEventLoop | None,
