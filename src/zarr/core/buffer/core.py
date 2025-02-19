@@ -431,11 +431,10 @@ class NDBuffer:
 
         if np.issubdtype(self.dtype, np.datetime64):
             unit: str = np.datetime_data(self.dtype)[0]  # Extract the unit (e.g., 'Y', 'D', etc.)
-            value: ScalarType = np.datetime64(item, unit)
+            return np.datetime64(item, unit)
         else:
-            value: ScalarType = self.dtype.type(item)  # Regular conversion for non-datetime types
+            return self.dtype.type(item)  # Regular conversion for non-datetime types
 
-        return value
 
     @property
     def dtype(self) -> np.dtype[Any]:
