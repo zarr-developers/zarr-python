@@ -309,7 +309,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     for idx in range(chunk_spec.ndim)
                 )
                 chunk_value = chunk_value[item]
-        if is_complete_chunk:
+        if is_complete_chunk and chunk_value.shape == chunk_spec.shape:
             # TODO: For the last chunk, we could have is_complete_chunk=True
             #       that is smaller than the chunk_spec.shape but this throws
             #       an error in the _decode_single
