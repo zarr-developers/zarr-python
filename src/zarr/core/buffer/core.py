@@ -427,7 +427,14 @@ class NDBuffer:
         """Returns the buffer as a scalar value"""
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
-        value: ScalarType = self.dtype.type(self.as_numpy_array().item())
+        item = self.as_numpy_array().item()
+
+        if np.issubdtype(self.dtype, np.datetime64):
+            unit: str = np.datetime_data(self.dtype)[0]  # Extract the unit (e.g., 'Y', 'D', etc.)
+            value: ScalarType = np.datetime64(item, unit)
+        else:
+            value: ScalarType = self.dtype.type(item)  # Regular conversion for non-datetime types
+
         return value
 
     @property
