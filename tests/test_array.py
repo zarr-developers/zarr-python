@@ -829,6 +829,32 @@ def test_append_bad_shape(store: MemoryStore, zarr_format: ZarrFormat) -> None:
         z.append(b)
 
 
+def test_append_shape_not_equals_chunk_shape() -> None:
+    # regression test for GH2849
+    g = zarr.open("foo.zarr", zarr_format=3, mode="w")
+    g["bar"] = np.arange(3)
+
+    size = 4
+    data = [0, 1, 2, 3]
+    g["bar"].append(data)
+    assert (g["bar"][-size:] == data).all(), (g["bar"][-size:], data)
+
+    size = 3
+    data = [-1, -2, -3]
+    g["bar"].append(data)
+    assert (g["bar"][-size:] == data).all(), (g["bar"][-size:], data)
+
+    size = 2
+    data = [-10, -11]
+    g["bar"].append(data)
+    assert (g["bar"][-size:] == data).all(), (g["bar"][-size:], data)
+
+    size = 3
+    data = [-4, -5, -6]
+    g["bar"].append(data)
+    assert (g["bar"][-size:] == data).all(), (g["bar"][-size:], data)
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
 @pytest.mark.parametrize("fill_value", [0, 5])
