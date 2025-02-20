@@ -24,6 +24,7 @@ from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
+from zarr.storage._utils import normalize_path
 from zarr.testing.store import LatencyStore
 
 from .conftest import parse_store
@@ -111,24 +112,27 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
             assert g.attrs == {}
 
 
-def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("root_name", ["", "/", "a", "/a"])
+@pytest.mark.parametrize("branch_name", ["foo", "/foo", "foo/bar", "/foo/bar"])
+def test_group_name_properties(
+    store: Store, zarr_format: ZarrFormat, root_name: str, branch_name: str
+) -> None:
     """
-    Test basic properties of groups
+    Test that the path, name, and basename attributes of a group and its subgroups are consistent
     """
-    root = Group.from_store(store=store, zarr_format=zarr_format)
-    assert root.path == ""
-    assert root.name == "/"
-    assert root.basename == ""
+    root = Group.from_store(store=StorePath(store=store, path=root_name), zarr_format=zarr_format)
+    assert root.path == normalize_path(root_name)
+    assert root.name == "/" + root.path
+    assert root.basename == root.path
 
-    foo = root.create_group("foo")
-    assert foo.path == "foo"
-    assert foo.name == "/foo"
-    assert foo.basename == "foo"
-
-    bar = root.create_group("foo/bar")
-    assert bar.path == "foo/bar"
-    assert bar.name == "/foo/bar"
-    assert bar.basename == "bar"
+    branch = root.create_group(branch_name)
+    if root.path == "":
+        assert branch.path == normalize_path(branch_name)
+    else:
+        assert branch.path == "/".join([root.path, normalize_path(branch_name)])
+    assert branch.name == "/" + branch.path
+    assert branch.basename == branch_name.split("/")[-1]
 
 
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
@@ -601,11 +605,13 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
 
 
 @pytest.mark.parametrize("method", ["create_array", "array"])
+@pytest.mark.parametrize("name", ["a", "/a"])
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
     overwrite: bool,
     method: Literal["create_array", "array"],
+    name: str,
 ) -> None:
     """
     Test `Group.from_store`
@@ -616,23 +622,26 @@ def test_group_create_array(
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
     if method == "create_array":
-        array = group.create_array(name="array", shape=shape, dtype=dtype)
+        array = group.create_array(name=name, shape=shape, dtype=dtype)
         array[:] = data
     elif method == "array":
         with pytest.warns(DeprecationWarning):
-            array = group.array(name="array", data=data, shape=shape, dtype=dtype)
+            array = group.array(name=name, data=data, shape=shape, dtype=dtype)
     else:
         raise AssertionError
 
     if not overwrite:
         if method == "create_array":
             with pytest.raises(ContainsArrayError):
-                a = group.create_array(name="array", shape=shape, dtype=dtype)
+                a = group.create_array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
         elif method == "array":
             with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
-                a = group.array(name="array", shape=shape, dtype=dtype)
+                a = group.array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
+
+    assert array.path == normalize_path(name)
+    assert array.name == "/" + normalize_path(name)
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
