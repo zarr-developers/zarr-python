@@ -1,1 +1,0 @@
-Added :meth:`zarr.config.enable_gpu` to update Zarr's configuration to use GPUs.
