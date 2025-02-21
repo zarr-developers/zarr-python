@@ -1,10 +1,11 @@
+import math
 import sys
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
-from hypothesis import given, settings  # noqa: F401
+from hypothesis import event, given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 import zarr
@@ -97,7 +98,8 @@ paths = st.just("/") | keys
 stores = st.builds(MemoryStore, st.just({})).map(clear_store)
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([3, 2])
-array_shapes = npst.array_shapes(max_dims=4, min_side=0)
+# We de-prioritize arrays having dim sizes 0, 1, 2
+array_shapes = npst.array_shapes(max_dims=4, min_side=3) | npst.array_shapes(max_dims=4, min_side=0)
 
 
 @st.composite  # type: ignore[misc]
@@ -174,10 +176,18 @@ def chunk_shapes(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[int, ...]:
         st.tuples(*[st.integers(min_value=0 if size == 0 else 1, max_value=size) for size in shape])
     )
     # 2. and now generate the chunks tuple
-    return tuple(
+    chunks = tuple(
         size // nchunks if nchunks > 0 else 0
         for size, nchunks in zip(shape, numchunks, strict=True)
     )
+
+    for c in chunks:
+        event("chunk size", c)
+
+    if any((c != 0 and s % c != 0) for s, c in zip(shape, chunks, strict=True)):
+        event("smaller last chunk")
+
+    return chunks
 
 
 @st.composite  # type: ignore[misc]
@@ -267,23 +277,55 @@ def arrays(
     return a
 
 
+@st.composite  # type: ignore[misc]
+def simple_arrays(
+    draw: st.DrawFn,
+    *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
+) -> Any:
+    return draw(
+        arrays(
+            shapes=shapes,
+            attrs=st.none(),
+            paths=paths(max_num_nodes=2),
+            compressors=st.sampled_from([None, "default"]),
+        )
+    )
+
+
 def is_negative_slice(idx: Any) -> bool:
     return isinstance(idx, slice) and idx.step is not None and idx.step < 0
 
 
 @st.composite  # type: ignore[misc]
+def end_slices(draw: st.DrawFn, *, shape: tuple[int]) -> Any:
+    """
+    A strategy that slices ranges that include the last chunk.
+    This is intended to stress-test handling of a possibly smaller last chunk.
+    """
+    slicers = []
+    for size in shape:
+        start = draw(st.integers(min_value=size // 2, max_value=size - 1))
+        length = draw(st.integers(min_value=0, max_value=size - start))
+        slicers.append(slice(start, start + length))
+    event("drawing end slice")
+    return tuple(slicers)
+
+
+@st.composite  # type: ignore[misc]
 def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs: Any) -> Any:
     """Basic indices without unsupported negative slices."""
-    return draw(
-        npst.basic_indices(shape=shape, **kwargs).filter(
-            lambda idxr: (
-                not (
-                    is_negative_slice(idxr)
-                    or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
-                )
+    strategy = npst.basic_indices(shape=shape, **kwargs).filter(
+        lambda idxr: (
+            not (
+                is_negative_slice(idxr)
+                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
             )
         )
     )
+    if math.prod(shape) >= 3:
+        strategy = end_slices(shape=shape) | strategy
+    return draw(strategy)
 
 
 @st.composite  # type: ignore[misc]

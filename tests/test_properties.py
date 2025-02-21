@@ -18,6 +18,7 @@ from zarr.testing.strategies import (
     basic_indices,
     numpy_arrays,
     orthogonal_indices,
+    simple_arrays,
     stores,
     zarr_formats,
 )
@@ -50,7 +51,7 @@ def test_array_creates_implicit_groups(array):
 
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(arrays())
+    zarray = data.draw(simple_arrays())
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
     actual = zarray[indexer]
@@ -65,7 +66,7 @@ def test_basic_indexing(data: st.DataObject) -> None:
 @given(data=st.data())
 def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
 
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
@@ -82,7 +83,7 @@ def test_oindex(data: st.DataObject) -> None:
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
 
     indexer = data.draw(
