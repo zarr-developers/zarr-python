@@ -455,9 +455,8 @@ class ShardingCodec(
                     chunk_spec,
                     chunk_selection,
                     out_selection,
-                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
+                for chunk_coords, chunk_selection, out_selection in indexer
             ],
             out,
         )
@@ -487,7 +486,7 @@ class ShardingCodec(
         )
 
         indexed_chunks = list(indexer)
-        all_chunk_coords = {chunk_coords for chunk_coords, *_ in indexed_chunks}
+        all_chunk_coords = {chunk_coords for chunk_coords, _, _ in indexed_chunks}
 
         # reading bytes of all requested chunks
         shard_dict: ShardMapping = {}
@@ -525,9 +524,8 @@ class ShardingCodec(
                     chunk_spec,
                     chunk_selection,
                     out_selection,
-                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
+                for chunk_coords, chunk_selection, out_selection in indexer
             ],
             out,
         )
@@ -564,9 +562,8 @@ class ShardingCodec(
                     chunk_spec,
                     chunk_selection,
                     out_selection,
-                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
+                for chunk_coords, chunk_selection, out_selection in indexer
             ],
             shard_array,
         )
@@ -608,9 +605,8 @@ class ShardingCodec(
                     chunk_spec,
                     chunk_selection,
                     out_selection,
-                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
+                for chunk_coords, chunk_selection, out_selection in indexer
             ],
             shard_array,
         )

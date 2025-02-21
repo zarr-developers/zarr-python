@@ -357,7 +357,7 @@ class CodecPipeline:
     @abstractmethod
     async def read(
         self,
-        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
@@ -379,7 +379,7 @@ class CodecPipeline:
     @abstractmethod
     async def write(
         self,
-        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
