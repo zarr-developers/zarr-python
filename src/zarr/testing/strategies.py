@@ -29,6 +29,16 @@ _attr_values = st.recursive(
 )
 
 
+@st.composite  # type: ignore[misc]
+def keys(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> Any:
+    return draw(st.lists(node_names, min_size=1, max_size=max_num_nodes).map("/".join))
+
+
+@st.composite  # type: ignore[misc]
+def paths(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> Any:
+    return draw(st.just("/") | keys(max_num_nodes=max_num_nodes))
+
+
 def v3_dtypes() -> st.SearchStrategy[np.dtype]:
     return (
         npst.boolean_dtypes()
@@ -88,10 +98,11 @@ zarr_key_chars = st.sampled_from(
 node_names = st.text(zarr_key_chars, min_size=1).filter(
     lambda t: t not in (".", "..") and not t.startswith("__")
 )
+short_node_names = st.text(zarr_key_chars, max_size=3, min_size=1).filter(
+    lambda t: t not in (".", "..") and not t.startswith("__")
+)
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-keys = st.lists(node_names, min_size=1).map("/".join)
-paths = st.just("/") | keys
 # st.builds will only call a new store constructor for different keyword arguments
 # i.e. stores.examples() will always return the same object per Store class.
 # So we map a clear to reset the store.
@@ -221,7 +232,7 @@ def arrays(
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
     compressors: st.SearchStrategy = compressors,
     stores: st.SearchStrategy[StoreLike] = stores,
-    paths: st.SearchStrategy[str | None] = paths,
+    paths: st.SearchStrategy[str | None] = paths(),  # noqa: B008
     array_names: st.SearchStrategy = array_names,
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
@@ -286,8 +297,9 @@ def simple_arrays(
     return draw(
         arrays(
             shapes=shapes,
-            attrs=st.none(),
             paths=paths(max_num_nodes=2),
+            array_names=short_node_names,
+            attrs=st.none(),
             compressors=st.sampled_from([None, "default"]),
         )
     )
