@@ -8,7 +8,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given, note
+from hypothesis import assume, given
 
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -65,7 +65,6 @@ def test_basic_indexing(data: st.DataObject) -> None:
 
 
 @given(data=st.data())
-# @reproduce_failure("6.126.0", b"AXicFYiBDQAwDIJ060F7gdP6+TQkEkH7cJAZCXHpjjltecJuiz+MwwVc")
 def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
@@ -83,7 +82,6 @@ def test_oindex(data: st.DataObject) -> None:
     new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     nparray[npindexer] = new_data
     zarray.oindex[zindexer] = new_data
-    note((new_data, npindexer, nparray, zindexer, zarray[:]))
     assert_array_equal(nparray, zarray[:])
 
 
