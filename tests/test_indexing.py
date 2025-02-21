@@ -430,6 +430,10 @@ def test_setitem_repeated_index():
     array.oindex[(indexer,)] = [0, 1, 2, 3]
     np.testing.assert_array_equal(array[:], np.array([3, 0, 0, 1]))
 
+    indexer = np.array([-1, 0, 0, -1])
+    array.oindex[(indexer,)] = [0, 1, 2, 3]
+    np.testing.assert_array_equal(array[:], np.array([2, 0, 0, 3]))
+
 
 Index = list[int] | tuple[slice | int | list[int], ...]
 
