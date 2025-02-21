@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
@@ -7,7 +8,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given, note, reproduce_failure
+from hypothesis import assume, given, note
 
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -75,6 +76,10 @@ def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[npindexer], actual)
 
     assume(zarray.shards is None)  # GH2834
+    for idxr in npindexer:
+        if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
+            # behaviour of setitem with repeated indices is not guaranteed in practice
+            assume(False)
     new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
     nparray[npindexer] = new_data
     zarray.oindex[zindexer] = new_data
