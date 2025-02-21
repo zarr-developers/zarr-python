@@ -57,7 +57,7 @@ def test_basic_indexing(data: st.DataObject) -> None:
     actual = zarray[indexer]
     assert_array_equal(nparray[indexer], actual)
 
-    new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
+    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     zarray[indexer] = new_data
     nparray[indexer] = new_data
     assert_array_equal(nparray, zarray[:])
@@ -74,7 +74,7 @@ def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray[npindexer], actual)
 
     assume(zarray.shards is None)  # GH2834
-    new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
+    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     nparray[npindexer] = new_data
     zarray.oindex[zindexer] = new_data
     assert_array_equal(nparray, zarray[:])

@@ -165,13 +165,15 @@ def numpy_arrays(
     draw: st.DrawFn,
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
-    zarr_formats: st.SearchStrategy[ZarrFormat] = zarr_formats,
+    dtype: np.dtype[Any] | None = None,
+    zarr_formats: st.SearchStrategy[ZarrFormat] | None = zarr_formats,
 ) -> Any:
     """
     Generate numpy arrays that can be saved in the provided Zarr format.
     """
     zarr_format = draw(zarr_formats)
-    dtype = draw(v3_dtypes() if zarr_format == 3 else v2_dtypes())
+    if dtype is None:
+        dtype = draw(v3_dtypes() if zarr_format == 3 else v2_dtypes())
     if np.issubdtype(dtype, np.str_):
         safe_unicode_strings = safe_unicode_for_dtype(dtype)
         return draw(npst.arrays(dtype=dtype, shape=shapes, elements=safe_unicode_strings))
