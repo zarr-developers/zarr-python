@@ -1,0 +1,1 @@
+Revert "Always skip reads when completely overwriting chunks (PR #2784, :issue:`2849`)
