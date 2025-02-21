@@ -2,7 +2,9 @@
 different versions of Numpy.
 """
 
-from typing import Any, Union, cast
+from __future__ import annotations
+
+from typing import Any, cast
 from warnings import warn
 
 import numpy as np
@@ -11,13 +13,13 @@ import numpy as np
 # when reading data back from Zarr.
 # Any valid string-like datatype should be fine for *setting* data.
 
-_STRING_DTYPE: Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]
+_STRING_DTYPE: np.dtypes.StringDType | np.dtypes.ObjectDType
 _NUMPY_SUPPORTS_VLEN_STRING: bool
 
 
 def cast_array(
     data: np.ndarray[Any, np.dtype[Any]],
-) -> np.ndarray[Any, Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]]:
+) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
     raise NotImplementedError
 
 
@@ -39,14 +41,14 @@ except AttributeError:
 
     def cast_array(
         data: np.ndarray[Any, np.dtype[Any]],
-    ) -> np.ndarray[Any, Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]]:
+    ) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
         out = data.astype(_STRING_DTYPE, copy=False)
         return cast(np.ndarray[Any, np.dtypes.ObjectDType], out)
 
 
 def cast_to_string_dtype(
     data: np.ndarray[Any, np.dtype[Any]], safe: bool = False
-) -> np.ndarray[Any, Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]]:
+) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
     """Take any data and attempt to cast to to our preferred string dtype.
 
     data :  np.ndarray
