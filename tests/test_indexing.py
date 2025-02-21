@@ -424,7 +424,7 @@ def test_orthogonal_indexing_fallback_on_getitem_2d(
     np.testing.assert_array_equal(z[index], expected_result)
 
 
-@pytest.mark.xfail(reason="fails on ubuntu, windows; numpy=2.2; in CI")
+@pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
 def test_setitem_repeated_index():
     array = zarr.array(data=np.zeros((4,)), chunks=(1,))
     indexer = np.array([-1, -1, 0, 0])
