@@ -7,7 +7,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given
+from hypothesis import assume, given, note
 
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -18,6 +18,7 @@ from zarr.testing.strategies import (
     basic_indices,
     numpy_arrays,
     orthogonal_indices,
+    simple_arrays,
     stores,
     zarr_formats,
 )
@@ -50,7 +51,7 @@ def test_array_creates_implicit_groups(array):
 
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(arrays())
+    zarray = data.draw(simple_arrays())
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
     actual = zarray[indexer]
@@ -65,7 +66,7 @@ def test_basic_indexing(data: st.DataObject) -> None:
 @given(data=st.data())
 def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
 
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
@@ -76,13 +77,14 @@ def test_oindex(data: st.DataObject) -> None:
     new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
     nparray[npindexer] = new_data
     zarray.oindex[zindexer] = new_data
+    note((new_data, npindexer, nparray, zindexer, zarray[:]))
     assert_array_equal(nparray, zarray[:])
 
 
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
 
     indexer = data.draw(
