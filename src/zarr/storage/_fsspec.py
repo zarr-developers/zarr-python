@@ -178,7 +178,7 @@ class FsspecStore(Store):
             try:
                 from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-                fs = AsyncFileSystemWrapper(fs)
+                fs = AsyncFileSystemWrapper(fs, asynchronous=True)
             except ImportError as e:
                 raise ImportError(
                     f"The filesystem for URL '{url}' is synchronous, and the required "
