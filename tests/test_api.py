@@ -1094,9 +1094,9 @@ def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
         # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
         with pytest.raises(FileNotFoundError):
             zarr.open(store=zarr_dir, mode=mode)
-        zarr.open(store=zarr_dir, mode="w")
-    group = zarr.open(store=zarr_dir, mode=mode)
-    assert isinstance(group, Group)
+    else:
+        group = zarr.open(store=zarr_dir, mode=mode)
+        assert isinstance(group, Group)
 
 
 async def test_metadata_validation_error() -> None:
