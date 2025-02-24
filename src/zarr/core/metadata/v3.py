@@ -35,6 +35,8 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
+from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
+from zarr.core.strings import _VLEN_STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 

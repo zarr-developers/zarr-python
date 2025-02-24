@@ -22,6 +22,7 @@ from typing import (
 from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
+from zarr.core.strings import _VLEN_STRING_DTYPE
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -188,6 +189,16 @@ def parse_bool(data: Any) -> bool:
     if isinstance(data, bool):
         return data
     raise ValueError(f"Expected bool, got {data} instead.")
+
+
+def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
+    if dtype is str or dtype == "str":
+        if zarr_format == 2:
+            # special case as object
+            return np.dtype("object")
+        else:
+            return _VLEN_STRING_DTYPE
+    return np.dtype(dtype)
 
 
 def _warn_write_empty_chunks_kwarg() -> None:
