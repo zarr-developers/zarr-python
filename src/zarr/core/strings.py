@@ -13,42 +13,43 @@ import numpy as np
 # when reading data back from Zarr.
 # Any valid string-like datatype should be fine for *setting* data.
 
-_STRING_DTYPE: np.dtypes.StringDType | np.dtypes.ObjectDType
+VLenStringType = np.dtypes.StringDType | np.dtypes.ObjectDType
+_VLEN_STRING_DTYPE: VLenStringType
 _NUMPY_SUPPORTS_VLEN_STRING: bool
 
 
 def cast_array(
     data: np.ndarray[Any, np.dtype[Any]],
-) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
+) -> np.ndarray[Any, VLenStringType]:
     raise NotImplementedError
 
 
 try:
     # this new vlen string dtype was added in NumPy 2.0
-    _STRING_DTYPE = np.dtypes.StringDType()
+    _VLEN_STRING_DTYPE = np.dtypes.StringDType()
     _NUMPY_SUPPORTS_VLEN_STRING = True
 
     def cast_array(
         data: np.ndarray[Any, np.dtype[Any]],
-    ) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
-        out = data.astype(_STRING_DTYPE, copy=False)
+    ) -> np.ndarray[Any, VLenStringType]:
+        out = data.astype(_VLEN_STRING_DTYPE, copy=False)
         return cast(np.ndarray[Any, np.dtypes.StringDType], out)
 
 except AttributeError:
     # if not available, we fall back on an object array of strings, as in Zarr < 3
-    _STRING_DTYPE = np.dtypes.ObjectDType()
+    _VLEN_STRING_DTYPE = np.dtypes.ObjectDType()
     _NUMPY_SUPPORTS_VLEN_STRING = False
 
     def cast_array(
         data: np.ndarray[Any, np.dtype[Any]],
-    ) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
-        out = data.astype(_STRING_DTYPE, copy=False)
+    ) -> np.ndarray[Any, VLenStringType]:
+        out = data.astype(_VLEN_STRING_DTYPE, copy=False)
         return cast(np.ndarray[Any, np.dtypes.ObjectDType], out)
 
 
 def cast_to_string_dtype(
     data: np.ndarray[Any, np.dtype[Any]], safe: bool = False
-) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
+) -> np.ndarray[Any, VLenStringType]:
     """Take any data and attempt to cast to to our preferred string dtype.
 
     data :  np.ndarray
@@ -63,7 +64,7 @@ def cast_to_string_dtype(
         return cast_array(data)
         # out = data.astype(STRING_DTYPE, copy=False)
         # return cast(np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType], out)
-    if _NUMPY_SUPPORTS_VLEN_STRING and np.issubdtype(data.dtype, _STRING_DTYPE):
+    if _NUMPY_SUPPORTS_VLEN_STRING and np.issubdtype(data.dtype, _VLEN_STRING_DTYPE):
         # already a valid string variable length string dtype
         return cast_array(data)
     if np.issubdtype(data.dtype, np.object_):

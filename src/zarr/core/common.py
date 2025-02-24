@@ -19,7 +19,7 @@ from typing import (
 import numpy as np
 
 from zarr.core.config import config as zarr_config
-from zarr.core.strings import _STRING_DTYPE
+from zarr.core.strings import _VLEN_STRING_DTYPE
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -173,7 +173,7 @@ def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
             # special case as object
             return np.dtype("object")
         else:
-            return _STRING_DTYPE
+            return _VLEN_STRING_DTYPE
     return np.dtype(dtype)
 
 
