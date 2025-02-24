@@ -318,7 +318,9 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 def parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     """Handle structured dtype/fill value pairs"""
     try:
-        if isinstance(fill_value, (tuple, list)):
+        if isinstance(fill_value, list):
+            fill_value = tuple(fill_value)
+        if isinstance(fill_value, tuple):
             fill_value = np.array([fill_value], dtype=dtype)[0]
         elif isinstance(fill_value, bytes):
             fill_value = np.frombuffer(fill_value, dtype=dtype)[0]
