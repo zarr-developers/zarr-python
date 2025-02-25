@@ -121,7 +121,7 @@ Here's an example of using ObjectStore for accessing remote data:
    >>> from zarr.storage import ObjectStore
    >>> from obstore.store import S3Store
    >>>
-   >>> s3_store = S3Store('noaa-nwm-retro-v2-zarr-pds', skip_signature=True, aws_region="us-west-2")
+   >>> s3_store = S3Store('noaa-nwm-retro-v2-zarr-pds', skip_signature=True, region="us-west-2")
    >>> store = zarr.storage.ObjectStore(store=s3_store, read_only=True)
    >>> group = zarr.open_group(store=store, mode='r')
    >>> group.info
