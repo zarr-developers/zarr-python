@@ -116,6 +116,23 @@ builds on the production quality Rust library `object_store <https://docs.rs/obj
    >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
    <Array object://... shape=(2,) dtype=float64>
 
+Here's an example of using ObjectStore for accessing remote data:
+
+   >>> from zarr.storage import ObjectStore
+   >>> from obstore.store import S3Store
+   >>>
+   >>> s3_store = S3Store('noaa-nwm-retro-v2-zarr-pds', skip_signature=True, aws_region="us-west-2")
+   >>> store = zarr.storage.ObjectStore(store=s3_store, read_only=True)
+   >>> group = zarr.open_group(store=store, mode='r')
+   >>> group.info
+   Name        :
+   Type        : Group
+   Zarr format : 2
+   Read-only   : True
+   Store type  : ObjectStore
+   No. members : 12
+   No. arrays  : 12
+   No. groups  : 0
 
 .. warning::
    The :class:`zarr.storage.ObjectStore` class is experimental.
