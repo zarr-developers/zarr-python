@@ -5,7 +5,7 @@ import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from zarr.storage import WrapperStore
+from zarr.storage import ObjectStore, WrapperStore
 
 if TYPE_CHECKING:
     from typing import Any
@@ -42,7 +42,7 @@ class StoreTests(Generic[S, B]):
     async def set(self, store: S, key: str, value: Buffer) -> None:
         """
         Insert a value into a storage backend, with a specific key.
-        This should not not use any store methods. Bypassing the store methods allows them to be
+        This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
         ...
@@ -51,7 +51,7 @@ class StoreTests(Generic[S, B]):
     async def get(self, store: S, key: str) -> Buffer:
         """
         Retrieve a value from a storage backend, by key.
-        This should not not use any store methods. Bypassing the store methods allows them to be
+        This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
         ...
@@ -158,6 +158,10 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that data can be read from the store using the store.get method.
         """
+        if isinstance(store, ObjectStore) and not data:
+            pytest.xfail(
+                "Obstore does not allow loading invalid ranges - see https://github.com/apache/arrow-rs/pull/6751#issuecomment-2494702657"
+            )
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
