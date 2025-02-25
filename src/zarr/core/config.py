@@ -64,7 +64,11 @@ class Config(DConfig):  # type: ignore[misc]
         Configure Zarr to use GPUs where possible.
         """
         return self.set(
-            {"buffer": "zarr.core.buffer.gpu.Buffer", "ndbuffer": "zarr.core.buffer.gpu.NDBuffer"}
+            {
+                "buffer": "zarr.core.buffer.gpu.Buffer",
+                "ndbuffer": "zarr.core.buffer.gpu.NDBuffer",
+                "codecs": {"zstd": "zarr.codecs.gpu.NvcompZstdCodec"},
+            }
         )
 
 
@@ -96,13 +100,22 @@ config = Config(
                 },
                 "v3_default_compressors": {
                     "numeric": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                        {
+                            "name": "zstd",
+                            "configuration": {"level": 0, "checksum": False},
+                        },
                     ],
                     "string": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                        {
+                            "name": "zstd",
+                            "configuration": {"level": 0, "checksum": False},
+                        },
                     ],
                     "bytes": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                        {
+                            "name": "zstd",
+                            "configuration": {"level": 0, "checksum": False},
+                        },
                     ],
                 },
             },
