@@ -67,6 +67,7 @@ remote = [
 ]
 gpu = [
     "cupy-cuda12x",
+    "nvidia-nvcomp-cu12",
 ]
 # Development extras
 test = [
