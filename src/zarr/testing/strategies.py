@@ -1,10 +1,11 @@
+import math
 import sys
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
-from hypothesis import given, settings  # noqa: F401
+from hypothesis import event, given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 import zarr
@@ -26,6 +27,16 @@ _attr_values = st.recursive(
     lambda children: st.lists(children) | st.dictionaries(_attr_keys, children),
     max_leaves=3,
 )
+
+
+@st.composite  # type: ignore[misc]
+def keys(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> Any:
+    return draw(st.lists(node_names, min_size=1, max_size=max_num_nodes).map("/".join))
+
+
+@st.composite  # type: ignore[misc]
+def paths(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> Any:
+    return draw(st.just("/") | keys(max_num_nodes=max_num_nodes))
 
 
 def v3_dtypes() -> st.SearchStrategy[np.dtype]:
@@ -87,17 +98,19 @@ zarr_key_chars = st.sampled_from(
 node_names = st.text(zarr_key_chars, min_size=1).filter(
     lambda t: t not in (".", "..") and not t.startswith("__")
 )
+short_node_names = st.text(zarr_key_chars, max_size=3, min_size=1).filter(
+    lambda t: t not in (".", "..") and not t.startswith("__")
+)
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-keys = st.lists(node_names, min_size=1).map("/".join)
-paths = st.just("/") | keys
 # st.builds will only call a new store constructor for different keyword arguments
 # i.e. stores.examples() will always return the same object per Store class.
 # So we map a clear to reset the store.
 stores = st.builds(MemoryStore, st.just({})).map(clear_store)
 compressors = st.sampled_from([None, "default"])
-zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([2, 3])
-array_shapes = npst.array_shapes(max_dims=4, min_side=0)
+zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([3, 2])
+# We de-prioritize arrays having dim sizes 0, 1, 2
+array_shapes = npst.array_shapes(max_dims=4, min_side=3) | npst.array_shapes(max_dims=4, min_side=0)
 
 
 @st.composite  # type: ignore[misc]
@@ -152,18 +165,54 @@ def numpy_arrays(
     draw: st.DrawFn,
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
-    zarr_formats: st.SearchStrategy[ZarrFormat] = zarr_formats,
+    dtype: np.dtype[Any] | None = None,
+    zarr_formats: st.SearchStrategy[ZarrFormat] | None = zarr_formats,
 ) -> Any:
     """
     Generate numpy arrays that can be saved in the provided Zarr format.
     """
     zarr_format = draw(zarr_formats)
-    dtype = draw(v3_dtypes() if zarr_format == 3 else v2_dtypes())
+    if dtype is None:
+        dtype = draw(v3_dtypes() if zarr_format == 3 else v2_dtypes())
     if np.issubdtype(dtype, np.str_):
         safe_unicode_strings = safe_unicode_for_dtype(dtype)
         return draw(npst.arrays(dtype=dtype, shape=shapes, elements=safe_unicode_strings))
 
     return draw(npst.arrays(dtype=dtype, shape=shapes))
+
+
+@st.composite  # type: ignore[misc]
+def chunk_shapes(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[int, ...]:
+    # We want this strategy to shrink towards arrays with smaller number of chunks
+    # 1. st.integers() shrinks towards smaller values. So we use that to generate number of chunks
+    numchunks = draw(
+        st.tuples(*[st.integers(min_value=0 if size == 0 else 1, max_value=size) for size in shape])
+    )
+    # 2. and now generate the chunks tuple
+    chunks = tuple(
+        size // nchunks if nchunks > 0 else 0
+        for size, nchunks in zip(shape, numchunks, strict=True)
+    )
+
+    for c in chunks:
+        event("chunk size", c)
+
+    if any((c != 0 and s % c != 0) for s, c in zip(shape, chunks, strict=True)):
+        event("smaller last chunk")
+
+    return chunks
+
+
+@st.composite  # type: ignore[misc]
+def shard_shapes(
+    draw: st.DrawFn, *, shape: tuple[int, ...], chunk_shape: tuple[int, ...]
+) -> tuple[int, ...]:
+    # We want this strategy to shrink towards arrays with smaller number of shards
+    # shards must be an integral number of chunks
+    assert all(c != 0 for c in chunk_shape)
+    numchunks = tuple(s // c for s, c in zip(shape, chunk_shape, strict=True))
+    multiples = tuple(draw(st.integers(min_value=1, max_value=nc)) for nc in numchunks)
+    return tuple(m * c for m, c in zip(multiples, chunk_shape, strict=True))
 
 
 @st.composite  # type: ignore[misc]
@@ -175,19 +224,7 @@ def np_array_and_chunks(
     Returns: a tuple of the array and a suitable random chunking for it.
     """
     array = draw(arrays)
-    # We want this strategy to shrink towards arrays with smaller number of chunks
-    # 1. st.integers() shrinks towards smaller values. So we use that to generate number of chunks
-    numchunks = draw(
-        st.tuples(
-            *[st.integers(min_value=0 if size == 0 else 1, max_value=size) for size in array.shape]
-        )
-    )
-    # 2. and now generate the chunks tuple
-    chunks = tuple(
-        size // nchunks if nchunks > 0 else 0
-        for size, nchunks in zip(array.shape, numchunks, strict=True)
-    )
-    return (array, chunks)
+    return (array, draw(chunk_shapes(shape=array.shape)))
 
 
 @st.composite  # type: ignore[misc]
@@ -197,7 +234,7 @@ def arrays(
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
     compressors: st.SearchStrategy = compressors,
     stores: st.SearchStrategy[StoreLike] = stores,
-    paths: st.SearchStrategy[str | None] = paths,
+    paths: st.SearchStrategy[str | None] = paths(),  # noqa: B008
     array_names: st.SearchStrategy = array_names,
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
@@ -210,7 +247,12 @@ def arrays(
     zarr_format = draw(zarr_formats)
     if arrays is None:
         arrays = numpy_arrays(shapes=shapes, zarr_formats=st.just(zarr_format))
-    nparray, chunks = draw(np_array_and_chunks(arrays=arrays))
+    nparray = draw(arrays)
+    chunk_shape = draw(chunk_shapes(shape=nparray.shape))
+    if zarr_format == 3 and all(c > 0 for c in chunk_shape):
+        shard_shape = draw(st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunk_shape))
+    else:
+        shard_shape = None
     # test that None works too.
     fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
     # compressor = draw(compressors)
@@ -223,7 +265,8 @@ def arrays(
     a = root.create_array(
         array_path,
         shape=nparray.shape,
-        chunks=chunks,
+        chunks=chunk_shape,
+        shards=shard_shape,
         dtype=nparray.dtype,
         attributes=attributes,
         # compressor=compressor,  # FIXME
@@ -236,7 +279,8 @@ def arrays(
     assert a.name is not None
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
-    assert chunks == a.chunks
+    assert chunk_shape == a.chunks
+    assert shard_shape == a.shards
     assert array_path == a.path, (path, name, array_path, a.name, a.path)
     assert a.basename == name, (a.basename, name)
     assert dict(a.attrs) == expected_attrs
@@ -246,23 +290,56 @@ def arrays(
     return a
 
 
+@st.composite  # type: ignore[misc]
+def simple_arrays(
+    draw: st.DrawFn,
+    *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
+) -> Any:
+    return draw(
+        arrays(
+            shapes=shapes,
+            paths=paths(max_num_nodes=2),
+            array_names=short_node_names,
+            attrs=st.none(),
+            compressors=st.sampled_from([None, "default"]),
+        )
+    )
+
+
 def is_negative_slice(idx: Any) -> bool:
     return isinstance(idx, slice) and idx.step is not None and idx.step < 0
 
 
 @st.composite  # type: ignore[misc]
+def end_slices(draw: st.DrawFn, *, shape: tuple[int]) -> Any:
+    """
+    A strategy that slices ranges that include the last chunk.
+    This is intended to stress-test handling of a possibly smaller last chunk.
+    """
+    slicers = []
+    for size in shape:
+        start = draw(st.integers(min_value=size // 2, max_value=size - 1))
+        length = draw(st.integers(min_value=0, max_value=size - start))
+        slicers.append(slice(start, start + length))
+    event("drawing end slice")
+    return tuple(slicers)
+
+
+@st.composite  # type: ignore[misc]
 def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs: Any) -> Any:
     """Basic indices without unsupported negative slices."""
-    return draw(
-        npst.basic_indices(shape=shape, **kwargs).filter(
-            lambda idxr: (
-                not (
-                    is_negative_slice(idxr)
-                    or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
-                )
+    strategy = npst.basic_indices(shape=shape, **kwargs).filter(
+        lambda idxr: (
+            not (
+                is_negative_slice(idxr)
+                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
             )
         )
     )
+    if math.prod(shape) >= 3:
+        strategy = end_slices(shape=shape) | strategy
+    return draw(strategy)
 
 
 @st.composite  # type: ignore[misc]
@@ -284,7 +361,7 @@ def orthogonal_indices(
             )
             | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
             .map(lambda x: (x,) if not isinstance(x, tuple) else x)  # bare ints, slices
-            .filter(lambda x: bool(x))  # skip empty tuple
+            .filter(bool)  # skip empty tuple
         )
         (idxr,) = val
         if isinstance(idxr, int):
