@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
+    from zarr.abc.codec import Codec
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
     from zarr.types import AnyArray
@@ -42,6 +43,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
+from zarr.codecs import NvcompZstdCodec
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
@@ -1474,7 +1476,8 @@ def test_api_exports() -> None:
     indirect=True,
 )
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
-def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
+@pytest.mark.parametrize("codec", ["auto", NvcompZstdCodec()])
+def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None, codec: str | Codec) -> None:
     import cupy as cp
 
     if zarr_format == 2:
@@ -1482,7 +1485,7 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
         # array to bytes.
         compressors = None
     else:
-        compressors = "auto"
+        compressors = codec
 
     with zarr.config.enable_gpu():
         src = cp.random.uniform(size=(100, 100))  # allocate on the device
