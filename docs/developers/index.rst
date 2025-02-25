@@ -7,4 +7,3 @@ Developer's Guide
 
     contributing
     roadmap
-    docs
