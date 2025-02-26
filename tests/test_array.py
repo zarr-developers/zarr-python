@@ -972,45 +972,40 @@ class TestCreateArray:
     @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
     @pytest.mark.parametrize("empty_value", [None, ()])
-    async def test_no_filters_compressors(store: MemoryStore, dtype: str, empty_value: Any) -> None:
+    async def test_no_filters_compressors(
+        store: MemoryStore, dtype: str, empty_value: object, zarr_format: ZarrFormat
+    ) -> None:
         """
         Test that the default ``filters`` and ``compressors`` are removed when ``create_array`` is invoked.
         """
 
-        # v2
         arr = await create_array(
             store=store,
             dtype=dtype,
             shape=(10,),
-            zarr_format=2,
+            zarr_format=zarr_format,
             compressors=empty_value,
             filters=empty_value,
         )
         # Test metadata explicitly
-        assert arr.metadata.zarr_format == 2  # guard for mypy
-        # The v2 metadata stores None and () separately
-        assert arr.metadata.filters == empty_value
-        # The v2 metadata does not allow tuple for compressor, therefore it is turned into None
-        assert arr.metadata.compressor is None
+        if zarr_format == 2:
+            assert arr.metadata.zarr_format == 2  # guard for mypy
+            # v2 spec requires that filters be either a collection with at least one filter, or None
+            assert arr.metadata.filters is None
+            # Compressor is a single element in v2 metadata; the absence of a compressor is encoded
+            # as None
+            assert arr.metadata.compressor is None
 
-        assert arr.filters == ()
-        assert arr.compressors == ()
-
-        # v3
-        arr = await create_array(
-            store=store,
-            dtype=dtype,
-            shape=(10,),
-            compressors=empty_value,
-            filters=empty_value,
-        )
-        assert arr.metadata.zarr_format == 3  # guard for mypy
-        if dtype == "str":
-            assert arr.metadata.codecs == (VLenUTF8Codec(),)
-            assert arr.serializer == VLenUTF8Codec()
+            assert arr.filters == ()
+            assert arr.compressors == ()
         else:
-            assert arr.metadata.codecs == (BytesCodec(),)
-            assert arr.serializer == BytesCodec()
+            assert arr.metadata.zarr_format == 3  # guard for mypy
+            if dtype == "str":
+                assert arr.metadata.codecs == (VLenUTF8Codec(),)
+                assert arr.serializer == VLenUTF8Codec()
+            else:
+                assert arr.metadata.codecs == (BytesCodec(),)
+                assert arr.serializer == BytesCodec()
 
     @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
