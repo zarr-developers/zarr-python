@@ -311,6 +311,8 @@ extend-select = [
     "PERF", # Perflint
     "PIE",  # flake8-pie
     "PGH",  # pygrep-hooks
+    "PLE",  # Pylint Error
+    "PLR",  # Pylint Refactor
     "PT",   # flake8-pytest-style
     "PYI",  # flake8-pyi
     "RET",  # flake8-return
@@ -325,6 +327,15 @@ extend-select = [
 ]
 ignore = [
     "ANN401",
+    "PLR0124",
+    "PLR0904",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0914",
+    "PLR0915",
+    "PLR0917",
+    "PLR2004",
     "PT011",  # TODO: apply this rule
     "RET505",
     "RET506",
