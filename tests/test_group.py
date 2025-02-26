@@ -659,7 +659,7 @@ def test_group_create_array(
                 a[:] = data
 
     assert array.path == normalize_path(name)
-    assert array.name == "/" + normalize_path(name)
+    assert array.name == "/" + array.path
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
@@ -950,20 +950,23 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
         raise AssertionError
 
 
+@pytest.mark.parametrize("name", ["a", "/a"])
 async def test_asyncgroup_create_group(
     store: Store,
+    name: str,
     zarr_format: ZarrFormat,
 ) -> None:
     agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    sub_node_path = "sub_group"
     attributes = {"foo": 999}
-    subnode = await agroup.create_group(name=sub_node_path, attributes=attributes)
+    subgroup = await agroup.create_group(name=name, attributes=attributes)
 
-    assert isinstance(subnode, AsyncGroup)
-    assert subnode.attrs == attributes
-    assert subnode.store_path.path == sub_node_path
-    assert subnode.store_path.store == store
-    assert subnode.metadata.zarr_format == zarr_format
+    assert isinstance(subgroup, AsyncGroup)
+    assert subgroup.path == normalize_path(name)
+    assert subgroup.name == "/" + subgroup.path
+    assert subgroup.attrs == attributes
+    assert subgroup.store_path.path == subgroup.path
+    assert subgroup.store_path.store == store
+    assert subgroup.metadata.zarr_format == zarr_format
 
 
 async def test_asyncgroup_create_array(
