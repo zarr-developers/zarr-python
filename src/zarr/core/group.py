@@ -3437,7 +3437,7 @@ def _parse_hierarchy_dict(
     # but not if an empty dict was provided, because any empty hierarchy has no nodes
     if len(data_normed_keys) > 0 and "" not in data_normed_keys:
         z_format = next(iter(data_normed_keys.values())).zarr_format
-        data_normed_keys = data_normed_keys | {"": ImplicitGroupMarker(zarr_format=z_format)}
+        data_normed_keys |= {"": ImplicitGroupMarker(zarr_format=z_format)}
 
     out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data_normed_keys}
 
