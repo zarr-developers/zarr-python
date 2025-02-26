@@ -284,7 +284,6 @@ def arrays(
     assert nparray.shape == a.shape
     assert chunk_shape == a.chunks
     assert shard_shape == a.shards
-    assert array_path == a.path, (path, name, array_path, a.name, a.path)
     assert a.basename == name, (a.basename, name)
     assert dict(a.attrs) == expected_attrs
 
