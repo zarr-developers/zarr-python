@@ -827,20 +827,20 @@ def test_set_orthogonal_selection_1d(store: StorePath) -> None:
         _test_set_orthogonal_selection(v, a, z, selection)
 
 
-def test_set_item_1d_last_two_chunks():
+def test_set_item_1d_last_two_chunks(store: StorePath):
     # regression test for GH2849
-    g = zarr.open_group("foo.zarr", zarr_format=3, mode="w")
+    g = zarr.open_group(store=store, zarr_format=3, mode="w")
     a = g.create_array("bar", shape=(10,), chunks=(3,), dtype=int)
     data = np.array([7, 8, 9])
     a[slice(7, 10)] = data
     np.testing.assert_array_equal(a[slice(7, 10)], data)
 
-    z = zarr.open_group("foo.zarr", mode="w")
+    z = zarr.open_group(store=store, mode="w")
     z.create_array("zoo", dtype=float, shape=())
     z["zoo"][...] = np.array(1)  # why doesn't [:] work?
     np.testing.assert_equal(z["zoo"][()], np.array(1))
 
-    z = zarr.open_group("foo.zarr", mode="w")
+    z = zarr.open_group(store=store, mode="w")
     z.create_array("zoo", dtype=float, shape=())
     z["zoo"][...] = 1  # why doesn't [:] work?
     np.testing.assert_equal(z["zoo"][()], np.array(1))
