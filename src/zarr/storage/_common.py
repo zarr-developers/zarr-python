@@ -41,7 +41,7 @@ class StorePath:
 
     def __init__(self, store: Store, path: str = "") -> None:
         self.store = store
-        self.path = path
+        self.path = normalize_path(path)
 
     @property
     def read_only(self) -> bool:
