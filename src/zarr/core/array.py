@@ -109,6 +109,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata.dtype import BaseDataType
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -122,6 +123,7 @@ from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
     _parse_bytes_bytes_codec,
+    get_data_type_from_numpy,
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
@@ -1761,6 +1763,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
+        _data_type: np.dtype[Any] | BaseDataType
+        if isinstance(self.metadata, ArrayV2Metadata):
+            _data_type = self.metadata.dtype
+        else:
+            _data_type = self.metadata.data_type
+
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=self._zdtype,
@@ -4653,8 +4661,11 @@ def _get_default_chunk_encoding_v3(
     """
     Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
     """
+    dtype = get_data_type_from_numpy(np_dtype)
 
-    dtype_category = categorize_data_type(dtype)
+    default_filters = zarr_config.get("array.v3_default_filters").get(dtype.type)
+    default_serializer = zarr_config.get("array.v3_default_serializer").get(dtype.type)
+    default_compressors = zarr_config.get("array.v3_default_compressors").get(dtype.type)
 
     filters = zarr_config.get("array.v3_default_filters").get(dtype_category)
     compressors = zarr_config.get("array.v3_default_compressors").get(dtype_category)

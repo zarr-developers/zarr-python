@@ -4,7 +4,7 @@ different versions of Numpy.
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Union, cast
 from warnings import warn
 
 import numpy as np
@@ -13,7 +13,7 @@ import numpy as np
 # when reading data back from Zarr.
 # Any valid string-like datatype should be fine for *setting* data.
 
-VLenStringType = np.dtypes.StringDType | np.dtypes.ObjectDType
+VLenStringType = Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]
 _VLEN_STRING_DTYPE: VLenStringType
 _NUMPY_SUPPORTS_VLEN_STRING: bool
 

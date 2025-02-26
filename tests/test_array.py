@@ -1034,68 +1034,7 @@ class TestCreateArray:
             assert a.fill_value is None
 
     @staticmethod
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-    @pytest.mark.parametrize("dtype", zdtype_examples)
-    def test_dtype_forms(dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat) -> None:
-        """
-        Test that the same array is produced from a ZDType instance, a numpy dtype, or a numpy string
-        """
-        skip_object_dtype(dtype)
-        a = zarr.create_array(
-            store, name="a", shape=(5,), chunks=(5,), dtype=dtype, zarr_format=zarr_format
-        )
-
-        b = zarr.create_array(
-            store,
-            name="b",
-            shape=(5,),
-            chunks=(5,),
-            dtype=dtype.to_native_dtype(),
-            zarr_format=zarr_format,
-        )
-        assert a.dtype == b.dtype
-
-        # Structured dtypes do not have a numpy string representation that uniquely identifies them
-        if not isinstance(dtype, Structured):
-            if isinstance(dtype, VariableLengthUTF8):
-                # in numpy 2.3, StringDType().str becomes the string 'StringDType()' which numpy
-                # does not accept as a string representation of the dtype.
-                c = zarr.create_array(
-                    store,
-                    name="c",
-                    shape=(5,),
-                    chunks=(5,),
-                    dtype=dtype.to_native_dtype().char,
-                    zarr_format=zarr_format,
-                )
-            else:
-                c = zarr.create_array(
-                    store,
-                    name="c",
-                    shape=(5,),
-                    chunks=(5,),
-                    dtype=dtype.to_native_dtype().str,
-                    zarr_format=zarr_format,
-                )
-            assert a.dtype == c.dtype
-
-    @staticmethod
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-    @pytest.mark.parametrize("dtype", zdtype_examples)
-    def test_dtype_roundtrip(
-        dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat
-    ) -> None:
-        """
-        Test that creating an array, then opening it, gets the same array.
-        """
-        skip_object_dtype(dtype)
-        a = zarr.create_array(store, shape=(5,), chunks=(5,), dtype=dtype, zarr_format=zarr_format)
-        b = zarr.open_array(store)
-        assert a.dtype == b.dtype
-
-    @staticmethod
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-    @pytest.mark.parametrize("dtype", ["uint8", "float32", "U3", "S4", "V1"])
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str", "U3", "S4", "V1"])
     @pytest.mark.parametrize(
         "compressors",
         [

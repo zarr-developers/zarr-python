@@ -17,6 +17,7 @@ from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
+    default_fill_value,
     parse_dimension_names,
     parse_zarr_format,
 )

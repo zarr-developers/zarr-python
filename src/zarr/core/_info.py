@@ -7,9 +7,11 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     import numcodecs.abc
 
-    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-    from zarr.core.common import ZarrFormat
-    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+from zarr.core.common import ZarrFormat
+from zarr.core.metadata.dtype import BaseDataType
+
+# from zarr.core.metadata.v3 import DataType
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -80,8 +82,7 @@ class ArrayInfo:
 
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
-    _data_type: ZDType[TBaseDType, TBaseScalar]
-    _fill_value: object
+    _data_type: np.dtype[Any] | BaseDataType
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
     _chunk_shape: tuple[int, ...] | None = None
