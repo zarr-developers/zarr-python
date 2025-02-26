@@ -411,3 +411,7 @@ def test_dtypes(dtype_str: str) -> None:
     else:
         # return type for vlen types may vary depending on numpy version
         assert dt.byte_count is None
+
+
+def test_fail_on_invalid_value() -> None:
+    pass
