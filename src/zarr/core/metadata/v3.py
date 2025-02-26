@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, TypedDict, overload
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.metadata.dtype import BaseDataType
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -251,7 +252,7 @@ class ArrayV3Metadata(Metadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: npt.DTypeLike | DataType,
+        data_type: npt.DTypeLike | BaseDataType,
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: Any,
@@ -595,7 +596,7 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
 _bool = bool
 
 
-class DataType(Enum):
+class DataTypex(Enum):
     bool = "bool"
     int8 = "int8"
     int16 = "int16"

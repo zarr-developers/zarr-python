@@ -5,10 +5,14 @@ from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+import numpy as np
+
 from zarr.core.config import BadConfigError, config
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
+
+    import numpy.typing as npt
 
     from zarr.abc.codec import (
         ArrayArrayCodec,
@@ -19,6 +23,8 @@ if TYPE_CHECKING:
     )
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
+    from zarr.core.dtype import ZarrDType
+    from zarr.core.metadata.dtype import BaseDataType
 
 __all__ = [
     "Registry",
@@ -26,10 +32,14 @@ __all__ = [
     "get_codec_class",
     "get_ndbuffer_class",
     "get_pipeline_class",
+    "get_v2dtype_class",
+    "get_v3dtype_class",
     "register_buffer",
     "register_codec",
     "register_ndbuffer",
     "register_pipeline",
+    "register_v2dtype",
+    "register_v3dtype",
 ]
 
 T = TypeVar("T")
@@ -43,6 +53,7 @@ class Registry(dict[str, type[T]], Generic[T]):
     def lazy_load(self) -> None:
         for e in self.lazy_load_list:
             self.register(e.load())
+
         self.lazy_load_list.clear()
 
     def register(self, cls: type[T]) -> None:
@@ -53,17 +64,22 @@ __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
+__data_type_registry: Registry[BaseDataType] = Registry()
+__v3_dtype_registry: Registry[ZarrDType] = Registry()
+__v2_dtype_registry: Registry[ZarrDType] = Registry()
 
 """
 The registry module is responsible for managing implementations of codecs,
 pipelines, buffers and ndbuffers and collecting them from entrypoints.
 The implementation used is determined by the config.
+
+The registry module is also responsible for managing dtypes.
 """
 
 
 def _collect_entrypoints() -> list[Registry[Any]]:
     """
-    Collects codecs, pipelines, buffers and ndbuffers from entrypoints.
+    Collects codecs, pipelines, dtypes, buffers and ndbuffers from entrypoints.
     Entry points can either be single items or groups of items.
     Allowed syntax for entry_points.txt is e.g.
 
@@ -86,6 +102,14 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     __buffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="buffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
+
+    __data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
+    __data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
+
+    __v3_dtype_registry.lazy_load_list.extend(entry_points.select(group="zarr.v3dtype"))
+    __v3_dtype_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="v3dtype"))
+    __v2_dtype_registry.lazy_load_list.extend(entry_points.select(group="zarr.v2dtype"))
+    __v2_dtype_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="v2dtype"))
     __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     __pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
@@ -131,6 +155,18 @@ def register_buffer(cls: type[Buffer]) -> None:
     __buffer_registry.register(cls)
 
 
+def register_data_type(cls: type[BaseDataType]) -> None:
+    __data_type_registry.register(cls)
+
+
+def register_v3dtype(cls: type[ZarrDType]) -> None:
+    __v3_dtype_registry.register(cls)
+
+
+def register_v2dtype(cls: type[ZarrDType]) -> None:
+    __v2_dtype_registry.register(cls)
+
+
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     if reload_config:
         _reload_config()
@@ -148,7 +184,8 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
         if len(codec_classes) == 1:
             return next(iter(codec_classes.values()))
         warnings.warn(
-            f"Codec '{key}' not configured in config. Selecting any implementation.", stacklevel=2
+            f"Codec '{key}' not configured in config. Selecting any implementation.",
+            stacklevel=2,
         )
         return list(codec_classes.values())[-1]
     selected_codec_cls = codec_classes[config_entry]
@@ -263,6 +300,71 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
         return ndbuffer_class
     raise BadConfigError(
         f"NDBuffer class '{path}' not found in registered buffers: {list(__ndbuffer_registry)}."
+    )
+
+
+def get_data_type(dtype: str) -> type[BaseDataType]:
+    __data_type_registry.lazy_load()
+    maybe_dtype_cls = __data_type_registry.get(dtype)
+    if maybe_dtype_cls is None:
+        raise ValueError(f"No data type class matching name {dtype}")
+    return maybe_dtype_cls
+
+
+def get_data_type_from_numpy(dtype: npt.DTypeLike) -> type[BaseDataType]:
+    np_dtype = np.dtype(dtype)
+    __data_type_registry.lazy_load()
+    for val in __data_type_registry.values():
+        if val.numpy_character_code == np_dtype.char:
+            return val
+    raise ValueError(
+        f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__data_type_registry)}."
+    )
+
+
+# TODO: merge the get_vXdtype_class_ functions
+# these can be used instead of the various parse_X functions (hopefully)
+def get_v3dtype_class(dtype: str) -> type[ZarrDType]:
+    __v3_dtype_registry.lazy_load()
+    v3dtype_class = __v3_dtype_registry.get(dtype)
+    if v3dtype_class:
+        return v3dtype_class
+    raise ValueError(
+        f"ZarrDType class '{dtype}' not found in registered buffers: {list(__v3_dtype_registry)}."
+    )
+
+
+def get_v3dtype_class_from_numpy(dtype: npt.DTypeLike) -> type[ZarrDType]:
+    __v3_dtype_registry.lazy_load()
+
+    dtype = np.dtype(dtype)
+    for val in __v3_dtype_registry.values():
+        if dtype == val.to_numpy:
+            return val
+    raise ValueError(
+        f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__v3_dtype_registry)}."
+    )
+
+
+def get_v2dtype_class(dtype: str) -> type[ZarrDType]:
+    __v2_dtype_registry.lazy_load()
+    v2dtype_class = __v2_dtype_registry.get(dtype)
+    if v2dtype_class:
+        return v2dtype_class
+    raise ValueError(
+        f"ZarrDType class '{dtype}' not found in registered buffers: {list(__v2_dtype_registry)}."
+    )
+
+
+def get_v2dtype_class_from_numpy(dtype: npt.DTypeLike) -> type[ZarrDType]:
+    __v2_dtype_registry.lazy_load()
+
+    dtype = np.dtype(dtype)
+    for val in __v2_dtype_registry.values():
+        if dtype == val.to_numpy:
+            return val
+    raise ValueError(
+        f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__v2_dtype_registry)}."
     )
 
 

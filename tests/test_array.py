@@ -1008,7 +1008,7 @@ class TestCreateArray:
                 assert arr.serializer == BytesCodec()
 
     @staticmethod
-    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str", "U3", "S4", "V1"])
     @pytest.mark.parametrize(
         "compressors",
         [
