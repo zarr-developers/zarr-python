@@ -109,7 +109,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
-from zarr.core.metadata.dtype import BaseDataType
+from zarr.core.metadata.dtype import DtypeBase
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -725,15 +725,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         compressors: tuple[BytesBytesCodec, ...]
 
         shape = parse_shapelike(shape)
-        if codecs is None:
-            filters = default_filters_v3(dtype)
-            serializer = default_serializer_v3(dtype)
-            compressors = default_compressors_v3(dtype)
-
-            codecs_parsed = (*filters, serializer, *compressors)
-        else:
-            codecs_parsed = tuple(codecs)
-
+        codecs = list(codecs) if codecs is not None else _get_default_codecs(dtype)
         chunk_key_encoding_parsed: ChunkKeyEncodingLike
         if chunk_key_encoding is None:
             chunk_key_encoding_parsed = {"name": "default", "separator": "/"}
@@ -1763,7 +1755,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        _data_type: np.dtype[Any] | BaseDataType
+        _data_type: np.dtype[Any] | DtypeBase
         if isinstance(self.metadata, ArrayV2Metadata):
             _data_type = self.metadata.dtype
         else:
@@ -4663,9 +4655,9 @@ def _get_default_chunk_encoding_v3(
     """
     dtype = get_data_type_from_numpy(np_dtype)
 
-    default_filters = zarr_config.get("array.v3_default_filters").get(dtype.type)
-    default_serializer = zarr_config.get("array.v3_default_serializer").get(dtype.type)
-    default_compressors = zarr_config.get("array.v3_default_compressors").get(dtype.type)
+    default_filters = zarr_config.get("array.v3_default_filters").get(dtype.kind)
+    default_serializer = zarr_config.get("array.v3_default_serializer").get(dtype.kind)
+    default_compressors = zarr_config.get("array.v3_default_compressors").get(dtype.kind)
 
     filters = zarr_config.get("array.v3_default_filters").get(dtype_category)
     compressors = zarr_config.get("array.v3_default_compressors").get(dtype_category)

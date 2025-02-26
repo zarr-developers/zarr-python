@@ -1,8 +1,9 @@
 from abc import ABC
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, ClassVar, Literal, Self, get_args
 
 import numpy as np
+import numpy.typing as npt
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import JSON
@@ -28,19 +29,22 @@ def endianness_to_numpy_str(endianness: Endianness | None) -> Literal[">", "<", 
     )
 
 
-class BaseDataType(ABC, Metadata):
+class Flexible:
+    capacity: int
+
+
+class DtypeBase(ABC, Metadata):
     name: ClassVar[str]
     numpy_character_code: ClassVar[str]
     item_size: ClassVar[int | None]
-    type: ClassVar[DataTypeFlavor]
-    capacity: int
+    kind: ClassVar[DataTypeFlavor]
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         required_attrs = [
             "name",
             "numpy_character_code",
             "item_size",
-            "type",
+            "kind",
         ]
         for attr in required_attrs:
             if not hasattr(cls, attr):
@@ -51,18 +55,43 @@ class BaseDataType(ABC, Metadata):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name}
 
+    @classmethod
+    def from_numpy(cls, dtype: npt.DTypeLike) -> Self:
+        """
+        Create an instance of this dtype from a numpy dtype.
+
+        Parameters
+        ----------
+        dtype : npt.DTypeLike
+            The numpy dtype to create an instance from.
+
+        Returns
+        -------
+        Self
+            An instance of this dtype.
+
+        Raises
+        ------
+        ValueError
+            If the provided numpy dtype does not match this class.
+        """
+        if np.dtype(dtype).char != cls.numpy_character_code:
+            raise ValueError(
+                f"Invalid dtype {dtype}. Expected dtype with character code == {cls.numpy_character_code}."
+            )
+        return cls()
+
     def to_numpy(self: Self, *, endianness: Endianness | None = None) -> np.dtype[Any]:
         endian_str = endianness_to_numpy_str(endianness)
         return np.dtype(endian_str + self.numpy_character_code)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Bool(BaseDataType):
+class Bool(DtypeBase):
     name = "bool"
     item_size = 1
-    type = "boolean"
+    kind = "boolean"
     numpy_character_code = "?"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.BoolDType:
         return super().to_numpy(endianness=endianness)
@@ -72,12 +101,11 @@ register_data_type(Bool)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int8(BaseDataType):
+class Int8(DtypeBase):
     name = "int8"
     item_size = 1
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "b"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Int8DType:
         return super().to_numpy(endianness=endianness)
@@ -87,12 +115,11 @@ register_data_type(Int8)
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt8(BaseDataType):
+class UInt8(DtypeBase):
     name = "uint8"
     item_size = 2
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "B"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.UInt8DType:
         return super().to_numpy(endianness=endianness)
@@ -102,12 +129,11 @@ register_data_type(UInt8)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int16(BaseDataType):
+class Int16(DtypeBase):
     name = "int16"
     item_size = 2
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "h"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Int16DType:
         return super().to_numpy(endianness=endianness)
@@ -117,12 +143,11 @@ register_data_type(Int16)
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt16(BaseDataType):
+class UInt16(DtypeBase):
     name = "uint16"
     item_size = 2
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "H"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.UInt16DType:
         return super().to_numpy(endianness=endianness)
@@ -132,12 +157,11 @@ register_data_type(UInt16)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int32(BaseDataType):
+class Int32(DtypeBase):
     name = "int32"
     item_size = 4
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "i"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Int32DType:
         return super().to_numpy(endianness=endianness)
@@ -147,12 +171,11 @@ register_data_type(Int32)
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt32(BaseDataType):
+class UInt32(DtypeBase):
     name = "uint32"
     item_size = 4
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "I"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.UInt32DType:
         return super().to_numpy(endianness=endianness)
@@ -162,12 +185,11 @@ register_data_type(UInt32)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int64(BaseDataType):
+class Int64(DtypeBase):
     name = "int64"
     item_size = 8
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "l"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Int64DType:
         return super().to_numpy(endianness=endianness)
@@ -177,12 +199,11 @@ register_data_type(Int64)
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt64(BaseDataType):
+class UInt64(DtypeBase):
     name = "uint64"
     item_size = 8
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "L"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.UInt64DType:
         return super().to_numpy(endianness=endianness)
@@ -192,12 +213,11 @@ register_data_type(UInt64)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float16(BaseDataType):
+class Float16(DtypeBase):
     name = "float16"
     item_size = 2
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "e"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Float16DType:
         return super().to_numpy(endianness=endianness)
@@ -207,12 +227,11 @@ register_data_type(Float16)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float32(BaseDataType):
+class Float32(DtypeBase):
     name = "float32"
     item_size = 4
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "f"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Float32DType:
         return super().to_numpy(endianness=endianness)
@@ -222,12 +241,11 @@ register_data_type(Float32)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float64(BaseDataType):
+class Float64(DtypeBase):
     name = "float64"
     item_size = 8
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "d"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Float64DType:
         return super().to_numpy(endianness=endianness)
@@ -237,12 +255,11 @@ register_data_type(Float64)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Complex64(BaseDataType):
+class Complex64(DtypeBase):
     name = "complex64"
     item_size = 16
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "F"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Complex64DType:
         return super().to_numpy(endianness=endianness)
@@ -252,12 +269,11 @@ register_data_type(Complex64)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Complex128(BaseDataType):
+class Complex128(DtypeBase):
     name = "complex64"
     item_size = 32
-    type = "numeric"
+    kind = "numeric"
     numpy_character_code = "D"
-    capacity: int = field(default=1, init=False)
 
     def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Complex128DType:
         return super().to_numpy(endianness=endianness)
@@ -267,12 +283,17 @@ register_data_type(Complex128)
 
 
 @dataclass(frozen=True, kw_only=True)
-class StaticByteString(BaseDataType):
+class StaticByteString(DtypeBase, Flexible):
     name = "numpy/static_byte_string"
-    type = "string"
+    kind = "string"
     numpy_character_code = "S"
     item_size = 1
-    capacity: int
+
+    def from_numpy(cls: type[Self], dtype: npt.DTypeLike) -> Self:
+        dtype = np.dtype(dtype)
+        if dtype.kind != cls.numpy_character_code:
+            raise ValueError(f"Invalid dtype {dtype}. Expected a string dtype.")
+        return cls(capacity=dtype.itemsize)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": {"capacity": self.capacity}}
@@ -282,20 +303,42 @@ class StaticByteString(BaseDataType):
         return np.dtype(endianness_code + self.numpy_character_code + str(self.capacity))
 
 
+@dataclass(frozen=True, kw_only=True)
+class StaticRawBytes(DtypeBase, Flexible):
+    name = "r*"
+    kind = "bytes"
+    numpy_character_code = "V"
+    item_size = 1
+
+    def from_numpy(cls: type[Self], dtype: npt.DTypeLike) -> Self:
+        dtype = np.dtype(dtype)
+        if dtype.kind != "V":
+            raise ValueError(f"Invalid dtype {dtype}. Expected a bytes dtype.")
+        return cls(capacity=dtype.itemsize)
+
+    def to_dict(self) -> dict[str, JSON]:
+        return {"name": f"r{self.capacity * 8}"}
+
+    def to_numpy(self, endianness: Endianness | None = "native") -> np.dtype[np.void]:
+        endianness_code = endianness_to_numpy_str(endianness)
+        return np.dtype(endianness_code + self.numpy_character_code + str(self.capacity))
+
+
 register_data_type(StaticByteString)
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
     @dataclass(frozen=True, kw_only=True)
-    class VlenString(BaseDataType):
+    class VlenString(DtypeBase):
         name = "numpy/vlen_string"
-        type = "string"
+        kind = "string"
         numpy_character_code = "T"
+        # this uses UTF-8, so the encoding of a code point varies between
+        # 1 and 4 bytes
         item_size = None
-        capacity: int
 
         def to_dict(self) -> dict[str, JSON]:
-            return {"name": self.name, "configuration": {"capacity": self.capacity}}
+            return {"name": self.name}
 
         def to_numpy(
             self, endianness: Endianness | None = "native"
@@ -306,15 +349,14 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 else:
 
     @dataclass(frozen=True, kw_only=True)
-    class VlenString(BaseDataType):
+    class VlenString(DtypeBase):
         name = "numpy/vlen_string"
-        type = "string"
+        kind = "string"
         numpy_character_code = "O"
         item_size = None
-        capacity: int
 
         def to_dict(self) -> dict[str, JSON]:
-            return {"name": self.name, "configuration": {"capacity": self.capacity}}
+            return {"name": self.name}
 
         def to_numpy(
             self, endianness: Endianness | None = "native"
@@ -327,12 +369,17 @@ register_data_type(VlenString)
 
 
 @dataclass(frozen=True, kw_only=True)
-class StaticUnicodeString(BaseDataType):
+class StaticUnicodeString(DtypeBase, Flexible):
     name = "numpy/static_unicode_string"
-    type = "string"
+    kind = "string"
     numpy_character_code = "U"
     item_size = 4
-    capacity: int
+
+    def from_numpy(cls: type[Self], dtype: npt.DTypeLike) -> Self:
+        dtype = np.dtype(dtype)
+        if dtype.kind != "U":
+            raise ValueError(f"Invalid dtype {dtype}. Expected a string dtype.")
+        return cls(capacity=dtype.itemsize)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": {"capacity": self.capacity}}
@@ -345,28 +392,13 @@ class StaticUnicodeString(BaseDataType):
 register_data_type(StaticUnicodeString)
 
 
-@dataclass(frozen=True, kw_only=True)
-class StaticRawBytes(BaseDataType):
-    name = "r*"
-    type = "bytes"
-    numpy_character_code = "V"
-    item_size = 1
-    capacity: int
-
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": f"r{self.capacity * 8}"}
-
-    def to_numpy(self, endianness: Endianness | None = "native") -> np.dtype[np.void]:
-        endianness_code = endianness_to_numpy_str(endianness)
-        return np.dtype(endianness_code + self.numpy_character_code + str(self.capacity))
-
-
-def parse_dtype(dtype: npt.DtypeLike | BaseDataType) -> BaseDataType:
+def resolve_dtype(dtype: npt.DTypeLike | DtypeBase) -> DtypeBase:
     from zarr.registry import get_data_type_from_numpy
 
-    if isinstance(dtype, BaseDataType):
+    if isinstance(dtype, DtypeBase):
         return dtype
-    return get_data_type_from_numpy(dtype)
+    cls = get_data_type_from_numpy(dtype)
+    return cls.from_numpy(dtype)
 
 
 register_data_type(StaticRawBytes)
