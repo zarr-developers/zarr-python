@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, TypedDict, overload
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.metadata.dtype import BaseDataType
+from zarr.core.metadata.dtype import DtypeBase, resolve_dtype
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -237,7 +237,7 @@ class ArrayV3MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(Metadata):
     shape: ChunkCoords
-    data_type: DataType
+    data_type: DtypeBase
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
@@ -252,7 +252,7 @@ class ArrayV3Metadata(Metadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: npt.DTypeLike | BaseDataType,
+        data_type: npt.DTypeLike | DtypeBase,
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: Any,
@@ -265,7 +265,7 @@ class ArrayV3Metadata(Metadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = DataType.parse(data_type)
+        data_type_parsed = resolve_dtype(data_type)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)

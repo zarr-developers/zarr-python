@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
     from zarr.core.dtype import ZarrDType
-    from zarr.core.metadata.dtype import BaseDataType
+    from zarr.core.metadata.dtype import DtypeBase
 
 __all__ = [
     "Registry",
@@ -64,7 +64,7 @@ __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
-__data_type_registry: Registry[BaseDataType] = Registry()
+__data_type_registry: Registry[DtypeBase] = Registry()
 __v3_dtype_registry: Registry[ZarrDType] = Registry()
 __v2_dtype_registry: Registry[ZarrDType] = Registry()
 
@@ -155,7 +155,7 @@ def register_buffer(cls: type[Buffer]) -> None:
     __buffer_registry.register(cls)
 
 
-def register_data_type(cls: type[BaseDataType]) -> None:
+def register_data_type(cls: type[DtypeBase]) -> None:
     __data_type_registry.register(cls)
 
 
@@ -303,7 +303,7 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     )
 
 
-def get_data_type(dtype: str) -> type[BaseDataType]:
+def get_data_type(dtype: str) -> type[DtypeBase]:
     __data_type_registry.lazy_load()
     maybe_dtype_cls = __data_type_registry.get(dtype)
     if maybe_dtype_cls is None:
@@ -311,7 +311,7 @@ def get_data_type(dtype: str) -> type[BaseDataType]:
     return maybe_dtype_cls
 
 
-def get_data_type_from_numpy(dtype: npt.DTypeLike) -> type[BaseDataType]:
+def get_data_type_from_numpy(dtype: npt.DTypeLike) -> type[DtypeBase]:
     np_dtype = np.dtype(dtype)
     __data_type_registry.lazy_load()
     for val in __data_type_registry.values():
