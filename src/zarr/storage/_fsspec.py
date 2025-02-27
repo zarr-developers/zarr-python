@@ -4,8 +4,6 @@ import warnings
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
-from fsspec import AbstractFileSystem
-
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -19,6 +17,7 @@ from zarr.storage._common import _dereference_path
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
 
+    from fsspec import AbstractFileSystem
     from fsspec.asyn import AsyncFileSystem
     from fsspec.mapping import FSMap
 
@@ -42,37 +41,37 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
     If the filesystem class does not support async operations, the existing instance
     is wrapped with AsyncFileSystemWrapper.
     """
+    import fsspec
+    from packaging.version import parse as parse_version
+
+    fsspec_version = parse_version(fsspec.__version__)
     if fs.async_impl and fs.asynchronous:
+        # Already an async instance of an async filesystem, nothing to do
         return fs
     if fs.async_impl:
-        try:
-            fs_dict = fs.to_dict()
-            fs_dict["asynchronous"] = True
-            return AbstractFileSystem.from_dict(fs_dict)
-        except AttributeError:
-            # Older fsspec specification used to_json rather than to_dict
-            import json
+        # Convert sync instance of an async fs to an async instance
+        import json
 
-            fs_dict = json.loads(fs.to_json())
-            fs_dict["asynchronous"] = True
-            return AbstractFileSystem.from_json(json.dumps(fs_dict))
+        fs_dict = json.loads(fs.to_json())
+        fs_dict["asynchronous"] = True
+        return fsspec.AbstractFileSystem.from_json(json.dumps(fs_dict))
 
-    from fsspec.implementations.local import LocalFileSystem
-
-    if type(fs) is LocalFileSystem and not fs.auto_mkdir:
+    # Wrap sync filesystems with the async wrapper
+    if type(fs) is fsspec.implementations.local.LocalFileSystem and not fs.auto_mkdir:
         raise ValueError(
             f"LocalFilesystem {fs} was created with auto_mkdir=False but Zarr requires the filesystem to automatically create directories"
         )
-    try:
-        from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
-
-        return AsyncFileSystemWrapper(fs)
-    except ImportError as e:
+    if fsspec_version < parse_version("2024.12.0"):
         raise ImportError(
-            f"The filesystem '{fs}' is synchronous, and the required "
+            "The filesystem '{fs}' is synchronous, and the required "
             "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
             "2024.12.0 or later to enable this functionality."
-        ) from e
+        )
+
+    if fsspec_version > parse_version("2025.2.0"):
+        return fsspec.implementations.asyn_wrapper.AsyncFileSystemWrapper(fs, asynchronous=True)
+    else:
+        return fsspec.implementations.asyn_wrapper.AsyncFileSystemWrapper(fs)
 
 
 class FsspecStore(Store):
