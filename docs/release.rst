@@ -14,9 +14,19 @@ Release notes
     # re-indented so that it does not show up in the notes.
 
 .. note::
-   Zarr-Python 2.18.* is expected be the final release in the 2.* series. Work on Zarr-Python 3.0 is underway.
-   See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
-   3.0 release.
+   Zarr-Python 2.* is in support mode now, and no new features will be added.
+
+
+Unreleased
+----------
+
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecated support for ``partial_decompress`` when creating an array.
+  This functionality is no longer supported in ``numcodecs``, and will be removed
+  in ``zarr-python`` 2.19.0.
+  By :user:`David Stansby <dstansby>`
 
 .. _release_2.18.4:
 
@@ -39,9 +49,6 @@ Maintenance
 * Excluded versions 0.14.0 and 0.14.1 of numcodecs, due to a bug in the implementation of
   the Delta filter (see https://github.com/zarr-developers/numcodecs/issues/653 for more information).
   By :user:`David Stansby <dstansby>` (:issue:`2544`).
-
-Deprecations
-~~~~~~~~~~~~
 
 .. _release_2.18.3:
 
