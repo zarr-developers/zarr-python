@@ -98,7 +98,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
-from zarr.core.metadata.dtype import DtypeBase
+from zarr.core.metadata.dtype import DTypeBase
 from zarr.core.metadata.v2 import (
     _default_compressor,
     _default_filters,
@@ -1684,7 +1684,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        _data_type: np.dtype[Any] | DtypeBase
+        _data_type: np.dtype[Any] | DTypeBase
         if isinstance(self.metadata, ArrayV2Metadata):
             _data_type = self.metadata.dtype
         else:
@@ -3909,7 +3909,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+    dtype_parsed = parse_dtype(dtype)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
