@@ -68,10 +68,7 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
             "2024.12.0 or later to enable this functionality."
         )
 
-    if fsspec_version > parse_version("2025.2.0"):
-        return fsspec.implementations.asyn_wrapper.AsyncFileSystemWrapper(fs, asynchronous=True)
-    else:
-        return fsspec.implementations.asyn_wrapper.AsyncFileSystemWrapper(fs)
+    return fsspec.implementations.asyn_wrapper.AsyncFileSystemWrapper(fs, asynchronous=True)
 
 
 class FsspecStore(Store):
