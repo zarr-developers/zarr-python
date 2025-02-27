@@ -31,13 +31,14 @@ def endianness_to_numpy_str(endianness: Endianness | None) -> Literal[">", "<", 
     )
 
 
-def check_str(data: JSON) -> TypeGuard[bool]:
+def check_json_bool(data: JSON) -> TypeGuard[bool]:
     return bool(isinstance(data, bool))
 
+def check_json_str(data: JSON) -> TypeGuard[str]:
+    return bool(isinstance(data, str))
 
-def check_int(data: JSON) -> TypeGuard[int]:
+def check_json_int(data: JSON) -> TypeGuard[int]:
     return bool(isinstance(data, int))
-
 
 def check_json_float(data: JSON) -> TypeGuard[float]:
     if data == "NaN" or data == "Infinity" or data == "-Infinity":
@@ -54,10 +55,6 @@ def check_json_complex_float(data: JSON) -> TypeGuard[tuple[JSONFloat, JSONFloat
         and check_json_float(data[0])
         and check_json_float(data[1])
     )
-
-
-def check_str(data: JSON) -> TypeGuard[str]:
-    return bool(isinstance(data, str))
 
 
 def float_to_json_v2(data: float | np.floating[Any]) -> JSONFloat:
@@ -221,7 +218,7 @@ class Bool(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.bool_:
-        if check_str(data):
+        if check_json_bool(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected a boolean.")
 
@@ -246,7 +243,7 @@ class Int8(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.int8:
-        if check_int(data):
+        if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
@@ -271,7 +268,7 @@ class UInt8(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.uint8:
-        if check_int(data):
+        if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
@@ -296,7 +293,7 @@ class Int16(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.int16:
-        if check_int(data):
+        if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
@@ -321,7 +318,7 @@ class UInt16(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.uint16:
-        if check_int(data):
+        if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
@@ -346,7 +343,7 @@ class Int32(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.int32:
-        if check_int(data):
+        if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
@@ -371,7 +368,7 @@ class UInt32(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.uint32:
-        if check_int(data):
+        if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
@@ -396,7 +393,7 @@ class Int64(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.int64:
-        if check_int(data):
+        if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
@@ -421,7 +418,7 @@ class UInt64(DTypeBase):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.uint64:
-        if check_int(data):
+        if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
@@ -592,7 +589,7 @@ class StaticByteString(DTypeBase, Flexible):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.bytes_:
-        if check_str(data):
+        if check_json_bool(data):
             return self.to_numpy(endianness=endianness).type(data.encode("ascii"))
         raise TypeError(f"Invalid type: {data}. Expected a string.")
 
@@ -722,7 +719,7 @@ class StaticUnicodeString(DTypeBase, Flexible):
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.str_:
-        if not check_str(data):
+        if not check_json_bool(data):
             raise TypeError(f"Invalid type: {data}. Expected a string.")
         return self.to_numpy(endianness=endianness).type(data)
 
