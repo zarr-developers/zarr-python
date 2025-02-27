@@ -263,28 +263,26 @@ class ArrayV3Metadata(Metadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = data_type
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        # we pass a string here rather than an enum to make mypy happy
-        fill_value_parsed = data_type_parsed.to_numpy().type(fill_value)
+        fill_value_parsed = data_type.to_numpy().type(fill_value)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
-            dtype=data_type_parsed.to_numpy(),
+            dtype=data_type.to_numpy(),
             fill_value=fill_value_parsed,
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = tuple(c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial)
-        validate_codecs(codecs_parsed_partial, data_type_parsed)
+        validate_codecs(codecs_parsed_partial, data_type)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "data_type", data_type_parsed)
+        object.__setattr__(self, "data_type", data_type)
         object.__setattr__(self, "chunk_grid", chunk_grid_parsed)
         object.__setattr__(self, "chunk_key_encoding", chunk_key_encoding_parsed)
         object.__setattr__(self, "codecs", codecs_parsed)
@@ -405,11 +403,16 @@ class ArrayV3Metadata(Metadata):
         else:
             data_type = get_data_type_from_dict(data_type_json)
 
+        # check that the fill value is consistent with the data type
+        fill_value_parsed = data_type.from_json_value(_data.pop("fill_value"), zarr_format=3)
+
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)
+
         # attributes key is optional, normalize missing to `None`
         _data["attributes"] = _data.pop("attributes", None)
-        return cls(**_data, data_type=data_type)  # type: ignore[arg-type]
+
+        return cls(**_data, fill_value=fill_value_parsed, data_type=data_type)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()

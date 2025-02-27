@@ -12,7 +12,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
 from zarr.core.group import GroupMetadata, parse_node_type
-from zarr.core.metadata.dtype import complex_from_json
+from zarr.core.metadata.dtype import Flexible, complex_from_json
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     parse_dimension_names,
@@ -278,7 +278,7 @@ async def test_datetime_metadata(fill_value: int, precision: str) -> None:
 
 
 @pytest.mark.parametrize(
-    ("data_type", "fill_value"), [("uint8", -1), ("int32", 22.5), ("float32", "foo")]
+    ("data_type", "fill_value"), [("uint8", {}), ("int32", [0, 1]), ("float32", "foo")]
 )
 async def test_invalid_fill_value_raises(data_type: str, fill_value: float) -> None:
     metadata_dict = {
@@ -288,10 +288,11 @@ async def test_invalid_fill_value_raises(data_type: str, fill_value: float) -> N
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
         "data_type": data_type,
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": (),
+        "codecs": ({"name": "bytes"},),
         "fill_value": fill_value,  # this is not a valid fill value for uint8
     }
-    with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
+    # multiple things can go wrong here, so we don't match on the error message.
+    with pytest.raises(TypeError):
         ArrayV3Metadata.from_dict(metadata_dict)
 
 
@@ -323,13 +324,12 @@ async def test_special_float_fill_values(fill_value: str) -> None:
 
 @pytest.mark.parametrize("dtype_str", dtypes)
 def test_dtypes(dtype_str: str) -> None:
-    dt = DataType(dtype_str)
+    dt = get_data_type_from_numpy(dtype_str)
     np_dtype = dt.to_numpy()
-    if dtype_str not in vlen_dtypes:
-        # we can round trip "normal" dtypes
-        assert dt == DataType.from_numpy(np_dtype)
-        assert dt.byte_count == np_dtype.itemsize
-        assert dt.has_endianness == (dt.byte_count > 1)
+
+    if not isinstance(dt, Flexible):
+        assert dt.item_size == np_dtype.itemsize
     else:
-        # return type for vlen types may vary depending on numpy version
-        assert dt.byte_count is None
+        assert dt.length == np_dtype.itemsize
+
+    assert dt.numpy_character_code == np_dtype.char
