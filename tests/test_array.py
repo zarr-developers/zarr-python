@@ -43,7 +43,7 @@ from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
-from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
@@ -509,7 +509,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=DataType.parse("float64"),
+            _data_type=arr.metadata.data_type,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -534,7 +534,7 @@ class TestInfo:
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=DataType.parse("float64"),
+            _data_type=arr.metadata.data_type,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -594,7 +594,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=DataType.parse("float64"),
+            _data_type=arr.metadata.data_type,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -621,7 +621,7 @@ class TestInfo:
         result = await arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=DataType.parse("float64"),
+            _data_type=arr.metadata.data_type,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,

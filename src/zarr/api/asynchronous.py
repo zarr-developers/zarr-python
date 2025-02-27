@@ -982,7 +982,7 @@ async def create(
     if zarr_format == 2:
         if chunks is None:
             chunks = shape
-        dtype = parse_dtype(dtype, zarr_format)
+        dtype = parse_dtype(dtype, zarr_format=zarr_format)
         if not filters:
             filters = _default_filters(dtype)
         if not compressor:

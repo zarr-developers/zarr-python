@@ -355,9 +355,10 @@ class ShardingCodec(
         object.__setattr__(self, "index_location", index_location_parsed)
 
         # Use instance-local lru_cache to avoid memory leaks
-        object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
-        object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
-        object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+        # TODO: fix these when we don't get hashability errors for certain numpy dtypes
+        # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
+        # object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
+        # object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
 
     # todo: typedict return type
     def __getstate__(self) -> dict[str, Any]:
