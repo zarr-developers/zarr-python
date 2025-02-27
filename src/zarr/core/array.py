@@ -622,6 +622,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dtype_parsed = parse_data_type(dtype, zarr_format=zarr_format)
         store_path = await make_store_path(store)
 
+        dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
         shape = parse_shapelike(shape)
 
         if chunks is not None and chunk_shape is not None:
@@ -732,21 +733,31 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             chunk_key_encoding_parsed = chunk_key_encoding
 
-        if isinstance(fill_value, DefaultFillValue) or fill_value is None:
-            # Use dtype's default scalar for DefaultFillValue sentinel
-            # For v3, None is converted to DefaultFillValue behavior
-            fill_value_parsed = dtype.default_scalar()
+        if dtype.kind in "UTS":
+            warn(
+                f"The dtype `{dtype}` is currently not part in the Zarr format 3 specification. It "
+                "may not be supported by other zarr implementations and may change in the future.",
+                category=UserWarning,
+                stacklevel=2,
+            )
+
+        # resolve the numpy dtype into zarr v3 datatype
+        zarr_data_type = get_data_type_from_numpy(dtype)
+
+        if fill_value is None:
+            # v3 spec will not allow a null fill value
+            fill_value_parsed = dtype.type(zarr_data_type.default)
         else:
             fill_value_parsed = fill_value
 
         chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape)
         return ArrayV3Metadata(
             shape=shape,
-            data_type=dtype,
+            data_type=zarr_data_type,
             chunk_grid=chunk_grid_parsed,
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value_parsed,
-            codecs=codecs_parsed,  # type: ignore[arg-type]
+            codecs=codecs,
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
         )
@@ -4238,7 +4249,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    dtype_parsed = parse_dtype(dtype)
+    dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format

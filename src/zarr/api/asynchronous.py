@@ -1010,6 +1010,21 @@ async def create(
         or _default_zarr_format()
     )
 
+    if zarr_format == 2:
+        if chunks is None:
+            chunks = shape
+        dtype = parse_dtype(dtype, zarr_format=zarr_format)
+        if not filters:
+            filters = _default_filters(dtype)
+        if not compressor:
+            compressor = _default_compressor(dtype)
+    elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
+        if chunks is not None:
+            chunk_shape = chunks
+            chunks = None
+        else:
+            chunk_shape = shape
+
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
     if chunk_store is not None:

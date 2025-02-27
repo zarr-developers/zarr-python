@@ -60,7 +60,6 @@ from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_num
 from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
-from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -481,8 +480,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr._async_array._zdtype,
-            _fill_value=arr.fill_value,
+            _data_type=arr.metadata.data_type,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -507,8 +505,7 @@ class TestInfo:
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr._async_array._zdtype,
-            _fill_value=arr.fill_value,
+            _data_type=arr.metadata.data_type,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -569,8 +566,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr._zdtype,
-            _fill_value=arr.metadata.fill_value,
+            _data_type=arr.metadata.data_type,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -597,8 +593,7 @@ class TestInfo:
         result = await arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr._zdtype,
-            _fill_value=arr.metadata.fill_value,
+            _data_type=arr.metadata.data_type,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,

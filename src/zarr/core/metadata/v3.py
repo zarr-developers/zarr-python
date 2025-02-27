@@ -4,16 +4,6 @@ from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.metadata.dtype import (
-    COMPLEX_DTYPE,
-    FLOAT_DTYPE,
-    INTEGER_DTYPE,
-    STRING_DTYPE,
-    Bool,
-    DTypeBase,
-    StaticRawBytes,
-    resolve_dtype,
-)
 
 if TYPE_CHECKING:
     from typing import Self
@@ -21,8 +11,9 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
-    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
-
+    from zarr.core.metadata.dtype import (
+        DTypeBase,
+    )
 
 import json
 from collections.abc import Iterable
@@ -32,7 +23,6 @@ from typing import Any, Literal
 
 import numcodecs.abc
 import numpy as np
-import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -49,7 +39,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
-from zarr.registry import get_codec_class
+from zarr.registry import get_codec_class, get_data_type_by_name, get_data_type_from_dict
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -170,7 +160,7 @@ class ArrayV3Metadata(Metadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: npt.DTypeLike | DTypeBase,
+        data_type: DTypeBase,
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: object,
@@ -184,12 +174,12 @@ class ArrayV3Metadata(Metadata):
         """
 
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = resolve_dtype(data_type)
+        data_type_parsed = data_type
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # we pass a string here rather than an enum to make mypy happy
-        fill_value_parsed = parse_fill_value(fill_value, data_type_parsed)
+        fill_value_parsed = data_type_parsed.to_numpy().type(fill_value)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
@@ -301,13 +291,9 @@ class ArrayV3Metadata(Metadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        json_indent = config.get("json_indent")
         d = self.to_dict()
-        return {
-            ZARR_JSON: prototype.buffer.from_bytes(
-                json.dumps(d, allow_nan=False, indent=json_indent).encode()
-            )
-        }
+        # d = _replace_special_floats(self.to_dict())
+        return {ZARR_JSON: prototype.buffer.from_bytes(json.dumps(d, cls=V3JsonEncoder).encode())}
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
@@ -320,16 +306,12 @@ class ArrayV3Metadata(Metadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         data_type_json = _data.pop("data_type")
-        if not check_dtype_spec_v3(data_type_json):
-            raise ValueError(f"Invalid data_type: {data_type_json!r}")
-        data_type = get_data_type_from_json(data_type_json, zarr_format=3)
+        if isinstance(data_type_json, str):
+            # check that the data_type attribute is valid
+            data_type = get_data_type_by_name(data_type_json)
 
-        # check that the fill value is consistent with the data type
-        try:
-            fill = _data.pop("fill_value")
-            fill_value_parsed = data_type.from_json_scalar(fill, zarr_format=3)
-        except ValueError as e:
-            raise TypeError(f"Invalid fill_value: {fill!r}") from e
+        else:
+            data_type = get_data_type_from_dict(data_type_json)
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)
@@ -341,7 +323,7 @@ class ArrayV3Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
-        out_dict["fill_value"] = self.data_type.to_json_scalar(
+        out_dict["fill_value"] = self.data_type.to_json_value(
             self.fill_value, zarr_format=self.zarr_format
         )
         if not isinstance(out_dict, dict):
@@ -351,15 +333,9 @@ class ArrayV3Metadata(Metadata):
         # the metadata document
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
-
-        # TODO: replace the `to_dict` / `from_dict` on the `Metadata`` class with
-        # to_json, from_json, and have ZDType inherit from `Metadata`
-        # until then, we have this hack here, which relies on the fact that to_dict will pass through
-        # any non-`Metadata` fields as-is.
-        dtype_meta = out_dict["data_type"]
-        if isinstance(dtype_meta, ZDType):
-            out_dict["data_type"] = dtype_meta.to_json(zarr_format=3)  # type: ignore[unreachable]
-
+        # if data_type has no configuration, we just serialize the name
+        if "configuration" not in out_dict["data_type"]:
+            out_dict["data_type"] = out_dict["data_type"]["name"]
         return out_dict
 
     def update_shape(self, shape: ChunkCoords) -> Self:
@@ -367,147 +343,3 @@ class ArrayV3Metadata(Metadata):
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)
-
-
-# enum Literals can't be used in typing, so we have to restate all of the V3 dtypes as types
-# https://github.com/python/typing/issues/781
-
-BOOL = np.bool_
-INTEGER = np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
-FLOAT = np.float16 | np.float32 | np.float64
-COMPLEX = np.complex64 | np.complex128
-
-STRING = np.str_
-BYTES = np.bytes_
-
-
-@overload
-def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype: Bool,
-) -> BOOL: ...
-
-
-@overload
-def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype: INTEGER_DTYPE,
-) -> INTEGER: ...
-
-
-@overload
-def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype: FLOAT_DTYPE,
-) -> FLOAT: ...
-
-
-@overload
-def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype: COMPLEX_DTYPE,
-) -> COMPLEX: ...
-
-
-@overload
-def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype: STRING_DTYPE,
-) -> STRING: ...
-
-
-@overload
-def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype: StaticRawBytes,
-) -> BYTES: ...
-
-
-def parse_fill_value(
-    fill_value: Any,
-    dtype: DTypeBase,
-) -> np.generic:
-    """
-    Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
-    If `fill_value` is `None`, then this function will return the result of casting the value 0
-    to the provided data type. Otherwise, `fill_value` will be cast to the provided data type.
-
-    Note that some numpy dtypes use very permissive casting rules. For example,
-    `np.bool_({'not remotely a bool'})` returns `True`. Thus this function should not be used for
-    validating that the provided fill value is a valid instance of the data type.
-
-    Parameters
-    ----------
-    fill_value : Any
-        A potential fill value.
-    dtype : DTypeBase
-        A valid Zarr format 3 DataType.
-
-    Returns
-    -------
-    A scalar instance of `dtype`
-    """
-    if fill_value is None:
-        raise ValueError("Fill value cannot be None")
-
-    if dtype.kind == "string":
-        return np.str_(fill_value)
-    if dtype.kind == "bytes":
-        return np.bytes_(fill_value)
-
-    # the rest are numeric types
-    np_dtype = dtype.to_numpy()
-
-    if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
-        if isindata_type in (DataType.complex64, DataType.complex128):
-            if len(fill_value) == 2:
-                decoded_fill_value = tuple(
-                    SPECIAL_FLOATS_ENCODED.get(value, value) for value in fill_value
-                )
-                # complex datatypes serialize to JSON arrays with two elements
-                return np_dtype.type(complex(*decoded_fill_value))
-            else:
-                msg = (
-                    f"Got an invalid fill value for complex data type {data_type.value}."
-                    f"Expected a sequence with 2 elements, but {fill_value!r} has "
-                    f"length {len(fill_value)}."
-                )
-                raise ValueError(msg)
-        msg = f"Cannot parse non-string sequence {fill_value!r} as a scalar with type {data_type.value}."
-        raise TypeError(msg)
-
-    # Cast the fill_value to the given dtype
-    try:
-        # This warning filter can be removed after Zarr supports numpy>=2.0
-        # The warning is saying that the future behavior of out of bounds casting will be to raise
-        # an OverflowError. In the meantime, we allow overflow and catch cases where
-        # fill_value != casted_value below.
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=DeprecationWarning)
-            casted_value = np.dtype(np_dtype).type(fill_value)
-    except (ValueError, OverflowError, TypeError) as e:
-        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}") from e
-    # Check if the value is still representable by the dtype
-    if (fill_value == "NaN" and np.isnan(casted_value)) or (
-        fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value)
-    ):
-        pass
-    elif np_dtype.kind == "f":
-        # float comparison is not exact, especially when dtype <float64
-        # so we use np.isclose for this comparison.
-        # this also allows us to compare nan fill_values
-        if not np.isclose(fill_value, casted_value, equal_nan=True):
-            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
-    elif np_dtype.kind == "c":
-        # confusingly np.isclose(np.inf, np.inf + 0j) is False on numpy<2, so compare real and imag parts
-        # explicitly.
-        if not (
-            np.isclose(np.real(fill_value), np.real(casted_value), equal_nan=True)
-            and np.isclose(np.imag(fill_value), np.imag(casted_value), equal_nan=True)
-        ):
-            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
-    else:
-        if fill_value != casted_value:
-            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
-
-    return casted_value

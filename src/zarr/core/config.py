@@ -106,6 +106,38 @@ config = Config(
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
+                "v2_default_compressor": {
+                    "numeric": {"id": "zstd", "level": 0, "checksum": False},
+                    "string": {"id": "zstd", "level": 0, "checksum": False},
+                    "bytes": {"id": "zstd", "level": 0, "checksum": False},
+                },
+                "v2_default_filters": {
+                    "numeric": None,
+                    "string": [{"id": "vlen-utf8"}],
+                    "bytes": [{"id": "vlen-bytes"}],
+                    "raw": None,
+                },
+                "v3_default_filters": {"boolean": [], "numeric": [], "string": [], "bytes": []},
+                "v3_default_serializer": {
+                    "boolean": {"name": "bytes", "configuration": {"endian": "little"}},
+                    "numeric": {"name": "bytes", "configuration": {"endian": "little"}},
+                    "string": {"name": "vlen-utf8"},
+                    "bytes": {"name": "vlen-bytes"},
+                },
+                "v3_default_compressors": {
+                    "boolean": [
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "numeric": [
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "string": [
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "bytes": [
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                },
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},

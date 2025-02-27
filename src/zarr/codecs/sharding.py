@@ -357,13 +357,10 @@ class ShardingCodec(
         object.__setattr__(self, "index_location", index_location_parsed)
 
         # Use instance-local lru_cache to avoid memory leaks
-
-        # numpy void scalars are not hashable, which means an array spec with a fill value that is
-        # a numpy void scalar will break the lru_cache. This is commented for now but should be
-        # fixed. See https://github.com/zarr-developers/zarr-python/issues/3054
+        # TODO: fix these when we don't get hashability errors for certain numpy dtypes
         # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
-        object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
-        object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+        # object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
+        # object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
 
     # todo: typedict return type
     def __getstate__(self) -> dict[str, Any]:

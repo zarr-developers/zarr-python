@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
+from dataclasses import dataclass, field
 from importlib.metadata import entry_points as get_entry_points
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
 
 import numpy as np
 
@@ -63,11 +64,33 @@ class Registry(dict[str, type[T]], Generic[T]):
         self[qualname] = cls
 
 
+@dataclass(frozen=True, kw_only=True)
+class DataTypeRegistry:
+    contents: dict[str, type[DTypeBase]] = field(default_factory=dict, init=False)
+    lazy_load_list: list[EntryPoint] = field(default_factory=list, init=False)
+
+    def lazy_load(self) -> None:
+        for e in self.lazy_load_list:
+            self.register(e.load())
+
+        self.lazy_load_list.clear()
+
+    def register(self: Self, cls: type[DTypeBase], clobber: bool = False) -> None:
+        if cls.name in self.contents and not clobber:
+            raise ValueError(
+                f"Data type {cls.name} already registered. Use clobber=True to overwrite."
+            )
+        self.contents[cls.name] = cls
+
+    def get(self, key: str) -> type[DTypeBase]:
+        return self.contents[key]
+
+
 __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
-__data_type_registry: Registry[DTypeBase] = Registry()
+__data_type_registry = DataTypeRegistry()
 __v3_dtype_registry: Registry[ZarrDType] = Registry()
 __v2_dtype_registry: Registry[ZarrDType] = Registry()
 
@@ -106,8 +129,8 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
 
-    __data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
-    __data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
+    # __data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
+    # __data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
 
     __v3_dtype_registry.lazy_load_list.extend(entry_points.select(group="zarr.v3dtype"))
     __v3_dtype_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="v3dtype"))
@@ -306,22 +329,35 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     )
 
 
-def get_data_type(dtype: str) -> type[DTypeBase]:
+def get_data_type_by_name(dtype: str, configuration: dict[str, JSON] | None = None) -> DTypeBase:
     __data_type_registry.lazy_load()
+    if configuration is None:
+        _configuration = {}
+    else:
+        _configuration = configuration
     maybe_dtype_cls = __data_type_registry.get(dtype)
     if maybe_dtype_cls is None:
         raise ValueError(f"No data type class matching name {dtype}")
-    return maybe_dtype_cls
+    return maybe_dtype_cls.from_dict(_configuration)
 
 
-def get_data_type_from_numpy(dtype: npt.DTypeLike) -> type[DTypeBase]:
+def get_data_type_from_dict(dtype: dict[str, JSON]) -> DTypeBase:
+    __data_type_registry.lazy_load()
+    dtype_name = dtype["name"]
+    dtype_cls = __data_type_registry.get(dtype_name)
+    if dtype_cls is None:
+        raise ValueError(f"No data type class matching name {dtype_name}")
+    return dtype_cls.from_dict(dtype.get("configuration", {}))
+
+
+def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeBase:
     np_dtype = np.dtype(dtype)
     __data_type_registry.lazy_load()
-    for val in __data_type_registry.values():
+    for val in __data_type_registry.contents.values():
         if val.numpy_character_code == np_dtype.char:
-            return val
+            return val.from_numpy(np_dtype)
     raise ValueError(
-        f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__data_type_registry)}."
+        f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__data_type_registry.contents)}."
     )
 
 
