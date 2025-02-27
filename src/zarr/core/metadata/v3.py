@@ -174,19 +174,17 @@ class ArrayV3Metadata(Metadata):
         """
 
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = data_type
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        # we pass a string here rather than an enum to make mypy happy
-        fill_value_parsed = data_type_parsed.to_numpy().type(fill_value)
+        fill_value_parsed = data_type.to_numpy().type(fill_value)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
-            dtype=data_type,
+            dtype=data_type.to_numpy(),
             fill_value=fill_value_parsed,
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
@@ -312,6 +310,9 @@ class ArrayV3Metadata(Metadata):
 
         else:
             data_type = get_data_type_from_dict(data_type_json)
+
+        # check that the fill value is consistent with the data type
+        fill_value_parsed = data_type.from_json_value(_data.pop("fill_value"), zarr_format=3)
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)

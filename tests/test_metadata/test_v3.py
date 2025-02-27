@@ -15,7 +15,7 @@ from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
-from zarr.core.metadata.dtype import complex_from_json
+from zarr.core.metadata.dtype import Flexible, complex_from_json
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     parse_dimension_names,
@@ -336,3 +336,16 @@ async def test_special_float_fill_values(fill_value: str) -> None:
     elif fill_value == "-Infinity":
         assert np.isneginf(m.fill_value)
         assert d["fill_value"] == "-Infinity"
+
+
+@pytest.mark.parametrize("dtype_str", dtypes)
+def test_dtypes(dtype_str: str) -> None:
+    dt = get_data_type_from_numpy(dtype_str)
+    np_dtype = dt.to_numpy()
+
+    if not isinstance(dt, Flexible):
+        assert dt.item_size == np_dtype.itemsize
+    else:
+        assert dt.length == np_dtype.itemsize
+
+    assert dt.numpy_character_code == np_dtype.char

@@ -34,11 +34,14 @@ def endianness_to_numpy_str(endianness: Endianness | None) -> Literal[">", "<", 
 def check_json_bool(data: JSON) -> TypeGuard[bool]:
     return bool(isinstance(data, bool))
 
+
 def check_json_str(data: JSON) -> TypeGuard[str]:
     return bool(isinstance(data, str))
 
+
 def check_json_int(data: JSON) -> TypeGuard[int]:
     return bool(isinstance(data, int))
+
 
 def check_json_float(data: JSON) -> TypeGuard[float]:
     if data == "NaN" or data == "Infinity" or data == "-Infinity":
@@ -254,7 +257,7 @@ register_data_type(Int8)
 @dataclass(frozen=True, kw_only=True)
 class UInt8(DTypeBase):
     name = "uint8"
-    item_size = 2
+    item_size = 1
     kind = "numeric"
     numpy_character_code = "B"
     default = 0
@@ -488,13 +491,15 @@ class Float64(DTypeBase):
         return super().to_numpy(endianness=endianness)
 
     def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> float:
-        return float(data)
+        return float_to_json(data, zarr_format)
 
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.float64:
         if check_json_float(data):
-            return float_from_json(data, dtype=self.to_numpy(endianness=endianness))
+            return float_from_json(
+                data, dtype=self.to_numpy(endianness=endianness), zarr_format=zarr_format
+            )
         raise TypeError(f"Invalid type: {data}. Expected a float.")
 
 
@@ -504,7 +509,7 @@ register_data_type(Float64)
 @dataclass(frozen=True, kw_only=True)
 class Complex64(DTypeBase):
     name = "complex64"
-    item_size = 16
+    item_size = 8
     kind = "numeric"
     numpy_character_code = "F"
     default = 0.0 + 0.0j
@@ -533,7 +538,7 @@ register_data_type(Complex64)
 @dataclass(frozen=True, kw_only=True)
 class Complex128(DTypeBase):
     name = "complex128"
-    item_size = 32
+    item_size = 16
     kind = "numeric"
     numpy_character_code = "D"
     default = 0.0 + 0.0j
