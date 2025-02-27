@@ -38,6 +38,7 @@ from zarr.core.buffer import (
     NDBuffer,
     default_buffer_prototype,
 )
+from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -163,19 +164,20 @@ async def get_array_metadata(
 ) -> dict[str, JSON]:
     if zarr_format == 2:
         zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
+            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
+            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
         )
         if zarray_bytes is None:
             raise FileNotFoundError(store_path)
     elif zarr_format == 3:
-        zarr_json_bytes = await (store_path / ZARR_JSON).get()
+        zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
         if zarr_json_bytes is None:
             raise FileNotFoundError(store_path)
     elif zarr_format is None:
         zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARR_JSON).get(),
-            (store_path / ZARRAY_JSON).get(),
-            (store_path / ZATTRS_JSON).get(),
+            (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
+            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
+            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
         )
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
@@ -219,7 +221,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The metadata of the array.
     store_path : StorePath
         The path to the Zarr store.
-    config : ArrayConfig, optional
+    config : ArrayConfigLike, optional
         The runtime configuration of the array, by default None.
 
     Attributes
@@ -244,7 +246,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         self: AsyncArray[ArrayV2Metadata],
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
-        config: ArrayConfig | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> None: ...
 
     @overload
@@ -252,14 +254,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         self: AsyncArray[ArrayV3Metadata],
         metadata: ArrayV3Metadata | ArrayV3MetadataDict,
         store_path: StorePath,
-        config: ArrayConfig | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> None: ...
 
     def __init__(
         self,
         metadata: ArrayMetadata | ArrayMetadataDict,
         store_path: StorePath,
-        config: ArrayConfig | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> None:
         if isinstance(metadata, dict):
             zarr_format = metadata["zarr_format"]
@@ -273,12 +275,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
 
         metadata_parsed = parse_array_metadata(metadata)
-
-        config = ArrayConfig.from_dict({}) if config is None else config
+        config_parsed = parse_array_config(config)
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
-        object.__setattr__(self, "_config", config)
+        object.__setattr__(self, "_config", config_parsed)
         object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
 
     # this overload defines the function signature when zarr_format is 2
@@ -302,7 +303,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
     # this overload defines the function signature when zarr_format is 3
@@ -331,7 +332,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
     @overload
@@ -359,7 +360,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
     @overload
@@ -393,7 +394,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
@@ -428,7 +429,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
 
@@ -506,7 +507,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Whether to raise an error if the store already exists (default is False).
         data : npt.ArrayLike, optional
             The data to be inserted into the array (default is None).
-        config : ArrayConfig or ArrayConfigLike, optional
+        config : ArrayConfigLike, optional
             Runtime configuration for the array.
 
         Returns
@@ -569,7 +570,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
         See :func:`AsyncArray.create` for more details.
@@ -1290,8 +1291,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                         self.metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
                         chunk_selection,
                         out_selection,
+                        is_complete_chunk,
                     )
-                    for chunk_coords, chunk_selection, out_selection in indexer
+                    for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
                 ],
                 out_buffer,
                 drop_axes=indexer.drop_axes,
@@ -1347,7 +1349,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         Asynchronously save the array metadata.
         """
-        to_save = metadata.to_buffer_dict(default_buffer_prototype())
+        to_save = metadata.to_buffer_dict(cpu_buffer_prototype)
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
         if ensure_parents:
@@ -1359,7 +1361,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     [
                         (parent.store_path / key).set_if_not_exists(value)
                         for key, value in parent.metadata.to_buffer_dict(
-                            default_buffer_prototype()
+                            cpu_buffer_prototype
                         ).items()
                     ]
                 )
@@ -1417,8 +1419,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     self.metadata.get_chunk_spec(chunk_coords, _config, prototype),
                     chunk_selection,
                     out_selection,
+                    is_complete_chunk,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
             ],
             value_buffer,
             drop_axes=indexer.drop_axes,
@@ -1741,7 +1744,7 @@ class Array:
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
@@ -1870,7 +1873,7 @@ class Array:
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
         See :func:`Array.create` for more details.
@@ -3810,7 +3813,8 @@ async def init_array(
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
     overwrite: bool = False,
-) -> ArrayV3Metadata | ArrayV2Metadata:
+    config: ArrayConfigLike | None,
+) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
     """Create and persist an array metadata document.
 
     Parameters
@@ -3889,11 +3893,13 @@ async def init_array(
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
+    config : ArrayConfigLike or None, optional
+        Configuration for this array.
 
     Returns
     -------
-    ArrayV3Metadata | ArrayV2Metadata
-        The array metadata document.
+    AsyncArray
+        The AsyncArray.
     """
 
     if zarr_format is None:
@@ -3993,14 +3999,9 @@ async def init_array(
             attributes=attributes,
         )
 
-    # save the metadata to disk
-    # TODO: make this easier -- it should be a simple function call that takes a {key: buffer}
-    coros = (
-        (store_path / key).set(value)
-        for key, value in meta.to_buffer_dict(default_buffer_prototype()).items()
-    )
-    await gather(*coros)
-    return meta
+    arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
+    await arr._save_metadata(meta, ensure_parents=True)
+    return arr
 
 
 async def create_array(
@@ -4023,7 +4024,7 @@ async def create_array(
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
     write_data: bool = True,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
@@ -4113,7 +4114,7 @@ async def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfig or ArrayConfigLike, optional
+    config : ArrayConfigLike, optional
         Runtime configuration for the array.
     write_data : bool
         If a pre-existing array-like object was provided to this function via the ``data`` parameter
@@ -4139,13 +4140,12 @@ async def create_array(
     <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
     """
     mode: Literal["a"] = "a"
-    config_parsed = parse_array_config(config)
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
 
     data_parsed, shape_parsed, dtype_parsed = _parse_data_params(
         data=data, shape=shape, dtype=dtype
     )
-    meta = await init_array(
+    result = await init_array(
         store_path=store_path,
         shape=shape_parsed,
         dtype=dtype_parsed,
@@ -4161,9 +4161,9 @@ async def create_array(
         chunk_key_encoding=chunk_key_encoding,
         dimension_names=dimension_names,
         overwrite=overwrite,
+        config=config,
     )
 
-    result = AsyncArray(metadata=meta, store_path=store_path, config=config_parsed)
     if write_data is True and data_parsed is not None:
         await result._set_selection(
             BasicIndexer(..., shape=result.shape, chunk_grid=result.metadata.chunk_grid),

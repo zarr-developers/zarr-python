@@ -1,7 +1,17 @@
+from __future__ import annotations
+
 import inspect
 import pathlib
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pathlib
+    from collections.abc import Callable
+
+    from zarr.abc.store import Store
+    from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+
 import warnings
-from collections.abc import Callable
 from typing import Literal
 
 import numpy as np
@@ -13,7 +23,6 @@ import zarr.api.asynchronous
 import zarr.api.synchronous
 import zarr.core.group
 from zarr import Array, Group
-from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
     create_array,
@@ -26,10 +35,10 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
+from zarr.testing.utils import gpu_test
 
 
 def test_create(memory_store: Store) -> None:
@@ -1146,3 +1155,47 @@ def test_consistent_signatures(
     base_sig = inspect.signature(a_func)
     test_sig = inspect.signature(b_func)
     assert test_sig.parameters == base_sig.parameters
+
+
+def test_api_exports() -> None:
+    """
+    Test that the sync API and the async API export the same objects
+    """
+    assert zarr.api.asynchronous.__all__ == zarr.api.synchronous.__all__
+
+
+@gpu_test
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "zip"],
+    indirect=True,
+)
+@pytest.mark.parametrize("zarr_format", [None, 2, 3])
+def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
+    import cupy as cp
+
+    if zarr_format == 2:
+        # Without this, the zstd codec attempts to convert the cupy
+        # array to bytes.
+        compressors = None
+    else:
+        compressors = "auto"
+
+    with zarr.config.enable_gpu():
+        src = cp.random.uniform(size=(100, 100))  # allocate on the device
+        z = zarr.create_array(
+            store,
+            name="a",
+            shape=src.shape,
+            chunks=(10, 10),
+            dtype=src.dtype,
+            overwrite=True,
+            zarr_format=zarr_format,
+            compressors=compressors,
+        )
+        z[:10, :10] = src[:10, :10]
+
+        result = z[:10, :10]
+        # assert_array_equal doesn't check the type
+        assert isinstance(result, type(src))
+        cp.testing.assert_array_equal(result, src[:10, :10])
