@@ -960,18 +960,13 @@ def test_chunks_and_shards() -> None:
     assert arr_v2.shards is None
 
 
-def test_create_array_default_fill_values() -> None:
-    a = zarr.create_array(MemoryStore(), shape=(5,), chunks=(5,), dtype="<U4")
-    assert a.fill_value == "0"
-
-    b = zarr.create_array(MemoryStore(), shape=(5,), chunks=(5,), dtype="<S4")
-    assert b.fill_value == b""
-
-    c = zarr.create_array(MemoryStore(), shape=(5,), chunks=(5,), dtype="i")
-    assert c.fill_value == 0
-
-    d = zarr.create_array(MemoryStore(), shape=(5,), chunks=(5,), dtype="f")
-    assert d.fill_value == 0.0
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize(
+    ("dtype", "fill_value_expected"), [("<U4", ""), ("<S4", b""), ("i", 0), ("f", 0.0)]
+)
+def test_default_fill_value(dtype: str, fill_value_expected: object, store: Store) -> None:
+    a = zarr.create_array(store, shape=(5,), chunks=(5,), dtype=dtype)
+    assert a.fill_value == fill_value_expected
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
