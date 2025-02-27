@@ -45,9 +45,18 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
     if fs.async_impl and fs.asynchronous:
         return fs
     if fs.async_impl:
-        fs_dict = fs.to_dict()
-        fs_dict["asynchronous"] = True
-        return AbstractFileSystem.from_dict(fs_dict)
+        try:
+            fs_dict = fs.to_dict()
+            fs_dict["asynchronous"] = True
+            return AbstractFileSystem.from_dict(fs_dict)
+        except AttributeError:
+            # Older fsspec specification used to_json rather than to_dict
+            import json
+
+            fs_dict = json.loads(fs.to_json())
+            fs_dict["asynchronous"] = True
+            return AbstractFileSystem.from_json(json.dumps(fs_dict))
+
     from fsspec.implementations.local import LocalFileSystem
 
     if type(fs) is LocalFileSystem and not fs.auto_mkdir:
