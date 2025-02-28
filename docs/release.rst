@@ -24,7 +24,7 @@ Deprecations
 ~~~~~~~~~~~~
 
 * Deprecated ``zarr._storage.v3`` and ``zarr._storage.v3_storage_transformers``.
-  This functionality and will be removed in ``zarr-python`` 2.19.0.
+  This functionality will be removed in ``zarr-python`` 2.19.0.
   For Zarr format 3 support, use the v3 release of ``zarr-python``.
   By :user:`David Stansby <dstansby>`
 * Deprecated support for ``partial_decompress`` when creating an array.
