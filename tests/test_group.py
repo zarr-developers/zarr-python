@@ -1572,14 +1572,12 @@ async def test_create_hierarchy(
             sync_group.create_hierarchy(store=store, nodes=hierarchy_spec, overwrite=overwrite)
         )
     elif impl == "async":
-        created = dict(
-            [
-                a
-                async for a in create_hierarchy(
-                    store=store, nodes=hierarchy_spec, overwrite=overwrite
-                )
-            ]
-        )
+        created = {
+            k: v
+            async for k, v in create_hierarchy(
+                store=store, nodes=hierarchy_spec, overwrite=overwrite
+            )
+        }
     else:
         raise ValueError(f"Invalid impl: {impl}")
     if not overwrite:
@@ -1632,12 +1630,10 @@ async def test_create_hierarchy_existing_nodes(
     elif impl == "async":
         with pytest.raises(err_cls, match=re.escape(msg)):
             tuple(
-                [
-                    x
-                    async for x in create_hierarchy(
-                        store=store, nodes={"node": new_metadata}, overwrite=False
-                    )
-                ]
+                x
+                async for x in create_hierarchy(
+                    store=store, nodes={"node": new_metadata}, overwrite=False
+                )
             )
     else:
         raise ValueError(f"Invalid impl: {impl}")
