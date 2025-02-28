@@ -99,6 +99,44 @@ Zarr data (metadata and chunks) to a dictionary.:
    >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
    <Array memory://... shape=(2,) dtype=float64>
 
+Object Store
+~~~~~~~~~~~~
+
+
+:class:`zarr.storage.ObjectStore` stores the contents of the Zarr hierarchy using any ObjectStore
+`storage implementation <https://developmentseed.org/obstore/latest/api/store/>`_, such as
+AWS S3, Google Cloud Storage, and Azure Blob Storage. This store is backed by `obstore <https://developmentseed.org/obstore/latest/>`_, which
+builds on the production quality Rust library `object_store <https://docs.rs/object_store/latest/object_store/>`_.
+
+
+   >>> from zarr.storage import ObjectStore
+   >>> from obstore.store import MemoryStore
+   >>>
+   >>> store = ObjectStore(MemoryStore())
+   >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
+   <Array object://... shape=(2,) dtype=float64>
+
+Here's an example of using ObjectStore for accessing remote data:
+
+   >>> from zarr.storage import ObjectStore
+   >>> from obstore.store import S3Store
+   >>>
+   >>> s3_store = S3Store('noaa-nwm-retro-v2-zarr-pds', skip_signature=True, region="us-west-2")
+   >>> store = zarr.storage.ObjectStore(store=s3_store, read_only=True)
+   >>> group = zarr.open_group(store=store, mode='r')
+   >>> group.info
+   Name        :
+   Type        : Group
+   Zarr format : 2
+   Read-only   : True
+   Store type  : ObjectStore
+   No. members : 12
+   No. arrays  : 12
+   No. groups  : 0
+
+.. warning::
+   The :class:`zarr.storage.ObjectStore` class is experimental.
+
 .. _user-guide-custom-stores:
 
 Developing custom stores
