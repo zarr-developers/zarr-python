@@ -1519,6 +1519,7 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
 @pytest.mark.parametrize(
     ("a_func", "b_func"),
     [
+        (zarr.core.group.AsyncGroup.create_array, zarr.core.group.Group.create_array),
         (zarr.core.group.AsyncGroup.create_hierarchy, zarr.core.group.Group.create_hierarchy),
         (zarr.core.group.create_hierarchy, zarr.core.sync_group.create_hierarchy),
         (zarr.core.group.create_nodes, zarr.core.sync_group.create_nodes),
