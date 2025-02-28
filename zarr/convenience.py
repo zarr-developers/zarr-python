@@ -22,7 +22,11 @@ from zarr.storage import (
     BaseStore,
     ConsolidatedMetadataStore,
 )
-from zarr._storage.v3 import ConsolidatedMetadataStoreV3
+from zarr._storage.store import v3_api_available
+
+if v3_api_available:
+    from zarr._storage.v3 import ConsolidatedMetadataStoreV3
+
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 from typing import Union

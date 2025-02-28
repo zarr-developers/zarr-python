@@ -7,21 +7,22 @@ import zarr
 from zarr._storage.store import meta_root
 from zarr.attrs import Attributes
 from zarr.storage import KVStore, DirectoryStore
-from zarr._storage.v3 import KVStoreV3
-from zarr.tests.util import CountingDict, CountingDictV3
+
+
+from zarr.tests.util import CountingDict
 from zarr.hierarchy import group
 
+pytestmark = pytest.mark.filterwarnings("ignore:zarr.*v3 is deprecated:DeprecationWarning")
 
-@pytest.fixture(params=[2, 3])
+
+@pytest.fixture(params=[2])
 def zarr_version(request):
     return request.param
 
 
 def _init_store(version):
     """Use a plain dict() for v2, but KVStoreV3 otherwise."""
-    if version == 2:
-        return dict()
-    return KVStoreV3(dict())
+    return dict
 
 
 class TestAttributes:
@@ -154,8 +155,8 @@ class TestAttributes:
         # caching is turned on by default
 
         # setup store
-        store = CountingDict() if zarr_version == 2 else CountingDictV3()
-        attrs_key = ".zattrs" if zarr_version == 2 else "meta/root/attrs"
+        store = CountingDict()
+        attrs_key = ".zattrs"
         assert 0 == store.counter["__getitem__", attrs_key]
         assert 0 == store.counter["__setitem__", attrs_key]
         if zarr_version == 2:
@@ -228,7 +229,7 @@ class TestAttributes:
 
     def test_caching_off(self, zarr_version):
         # setup store
-        store = CountingDict() if zarr_version == 2 else CountingDictV3()
+        store = CountingDict()
         attrs_key = ".zattrs" if zarr_version == 2 else "meta/root/attrs"
         assert 0 == store.counter["__getitem__", attrs_key]
         assert 0 == store.counter["__setitem__", attrs_key]

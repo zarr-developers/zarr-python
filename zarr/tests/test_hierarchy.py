@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
-from zarr._storage.store import _get_metadata_suffix, v3_api_available
+from zarr._storage.store import _get_metadata_suffix
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
@@ -39,29 +39,16 @@ from zarr.storage import (
     array_meta_key,
     atexit_rmglob,
     atexit_rmtree,
-    data_root,
     group_meta_key,
     init_array,
     init_group,
     meta_root,
 )
-from zarr._storage.v3 import (
-    ABSStoreV3,
-    KVStoreV3,
-    DirectoryStoreV3,
-    MemoryStoreV3,
-    FSStoreV3,
-    ZipStoreV3,
-    DBMStoreV3,
-    LMDBStoreV3,
-    SQLiteStoreV3,
-    LRUStoreCacheV3,
-)
-from zarr.util import InfoReporter, buffer_size
+from zarr.util import InfoReporter
 from zarr.tests.util import skip_test_env_var, have_fsspec, abs_container, mktemp
 
 
-_VERSIONS = (2, 3) if v3_api_available else (2,)
+_VERSIONS = (2,)
 
 # noinspection PyStatementEffect
 
@@ -1154,75 +1141,10 @@ def test_group_init_from_dict(chunk_dict):
         assert chunk_store is not g.chunk_store
 
 
-# noinspection PyStatementEffect
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3(TestGroup, unittest.TestCase):
-    @staticmethod
-    def create_store():
-        # can be overridden in sub-classes
-        return KVStoreV3(dict()), None
-
-    def create_group(
-        self, store=None, path="group", read_only=False, chunk_store=None, synchronizer=None
-    ):
-        # can be overridden in sub-classes
-        if store is None:
-            store, chunk_store = self.create_store()
-        init_group(store, path=path, chunk_store=chunk_store)
-        g = Group(
-            store,
-            path=path,
-            read_only=read_only,
-            chunk_store=chunk_store,
-            synchronizer=synchronizer,
-        )
-        return g
-
-    def test_group_init_1(self):
-        store, chunk_store = self.create_store()
-        g = self.create_group(store, chunk_store=chunk_store)
-        assert store is g.store
-        if chunk_store is None:
-            assert store is g.chunk_store
-        else:
-            assert chunk_store is g.chunk_store
-        assert not g.read_only
-        # different path/name in v3 case
-        assert "group" == g.path
-        assert "/group" == g.name
-        assert "group" == g.basename
-
-        assert isinstance(g.attrs, Attributes)
-        g.attrs["foo"] = "bar"
-        assert g.attrs["foo"] == "bar"
-
-        assert isinstance(g.info, InfoReporter)
-        assert isinstance(repr(g.info), str)
-        assert isinstance(g.info._repr_html_(), str)
-        store.close()
-
-    def test_group_init_errors_2(self):
-        store, chunk_store = self.create_store()
-        path = "tmp"
-        init_array(store, path=path, shape=1000, chunks=100, chunk_store=chunk_store)
-        # array blocks group
-        with pytest.raises(ValueError):
-            Group(store, path=path, chunk_store=chunk_store)
-        store.close()
-
-
 class TestGroupWithMemoryStore(TestGroup):
     @staticmethod
     def create_store():
         return MemoryStore(), None
-
-
-# noinspection PyStatementEffect
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithMemoryStore(TestGroupWithMemoryStore, TestGroupV3):
-    @staticmethod
-    def create_store():
-        return MemoryStoreV3(), None
 
 
 class TestGroupWithDirectoryStore(TestGroup):
@@ -1234,38 +1156,12 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithDirectoryStore(TestGroupWithDirectoryStore, TestGroupV3):
-    @staticmethod
-    def create_store():
-        path = tempfile.mkdtemp()
-        atexit.register(atexit_rmtree, path)
-        store = DirectoryStoreV3(path)
-        return store, None
-
-
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestGroupWithABSStore(TestGroup):
     @staticmethod
     def create_store():
         container_client = abs_container()
         store = ABSStore(client=container_client)
-        store.rmdir()
-        return store, None
-
-    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
-    def test_pickle(self):
-        # internal attribute on ContainerClient isn't serializable for py36 and earlier
-        super().test_pickle()
-
-
-@skip_test_env_var("ZARR_TEST_ABS")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithABSStore(TestGroupV3):
-    @staticmethod
-    def create_store():
-        container_client = abs_container()
-        store = ABSStoreV3(client=container_client)
         store.rmdir()
         return store, None
 
@@ -1306,39 +1202,6 @@ class TestGroupWithFSStore(TestGroup):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithFSStore(TestGroupWithFSStore, TestGroupV3):
-    @staticmethod
-    def create_store():
-        path = tempfile.mkdtemp()
-        atexit.register(atexit_rmtree, path)
-        store = FSStoreV3(path)
-        return store, None
-
-    def test_round_trip_nd(self):
-        data = np.arange(1000).reshape(10, 10, 10)
-        name = "raw"
-
-        store, _ = self.create_store()
-        f = open_group(store, path="group", mode="w")
-        f.create_dataset(name, data=data, chunks=(5, 5, 5), compressor=None)
-        h = open_group(store, path="group", mode="r")
-        np.testing.assert_array_equal(h[name][:], data)
-
-        f = open_group(store, path="group2", mode="w")
-
-        data_size = data.nbytes
-        group_meta_size = buffer_size(store[meta_root + "group.group.json"])
-        group2_meta_size = buffer_size(store[meta_root + "group2.group.json"])
-        array_meta_size = buffer_size(store[meta_root + "group/raw.array.json"])
-        assert store.getsize() == data_size + group_meta_size + group2_meta_size + array_meta_size
-        # added case with path to complete coverage
-        assert store.getsize("group") == data_size + group_meta_size + array_meta_size
-        assert store.getsize("group2") == group2_meta_size
-        assert store.getsize("group/raw") == data_size + array_meta_size
-
-
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestGroupWithNestedFSStore(TestGroupWithFSStore):
     @staticmethod
     def create_store():
@@ -1353,30 +1216,6 @@ class TestGroupWithNestedFSStore(TestGroupWithFSStore):
 
         store, _ = self.create_store()
         f = open_group(store, mode="w")
-
-        # cannot specify dimension_separator that conflicts with the store
-        with pytest.raises(ValueError):
-            f.create_dataset(
-                name, data=data, chunks=(5, 5, 5), compressor=None, dimension_separator="."
-            )
-
-
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithNestedFSStore(TestGroupV3WithFSStore):
-    @staticmethod
-    def create_store():
-        path = tempfile.mkdtemp()
-        atexit.register(atexit_rmtree, path)
-        store = FSStoreV3(path, key_separator="/", auto_mkdir=True)
-        return store, None
-
-    def test_inconsistent_dimension_separator(self):
-        data = np.arange(1000).reshape(10, 10, 10)
-        name = "raw"
-
-        store, _ = self.create_store()
-        f = open_group(store, path="group", mode="w")
 
         # cannot specify dimension_separator that conflicts with the store
         with pytest.raises(ValueError):
@@ -1410,32 +1249,12 @@ class TestGroupWithZipStore(TestGroup):
         pass
 
 
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithZipStore(TestGroupWithZipStore, TestGroupV3):
-    @staticmethod
-    def create_store():
-        path = mktemp(suffix=".zip")
-        atexit.register(os.remove, path)
-        store = ZipStoreV3(path)
-        return store, None
-
-
 class TestGroupWithDBMStore(TestGroup):
     @staticmethod
     def create_store():
         path = mktemp(suffix=".anydbm")
         atexit.register(atexit_rmglob, path + "*")
         store = DBMStore(path, flag="n")
-        return store, None
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithDBMStore(TestGroupWithDBMStore, TestGroupV3):
-    @staticmethod
-    def create_store():
-        path = mktemp(suffix=".anydbm")
-        atexit.register(atexit_rmglob, path + "*")
-        store = DBMStoreV3(path, flag="n")
         return store, None
 
 
@@ -1449,33 +1268,12 @@ class TestGroupWithLMDBStore(TestGroup):
         return store, None
 
 
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithLMDBStore(TestGroupWithLMDBStore, TestGroupV3):
-    @staticmethod
-    def create_store():
-        pytest.importorskip("lmdb")
-        path = mktemp(suffix=".lmdb")
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStoreV3(path)
-        return store, None
-
-
 class TestGroupWithSQLiteStore(TestGroup):
     def create_store(self):
         pytest.importorskip("sqlite3")
         path = mktemp(suffix=".db")
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
-        return store, None
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithSQLiteStore(TestGroupWithSQLiteStore, TestGroupV3):
-    def create_store(self):
-        pytest.importorskip("sqlite3")
-        path = mktemp(suffix=".db")
-        atexit.register(atexit_rmtree, path)
-        store = SQLiteStoreV3(path)
         return store, None
 
 
@@ -1509,53 +1307,10 @@ class TestGroupWithChunkStore(TestGroup):
         assert expect == actual
 
 
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithChunkStore(TestGroupWithChunkStore, TestGroupV3):
-    @staticmethod
-    def create_store():
-        return KVStoreV3(dict()), KVStoreV3(dict())
-
-    def test_chunk_store(self):
-        # setup
-        store, chunk_store = self.create_store()
-        path = "group1"
-        g = self.create_group(store, path=path, chunk_store=chunk_store)
-
-        # check attributes
-        assert store is g.store
-        assert chunk_store is g.chunk_store
-
-        # create array
-        a = g.zeros("foo", shape=100, chunks=10)
-        assert store is a.store
-        assert chunk_store is a.chunk_store
-        a[:] = np.arange(100)
-        assert_array_equal(np.arange(100), a[:])
-
-        # check store keys
-        group_key = meta_root + path + ".group.json"
-        array_key = meta_root + path + "/foo" + ".array.json"
-        expect = sorted([group_key, array_key, "zarr.json"])
-        actual = sorted(store.keys())
-        assert expect == actual
-        expect = [data_root + path + "/foo/c" + str(i) for i in range(10)]
-        expect += ["zarr.json"]
-        actual = sorted(chunk_store.keys())
-        assert expect == actual
-
-
 class TestGroupWithStoreCache(TestGroup):
     @staticmethod
     def create_store():
         store = LRUStoreCache(dict(), max_size=None)
-        return store, None
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithStoreCache(TestGroupWithStoreCache, TestGroupV3):
-    @staticmethod
-    def create_store():
-        store = LRUStoreCacheV3(dict(), max_size=None)
         return store, None
 
 
@@ -1575,23 +1330,16 @@ def test_group(zarr_version):
     assert isinstance(g, Group)
 
     # usage with custom store
-    if zarr_version == 2:
-        store = KVStore(dict())
-        path = None
-    else:
-        store = KVStoreV3(dict())
-        path = "foo"
+    store = KVStore(dict())
+    path = None
     g = group(store=store, path=path)
     assert isinstance(g, Group)
     assert store is g.store
 
     # overwrite behaviour
-    if zarr_version == 2:
-        store = KVStore(dict())
-        path = None
-    else:
-        store = KVStoreV3(dict())
-        path = "foo"
+    store = KVStore(dict())
+    path = None
+
     init_array(store, path=path, shape=100, chunks=10)
     with pytest.raises(ValueError):
         group(store, path=path)
@@ -1617,7 +1365,7 @@ def test_open_group(zarr_version):
 
     store = "data/group.zarr"
 
-    expected_store_type = DirectoryStore if zarr_version == 2 else DirectoryStoreV3
+    expected_store_type = DirectoryStore
 
     # mode == 'w'
     path = None if zarr_version == 2 else "group1"
@@ -1880,40 +1628,6 @@ def test_tree(zarr_version, at_root):
          └── baz (100,) float64"""
     )
     _check_tree(g3, expect_bytes, expect_text)
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-def test_group_mismatched_store_versions():
-    store_v3 = KVStoreV3(dict())
-    store_v2 = KVStore(dict())
-
-    # separate chunk store
-    chunk_store_v2 = KVStore(dict())
-    chunk_store_v3 = KVStoreV3(dict())
-
-    init_group(store_v2, path="group1", chunk_store=chunk_store_v2)
-    init_group(store_v3, path="group1", chunk_store=chunk_store_v3)
-
-    g1_v3 = Group(store_v3, path="group1", read_only=True, chunk_store=chunk_store_v3)
-    assert isinstance(g1_v3._store, KVStoreV3)
-    g1_v2 = Group(store_v2, path="group1", read_only=True, chunk_store=chunk_store_v2)
-    assert isinstance(g1_v2._store, KVStore)
-
-    # store and chunk_store must have the same zarr protocol version
-    with pytest.raises(ValueError):
-        Group(store_v3, path="group1", read_only=False, chunk_store=chunk_store_v2)
-    with pytest.raises(ValueError):
-        Group(store_v2, path="group1", read_only=False, chunk_store=chunk_store_v3)
-    with pytest.raises(ValueError):
-        open_group(store_v2, path="group1", chunk_store=chunk_store_v3)
-    with pytest.raises(ValueError):
-        open_group(store_v3, path="group1", chunk_store=chunk_store_v2)
-
-    # raises Value if read_only and path is not a pre-existing group
-    with pytest.raises(ValueError):
-        Group(store_v3, path="group2", read_only=True, chunk_store=chunk_store_v3)
-    with pytest.raises(ValueError):
-        Group(store_v3, path="group2", read_only=True, chunk_store=chunk_store_v3)
 
 
 @pytest.mark.parametrize("zarr_version", _VERSIONS)

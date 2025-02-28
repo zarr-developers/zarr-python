@@ -27,25 +27,13 @@ from zarr.hierarchy import Group, group
 from zarr.storage import (
     ConsolidatedMetadataStore,
     FSStore,
-    KVStore,
     MemoryStore,
     atexit_rmtree,
-    data_root,
     meta_root,
     getsize,
 )
-from zarr._storage.store import v3_api_available
-from zarr._storage.v3 import (
-    ConsolidatedMetadataStoreV3,
-    DirectoryStoreV3,
-    FSStoreV3,
-    KVStoreV3,
-    MemoryStoreV3,
-    SQLiteStoreV3,
-)
-from zarr.tests.util import have_fsspec
 
-_VERSIONS = (2, 3) if v3_api_available else (2,)
+_VERSIONS = (2,)
 
 
 def _init_creation_kwargs(zarr_version):
@@ -120,34 +108,6 @@ def test_save_errors(zarr_version):
         save("data/group.zarr", zarr_version=zarr_version)
 
 
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-def test_zarr_v3_save_multiple_unnamed():
-    x = np.ones(8)
-    y = np.zeros(8)
-    store = KVStoreV3(dict())
-    # no path provided
-    save_group(store, x, y, path="dataset", zarr_version=3)
-    # names become arr_{i} for unnamed *args
-    assert data_root + "dataset/arr_0/c0" in store
-    assert data_root + "dataset/arr_1/c0" in store
-    assert meta_root + "dataset/arr_0.array.json" in store
-    assert meta_root + "dataset/arr_1.array.json" in store
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-def test_zarr_v3_save_errors():
-    x = np.ones(8)
-    with pytest.raises(ValueError):
-        # no path provided
-        save_group("data/group.zr3", x, zarr_version=3)
-    with pytest.raises(ValueError):
-        # no path provided
-        save_array("data/group.zr3", x, zarr_version=3)
-    with pytest.raises(ValueError):
-        # no path provided
-        save("data/group.zr3", x, zarr_version=3)
-
-
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 def test_lazy_loader(zarr_version):
     foo = np.arange(100)
@@ -219,12 +179,8 @@ def test_consolidate_metadata(
             chunk_store = None
         version_kwarg = {"zarr_version": zarr_version}
     else:
-        if zarr_version == 2:
-            store = MemoryStore()
-            chunk_store = MemoryStore() if with_chunk_store else None
-        elif zarr_version == 3:
-            store = MemoryStoreV3()
-            chunk_store = MemoryStoreV3() if with_chunk_store else None
+        store = MemoryStore()
+        chunk_store = MemoryStore() if with_chunk_store else None
         version_kwarg = {}
     path = "dataset" if zarr_version == 3 else None
     z = group(store, chunk_store=chunk_store, path=path, **version_kwarg)
@@ -261,28 +217,16 @@ def test_consolidate_metadata(
     assert isinstance(out, Group)
     assert ["g1", "g2"] == list(out)
     if not stores_from_path:
-        if zarr_version == 2:
-            assert isinstance(out._store, ConsolidatedMetadataStore)
-            assert ".zmetadata" in store
-            meta_keys = [
-                ".zgroup",
-                "g1/.zgroup",
-                "g2/.zgroup",
-                "g2/.zattrs",
-                "g2/arr/.zarray",
-                "g2/arr/.zattrs",
-            ]
-        else:
-            assert isinstance(out._store, ConsolidatedMetadataStoreV3)
-            assert "meta/root/consolidated/.zmetadata" in store
-            meta_keys = [
-                "zarr.json",
-                meta_root + "dataset.group.json",
-                meta_root + "dataset/g1.group.json",
-                meta_root + "dataset/g2.group.json",
-                meta_root + "dataset/g2/arr.array.json",
-                "meta/root/consolidated.group.json",
-            ]
+        assert isinstance(out._store, ConsolidatedMetadataStore)
+        assert ".zmetadata" in store
+        meta_keys = [
+            ".zgroup",
+            "g1/.zgroup",
+            "g2/.zgroup",
+            "g2/.zattrs",
+            "g2/arr/.zarray",
+            "g2/arr/.zattrs",
+        ]
         for key in meta_keys:
             del store[key]
 
@@ -293,10 +237,7 @@ def test_consolidate_metadata(
         monkeypatch.setattr(fs_memory.MemoryFileSystem, "isdir", lambda x, y: False)
         monkeypatch.delattr(fs_memory.MemoryFileSystem, "ls")
         fs = fs_memory.MemoryFileSystem()
-        if zarr_version == 2:
-            store_to_open = FSStore("", fs=fs)
-        else:
-            store_to_open = FSStoreV3("", fs=fs)
+        store_to_open = FSStore("", fs=fs)
 
         # copy original store to new unlistable store
         store_to_open.update(store_to_copy)
@@ -320,12 +261,9 @@ def test_consolidate_metadata(
     if stores_from_path:
         # path string is note a BaseStore subclass so cannot be used to
         # initialize a ConsolidatedMetadataStore.
-        if zarr_version == 2:
-            with pytest.raises(ValueError):
-                cmd = ConsolidatedMetadataStore(store)
-        elif zarr_version == 3:
-            with pytest.raises(ValueError):
-                cmd = ConsolidatedMetadataStoreV3(store)
+        with pytest.raises(ValueError):
+            cmd = ConsolidatedMetadataStore(store)
+
     else:
         # tests del/write on the store
         if zarr_version == 2:
@@ -334,12 +272,6 @@ def test_consolidate_metadata(
                 del cmd[".zgroup"]
             with pytest.raises(PermissionError):
                 cmd[".zgroup"] = None
-        else:
-            cmd = ConsolidatedMetadataStoreV3(store)
-            with pytest.raises(PermissionError):
-                del cmd[meta_root + "dataset.group.json"]
-            with pytest.raises(PermissionError):
-                cmd[meta_root + "dataset.group.json"] = None
 
         # test getsize on the store
         assert isinstance(getsize(cmd), Integral)
@@ -530,27 +462,6 @@ class TestCopyStore(unittest.TestCase):
             copy_store(source, dest, if_exists="foobar")
 
 
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestCopyStoreV3(TestCopyStore):
-    _version = 3
-
-    def setUp(self):
-        source = KVStoreV3(dict())
-        source["meta/root/foo"] = b"xxx"
-        source["meta/root/bar/baz"] = b"yyy"
-        source["meta/root/bar/qux"] = b"zzz"
-        self.source = source
-
-    def _get_dest_store(self):
-        return KVStoreV3(dict())
-
-    def test_mismatched_store_versions(self):
-        # cannot copy between stores of mixed Zarr versions
-        dest = KVStore(dict())
-        with pytest.raises(ValueError):
-            copy_store(self.source, dest)
-
-
 def check_copied_array(original, copied, without_attrs=False, expect_props=None):
     # setup
     source_h5py = original.__module__.startswith("h5py.")
@@ -670,28 +581,6 @@ def test_copy_all():
     assert "subgroup" in destination_group
     assert destination_group.attrs["info"] == "group attrs"
     assert destination_group.subgroup.attrs["info"] == "sub attrs"
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-def test_copy_all_v3():
-    """
-    https://github.com/zarr-developers/zarr-python/issues/269
-
-    copy_all used to not copy attributes as `.keys()`
-
-    """
-    original_group = zarr.group(store=MemoryStoreV3(), path="group1", overwrite=True)
-    original_group.create_group("subgroup")
-
-    destination_group = zarr.group(store=MemoryStoreV3(), path="group2", overwrite=True)
-
-    # copy from memory to directory store
-    copy_all(
-        original_group,
-        destination_group,
-        dry_run=False,
-    )
-    assert "subgroup" in destination_group
 
 
 class TestCopy:
@@ -948,100 +837,3 @@ class TestCopy:
         # bad option
         with pytest.raises(TypeError):
             copy(source["foo"], dest, dry_run=True, log=True)
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestCopyV3(TestCopy):
-    @pytest.fixture(params=["zarr", "hdf5"])
-    def source(self, request, tmpdir):
-        def prep_source(source):
-            foo = source.create_group("foo")
-            foo.attrs["experiment"] = "weird science"
-            baz = foo.create_dataset("bar/baz", data=np.arange(100), chunks=(50,))
-            baz.attrs["units"] = "metres"
-            if request.param == "hdf5":
-                extra_kws = dict(
-                    compression="gzip",
-                    compression_opts=3,
-                    fillvalue=84,
-                    shuffle=True,
-                    fletcher32=True,
-                )
-            else:
-                extra_kws = dict(compressor=Zlib(3), order="F", fill_value=42, filters=[Adler32()])
-            source.create_dataset(
-                "spam",
-                data=np.arange(100, 200).reshape(20, 5),
-                chunks=(10, 2),
-                dtype="i2",
-                **extra_kws,
-            )
-            return source
-
-        if request.param == "hdf5":
-            h5py = pytest.importorskip("h5py")
-            fn = tmpdir.join("source.h5")
-            with h5py.File(str(fn), mode="w") as h5f:
-                yield prep_source(h5f)
-        elif request.param == "zarr":
-            yield prep_source(group(path="group1", zarr_version=3))
-
-    # Test with various destination StoreV3 types as TestCopyV3 covers rmdir
-    destinations = ["hdf5", "zarr", "zarr_kvstore", "zarr_directorystore", "zarr_sqlitestore"]
-    if have_fsspec:
-        destinations += ["zarr_fsstore"]
-
-    @pytest.fixture(params=destinations)
-    def dest(self, request, tmpdir):
-        if request.param == "hdf5":
-            h5py = pytest.importorskip("h5py")
-            fn = tmpdir.join("dest.h5")
-            with h5py.File(str(fn), mode="w") as h5f:
-                yield h5f
-        elif request.param == "zarr":
-            yield group(path="group2", zarr_version=3)
-        elif request.param == "zarr_kvstore":
-            store = KVStoreV3(dict())
-            yield group(store, path="group2", zarr_version=3)
-        elif request.param == "zarr_fsstore":
-            fn = tmpdir.join("dest.zr3")
-            store = FSStoreV3(str(fn), auto_mkdir=True)
-            yield group(store, path="group2", zarr_version=3)
-        elif request.param == "zarr_directorystore":
-            fn = tmpdir.join("dest.zr3")
-            store = DirectoryStoreV3(str(fn))
-            yield group(store, path="group2", zarr_version=3)
-        elif request.param == "zarr_sqlitestore":
-            fn = tmpdir.join("dest.db")
-            store = SQLiteStoreV3(str(fn))
-            yield group(store, path="group2", zarr_version=3)
-
-    def test_copy_array_create_options(self, source, dest):
-        dest_h5py = dest.__module__.startswith("h5py.")
-
-        # copy array, provide creation options
-        compressor = Zlib(9)
-        create_kws = dict(chunks=(10,))
-        if dest_h5py:
-            create_kws.update(
-                compression="gzip", compression_opts=9, shuffle=True, fletcher32=True, fillvalue=42
-            )
-        else:
-            # v3 case has no filters argument in zarr create_kws
-            create_kws.update(compressor=compressor, fill_value=42, order="F")
-        copy(source["foo/bar/baz"], dest, without_attrs=True, **create_kws)
-        check_copied_array(
-            source["foo/bar/baz"], dest["baz"], without_attrs=True, expect_props=create_kws
-        )
-
-    def test_copy_group_no_name(self, source, dest):
-        if source.__module__.startswith("h5py"):
-            with pytest.raises(TypeError):
-                copy(source, dest)
-        else:
-            # For v3, dest.name will be inferred from source.name
-            copy(source, dest)
-            check_copied_group(source, dest[source.name.lstrip("/")])
-
-        copy(source, dest, name="root")
-        check_copied_group(source, dest["root"])

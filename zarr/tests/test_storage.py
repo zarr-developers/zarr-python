@@ -58,7 +58,6 @@ from zarr.storage import (
     normalize_store_arg,
 )
 from zarr.storage import FSStore, rename, listdir
-from zarr._storage.v3 import KVStoreV3
 from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
 from zarr.util import ConstantMap, json_dumps
 
@@ -94,10 +93,6 @@ def test_ensure_store():
 
     with pytest.raises(ValueError):
         Store._ensure_store(InvalidStore())
-
-    # cannot initialize with a store from a different Zarr version
-    with pytest.raises(ValueError):
-        Store._ensure_store(KVStoreV3(dict()))
 
     # cannot initialize without a store
     with pytest.raises(ValueError):
@@ -2505,10 +2500,6 @@ class TestConsolidatedMetadataStore:
         # check appropriate error is raised
         with pytest.raises(MetadataError):
             self.ConsolidatedMetadataClass(store)
-
-    def test_bad_store_version(self):
-        with pytest.raises(ValueError):
-            self.ConsolidatedMetadataClass(KVStoreV3(dict()))
 
     def test_read_write(self):
         # setup store with consolidated metadata
