@@ -22,7 +22,7 @@ def zarr_version(request):
 
 def _init_store(version):
     """Use a plain dict() for v2, but KVStoreV3 otherwise."""
-    return dict
+    return dict()
 
 
 class TestAttributes:
