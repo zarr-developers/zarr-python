@@ -1,4 +1,3 @@
-import importlib
 import tempfile
 from pathlib import Path
 
@@ -120,10 +119,10 @@ async def test_make_store_path_invalid() -> None:
         await make_store_path(1)  # type: ignore[arg-type]
 
 
-@pytest.mark.skipif(not importlib.util.find_spec("requests"), reason="requires requests")
-@pytest.mark.skipif(not importlib.util.find_spec("aiohttp"), reason="requires aiohttp")
 async def test_make_store_path_fsspec(monkeypatch) -> None:
     pytest.importorskip("fsspec")
+    pytest.importorskip("requests")
+    pytest.importorskip("aiohttp")
     store_path = await make_store_path("http://foo.com/bar")
     assert isinstance(store_path.store, FsspecStore)
 
