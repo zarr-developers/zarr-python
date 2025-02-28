@@ -98,19 +98,21 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata.dtype import DTypeBase
 from zarr.core.metadata.v2 import (
     _default_compressor,
     _default_filters,
     parse_compressor,
     parse_filters,
 )
-from zarr.core.metadata.v3 import DataType, parse_node_type_array
+from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
     _parse_bytes_bytes_codec,
+    get_data_type_from_numpy,
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
@@ -578,7 +580,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         store_path = await make_store_path(store)
 
-        dtype_parsed = parse_dtype(dtype, zarr_format)
+        dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
         shape = parse_shapelike(shape)
 
         if chunks is not None and chunk_shape is not None:
@@ -677,7 +679,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
 
         shape = parse_shapelike(shape)
-        codecs = list(codecs) if codecs is not None else _get_default_codecs(np.dtype(dtype))
+        codecs = list(codecs) if codecs is not None else _get_default_codecs(dtype)
         chunk_key_encoding_parsed: ChunkKeyEncodingLike
         if chunk_key_encoding is None:
             chunk_key_encoding_parsed = {"name": "default", "separator": "/"}
@@ -691,13 +693,23 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 category=UserWarning,
                 stacklevel=2,
             )
+
+        # resolve the numpy dtype into zarr v3 datatype
+        zarr_data_type = get_data_type_from_numpy(dtype)
+
+        if fill_value is None:
+            # v3 spec will not allow a null fill value
+            fill_value_parsed = dtype.type(zarr_data_type.default)
+        else:
+            fill_value_parsed = fill_value
+
         chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape)
         return ArrayV3Metadata(
             shape=shape,
-            data_type=dtype,
+            data_type=zarr_data_type,
             chunk_grid=chunk_grid_parsed,
             chunk_key_encoding=chunk_key_encoding_parsed,
-            fill_value=fill_value,
+            fill_value=fill_value_parsed,
             codecs=codecs,
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
@@ -1680,7 +1692,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        _data_type: np.dtype[Any] | DataType
+        _data_type: np.dtype[Any] | DTypeBase
         if isinstance(self.metadata, ArrayV2Metadata):
             _data_type = self.metadata.dtype
         else:
@@ -4201,17 +4213,11 @@ def _get_default_chunk_encoding_v3(
     """
     Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
     """
-    dtype = DataType.from_numpy(np_dtype)
-    if dtype == DataType.string:
-        dtype_key = "string"
-    elif dtype == DataType.bytes:
-        dtype_key = "bytes"
-    else:
-        dtype_key = "numeric"
+    dtype = get_data_type_from_numpy(np_dtype)
 
-    default_filters = zarr_config.get("array.v3_default_filters").get(dtype_key)
-    default_serializer = zarr_config.get("array.v3_default_serializer").get(dtype_key)
-    default_compressors = zarr_config.get("array.v3_default_compressors").get(dtype_key)
+    default_filters = zarr_config.get("array.v3_default_filters").get(dtype.kind)
+    default_serializer = zarr_config.get("array.v3_default_serializer").get(dtype.kind)
+    default_compressors = zarr_config.get("array.v3_default_compressors").get(dtype.kind)
 
     filters = tuple(_parse_array_array_codec(codec_dict) for codec_dict in default_filters)
     serializer = _parse_array_bytes_codec(default_serializer)

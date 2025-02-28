@@ -88,13 +88,17 @@ config = Config(
                     "bytes": [{"id": "vlen-bytes"}],
                     "raw": None,
                 },
-                "v3_default_filters": {"numeric": [], "string": [], "bytes": []},
+                "v3_default_filters": {"boolean": [], "numeric": [], "string": [], "bytes": []},
                 "v3_default_serializer": {
+                    "boolean": {"name": "bytes", "configuration": {"endian": "little"}},
                     "numeric": {"name": "bytes", "configuration": {"endian": "little"}},
                     "string": {"name": "vlen-utf8"},
                     "bytes": {"name": "vlen-bytes"},
                 },
                 "v3_default_compressors": {
+                    "boolean": [
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
                     "numeric": [
                         {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
                     ],
