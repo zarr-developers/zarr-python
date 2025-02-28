@@ -412,6 +412,35 @@ def test_dtypes(dtype_str: str) -> None:
         # return type for vlen types may vary depending on numpy version
         assert dt.byte_count is None
 
+def default_metadata_dict(**kwargs) -> dict[str, Any]:
+    d= {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": "float64",
+        "chunk_key_encoding": {"name": "default", "separator": "."},
+        "codecs": [{"name": "bytes"}],
+        "fill_value": 0,
+    }
+    for k,v in kwargs.items():
+        d[k]=v
+    return d
 
 def test_fail_on_invalid_value() -> None:
-    pass
+    ArrayV3Metadata.from_dict(default_metadata_dict())
+    with pytest.raises(ValueError, match=re.escape("Unexpected zarr metadata keys: ['unknown']")):
+        ArrayV3Metadata.from_dict(default_metadata_dict(unknown="value"))
+    with pytest.raises(ValueError, match=re.escape("Named configuration expects keys 'name' and 'configuration'. Got ['name', 'unknown'].")):
+        ArrayV3Metadata.from_dict(default_metadata_dict(codecs=[{"name":"bytes","unknown": "value"}]))
+
+
+def test_string_codecs() -> None:
+    expected = ArrayV3Metadata.from_dict(default_metadata_dict(data_type="bool", codecs=[{"name": "bytes"}]))
+    result1 = ArrayV3Metadata.from_dict(default_metadata_dict(data_type="bool",codecs=["bytes"]))
+    assert result1.codecs == expected.codecs
+    result2 = ArrayV3Metadata.from_dict(default_metadata_dict(data_type="bool",codecs="bytes"))
+    assert result2.codecs == expected.codecs
+    ArrayV3Metadata.from_dict(default_metadata_dict(data_type="int16", codecs=["bytes"]))
+    with pytest.raises(ValueError, match="Expected bytes codec to specify argument endian for data_type=int16"):
+        ArrayV3Metadata.from_dict(default_metadata_dict(data_type="int16", codecs=["bytes"]))

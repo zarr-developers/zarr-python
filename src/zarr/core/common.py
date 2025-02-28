@@ -118,6 +118,8 @@ def parse_named_configuration(
 ) -> tuple[str, JSON | None]:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
+    if set(data) - {"name", "configuration"}:
+        raise ValueError(f"Named configuration expects keys 'name' and 'configuration'. Got {list(data.keys())}.")
     if "name" not in data:
         raise ValueError(f"Named configuration does not have a 'name' key. Got {data}.")
     name_parsed = parse_name(data["name"], expected_name)
