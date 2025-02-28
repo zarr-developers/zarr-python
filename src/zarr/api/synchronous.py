@@ -10,6 +10,7 @@ from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
 from zarr.core.group import Group
 from zarr.core.sync import sync
+from zarr.core.sync_group import create_hierarchy
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -46,6 +47,7 @@ __all__ = [
     "copy_store",
     "create",
     "create_array",
+    "create_hierarchy",
     "empty",
     "empty_like",
     "from_array",
