@@ -81,7 +81,6 @@ test = [
 ]
 remote_tests = [
     'zarr[remote]',
-    'zarr[optional]',
     "botocore",
     "s3fs",
     "moto[s3,server]",
@@ -89,7 +88,8 @@ remote_tests = [
 ]
 optional = [
     "rich",
-    "universal_pathlib"
+    "universal_pathlib",
+    'zarr[remote_tests]',
 ]
 docs = [
     # Doc building
@@ -150,7 +150,7 @@ version = ["minimal"]
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "2.1"]
-features = ["remote_tests"]
+features = ["optional"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
