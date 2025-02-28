@@ -67,7 +67,10 @@ from .test_storage import TestZipStore as _TestZipStore
 from .test_storage import dimension_separator_fixture, s3, skip_if_nested_chunks  # noqa
 
 
-pytestmark = pytest.mark.skipif(not v3_api_available, reason="v3 api is not available")
+pytestmark = [
+    pytest.mark.skipif(not v3_api_available, reason="v3 api is not available"),
+    pytest.mark.filterwarnings("ignore:zarr.*v3 is deprecated:DeprecationWarning"),
+]
 
 
 @pytest.fixture(
