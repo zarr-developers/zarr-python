@@ -5,7 +5,7 @@ from typing import Any, Literal
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
-from hypothesis import event, given, settings  # noqa: F401
+from hypothesis import event
 from hypothesis.strategies import SearchStrategy
 
 import zarr
