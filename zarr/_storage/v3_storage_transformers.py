@@ -2,6 +2,7 @@ import functools
 import itertools
 import os
 from typing import NamedTuple, Tuple, Optional, Union, Iterator
+import warnings
 
 from numcodecs.compat import ensure_bytes
 import numpy as np
@@ -9,6 +10,14 @@ import numpy as np
 from zarr._storage.store import StorageTransformer, StoreV3, _rmdir_from_keys_v3
 from zarr.util import normalize_storage_path
 from zarr.types import DIMENSION_SEPARATOR
+
+
+warnings.warn(
+    "zarr._storage.v3 is deprecated, and will be removed in zarr-python 2.19.0. "
+    "Use zarr-python 3 instead for Zarr format 3 support.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 
 MAX_UINT_64 = 2**64 - 1

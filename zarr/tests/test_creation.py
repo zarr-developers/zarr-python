@@ -29,9 +29,7 @@ from zarr.hierarchy import open_group
 from zarr.n5 import N5Store
 from zarr.storage import DirectoryStore, KVStore
 from zarr._storage.store import v3_api_available
-from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
-from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 from zarr.tests.util import mktemp, have_fsspec
 
 
@@ -224,8 +222,6 @@ def test_open_array(zarr_version, at_root, dimension_separator):
     assert isinstance(z, Array)
     if z._store._store_version == 2:
         assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
@@ -249,8 +245,7 @@ def test_open_array(zarr_version, at_root, dimension_separator):
     assert isinstance(z, Array)
     if z._store._store_version == 2:
         assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
@@ -260,8 +255,7 @@ def test_open_array(zarr_version, at_root, dimension_separator):
     assert isinstance(z, Array)
     if z._store._store_version == 2:
         assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
@@ -275,8 +269,7 @@ def test_open_array(zarr_version, at_root, dimension_separator):
     assert isinstance(z, Array)
     if z._store._store_version == 2:
         assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
@@ -295,8 +288,7 @@ def test_open_array(zarr_version, at_root, dimension_separator):
         assert isinstance(z, Array)
         if z._store._store_version == 2:
             assert isinstance(z.store, DirectoryStore)
-        else:
-            assert isinstance(z.store, DirectoryStoreV3)
+
         assert (100,) == z.shape
         assert (10,) == z.chunks
         assert_array_equal(np.full(100, fill_value=42), z[:])
@@ -337,12 +329,8 @@ def test_open_array_none():
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
 @pytest.mark.parametrize("zarr_version", _VERSIONS2)
 def test_open_array_infer_separator_from_store(zarr_version, dimension_separator):
-    if zarr_version == 3:
-        StoreClass = DirectoryStoreV3
-        path = "data"
-    else:
-        StoreClass = DirectoryStore
-        path = None
+    StoreClass = DirectoryStore
+    path = None
     store = StoreClass("data/array.zarr", dimension_separator=dimension_separator)
 
     # Note: no dimension_separator kwarg to open_array
@@ -352,8 +340,7 @@ def test_open_array_infer_separator_from_store(zarr_version, dimension_separator
     assert isinstance(z, Array)
     if z._store._store_version == 2:
         assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
@@ -408,7 +395,7 @@ def test_open_array_dict_store(zarr_version, at_root):
     # dict will become a KVStore
     store = dict()
     kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_store_type = KVStoreV3 if zarr_version == 3 else KVStore
+    expected_store_type = KVStore
 
     # mode == 'w'
     z = open_array(store, mode="w", shape=100, chunks=10, **kwargs)
@@ -424,7 +411,7 @@ def test_open_array_dict_store(zarr_version, at_root):
 @pytest.mark.parametrize("at_root", [False, True])
 def test_create_in_dict(zarr_version, at_root):
     kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_store_type = KVStoreV3 if zarr_version == 3 else KVStore
+    expected_store_type = KVStore
 
     for func in [empty, zeros, ones]:
         a = func(100, store=dict(), **kwargs)
@@ -737,18 +724,6 @@ def test_create_read_only(zarr_version, at_root):
 def test_json_dumps_chunks_numpy_dtype():
     z = zeros((10,), chunks=(np.int64(2),))
     assert np.all(z[...] == 0)
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-@pytest.mark.parametrize("at_root", [False, True])
-def test_create_with_storage_transformers(at_root):
-    kwargs = _init_creation_kwargs(zarr_version=3, at_root=at_root)
-    transformer = DummyStorageTransfomer(
-        "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
-    )
-    z = create(1000000000, chunks=True, storage_transformers=[transformer], **kwargs)
-    assert isinstance(z.chunk_store, DummyStorageTransfomer)
-    assert z.chunk_store.test_value == DummyStorageTransfomer.TEST_CONSTANT
 
 
 @pytest.mark.parametrize(

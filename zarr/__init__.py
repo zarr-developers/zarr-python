@@ -1,4 +1,5 @@
 # flake8: noqa
+import warnings
 from zarr.codecs import *
 from zarr.convenience import (
     consolidate_metadata,
@@ -55,6 +56,12 @@ from zarr.version import version as __version__
 assert not __version__.startswith("0.0.0")
 
 if v3_api_available:
+    warnings.warn(
+        "The zarr v3 API in zarr-python v2 is deprecated, and will be removed in zarr-python 2.19.0. "
+        "Use zarr-python 3 instead for Zarr format 3 support.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     from zarr._storage.v3 import (
         ABSStoreV3,
         DBMStoreV3,

@@ -23,8 +23,8 @@ jobs:
     - name: Tests
       shell: "bash -l {0}"
       env:
-        ZARR_V3_EXPERIMENTAL_API: 1
-        ZARR_V3_SHARDING: 1
+        ZARR_V3_EXPERIMENTAL_API: 0
+        ZARR_V3_SHARDING: 0
       run: |
         conda activate minimal
         python -m pip install .
@@ -32,8 +32,8 @@ jobs:
     - name: Fixture generation
       shell: "bash -l {0}"
       env:
-        ZARR_V3_EXPERIMENTAL_API: 1
-        ZARR_V3_SHARDING: 1
+        ZARR_V3_EXPERIMENTAL_API: 0
+        ZARR_V3_SHARDING: 0
       run: |
         conda activate minimal
         rm -rf fixture/

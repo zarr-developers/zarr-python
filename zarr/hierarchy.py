@@ -46,7 +46,11 @@ from zarr.storage import (
     rename,
     rmdir,
 )
-from zarr._storage.v3 import MemoryStoreV3
+from zarr._storage.store import v3_api_available
+
+if v3_api_available:
+    from zarr._storage.v3 import MemoryStoreV3
+
 from zarr.util import (
     InfoReporter,
     TreeViewer,
@@ -609,7 +613,25 @@ class Group(MutableMapping):
             for key in sorted(listdir(self._store, self._path)):
                 path = self._key_prefix + key
                 if contains_group(self._store, path, explicit_only=False):
-                    yield key, Group(
+                    yield (
+                        key,
+                        Group(
+                            self._store,
+                            path=path,
+                            read_only=self._read_only,
+                            chunk_store=self._chunk_store,
+                            cache_attrs=self.attrs.cache,
+                            synchronizer=self._synchronizer,
+                            zarr_version=self._version,
+                        ),
+                    )
+
+        else:
+            for key in self.group_keys():
+                path = self._key_prefix + key
+                yield (
+                    key,
+                    Group(
                         self._store,
                         path=path,
                         read_only=self._read_only,
@@ -617,19 +639,7 @@ class Group(MutableMapping):
                         cache_attrs=self.attrs.cache,
                         synchronizer=self._synchronizer,
                         zarr_version=self._version,
-                    )
-
-        else:
-            for key in self.group_keys():
-                path = self._key_prefix + key
-                yield key, Group(
-                    self._store,
-                    path=path,
-                    read_only=self._read_only,
-                    chunk_store=self._chunk_store,
-                    cache_attrs=self.attrs.cache,
-                    synchronizer=self._synchronizer,
-                    zarr_version=self._version,
+                    ),
                 )
 
     def array_keys(self, recurse=False):

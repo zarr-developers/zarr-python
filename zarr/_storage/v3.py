@@ -1,3 +1,6 @@
+import warnings
+
+
 import os
 import shutil
 from collections import OrderedDict
@@ -48,6 +51,14 @@ from zarr.storage import (
     ZipStore,
     _getsize,
 )
+
+warnings.warn(
+    "zarr._storage.v3 is deprecated, and will be removed in zarr-python 2.19.0. "
+    "Use zarr-python 3 instead for Zarr format 3 support.",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 
 __doctest_requires__ = {
     ("RedisStore", "RedisStore.*"): ["redis"],
