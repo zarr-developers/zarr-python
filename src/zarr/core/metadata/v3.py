@@ -78,7 +78,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
             out += (c,)
         else:
             if isinstance(c, str):
-                c = {"name":c}
+                c = {"name": c}
             name_parsed, _ = parse_named_configuration(c, require_configuration=False)
             out += (get_codec_class(name_parsed).from_dict(c),)
 
