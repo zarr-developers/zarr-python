@@ -325,7 +325,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def init_store(self) -> None:
         self.store.clear()
 
-    @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
+    @rule(key=zarr_keys(), data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.read_only
@@ -334,7 +334,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.model[key] = data_buf
 
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(key=zarr_keys, data=st.data())
+    @rule(key=zarr_keys(), data=st.data())
     def get(self, key: str, data: DataObject) -> None:
         key = data.draw(
             st.sampled_from(sorted(self.model.keys()))
@@ -344,7 +344,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # to bytes here necessary because data_buf set to model in set()
         assert self.model[key] == store_value
 
-    @rule(key=zarr_keys, data=st.data())
+    @rule(key=zarr_keys(), data=st.data())
     def get_invalid_zarr_keys(self, key: str, data: DataObject) -> None:
         note("(get_invalid)")
         assume(key not in self.model)
@@ -408,7 +408,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # make sure they either both are or both aren't empty (same state)
         assert self.store.is_empty("") == (not self.model)
 
-    @rule(key=zarr_keys)
+    @rule(key=zarr_keys())
     def exists(self, key: str) -> None:
         note("(exists)")
 

@@ -10,7 +10,7 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
@@ -23,7 +23,12 @@ from zarr.core.common import (
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
 )
-from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
+from zarr.core.group import (
+    AsyncGroup,
+    ConsolidatedMetadata,
+    GroupMetadata,
+    create_hierarchy,
+)
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
@@ -48,6 +53,7 @@ __all__ = [
     "copy_store",
     "create",
     "create_array",
+    "create_hierarchy",
     "empty",
     "empty_like",
     "full",
@@ -856,7 +862,7 @@ async def create(
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
@@ -1018,7 +1024,7 @@ async def create(
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
-    config_dict: ArrayConfigLike = {}
+    config_dict: ArrayConfigParams = {}
 
     if write_empty_chunks is not None:
         if config is not None:

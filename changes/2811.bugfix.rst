@@ -1,1 +1,0 @@
-Update numcodecs to not overwrite codec configuration ever. Closes :issue:`2800`.
