@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import warnings
 from collections.abc import Iterable
 from enum import Enum
 from functools import cached_property
@@ -178,6 +179,16 @@ class ArrayV2Metadata(Metadata):
         # handle the renames
         expected |= {"dtype", "chunks"}
 
+        # check if `filters` is an empty sequence; if so use None instead and raise a warning
+        if _data["filters"] is not None and len(_data["filters"]) == 0:
+            msg = (
+                "Found an empty list of filters in the array metadata document. "
+                "This is contrary to the Zarr V2 specification, and will cause an error in the future. "
+                "Use None (or Null in a JSON document) instead of an empty list of filters."
+            )
+            warnings.warn(msg, UserWarning, stacklevel=1)
+            _data["filters"] = None
+
         _data = {k: v for k, v in _data.items() if k in expected}
 
         return cls(**_data)
@@ -259,7 +270,11 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
             else:
                 msg = f"For Zarr format 2 arrays, all elements of `filters` must be a numcodecs.abc.Codec or a dict or str representation of numcodecs.abc.Codec. Got {type(val)} at index {idx} instead."
                 raise TypeError(msg)
-        return tuple(out)
+        if len(out) == 0:
+            # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
+            return None
+        else:
+            return tuple(out)
     # take a single codec instance and wrap it in a tuple
     if isinstance(data, numcodecs.abc.Codec):
         return (data,)
