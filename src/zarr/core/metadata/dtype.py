@@ -216,14 +216,14 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         return {"name": self.name}
 
     def cast_value(self: Self, value: object, *, endianness: Endianness | None = None) -> TScalar:
-        return cast(np.generic, self.to_dtype(endianness=endianness).type(value))
+        return cast(np.generic, self.unwrap(endianness=endianness).type(value))
 
     @classmethod
     @abstractmethod
-    def from_dtype(cls: type[Self], dtype: TDType) -> Self:
+    def wrap(cls: type[Self], dtype: TDType) -> Self:
         raise NotImplementedError
 
-    def to_dtype(self: Self, *, endianness: Endianness | None = None) -> TDType:
+    def unwrap(self: Self, *, endianness: Endianness | None = None) -> TDType:
         endian_str = endianness_to_numpy_str(endianness)
         return self.dtype_cls().newbyteorder(endian_str)
 
@@ -251,7 +251,7 @@ class Bool(DTypeWrapper[np.dtypes.BoolDType, np.bool_]):
     default_value = np.False_
 
     @classmethod
-    def from_dtype(cls, dtype: np.dtypes.BoolDType) -> Self:
+    def wrap(cls, dtype: np.dtypes.BoolDType) -> Self:
         return cls()
 
     def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> bool:
@@ -261,7 +261,7 @@ class Bool(DTypeWrapper[np.dtypes.BoolDType, np.bool_]):
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.bool_:
         if check_json_bool(data):
-            return self.to_dtype(endianness=endianness).type(data)
+            return self.unwrap(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected a boolean.")
 
 
@@ -269,7 +269,7 @@ class IntWrapperBase(DTypeWrapper[TDType, TScalar]):
     kind = "numeric"
 
     @classmethod
-    def from_dtype(cls, dtype: TDType) -> Self:
+    def wrap(cls, dtype: TDType) -> Self:
         return cls()
 
     def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
@@ -279,7 +279,7 @@ class IntWrapperBase(DTypeWrapper[TDType, TScalar]):
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> TScalar:
         if check_json_int(data):
-            return self.to_dtype(endianness=endianness).type(data)
+            return self.unwrap(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
 
@@ -335,7 +335,7 @@ class FloatWrapperBase(DTypeWrapper[TDType, TScalar]):
     kind = "numeric"
 
     @classmethod
-    def from_dtype(cls, dtype: TDType) -> Self:
+    def wrap(cls, dtype: TDType) -> Self:
         return cls()
 
     def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> JSONFloat:
@@ -345,7 +345,7 @@ class FloatWrapperBase(DTypeWrapper[TDType, TScalar]):
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> TScalar:
         if check_json_float_v2(data):
-            return self.to_dtype(endianness=endianness).type(float_from_json(data, zarr_format))
+            return self.unwrap(endianness=endianness).type(float_from_json(data, zarr_format))
         raise TypeError(f"Invalid type: {data}. Expected a float.")
 
 
@@ -374,7 +374,7 @@ class Complex64(DTypeWrapper[np.dtypes.Complex64DType, np.complex64]):
     default_value = np.complex64(0)
 
     @classmethod
-    def from_dtype(cls, dtype: np.dtypes.Complex64DType) -> Self:
+    def wrap(cls, dtype: np.dtypes.Complex64DType) -> Self:
         return cls()
 
     def to_json_value(
@@ -387,7 +387,7 @@ class Complex64(DTypeWrapper[np.dtypes.Complex64DType, np.complex64]):
     ) -> np.complex64:
         if check_json_complex_float_v3(data):
             return complex_from_json(
-                data, dtype=self.to_dtype(endianness=endianness), zarr_format=zarr_format
+                data, dtype=self.unwrap(endianness=endianness), zarr_format=zarr_format
             )
         raise TypeError(f"Invalid type: {data}. Expected a complex float.")
 
@@ -399,7 +399,7 @@ class Complex128(DTypeWrapper[np.dtypes.Complex128DType, np.complex128]):
     default_value = np.complex128(0)
 
     @classmethod
-    def from_dtype(cls, dtype: np.dtypes.Complex128DType) -> Self:
+    def wrap(cls, dtype: np.dtypes.Complex128DType) -> Self:
         return cls()
 
     def to_json_value(
@@ -412,7 +412,7 @@ class Complex128(DTypeWrapper[np.dtypes.Complex128DType, np.complex128]):
     ) -> np.complex128:
         if check_json_complex_float_v3(data):
             return complex_from_json(
-                data, dtype=self.to_dtype(endianness=endianness), zarr_format=zarr_format
+                data, dtype=self.unwrap(endianness=endianness), zarr_format=zarr_format
             )
         raise TypeError(f"Invalid type: {data}. Expected a complex float.")
 
@@ -423,10 +423,10 @@ class FlexibleWrapperBase(DTypeWrapper[TDType, TScalar]):
     length: int
 
     @classmethod
-    def from_dtype(cls, dtype: TDType) -> Self:
+    def wrap(cls, dtype: TDType) -> Self:
         return cls(length=dtype.itemsize // (cls.item_size_bits // 8))
 
-    def to_dtype(self, endianness: Endianness | None = None) -> TDType:
+    def unwrap(self, endianness: Endianness | None = None) -> TDType:
         endianness_code = endianness_to_numpy_str(endianness)
         return self.dtype_cls(self.length).newbyteorder(endianness_code)
 
@@ -450,7 +450,7 @@ class StaticByteString(FlexibleWrapperBase[np.dtypes.BytesDType, np.bytes_]):
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.bytes_:
         if check_json_bool(data):
-            return self.to_dtype(endianness=endianness).type(data.encode("ascii"))
+            return self.unwrap(endianness=endianness).type(data.encode("ascii"))
         raise TypeError(f"Invalid type: {data}. Expected a string.")
 
 
@@ -464,7 +464,7 @@ class StaticRawBytes(FlexibleWrapperBase[np.dtypes.VoidDType, np.void]):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": f"r{self.length * self.item_size_bits}"}
 
-    def to_dtype(self, endianness: Endianness | None = None) -> np.dtypes.VoidDType:
+    def unwrap(self, endianness: Endianness | None = None) -> np.dtypes.VoidDType:
         # this needs to be overridden because numpy does not allow creating a void type
         # by invoking np.dtypes.VoidDType directly
         endianness_code = endianness_to_numpy_str(endianness)
@@ -477,7 +477,7 @@ class StaticRawBytes(FlexibleWrapperBase[np.dtypes.VoidDType, np.void]):
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
     ) -> np.void:
         # todo: check that this is well-formed
-        return self.to_dtype(endianness=endianness).type(bytes(data))
+        return self.unwrap(endianness=endianness).type(bytes(data))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -498,25 +498,25 @@ class StaticUnicodeString(FlexibleWrapperBase[np.dtypes.StrDType, np.str_]):
     ) -> np.str_:
         if not check_json_str(data):
             raise TypeError(f"Invalid type: {data}. Expected a string.")
-        return self.to_dtype(endianness=endianness).type(data)
+        return self.unwrap(endianness=endianness).type(data)
 
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
     @dataclass(frozen=True, kw_only=True)
-    class VlenString(DTypeWrapper[np.dtypes.StringDType, str]):
+    class VariableLengthString(DTypeWrapper[np.dtypes.StringDType, str]):
         name = "numpy/vlen_string"
         kind = "string"
         default_value = ""
 
         @classmethod
-        def from_dtype(cls, dtype: np.dtypes.StringDType) -> Self:
+        def wrap(cls, dtype: np.dtypes.StringDType) -> Self:
             return cls()
 
         def to_dict(self) -> dict[str, JSON]:
             return {"name": self.name}
 
-        def to_dtype(self, endianness: Endianness | None = None) -> np.dtypes.StringDType:
+        def unwrap(self, endianness: Endianness | None = None) -> np.dtypes.StringDType:
             endianness_code = endianness_to_numpy_str(endianness)
             return np.dtype(endianness_code + self.numpy_character_code)
 
@@ -526,12 +526,12 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
         def from_json_value(
             self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
         ) -> str:
-            return self.to_dtype(endianness=endianness).type(data)
+            return self.unwrap(endianness=endianness).type(data)
 
 else:
 
     @dataclass(frozen=True, kw_only=True)
-    class VlenString(DTypeWrapper[np.dtypes.ObjectDType, str]):
+    class VariableLengthString(DTypeWrapper[np.dtypes.ObjectDType, str]):
         name = "numpy/vlen_string"
         kind = "string"
         default_value = np.object_("")
@@ -540,11 +540,11 @@ else:
             return {"name": self.name}
 
         @classmethod
-        def from_dtype(cls, dtype: np.dtypes.ObjectDType) -> Self:
+        def wrap(cls, dtype: np.dtypes.ObjectDType) -> Self:
             return cls()
 
-        def to_dtype(self, endianness: Endianness | None = None) -> np.dtype[np.dtypes.ObjectDType]:
-            return super().to_dtype(endianness=endianness)
+        def unwrap(self, endianness: Endianness | None = None) -> np.dtype[np.dtypes.ObjectDType]:
+            return super().unwrap(endianness=endianness)
 
         def to_json_value(self, data: np.generic, *, zarr_format: ZarrFormat) -> str:
             return str(data)
@@ -552,7 +552,7 @@ else:
         def from_json_value(
             self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
         ) -> str:
-            return self.to_dtype(endianness=endianness).type(data)
+            return self.unwrap(endianness=endianness).type(data)
 
 
 def resolve_dtype(dtype: npt.DTypeLike | DTypeWrapper | dict[str, JSON]) -> DTypeWrapper:
@@ -569,7 +569,7 @@ def resolve_dtype(dtype: npt.DTypeLike | DTypeWrapper | dict[str, JSON]) -> DTyp
 INTEGER_DTYPE = Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64
 FLOAT_DTYPE = Float16 | Float32 | Float64
 COMPLEX_DTYPE = Complex64 | Complex128
-STRING_DTYPE = StaticUnicodeString | VlenString | StaticByteString
+STRING_DTYPE = StaticUnicodeString | VariableLengthString | StaticByteString
 for dtype in get_args(
     Bool | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | STRING_DTYPE | StaticRawBytes
 ):

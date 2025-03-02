@@ -177,14 +177,14 @@ class ArrayV3Metadata(Metadata):
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        fill_value_parsed = data_type.to_dtype().type(fill_value)
+        fill_value_parsed = data_type.unwrap().type(fill_value)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
-            dtype=data_type.to_dtype(),
+            dtype=data_type.unwrap(),
             fill_value=fill_value_parsed,
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
@@ -219,13 +219,13 @@ class ArrayV3Metadata(Metadata):
             raise ValueError("`fill_value` is required.")
         for codec in self.codecs:
             codec.validate(
-                shape=self.shape, dtype=self.data_type.to_dtype(), chunk_grid=self.chunk_grid
+                shape=self.shape, dtype=self.data_type.unwrap(), chunk_grid=self.chunk_grid
             )
 
     @property
     def dtype(self) -> np.dtype[Any]:
         """Interpret Zarr dtype as NumPy dtype"""
-        return self.data_type.to_dtype()
+        return self.data_type.unwrap()
 
     @property
     def ndim(self) -> int:

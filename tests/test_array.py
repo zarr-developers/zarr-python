@@ -1103,7 +1103,7 @@ class TestCreateArray:
             filters=filters,
             compressors=compressors,
             serializer="auto",
-            dtype=arr._zdtype,
+            dtype=arr.metadata.data_type,
         )
         assert arr.filters == filters_expected
         assert arr.compressors == compressors_expected
@@ -1283,10 +1283,8 @@ class TestCreateArray:
             )
 
         elif zarr_format == 2:
-            default_filters, default_compressors = _parse_chunk_encoding_v2(
-                compressor=sig.parameters["compressors"].default,
-                filters=sig.parameters["filters"].default,
-                dtype=dtype,  # type: ignore[arg-type]
+            default_filters, default_compressors = _get_default_chunk_encoding_v2(
+                dtype=np.dtype(dtype)
             )
             if default_filters is None:
                 expected_filters = ()

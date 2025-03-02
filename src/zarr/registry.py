@@ -334,7 +334,7 @@ def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeWrapper:
     __data_type_registry.lazy_load()
     for val in __data_type_registry.contents.values():
         if val.dtype_cls is type(np_dtype):
-            return val.from_dtype(np_dtype)
+            return val.wrap(np_dtype)
     raise ValueError(
         f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__data_type_registry.contents)}."
     )

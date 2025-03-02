@@ -292,7 +292,7 @@ def create_array_metadata(
         array_shape=shape_parsed,
         shard_shape=shards,
         chunk_shape=chunks,
-        item_size=item_size,
+        dtype=dtype_parsed.unwrap().itemsize,
     )
 
     if order is None:

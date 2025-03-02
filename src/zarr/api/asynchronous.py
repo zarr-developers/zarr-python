@@ -39,8 +39,9 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.errors import GroupNotFoundError, NodeTypeValidationError
-from zarr.storage import StorePath
+from zarr.core.metadata.v2 import _default_compressor, _default_filters
+from zarr.errors import NodeTypeValidationError
+from zarr.registry import get_data_type_from_numpy
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -457,7 +458,7 @@ async def save_array(
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
-    zarr_dtype = get_data_type_from_native_dtype(arr.dtype)
+    zarr_dtype = get_data_type_from_numpy(arr.dtype)
     new = await AsyncArray._create(
         store_path,
         zarr_format=zarr_format,
@@ -1009,15 +1010,14 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-
+    dtype_wrapped = parse_dtype(dtype, zarr_format=zarr_format)
     if zarr_format == 2:
         if chunks is None:
             chunks = shape
-        dtype = parse_dtype(dtype, zarr_format=zarr_format)
         if not filters:
-            filters = _default_filters(dtype)
+            filters = _default_filters(dtype_wrapped)
         if not compressor:
-            compressor = _default_compressor(dtype)
+            compressor = _default_compressor(dtype_wrapped)
     elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
         if chunks is not None:
             chunk_shape = chunks
@@ -1064,7 +1064,7 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=dtype,
+        dtype=dtype_wrapped,
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,
