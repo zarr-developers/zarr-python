@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
     from zarr.core.dtype import ZarrDType
-    from zarr.core.metadata.dtype import DTypeBase
+    from zarr.core.metadata.dtype import DTypeWrapper
 
 __all__ = [
     "Registry",
@@ -66,7 +66,7 @@ class Registry(dict[str, type[T]], Generic[T]):
 
 @dataclass(frozen=True, kw_only=True)
 class DataTypeRegistry:
-    contents: dict[str, type[DTypeBase]] = field(default_factory=dict, init=False)
+    contents: dict[str, type[DTypeWrapper]] = field(default_factory=dict, init=False)
     lazy_load_list: list[EntryPoint] = field(default_factory=list, init=False)
 
     def lazy_load(self) -> None:
@@ -75,14 +75,14 @@ class DataTypeRegistry:
 
         self.lazy_load_list.clear()
 
-    def register(self: Self, cls: type[DTypeBase], clobber: bool = False) -> None:
+    def register(self: Self, cls: type[DTypeWrapper], clobber: bool = False) -> None:
         if cls.name in self.contents and not clobber:
             raise ValueError(
                 f"Data type {cls.name} already registered. Use clobber=True to overwrite."
             )
         self.contents[cls.name] = cls
 
-    def get(self, key: str) -> type[DTypeBase]:
+    def get(self, key: str) -> type[DTypeWrapper]:
         return self.contents[key]
 
 
@@ -181,7 +181,7 @@ def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
     __buffer_registry.register(cls, qualname)
 
 
-def register_data_type(cls: type[DTypeBase]) -> None:
+def register_data_type(cls: type[DTypeWrapper]) -> None:
     __data_type_registry.register(cls)
 
 
@@ -329,7 +329,7 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     )
 
 
-def get_data_type_by_name(dtype: str, configuration: dict[str, JSON] | None = None) -> DTypeBase:
+def get_data_type_by_name(dtype: str, configuration: dict[str, JSON] | None = None) -> DTypeWrapper:
     __data_type_registry.lazy_load()
     if configuration is None:
         _configuration = {}
@@ -341,7 +341,7 @@ def get_data_type_by_name(dtype: str, configuration: dict[str, JSON] | None = No
     return maybe_dtype_cls.from_dict(_configuration)
 
 
-def get_data_type_from_dict(dtype: dict[str, JSON]) -> DTypeBase:
+def get_data_type_from_dict(dtype: dict[str, JSON]) -> DTypeWrapper:
     __data_type_registry.lazy_load()
     dtype_name = dtype["name"]
     dtype_cls = __data_type_registry.get(dtype_name)
@@ -350,12 +350,12 @@ def get_data_type_from_dict(dtype: dict[str, JSON]) -> DTypeBase:
     return dtype_cls.from_dict(dtype.get("configuration", {}))
 
 
-def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeBase:
+def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeWrapper:
     np_dtype = np.dtype(dtype)
     __data_type_registry.lazy_load()
     for val in __data_type_registry.contents.values():
         if val.numpy_character_code == np_dtype.char:
-            return val.from_numpy(np_dtype)
+            return val.from_str(np_dtype)
     raise ValueError(
         f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__data_type_registry.contents)}."
     )

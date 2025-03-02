@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
     from zarr.core.metadata.dtype import (
-        DTypeBase,
+        DTypeWrapper,
     )
 
 import json
@@ -83,7 +83,7 @@ def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
     return abcs[0]
 
 
-def validate_codecs(codecs: tuple[Codec, ...], dtype: DTypeBase) -> None:
+def validate_codecs(codecs: tuple[Codec, ...], dtype: DTypeWrapper) -> None:
     """Check that the codecs are valid for the given dtype"""
     from zarr.codecs.sharding import ShardingCodec
 
@@ -145,7 +145,7 @@ class ArrayV3MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(Metadata):
     shape: ChunkCoords
-    data_type: DTypeBase
+    data_type: DTypeWrapper
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
@@ -160,7 +160,7 @@ class ArrayV3Metadata(Metadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: DTypeBase,
+        data_type: DTypeWrapper,
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: object,
