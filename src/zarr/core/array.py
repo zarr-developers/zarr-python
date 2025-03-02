@@ -98,7 +98,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
-from zarr.core.metadata.dtype import DTypeBase
+from zarr.core.metadata.dtype import DTypeWrapper
 from zarr.core.metadata.v2 import (
     _default_compressor,
     _default_filters,
@@ -699,7 +699,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         if fill_value is None:
             # v3 spec will not allow a null fill value
-            fill_value_parsed = dtype.type(zarr_data_type.default)
+            fill_value_parsed = dtype.type(zarr_data_type._default_value)
         else:
             fill_value_parsed = fill_value
 
@@ -1694,7 +1694,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        _data_type: np.dtype[Any] | DTypeBase
+        _data_type: np.dtype[Any] | DTypeWrapper
         if isinstance(self.metadata, ArrayV2Metadata):
             _data_type = self.metadata.dtype
         else:

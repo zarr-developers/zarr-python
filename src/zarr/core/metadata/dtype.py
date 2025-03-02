@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal, Self, TypeGuard, cast, get_args
+from typing import Any, ClassVar, Generic, Literal, Self, TypeGuard, TypeVar, cast, get_args
 
 import numpy as np
 import numpy.typing as npt
@@ -148,44 +148,28 @@ def complex_from_json(
             raise TypeError(f"Invalid type: {data}. Expected a sequence of two numbers.")
     raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
 
+TDType = TypeVar("TDType", bound=np.dtype[Any])
+TScalar = TypeVar("TScalar", bound=np.generic)
 
 @dataclass(frozen=True, kw_only=True)
 class Flexible:
     length: int
 
-
-class DTypeBase(ABC, Metadata):
+class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
     name: ClassVar[str]
-    numpy_character_code: ClassVar[str]
-    item_size: ClassVar[int | None]
+    dtype_cls: ClassVar[type[TDType]] # this class will create a numpy dtype
     kind: ClassVar[DataTypeFlavor]
-    default: object
-
-    def __init_subclass__(cls, **kwargs: object) -> None:
-        required_attrs = ["name", "numpy_character_code", "item_size", "kind", "default"]
-        for attr in required_attrs:
-            if not hasattr(cls, attr):
-                raise ValueError(f"{attr} is a required attribute for a Zarr dtype.")
-
-        return super().__init_subclass__(**kwargs)
+    _default_value: object
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name}
 
-    @classmethod
-    def from_numpy(cls, dtype: npt.DTypeLike) -> Self:
-        if np.dtype(dtype).char != cls.numpy_character_code:
-            raise ValueError(
-                f"Invalid dtype {dtype}. Expected dtype with character code == {cls.numpy_character_code}."
-            )
-        return cls()
+    def default_value(self: Self, *, endianness: Endianness | None = None) -> TScalar:
+        return cast(np.generic, self.to_numpy(endianness=endianness).type(self._default_value))
 
-    def default_value(self: Self, *, endianness: Endianness | None = None) -> np.generic:
-        return cast(np.generic, self.to_numpy(endianness=endianness).type(self.default))
-
-    def to_numpy(self: Self, *, endianness: Endianness | None = None) -> np.dtype[Any]:
+    def to_numpy(self: Self, *, endianness: Endianness | None = None) -> TDType:
         endian_str = endianness_to_numpy_str(endianness)
-        return np.dtype(endian_str + self.numpy_character_code)
+        return self.dtype_cls().newbyteorder(endian_str)
 
     @abstractmethod
     def to_json_value(self, data: np.generic, *, zarr_format: ZarrFormat) -> JSON:
@@ -197,7 +181,7 @@ class DTypeBase(ABC, Metadata):
     @abstractmethod
     def from_json_value(
         self: Self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.generic:
+    ) -> TScalar:
         """
         Read a JSON-serializable value as a numpy scalar
         """
@@ -205,15 +189,10 @@ class DTypeBase(ABC, Metadata):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Bool(DTypeBase):
+class Bool(DTypeWrapper[np.dtypes.BoolDType, np.bool_]):
     name = "bool"
-    item_size = 1
     kind = "boolean"
-    numpy_character_code = "?"
     default = False
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.BoolDType:
-        return super().to_numpy(endianness=endianness)
 
     def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> bool:
         return bool(data)
@@ -228,294 +207,127 @@ class Bool(DTypeBase):
 
 register_data_type(Bool)
 
-
-@dataclass(frozen=True, kw_only=True)
-class Int8(DTypeBase):
-    name = "int8"
-    item_size = 1
+class BaseInt(DTypeWrapper[TDType, TScalar]):
     kind = "numeric"
-    numpy_character_code = "b"
     default = 0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Int8DType:
-        return super().to_numpy(endianness=endianness)
 
     def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
         return int(data)
 
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.int8:
+    ) -> TScalar:
         if check_json_int(data):
             return self.to_numpy(endianness=endianness).type(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
+
+
+@dataclass(frozen=True, kw_only=True)
+class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
+    name = "int8"
 
 
 register_data_type(Int8)
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt8(DTypeBase):
+class UInt8(DTypeWrapper[np.dtypes.UInt8DType, np.uint8]):
     name = "uint8"
-    item_size = 1
-    kind = "numeric"
-    numpy_character_code = "B"
-    default = 0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.UInt8DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.uint8:
-        if check_json_int(data):
-            return self.to_numpy(endianness=endianness).type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
 
 register_data_type(UInt8)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int16(DTypeBase):
+class Int16(DTypeWrapper[np.dtypes.Int16DType, np.int16]):
     name = "int16"
-    item_size = 2
-    kind = "numeric"
-    numpy_character_code = "h"
-    default = 0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Int16DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.int16:
-        if check_json_int(data):
-            return self.to_numpy(endianness=endianness).type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
 
 register_data_type(Int16)
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt16(DTypeBase):
+class UInt16(DTypeWrapper[np.dtypes.UInt16DType, np.uint16]):
     name = "uint16"
-    item_size = 2
-    kind = "numeric"
-    numpy_character_code = "H"
-    default = 0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.UInt16DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.uint16:
-        if check_json_int(data):
-            return self.to_numpy(endianness=endianness).type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 register_data_type(UInt16)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int32(DTypeBase):
+class Int32(DTypeWrapper[np.dtypes.Int32DType, np.int32]):
     name = "int32"
-    item_size = 4
-    kind = "numeric"
-    numpy_character_code = "i"
-    default = 0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Int32DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.int32:
-        if check_json_int(data):
-            return self.to_numpy(endianness=endianness).type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
 
 register_data_type(Int32)
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt32(DTypeBase):
+class UInt32(DTypeWrapper[np.dtypes.UInt32DType, np.uint32]):
     name = "uint32"
-    item_size = 4
-    kind = "numeric"
-    numpy_character_code = "I"
-    default = 0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.UInt32DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.uint32:
-        if check_json_int(data):
-            return self.to_numpy(endianness=endianness).type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 register_data_type(UInt32)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int64(DTypeBase):
+class Int64(DTypeWrapper[np.dtypes.Int64DType, np.int64]):
     name = "int64"
-    item_size = 8
-    kind = "numeric"
-    numpy_character_code = "l"
-    default = 0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Int64DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.int64:
-        if check_json_int(data):
-            return self.to_numpy(endianness=endianness).type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
 
 register_data_type(Int64)
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt64(DTypeBase):
+class UInt64(DTypeWrapper[np.dtypes.UInt64DType, np.uint64]):
     name = "uint64"
-    item_size = 8
-    kind = "numeric"
-    numpy_character_code = "L"
-    default = 0
 
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.UInt64DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.uint64:
-        if check_json_int(data):
-            return self.to_numpy(endianness=endianness).type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
 
 register_data_type(UInt64)
 
 
-@dataclass(frozen=True, kw_only=True)
-class Float16(DTypeBase):
-    name = "float16"
-    item_size = 2
+class FloatBase(DTypeWrapper[TDType, TScalar]):
     kind = "numeric"
-    numpy_character_code = "e"
     default = 0.0
 
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Float16DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> float:
-        return float(data)
+    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> JSONFloat:
+        return float_to_json(data, zarr_format)
 
     def from_json_value(
         self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.float16:
+    ) -> TScalar:
         if check_json_float(data):
-            return self.to_numpy(endianness=endianness).type(data)
+            return self.to_numpy(endianness=endianness).type(float_from_json)(data, zarr_format)
         raise TypeError(f"Invalid type: {data}. Expected a float.")
+
+@dataclass(frozen=True, kw_only=True)
+class Float16(DTypeWrapper[np.dtypes.Float16DType, np.float16]):
+    name = "float16"
 
 
 register_data_type(Float16)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float32(DTypeBase):
+class Float32(DTypeWrapper[np.dtypes.Float32DType, np.float32]):
     name = "float32"
-    item_size = 4
-    kind = "numeric"
-    numpy_character_code = "f"
-    default = 0.0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Float32DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> float:
-        return float(data)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.float32:
-        if check_json_float(data):
-            return self.to_numpy(endianness=endianness).type(data)
-        raise TypeError(f"Invalid type: {data}. Expected a float.")
-
+ 
 
 register_data_type(Float32)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float64(DTypeBase):
+class Float64(DTypeWrapper[np.dtypes.Float64DType, np.float64]):
     name = "float64"
-    item_size = 8
-    kind = "numeric"
-    numpy_character_code = "d"
-    default = 0.0
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Float64DType:
-        return super().to_numpy(endianness=endianness)
-
-    def to_json_value(self, data: np.generic, zarr_format: ZarrFormat) -> float:
-        return float_to_json(data, zarr_format)
-
-    def from_json_value(
-        self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-    ) -> np.float64:
-        if check_json_float(data):
-            return float_from_json(
-                data, dtype=self.to_numpy(endianness=endianness), zarr_format=zarr_format
-            )
-        raise TypeError(f"Invalid type: {data}. Expected a float.")
 
 
 register_data_type(Float64)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Complex64(DTypeBase):
+class Complex64(DTypeWrapper[np.dtypes.Complex64DType, np.complex64]):
     name = "complex64"
-    item_size = 8
     kind = "numeric"
-    numpy_character_code = "F"
     default = 0.0 + 0.0j
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Complex64DType:
-        return super().to_numpy(endianness=endianness)
 
     def to_json_value(
         self, data: np.generic, zarr_format: ZarrFormat
@@ -536,15 +348,11 @@ register_data_type(Complex64)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Complex128(DTypeBase):
+class Complex128(DTypeWrapper[np.dtypes.Complex128DType, np.complex128]):
     name = "complex128"
-    item_size = 16
     kind = "numeric"
-    numpy_character_code = "D"
+    dtype_cls = np.dtypes.Complex128DType
     default = 0.0 + 0.0j
-
-    def to_numpy(self, *, endianness: Endianness | None = None) -> np.dtypes.Complex128DType:
-        return super().to_numpy(endianness=endianness)
 
     def to_json_value(
         self, data: np.generic, zarr_format: ZarrFormat
@@ -565,26 +373,17 @@ register_data_type(Complex128)
 
 
 @dataclass(frozen=True, kw_only=True)
-class StaticByteString(DTypeBase, Flexible):
+class StaticByteString(DTypeWrapper[np.dtypes.BytesDType, np.bytes_], Flexible):
     name = "numpy/static_byte_string"
     kind = "string"
-    numpy_character_code = "S"
-    item_size = 1
     default = b""
-
-    @classmethod
-    def from_numpy(cls: type[Self], dtype: npt.DTypeLike) -> Self:
-        dtype = np.dtype(dtype)
-        if dtype.kind != cls.numpy_character_code:
-            raise ValueError(f"Invalid dtype {dtype}. Expected a string dtype.")
-        return cls(length=dtype.itemsize)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": {"capacity": self.length}}
 
-    def to_numpy(self, endianness: Endianness | None = "native") -> np.dtype[np.bytes_]:
+    def to_numpy(self, endianness: Endianness | None = "native") -> np.dtypes.BytesDType:
         endianness_code = endianness_to_numpy_str(endianness)
-        return np.dtype(endianness_code + self.numpy_character_code + str(self.length))
+        return self.dtype_cls(self.length).newbyteorder(endianness_code)
 
     def to_json_value(
         self, data: np.generic, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
@@ -603,26 +402,20 @@ register_data_type(StaticByteString)
 
 
 @dataclass(frozen=True, kw_only=True)
-class StaticRawBytes(DTypeBase, Flexible):
+class StaticRawBytes(DTypeWrapper[np.dtypes.VoidDType, np.void], Flexible):
     name = "r*"
     kind = "bytes"
-    numpy_character_code = "V"
-    item_size = 1
     default = b""
 
-    @classmethod
-    def from_numpy(cls: type[Self], dtype: npt.DTypeLike) -> Self:
-        dtype = np.dtype(dtype)
-        if dtype.kind != "V":
-            raise ValueError(f"Invalid dtype {dtype}. Expected a bytes dtype.")
-        return cls(length=dtype.itemsize)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": f"r{self.length * 8}"}
 
-    def to_numpy(self, endianness: Endianness | None = "native") -> np.dtype[np.void]:
+    def to_numpy(self, endianness: Endianness | None = "native") -> np.dtypes.VoidDType:
+        # this needs to be overridden because numpy does not allow creating a void type
+        # by invoking np.dtypes.VoidDType directly
         endianness_code = endianness_to_numpy_str(endianness)
-        return np.dtype(endianness_code + self.numpy_character_code + str(self.length))
+        return np.dtype(f'{endianness_code}V{self.length}')
 
     def to_json_value(self, data: np.generic, *, zarr_format: ZarrFormat) -> tuple[int, ...]:
         return tuple(*data.tobytes())
@@ -639,13 +432,10 @@ register_data_type(StaticRawBytes)
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
     @dataclass(frozen=True, kw_only=True)
-    class VlenString(DTypeBase):
+    class VlenString(DTypeWrapper[np.dtypes.StringDType, str]):
         name = "numpy/vlen_string"
         kind = "string"
-        numpy_character_code = "T"
-        # this uses UTF-8, so the encoding of a code point varies between
-        # 1 and 4 bytes
-        item_size = None
+        dtype_cls = np.dtypes.StringDType
         default = ""
 
         def to_dict(self) -> dict[str, JSON]:
@@ -653,7 +443,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 
         def to_numpy(
             self, endianness: Endianness | None = "native"
-        ) -> np.dtype[np.dtypes.StringDType]:
+        ) -> np.dtypes.StringDType:
             endianness_code = endianness_to_numpy_str(endianness)
             return np.dtype(endianness_code + self.numpy_character_code)
 
@@ -662,34 +452,32 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 
         def from_json_value(
             self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-        ) -> "np.dtypes.StringDType":
+        ) -> str:
             return self.to_numpy(endianness=endianness).type(data)
 
 else:
 
     @dataclass(frozen=True, kw_only=True)
-    class VlenString(DTypeBase):
+    class VlenString(DTypeWrapper[np.dtypes.ObjectDType, str]):
         name = "numpy/vlen_string"
         kind = "string"
-        numpy_character_code = "O"
-        item_size = None
+        dtype_cls = np.dtypes.ObjectDType
         default = ""
 
         def to_dict(self) -> dict[str, JSON]:
             return {"name": self.name}
 
         def to_numpy(
-            self, endianness: Endianness | None = "native"
+            self, endianness: Endianness | None = None
         ) -> np.dtype[np.dtypes.ObjectDType]:
-            endianness_code = endianness_to_numpy_str(endianness)
-            return np.dtype(endianness_code + self.numpy_character_code)
+            return super().to_numpy(endianness=endianness)
 
         def to_json_value(self, data, *, zarr_format: ZarrFormat) -> str:
             return str(data)
 
         def from_json_value(
             self, data: JSON, *, zarr_format: ZarrFormat, endianness: Endianness | None = None
-        ) -> np.dtypes.ObjectDType:
+        ) -> str:
             return self.to_numpy(endianness=endianness).type(data)
 
 
@@ -697,24 +485,15 @@ register_data_type(VlenString)
 
 
 @dataclass(frozen=True, kw_only=True)
-class StaticUnicodeString(DTypeBase, Flexible):
+class StaticUnicodeString(DTypeWrapper[np.dtypes.StrDType, np.str_], Flexible):
     name = "numpy/static_unicode_string"
     kind = "string"
-    numpy_character_code = "U"
-    item_size = 4
     default = ""
-
-    @classmethod
-    def from_numpy(cls: type[Self], dtype: npt.DTypeLike) -> Self:
-        dtype = np.dtype(dtype)
-        if dtype.kind != "U":
-            raise ValueError(f"Invalid dtype {dtype}. Expected a string dtype.")
-        return cls(length=dtype.itemsize)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": {"capacity": self.length}}
 
-    def to_numpy(self, endianness: Endianness | None = "native") -> np.dtype[np.str_]:
+    def to_numpy(self, endianness: Endianness | None = "native") -> np.dtypes.StrDType:
         endianness_code = endianness_to_numpy_str(endianness)
         return np.dtype(endianness_code + self.numpy_character_code + str(self.length))
 
@@ -732,10 +511,10 @@ class StaticUnicodeString(DTypeBase, Flexible):
 register_data_type(StaticUnicodeString)
 
 
-def resolve_dtype(dtype: npt.DTypeLike | DTypeBase | dict[str, JSON]) -> DTypeBase:
+def resolve_dtype(dtype: npt.DTypeLike | DTypeWrapper | dict[str, JSON]) -> DTypeWrapper:
     from zarr.registry import get_data_type_from_numpy
 
-    if isinstance(dtype, DTypeBase):
+    if isinstance(dtype, DTypeWrapper):
         return dtype
     elif isinstance(dtype, dict):
         return get_data_type_from_dict(dtype)

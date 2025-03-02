@@ -7,7 +7,7 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.core.common import ZarrFormat
-from zarr.core.metadata.dtype import DTypeBase
+from zarr.core.metadata.dtype import DTypeWrapper
 
 # from zarr.core.metadata.v3 import DataType
 
@@ -80,7 +80,7 @@ class ArrayInfo:
 
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
-    _data_type: np.dtype[Any] | DTypeBase
+    _data_type: np.dtype[Any] | DTypeWrapper
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
     _chunk_shape: tuple[int, ...] | None = None
