@@ -927,7 +927,10 @@ def test_auto_partition_auto_shards(
             expected_shards += (cs,)
 
     auto_shards, _ = _auto_partition(
-        array_shape=array_shape, chunk_shape=chunk_shape, shard_shape="auto", dtype=dtype
+        array_shape=array_shape,
+        chunk_shape=chunk_shape,
+        shard_shape="auto",
+        item_size=dtype.itemsize,
     )
     assert auto_shards == expected_shards
 
@@ -1079,7 +1082,10 @@ class TestCreateArray:
             compressors=compressors,
         )
         filters_expected, _, compressors_expected = _parse_chunk_encoding_v3(
-            filters=filters, compressors=compressors, serializer="auto", dtype=np.dtype(dtype)
+            filters=filters,
+            compressors=compressors,
+            serializer="auto",
+            dtype=arr.metadata.data_type,
         )
         assert arr.filters == filters_expected
         assert arr.compressors == compressors_expected
@@ -1145,7 +1151,7 @@ class TestCreateArray:
 
         elif zarr_format == 2:
             default_filters, default_compressors = _get_default_chunk_encoding_v2(
-                np_dtype=np.dtype(dtype)
+                dtype=np.dtype(dtype)
             )
             if default_filters is None:
                 expected_filters = ()

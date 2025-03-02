@@ -259,7 +259,10 @@ def create_array_metadata(
     )
 
     shard_shape_parsed, chunk_shape_parsed = _auto_partition(
-        array_shape=shape_parsed, shard_shape=shards, chunk_shape=chunks, dtype=dtype_parsed
+        array_shape=shape_parsed,
+        shard_shape=shards,
+        chunk_shape=chunks,
+        dtype=dtype_parsed.unwrap().itemsize,
     )
 
     if order is None:

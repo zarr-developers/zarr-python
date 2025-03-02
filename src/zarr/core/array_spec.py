@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast
 
-import numpy as np
-
 from zarr.core.common import (
     MemoryOrder,
     parse_bool,
@@ -13,9 +11,13 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config as zarr_config
+from zarr.core.metadata.dtype import DTypeWrapper
+from zarr.registry import get_data_type_from_numpy
 
 if TYPE_CHECKING:
     from typing import NotRequired
+
+    import numpy.typing as npt
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ChunkCoords
@@ -90,7 +92,7 @@ def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
 @dataclass(frozen=True)
 class ArraySpec:
     shape: ChunkCoords
-    dtype: np.dtype[Any]
+    dtype: DTypeWrapper[Any, Any]
     fill_value: Any
     config: ArrayConfig
     prototype: BufferPrototype
@@ -98,13 +100,17 @@ class ArraySpec:
     def __init__(
         self,
         shape: ChunkCoords,
-        dtype: np.dtype[Any],
+        dtype: npt.DtypeLike | DTypeWrapper[Any, Any],
         fill_value: Any,
         config: ArrayConfig,
         prototype: BufferPrototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
-        dtype_parsed = np.dtype(dtype)
+        if not isinstance(dtype, DTypeWrapper):
+            dtype_parsed = get_data_type_from_numpy(dtype)
+        else:
+            dtype_parsed = dtype
+
         fill_value_parsed = parse_fill_value(fill_value)
 
         object.__setattr__(self, "shape", shape_parsed)

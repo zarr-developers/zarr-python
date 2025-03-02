@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, TypedDict, cast
 import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
+from zarr.core.metadata.dtype import DTypeWrapper
+from zarr.registry import get_data_type_from_numpy
 
 if TYPE_CHECKING:
     from typing import Any, Literal, Self
@@ -46,7 +48,7 @@ class ArrayV2MetadataDict(TypedDict):
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
     chunks: ChunkCoords
-    dtype: np.dtype[Any]
+    dtype: DTypeWrapper[Any, Any]
     fill_value: int | float | str | bytes | None = 0
     order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
@@ -59,7 +61,7 @@ class ArrayV2Metadata(Metadata):
         self,
         *,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: DTypeWrapper[Any, Any],
         chunks: ChunkCoords,
         fill_value: Any,
         order: MemoryOrder,
@@ -72,18 +74,17 @@ class ArrayV2Metadata(Metadata):
         Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
 
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype_parsed)
+        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype.unwrap())
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "dtype", dtype_parsed)
+        object.__setattr__(self, "dtype", dtype)
         object.__setattr__(self, "chunks", chunks_parsed)
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
@@ -163,9 +164,9 @@ class ArrayV2Metadata(Metadata):
         _data = data.copy()
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
-        dtype = parse_dtype(_data["dtype"])
-
-        if dtype.kind in "SV":
+        dtype = get_data_type_from_numpy(parse_dtype(_data["dtype"]))
+        _data["dtype"] = dtype
+        if dtype.unwrap().kind in "SV":
             fill_value_encoded = _data.get("fill_value")
             if fill_value_encoded is not None:
                 fill_value = base64.standard_b64decode(fill_value_encoded)
@@ -205,12 +206,13 @@ class ArrayV2Metadata(Metadata):
 
         _ = zarray_dict.pop("dtype")
         dtype_json: JSON
+        # TODO: Replace this with per-dtype method
         # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
-        dtype_descr = self.dtype.descr
-        if self.dtype.kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
-            dtype_json = tuple(self.dtype.descr)
+        dtype_descr = self.dtype.unwrap().descr
+        if self.dtype.unwrap().kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
+            dtype_json = tuple(self.dtype.unwrap().descr)
         else:
-            dtype_json = self.dtype.str
+            dtype_json = self.dtype.unwrap().str
         zarray_dict["dtype"] = dtype_json
 
         return zarray_dict
@@ -377,42 +379,19 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
 
 
 def _default_compressor(
-    dtype: np.dtype[Any],
+    dtype: DTypeWrapper[Any, Any],
 ) -> dict[str, JSON] | None:
     """Get the default filters and compressor for a dtype.
 
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
     """
     default_compressor = config.get("array.v2_default_compressor")
-    if dtype.kind in "biufcmM":
-        dtype_key = "numeric"
-    elif dtype.kind in "U":
-        dtype_key = "string"
-    elif dtype.kind in "OSV":
-        dtype_key = "bytes"
-    else:
-        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
-
-    return cast(dict[str, JSON] | None, default_compressor.get(dtype_key, None))
+    return cast(dict[str, JSON] | None, default_compressor.get(dtype.kind, None))
 
 
 def _default_filters(
-    dtype: np.dtype[Any],
+    dtype: DTypeWrapper,
 ) -> list[dict[str, JSON]] | None:
-    """Get the default filters and compressor for a dtype.
-
-    https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
-    """
+    """Get the default filters and compressor for a dtype."""
     default_filters = config.get("array.v2_default_filters")
-    if dtype.kind in "biufcmM":
-        dtype_key = "numeric"
-    elif dtype.kind in "U":
-        dtype_key = "string"
-    elif dtype.kind in "OS":
-        dtype_key = "bytes"
-    elif dtype.kind == "V":
-        dtype_key = "raw"
-    else:
-        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
-
-    return cast(list[dict[str, JSON]] | None, default_filters.get(dtype_key, None))
+    return cast(list[dict[str, JSON]] | None, default_filters.get(dtype.kind, None))
