@@ -746,7 +746,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         if fill_value is None:
             # v3 spec will not allow a null fill value
-            fill_value_parsed = dtype.type(zarr_data_type._default_value)
+            fill_value_parsed = zarr_data_type.default_value
         else:
             fill_value_parsed = fill_value
 

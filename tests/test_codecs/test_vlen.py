@@ -53,15 +53,15 @@ def test_vlen_string(
     else:
         a[:, :] = data
     assert np.array_equal(data, a[:, :])
-    assert a.metadata.data_type == get_data_type_from_numpy(dtype)
-    assert a.dtype == expected_array_string_dtype
+    assert a.metadata.data_type == get_data_type_from_numpy(data.dtype)
+    assert a.dtype == data.dtype
 
     # test round trip
     b = Array.open(sp)
     assert isinstance(b.metadata, ArrayV3Metadata)  # needed for mypy
     assert np.array_equal(data, b[:, :])
-    assert b.metadata.data_type == get_data_type_from_numpy(dtype)
-    assert a.dtype == expected_array_string_dtype
+    assert b.metadata.data_type == get_data_type_from_numpy(data.dtype)
+    assert a.dtype == data.dtype
 
 
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])

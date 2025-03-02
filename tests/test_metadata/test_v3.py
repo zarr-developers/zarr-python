@@ -15,12 +15,13 @@ from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
-from zarr.core.metadata.dtype import Flexible, complex_from_json
+from zarr.core.metadata.dtype import FlexibleWrapperBase, complex_from_json
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     parse_dimension_names,
     parse_zarr_format,
 )
+from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.errors import MetadataValidationError
 from zarr.registry import get_data_type_from_numpy
 
@@ -56,20 +57,13 @@ float_dtypes = (
 )
 
 complex_dtypes = ("complex64", "complex128")
-flexible_dtypes = ("str", "bytes", "void")
+flexible_dtypes = ("str", "bytes", 'void')
 if _NUMPY_SUPPORTS_VLEN_STRING:
-    vlen_string_dtypes = ("T",)
+    vlen_string_dtypes = ("T","O")
 else:
-    vlen_string_dtypes = ("O",)
+    vlen_string_dtypes = ("O")
 
-dtypes = (
-    *bool_dtypes,
-    *int_dtypes,
-    *float_dtypes,
-    *complex_dtypes,
-    *flexible_dtypes,
-    *vlen_string_dtypes,
-)
+dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes, *flexible_dtypes, *vlen_string_dtypes)
 
 
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
@@ -132,7 +126,7 @@ def test_jsonify_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     """
     zarr_format = 3
     dtype = get_data_type_from_numpy(dtype_str)
-    expected = dtype.to_numpy().type(complex(*fill_value))
+    expected = dtype.to_dtype().type(complex(*fill_value))
     observed = dtype.from_json_value(fill_value, zarr_format=zarr_format)
     assert observed == expected
     assert dtype.to_json_value(observed, zarr_format=zarr_format) == tuple(fill_value)
@@ -341,11 +335,7 @@ async def test_special_float_fill_values(fill_value: str) -> None:
 @pytest.mark.parametrize("dtype_str", dtypes)
 def test_dtypes(dtype_str: str) -> None:
     dt = get_data_type_from_numpy(dtype_str)
-    np_dtype = dt.to_numpy()
+    np_dtype = dt.to_dtype()
+    assert isinstance(np_dtype, dt.dtype_cls)
+    assert np_dtype.type(0) == dt.cast_value(0)
 
-    if not isinstance(dt, Flexible):
-        assert dt.item_size == np_dtype.itemsize
-    else:
-        assert dt.length == np_dtype.itemsize
-
-    assert dt.numpy_character_code == np_dtype.char

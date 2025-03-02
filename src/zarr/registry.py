@@ -75,12 +75,10 @@ class DataTypeRegistry:
 
         self.lazy_load_list.clear()
 
-    def register(self: Self, cls: type[DTypeWrapper], clobber: bool = False) -> None:
-        if cls.name in self.contents and not clobber:
-            raise ValueError(
-                f"Data type {cls.name} already registered. Use clobber=True to overwrite."
-            )
-        self.contents[cls.name] = cls
+    def register(self: Self, cls: type[DTypeWrapper]) -> None:
+        # don't register the same dtype twice
+        if cls.name not in self.contents or self.contents[cls.name] != cls:
+            self.contents[cls.name] = cls
 
     def get(self, key: str) -> type[DTypeWrapper]:
         return self.contents[key]
@@ -354,8 +352,8 @@ def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeWrapper:
     np_dtype = np.dtype(dtype)
     __data_type_registry.lazy_load()
     for val in __data_type_registry.contents.values():
-        if val.numpy_character_code == np_dtype.char:
-            return val.from_str(np_dtype)
+        if val.dtype_cls is type(np_dtype):
+            return val.from_dtype(np_dtype)
     raise ValueError(
         f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__data_type_registry.contents)}."
     )
