@@ -89,6 +89,9 @@ class ArrayV2Metadata(Metadata):
         """
         shape_parsed = parse_shapelike(shape)
         chunks_parsed = parse_shapelike(chunks)
+        # TODO: remove this
+        if not isinstance(dtype, DTypeWrapper):
+            raise TypeError
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)

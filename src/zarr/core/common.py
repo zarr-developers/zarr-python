@@ -190,12 +190,6 @@ def parse_bool(data: Any) -> bool:
     raise ValueError(f"Expected bool, got {data} instead.")
 
 
-def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> DTypeWrapper[Any, Any]:
-    from zarr.registry import get_data_type_from_numpy
-
-    return get_data_type_from_numpy(np.dtype(dtype))
-
-
 def _warn_write_empty_chunks_kwarg() -> None:
     # TODO: link to docs page on array configuration in this message
     msg = (

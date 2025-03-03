@@ -151,7 +151,7 @@ class NDBuffer(core.NDBuffer):
         cls,
         *,
         shape: Iterable[int],
-        dtype: DTypeWrapper[Any, Any],
+        dtype: np.dtype[Any],
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
@@ -161,7 +161,7 @@ class NDBuffer(core.NDBuffer):
         else:
             return cls(
                 np.full(
-                    shape=tuple(shape), fill_value=fill_value, dtype=dtype.unwrap(), order=order
+                    shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order
                 )
             )
 

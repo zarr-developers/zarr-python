@@ -1010,7 +1010,7 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-    dtype_wrapped = parse_dtype(dtype, zarr_format=zarr_format)
+    dtype_wrapped = get_data_type_from_numpy(dtype)
     if zarr_format == 2:
         if chunks is None:
             chunks = shape

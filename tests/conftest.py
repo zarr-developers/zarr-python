@@ -19,7 +19,7 @@ from zarr.core.array import (
     _parse_chunk_key_encoding,
 )
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
-from zarr.core.common import JSON, DimensionNames, parse_shapelike
+from zarr.core.common import JSON, parse_shapelike
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     get_data_type_from_native_dtype,
@@ -28,6 +28,7 @@ from zarr.core.dtype.common import HasItemSize
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
+from zarr.registry import get_data_type_from_numpy
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 
 if TYPE_CHECKING:
@@ -280,7 +281,7 @@ def create_array_metadata(
     """
     Create array metadata
     """
-    dtype_parsed = get_data_type_from_native_dtype(dtype)
+    dtype_parsed = get_data_type_from_numpy(dtype)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format

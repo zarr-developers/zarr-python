@@ -4,16 +4,14 @@ from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
-
+from zarr.core.metadata.dtype import DTypeWrapper
 if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
-    from zarr.core.metadata.dtype import (
-        DTypeWrapper,
-    )
+    
 
 import json
 from collections.abc import Iterable
@@ -173,6 +171,9 @@ class ArrayV3Metadata(Metadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
 
+        # TODO: remove this
+        if not isinstance(data_type, DTypeWrapper):
+            raise TypeError
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
