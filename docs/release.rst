@@ -20,6 +20,11 @@ Release notes
 Unreleased
 ----------
 
+Fixes
+~~~~~
+* Fixed ``SQLiteStore`` with the latest version of ``sqlite3``.
+  By :user:`David Stansby <dstansby>`
+
 Deprecations
 ~~~~~~~~~~~~
 
