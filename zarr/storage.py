@@ -2779,9 +2779,9 @@ class SQLiteStore(Store):
         sep = "_" if path == "" else "/"
         keys = self.cursor.execute(
             f"""
-            SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
-                SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
-                FROM zarr WHERE k LIKE (? || "{sep}%")
+            SELECT DISTINCT SUBSTR(m, 0, INSTR(m, '/')) AS l FROM (
+                SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), '/') || '/' AS m
+                FROM zarr WHERE k LIKE (? || '{sep}%')
             ) ORDER BY l ASC
             """,
             (path, path),
@@ -2794,8 +2794,8 @@ class SQLiteStore(Store):
         size = self.cursor.execute(
             """
             SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
-            WHERE k LIKE (? || "%") AND
-                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
+            WHERE k LIKE (? || '%') AND
+                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), '/'), '/')
             """,
             (path, path),
         )
@@ -2806,7 +2806,7 @@ class SQLiteStore(Store):
         path = normalize_storage_path(path)
         if path:
             with self.lock:
-                self.cursor.execute('DELETE FROM zarr WHERE k LIKE (? || "/%")', (path,))
+                self.cursor.execute("DELETE FROM zarr WHERE k LIKE (? || '/%')", (path,))
         else:
             self.clear()
 

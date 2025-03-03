@@ -490,7 +490,7 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
         if path:
             for base in [meta_root, data_root]:
                 with self.lock:
-                    self.cursor.execute('DELETE FROM zarr WHERE k LIKE (? || "/%")', (base + path,))
+                    self.cursor.execute("DELETE FROM zarr WHERE k LIKE (? || '/%')", (base + path,))
             # remove any associated metadata files
             sfx = _get_metadata_suffix(self)
             meta_dir = (meta_root + path).rstrip("/")
