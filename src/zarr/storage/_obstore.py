@@ -4,8 +4,7 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.store import (
     ByteRequest,
@@ -14,7 +13,6 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer.core import BufferPrototype
 from zarr.core.config import config
 
 if TYPE_CHECKING:
