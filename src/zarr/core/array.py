@@ -58,7 +58,6 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     concurrent_map,
-    parse_dtype,
     parse_order,
     parse_shapelike,
     product,
@@ -1034,7 +1033,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     @property
-    def dtype(self) -> np.dtype[Any]:
+    def dtype(self) -> DTypeWrapper[Any, Any]:
         """Returns the data type of the array.
 
         Returns
@@ -3918,7 +3917,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    dtype_wrapped = parse_dtype(dtype, zarr_format=zarr_format)
+    dtype_wrapped = get_data_type_from_numpy(dtype)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
