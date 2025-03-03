@@ -130,6 +130,7 @@ filterwarnings = [
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
     "ignore:The .* is deprecated and will be removed in a Zarr-Python version 3*:FutureWarning",
     "ignore:The experimental Zarr V3 implementation in this version .*:FutureWarning",
+    "ignore:unclosed database in <sqlite3.Connection.*:ResourceWarning",
 ]
 doctest_subpackage_requires = [
     "zarr/core.py = numpy>=2",
