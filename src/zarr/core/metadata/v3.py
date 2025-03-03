@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import warnings
 from typing import TYPE_CHECKING, TypedDict, overload
 
@@ -174,11 +175,13 @@ class V3JsonEncoder(json.JSONEncoder):
             return str(o)
         if np.isscalar(o):
             out: Any
-            if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
+            if hasattr(o, "dtype") and o.dtype.kind in "Mm" and hasattr(o, "view"):
                 # https://github.com/zarr-developers/zarr-python/issues/2119
                 # `.item()` on a datetime type might or might not return an
                 # integer, depending on the value.
                 # Explicitly cast to an int first, and then grab .item()
+                if np.isnat(o):
+                    return "NaT"
                 out = o.view("i8").item()
             else:
                 # convert numpy scalar to python type, and pass
@@ -440,12 +443,25 @@ FLOAT_DTYPE = Literal["float16", "float32", "float64"]
 FLOAT = np.float16 | np.float32 | np.float64
 COMPLEX_DTYPE = Literal["complex64", "complex128"]
 COMPLEX = np.complex64 | np.complex128
+DATETIME_DTYPE = Literal["datetime64"]
+DATETIME = np.datetime64
+TIMEDELTA_DTYPE = Literal["timedelta64"]
+TIMEDELTA = np.timedelta64
 STRING_DTYPE = Literal["string"]
 STRING = np.str_
 BYTES_DTYPE = Literal["bytes"]
 BYTES = np.bytes_
 
-ALL_DTYPES = BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | STRING_DTYPE | BYTES_DTYPE
+ALL_DTYPES = (
+    BOOL_DTYPE
+    | INTEGER_DTYPE
+    | FLOAT_DTYPE
+    | COMPLEX_DTYPE
+    | DATETIME_DTYPE
+    | TIMEDELTA_DTYPE
+    | STRING_DTYPE
+    | BYTES_DTYPE
+)
 
 
 @overload
@@ -488,6 +504,20 @@ def parse_fill_value(
     fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
     dtype: BYTES_DTYPE,
 ) -> BYTES: ...
+
+
+@overload
+def parse_fill_value(
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
+    dtype: DATETIME_DTYPE,
+) -> DATETIME: ...
+
+
+@overload
+def parse_fill_value(
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
+    dtype: TIMEDELTA_DTYPE,
+) -> TIMEDELTA: ...
 
 
 def parse_fill_value(
@@ -551,12 +581,24 @@ def parse_fill_value(
         # fill_value != casted_value below.
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
-            casted_value = np.dtype(np_dtype).type(fill_value)
+            if np.dtype(np_dtype).kind in "Mm":
+                # datetime64 values have an associated precision
+                match = re.search(r"\[(.*?)\]", np.dtype(np_dtype).str)
+                if match:
+                    precision = match.group(1)
+                else:
+                    precision = "s"
+                casted_value = np.dtype(np_dtype).type(fill_value, precision)
+            else:
+                casted_value = np.dtype(np_dtype).type(fill_value)
     except (ValueError, OverflowError, TypeError) as e:
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}") from e
     # Check if the value is still representable by the dtype
-    if (fill_value == "NaN" and np.isnan(casted_value)) or (
-        fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value)
+    if (
+        (fill_value == "NaN" and np.isnan(casted_value))
+        or (fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value))
+        or (fill_value == "NaT" and np.isnat(casted_value))
+        or (np.dtype(np_dtype).kind in "Mm" and np.isnat(casted_value) and np.isnat(fill_value))
     ):
         pass
     elif np_dtype.kind == "f":
@@ -576,7 +618,6 @@ def parse_fill_value(
     else:
         if fill_value != casted_value:
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
-
     return casted_value
 
 
@@ -585,9 +626,17 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
         return ""
     elif dtype == DataType.bytes:
         return b""
+    np_dtype = dtype.to_numpy()
+    np_dtype = cast(np.dtype[Any], np_dtype)
+    if np_dtype.kind in "Mm":
+        # datetime64 values have an associated precision
+        match = re.search(r"\[(.*?)\]", np_dtype.str)
+        if match:
+            precision = match.group(1)
+        else:
+            precision = "s"
+        return np_dtype.type("nat", precision)  # type: ignore[misc,call-arg]
     else:
-        np_dtype = dtype.to_numpy()
-        np_dtype = cast(np.dtype[Any], np_dtype)
         return np_dtype.type(0)  # type: ignore[misc]
 
 
@@ -610,6 +659,24 @@ class DataType(Enum):
     float64 = "float64"
     complex64 = "complex64"
     complex128 = "complex128"
+    datetime64ns = ("datetime[ns]",)
+    datetime64ms = ("datetime[ms]",)
+    datetime64s = ("datetime[s]",)
+    datetime64m = ("datetime[m]",)
+    datetime64h = ("datetime[h]",)
+    datetime64D = ("datetime[D]",)
+    datetime64W = ("datetime[W]",)
+    datetime64M = ("datetime[M]",)
+    datetime64Y = ("datetime[Y]",)
+    timedelta64ns = ("deltatime[ns]",)
+    timedelta64ms = ("deltatime[ms]",)
+    timedelta64s = ("deltatime[s]",)
+    timedelta64m = ("deltatime[m]",)
+    timedelta64h = ("deltatime[h]",)
+    timedelta64D = ("deltatime[D]",)
+    timedelta64W = ("deltatime[W]",)
+    timedelta64M = ("deltatime[M]",)
+    timedelta64Y = ("deltatime[Y]",)
     string = "string"
     bytes = "bytes"
 
@@ -630,6 +697,24 @@ class DataType(Enum):
             DataType.float64: 8,
             DataType.complex64: 8,
             DataType.complex128: 16,
+            DataType.datetime64ns: 8,
+            DataType.datetime64ms: 8,
+            DataType.datetime64s: 8,
+            DataType.datetime64m: 8,
+            DataType.datetime64h: 8,
+            DataType.datetime64D: 8,
+            DataType.datetime64W: 8,
+            DataType.datetime64M: 8,
+            DataType.datetime64Y: 8,
+            DataType.timedelta64ns: 8,
+            DataType.timedelta64ms: 8,
+            DataType.timedelta64s: 8,
+            DataType.timedelta64m: 8,
+            DataType.timedelta64h: 8,
+            DataType.timedelta64D: 8,
+            DataType.timedelta64W: 8,
+            DataType.timedelta64M: 8,
+            DataType.timedelta64Y: 8,
         }
         try:
             return data_type_byte_counts[self]
@@ -657,6 +742,24 @@ class DataType(Enum):
             DataType.float64: "f8",
             DataType.complex64: "c8",
             DataType.complex128: "c16",
+            DataType.datetime64ns: "M8[ns]",
+            DataType.datetime64ms: "M8[ms]",
+            DataType.datetime64s: "M8[s]",
+            DataType.datetime64m: "M8[m]",
+            DataType.datetime64h: "M8[h]",
+            DataType.datetime64D: "M8[D]",
+            DataType.datetime64W: "M8[W]",
+            DataType.datetime64M: "M8[M]",
+            DataType.datetime64Y: "M8[Y]",
+            DataType.timedelta64ns: "m8[ns]",
+            DataType.timedelta64ms: "m8[ms]",
+            DataType.timedelta64s: "m8[s]",
+            DataType.timedelta64m: "m8[m]",
+            DataType.timedelta64h: "m8[h]",
+            DataType.timedelta64D: "m8[D]",
+            DataType.timedelta64W: "m8[W]",
+            DataType.timedelta64M: "m8[M]",
+            DataType.timedelta64Y: "m8[Y]",
         }
         return data_type_to_numpy[self]
 
@@ -700,6 +803,24 @@ class DataType(Enum):
             "<f8": "float64",
             "<c8": "complex64",
             "<c16": "complex128",
+            "<M8[ns]": "datetime64ns",
+            "<M8[ms]": "datetime64ms",
+            "<M8[s]": "datetime64s",
+            "<M8[m]": "datetime64m",
+            "<M8[h]": "datetime64h",
+            "<M8[D]": "datetime64D",
+            "<M8[W]": "datetime64W",
+            "<M8[M]": "datetime64M",
+            "<M8[Y]": "datetime64Y",
+            "<m8[ns]": "timedelta64ns",
+            "<m8[ms]": "timedelta64ms",
+            "<m8[s]": "timedelta64s",
+            "<m8[m]": "timedelta64m",
+            "<m8[h]": "timedelta64h",
+            "<m8[D]": "timedelta64D",
+            "<m8[W]": "timedelta64W",
+            "<m8[M]": "timedelta64M",
+            "<m8[Y]": "timedelta64Y",
         }
         return DataType[dtype_to_data_type[dtype.str]]
 

@@ -313,43 +313,66 @@ def test_json_indent(indent: int):
         assert d == json.dumps(json.loads(d), indent=indent).encode()
 
 
-# @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
-# @pytest.mark.parametrize("precision", ["ns", "D"])
-# async def test_datetime_metadata(fill_value: int, precision: str) -> None:
-#     metadata_dict = {
-#         "zarr_format": 3,
-#         "node_type": "array",
-#         "shape": (1,),
-#         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-#         "data_type": f"<M8[{precision}]",
-#         "chunk_key_encoding": {"name": "default", "separator": "."},
-#         "codecs": (),
-#         "fill_value": np.datetime64(fill_value, precision),
-#     }
-#     metadata = ArrayV3Metadata.from_dict(metadata_dict)
-#     # ensure there isn't a TypeError here.
-#     d = metadata.to_buffer_dict(default_buffer_prototype())
-
-#     result = json.loads(d["zarr.json"].to_bytes())
-#     assert result["fill_value"] == fill_value
-
-
-def test_invalid_dtype_raises() -> None:
+@pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897, "NaT"])
+@pytest.mark.parametrize("precision", ["ns", "ms", "s", "m", "h", "D", "W", "M", "Y"])
+async def test_datetime_metadata(fill_value: int, precision: str) -> None:
     metadata_dict = {
         "zarr_format": 3,
         "node_type": "array",
         "shape": (1,),
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": "<M8[ns]",
+        "data_type": f"<M8[{precision}]",
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": (),
-        "fill_value": np.datetime64(0, "ns"),
+        "codecs": [BytesCodec()],
+        "fill_value": np.datetime64(fill_value, precision),
+    }
+    metadata = ArrayV3Metadata.from_dict(metadata_dict)
+    # ensure there isn't a TypeError here.
+    d = metadata.to_buffer_dict(default_buffer_prototype())
+    result = json.loads(d["zarr.json"].to_bytes())
+    assert result["fill_value"] == fill_value
+
+
+@pytest.mark.parametrize("fill_value", [None, -1, 0, 1, 2932897, "NaT"])
+@pytest.mark.parametrize("precision", ["ns", "ms", "s", "m", "h", "D", "W", "M", "Y"])
+async def test_deltatime_metadata(fill_value: int, precision: str) -> None:
+    metadata_dict = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": f"<m8[{precision}]",
+        "chunk_key_encoding": {"name": "default", "separator": "."},
+        "codecs": [BytesCodec()],
+        "fill_value": None if fill_value is None else np.timedelta64(fill_value, precision),
+    }
+    metadata = ArrayV3Metadata.from_dict(metadata_dict)
+    # ensure there isn't a TypeError here.
+    d = metadata.to_buffer_dict(default_buffer_prototype())
+    result = json.loads(d["zarr.json"].to_bytes())
+    if fill_value is None:
+        assert result["fill_value"] == "NaT"
+    else:
+        assert result["fill_value"] == fill_value
+
+
+@pytest.mark.parametrize("data", ["foo", object()])
+def test_invalid_dtype_raises(data) -> None:
+    metadata_dict = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": data,
+        "chunk_key_encoding": {"name": "default", "separator": "."},
+        "codecs": [BytesCodec()],
+        "fill_value": "",
     }
     with pytest.raises(ValueError, match=r"Invalid Zarr format 3 data_type: .*"):
         ArrayV3Metadata.from_dict(metadata_dict)
 
 
-@pytest.mark.parametrize("data", ["datetime64[s]", "foo", object()])
+@pytest.mark.parametrize("data", ["foo", object()])
 def test_parse_invalid_dtype_raises(data):
     with pytest.raises(ValueError, match=r"Invalid Zarr format 3 data_type: .*"):
         DataType.parse(data)

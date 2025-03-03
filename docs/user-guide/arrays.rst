@@ -619,6 +619,22 @@ In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is
 This means that 10*10 chunks are stored in each shard, and there are 10*10 shards in total.
 Without the ``shards`` argument, there would be 10,000 chunks stored as individual files.
 
+.. _user-guide-datetime:
+
+Datetime and Timedelta arrays
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+NumPy’s datetime64 (‘M8’) and timedelta64 (‘m8’) dtypes are supported for Zarr arrays, as long as the units are specified. E.g.:
+
+   >>> data = np.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]')
+   >>> z = zarr.create_array(store='data/example-datetime.zarr', shape=data.shape, dtype=data.dtype)
+   >>> z[:] = data
+   >>> z[:]
+   array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
+   >>> z[0] = '1999-12-31'
+   >>> z[:]
+   array(['1999-12-31', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
+
+
 Missing features in 3.0
 -----------------------
 
@@ -638,13 +654,6 @@ Fixed-length string arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 See the Zarr-Python 2 documentation on `Fixed-length string arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#string-arrays>`_ for more details.
-
-.. _user-guide-datetime:
-
-Datetime and Timedelta arrays
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Datetime and Timedelta <https://zarr.readthedocs.io/en/support-v2/tutorial.html#datetimes-and-timedeltas>`_ for more details.
 
 .. _user-guide-copy:
 
