@@ -1,0 +1,1 @@
+Opening a string or Path path is redirected to ZipStore if the path has a .zip suffix.
