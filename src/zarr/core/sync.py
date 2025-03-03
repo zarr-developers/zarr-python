@@ -6,7 +6,7 @@ import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
 from typing_extensions import ParamSpec
 
