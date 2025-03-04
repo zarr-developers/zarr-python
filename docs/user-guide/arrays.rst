@@ -31,7 +31,7 @@ module documentation.
 .. _user-guide-array:
 
 Initializing with Data
----------------------
+----------------------
 Pass existing data during array creation for better performance:
 
 .. code-block:: python
@@ -42,16 +42,16 @@ Pass existing data during array creation for better performance:
    data = np.random.rand(1000, 1000)
    arr = zarr.create_array("data.zarr", shape=data.shape, data=data)
 
-This avoids a separate write step and is more efficient than:
+This provides a more concise syntax compared to separate assignment:
 
 .. code-block:: python
 
-   # Less efficient approach
+   # Equivalent but verbose
    arr = zarr.create_array("data.zarr", shape=(1000, 1000))
    arr[:] = data
 
 .. note::
-   For cloud stores like S3, use ``data=`` with async writes for best performance.
+   Both methods leverage async writes when using async-compatible stores like S3.
 
 Reading and writing data
 ------------------------
