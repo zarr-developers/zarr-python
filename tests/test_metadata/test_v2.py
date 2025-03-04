@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Literal
 
-import numpy as np
 import pytest
 
 import zarr.api.asynchronous
@@ -14,6 +13,7 @@ from zarr.core.dtype.npy.float import Float32, Float64
 from zarr.core.dtype.npy.int import Int16
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
+from zarr.core.metadata.dtype import Float32, Float64, Int16
 from zarr.core.metadata.v2 import parse_zarr_format
 
 if TYPE_CHECKING:

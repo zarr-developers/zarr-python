@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable, Sequence
-from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
+from collections.abc import Iterable
+from enum import Enum
+from typing import TYPE_CHECKING, TypedDict, cast
 
 import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
-from zarr.core.metadata.dtype import DTypeWrapper
-from zarr.registry import get_data_type_from_numpy
+from zarr.core.metadata.dtype import (
+    DTypeWrapper,
+    StaticByteString,
+    StaticRawBytes,
+    get_data_type_from_numpy,
+)
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -116,10 +120,6 @@ class ArrayV2Metadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    @cached_property
-    def chunk_grid(self) -> RegularChunkGrid:
-        return RegularChunkGrid(chunk_shape=self.chunks)
-
     @property
     def shards(self) -> ChunkCoords | None:
         return None
@@ -185,23 +185,14 @@ class ArrayV2Metadata(Metadata):
                 codec_config.pop("checksum")
             zarray_dict["compressor"] = codec_config
 
-        if zarray_dict["filters"] is not None:
-            raw_filters = zarray_dict["filters"]
-            # TODO: remove this when we can stratically type the output JSON data structure
-            # entirely
-            if not isinstance(raw_filters, list | tuple):
-                raise TypeError("Invalid type for filters. Expected a list or tuple.")
-            new_filters = []
-            for f in raw_filters:
-                if isinstance(f, numcodecs.abc.Codec):
-                    new_filters.append(f.get_config())
-                else:
-                    new_filters.append(f)
-            zarray_dict["filters"] = new_filters
-
-        # serialize the fill value after dtype-specific JSON encoding
-        if self.fill_value is not None:
-            fill_value = self.dtype.to_json_scalar(self.fill_value, zarr_format=2)
+        if (
+            isinstance(self.dtype, StaticByteString | StaticRawBytes)
+            and self.fill_value is not None
+        ):
+            # There's a relationship between self.dtype and self.fill_value
+            # that mypy isn't aware of. The fact that we have S or V dtype here
+            # means we should have a bytes-type fill_value.
+            fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
         _ = zarray_dict.pop("dtype")
@@ -340,35 +331,6 @@ def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
             raise ValueError(msg) from e
 
     return fill_value
-
-
-def _default_fill_value(dtype: np.dtype[Any]) -> Any:
-    """
-    Get the default fill value for a type.
-
-    Notes
-    -----
-    This differs from :func:`parse_fill_value`, which parses a fill value
-    stored in the Array metadata into an in-memory value. This only gives
-    the default fill value for some type.
-
-    This is useful for reading Zarr format 2 arrays, which allow the fill
-    value to be unspecified.
-    """
-    if dtype.kind == "S":
-        return b""
-    elif dtype.kind in "UO":
-        return ""
-    elif dtype.kind in "Mm":
-        return dtype.type("nat")
-    elif dtype.kind == "V":
-        if dtype.fields is not None:
-            default = tuple(_default_fill_value(field[0]) for field in dtype.fields.values())
-            return np.array([default], dtype=dtype)
-        else:
-            return np.zeros(1, dtype=dtype)
-    else:
-        return dtype.type(0)
 
 
 def _default_compressor(

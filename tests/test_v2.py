@@ -70,31 +70,35 @@ def test_codec_pipeline() -> None:
         ("|V10", "|V10", b"X", "WAAAAAAAAAAAAA=="),
     ],
 )
-async def test_v2_encode_decode(
-    dtype: str, expected_dtype: str, fill_value: bytes, fill_value_json: str
-) -> None:
-    store = zarr.storage.MemoryStore()
-    g = zarr.group(store=store, zarr_format=2)
-    g.create_array(
-        name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
-    )
+async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_json) -> None:
+    with config.set(
+        {
+            "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
+            "array.v2_default_compressor.bytes": None,
+        }
+    ):
+        store = zarr.storage.MemoryStore()
+        g = zarr.group(store=store, zarr_format=2)
+        g.create_array(
+            name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
+        )
 
     result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
     assert result is not None
 
-    serialized = json.loads(result.to_bytes())
-    expected = {
-        "chunks": [3],
-        "compressor": None,
-        "dtype": expected_dtype,
-        "fill_value": fill_value_json,
-        "filters": None,
-        "order": "C",
-        "shape": [3],
-        "zarr_format": 2,
-        "dimension_separator": ".",
-    }
-    assert serialized == expected
+        serialized = json.loads(result.to_bytes())
+        expected = {
+            "chunks": [3],
+            "compressor": None,
+            "dtype": expected_dtype,
+            "fill_value": fill_value_json,
+            "filters": [{"id": "vlen-bytes"}] if dtype == "|S" else None,
+            "order": "C",
+            "shape": [3],
+            "zarr_format": 2,
+            "dimension_separator": ".",
+        }
+        assert serialized == expected
 
     data = zarr.open_array(store=store, path="foo")[:]
     np.testing.assert_equal(data, np.full((3,), b"X", dtype=dtype))
@@ -103,16 +107,10 @@ async def test_v2_encode_decode(
     np.testing.assert_equal(data, np.full((3,), b"X", dtype=dtype))
 
 
-@pytest.mark.parametrize(
-    ("dtype", "value"),
-    [
-        (NullTerminatedBytes(length=1), b"Y"),
-        (FixedLengthUTF32(length=1), "Y"),
-        (VariableLengthUTF8(), "Y"),
-    ],
-)
-def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str) -> None:
-    expected = np.full((3,), value, dtype=dtype.to_native_dtype())
+@pytest.mark.parametrize(("dtype", "value"), [("|S1", b"Y"), ("|U1", "Y"), ("O", "Y")])
+def test_v2_encode_decode_with_data(dtype, value):
+    dtype, value = dtype, value
+    expected = np.full((3,), value, dtype=dtype)
     a = zarr.create(
         shape=(3,),
         zarr_format=2,
@@ -121,6 +119,18 @@ def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str) -> None
     a[:] = expected
     data = a[:]
     np.testing.assert_equal(data, expected)
+
+
+@pytest.mark.parametrize("dtype", [str, "str"])
+async def test_create_dtype_str(dtype: Any) -> None:
+    data = ["a", "bb", "ccc"]
+    arr = zarr.create(shape=3, dtype=dtype, zarr_format=2)
+    assert arr.dtype.kind == "O"
+    assert arr.metadata.to_dict()["dtype"] == "|O"
+    assert arr.metadata.filters == (numcodecs.vlen.VLenUTF8(),)
+    arr[:] = data
+    result = arr[:]
+    np.testing.assert_array_equal(result, np.array(data, dtype="object"))
 
 
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
@@ -227,7 +237,7 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
 
 def test_default_compressor_deprecation_warning() -> None:
     with pytest.warns(DeprecationWarning, match="default_compressor is deprecated"):
-        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
+        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])

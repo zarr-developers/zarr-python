@@ -4,14 +4,20 @@ from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.metadata.dtype import DTypeWrapper
+from zarr.core.metadata.dtype import (
+    DTypeWrapper,
+    VariableLengthString,
+    get_data_type_by_name,
+    get_data_type_from_dict,
+)
+
 if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
-    
+
 
 import json
 from collections.abc import Iterable
@@ -37,7 +43,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
-from zarr.registry import get_codec_class, get_data_type_by_name, get_data_type_from_dict
+from zarr.registry import get_codec_class
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -94,13 +100,9 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DTypeWrapper) -> None:
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
     codec_class_name = abc.__class__.__name__
-    if dtype.kind == "string" and not codec_class_name == "VLenUTF8Codec":
+    if isinstance(dtype, VariableLengthString) and not codec_class_name == "VLenUTF8Codec":
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
-        )
-    if dtype.kind == "bytes" and not codec_class_name == "VLenBytesCodec":
-        raise ValueError(
-            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_class_name}`."
         )
 
 
@@ -224,11 +226,6 @@ class ArrayV3Metadata(Metadata):
             )
 
     @property
-    def dtype(self) -> np.dtype[Any]:
-        """Interpret Zarr dtype as NumPy dtype"""
-        return self.data_type.unwrap()
-
-    @property
     def ndim(self) -> int:
         return len(self.shape)
 
@@ -278,20 +275,6 @@ class ArrayV3Metadata(Metadata):
             if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
                 return self.codecs[0].codecs
         return self.codecs
-
-    def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
-    ) -> ArraySpec:
-        assert isinstance(self.chunk_grid, RegularChunkGrid), (
-            "Currently, only regular chunk grid is supported"
-        )
-        return ArraySpec(
-            shape=self.chunk_grid.chunk_shape,
-            dtype=self.dtype,
-            fill_value=self.fill_value,
-            config=array_config,
-            prototype=prototype,
-        )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)

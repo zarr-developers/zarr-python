@@ -11,8 +11,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config as zarr_config
-from zarr.core.metadata.dtype import DTypeWrapper
-from zarr.registry import get_data_type_from_numpy
+from zarr.core.metadata.dtype import DTypeWrapper, get_data_type_from_numpy
 
 if TYPE_CHECKING:
     from typing import NotRequired
@@ -101,7 +100,7 @@ class ArraySpec:
     def __init__(
         self,
         shape: ChunkCoords,
-        dtype: npt.DtypeLike | DTypeWrapper[Any, Any],
+        dtype: npt.DTypeLike | DTypeWrapper[Any, Any],
         fill_value: Any,
         config: ArrayConfig,
         prototype: BufferPrototype,

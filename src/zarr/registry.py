@@ -2,19 +2,14 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
-from dataclasses import dataclass, field
 from importlib.metadata import entry_points as get_entry_points
-from typing import TYPE_CHECKING, Any, Generic, Self, TypeVar
-
-import numpy as np
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from zarr.core.config import BadConfigError, config
-from zarr.core.dtype import data_type_registry
+from zarr.core.metadata.dtype import data_type_registry
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
-
-    import numpy.typing as npt
 
     from zarr.abc.codec import (
         ArrayArrayCodec,
@@ -25,7 +20,6 @@ if TYPE_CHECKING:
     )
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
-    from zarr.core.metadata.dtype import DTypeWrapper
 
 __all__ = [
     "Registry",
@@ -59,31 +53,10 @@ class Registry(dict[str, type[T]], Generic[T]):
         self[qualname] = cls
 
 
-@dataclass(frozen=True, kw_only=True)
-class DataTypeRegistry:
-    contents: dict[str, type[DTypeWrapper]] = field(default_factory=dict, init=False)
-    lazy_load_list: list[EntryPoint] = field(default_factory=list, init=False)
-
-    def lazy_load(self) -> None:
-        for e in self.lazy_load_list:
-            self.register(e.load())
-
-        self.lazy_load_list.clear()
-
-    def register(self: Self, cls: type[DTypeWrapper]) -> None:
-        # don't register the same dtype twice
-        if cls.name not in self.contents or self.contents[cls.name] != cls:
-            self.contents[cls.name] = cls
-
-    def get(self, key: str) -> type[DTypeWrapper]:
-        return self.contents[key]
-
-
 __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
-__data_type_registry = DataTypeRegistry()
 
 """
 The registry module is responsible for managing implementations of codecs,
@@ -120,8 +93,8 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
 
-    __data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
-    __data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
+    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
+    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
 
     __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     __pipeline_registry.lazy_load_list.extend(
@@ -166,10 +139,6 @@ def register_ndbuffer(cls: type[NDBuffer], qualname: str | None = None) -> None:
 
 def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
     __buffer_registry.register(cls, qualname)
-
-
-def register_data_type(cls: type[DTypeWrapper]) -> None:
-    __data_type_registry.register(cls)
 
 
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
@@ -305,38 +274,6 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
         return ndbuffer_class
     raise BadConfigError(
         f"NDBuffer class '{path}' not found in registered buffers: {list(__ndbuffer_registry)}."
-    )
-
-
-def get_data_type_by_name(dtype: str, configuration: dict[str, JSON] | None = None) -> DTypeWrapper:
-    __data_type_registry.lazy_load()
-    if configuration is None:
-        _configuration = {}
-    else:
-        _configuration = configuration
-    maybe_dtype_cls = __data_type_registry.get(dtype)
-    if maybe_dtype_cls is None:
-        raise ValueError(f"No data type class matching name {dtype}")
-    return maybe_dtype_cls.from_dict(_configuration)
-
-
-def get_data_type_from_dict(dtype: dict[str, JSON]) -> DTypeWrapper:
-    __data_type_registry.lazy_load()
-    dtype_name = dtype["name"]
-    dtype_cls = __data_type_registry.get(dtype_name)
-    if dtype_cls is None:
-        raise ValueError(f"No data type class matching name {dtype_name}")
-    return dtype_cls.from_dict(dtype.get("configuration", {}))
-
-
-def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeWrapper:
-    np_dtype = np.dtype(dtype)
-    __data_type_registry.lazy_load()
-    for val in __data_type_registry.contents.values():
-        if val.dtype_cls is type(np_dtype):
-            return val.wrap(np_dtype)
-    raise ValueError(
-        f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(__data_type_registry.contents)}."
     )
 
 

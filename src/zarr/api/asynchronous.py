@@ -9,17 +9,14 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.abc.store import Store
 from zarr.core.array import (
-    DEFAULT_FILL_VALUE,
     Array,
     AsyncArray,
-    CompressorLike,
+    _get_default_chunk_encoding_v2,
     create_array,
-    from_array,
     get_array_metadata,
 )
-from zarr.core.array_spec import ArrayConfigLike, parse_array_config
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
@@ -39,9 +36,8 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v2 import _default_compressor, _default_filters
+from zarr.core.metadata.dtype import get_data_type_from_numpy
 from zarr.errors import NodeTypeValidationError
-from zarr.registry import get_data_type_from_numpy
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -1014,10 +1010,11 @@ async def create(
     if zarr_format == 2:
         if chunks is None:
             chunks = shape
-        if not filters:
-            filters = _default_filters(dtype_wrapped)
-        if not compressor:
-            compressor = _default_compressor(dtype_wrapped)
+        default_filters, default_compressor = _get_default_chunk_encoding_v2(dtype_wrapped)
+        if filters is None:
+            filters = default_filters
+        if compressor is None:
+            compressor = default_compressor
     elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
         if chunks is not None:
             chunk_shape = chunks

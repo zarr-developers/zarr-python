@@ -57,7 +57,7 @@ class BytesCodec(ArrayBytesCodec):
             return {"name": "bytes", "configuration": {"endian": self.endian.value}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        if array_spec.dtype.unwrap().itemsize == 0:
+        if array_spec.dtype.unwrap().itemsize == 1:
             if self.endian is not None:
                 return replace(self, endian=None)
         elif self.endian is None:
@@ -72,12 +72,15 @@ class BytesCodec(ArrayBytesCodec):
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
         assert isinstance(chunk_bytes, Buffer)
-        # TODO: remove endianness enum in favor of literal union
-        endian_str = self.endian.value if self.endian is not None else None
-        if isinstance(chunk_spec.dtype, HasEndianness):
-            dtype = replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()  # type: ignore[call-arg]
+        if chunk_spec.dtype.unwrap().itemsize > 0:
+            if self.endian == Endian.little:
+                prefix = "<"
+            else:
+                prefix = ">"
+            dtype = np.dtype(f"{prefix}{chunk_spec.dtype.unwrap().str[1:]}")
         else:
-            dtype = chunk_spec.dtype.to_native_dtype()
+            dtype = np.dtype(f"|{chunk_spec.dtype.unwrap().str[1:]}")
+
         as_array_like = chunk_bytes.as_array_like()
         if isinstance(as_array_like, NDArrayLike):
             as_nd_array_like = as_array_like
