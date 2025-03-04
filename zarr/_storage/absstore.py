@@ -231,7 +231,7 @@ class ABSStore(Store):
             elif not fs_path.endswith("/"):
                 fs_path += "/"
             for blob in self.client.walk_blobs(name_starts_with=fs_path, delimiter="/"):
-                blob_client = self.client.get_blob_client(blob)
+                blob_client = self.client.get_blob_client(blob.name)
                 if blob_client.exists():
                     size += blob_client.get_blob_properties().size
             return size
