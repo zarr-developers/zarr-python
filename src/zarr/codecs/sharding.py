@@ -50,6 +50,7 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
+from zarr.core.metadata.dtype import DTypeWrapper
 from zarr.core.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
@@ -403,7 +404,9 @@ class ShardingCodec(
             return replace(self, codecs=evolved_codecs)
         return self
 
-    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self, *, shape: ChunkCoords, dtype: DTypeWrapper[Any, Any], chunk_grid: ChunkGrid
+    ) -> None:
         if len(self.chunk_shape) != len(shape):
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
@@ -484,7 +487,10 @@ class ShardingCodec(
 
         # setup output array
         out = shard_spec.prototype.nd_buffer.create(
-            shape=indexer.shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
+            shape=indexer.shape,
+            dtype=shard_spec.dtype.unwrap(),
+            order=shard_spec.order,
+            fill_value=0,
         )
 
         indexed_chunks = list(indexer)

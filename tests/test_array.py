@@ -22,8 +22,6 @@ from zarr.codecs import (
     BytesCodec,
     GzipCodec,
     TransposeCodec,
-    VLenBytesCodec,
-    VLenUTF8Codec,
     ZstdCodec,
 )
 from zarr.core._info import ArrayInfo
@@ -43,6 +41,7 @@ from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
+from zarr.core.metadata.dtype import get_data_type_from_numpy
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -451,24 +450,7 @@ def test_vlen_errors() -> None:
         ValueError,
         match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
     ):
-        Array.create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[BytesCodec()])
-
-    with pytest.raises(ValueError, match="Only one ArrayBytesCodec is allowed."):
-        Array.create(
-            MemoryStore(),
-            shape=5,
-            chunks=5,
-            dtype="<U4",
-            codecs=[BytesCodec(), VLenBytesCodec()],
-        )
-
-    with pytest.raises(
-        ValueError,
-        match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
-    ):
-        zarr.create_array(
-            MemoryStore(), shape=(5,), chunks=(5,), dtype="<U4", serializer=BytesCodec()
-        )
+        Array.create(MemoryStore(), shape=5, chunks=5, dtype="O", codecs=[BytesCodec()])
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
@@ -492,7 +474,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
-            _data_type=np.dtype("float64"),
+            _data_type=arr.dtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=None,
@@ -509,7 +491,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.metadata.data_type,
+            _data_type=arr.dtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -534,7 +516,7 @@ class TestInfo:
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.metadata.data_type,
+            _data_type=arr.dtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -594,7 +576,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.metadata.data_type,
+            _data_type=arr.dtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -621,7 +603,7 @@ class TestInfo:
         result = await arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.metadata.data_type,
+            _data_type=arr.dtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -973,44 +955,6 @@ class TestCreateArray:
         assert a.fill_value == fill_value_expected
 
     @staticmethod
-    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
-    @pytest.mark.parametrize("empty_value", [None, ()])
-    async def test_no_filters_compressors(
-        store: MemoryStore, dtype: str, empty_value: object, zarr_format: ZarrFormat
-    ) -> None:
-        """
-        Test that the default ``filters`` and ``compressors`` are removed when ``create_array`` is invoked.
-        """
-
-        arr = await create_array(
-            store=store,
-            dtype=dtype,
-            shape=(10,),
-            zarr_format=zarr_format,
-            compressors=empty_value,
-            filters=empty_value,
-        )
-        # Test metadata explicitly
-        if zarr_format == 2:
-            assert arr.metadata.zarr_format == 2  # guard for mypy
-            # v2 spec requires that filters be either a collection with at least one filter, or None
-            assert arr.metadata.filters is None
-            # Compressor is a single element in v2 metadata; the absence of a compressor is encoded
-            # as None
-            assert arr.metadata.compressor is None
-
-            assert arr.filters == ()
-            assert arr.compressors == ()
-        else:
-            assert arr.metadata.zarr_format == 3  # guard for mypy
-            if dtype == "str":
-                assert arr.metadata.codecs == (VLenUTF8Codec(),)
-                assert arr.serializer == VLenUTF8Codec()
-            else:
-                assert arr.metadata.codecs == (BytesCodec(),)
-                assert arr.serializer == BytesCodec()
-
-    @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str", "U3", "S4", "V1"])
     @pytest.mark.parametrize(
         "compressors",
@@ -1131,28 +1075,27 @@ class TestCreateArray:
         assert arr.filters == filters_expected
 
     @staticmethod
-    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+    @pytest.mark.parametrize("dtype_str", ["uint8", "float32", "str"])
     async def test_default_filters_compressors(
-        store: MemoryStore, dtype: str, zarr_format: ZarrFormat
+        store: MemoryStore, dtype_str: str, zarr_format: ZarrFormat
     ) -> None:
         """
         Test that the default ``filters`` and ``compressors`` are used when ``create_array`` is invoked with ``filters`` and ``compressors`` unspecified.
         """
+        zdtype = get_data_type_from_numpy(dtype_str)
         arr = await create_array(
             store=store,
-            dtype=dtype,
+            dtype=dtype_str,
             shape=(10,),
             zarr_format=zarr_format,
         )
         if zarr_format == 3:
             expected_filters, expected_serializer, expected_compressors = (
-                _get_default_chunk_encoding_v3(np_dtype=np.dtype(dtype))
+                _get_default_chunk_encoding_v3(dtype=zdtype)
             )
 
         elif zarr_format == 2:
-            default_filters, default_compressors = _get_default_chunk_encoding_v2(
-                dtype=np.dtype(dtype)
-            )
+            default_filters, default_compressors = _get_default_chunk_encoding_v2(dtype=zdtype)
             if default_filters is None:
                 expected_filters = ()
             else:

@@ -17,7 +17,6 @@ from zarr.abc.codec import (
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
-from zarr.core.metadata.v2 import _default_fill_value
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -64,7 +63,7 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
         # validated when decoding the metadata, but we support reading
         # Zarr V2 data and need to support the case where fill_value
         # is None.
-        return _default_fill_value(dtype=chunk_spec.dtype)
+        return chunk_spec.dtype.default_value
     else:
         return fill_value
 
@@ -317,7 +316,7 @@ class BatchedCodecPipeline(CodecPipeline):
         if existing_chunk_array is None:
             chunk_array = chunk_spec.prototype.nd_buffer.create(
                 shape=chunk_spec.shape,
-                dtype=chunk_spec.dtype,
+                dtype=chunk_spec.dtype.unwrap(),
                 order=chunk_spec.order,
                 fill_value=fill_value_or_default(chunk_spec),
             )

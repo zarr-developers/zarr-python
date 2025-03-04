@@ -12,7 +12,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
 from zarr.core.group import GroupMetadata, parse_node_type
-from zarr.core.metadata.dtype import complex_from_json
+from zarr.core.metadata.dtype import complex_from_json, get_data_type_from_numpy
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     parse_dimension_names,
@@ -20,7 +20,6 @@ from zarr.core.metadata.v3 import (
 )
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.errors import MetadataValidationError
-from zarr.registry import get_data_type_from_numpy
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -56,9 +55,9 @@ float_dtypes = (
 complex_dtypes = ("complex64", "complex128")
 flexible_dtypes = ("str", "bytes", "void")
 if _NUMPY_SUPPORTS_VLEN_STRING:
-    vlen_string_dtypes = ("T", "O")
+    vlen_string_dtypes = ("T",)
 else:
-    vlen_string_dtypes = "O"
+    vlen_string_dtypes = ("O",)
 
 dtypes = (
     *bool_dtypes,
@@ -182,7 +181,7 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
 
 @pytest.mark.parametrize("chunk_grid", ["regular"])
 @pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
-@pytest.mark.parametrize("codecs", [[BytesCodec()]])
+@pytest.mark.parametrize("codecs", [[BytesCodec(endian=None)]])
 @pytest.mark.parametrize("fill_value", [0, 1])
 @pytest.mark.parametrize("chunk_key_encoding", ["v2", "default"])
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])

@@ -4,14 +4,17 @@ import base64
 import warnings
 from collections.abc import Iterable
 from enum import Enum
-from functools import cached_property
 from typing import TYPE_CHECKING, TypedDict, cast
 
 import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
-from zarr.core.metadata.dtype import DTypeWrapper
-from zarr.registry import get_data_type_from_numpy
+from zarr.core.metadata.dtype import (
+    DTypeWrapper,
+    StaticByteString,
+    StaticRawBytes,
+    get_data_type_from_numpy,
+)
 
 if TYPE_CHECKING:
     from typing import Any, Literal, Self
@@ -28,7 +31,6 @@ import numcodecs
 import numpy as np
 
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import JSON, ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
@@ -101,10 +103,6 @@ class ArrayV2Metadata(Metadata):
     @property
     def ndim(self) -> int:
         return len(self.shape)
-
-    @cached_property
-    def chunk_grid(self) -> RegularChunkGrid:
-        return RegularChunkGrid(chunk_shape=self.chunks)
 
     @property
     def shards(self) -> ChunkCoords | None:
@@ -199,11 +197,14 @@ class ArrayV2Metadata(Metadata):
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
 
-        if self.dtype.kind in "SV" and self.fill_value is not None:
+        if (
+            isinstance(self.dtype, StaticByteString | StaticRawBytes)
+            and self.fill_value is not None
+        ):
             # There's a relationship between self.dtype and self.fill_value
             # that mypy isn't aware of. The fact that we have S or V dtype here
             # means we should have a bytes-type fill_value.
-            fill_value = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
+            fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
         _ = zarray_dict.pop("dtype")
@@ -349,35 +350,6 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
             raise ValueError(msg) from e
 
     return fill_value
-
-
-def _default_fill_value(dtype: np.dtype[Any]) -> Any:
-    """
-    Get the default fill value for a type.
-
-    Notes
-    -----
-    This differs from :func:`parse_fill_value`, which parses a fill value
-    stored in the Array metadata into an in-memory value. This only gives
-    the default fill value for some type.
-
-    This is useful for reading Zarr format 2 arrays, which allow the fill
-    value to be unspecified.
-    """
-    if dtype.kind == "S":
-        return b""
-    elif dtype.kind in "UO":
-        return ""
-    elif dtype.kind in "Mm":
-        return dtype.type("nat")
-    elif dtype.kind == "V":
-        if dtype.fields is not None:
-            default = tuple(_default_fill_value(field[0]) for field in dtype.fields.values())
-            return np.array([default], dtype=dtype)
-        else:
-            return np.zeros(1, dtype=dtype)
-    else:
-        return dtype.type(0)
 
 
 def _default_compressor(
