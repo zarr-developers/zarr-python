@@ -1646,8 +1646,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        # metadata.attributes is "frozen" so we simply clear and update the dict
-        self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
 
         # Write new metadata

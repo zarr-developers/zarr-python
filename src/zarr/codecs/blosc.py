@@ -55,7 +55,7 @@ class BloscCname(Enum):
     zlib = "zlib"
 
 
-# See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
+# See https://zarr.readthedocs.io/en/stable/user-guide/performance.html#configuring-blosc
 numcodecs.blosc.use_threads = False
 
 
