@@ -292,13 +292,15 @@ async def make_store_path(
     else:
         assert mode in (None, "r", "r+", "a", "w", "w-")
         # if mode 'r' was provided, we'll open any new stores as read-only
+        if mode is None:
+            mode = "r"
         _read_only = mode == "r"
         if isinstance(store_like, Store):
             store = store_like
         elif store_like is None:
             store = await MemoryStore.open(read_only=_read_only)
         elif isinstance(store_like, Path) and store_like.suffix == ".zip":
-            store = await ZipStore.open(path=store_like, mode=mode or "r")
+            store = await ZipStore.open(path=store_like, mode=mode)
         elif isinstance(store_like, Path):
             store = await LocalStore.open(root=store_like, read_only=_read_only)
         elif isinstance(store_like, str):
@@ -310,7 +312,7 @@ async def make_store_path(
                     store_like, storage_options=storage_options, read_only=_read_only
                 )
             elif store_like.endswith(".zip"):
-                store = await ZipStore.open(path=Path(store_like), mode=mode or "r")
+                store = await ZipStore.open(path=Path(store_like), mode=mode)
             else:
                 store = await LocalStore.open(root=Path(store_like), read_only=_read_only)
         elif isinstance(store_like, dict):
