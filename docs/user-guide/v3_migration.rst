@@ -125,7 +125,7 @@ The Store API has changed significant in Zarr-Python 3. The most notable changes
 Store API are:
 
 Store Import Paths
-~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^
 Several store implementations have moved from the top-level module to ``zarr.storage``:
 
 .. code-block:: diff
