@@ -625,6 +625,7 @@ Datetime and Timedelta arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 NumPy’s datetime64 (‘M8’) and timedelta64 (‘m8’) dtypes are supported for Zarr arrays, as long as the units are specified. E.g.:
 
+.. code-block:: python
    >>> data = np.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]')
    >>> z = zarr.create_array(store='data/example-datetime.zarr', shape=data.shape, dtype=data.dtype)
    >>> z[:] = data

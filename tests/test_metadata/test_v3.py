@@ -56,7 +56,37 @@ float_dtypes = (
 complex_dtypes = ("complex64", "complex128")
 vlen_dtypes = ("string", "bytes")
 
-dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes, *vlen_dtypes)
+datetime_dtypes = (
+    "datetime64ns",
+    "datetime64ms",
+    "datetime64s",
+    "datetime64m",
+    "datetime64h",
+    "datetime64D",
+    "datetime64W",
+    "datetime64M",
+    "datetime64Y",
+)
+deltatime_dtypes = (
+    "timedelta64ns",
+    "timedelta64ms",
+    "timedelta64s",
+    "timedelta64m",
+    "timedelta64h",
+    "timedelta64D",
+    "timedelta64W",
+    "timedelta64M",
+    "timedelta64Y",
+)
+dtypes = (
+    *bool_dtypes,
+    *int_dtypes,
+    *float_dtypes,
+    *complex_dtypes,
+    *vlen_dtypes,
+    *datetime_dtypes,
+    *deltatime_dtypes,
+)
 
 
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
@@ -119,6 +149,8 @@ def test_default_fill_value(dtype_str: str) -> None:
         assert fill_value == ""
     elif dtype == DataType.bytes:
         assert fill_value == b""
+    elif np.dtype(dtype.to_numpy()).kind in "Mm":
+        assert np.isnat(fill_value.view())
     else:
         assert fill_value == dtype.to_numpy().type(0)
 
