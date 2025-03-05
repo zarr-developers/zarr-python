@@ -1,17 +1,20 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, get_args
 
 import numpy as np
 import pytest
 
 from zarr.core.metadata.dtype import (
+    DTYPE,
     Bool,
     Complex64,
     Complex128,
     DataTypeRegistry,
     DateTime64,
     DTypeWrapper,
+    FixedLengthAsciiString,
+    FixedLengthUnicodeString,
     Float16,
     Float32,
     Float64,
@@ -19,16 +22,21 @@ from zarr.core.metadata.dtype import (
     Int16,
     Int32,
     Int64,
-    StaticByteString,
     StaticRawBytes,
-    StaticUnicodeString,
     Structured,
     UInt8,
     UInt16,
     UInt32,
     UInt64,
     VariableLengthString,
+    data_type_registry,
 )
+
+
+@pytest.fixture
+def dtype_registry() -> DataTypeRegistry:
+    return DataTypeRegistry()
+
 
 _NUMPY_SUPPORTS_VLEN_STRING = hasattr(np.dtypes, "StringDType")
 if _NUMPY_SUPPORTS_VLEN_STRING:
@@ -55,8 +63,8 @@ else:
         (Float64, "float64"),
         (Complex64, "complex64"),
         (Complex128, "complex128"),
-        (StaticUnicodeString, "U"),
-        (StaticByteString, "S"),
+        (FixedLengthUnicodeString, "U"),
+        (FixedLengthAsciiString, "S"),
         (StaticRawBytes, "V"),
         (VariableLengthString, VLEN_STRING_CODE),
         (Structured, np.dtype([("a", np.float64), ("b", np.int8)])),
@@ -80,23 +88,14 @@ def test_wrap(wrapper_cls: type[DTypeWrapper[Any, Any]], np_dtype: np.dtype | st
     assert wrapped.unwrap() == dt
 
 
-def test_registry_match() -> None:
-    """
-    Test that registering a dtype in a data type registry works
-    Test that match_dtype resolves a numpy dtype into the stored dtype
-    Test that match_dtype raises an error if the dtype is not registered
-    """
-    local_registry = DataTypeRegistry()
-    local_registry.register(Bool)
-    assert isinstance(local_registry.match_dtype(np.dtype("bool")), Bool)
-    outside_dtype = "int8"
-    with pytest.raises(
-        ValueError, match=f"No data type wrapper found that matches {outside_dtype}"
-    ):
-        local_registry.match_dtype(np.dtype(outside_dtype))
-
-
-# start writing new tests here
+@pytest.mark.parametrize("wrapper_cls", get_args(DTYPE))
+def test_dict_serialization(wrapper_cls: DTYPE) -> None:
+    if issubclass(wrapper_cls, Structured):
+        instance = wrapper_cls(fields=((("a", Bool(), 0),)))
+    else:
+        instance = wrapper_cls()
+    as_dict = instance.to_dict()
+    assert wrapper_cls.from_dict(data=as_dict.get("configuration", {})) == instance
 
 
 @pytest.mark.parametrize(
@@ -116,9 +115,9 @@ def test_registry_match() -> None:
         (Float64(), np.float64(0)),
         (Complex64(), np.complex64(0)),
         (Complex128(), np.complex128(0)),
-        (StaticByteString(length=3), np.bytes_(b"")),
+        (FixedLengthAsciiString(length=3), np.bytes_(b"")),
         (StaticRawBytes(length=3), np.void(b"")),
-        (StaticUnicodeString(length=3), np.str_("")),
+        (FixedLengthUnicodeString(length=3), np.str_("")),
         (
             Structured(fields=(("a", Float64(), 0), ("b", Int8(), 8))),
             np.array([0], dtype=[("a", np.float64), ("b", np.int8)])[0],
@@ -154,9 +153,9 @@ def test_default_value(wrapper: type[DTypeWrapper[Any, Any]], expected_default: 
         (Float64(), np.float64(42.0), 42.0),
         (Complex64(), np.complex64(42.0 + 1.0j), (42.0, 1.0)),
         (Complex128(), np.complex128(42.0 + 1.0j), (42.0, 1.0)),
-        (StaticByteString(length=4), np.bytes_(b"test"), "dGVzdA=="),
+        (FixedLengthAsciiString(length=4), np.bytes_(b"test"), "dGVzdA=="),
         (StaticRawBytes(length=4), np.void(b"test"), "dGVzdA=="),
-        (StaticUnicodeString(length=4), np.str_("test"), "test"),
+        (FixedLengthUnicodeString(length=4), np.str_("test"), "test"),
         (VariableLengthString(), "test", "test"),
         (DateTime64(unit="s"), np.datetime64("2021-01-01T00:00:00", "s"), 1609459200),
     ],
@@ -187,9 +186,9 @@ def test_to_json_value_v2(
         (Float64(), 42.0, np.float64(42.0)),
         (Complex64(), (42.0, 1.0), np.complex64(42.0 + 1.0j)),
         (Complex128(), (42.0, 1.0), np.complex128(42.0 + 1.0j)),
-        (StaticByteString(length=4), "dGVzdA==", np.bytes_(b"test")),
+        (FixedLengthAsciiString(length=4), "dGVzdA==", np.bytes_(b"test")),
         (StaticRawBytes(length=4), "dGVzdA==", np.void(b"test")),
-        (StaticUnicodeString(length=4), "test", np.str_("test")),
+        (FixedLengthUnicodeString(length=4), "test", np.str_("test")),
         (VariableLengthString(), "test", "test"),
         (DateTime64(unit="s"), 1609459200, np.datetime64("2021-01-01T00:00:00", "s")),
     ],
@@ -201,3 +200,68 @@ def test_from_json_value(
     Test the from_json_value method for each dtype wrapper.
     """
     assert wrapper.from_json_value(json_value, zarr_format=2) == expected_value
+
+
+class TestRegistry:
+    @staticmethod
+    def test_register(dtype_registry: DataTypeRegistry) -> None:
+        """
+        Test that registering a dtype in a data type registry works.
+        """
+        dtype_registry.register(Bool)
+        assert dtype_registry.get("bool") == Bool
+        assert isinstance(dtype_registry.match_dtype(np.dtype("bool")), Bool)
+
+    @staticmethod
+    def test_override(dtype_registry: DataTypeRegistry) -> None:
+        """
+        Test that registering a new dtype with the same name works (overriding the previous one).
+        """
+        dtype_registry.register(Bool)
+
+        class NewBool(Bool):
+            def default_value(self) -> np.bool_:
+                return np.True_
+
+        dtype_registry.register(NewBool)
+        assert isinstance(dtype_registry.match_dtype(np.dtype("bool")), NewBool)
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("wrapper_cls", "dtype_str"), [(Bool, "bool"), (FixedLengthUnicodeString, "|U4")]
+    )
+    def test_match_dtype(
+        dtype_registry: DataTypeRegistry, wrapper_cls: type[DTypeWrapper[Any, Any]], dtype_str: str
+    ) -> None:
+        """
+        Test that match_dtype resolves a numpy dtype into an instance of the correspond wrapper for that dtype.
+        """
+        dtype_registry.register(wrapper_cls)
+        assert isinstance(dtype_registry.match_dtype(np.dtype(dtype_str)), wrapper_cls)
+
+    @staticmethod
+    def test_unregistered_dtype(dtype_registry: DataTypeRegistry) -> None:
+        """
+        Test that match_dtype raises an error if the dtype is not registered.
+        """
+        outside_dtype = "int8"
+        with pytest.raises(
+            ValueError, match=f"No data type wrapper found that matches dtype '{outside_dtype}'"
+        ):
+            dtype_registry.match_dtype(np.dtype(outside_dtype))
+
+        with pytest.raises(KeyError):
+            dtype_registry.get(outside_dtype)
+
+    @staticmethod
+    @pytest.mark.parametrize("wrapper_cls", get_args(DTYPE))
+    def test_registered_dtypes(wrapper_cls: DTypeWrapper[Any, Any]) -> None:
+        """
+        Test that the registered dtypes can be retrieved from the registry.
+        """
+        if issubclass(wrapper_cls, Structured):
+            instance = wrapper_cls(fields=((("a", Bool(), 0),)))
+        else:
+            instance = wrapper_cls()
+
+        assert data_type_registry.match_dtype(instance.unwrap()) == instance

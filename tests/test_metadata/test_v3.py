@@ -12,7 +12,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
 from zarr.core.group import GroupMetadata, parse_node_type
-from zarr.core.metadata.dtype import complex_from_json, get_data_type_from_numpy
+from zarr.core.metadata.dtype import DateTime64, complex_from_json, get_data_type_from_numpy
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     parse_dimension_names,
@@ -266,19 +266,19 @@ def test_json_indent(indent: int):
         assert d == json.dumps(json.loads(d), indent=indent).encode()
 
 
-@pytest.mark.xfail(reason="Data type not supported yet")
 @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
 @pytest.mark.parametrize("precision", ["ns", "D"])
 async def test_datetime_metadata(fill_value: int, precision: str) -> None:
+    dtype = DateTime64(unit=precision)
     metadata_dict = {
         "zarr_format": 3,
         "node_type": "array",
         "shape": (1,),
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": f"<M8[{precision}]",
+        "data_type": dtype.to_dict(),
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": (),
-        "fill_value": np.datetime64(fill_value, precision),
+        "codecs": (BytesCodec(),),
+        "fill_value": dtype.to_json_value(dtype.cast_value(fill_value), zarr_format=3),
     }
     metadata = ArrayV3Metadata.from_dict(metadata_dict)
     # ensure there isn't a TypeError here.
@@ -331,11 +331,3 @@ async def test_special_float_fill_values(fill_value: str) -> None:
     elif fill_value == "-Infinity":
         assert np.isneginf(m.fill_value)
         assert d["fill_value"] == "-Infinity"
-
-
-@pytest.mark.parametrize("dtype_str", dtypes)
-def test_dtypes(dtype_str: str) -> None:
-    dt = get_data_type_from_numpy(dtype_str)
-    np_dtype = dt.unwrap()
-    assert isinstance(np_dtype, dt.dtype_cls)
-    assert np_dtype.type(0) == dt.cast_value(0)

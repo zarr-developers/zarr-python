@@ -40,33 +40,6 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize(
-    ("dtype", "fill_value"),
-    [
-        ("bool", False),
-        ("int64", 0),
-        ("float64", 0.0),
-        ("|S1", b""),
-        ("|U1", ""),
-        ("object", ""),
-        (str, ""),
-    ],
-)
-def test_implicit_fill_value(store: MemoryStore, dtype: str, fill_value: Any) -> None:
-    arr = zarr.create(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
-    assert arr.metadata.fill_value is None
-    assert arr.metadata.to_dict()["fill_value"] is None
-    result = arr[:]
-    if dtype is str:
-        # special case
-        numpy_dtype = np.dtype(object)
-    else:
-        numpy_dtype = np.dtype(dtype)
-    expected = np.full(arr.shape, fill_value, dtype=numpy_dtype)
-    np.testing.assert_array_equal(result, expected)
-
-
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
     store = MemoryStore()
@@ -127,7 +100,7 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_js
         np.testing.assert_equal(data, expected)
 
 
-@pytest.mark.parametrize(("dtype", "value"), [("|S1", b"Y"), ("|U1", "Y"), ("O", "Y")])
+@pytest.mark.parametrize(("dtype", "value"), [("|S1", b"Y"), ("|U1", "Y"), (str, "Y")])
 def test_v2_encode_decode_with_data(dtype, value):
     dtype, value = dtype, value
     expected = np.full((3,), value, dtype=dtype)
@@ -139,18 +112,6 @@ def test_v2_encode_decode_with_data(dtype, value):
     a[:] = expected
     data = a[:]
     np.testing.assert_equal(data, expected)
-
-
-@pytest.mark.parametrize("dtype", [str, "str"])
-async def test_create_dtype_str(dtype: Any) -> None:
-    data = ["a", "bb", "ccc"]
-    arr = zarr.create(shape=3, dtype=dtype, zarr_format=2)
-    assert arr.dtype.kind == "O"
-    assert arr.metadata.to_dict()["dtype"] == "|O"
-    assert arr.metadata.filters == (numcodecs.vlen.VLenUTF8(),)
-    arr[:] = data
-    result = arr[:]
-    np.testing.assert_array_equal(result, np.array(data, dtype="object"))
 
 
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])

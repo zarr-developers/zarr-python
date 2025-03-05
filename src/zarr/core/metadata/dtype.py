@@ -16,6 +16,7 @@ from typing import (
     TypeVar,
     cast,
     get_args,
+    get_origin,
 )
 
 import numpy as np
@@ -133,7 +134,7 @@ def float_to_json_v2(data: float | np.floating[Any]) -> JSONFloat:
 
 def float_to_json_v3(data: float | np.floating[Any]) -> JSONFloat:
     # v3 can in principle handle distinct NaN values, but numpy does not represent these explicitly
-    # so we just re-use the v2 routine here
+    # so we just reuse the v2 routine here
     return float_to_json_v2(data)
 
 
@@ -148,11 +149,11 @@ def float_to_json(data: float | np.floating[Any], zarr_format: ZarrFormat) -> JS
     raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
 
 
-def complex_to_json_v2(data: complex | np.complexfloating[Any]) -> tuple[JSONFloat, JSONFloat]:
+def complex_to_json_v2(data: complex | np.complexfloating[Any, Any]) -> tuple[JSONFloat, JSONFloat]:
     return float_to_json_v2(data.real), float_to_json_v2(data.imag)
 
 
-def complex_to_json_v3(data: complex | np.complexfloating[Any]) -> tuple[JSONFloat, JSONFloat]:
+def complex_to_json_v3(data: complex | np.complexfloating[Any, Any]) -> tuple[JSONFloat, JSONFloat]:
     return float_to_json_v3(data.real), float_to_json_v3(data.imag)
 
 
@@ -226,15 +227,16 @@ def complex_from_json(
 
 
 def datetime_to_json(data: np.datetime64[Any]) -> int:
-    return data.view("int").item()
+    return data.view(np.int64).item()
 
 
 def datetime_from_json(data: int, unit: DateUnit | TimeUnit) -> np.datetime64[Any]:
     return np.int64(data).view(f"datetime64[{unit}]")
 
 
+TScalar = TypeVar("TScalar", bound=np.generic | str, covariant=True)
+# TODO: figure out an interface or protocol that non-numpy dtypes can
 TDType = TypeVar("TDType", bound=np.dtype[Any])
-TScalar = TypeVar("TScalar", bound=np.generic | str)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -244,17 +246,27 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
     endianness: Endianness | None = "native"
 
     def __init_subclass__(cls) -> None:
-        # Subclasses will bind the first generic type parameter to an attribute of the class
         # TODO: wrap this in some *very informative* error handling
         generic_args = get_args(get_original_bases(cls)[0])
-        cls.dtype_cls = generic_args[0]
+        # the logic here is that if a subclass was created with generic type parameters
+        # specified explicitly, then we bind that type parameter to the dtype_cls attribute
+        if len(generic_args) > 0:
+            cls.dtype_cls = generic_args[0]
+        else:
+            # but if the subclass was created without generic type parameters specified explicitly,
+            # then we check the parent DTypeWrapper classes and retrieve their generic type parameters
+            for base in cls.__orig_bases__:
+                if get_origin(base) is DTypeWrapper:
+                    generic_args = get_args(base)
+                    cls.dtype_cls = generic_args[0]
+                    break
         return super().__init_subclass__()
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name}
 
     def cast_value(self: Self, value: object) -> TScalar:
-        return cast(np.generic, self.unwrap().type(value))
+        return cast(TScalar, self.unwrap().type(value))
 
     @abstractmethod
     def default_value(self) -> TScalar: ...
@@ -455,7 +467,7 @@ class Complex128(DTypeWrapper[np.dtypes.Complex128DType, np.complex128]):
 @dataclass(frozen=True, kw_only=True)
 class FlexibleWrapperBase(DTypeWrapper[TDType, TScalar]):
     item_size_bits: ClassVar[int]
-    length: int
+    length: int = 0
 
     @classmethod
     def _wrap_unsafe(cls, dtype: TDType) -> Self:
@@ -467,7 +479,7 @@ class FlexibleWrapperBase(DTypeWrapper[TDType, TScalar]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class StaticByteString(FlexibleWrapperBase[np.dtypes.BytesDType, np.bytes_]):
+class FixedLengthAsciiString(FlexibleWrapperBase[np.dtypes.BytesDType, np.bytes_]):
     name = "numpy/static_byte_string"
     item_size_bits = 8
 
@@ -492,10 +504,17 @@ class StaticRawBytes(FlexibleWrapperBase[np.dtypes.VoidDType, np.void]):
     item_size_bits = 8
 
     def default_value(self) -> np.void:
-        return np.void(b"")
+        return self.cast_value(("\x00" * self.length).encode("ascii"))
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": f"r{self.length * self.item_size_bits}"}
+
+    @classmethod
+    def check_dtype(cls: type[Self], dtype: TDType) -> TypeGuard[TDType]:
+        """
+        Reject structured dtypes by ensuring that dtype.fields is None
+        """
+        return type(dtype) is cls.dtype_cls and dtype.fields is None
 
     def unwrap(self) -> np.dtypes.VoidDType:
         # this needs to be overridden because numpy does not allow creating a void type
@@ -512,7 +531,7 @@ class StaticRawBytes(FlexibleWrapperBase[np.dtypes.VoidDType, np.void]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class StaticUnicodeString(FlexibleWrapperBase[np.dtypes.StrDType, np.str_]):
+class FixedLengthUnicodeString(FlexibleWrapperBase[np.dtypes.StrDType, np.str_]):
     name = "numpy/static_unicode_string"
     item_size_bits = 32  # UCS4 is 32 bits per code point
 
@@ -599,7 +618,7 @@ TimeUnit = Literal["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
 @dataclass(frozen=True, kw_only=True)
 class DateTime64(DTypeWrapper[np.dtypes.DateTime64DType, np.datetime64]):
     name = "numpy/datetime64"
-    unit: DateUnit | TimeUnit
+    unit: DateUnit | TimeUnit = "s"
 
     def default_value(self) -> np.datetime64:
         return np.datetime64("NaT")
@@ -608,6 +627,9 @@ class DateTime64(DTypeWrapper[np.dtypes.DateTime64DType, np.datetime64]):
     def _wrap_unsafe(cls, dtype: np.dtypes.DateTime64DType) -> Self:
         unit = dtype.name[dtype.name.rfind("[") + 1 : dtype.name.rfind("]")]
         return cls(unit=unit)
+
+    def cast_value(self, value: object) -> np.datetime64:
+        return self.unwrap().type(value, self.unit)
 
     def unwrap(self) -> np.dtypes.DateTime64DType:
         return np.dtype(f"datetime64[{self.unit}]").newbyteorder(
@@ -651,6 +673,26 @@ class Structured(DTypeWrapper[np.dtypes.VoidDType, np.void]):
 
         return cls(fields=tuple(fields))
 
+    def to_dict(self) -> dict[str, JSON]:
+        base_dict = super().to_dict()
+        if base_dict.get("configuration", {}) != {}:
+            raise ValueError(
+                "This data type wrapper cannot inherit from a data type wrapper that defines a configuration for its dict serialization"
+            )
+        field_configs = [
+            (f_name, f_dtype.to_dict(), f_offset) for f_name, f_dtype, f_offset in self.fields
+        ]
+        base_dict["configuration"] = {"fields": field_configs}
+        return base_dict
+
+    @classmethod
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
+        fields = tuple(
+            (f_name, get_data_type_from_dict(f_dtype), f_offset)
+            for f_name, f_dtype, f_offset in data["fields"]
+        )
+        return cls(fields=fields)
+
     def unwrap(self) -> np.dtypes.VoidDType:
         return np.dtype([(key, dtype.unwrap()) for (key, dtype, _) in self.fields])
 
@@ -665,7 +707,7 @@ class Structured(DTypeWrapper[np.dtypes.VoidDType, np.void]):
         return np.array([as_bytes], dtype=dtype.str).view(dtype)[0]
 
 
-def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeWrapper:
+def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeWrapper[Any, Any]:
     if dtype in (str, "str"):
         if _NUMPY_SUPPORTS_VLEN_STRING:
             np_dtype = np.dtype("T")
@@ -674,17 +716,10 @@ def get_data_type_from_numpy(dtype: npt.DTypeLike) -> DTypeWrapper:
     else:
         np_dtype = np.dtype(dtype)
     data_type_registry.lazy_load()
-    for val in data_type_registry.contents.values():
-        try:
-            return val.wrap(np_dtype)
-        except TypeError:
-            pass
-    raise ValueError(
-        f"numpy dtype '{dtype}' does not have a corresponding Zarr dtype in: {list(data_type_registry.contents)}."
-    )
+    return data_type_registry.match_dtype(np_dtype)
 
 
-def get_data_type_from_dict(dtype: dict[str, JSON]) -> DTypeWrapper:
+def get_data_type_from_dict(dtype: dict[str, JSON]) -> DTypeWrapper[Any.Any]:
     data_type_registry.lazy_load()
     dtype_name = dtype["name"]
     dtype_cls = data_type_registry.get(dtype_name)
@@ -737,14 +772,14 @@ class DataTypeRegistry:
     def get(self, key: str) -> type[DTypeWrapper[Any, Any]]:
         return self.contents[key]
 
-    def match_dtype(self, dtype: npt.DTypeLike) -> DTypeWrapper[Any, Any]:
+    def match_dtype(self, dtype: TDType) -> DTypeWrapper[Any, Any]:
         self.lazy_load()
         for val in self.contents.values():
             try:
                 return val.wrap(dtype)
             except TypeError:
                 pass
-        raise ValueError(f"No data type wrapper found that matches {dtype}")
+        raise ValueError(f"No data type wrapper found that matches dtype '{dtype}'")
 
 
 def register_data_type(cls: type[DTypeWrapper[Any, Any]]) -> None:
@@ -756,7 +791,7 @@ data_type_registry = DataTypeRegistry()
 INTEGER_DTYPE = Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64
 FLOAT_DTYPE = Float16 | Float32 | Float64
 COMPLEX_DTYPE = Complex64 | Complex128
-STRING_DTYPE = StaticUnicodeString | VariableLengthString | StaticByteString
+STRING_DTYPE = FixedLengthUnicodeString | VariableLengthString | FixedLengthAsciiString
 DTYPE = (
     Bool
     | INTEGER_DTYPE

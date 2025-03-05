@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import warnings
 from collections.abc import Iterable
-from enum import Enum
 from typing import TYPE_CHECKING, TypedDict, cast
 
 import numcodecs.abc
@@ -11,8 +10,7 @@ import numcodecs.abc
 from zarr.abc.metadata import Metadata
 from zarr.core.metadata.dtype import (
     DTypeWrapper,
-    StaticByteString,
-    StaticRawBytes,
+    Structured,
     get_data_type_from_numpy,
 )
 
@@ -109,49 +107,12 @@ class ArrayV2Metadata(Metadata):
         return None
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        def _json_convert(
-            o: Any,
-        ) -> Any:
-            if isinstance(o, np.dtype):
-                if o.fields is None:
-                    return o.str
-                else:
-                    return o.descr
-            if isinstance(o, numcodecs.abc.Codec):
-                codec_config = o.get_config()
-
-                # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
-                if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
-                    codec_config.pop("checksum", None)
-
-                return codec_config
-            if np.isscalar(o):
-                out: Any
-                if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
-                    # https://github.com/zarr-developers/zarr-python/issues/2119
-                    # `.item()` on a datetime type might or might not return an
-                    # integer, depending on the value.
-                    # Explicitly cast to an int first, and then grab .item()
-                    out = o.view("i8").item()
-                else:
-                    # convert numpy scalar to python type, and pass
-                    # python types through
-                    out = getattr(o, "item", lambda: o)()
-                    if isinstance(out, complex):
-                        # python complex types are not JSON serializable, so we use the
-                        # serialization defined in the zarr v3 spec
-                        return [out.real, out.imag]
-                return out
-            if isinstance(o, Enum):
-                return o.name
-            raise TypeError
-
         zarray_dict = self.to_dict()
         zattrs_dict = zarray_dict.pop("attributes", {})
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
+                json.dumps(zarray_dict, indent=json_indent).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
                 json.dumps(zattrs_dict, indent=json_indent).encode()
@@ -196,11 +157,19 @@ class ArrayV2Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
+        if isinstance(zarray_dict["compressor"], numcodecs.abc.Codec):
+            zarray_dict["compressor"] = zarray_dict["compressor"].get_config()
+        if zarray_dict["filters"] is not None:
+            raw_filters = zarray_dict["filters"]
+            new_filters = []
+            for f in raw_filters:
+                if isinstance(f, numcodecs.abc.Codec):
+                    new_filters.append(f.get_config())
+                else:
+                    new_filters.append(f)
+            zarray_dict["filters"] = new_filters
 
-        if (
-            isinstance(self.dtype, StaticByteString | StaticRawBytes)
-            and self.fill_value is not None
-        ):
+        if self.fill_value is not None:
             # There's a relationship between self.dtype and self.fill_value
             # that mypy isn't aware of. The fact that we have S or V dtype here
             # means we should have a bytes-type fill_value.
@@ -209,10 +178,7 @@ class ArrayV2Metadata(Metadata):
 
         _ = zarray_dict.pop("dtype")
         dtype_json: JSON
-        # TODO: Replace this with per-dtype method
-        # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
-        dtype_descr = self.dtype.unwrap().descr
-        if self.dtype.unwrap().kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
+        if isinstance(self.dtype, Structured):
             dtype_json = tuple(self.dtype.unwrap().descr)
         else:
             dtype_json = self.dtype.unwrap().str
