@@ -101,8 +101,8 @@ def test_array_creates_implicit_groups(array):
             )
 
 
-# bump deadline from 200 to 500 to avoid (rare) intermittent timeouts
-@settings(deadline=500)
+# this decorator removes timeout; not ideal but it should avoid intermittent CI failures
+@settings(deadline=None)
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(simple_arrays())
