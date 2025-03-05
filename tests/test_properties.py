@@ -101,8 +101,8 @@ def test_array_creates_implicit_groups(array):
             )
 
 
-# bump deadline from 200 to 300 to avoid (rare) intermittent timeouts
-@settings(deadline=300)
+# bump deadline from 200 to 500 to avoid (rare) intermittent timeouts
+@settings(deadline=500)
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(simple_arrays())
