@@ -15,7 +15,7 @@ import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.metadata.v2 import parse_structured_fill_value
+from zarr.core.metadata.v2 import _parse_structured_fill_value
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
 
@@ -366,7 +366,7 @@ def test_structured_dtype_roundtrip(fill_value, tmp_path) -> None:
 def test_parse_structured_fill_value_valid(
     fill_value: Any, dtype: np.dtype[Any], expected_result: Any
 ) -> None:
-    result = parse_structured_fill_value(fill_value, dtype)
+    result = _parse_structured_fill_value(fill_value, dtype)
     assert result.dtype == expected_result.dtype
     assert result == expected_result
     if isinstance(expected_result, np.void):
@@ -396,7 +396,7 @@ def test_parse_structured_fill_value_valid(
 )
 def test_parse_structured_fill_value_invalid(fill_value: Any, dtype: np.dtype[Any]) -> None:
     with pytest.raises(ValueError):
-        parse_structured_fill_value(fill_value, dtype)
+        _parse_structured_fill_value(fill_value, dtype)
 
 
 @pytest.mark.parametrize("fill_value", [None, b"x"], ids=["no_fill", "fill"])

@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import numbers
+from typing import Any
 
 import numpy as np
 import pytest
@@ -12,7 +13,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given
+from hypothesis import assume, given, settings
 
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
@@ -30,7 +31,7 @@ from zarr.testing.strategies import (
 )
 
 
-def deep_equal(a, b):
+def deep_equal(a: Any, b: Any) -> bool:
     """Deep equality check with handling of special cases for array metadata classes"""
     if isinstance(a, (complex, np.complexfloating)) and isinstance(
         b, (complex, np.complexfloating)
@@ -100,6 +101,8 @@ def test_array_creates_implicit_groups(array):
             )
 
 
+# bump deadline from 200 to 300 to avoid (rare) intermittent timeouts
+@settings(deadline=300)
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(simple_arrays())
@@ -236,7 +239,7 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
 #     assert_array_equal(nparray, zarray[:])
 
 
-def serialized_float_is_valid(serialized):
+def serialized_float_is_valid(serialized: numbers.Real | str) -> bool:
     """
     Validate that the serialized representation of a float conforms to the spec.
 

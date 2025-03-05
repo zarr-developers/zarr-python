@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import warnings
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from enum import Enum
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypedDict, cast
@@ -109,29 +109,6 @@ class ArrayV2Metadata(Metadata):
         return None
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        def _serialize_fill_value(fv: Any) -> JSON:
-            if self.fill_value is None:
-                pass
-            elif self.dtype.kind in "SV":
-                # There's a relationship between self.dtype and self.fill_value
-                # that mypy isn't aware of. The fact that we have S or V dtype here
-                # means we should have a bytes-type fill_value.
-                fv = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
-            elif isinstance(fv, np.datetime64):
-                if np.isnat(fv):
-                    fv = "NaT"
-                else:
-                    fv = np.datetime_as_string(fv)
-            elif isinstance(fv, numbers.Real):
-                float_fv = float(fv)
-                if np.isnan(float_fv):
-                    fv = "NaN"
-                elif np.isinf(float_fv):
-                    fv = "Infinity" if float_fv > 0 else "-Infinity"
-            elif isinstance(fv, numbers.Complex):
-                fv = [_serialize_fill_value(fv.real), _serialize_fill_value(fv.imag)]
-            return cast(JSON, fv)
-
         def _json_convert(
             o: Any,
         ) -> Any:
@@ -170,7 +147,7 @@ class ArrayV2Metadata(Metadata):
             raise TypeError
 
         zarray_dict = self.to_dict()
-        zarray_dict["fill_value"] = _serialize_fill_value(zarray_dict["fill_value"])
+        zarray_dict["fill_value"] = _serialize_fill_value(self.fill_value, self.dtype)
         zattrs_dict = zarray_dict.pop("attributes", {})
         json_indent = config.get("json_indent")
         return {
@@ -185,7 +162,7 @@ class ArrayV2Metadata(Metadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ArrayV2Metadata:
+    def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
         # Make a copy to protect the original from modification.
         _data = data.copy()
         # Check that the zarr_format attribute is correct.
@@ -213,7 +190,7 @@ class ArrayV2Metadata(Metadata):
 
         _data = {k: v for k, v in _data.items() if k in expected}
 
-        return cls(**cast(Mapping[str, Any], _data))
+        return cls(**_data)
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
@@ -315,7 +292,7 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+def _parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     """Handle structured dtype/fill value pairs"""
     try:
         if isinstance(fill_value, list):
@@ -354,7 +331,10 @@ def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     if fill_value is None or dtype.hasobject:
         pass
     elif dtype.fields is not None:
-        fill_value = parse_structured_fill_value(fill_value, dtype)
+        # the dtype is structured (has multiple fields), so the fill_value might be a
+        # compound value (e.g., a tuple or dict) that needs field-wise processing.
+        # We use parse_structured_fill_value to correctly convert each component.
+        fill_value = _parse_structured_fill_value(fill_value, dtype)
     elif not isinstance(fill_value, np.void) and fill_value == 0:
         # this should be compatible across numpy versions for any array type, including
         # structured arrays
@@ -369,16 +349,9 @@ def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
             )
     elif dtype.kind in "SV" and isinstance(fill_value, str):
         fill_value = base64.standard_b64decode(fill_value)
-    elif np.issubdtype(dtype, np.datetime64):
-        if fill_value == "NaT":
-            fill_value = np.array("NaT", dtype=dtype)[()]
-        else:
-            fill_value = np.array(fill_value, dtype=dtype)[()]
     elif dtype.kind == "c" and isinstance(fill_value, list) and len(fill_value) == 2:
         complex_val = complex(float(fill_value[0]), float(fill_value[1]))
         fill_value = np.array(complex_val, dtype=dtype)[()]
-    elif dtype.kind in "f" and fill_value in {"NaN", "Infinity", "-Infinity"}:
-        fill_value = np.array(fill_value, dtype=dtype)[()]
     else:
         try:
             if isinstance(fill_value, bytes) and dtype.kind == "V":
@@ -392,6 +365,39 @@ def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
             raise ValueError(msg) from e
 
     return fill_value
+
+
+def _serialize_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> JSON:
+    serialized: JSON
+
+    if fill_value is None:
+        serialized = None
+    elif dtype.kind in "SV":
+        # There's a relationship between dtype and fill_value
+        # that mypy isn't aware of. The fact that we have S or V dtype here
+        # means we should have a bytes-type fill_value.
+        serialized = base64.standard_b64encode(cast(bytes, fill_value)).decode("ascii")
+    elif isinstance(fill_value, np.datetime64):
+        serialized = np.datetime_as_string(fill_value)
+    elif isinstance(fill_value, numbers.Integral):
+        serialized = int(fill_value)
+    elif isinstance(fill_value, numbers.Real):
+        float_fv = float(fill_value)
+        if np.isnan(float_fv):
+            serialized = "NaN"
+        elif np.isinf(float_fv):
+            serialized = "Infinity" if float_fv > 0 else "-Infinity"
+        else:
+            serialized = float_fv
+    elif isinstance(fill_value, numbers.Complex):
+        serialized = [
+            _serialize_fill_value(fill_value.real, dtype),
+            _serialize_fill_value(fill_value.imag, dtype),
+        ]
+    else:
+        serialized = fill_value
+
+    return serialized
 
 
 def _default_fill_value(dtype: np.dtype[Any]) -> Any:
