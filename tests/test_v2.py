@@ -367,6 +367,7 @@ def test_parse_structured_fill_value_valid(
     fill_value: Any, dtype: np.dtype[Any], expected_result: Any
 ) -> None:
     result = _parse_structured_fill_value(fill_value, dtype)
+    print(result)
     assert result.dtype == expected_result.dtype
     assert result == expected_result
     if isinstance(expected_result, np.void):

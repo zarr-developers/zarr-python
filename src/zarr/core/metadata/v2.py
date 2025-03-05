@@ -294,22 +294,21 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 def _parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     """Handle structured dtype/fill value pairs"""
+    print("FILL VALUE", fill_value, "DT", dtype)
     try:
         if isinstance(fill_value, list):
-            fill_value = tuple(fill_value)
-        if isinstance(fill_value, tuple):
-            fill_value = np.array([fill_value], dtype=dtype)[0]
+            return np.array([tuple(fill_value)], dtype=dtype)[0]
+        elif isinstance(fill_value, tuple):
+            return np.array([fill_value], dtype=dtype)[0]
         elif isinstance(fill_value, bytes):
-            fill_value = np.frombuffer(fill_value, dtype=dtype)[0]
+            return np.frombuffer(fill_value, dtype=dtype)[0]
         elif isinstance(fill_value, str):
             decoded = base64.standard_b64decode(fill_value)
-            fill_value = np.frombuffer(decoded, dtype=dtype)[0]
+            return np.frombuffer(decoded, dtype=dtype)[0]
         else:
-            fill_value = np.array(fill_value, dtype=dtype)[()]
+            return np.array(fill_value, dtype=dtype)[()]
     except Exception as e:
-        msg = f"Fill_value {fill_value} is not valid for dtype {dtype}."
-        raise ValueError(msg) from e
-    return fill_value
+        raise ValueError(f"Fill_value {fill_value} is not valid for dtype {dtype}.") from e
 
 
 def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
