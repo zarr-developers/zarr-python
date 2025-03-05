@@ -113,7 +113,8 @@ from zarr.core.metadata import (
 )
 from zarr.core.metadata.dtype import (
     DTypeWrapper,
-    StaticByteString,
+    FixedLengthAsciiString,
+    FixedLengthUnicodeString,
     VariableLengthString,
     get_data_type_from_numpy,
 )
@@ -754,7 +755,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         if fill_value is None:
             # v3 spec will not allow a null fill value
-            fill_value_parsed = dtype.default_value
+            fill_value_parsed = dtype.default_value()
         else:
             fill_value_parsed = fill_value
 
@@ -4685,7 +4686,7 @@ def _get_default_chunk_encoding_v3(
 
     if isinstance(dtype, VariableLengthString):
         serializer = VLenUTF8Codec()
-    elif isinstance(dtype, StaticByteString):
+    elif isinstance(dtype, FixedLengthAsciiString):
         serializer = VLenBytesCodec()
     else:
         if dtype.unwrap().itemsize == 1:
@@ -4707,9 +4708,9 @@ def _get_default_chunk_encoding_v2(
     from numcodecs import VLenUTF8 as numcodecs_VLenUTF8
     from numcodecs import Zstd as numcodecs_zstd
 
-    if isinstance(dtype, VariableLengthString):
+    if isinstance(dtype, VariableLengthString | FixedLengthUnicodeString):
         filters = (numcodecs_VLenUTF8(),)
-    elif isinstance(dtype, StaticByteString):
+    elif isinstance(dtype, FixedLengthAsciiString):
         filters = (numcodecs_VLenBytes(),)
     else:
         filters = None

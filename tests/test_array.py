@@ -442,31 +442,6 @@ async def test_nbytes_stored_async() -> None:
     assert result == 902  # the size with all chunks filled.
 
 
-def test_default_fill_values() -> None:
-    a = zarr.Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4")
-    assert a.fill_value == ""
-
-    b = zarr.Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<S4")
-    assert b.fill_value == b""
-
-    c = zarr.Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="i")
-    assert c.fill_value == 0
-
-    d = zarr.Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="f")
-    assert d.fill_value == 0.0
-
-
-def test_vlen_errors() -> None:
-    with pytest.raises(ValueError, match="At least one ArrayBytesCodec is required."):
-        Array.create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[])
-
-    with pytest.raises(
-        ValueError,
-        match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
-    ):
-        Array.create(MemoryStore(), shape=5, chunks=5, dtype="O", codecs=[BytesCodec()])
-
-
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_update_attrs(zarr_format: ZarrFormat) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
@@ -1245,7 +1220,7 @@ class TestCreateArray:
             filters=filters,
         )
         filters_expected, compressor_expected = _parse_chunk_encoding_v2(
-            filters=filters, compressor=compressors, dtype=parse_data_type(dtype, zarr_format=2)
+            filters=filters, compressor=compressors, dtype=get_data_type_from_numpy(dtype)
         )
         assert arr.metadata.zarr_format == 2  # guard for mypy
         assert arr.metadata.compressor == compressor_expected

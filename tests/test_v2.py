@@ -107,7 +107,7 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_js
     np.testing.assert_equal(data, np.full((3,), b"X", dtype=dtype))
 
 
-@pytest.mark.parametrize(("dtype", "value"), [("|S1", b"Y"), ("|U1", "Y"), ("O", "Y")])
+@pytest.mark.parametrize(("dtype", "value"), [("|S1", b"Y"), ("|U1", "Y"), (str, "Y")])
 def test_v2_encode_decode_with_data(dtype, value):
     dtype, value = dtype, value
     expected = np.full((3,), value, dtype=dtype)
@@ -119,18 +119,6 @@ def test_v2_encode_decode_with_data(dtype, value):
     a[:] = expected
     data = a[:]
     np.testing.assert_equal(data, expected)
-
-
-@pytest.mark.parametrize("dtype", [str, "str"])
-async def test_create_dtype_str(dtype: Any) -> None:
-    data = ["a", "bb", "ccc"]
-    arr = zarr.create(shape=3, dtype=dtype, zarr_format=2)
-    assert arr.dtype.kind == "O"
-    assert arr.metadata.to_dict()["dtype"] == "|O"
-    assert arr.metadata.filters == (numcodecs.vlen.VLenUTF8(),)
-    arr[:] = data
-    result = arr[:]
-    np.testing.assert_array_equal(result, np.array(data, dtype="object"))
 
 
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])

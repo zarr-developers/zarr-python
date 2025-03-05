@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable
-from enum import Enum
 from typing import TYPE_CHECKING, TypedDict, cast
 
 import numcodecs.abc
@@ -10,8 +9,7 @@ import numcodecs.abc
 from zarr.abc.metadata import Metadata
 from zarr.core.metadata.dtype import (
     DTypeWrapper,
-    StaticByteString,
-    StaticRawBytes,
+    Structured,
     get_data_type_from_numpy,
 )
 
@@ -130,7 +128,7 @@ class ArrayV2Metadata(Metadata):
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, indent=json_indent, allow_nan=False).encode()
+                json.dumps(zarray_dict, indent=json_indent).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
                 json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
@@ -179,16 +177,18 @@ class ArrayV2Metadata(Metadata):
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
         if isinstance(zarray_dict["compressor"], numcodecs.abc.Codec):
-            codec_config = zarray_dict["compressor"].get_config()
-            # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
-            if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
-                codec_config.pop("checksum")
-            zarray_dict["compressor"] = codec_config
+            zarray_dict["compressor"] = zarray_dict["compressor"].get_config()
+        if zarray_dict["filters"] is not None:
+            raw_filters = zarray_dict["filters"]
+            new_filters = []
+            for f in raw_filters:
+                if isinstance(f, numcodecs.abc.Codec):
+                    new_filters.append(f.get_config())
+                else:
+                    new_filters.append(f)
+            zarray_dict["filters"] = new_filters
 
-        if (
-            isinstance(self.dtype, StaticByteString | StaticRawBytes)
-            and self.fill_value is not None
-        ):
+        if self.fill_value is not None:
             # There's a relationship between self.dtype and self.fill_value
             # that mypy isn't aware of. The fact that we have S or V dtype here
             # means we should have a bytes-type fill_value.
@@ -197,10 +197,7 @@ class ArrayV2Metadata(Metadata):
 
         _ = zarray_dict.pop("dtype")
         dtype_json: JSON
-        # TODO: Replace this with per-dtype method
-        # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
-        dtype_descr = self.dtype.unwrap().descr
-        if self.dtype.unwrap().kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
+        if isinstance(self.dtype, Structured):
             dtype_json = tuple(self.dtype.unwrap().descr)
         else:
             dtype_json = self.dtype.unwrap().str

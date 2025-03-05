@@ -62,7 +62,7 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
         # validated when decoding the metadata, but we support reading
         # Zarr V2 data and need to support the case where fill_value
         # is None.
-        return chunk_spec.dtype.default_value
+        return chunk_spec.dtype.default_value()
     else:
         return fill_value
 
