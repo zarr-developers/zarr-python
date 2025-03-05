@@ -43,6 +43,7 @@ Pass existing data during array creation for convenience:
    arr = zarr.create_array("data.zarr", shape=data.shape, data=data)
 
 Equivalent to separate assignment:
+
 .. code-block:: python
 
    arr = zarr.create_array("data.zarr", shape=(1000, 1000))
