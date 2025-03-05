@@ -32,7 +32,7 @@ module documentation.
 
 Initializing with Data
 ----------------------
-Pass existing data during array creation for better performance:
+Pass existing data during array creation for convenience:
 
 .. code-block:: python
 
@@ -42,16 +42,11 @@ Pass existing data during array creation for better performance:
    data = np.random.rand(1000, 1000)
    arr = zarr.create_array("data.zarr", shape=data.shape, data=data)
 
-This provides a more concise syntax compared to separate assignment:
-
+Equivalent to separate assignment:
 .. code-block:: python
 
-   # Equivalent but verbose
    arr = zarr.create_array("data.zarr", shape=(1000, 1000))
    arr[:] = data
-
-.. note::
-   Both methods leverage async writes when using async-compatible stores like S3.
 
 Reading and writing data
 ------------------------
