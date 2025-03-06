@@ -34,7 +34,7 @@ Configuration options include the following:
 - **array.order**  
   Defines the default memory layout for arrays.  
 
-  - ``'C'`` → Row-major (default, like NumPy)  
+  - ``'C'`` → Row-major (The default value used for NumPy arrays)  
   - ``'F'`` → Column-major (like Fortran)  
   - **Default:** ``'C'``  
  
