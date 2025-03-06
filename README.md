@@ -70,7 +70,7 @@
   </td>
 </tr>
 <tr>
-	<td>Zulip</td>
+	<td>Developer Chat</td>
 	<td>
 		<a href="https://ossci.zulipchat.com/">
 		<img src="https://img.shields.io/badge/zulip-join_chat-brightgreen.svg" />

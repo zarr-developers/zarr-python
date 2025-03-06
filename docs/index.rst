@@ -20,7 +20,7 @@ Zarr-Python
 **Useful links**:
 `Source Repository <https://github.com/zarr-developers/zarr-python>`_ |
 `Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
-`Zulip Chat <https://ossci.zulipchat.com/>`_ |
+`Developer Chat <https://ossci.zulipchat.com/>`_ |
 `Zarr specifications <https://zarr-specs.readthedocs.io>`_
 
 Zarr-Python is a Python library for reading and writing Zarr groups and arrays. Highlights include:
