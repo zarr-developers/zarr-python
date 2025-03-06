@@ -27,7 +27,7 @@ For more information, see the
 Configuration options include the following:
 
 - ``default_zarr_version``  
-  Sets the default Zarr format version.
+  Sets the default Zarr format version. The options are ``2`` or ``3``.
 
   - **Default:** ``3`` 
 
