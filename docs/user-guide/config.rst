@@ -42,9 +42,9 @@ Configuration options include the following:
 - Default filters, serializers and compressors, e.g. ``array.v3_default_filters``, ``array.v3_default_serializer``, ``array.v3_default_compressors``, ``array.v2_default_filters`` and ``array.v2_default_compressor``
 
 - ``array.write_empty_chunks``
-  Determines whether empty chunks (filled with default values) are written to storage.
+  Determines whether empty chunks (filled with default values) are written to storage. Setting this to ``False`` can reduce the number of write operations and objects created when writing arrays with large empty regions.
 
-  - ``False`` → Empty chunks are **not written** (saves space).  
+  - ``False`` → Empty chunks are **not written**.  
   - ``True`` → Empty chunks are explicitly stored.  
   - **Default:** ``False``  
 
