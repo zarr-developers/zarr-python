@@ -96,6 +96,7 @@ docs = [
     'sphinx-copybutton',
     'sphinx-reredirects',
     'pydata-sphinx-theme',
+    'sphinx_immaterial',
     'numpydoc',
     # Changelog generation
     'towncrier',
