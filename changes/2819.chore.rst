@@ -1,0 +1,4 @@
+Ensure that invocations of ``create_array`` use consistent keyword arguments, with consistent defaults.
+Specifically, ``zarr.api.synchronous.create_array`` now takes a ``write_data`` keyword argument; The
+``create_array`` method on ``zarr.Group`` takes ``data`` and ``write_data`` keyword arguments. The ``fill_value``
+keyword argument of the various invocations of ``create_array`` has been consistently set to ``None``, where previously it was either ``None`` or ``0``.
