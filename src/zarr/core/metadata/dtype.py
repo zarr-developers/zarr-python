@@ -16,12 +16,10 @@ from typing import (
     TypeVar,
     cast,
     get_args,
-    get_origin,
 )
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import get_original_bases
 
 from zarr.abc.metadata import Metadata
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
@@ -245,23 +243,6 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
     dtype_cls: ClassVar[type[TDType]]  # this class will create a numpy dtype
     endianness: Endianness | None = "native"
 
-    def __init_subclass__(cls) -> None:
-        # TODO: wrap this in some *very informative* error handling
-        generic_args = get_args(get_original_bases(cls)[0])
-        # the logic here is that if a subclass was created with generic type parameters
-        # specified explicitly, then we bind that type parameter to the dtype_cls attribute
-        if len(generic_args) > 0:
-            cls.dtype_cls = generic_args[0]
-        else:
-            # but if the subclass was created without generic type parameters specified explicitly,
-            # then we check the parent DTypeWrapper classes and retrieve their generic type parameters
-            for base in cls.__orig_bases__:
-                if get_origin(base) is DTypeWrapper:
-                    generic_args = get_args(base)
-                    cls.dtype_cls = generic_args[0]
-                    break
-        return super().__init_subclass__()
-
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name}
 
@@ -314,6 +295,7 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
 @dataclass(frozen=True, kw_only=True)
 class Bool(DTypeWrapper[np.dtypes.BoolDType, np.bool_]):
     name = "bool"
+    dtype_cls: ClassVar[type[np.dtypes.BoolDType]] = np.dtypes.BoolDType
 
     def default_value(self) -> np.bool_:
         return np.False_
@@ -350,41 +332,49 @@ class IntWrapperBase(DTypeWrapper[TDType, TScalar]):
 
 @dataclass(frozen=True, kw_only=True)
 class Int8(IntWrapperBase[np.dtypes.Int8DType, np.int8]):
+    dtype_cls = np.dtypes.Int8DType
     name = "int8"
 
 
 @dataclass(frozen=True, kw_only=True)
 class UInt8(IntWrapperBase[np.dtypes.UInt8DType, np.uint8]):
+    dtype_cls = np.dtypes.UInt8DType
     name = "uint8"
 
 
 @dataclass(frozen=True, kw_only=True)
 class Int16(IntWrapperBase[np.dtypes.Int16DType, np.int16]):
+    dtype_cls = np.dtypes.Int16DType
     name = "int16"
 
 
 @dataclass(frozen=True, kw_only=True)
 class UInt16(IntWrapperBase[np.dtypes.UInt16DType, np.uint16]):
+    dtype_cls = np.dtypes.UInt16DType
     name = "uint16"
 
 
 @dataclass(frozen=True, kw_only=True)
 class Int32(IntWrapperBase[np.dtypes.Int32DType, np.int32]):
+    dtype_cls = np.dtypes.Int32DType
     name = "int32"
 
 
 @dataclass(frozen=True, kw_only=True)
 class UInt32(IntWrapperBase[np.dtypes.UInt32DType, np.uint32]):
+    dtype_cls = np.dtypes.UInt32DType
     name = "uint32"
 
 
 @dataclass(frozen=True, kw_only=True)
 class Int64(IntWrapperBase[np.dtypes.Int64DType, np.int64]):
+    dtype_cls = np.dtypes.Int64DType
     name = "int64"
 
 
 @dataclass(frozen=True, kw_only=True)
 class UInt64(IntWrapperBase[np.dtypes.UInt64DType, np.uint64]):
+    dtype_cls = np.dtypes.UInt64DType
     name = "uint64"
 
 
@@ -407,21 +397,25 @@ class FloatWrapperBase(DTypeWrapper[TDType, TScalar]):
 
 @dataclass(frozen=True, kw_only=True)
 class Float16(FloatWrapperBase[np.dtypes.Float16DType, np.float16]):
+    dtype_cls = np.dtypes.Float16DType
     name = "float16"
 
 
 @dataclass(frozen=True, kw_only=True)
 class Float32(FloatWrapperBase[np.dtypes.Float32DType, np.float32]):
+    dtype_cls = np.dtypes.Float32DType
     name = "float32"
 
 
 @dataclass(frozen=True, kw_only=True)
 class Float64(FloatWrapperBase[np.dtypes.Float64DType, np.float64]):
+    dtype_cls = np.dtypes.Float64DType
     name = "float64"
 
 
 @dataclass(frozen=True, kw_only=True)
 class Complex64(DTypeWrapper[np.dtypes.Complex64DType, np.complex64]):
+    dtype_cls = np.dtypes.Complex64DType
     name = "complex64"
 
     def default_value(self) -> np.complex64:
@@ -444,6 +438,7 @@ class Complex64(DTypeWrapper[np.dtypes.Complex64DType, np.complex64]):
 
 @dataclass(frozen=True, kw_only=True)
 class Complex128(DTypeWrapper[np.dtypes.Complex128DType, np.complex128]):
+    dtype_cls = np.dtypes.Complex128DType
     name = "complex128"
 
     def default_value(self) -> np.complex128:
@@ -480,7 +475,8 @@ class FlexibleWrapperBase(DTypeWrapper[TDType, TScalar]):
 
 @dataclass(frozen=True, kw_only=True)
 class FixedLengthAsciiString(FlexibleWrapperBase[np.dtypes.BytesDType, np.bytes_]):
-    name = "numpy/static_byte_string"
+    dtype_cls = np.dtypes.BytesDType
+    name = "numpy.static_byte_string"
     item_size_bits = 8
 
     def default_value(self) -> np.bytes_:
@@ -500,6 +496,7 @@ class FixedLengthAsciiString(FlexibleWrapperBase[np.dtypes.BytesDType, np.bytes_
 
 @dataclass(frozen=True, kw_only=True)
 class StaticRawBytes(FlexibleWrapperBase[np.dtypes.VoidDType, np.void]):
+    dtype_cls = np.dtypes.VoidDType
     name = "r*"
     item_size_bits = 8
 
@@ -532,7 +529,8 @@ class StaticRawBytes(FlexibleWrapperBase[np.dtypes.VoidDType, np.void]):
 
 @dataclass(frozen=True, kw_only=True)
 class FixedLengthUnicodeString(FlexibleWrapperBase[np.dtypes.StrDType, np.str_]):
-    name = "numpy/static_unicode_string"
+    dtype_cls = np.dtypes.StrDType
+    name = "numpy.static_unicode_string"
     item_size_bits = 32  # UCS4 is 32 bits per code point
 
     def default_value(self) -> np.str_:
@@ -554,7 +552,8 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthString(DTypeWrapper[np.dtypes.StringDType, str]):
-        name = "numpy/vlen_string"
+        dtype_cls = np.dtypes.StringDType
+        name = "numpy.vlen_string"
 
         def default_value(self) -> str:
             return ""
@@ -582,7 +581,8 @@ else:
 
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthString(DTypeWrapper[np.dtypes.ObjectDType, str]):
-        name = "numpy/vlen_string"
+        dtype_cls = np.dtypes.ObjectDType
+        name = "numpy.vlen_string"
         endianness: Endianness = field(default=None)
 
         def default_value(self) -> str:
@@ -617,6 +617,7 @@ TimeUnit = Literal["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
 
 @dataclass(frozen=True, kw_only=True)
 class DateTime64(DTypeWrapper[np.dtypes.DateTime64DType, np.datetime64]):
+    dtype_cls = np.dtypes.DateTime64DType
     name = "numpy/datetime64"
     unit: DateUnit | TimeUnit = "s"
 
@@ -647,6 +648,7 @@ class DateTime64(DTypeWrapper[np.dtypes.DateTime64DType, np.datetime64]):
 
 @dataclass(frozen=True, kw_only=True)
 class Structured(DTypeWrapper[np.dtypes.VoidDType, np.void]):
+    dtype_cls = np.dtypes.VoidDType
     name = "numpy/struct"
     fields: tuple[tuple[str, DTypeWrapper[Any, Any], int], ...]
 
