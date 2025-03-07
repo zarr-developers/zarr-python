@@ -27,7 +27,7 @@ import numpy.typing as npt
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -253,7 +253,7 @@ class ArrayV3Metadata(Metadata):
         shape: Iterable[int],
         data_type: npt.DTypeLike | DataType,
         chunk_grid: dict[str, JSON] | ChunkGrid,
-        chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
+        chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: Any,
         codecs: Iterable[Codec | dict[str, JSON]],
         attributes: dict[str, JSON] | None,
@@ -373,9 +373,9 @@ class ArrayV3Metadata(Metadata):
     def get_chunk_spec(
         self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
-        assert isinstance(
-            self.chunk_grid, RegularChunkGrid
-        ), "Currently, only regular chunk grid is supported"
+        assert isinstance(self.chunk_grid, RegularChunkGrid), (
+            "Currently, only regular chunk grid is supported"
+        )
         return ArraySpec(
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,

@@ -4,10 +4,53 @@ from pathlib import Path
 import pytest
 from _pytest.compat import LEGACY_PATH
 
-from zarr.core.common import AccessModeLiteral
+from zarr import Group
+from zarr.core.common import AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
-from zarr.storage._common import make_store_path
-from zarr.storage._utils import normalize_path
+from zarr.storage._common import contains_array, contains_group, make_store_path
+from zarr.storage._utils import _join_paths, _normalize_path_keys, _normalize_paths, normalize_path
+
+
+@pytest.mark.parametrize("path", ["foo", "foo/bar"])
+@pytest.mark.parametrize("write_group", [True, False])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_contains_group(
+    local_store, path: str, write_group: bool, zarr_format: ZarrFormat
+) -> None:
+    """
+    Test that the contains_group method correctly reports the existence of a group.
+    """
+    root = Group.from_store(store=local_store, zarr_format=zarr_format)
+    if write_group:
+        root.create_group(path)
+    store_path = StorePath(local_store, path=path)
+    assert await contains_group(store_path, zarr_format=zarr_format) == write_group
+
+
+@pytest.mark.parametrize("path", ["foo", "foo/bar"])
+@pytest.mark.parametrize("write_array", [True, False])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_contains_array(
+    local_store, path: str, write_array: bool, zarr_format: ZarrFormat
+) -> None:
+    """
+    Test that the contains array method correctly reports the existence of an array.
+    """
+    root = Group.from_store(store=local_store, zarr_format=zarr_format)
+    if write_array:
+        root.create_array(path, shape=(100,), chunks=(10,), dtype="i4")
+    store_path = StorePath(local_store, path=path)
+    assert await contains_array(store_path, zarr_format=zarr_format) == write_array
+
+
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_invalid_format_raises(local_store, func: callable) -> None:
+    """
+    Test contains_group and contains_array raise errors for invalid zarr_formats
+    """
+    store_path = StorePath(local_store)
+    with pytest.raises(ValueError):
+        assert await func(store_path, zarr_format="3.0")
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -56,8 +99,16 @@ async def test_make_store_path_store_path(
     assert Path(store_path.store.root) == Path(tmpdir)
     path_normalized = normalize_path(path)
     assert store_path.path == (store_like / path_normalized).path
-
     assert store_path.read_only == ro
+
+
+@pytest.mark.parametrize("modes", [(True, "w"), (False, "x")])
+async def test_store_path_invalid_mode_raises(tmpdir: LEGACY_PATH, modes: tuple) -> None:
+    """
+    Test that ValueErrors are raise for invalid mode.
+    """
+    with pytest.raises(ValueError):
+        await StorePath.open(LocalStore(str(tmpdir), read_only=modes[0]), path=None, mode=modes[1])
 
 
 async def test_make_store_path_invalid() -> None:
@@ -123,3 +174,48 @@ def test_normalize_path_none():
 def test_normalize_path_invalid(path: str):
     with pytest.raises(ValueError):
         normalize_path(path)
+
+
+@pytest.mark.parametrize("paths", [("", "foo"), ("foo", "bar")])
+def test_join_paths(paths: tuple[str, str]) -> None:
+    """
+    Test that _join_paths joins paths in a way that is robust to an empty string
+    """
+    observed = _join_paths(paths)
+    if paths[0] == "":
+        assert observed == paths[1]
+    else:
+        assert observed == "/".join(paths)
+
+
+class TestNormalizePaths:
+    @staticmethod
+    def test_valid() -> None:
+        """
+        Test that path normalization works as expected
+        """
+        paths = ["a", "b", "c", "d", "", "//a///b//"]
+        assert _normalize_paths(paths) == tuple([normalize_path(p) for p in paths])
+
+    @staticmethod
+    @pytest.mark.parametrize("paths", [("", "/"), ("///a", "a")])
+    def test_invalid(paths: tuple[str, str]) -> None:
+        """
+        Test that name collisions after normalization raise a ``ValueError``
+        """
+        msg = (
+            f"After normalization, the value '{paths[1]}' collides with '{paths[0]}'. "
+            f"Both '{paths[1]}' and '{paths[0]}' normalize to the same value: '{normalize_path(paths[0])}'. "
+            f"You should use either '{paths[1]}' or '{paths[0]}', but not both."
+        )
+        with pytest.raises(ValueError, match=msg):
+            _normalize_paths(paths)
+
+
+def test_normalize_path_keys():
+    """
+    Test that ``_normalize_path_keys`` just applies the normalize_path function to each key of its
+    input
+    """
+    data = {"a": 10, "//b": 10}
+    assert _normalize_path_keys(data) == {normalize_path(k): v for k, v in data.items()}

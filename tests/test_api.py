@@ -1,4 +1,13 @@
-import pathlib
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pathlib
+
+    from zarr.abc.store import Store
+    from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+
 import warnings
 from typing import Literal
 
@@ -8,9 +17,9 @@ from numpy.testing import assert_array_equal
 
 import zarr
 import zarr.api.asynchronous
+import zarr.api.synchronous
 import zarr.core.group
 from zarr import Array, Group
-from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
     create_array,
@@ -23,10 +32,10 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
+from zarr.testing.utils import gpu_test
 
 
 def test_create(memory_store: Store) -> None:
@@ -200,7 +209,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
-        save(store, *args, **kwargs)  # type: ignore[arg-type]
+        save(store, *args, **kwargs)  # type: ignore [arg-type]
         group = open(store)
         assert isinstance(group, Group)
         for array in group.array_values():
@@ -1086,11 +1095,17 @@ async def test_open_falls_back_to_open_group_async() -> None:
     assert group.attrs == {"key": "value"}
 
 
-def test_open_mode_write_creates_group(tmp_path: pathlib.Path) -> None:
+@pytest.mark.parametrize("mode", ["r", "r+", "w", "a"])
+def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2490
-    zarr_dir = tmp_path / "test.zarr"
-    group = zarr.open(zarr_dir, mode="w")
-    assert isinstance(group, Group)
+    zarr_dir = tmp_path / f"mode-{mode}-test.zarr"
+    if mode in ["r", "r+"]:
+        # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
+        with pytest.raises(FileNotFoundError):
+            zarr.open(store=zarr_dir, mode=mode)
+    else:
+        group = zarr.open(store=zarr_dir, mode=mode)
+        assert isinstance(group, Group)
 
 
 async def test_metadata_validation_error() -> None:
@@ -1098,13 +1113,13 @@ async def test_metadata_validation_error() -> None:
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore [arg-type]
 
     with pytest.raises(
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore [arg-type]
 
 
 @pytest.mark.parametrize(
@@ -1121,3 +1136,47 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
+
+
+def test_api_exports() -> None:
+    """
+    Test that the sync API and the async API export the same objects
+    """
+    assert zarr.api.asynchronous.__all__ == zarr.api.synchronous.__all__
+
+
+@gpu_test
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "zip"],
+    indirect=True,
+)
+@pytest.mark.parametrize("zarr_format", [None, 2, 3])
+def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
+    import cupy as cp
+
+    if zarr_format == 2:
+        # Without this, the zstd codec attempts to convert the cupy
+        # array to bytes.
+        compressors = None
+    else:
+        compressors = "auto"
+
+    with zarr.config.enable_gpu():
+        src = cp.random.uniform(size=(100, 100))  # allocate on the device
+        z = zarr.create_array(
+            store,
+            name="a",
+            shape=src.shape,
+            chunks=(10, 10),
+            dtype=src.dtype,
+            overwrite=True,
+            zarr_format=zarr_format,
+            compressors=compressors,
+        )
+        z[:10, :10] = src[:10, :10]
+
+        result = z[:10, :10]
+        # assert_array_equal doesn't check the type
+        assert isinstance(result, type(src))
+        cp.testing.assert_array_equal(result, src[:10, :10])

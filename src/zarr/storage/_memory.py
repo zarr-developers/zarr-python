@@ -111,7 +111,9 @@ class MemoryStore(Store):
         await self._ensure_open()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError(f"Expected Buffer. Got {type(value)}.")
+            raise TypeError(
+                f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
 
         if byte_range is not None:
             buf = self._store_dict[key]
@@ -231,8 +233,9 @@ class GpuMemoryStore(MemoryStore):
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError(f"Expected Buffer. Got {type(value)}.")
-
+            raise TypeError(
+                f"GpuMemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         # Convert to gpu.Buffer
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)

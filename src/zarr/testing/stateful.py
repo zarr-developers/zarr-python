@@ -68,6 +68,9 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     # -------------------- store operations -----------------------
     @rule(name=node_names, data=st.data())
     def add_group(self, name: str, data: DataObject) -> None:
+        # Handle possible case-insensitive file systems (e.g. MacOS)
+        if isinstance(self.store, LocalStore):
+            name = name.lower()
         if self.all_groups:
             parent = data.draw(st.sampled_from(sorted(self.all_groups)), label="Group parent")
         else:
@@ -90,6 +93,9 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         name: str,
         array_and_chunks: tuple[np.ndarray[Any, Any], tuple[int, ...]],
     ) -> None:
+        # Handle possible case-insensitive file systems (e.g. MacOS)
+        if isinstance(self.store, LocalStore):
+            name = name.lower()
         array, chunks = array_and_chunks
         fill_value = data.draw(npst.from_dtype(array.dtype))
         if self.all_groups:
@@ -135,6 +141,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     #     self.model.rename(from_group, new_path)
     #     self.repo.store.rename(from_group, new_path)
 
+    @precondition(lambda self: self.store.supports_deletes)
     @precondition(lambda self: len(self.all_arrays) >= 1)
     @rule(data=st.data())
     def delete_array_using_del(self, data: DataObject) -> None:
@@ -149,6 +156,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
             del group[array_name]
         self.all_arrays.remove(array_path)
 
+    @precondition(lambda self: self.store.supports_deletes)
     @precondition(lambda self: len(self.all_groups) >= 2)  # fixme don't delete root
     @rule(data=st.data())
     def delete_group_using_del(self, data: DataObject) -> None:
@@ -284,6 +292,10 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def supports_writes(self) -> bool:
         return self.store.supports_writes
 
+    @property
+    def supports_deletes(self) -> bool:
+        return self.store.supports_deletes
+
 
 class ZarrStoreStateMachine(RuleBasedStateMachine):
     """ "
@@ -313,7 +325,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def init_store(self) -> None:
         self.store.clear()
 
-    @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
+    @rule(key=zarr_keys(), data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.read_only
@@ -322,7 +334,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.model[key] = data_buf
 
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(key=zarr_keys, data=st.data())
+    @rule(key=zarr_keys(), data=st.data())
     def get(self, key: str, data: DataObject) -> None:
         key = data.draw(
             st.sampled_from(sorted(self.model.keys()))
@@ -332,7 +344,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # to bytes here necessary because data_buf set to model in set()
         assert self.model[key] == store_value
 
-    @rule(key=zarr_keys, data=st.data())
+    @rule(key=zarr_keys(), data=st.data())
     def get_invalid_zarr_keys(self, key: str, data: DataObject) -> None:
         note("(get_invalid)")
         assume(key not in self.model)
@@ -366,6 +378,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
             model_vals_ls,
         )
 
+    @precondition(lambda self: self.store.supports_deletes)
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     def delete(self, data: DataObject) -> None:
@@ -395,7 +408,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # make sure they either both are or both aren't empty (same state)
         assert self.store.is_empty("") == (not self.model)
 
-    @rule(key=zarr_keys)
+    @rule(key=zarr_keys())
     def exists(self, key: str) -> None:
         note("(exists)")
 

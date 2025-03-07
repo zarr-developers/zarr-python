@@ -5,7 +5,7 @@ contact_links:
     about: A new major feature should be discussed in the Zarr specifications repository.
   - name: Discuss something on ZulipChat
     url: https://ossci.zulipchat.com/
-    about: For questions like "How do I do X with Zarr?", you can move to our ZulipChat.
+    about: For questions like "How do I do X with Zarr?", consider posting your question to our developer chat.
   - name: Discuss something on GitHub Discussions
     url: https://github.com/zarr-developers/zarr-python/discussions
     about: For questions like "How do I do X with Zarr?", you can move to GitHub Discussions.

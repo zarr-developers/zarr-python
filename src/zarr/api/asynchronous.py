@@ -10,7 +10,7 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
@@ -23,7 +23,12 @@ from zarr.core.common import (
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
 )
-from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
+from zarr.core.group import (
+    AsyncGroup,
+    ConsolidatedMetadata,
+    GroupMetadata,
+    create_hierarchy,
+)
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
@@ -48,6 +53,7 @@ __all__ = [
     "copy_store",
     "create",
     "create_array",
+    "create_hierarchy",
     "empty",
     "empty_like",
     "full",
@@ -856,7 +862,7 @@ async def create(
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
@@ -1018,7 +1024,7 @@ async def create(
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
-    config_dict: ArrayConfigLike = {}
+    config_dict: ArrayConfigParams = {}
 
     if write_empty_chunks is not None:
         if config is not None:
@@ -1065,7 +1071,8 @@ async def create(
 async def empty(
     shape: ChunkCoords, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-    """Create an empty array.
+    """Create an empty array with the specified shape. The contents will be filled with the
+    array's fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
@@ -1087,7 +1094,8 @@ async def empty(
 async def empty_like(
     a: ArrayLike, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-    """Create an empty array like `a`.
+    """Create an empty array like `a`. The contents will be filled with the
+    array's fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
@@ -1100,6 +1108,12 @@ async def empty_like(
     -------
     Array
         The new array.
+
+    Notes
+    -----
+    The contents of an empty Zarr array are not defined. On attempting to
+    retrieve data from an empty Zarr array, any values may be returned,
+    and these are not guaranteed to be stable from one access to the next.
     """
     like_kwargs = _like_args(a, kwargs)
     return await empty(**like_kwargs)

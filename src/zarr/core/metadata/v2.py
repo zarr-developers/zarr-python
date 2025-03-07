@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import warnings
 from collections.abc import Iterable
 from enum import Enum
 from functools import cached_property
@@ -178,6 +179,16 @@ class ArrayV2Metadata(Metadata):
         # handle the renames
         expected |= {"dtype", "chunks"}
 
+        # check if `filters` is an empty sequence; if so use None instead and raise a warning
+        if _data["filters"] is not None and len(_data["filters"]) == 0:
+            msg = (
+                "Found an empty list of filters in the array metadata document. "
+                "This is contrary to the Zarr V2 specification, and will cause an error in the future. "
+                "Use None (or Null in a JSON document) instead of an empty list of filters."
+            )
+            warnings.warn(msg, UserWarning, stacklevel=1)
+            _data["filters"] = None
+
         _data = {k: v for k, v in _data.items() if k in expected}
 
         return cls(**_data)
@@ -193,7 +204,14 @@ class ArrayV2Metadata(Metadata):
             zarray_dict["fill_value"] = fill_value
 
         _ = zarray_dict.pop("dtype")
-        zarray_dict["dtype"] = self.dtype.str
+        dtype_json: JSON
+        # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
+        dtype_descr = self.dtype.descr
+        if self.dtype.kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
+            dtype_json = tuple(self.dtype.descr)
+        else:
+            dtype_json = self.dtype.str
+        zarray_dict["dtype"] = dtype_json
 
         return zarray_dict
 
@@ -220,6 +238,8 @@ class ArrayV2Metadata(Metadata):
 
 
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+    if isinstance(data, list):  # this is a valid _VoidDTypeLike check
+        data = [tuple(d) for d in data]
     return np.dtype(data)
 
 
@@ -246,7 +266,11 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
             else:
                 msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
                 raise TypeError(msg)
-        return tuple(out)
+        if len(out) == 0:
+            # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
+            return None
+        else:
+            return tuple(out)
     # take a single codec instance and wrap it in a tuple
     if isinstance(data, numcodecs.abc.Codec):
         return (data,)
@@ -340,6 +364,14 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return b""
     elif dtype.kind in "UO":
         return ""
+    elif dtype.kind in "Mm":
+        return dtype.type("nat")
+    elif dtype.kind == "V":
+        if dtype.fields is not None:
+            default = tuple(_default_fill_value(field[0]) for field in dtype.fields.values())
+            return np.array([default], dtype=dtype)
+        else:
+            return np.zeros(1, dtype=dtype)
     else:
         return dtype.type(0)
 
@@ -376,8 +408,10 @@ def _default_filters(
         dtype_key = "numeric"
     elif dtype.kind in "U":
         dtype_key = "string"
-    elif dtype.kind in "OSV":
+    elif dtype.kind in "OS":
         dtype_key = "bytes"
+    elif dtype.kind == "V":
+        dtype_key = "raw"
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 

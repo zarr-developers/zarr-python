@@ -32,6 +32,7 @@ Configuration options include the following:
 - Whether empty chunks are written to storage ``array.write_empty_chunks``
 - Async and threading options, e.g. ``async.concurrency`` and ``threading.max_workers``
 - Selections of implementations of codecs, codec pipelines and buffers
+- Enabling GPU support with ``zarr.config.enable_gpu()``. See :ref:`user-guide-gpu` for more.
 
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers,
 first register the implementations in the registry and then select them in the config.
@@ -53,6 +54,7 @@ This is the current default configuration::
                                                    'level': 0}},
               'v2_default_filters': {'bytes': [{'id': 'vlen-bytes'}],
                                      'numeric': None,
+                                     'raw': None,
                                      'string': [{'id': 'vlen-utf8'}]},
               'v3_default_compressors': {'bytes': [{'configuration': {'checksum': False,
                                                                       'level': 0},

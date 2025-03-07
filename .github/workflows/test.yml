@@ -45,6 +45,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # grab all branches and tags
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -82,6 +84,8 @@ jobs:
             dependency-set: upstream
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -98,6 +102,11 @@ jobs:
     - name: Run Tests
       run: |
         hatch env run --env ${{ matrix.dependency-set }} run
+    - name: Upload coverage
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        verbose: true # optional (default = false)
 
   doctests:
     name: doctests

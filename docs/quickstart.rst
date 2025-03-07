@@ -74,7 +74,7 @@ Zarr supports data compression and filters. For example, to use Blosc compressio
     ...    "data/example-3.zarr",
     ...    mode="w", shape=(100, 100),
     ...    chunks=(10, 10), dtype="f4",
-    ...    compressor=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.SHUFFLE)
+    ...    compressors=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.shuffle)
     ... )
     >>> z[:, :] = np.random.random((100, 100))
     >>>
@@ -101,7 +101,7 @@ Zarr allows you to create hierarchical groups, similar to directories::
     >>> root = zarr.group("data/example-2.zarr")
     >>> foo = root.create_group(name="foo")
     >>> bar = root.create_array(
-    ...     name="bar", shape=(100, 10), chunks=(10, 10)
+    ...     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
     ... )
     >>> spam = foo.create_array(name="spam", shape=(10,), dtype="i4")
     >>>
@@ -112,11 +112,34 @@ Zarr allows you to create hierarchical groups, similar to directories::
     >>> # print the hierarchy
     >>> root.tree()
     /
+    ├── bar (100, 10) float32
     └── foo
         └── spam (10,) int32
     <BLANKLINE>
 
 This creates a group with two datasets: ``foo`` and ``bar``.
+
+Batch Hierarchy Creation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Zarr provides tools for creating a collection of arrays and groups with a single function call.
+Suppose we want to copy existing groups and arrays into a new storage backend:
+
+    >>> # Create nested groups and add arrays
+    >>> root = zarr.group("data/example-3.zarr", attributes={'name': 'root'})
+    >>> foo = root.create_group(name="foo")
+    >>> bar = root.create_array(
+    ...     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
+    ... )
+    >>> nodes = {'': root.metadata} | {k: v.metadata for k,v in root.members()}
+    >>> print(nodes)
+    >>> from zarr.storage import MemoryStore
+    >>> new_nodes = dict(zarr.create_hierarchy(store=MemoryStore(), nodes=nodes))
+    >>> new_root = new_nodes['']
+    >>> assert new_root.attrs == root.attrs
+
+Note that :func:`zarr.create_hierarchy` will only initialize arrays and groups -- copying array data must
+be done in a separate step.
 
 Persistent Storage
 ------------------
@@ -130,7 +153,7 @@ using external libraries like `s3fs <https://s3fs.readthedocs.io>`_ or
 
     >>> import s3fs # doctest: +SKIP
     >>>
-    >>> z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10)) # doctest: +SKIP
+    >>> z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10), dtype="f4") # doctest: +SKIP
     >>> z[:, :] = np.random.random((100, 100)) # doctest: +SKIP
 
 A single-file store can also be created using the the :class:`zarr.storage.ZipStore`::

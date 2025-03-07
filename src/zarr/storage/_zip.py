@@ -107,11 +107,15 @@ class ZipStore(Store):
     async def _open(self) -> None:
         self._sync_open()
 
-    def __getstate__(self) -> tuple[Path, ZipStoreAccessModeLiteral, int, bool]:
-        return self.path, self._zmode, self.compression, self.allowZip64
+    def __getstate__(self) -> dict[str, Any]:
+        # We need a copy to not modify the state of the original store
+        state = self.__dict__.copy()
+        for attr in ["_zf", "_lock"]:
+            state.pop(attr, None)
+        return state
 
-    def __setstate__(self, state: Any) -> None:
-        self.path, self._zmode, self.compression, self.allowZip64 = state
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__ = state
         self._is_open = False
         self._sync_open()
 
@@ -146,6 +150,8 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            self._sync_open()
         # docstring inherited
         try:
             with self._zf.open(key) as f:  # will raise KeyError
@@ -190,6 +196,8 @@ class ZipStore(Store):
         return out
 
     def _set(self, key: str, value: Buffer) -> None:
+        if not self._is_open:
+            self._sync_open()
         # generally, this should be called inside a lock
         keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
         keyinfo.compress_type = self.compression
@@ -203,9 +211,13 @@ class ZipStore(Store):
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
+        if not self._is_open:
+            self._sync_open()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError("ZipStore.set(): `value` must a Buffer instance")
+            raise TypeError(
+                f"ZipStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         with self._lock:
             self._set(key, value)
 
@@ -271,7 +283,7 @@ class ZipStore(Store):
                     yield key
         else:
             for key in keys:
-                if key.startswith(prefix + "/") and key != prefix:
+                if key.startswith(prefix + "/") and key.strip("/") != prefix:
                     k = key.removeprefix(prefix + "/").split("/")[0]
                     if k not in seen:
                         seen.add(k)

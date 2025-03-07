@@ -10,10 +10,12 @@ from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
 from zarr.core.group import Group
 from zarr.core.sync import sync
+from zarr.core.sync_group import create_hierarchy
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    import numpy as np
     import numpy.typing as npt
 
     from zarr.abc.codec import Codec
@@ -24,7 +26,7 @@ if TYPE_CHECKING:
         SerializerLike,
         ShardsLike,
     )
-    from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
+    from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
@@ -45,6 +47,7 @@ __all__ = [
     "copy_store",
     "create",
     "create_array",
+    "create_hierarchy",
     "empty",
     "empty_like",
     "full",
@@ -624,7 +627,7 @@ def create(
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> Array:
     """Create an array.
@@ -694,7 +697,7 @@ def create(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    config : ArrayConfig or ArrayConfigLike, optional
+    config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
 
@@ -744,8 +747,9 @@ def create_array(
     store: str | StoreLike,
     *,
     name: str | None = None,
-    shape: ShapeLike,
-    dtype: npt.DTypeLike,
+    shape: ShapeLike | None = None,
+    dtype: npt.DTypeLike | None = None,
+    data: np.ndarray[Any, np.dtype[Any]] | None = None,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
@@ -759,7 +763,7 @@ def create_array(
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
 ) -> Array:
     """Create an array.
 
@@ -772,10 +776,14 @@ def create_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    shape : ChunkCoords
-        Shape of the array.
-    dtype : npt.DTypeLike
-        Data type of the array.
+    shape : ChunkCoords, optional
+        Shape of the array. Can be ``None`` if ``data`` is provided.
+    dtype : npt.DTypeLike, optional
+        Data type of the array. Can be ``None`` if ``data`` is provided.
+    data : np.ndarray, optional
+        Array-like data to use for initializing the array. If this parameter is provided, the
+        ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
+        or ``None``.
     chunks : ChunkCoords, optional
         Chunk shape of the array.
         If not specified, default are guessed based on the shape and dtype.
@@ -847,7 +855,7 @@ def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfig or ArrayConfigLike, optional
+    config : ArrayConfigLike, optional
         Runtime configuration for the array.
 
     Returns
@@ -874,6 +882,7 @@ def create_array(
                 name=name,
                 shape=shape,
                 dtype=dtype,
+                data=data,
                 chunks=chunks,
                 shards=shards,
                 filters=filters,
@@ -895,7 +904,8 @@ def create_array(
 
 # TODO: add type annotations for kwargs
 def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
-    """Create an empty array.
+    """Create an empty array with the specified shape. The contents will be filled with the
+    array's fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
@@ -921,7 +931,8 @@ def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
 # TODO: move ArrayLike to common module
 # TODO: add type annotations for kwargs
 def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
-    """Create an empty array like another array.
+    """Create an empty array like another array. The contents will be filled with the
+    array's fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
@@ -934,6 +945,12 @@ def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
     -------
     Array
         The new array.
+
+    Notes
+    -----
+    The contents of an empty Zarr array are not defined. On attempting to
+    retrieve data from an empty Zarr array, any values may be returned,
+    and these are not guaranteed to be stable from one access to the next.
     """
     return Array(sync(async_api.empty_like(a, **kwargs)))
 
