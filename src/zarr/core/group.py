@@ -63,8 +63,9 @@ if TYPE_CHECKING:
         Coroutine,
         Generator,
         Iterable,
-        Iterator
+        Iterator,
     )
+    from types import TracebackType
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike

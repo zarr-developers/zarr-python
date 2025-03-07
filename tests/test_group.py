@@ -455,12 +455,12 @@ def test_group_with_context_manager(store: Store, zarr_format: ZarrFormat, overw
 
     # attempt to open a group that does not exist.
     with pytest.raises(FileNotFoundError):
-        with Group.open(store) as store:
+        with zarr.open_group(store, mode="r") as group:
             pass
 
     attrs = {"path": "foo"}
 
-    with Group.from_store(
+    with zarr.create_group(
         store, attributes=attrs, zarr_format=zarr_format, overwrite=overwrite
     ) as group:
         assert store._is_open
