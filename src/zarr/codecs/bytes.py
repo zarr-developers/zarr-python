@@ -34,26 +34,22 @@ default_system_endian = Endian(sys.byteorder)
 class BytesCodec(ArrayBytesCodec):
     is_fixed_size = True
 
-    endian: Endian | None
+    endian: Endian
 
-    def __init__(self, *, endian: Endian | str | None = default_system_endian) -> None:
-        endian_parsed = None if endian is None else parse_enum(endian, Endian)
+    def __init__(self, *, endian: Endian | str = default_system_endian) -> None:
+        endian_parsed = parse_enum(endian, Endian)
 
         object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
-            data, "bytes", require_configuration=False
+            data, "bytes", require_configuration=True
         )
-        configuration_parsed = configuration_parsed or {}
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        if self.endian is None:
-            return {"name": "bytes"}
-        else:
-            return {"name": "bytes", "configuration": {"endian": self.endian.value}}
+        return {"name": "bytes", "configuration": {"endian": self.endian.value}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if array_spec.dtype.itemsize == 0:
@@ -104,7 +100,6 @@ class BytesCodec(ArrayBytesCodec):
         assert isinstance(chunk_array, NDBuffer)
         if (
             chunk_array.dtype.itemsize > 1
-            and self.endian is not None
             and self.endian != chunk_array.byteorder
         ):
             # type-ignore is a numpy bug
