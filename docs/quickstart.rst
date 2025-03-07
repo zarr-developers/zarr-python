@@ -12,9 +12,29 @@ Quickstart
 Welcome to the Zarr-Python Quickstart guide! This page will help you get up and running with
 the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
 
+Introduction
+------------
+
 Zarr is a powerful library for storage of n-dimensional arrays, supporting chunking,
 compression, and various backends, making it a versatile choice for scientific and
 large-scale data.
+
+An `ndarray <https://numpy.org/doc/2.2/reference/arrays.ndarray.html>`_ is a (usually fixed-size) multidimensional container of items of the
+same type and size. The number of dimensions and items in an array is defined
+by its shape, which is a tuple of N non-negative integers that specify the sizes of each dimension.
+
+
+Main Features are:
+
+- `Create <https://zarr.readthedocs.io/en/stable/tutorial.html#creating-an-array>`_  N-dimensional arrays with any NumPy `dtype`.
+- `Chunk arrays <https://zarr.readthedocs.io/en/stable/tutorial.html#chunk-optimizations>`_ along any dimension.
+- `Compress <https://zarr.readthedocs.io/en/stable/tutorial.html#compressors>`_ and/or filter chunks using any NumCodecs codec.
+- `Store arrays <https://zarr.readthedocs.io/en/stable/tutorial.html#tutorial-storage>`_ in memory, on disk, inside a zip file, on S3, etc...
+- `Read <https://zarr.readthedocs.io/en/stable/tutorial.html#reading-and-writing-data>`_ an array `concurrently <https://zarr.readthedocs.io/en/stable/tutorial.html#parallel-computing-and-synchronization>`_ from multiple threads or processes.
+- Write to an array concurrently from multiple threads or processes.
+- Organize arrays into hierarchies via `groups <https://zarr.readthedocs.io/en/stable/tutorial.html#groups>`_.
+
+
 
 Installation
 ------------
