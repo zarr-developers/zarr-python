@@ -3,6 +3,31 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.5 (2025-03-07)
+------------------
+
+Features
+~~~~~~~~
+
+- Adds functions for concurrently creating multiple arrays and groups. (:issue:`2665`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Fixed a bug where ``ArrayV2Metadata`` could save ``filters`` as an empty array. (:issue:`2847`)
+- Fixed a bug where ``StorePath`` creation would not apply standard path normalization to the ``path`` parameter,
+  which led to the creation of arrays and groups with invalid keys. (:issue:`2850`)
+- Fix a bug when setting values of a smaller last chunk. (:issue:`2851`)
+- Prevent update_attributes calls from deleting old attributes (:issue:`2870`)
+
+
+Misc
+~~~~
+
+- :issue:`2796`
+
+
 3.0.3 (2025-02-14)
 ------------------
 
