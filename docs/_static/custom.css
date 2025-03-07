@@ -1,12 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&family=Open+Sans:ital,wght@0,400;0,600;1,400;1,600&display=swap');
 
-.navbar-brand img {
-   height: 75px;
-}
-.navbar-brand {
-   height: 75px;
-}
-
 body {
   font-family: 'Open Sans', sans-serif;
 }
@@ -74,7 +67,6 @@ Nat Methods 8, 441 (2011). https://doi.org/10.1038/nmeth.1618
 .sd-card .sd-card-header {
   border: none;
   background-color: white;
-  color: #150458 !important;
   font-size: var(--pst-font-size-h5);
   font-weight: bold;
   padding: 2.5rem 0rem 0.5rem 0rem;
@@ -107,7 +99,6 @@ html[data-theme=dark] .sd-shadow-sm {
 
 html[data-theme=dark] .sd-card .sd-card-header {
   background-color:var(--pst-color-background);
-  color: #150458 !important;
 }
 
 html[data-theme=dark] .sd-card .sd-card-footer {
@@ -116,8 +107,4 @@ html[data-theme=dark] .sd-card .sd-card-footer {
 
 html[data-theme=dark] h1 {
   color: var(--pst-color-primary);
-}
-
-html[data-theme=dark] h3 {
-  color: #0a6774;
 }

@@ -51,7 +51,10 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
-docs/_autoapi/
+docs/api
+docs/data
+data
+data.zip
 
 # PyBuilder
 target/
@@ -62,8 +65,8 @@ target/
 # Jupyter
 .ipynb_checkpoints/
 
-# setuptools-scm
-zarr/version.py
+# VCS versioning
+src/zarr/_version.py
 
 # emacs
 *~
@@ -78,5 +81,12 @@ zarr/version.py
 #doesnotexist
 #test_sync*
 data/*
+src/fixture/
+fixture/
+junit.xml
 
 .DS_Store
+tests/.hypothesis
+.hypothesis/
+
+zarr/version.py
