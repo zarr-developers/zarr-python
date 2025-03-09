@@ -177,7 +177,12 @@ class ArrayV2Metadata(Metadata):
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
         if isinstance(zarray_dict["compressor"], numcodecs.abc.Codec):
-            zarray_dict["compressor"] = zarray_dict["compressor"].get_config()
+            codec_config = zarray_dict["compressor"].get_config()
+            # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
+            if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
+                codec_config.pop("checksum")
+            zarray_dict["compressor"] = codec_config
+
         if zarray_dict["filters"] is not None:
             raw_filters = zarray_dict["filters"]
             new_filters = []

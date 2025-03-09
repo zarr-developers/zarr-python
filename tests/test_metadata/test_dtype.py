@@ -116,7 +116,7 @@ def test_dict_serialization(wrapper_cls: DTYPE) -> None:
         (Complex64(), np.complex64(0)),
         (Complex128(), np.complex128(0)),
         (FixedLengthAsciiString(length=3), np.bytes_(b"")),
-        (StaticRawBytes(length=3), np.void(b"")),
+        (StaticRawBytes(length=3), np.void(b"\x00\x00\x00")),
         (FixedLengthUnicodeString(length=3), np.str_("")),
         (
             Structured(fields=(("a", Float64(), 0), ("b", Int8(), 8))),
