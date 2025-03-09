@@ -19,8 +19,6 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec
 
-import numcodecs
-
 
 def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(2) == 2
@@ -33,8 +31,8 @@ def test_parse_zarr_format_invalid(data: Any) -> None:
 
 
 @pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
-@pytest.mark.parametrize("filters", [None, (numcodecs.GZip(),)])
-@pytest.mark.parametrize("compressor", [None, numcodecs.GZip()])
+@pytest.mark.parametrize("filters", [None, [{"id": "gzip", "level": 1}]])
+@pytest.mark.parametrize("compressor", [None, {"id": "gzip", "level": 1}])
 @pytest.mark.parametrize("fill_value", [None, 0, 1])
 @pytest.mark.parametrize("order", ["C", "F"])
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
