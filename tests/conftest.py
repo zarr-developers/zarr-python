@@ -18,8 +18,9 @@ from zarr.core.array import (
     _parse_chunk_key_encoding,
 )
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
-from zarr.core.common import JSON, parse_dtype, parse_shapelike
+from zarr.core.common import JSON, parse_shapelike
 from zarr.core.config import config as zarr_config
+from zarr.core.metadata.dtype import get_data_type_from_numpy
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
@@ -242,7 +243,7 @@ def create_array_metadata(
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any = 0,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat,
     attributes: dict[str, JSON] | None = None,
@@ -252,14 +253,17 @@ def create_array_metadata(
     """
     Create array metadata
     """
-    dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+    dtype_parsed = get_data_type_from_numpy(dtype)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
     )
 
     shard_shape_parsed, chunk_shape_parsed = _auto_partition(
-        array_shape=shape_parsed, shard_shape=shards, chunk_shape=chunks, dtype=dtype_parsed
+        array_shape=shape_parsed,
+        shard_shape=shards,
+        chunk_shape=chunks,
+        item_size=dtype_parsed.unwrap().itemsize,
     )
 
     if order is None:
@@ -270,11 +274,11 @@ def create_array_metadata(
 
     if zarr_format == 2:
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
-            compressor=compressors, filters=filters, dtype=np.dtype(dtype)
+            compressor=compressors, filters=filters, dtype=dtype_parsed
         )
         return ArrayV2Metadata(
             shape=shape_parsed,
-            dtype=np.dtype(dtype),
+            dtype=dtype_parsed,
             chunks=chunk_shape_parsed,
             order=order_parsed,
             dimension_separator=chunk_key_encoding_parsed.separator,
@@ -375,7 +379,7 @@ def meta_from_array(
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any = 0,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat = 3,
     attributes: dict[str, JSON] | None = None,

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Literal
 
-import numpy as np
 import pytest
 
 import zarr.api.asynchronous
@@ -12,14 +11,13 @@ from zarr.core.buffer import cpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
+from zarr.core.metadata.dtype import Float32, Float64, Int16
 from zarr.core.metadata.v2 import parse_zarr_format
 
 if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
-
-import numcodecs
 
 
 def test_parse_zarr_format_valid() -> None:
@@ -33,8 +31,8 @@ def test_parse_zarr_format_invalid(data: Any) -> None:
 
 
 @pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
-@pytest.mark.parametrize("filters", [None, (numcodecs.GZip(),)])
-@pytest.mark.parametrize("compressor", [None, numcodecs.GZip()])
+@pytest.mark.parametrize("filters", [None, [{"id": "gzip", "level": 1}]])
+@pytest.mark.parametrize("compressor", [None, {"id": "gzip", "level": 1}])
 @pytest.mark.parametrize("fill_value", [None, 0, 1])
 @pytest.mark.parametrize("order", ["C", "F"])
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
@@ -219,7 +217,7 @@ class TestConsolidated:
                     fill_value=0,
                     chunks=(730,),
                     attributes={"_ARRAY_DIMENSIONS": ["time"], "dataset": "NMC Reanalysis"},
-                    dtype=np.dtype("int16"),
+                    dtype=Int16(),
                     order="C",
                     filters=None,
                     dimension_separator=".",
@@ -236,7 +234,7 @@ class TestConsolidated:
                         "standard_name": "time",
                         "units": "hours since 1800-01-01",
                     },
-                    dtype=np.dtype("float32"),
+                    dtype=Float32(),
                     order="C",
                     filters=None,
                     dimension_separator=".",
@@ -254,7 +252,7 @@ class TestConsolidated:
                                 attributes={
                                     "calendar": "standard",
                                 },
-                                dtype=np.dtype("float32"),
+                                dtype=Float32(),
                                 order="C",
                                 filters=None,
                                 dimension_separator=".",
@@ -295,7 +293,7 @@ def test_from_dict_extra_fields() -> None:
     expected = ArrayV2Metadata(
         attributes={"key": "value"},
         shape=(8,),
-        dtype="float64",
+        dtype=Float64(),
         chunks=(8,),
         fill_value=0.0,
         order="C",
