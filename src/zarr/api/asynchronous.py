@@ -28,7 +28,7 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_write_empty_chunks_kwarg,
 )
-from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype
+from zarr.core.dtype import get_data_type_from_numpy
 from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
@@ -36,7 +36,6 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.dtype import get_data_type_from_numpy
 from zarr.errors import NodeTypeValidationError
 from zarr.storage._common import make_store_path
 

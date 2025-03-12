@@ -319,7 +319,7 @@ class BatchedCodecPipeline(CodecPipeline):
         if existing_chunk_array is None:
             chunk_array = chunk_spec.prototype.nd_buffer.create(
                 shape=chunk_spec.shape,
-                dtype=chunk_spec.dtype.unwrap(),
+                dtype=chunk_spec.dtype.to_dtype(),
                 order=chunk_spec.order,
                 fill_value=fill_value_or_default(chunk_spec),
             )

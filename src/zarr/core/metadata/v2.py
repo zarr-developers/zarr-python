@@ -7,11 +7,8 @@ from typing import TYPE_CHECKING, TypedDict, cast
 import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
-from zarr.core.metadata.dtype import (
-    DTypeWrapper,
-    Structured,
-    get_data_type_from_numpy,
-)
+from zarr.core.dtype import get_data_type_from_numpy
+from zarr.core.dtype.wrapper import DTypeWrapper
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -98,7 +95,7 @@ class ArrayV2Metadata(Metadata):
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype.unwrap())
+        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype.to_dtype())
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -141,9 +138,9 @@ class ArrayV2Metadata(Metadata):
         _data = data.copy()
         # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
-        dtype = get_data_type_from_numpy(parse_dtype(_data["dtype"]))
+        dtype = get_data_type_from_numpy(_data["dtype"])
         _data["dtype"] = dtype
-        if dtype.unwrap().kind in "SV":
+        if dtype.to_dtype().kind in "SV":
             fill_value_encoded = _data.get("fill_value")
             if fill_value_encoded is not None:
                 fill_value = base64.standard_b64decode(fill_value_encoded)
@@ -200,13 +197,7 @@ class ArrayV2Metadata(Metadata):
             fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
-        _ = zarray_dict.pop("dtype")
-        dtype_json: JSON
-        if isinstance(self.dtype, Structured):
-            dtype_json = tuple(self.dtype.unwrap().descr)
-        else:
-            dtype_json = self.dtype.unwrap().str
-        zarray_dict["dtype"] = dtype_json
+        zarray_dict["dtype"] = self.dtype.get_name(zarr_format=2)
 
         return zarray_dict
 

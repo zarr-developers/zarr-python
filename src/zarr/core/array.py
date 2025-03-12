@@ -70,13 +70,12 @@ from zarr.core.common import (
 from zarr.core.config import categorize_data_type
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
-    VariableLengthBytes,
-    VariableLengthUTF8,
-    ZDType,
-    ZDTypeLike,
+    DTypeWrapper,
+    FixedLengthAsciiString,
+    FixedLengthUnicodeString,
+    VariableLengthString,
     parse_data_type,
 )
-from zarr.core.dtype.common import HasEndianness, HasItemSize, HasObjectCodec
 from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -110,13 +109,6 @@ from zarr.core.metadata import (
     ArrayV3Metadata,
     ArrayV3MetadataDict,
     T_ArrayMetadata,
-)
-from zarr.core.metadata.dtype import (
-    DTypeWrapper,
-    FixedLengthAsciiString,
-    FixedLengthUnicodeString,
-    VariableLengthString,
-    get_data_type_from_numpy,
 )
 from zarr.core.metadata.v2 import (
     parse_compressor,
@@ -594,7 +586,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike[Any] | DTypeWrapper[Any, Any],
+        dtype: npt.DTypeLike | DTypeWrapper[Any, Any],
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
@@ -623,11 +615,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         See :func:`AsyncArray.create` for more details.
         Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
         """
-        # TODO: delete this and be more strict about where parsing occurs
-        if not isinstance(dtype, DTypeWrapper):
-            dtype_parsed = get_data_type_from_numpy(np.dtype(dtype))
-        else:
-            dtype_parsed = dtype
+
+        dtype_parsed = parse_data_type(dtype)
         store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
@@ -638,9 +627,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if isinstance(dtype_parsed, HasItemSize):
             item_size = dtype_parsed.item_size
         if chunks:
-            _chunks = normalize_chunks(chunks, shape, dtype_parsed.unwrap().itemsize)
+            _chunks = normalize_chunks(chunks, shape, dtype_parsed.to_dtype().itemsize)
         else:
-            _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.unwrap().itemsize)
+            _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.to_dtype().itemsize)
         config_parsed = parse_array_config(config)
 
         result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
@@ -745,7 +734,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             chunk_key_encoding_parsed = chunk_key_encoding
 
-        if dtype.unwrap().kind in ("U", "T", "S"):
+        if dtype.to_dtype().kind in ("U", "T", "S"):
             warn(
                 f"The dtype `{dtype}` is currently not part in the Zarr format 3 specification. It "
                 "may not be supported by other zarr implementations and may change in the future.",
@@ -1111,9 +1100,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Data type of the array
         """
         if self.metadata.zarr_format == 2:
-            return self.metadata.dtype.unwrap()
+            return self.metadata.dtype.to_dtype()
         else:
-            return self.metadata.data_type.unwrap()
+            return self.metadata.data_type.to_dtype()
 
     @property
     def order(self) -> MemoryOrder:
@@ -4257,10 +4246,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    if not isinstance(dtype, DTypeWrapper):
-        dtype_wrapped = get_data_type_from_numpy(dtype)
-    else:
-        dtype_wrapped = dtype
+    dtype_wrapped = parse_data_type(dtype)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
@@ -4282,7 +4268,7 @@ async def init_array(
         array_shape=shape_parsed,
         shard_shape=shards,
         chunk_shape=chunks,
-        item_size=dtype_wrapped.unwrap().itemsize,
+        item_size=dtype_wrapped.to_dtype().itemsize,
     )
     chunks_out: tuple[int, ...]
     meta: ArrayV2Metadata | ArrayV3Metadata
@@ -4689,7 +4675,7 @@ def _get_default_chunk_encoding_v3(
     elif isinstance(dtype, FixedLengthAsciiString):
         serializer = VLenBytesCodec()
     else:
-        if dtype.unwrap().itemsize == 1:
+        if dtype.to_dtype().itemsize == 1:
             serializer = BytesCodec(endian=None)
         else:
             serializer = BytesCodec()

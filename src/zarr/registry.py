@@ -6,7 +6,7 @@ from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from zarr.core.config import BadConfigError, config
-from zarr.core.metadata.dtype import data_type_registry
+from zarr.core.dtype import data_type_registry
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint

@@ -143,13 +143,13 @@ class BloscCodec(BytesBytesCodec):
             item_size = array_spec.dtype.item_size
         new_codec = self
         if new_codec.typesize is None:
-            new_codec = replace(new_codec, typesize=dtype.unwrap().itemsize)
+            new_codec = replace(new_codec, typesize=dtype.to_dtype().itemsize)
         if new_codec.shuffle is None:
             new_codec = replace(
                 new_codec,
                 shuffle=(
                     BloscShuffle.bitshuffle
-                    if dtype.unwrap().itemsize == 1
+                    if dtype.to_dtype().itemsize == 1
                     else BloscShuffle.shuffle
                 ),
             )

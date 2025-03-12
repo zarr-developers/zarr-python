@@ -11,11 +11,10 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
-from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
-from zarr.core.dtype.npy.time import DateTime64
+from zarr.core.dtype import get_data_type_from_numpy
+from zarr.core.dtype._numpy import DateTime64
+from zarr.core.dtype.common import complex_from_json
 from zarr.core.group import GroupMetadata, parse_node_type
-from zarr.core.metadata.dtype import DateTime64, complex_from_json, get_data_type_from_numpy
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     parse_dimension_names,
@@ -132,7 +131,7 @@ def test_jsonify_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     """
     zarr_format = 3
     dtype = get_data_type_from_numpy(dtype_str)
-    expected = dtype.unwrap().type(complex(*fill_value))
+    expected = dtype.to_dtype().type(complex(*fill_value))
     observed = dtype.from_json_value(fill_value, zarr_format=zarr_format)
     assert observed == expected
     assert dtype.to_json_value(observed, zarr_format=zarr_format) == tuple(fill_value)

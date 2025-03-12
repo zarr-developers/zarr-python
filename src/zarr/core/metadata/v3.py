@@ -4,10 +4,9 @@ from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.metadata.dtype import (
+from zarr.core.dtype import (
     DTypeWrapper,
     VariableLengthString,
-    get_data_type_by_name,
     get_data_type_from_dict,
 )
 
@@ -87,7 +86,7 @@ def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
     return abcs[0]
 
 
-def validate_codecs(codecs: tuple[Codec, ...], dtype: DTypeWrapper) -> None:
+def validate_codecs(codecs: tuple[Codec, ...], dtype: DTypeWrapper[Any, Any]) -> None:
     """Check that the codecs are valid for the given dtype"""
     from zarr.codecs.sharding import ShardingCodec
 
@@ -145,7 +144,7 @@ class ArrayV3MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(Metadata):
     shape: ChunkCoords
-    data_type: DTypeWrapper
+    data_type: DTypeWrapper[Any, Any]
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
@@ -160,7 +159,7 @@ class ArrayV3Metadata(Metadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: DTypeWrapper,
+        data_type: DTypeWrapper[Any, Any],
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: object,
@@ -180,14 +179,14 @@ class ArrayV3Metadata(Metadata):
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        fill_value_parsed = data_type.unwrap().type(fill_value)
+        fill_value_parsed = data_type.to_dtype().type(fill_value)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
-            dtype=data_type.unwrap(),
+            dtype=data_type.to_dtype(),
             fill_value=fill_value_parsed,
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
@@ -222,7 +221,7 @@ class ArrayV3Metadata(Metadata):
             raise ValueError("`fill_value` is required.")
         for codec in self.codecs:
             codec.validate(
-                shape=self.shape, dtype=self.data_type.unwrap(), chunk_grid=self.chunk_grid
+                shape=self.shape, dtype=self.data_type.to_dtype(), chunk_grid=self.chunk_grid
             )
 
     @property
@@ -296,9 +295,7 @@ class ArrayV3Metadata(Metadata):
 
         data_type_json = _data.pop("data_type")
         if isinstance(data_type_json, str):
-            # check that the data_type attribute is valid
-            data_type = get_data_type_by_name(data_type_json)
-
+            data_type = get_data_type_from_dict({"name": data_type_json})
         else:
             data_type = get_data_type_from_dict(data_type_json)
 

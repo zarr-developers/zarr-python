@@ -21,7 +21,7 @@ from zarr.core.array import (
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
 from zarr.core.common import JSON, parse_shapelike
 from zarr.core.config import config as zarr_config
-from zarr.core.metadata.dtype import get_data_type_from_numpy
+from zarr.core.dtype import get_data_type_from_numpy
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
@@ -289,7 +289,7 @@ def create_array_metadata(
         array_shape=shape_parsed,
         shard_shape=shards,
         chunk_shape=chunks,
-        item_size=dtype_parsed.unwrap().itemsize,
+        item_size=dtype_parsed.to_dtype().itemsize,
     )
 
     if order is None:

@@ -8,7 +8,7 @@ from zarr import Array
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
-from zarr.core.metadata.dtype import get_data_type_from_numpy
+from zarr.core.dtype import get_data_type_from_numpy
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.storage import StorePath

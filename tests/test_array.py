@@ -40,28 +40,10 @@ from zarr.core.array import (
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
-from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
-from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype import (
-    DateTime64,
-    Float32,
-    Float64,
-    Int16,
-    Structured,
-    TimeDelta64,
-    UInt8,
-    VariableLengthBytes,
-    VariableLengthUTF8,
-    ZDType,
-    parse_data_type,
-)
-from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
-from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
-from zarr.core.dtype.npy.string import UTF8Base
+from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+from zarr.core.dtype import get_data_type_from_numpy
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
-from zarr.core.metadata.dtype import get_data_type_from_numpy
-from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
@@ -69,6 +51,8 @@ from zarr.storage import LocalStore, MemoryStore, StorePath
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
+    from zarr.core.array_spec import ArrayConfigLike
+    from zarr.core.metadata.v2 import ArrayV2Metadata
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
@@ -1081,7 +1065,7 @@ class TestCreateArray:
             filters=filters,
             compressors=compressors,
             serializer="auto",
-            dtype=arr.metadata.data_type,
+            dtype=arr.metadata.data_type,  # type: ignore[union-attr]
         )
         assert arr.filters == filters_expected
         assert arr.compressors == compressors_expected
@@ -1306,7 +1290,7 @@ class TestCreateArray:
         elif impl == "async":
             arr = await create_array(store, name=name, data=data, zarr_format=3)
             stored = await arr._get_selection(
-                BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
+                BasicIndexer(..., shape=arr.shape, chunk_grid=arr.chunk_grid),
                 prototype=default_buffer_prototype(),
             )
         else:

@@ -5,15 +5,19 @@ from typing import Any, get_args
 import numpy as np
 import pytest
 
-from zarr.core.metadata.dtype import (
+from zarr.core.dtype import (
     DTYPE,
+    DTypeWrapper,
+    VariableLengthString,
+    data_type_registry,
+)
+from zarr.core.dtype._numpy import (
     Bool,
     Complex64,
     Complex128,
-    DataTypeRegistry,
     DateTime64,
-    DTypeWrapper,
     FixedLengthAsciiString,
+    FixedLengthBytes,
     FixedLengthUnicodeString,
     Float16,
     Float32,
@@ -22,15 +26,14 @@ from zarr.core.metadata.dtype import (
     Int16,
     Int32,
     Int64,
-    StaticRawBytes,
     Structured,
     UInt8,
     UInt16,
     UInt32,
     UInt64,
-    VariableLengthString,
-    data_type_registry,
 )
+from zarr.core.dtype.common import DataTypeValidationError
+from zarr.core.dtype.registry import DataTypeRegistry
 
 
 @pytest.fixture
@@ -65,7 +68,7 @@ else:
         (Complex128, "complex128"),
         (FixedLengthUnicodeString, "U"),
         (FixedLengthAsciiString, "S"),
-        (StaticRawBytes, "V"),
+        (FixedLengthBytes, "V"),
         (VariableLengthString, VLEN_STRING_CODE),
         (Structured, np.dtype([("a", np.float64), ("b", np.int8)])),
         (DateTime64, "datetime64[s]"),
@@ -79,23 +82,23 @@ def test_wrap(wrapper_cls: type[DTypeWrapper[Any, Any]], np_dtype: np.dtype | st
     """
     dt = np.dtype(np_dtype)
     assert wrapper_cls.dtype_cls is type(dt)
-    wrapped = wrapper_cls.wrap(dt)
+    wrapped = wrapper_cls.from_dtype(dt)
 
-    with pytest.raises(TypeError, match="Invalid dtype"):
-        wrapper_cls.wrap("not a dtype")
+    with pytest.raises(DataTypeValidationError, match="Invalid dtype"):
+        wrapper_cls.from_dtype("not a dtype")
 
     assert isinstance(wrapped, wrapper_cls)
-    assert wrapped.unwrap() == dt
+    assert wrapped.to_dtype() == dt
 
 
 @pytest.mark.parametrize("wrapper_cls", get_args(DTYPE))
 def test_dict_serialization(wrapper_cls: DTYPE) -> None:
     if issubclass(wrapper_cls, Structured):
-        instance = wrapper_cls(fields=((("a", Bool(), 0),)))
+        instance = wrapper_cls(fields=((("a", Bool()),)))
     else:
         instance = wrapper_cls()
     as_dict = instance.to_dict()
-    assert wrapper_cls.from_dict(data=as_dict.get("configuration", {})) == instance
+    assert wrapper_cls.from_dict(as_dict) == instance
 
 
 @pytest.mark.parametrize(
@@ -116,10 +119,10 @@ def test_dict_serialization(wrapper_cls: DTYPE) -> None:
         (Complex64(), np.complex64(0)),
         (Complex128(), np.complex128(0)),
         (FixedLengthAsciiString(length=3), np.bytes_(b"")),
-        (StaticRawBytes(length=3), np.void(b"\x00\x00\x00")),
+        (FixedLengthBytes(length=3), np.void(b"\x00\x00\x00")),
         (FixedLengthUnicodeString(length=3), np.str_("")),
         (
-            Structured(fields=(("a", Float64(), 0), ("b", Int8(), 8))),
+            Structured(fields=(("a", Float64()), ("b", Int8()))),
             np.array([0], dtype=[("a", np.float64), ("b", np.int8)])[0],
         ),
         (VariableLengthString(), ""),
@@ -154,7 +157,7 @@ def test_default_value(wrapper: type[DTypeWrapper[Any, Any]], expected_default: 
         (Complex64(), np.complex64(42.0 + 1.0j), (42.0, 1.0)),
         (Complex128(), np.complex128(42.0 + 1.0j), (42.0, 1.0)),
         (FixedLengthAsciiString(length=4), np.bytes_(b"test"), "dGVzdA=="),
-        (StaticRawBytes(length=4), np.void(b"test"), "dGVzdA=="),
+        (FixedLengthBytes(length=4), np.void(b"test"), "dGVzdA=="),
         (FixedLengthUnicodeString(length=4), np.str_("test"), "test"),
         (VariableLengthString(), "test", "test"),
         (DateTime64(unit="s"), np.datetime64("2021-01-01T00:00:00", "s"), 1609459200),
@@ -187,7 +190,7 @@ def test_to_json_value_v2(
         (Complex64(), (42.0, 1.0), np.complex64(42.0 + 1.0j)),
         (Complex128(), (42.0, 1.0), np.complex128(42.0 + 1.0j)),
         (FixedLengthAsciiString(length=4), "dGVzdA==", np.bytes_(b"test")),
-        (StaticRawBytes(length=4), "dGVzdA==", np.void(b"test")),
+        (FixedLengthBytes(length=4), "dGVzdA==", np.void(b"test")),
         (FixedLengthUnicodeString(length=4), "test", np.str_("test")),
         (VariableLengthString(), "test", "test"),
         (DateTime64(unit="s"), 1609459200, np.datetime64("2021-01-01T00:00:00", "s")),
@@ -208,8 +211,8 @@ class TestRegistry:
         """
         Test that registering a dtype in a data type registry works.
         """
-        dtype_registry.register(Bool)
-        assert dtype_registry.get("bool") == Bool
+        dtype_registry.register(Bool._zarr_v3_name, Bool)
+        assert dtype_registry.get(Bool._zarr_v3_name) == Bool
         assert isinstance(dtype_registry.match_dtype(np.dtype("bool")), Bool)
 
     @staticmethod
@@ -217,13 +220,13 @@ class TestRegistry:
         """
         Test that registering a new dtype with the same name works (overriding the previous one).
         """
-        dtype_registry.register(Bool)
+        dtype_registry.register(Bool._zarr_v3_name, Bool)
 
         class NewBool(Bool):
             def default_value(self) -> np.bool_:
                 return np.True_
 
-        dtype_registry.register(NewBool)
+        dtype_registry.register(NewBool._zarr_v3_name, NewBool)
         assert isinstance(dtype_registry.match_dtype(np.dtype("bool")), NewBool)
 
     @staticmethod
@@ -236,7 +239,7 @@ class TestRegistry:
         """
         Test that match_dtype resolves a numpy dtype into an instance of the correspond wrapper for that dtype.
         """
-        dtype_registry.register(wrapper_cls)
+        dtype_registry.register(wrapper_cls._zarr_v3_name, wrapper_cls)
         assert isinstance(dtype_registry.match_dtype(np.dtype(dtype_str)), wrapper_cls)
 
     @staticmethod
@@ -260,8 +263,8 @@ class TestRegistry:
         Test that the registered dtypes can be retrieved from the registry.
         """
         if issubclass(wrapper_cls, Structured):
-            instance = wrapper_cls(fields=((("a", Bool(), 0),)))
+            instance = wrapper_cls(fields=((("a", Bool()),)))
         else:
             instance = wrapper_cls()
 
-        assert data_type_registry.match_dtype(instance.unwrap()) == instance
+        assert data_type_registry.match_dtype(instance.to_dtype()) == instance

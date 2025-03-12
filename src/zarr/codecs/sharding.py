@@ -51,7 +51,6 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
-from zarr.core.metadata.dtype import DTypeWrapper
 from zarr.core.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
@@ -60,7 +59,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.common import JSON
-    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.dtype.wrapper import DTypeWrapper
 
 MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, Buffer]
@@ -493,7 +492,7 @@ class ShardingCodec(
         # setup output array
         out = shard_spec.prototype.nd_buffer.create(
             shape=indexer.shape,
-            dtype=shard_spec.dtype.unwrap(),
+            dtype=shard_spec.dtype.to_dtype(),
             order=shard_spec.order,
             fill_value=0,
         )

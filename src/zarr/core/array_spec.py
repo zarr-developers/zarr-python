@@ -11,7 +11,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config as zarr_config
-from zarr.core.metadata.dtype import DTypeWrapper, get_data_type_from_numpy
+from zarr.core.dtype import parse_data_type
 
 if TYPE_CHECKING:
     from typing import NotRequired
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ChunkCoords
-    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.dtype.wrapper import DTypeWrapper
 
 
 class ArrayConfigParams(TypedDict):
@@ -106,10 +106,7 @@ class ArraySpec:
         prototype: BufferPrototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
-        if not isinstance(dtype, DTypeWrapper):
-            dtype_parsed = get_data_type_from_numpy(dtype)
-        else:
-            dtype_parsed = dtype
+        dtype_parsed = parse_data_type(dtype)
 
         fill_value_parsed = parse_fill_value(fill_value)
 
