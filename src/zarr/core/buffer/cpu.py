@@ -10,7 +10,6 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.buffer import core
-from zarr.core.metadata.dtype import DTypeWrapper
 from zarr.registry import (
     register_buffer,
     register_ndbuffer,
@@ -158,11 +157,7 @@ class NDBuffer(core.NDBuffer):
         if fill_value is None:
             return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
         else:
-            return cls(
-                np.full(
-                    shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order
-                )
-            )
+            return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
 
     @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:

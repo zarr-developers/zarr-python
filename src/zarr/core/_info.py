@@ -7,7 +7,7 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.core.common import ZarrFormat
-from zarr.core.metadata.dtype import DTypeWrapper
+from zarr.core.dtype.wrapper import DTypeWrapper
 
 # from zarr.core.metadata.v3 import DataType
 

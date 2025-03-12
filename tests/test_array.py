@@ -39,10 +39,9 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+from zarr.core.dtype import get_data_type_from_numpy
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
-from zarr.core.metadata.dtype import get_data_type_from_numpy
-from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
@@ -50,6 +49,7 @@ from zarr.storage import LocalStore, MemoryStore, StorePath
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.metadata.v2 import ArrayV2Metadata
+    from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -1004,7 +1004,7 @@ class TestCreateArray:
             filters=filters,
             compressors=compressors,
             serializer="auto",
-            dtype=arr.metadata.data_type,
+            dtype=arr.metadata.data_type,  # type: ignore[union-attr]
         )
         assert arr.filters == filters_expected
         assert arr.compressors == compressors_expected
@@ -1119,7 +1119,7 @@ class TestCreateArray:
         elif impl == "async":
             arr = await create_array(store, name=name, data=data, zarr_format=3)
             stored = await arr._get_selection(
-                BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
+                BasicIndexer(..., shape=arr.shape, chunk_grid=arr.chunk_grid),
                 prototype=default_buffer_prototype(),
             )
         else:
