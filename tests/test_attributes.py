@@ -59,3 +59,12 @@ def test_update_no_changes() -> None:
 
     z.update_attributes({})
     assert dict(z.attrs) == {"a": [], "b": 3}
+
+
+def test_del_works() -> None:
+    store = zarr.storage.MemoryStore()
+    z = zarr.create(10, store=store, overwrite=True)
+    assert dict(z.attrs) == {}
+    z.update_attributes({"a": [3, 4], "c": 4})
+    del z.attrs["a"]
+    assert "c" in z.attrs
