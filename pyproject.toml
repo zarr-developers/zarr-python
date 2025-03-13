@@ -94,7 +94,7 @@ docs = [
     'sphinx_design',
     'sphinx-issues',
     'sphinx-reredirects',
-    'sphinx_immaterial>=0.13.2[black]',
+    'sphinx_immaterial[black]>=0.13.2',
     # Changelog generation
     'towncrier',
     # Optional dependencies to run examples
