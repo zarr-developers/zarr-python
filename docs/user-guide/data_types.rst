@@ -7,17 +7,17 @@ Zarr's data type model
 Every Zarr array has a "data type", which defines the meaning and physical layout of the
 array's elements. Zarr is heavily influenced by `NumPy <https://numpy.org/doc/stable/>`_, and
 Zarr-Python supports creating arrays with Numpy data types::
->>> import zarr
->>> import numpy as np
->>> zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
->>> z
-<Array memory://126225407345920 shape=(10,) dtype=uint8>
 
-But Zarr data types and Numpy data types are also very different:
+  >>> import zarr
+  >>> import numpy as np
+  >>> zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
+  >>> z
+  <Array memory://126225407345920 shape=(10,) dtype=uint8>
+
 Unlike Numpy arrays, Zarr arrays are designed to be persisted to storage and read by Zarr implementations in different programming languages.
-To ensure that the data type can be interpreted correctly when reading an array, each Zarr data type defines a procedure for
-reading and writing that data type to Zarr array metadata, and also reading and writing **instances** of that data type to
-array metadata, and these serialization procedures depend on the Zarr format.
+This means Zarr data types must be interpreted correctly when clients read an array. So each Zarr data type defines a procedure for
+encoding / decoding that data type to / from Zarr array metadata, and also encoding / decoding **instances** of that data type to / from
+array metadata. These serialization procedures depend on the Zarr format.
 
 Data types in Zarr version 2
 -----------------------------
@@ -56,7 +56,7 @@ Zarr-Python supports two different Zarr formats, and those two formats specify d
 data types in Zarr version 2 are encoded as Numpy-compatible strings, while data types in Zarr version 3 are encoded as either strings or ``JSON`` objects,
 and the Zarr V3 data types don't have any associated endianness information, unlike Zarr V2 data types.
 
-If that wasn't enough, we want Zarr-Python to support data types beyond what's available in Numpy. So it's crucial that we have a
+We also want Zarr-Python to support data types beyond what's available in Numpy. So it's crucial that we have a
 model of array data types that can adapt to the differences between Zarr V2 and V3 and doesn't over-fit to Numpy.
 
 Here are the operations we need to perform on data types in Zarr-Python:
