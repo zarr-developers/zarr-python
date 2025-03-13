@@ -65,7 +65,6 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
             f"Invalid dtype: {dtype}. Expected an instance of {cls.dtype_cls}."
         )
 
-
     @classmethod
     @abstractmethod
     def _from_dtype_unsafe(cls: type[Self], dtype: TDType) -> Self:
@@ -93,18 +92,6 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         -------
         TDType
             The unwrapped dtype.
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def to_dict(self) -> dict[str, JSON]:
-        """
-        Convert the wrapped data type to a dictionary.
-
-        Returns
-        -------
-        dict[str, JSON]
-            The dictionary representation of the wrapped data type
         """
         raise NotImplementedError
 
@@ -178,6 +165,18 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         """
         return "name" in data and data["name"] == cls._zarr_v3_name
 
+    @abstractmethod
+    def to_dict(self) -> dict[str, JSON]:
+        """
+        Convert the wrapped data type to a dictionary.
+
+        Returns
+        -------
+        dict[str, JSON]
+            The dictionary representation of the wrapped data type
+        """
+        raise NotImplementedError
+
     @classmethod
     def from_dict(cls: type[Self], data: dict[str, JSON]) -> Self:
         """
@@ -194,11 +193,11 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
             The wrapped data type.
         """
         if cls.check_dict(data):
-            return cls._from_json_unsafe(data)
+            return cls._from_dict_unsafe(data)
         raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
 
     @classmethod
-    def _from_json_unsafe(cls: type[Self], data: dict[str, JSON]) -> Self:
+    def _from_dict_unsafe(cls: type[Self], data: dict[str, JSON]) -> Self:
         """
         Wrap a JSON representation of a data type.
 
