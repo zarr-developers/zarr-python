@@ -46,8 +46,9 @@ as are floats, with the caveat that `NaN`, positive infinity, and negative infin
 Data types in Zarr version 3
 ----------------------------
 
+* Data type names are different -- Zarr V2 represented the 16 bit unsigned integer data type as ``>i2``; Zarr V3 represents the same data type as ``int16``.
 * No endianness
-* Data type can be encoded as a string or a ``JSON`` object with the structure ``{"name": <string identifier>, "configuration": {...}}``
+* A data type can be encoded in metadata as a string or a ``JSON`` object with the structure ``{"name": <string identifier>, "configuration": {...}}``
 
 Data types in Zarr-Python
 -------------------------
