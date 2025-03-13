@@ -6,24 +6,24 @@ Zarr's data type model
 
 Every Zarr array has a "data type", which defines the meaning and physical layout of the
 array's elements. Zarr is heavily influenced by `NumPy <https://numpy.org/doc/stable/>`_, and
-Zarr arrays can use many of the same data types as numpy arrays::
+Zarr-Python supports creating arrays with Numpy data types::
     >>> import zarr
     >>> import numpy as np
     >>> zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
     >>> z
     <Array memory://126225407345920 shape=(10,) dtype=uint8>
 
-But Zarr data types and Numpy data types are also very different in one key respect:
-Zarr arrays are designed to be persisted to storage and later read, possibly by Zarr implementations in different programming languages.
-So in addition to defining a memory layout for array elements, each Zarr data type defines a procedure for
+But Zarr data types and Numpy data types are also very different:
+Unlike Numpy arrays, Zarr arrays are designed to be persisted to storage and read by Zarr implementations in different programming languages.
+To ensure that the data type can be interpreted correctly when reading an array, each Zarr data type defines a procedure for
 reading and writing that data type to Zarr array metadata, and also reading and writing **instances** of that data type to
-array metadata.
+array metadata, and these serialization procedures depend on the Zarr format.
 
 Data types in Zarr version 2
 -----------------------------
 
 Version 2 of the Zarr format defined its data types relative to `Numpy's data types <https://numpy.org/doc/2.1/reference/arrays.dtypes.html#data-type-objects-dtype>`_, and added a few non-Numpy data types as well.
-Thus the JSON identifer for a Numpy-compatible data type is just the Numpy ``str`` attribute of that dtype:
+Thus the JSON identifier for a Numpy-compatible data type is just the Numpy ``str`` attribute of that dtype:
 
     >>> import zarr
     >>> import numpy as np
@@ -113,16 +113,6 @@ data types, additional checks are needed -- in Numpy "structured" data types and
 A ``DTypeWrapper`` that wraps Numpy structured data types must do additional checks to ensure that the input ``dtype`` is actually a structured data type.
 If input validation succeeds, this method will call ``_from_dtype_unsafe``.
 
-(class method) ``_from_dtype_unsafe(cls, dtype) -> Self``
-^^^^^^^^^^
-This method defines the procedure for converting a native data type instance, like ``np.dtype('uint8')``,
-into a wrapper class instance. The ``unsafe`` prefix on the method name denotes that this method should not
-perform any input validation. Input validation should be done by the routine that calls this method.
-
-For many data types, creating the wrapper class takes no arguments and so this method can just return ``cls()``.
-But for data types with runtime attributes like endianness or length (for fixed-size strings), this ``_from_dtype_unsafe``
-ensures that those attributes of ``dtype`` are mapped on to the correct parameters in the ``DTypeWrapper`` class constructor.
-
 (method) ``to_dtype(self) -> dtype``
 ^^^^^^^
 This method produces a native data type consistent with the properties of the ``DTypeWrapper``. Together
@@ -137,20 +127,56 @@ Zarr metadata.
 
 (method) ``cast_value(self, value: object) -> scalar``
 ^^^^^
-Cast a python object to an instance of the wrapped data type. This is used for generating the default
+This method converts a python object to an instance of the wrapped data type. It is used for generating the default
 value associated with this data type.
 
 
 (method) ``default_value(self) -> scalar``
 ^^^^
-Return the default value for the wrapped data type. Zarr-Python uses this method to generate a default fill value
+This method returns the default value for the wrapped data type. Zarr-Python uses this method to generate a default fill value
 for an array when a user has not requested one.
 
 Why is this a method and not a static attribute? Although some data types
 can have a static default value, parametrized data types like fixed-length strings or structured data types cannot. For these data types,
 a default value must be calculated based on the attributes of the wrapped data type.
 
-(method) ``check_dtype(cls, dtype)``
+(class method) ``check_dtype(cls, dtype) -> bool``
+^^^^^
+This class method checks if a native dtype is compatible with the ``DTypeWrapper`` class. It returns ``True``
+if ``dtype`` is compatible with the wrapper class, and ``False`` otherwise. For many data types, this check is as simple
+as checking that ``cls.dtype_cls`` matches ``type(dtype)``, i.e. checking that the data type class wrapped
+by the ``DTypeWrapper`` is the same as the class of ``dtype``. But there are some data types where this check alone is not sufficient,
+in which case this method is overridden so that additional properties of ``dtype`` can be inspected and compared with
+the expectations of ``cls``.
 
+(class method) ``from_dict(cls, dtype) -> Self``
+^^^^
+This class method creates a ``DTypeWrapper`` from an appropriately structured dictionary. The default
+implementation first checks that the dictionary has the correct structure, and then uses its data
+to instantiate the ``DTypeWrapper`` instance.
+
+(method) ``to_dict(self) -> dict[str, JSON]``
+^^^
+Returns a dictionary form of the wrapped data type. This is used prior to writing array metadata.
+
+(class method) ``get_name(self, zarr_format: Literal[2, 3]) -> str``
+^^^^
+This method generates a name for the wrapped data type, depending on the Zarr format. If ``zarr_format`` is
+2 and the wrapped data type is a Numpy data type, then the Numpy string representation of that data type is returned.
+If ``zarr_format`` is 3, then the Zarr V3 name for the wrapped data type is returned. For most data types
+the Zarr V3 name will be stored as the ``_zarr_v3_name`` class attribute, but for parametric data types the
+name must be computed at runtime based on the parameters of the data type.
+
+
+(method) ``to_json_value(self, data: scalar, zarr_format: Literal[2, 3]) -> JSON``
+^^^
+This method converts a scalar instance of the data type into a JSON-serialiazable value.
+For some data types like bool and integers this conversion is simple -- just return a JSON boolean
+or number -- but other data types define a JSON serialization for scalars that is a bit more involved.
+And this JSON serialization depends on the Zarr format.
+
+(method) ``from_json_value(self, data: JSON, zarr_format: Literal[2, 3]) -> scalar``
+^^^
+Convert a JSON-serialiazed scalar to a native scalar. This inverts the operation of ``to_json_value``.
 
 
