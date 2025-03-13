@@ -1,14 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;0,900;1,400;1,700;1,900&family=Open+Sans:ital,wght@0,400;0,600;1,400;1,600&display=swap');
-
-body {
-  font-family: 'Open Sans', sans-serif;
-}
-
-pre, code {
-  font-size: 100%;
-  line-height: 155%;
-}
-
 /* Style the active version button.
 
 - dev: orange
@@ -66,8 +55,8 @@ Nat Methods 8, 441 (2011). https://doi.org/10.1038/nmeth.1618
 
 .sd-card .sd-card-header {
   border: none;
-  background-color: white;
-  font-size: var(--pst-font-size-h5);
+  background-color: var(--md-default-bg-color);
+  font-size: 1.5rem;
   font-weight: bold;
   padding: 2.5rem 0rem 0.5rem 0rem;
 }
@@ -84,27 +73,19 @@ Nat Methods 8, 441 (2011). https://doi.org/10.1038/nmeth.1618
 }
 
 /* Dark theme tweaking */
-html[data-theme=dark] .sd-card img[src*='.svg'] {
+body[data-md-color-scheme=slate] .sd-card img[src*='.svg'] {
     filter: invert(0.82) brightness(0.8) contrast(1.2);
 }
 
 /* Main index page overview cards */
-html[data-theme=dark] .sd-card {
-  background-color:var(--pst-color-background);
+body[data-md-color-scheme=slate] .sd-card {
+  background-color:var(--md-default-bg-color);
 }
 
-html[data-theme=dark] .sd-shadow-sm {
+body[data-md-color-scheme=slate] .sd-shadow-sm {
     box-shadow: 0 .1rem 1rem rgba(250, 250, 250, .6) !important
 }
 
-html[data-theme=dark] .sd-card .sd-card-header {
-  background-color:var(--pst-color-background);
-}
-
-html[data-theme=dark] .sd-card .sd-card-footer {
-  background-color:var(--pst-color-background);
-}
-
-html[data-theme=dark] h1 {
-  color: var(--pst-color-primary);
+body[data-md-color-scheme=slate] .sd-card .sd-card-footer {
+  background-color:var(--md-default-bg-color);
 }
