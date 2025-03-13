@@ -569,7 +569,7 @@ class FixedLengthBytes(DTypeWrapper[np.dtypes.VoidDType[Any], np.void]):
         return super().check_dtype(dtype) and dtype.fields is None
 
     @classmethod
-    def check_json(cls, data: dict[str, JSON]) -> TypeGuard[dict[str, JSON]]:
+    def check_dict(cls, data: dict[str, JSON]) -> TypeGuard[dict[str, JSON]]:
         # Overriding the base class implementation because the r* dtype
         # does not have a name that will can appear in array metadata
         # Instead, array metadata will contain names like "r8", "r16", etc
@@ -787,7 +787,7 @@ class Structured(DTypeWrapper[np.dtypes.VoidDType, np.void]):
         return base_dict
 
     @classmethod
-    def check_json(cls, data: JSON) -> bool:
+    def check_dict(cls, data: JSON) -> bool:
         return (
             isinstance(data, dict)
             and "name" in data
@@ -797,7 +797,7 @@ class Structured(DTypeWrapper[np.dtypes.VoidDType, np.void]):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        if cls.check_json(data):
+        if cls.check_dict(data):
             from zarr.core.dtype import get_data_type_from_dict
 
             fields = tuple(

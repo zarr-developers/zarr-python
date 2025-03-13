@@ -40,24 +40,6 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
-    @abstractmethod
-    def _from_dtype_unsafe(cls: type[Self], dtype: TDType) -> Self:
-        """
-        Wrap a native dtype without checking.
-
-        Parameters
-        ----------
-        dtype : TDType
-            The native dtype to wrap.
-
-        Returns
-        -------
-        Self
-            The wrapped dtype.
-        """
-        raise NotImplementedError
-
-    @classmethod
     def from_dtype(cls: type[Self], dtype: TDType) -> Self:
         """
         Wrap a dtype object.
@@ -82,6 +64,25 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         raise DataTypeValidationError(
             f"Invalid dtype: {dtype}. Expected an instance of {cls.dtype_cls}."
         )
+
+
+    @classmethod
+    @abstractmethod
+    def _from_dtype_unsafe(cls: type[Self], dtype: TDType) -> Self:
+        """
+        Wrap a native dtype without checking.
+
+        Parameters
+        ----------
+        dtype : TDType
+            The native dtype to wrap.
+
+        Returns
+        -------
+        Self
+            The wrapped dtype.
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def to_dtype(self: Self) -> TDType:
@@ -158,7 +159,7 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         return type(dtype) is cls.dtype_cls
 
     @classmethod
-    def check_json(cls: type[Self], data: dict[str, JSON]) -> TypeGuard[dict[str, JSON]]:
+    def check_dict(cls: type[Self], data: dict[str, JSON]) -> TypeGuard[dict[str, JSON]]:
         """
         Check that a JSON representation of a data type matches the dtype_cls class attribute. Used
         as a type guard. This base implementation checks that the input is a dictionary,
@@ -192,7 +193,7 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         Self
             The wrapped data type.
         """
-        if cls.check_json(data):
+        if cls.check_dict(data):
             return cls._from_json_unsafe(data)
         raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
 
