@@ -524,7 +524,7 @@ class FixedLengthAsciiString(DTypeWrapper[np.dtypes.BytesDType[Any], np.bytes_])
 
 @dataclass(frozen=True, kw_only=True)
 class FixedLengthBytes(DTypeWrapper[np.dtypes.VoidDType[Any], np.void]):
-    dtype_cls = np.dtypes.VoidDType[Any]
+    dtype_cls = np.dtypes.VoidDType
     _zarr_v3_name = "r*"
     item_size_bits: ClassVar[int] = 8
     length: int = 1
@@ -591,8 +591,8 @@ class FixedLengthBytes(DTypeWrapper[np.dtypes.VoidDType[Any], np.void]):
 
 @dataclass(frozen=True, kw_only=True)
 class FixedLengthUnicodeString(DTypeWrapper[np.dtypes.StrDType[int], np.str_]):
-    dtype_cls = np.dtypes.StrDType[int]
-    _zarr_v3_name = "numpy.static_unicode_string"
+    dtype_cls = np.dtypes.StrDType
+    _zarr_v3_name = "numpy.fixed_length_unicode_string"
     item_size_bits: ClassVar[int] = 32  # UCS4 is 32 bits per code point
     endianness: Endianness | None = "native"
     length: int = 1
