@@ -7,11 +7,11 @@ Zarr's data type model
 Every Zarr array has a "data type", which defines the meaning and physical layout of the
 array's elements. Zarr is heavily influenced by `NumPy <https://numpy.org/doc/stable/>`_, and
 Zarr-Python supports creating arrays with Numpy data types::
-    >>> import zarr
-    >>> import numpy as np
-    >>> zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
-    >>> z
-    <Array memory://126225407345920 shape=(10,) dtype=uint8>
+>>> import zarr
+>>> import numpy as np
+>>> zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
+>>> z
+<Array memory://126225407345920 shape=(10,) dtype=uint8>
 
 But Zarr data types and Numpy data types are also very different:
 Unlike Numpy arrays, Zarr arrays are designed to be persisted to storage and read by Zarr implementations in different programming languages.
@@ -36,8 +36,8 @@ Thus the JSON identifier for a Numpy-compatible data type is just the Numpy ``st
     <i8
 
 .. note::
-    The ``<`` character in the data type metadata encodes the `endianness https://numpy.org/doc/2.2/reference/generated/numpy.dtype.byteorder.html`_, or "byte order", of the data type. Following Numpy's example,
-Zarr version 2 data types associate each data type with an endianness where applicable. Zarr version 3 data types do not store endianness information.
+  The ``<`` character in the data type metadata encodes the `endianness <https://numpy.org/doc/2.2/reference/generated/numpy.dtype.byteorder.html>`_, or "byte order", of the data type. Following Numpy's example,
+  Zarr version 2 data types associate each data type with an endianness where applicable. Zarr version 3 data types do not store endianness information.
 
 In addition to defining a representation of the data type itself (which in the example above was just a simple string ``"<i8"``, Zarr also
 defines a metadata representation of scalars associated with that data type. Integers are stored as ``JSON`` numbers,
@@ -83,7 +83,7 @@ To achieve these goals, Zarr Python uses a class called :class:`zarr.core.dtype.
 supported by Zarr Python is modeled by a subclass of `DTypeWrapper`, which has the following structure:
 
 (attribute) ``dtype_cls``
-^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^
 The ``dtype_cls`` attribute is a **class variable** that is bound to a class that can produce
 an instance of a native data type. For example, on the ``DTypeWrapper`` used to model the boolean
 data type, the ``dtype_cls`` attribute is bound to the numpy bool data type class: ``np.dtypes.BoolDType``.
@@ -99,14 +99,14 @@ byte order semantics thus have ``endianness`` as an instance variable, and this 
 
 
 (attribute) ``_zarr_v3_name``
-^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 The ``_zarr_v3_name`` attribute encodes the canonical name for a data type for Zarr V3. For many data types these names
-are defined in the `Zarr V3 specification https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#data-types`_ For nearly all of the
+are defined in the `Zarr V3 specification <https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#data-types>`_ For nearly all of the
 data types defined in Zarr V3, this name can be used to uniquely specify a data type. The one exception is the ``r*`` data type,
 which is parametrized by a number of bits, and so may take the form ``r8``, ``r16``, ... etc.
 
 (class method) ``from_dtype(cls, dtype) -> Self``
-^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This method defines a procedure for safely converting a native dtype instance into an instance of ``DTypeWrapper``. It should perform
 validation of its input to ensure that the native dtype is an instance of the ``dtype_cls`` class attribute, for example. For some
 data types, additional checks are needed -- in Numpy "structured" data types and "void" data types use the same class, with different properties.
@@ -114,25 +114,25 @@ A ``DTypeWrapper`` that wraps Numpy structured data types must do additional che
 If input validation succeeds, this method will call ``_from_dtype_unsafe``.
 
 (method) ``to_dtype(self) -> dtype``
-^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This method produces a native data type consistent with the properties of the ``DTypeWrapper``. Together
 with ``from_dtype``, this method allows round-trip conversion of a native data type in to a wrapper class and then out again.
 
 That is, for some ``DTypeWrapper`` class ``FooWrapper`` that wraps a native data type called ``foo``, ``FooWrapper.from_dtype(instance_of_foo).to_dtype() == instance_of_foo`` should be true.
 
 (method) ``to_dict(self) -> dict``
-^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This method generates a JSON-serialiazable representation of the wrapped data type which can be stored in
 Zarr metadata.
 
 (method) ``cast_value(self, value: object) -> scalar``
-^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This method converts a python object to an instance of the wrapped data type. It is used for generating the default
 value associated with this data type.
 
 
 (method) ``default_value(self) -> scalar``
-^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This method returns the default value for the wrapped data type. Zarr-Python uses this method to generate a default fill value
 for an array when a user has not requested one.
 
@@ -141,7 +141,7 @@ can have a static default value, parametrized data types like fixed-length strin
 a default value must be calculated based on the attributes of the wrapped data type.
 
 (class method) ``check_dtype(cls, dtype) -> bool``
-^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This class method checks if a native dtype is compatible with the ``DTypeWrapper`` class. It returns ``True``
 if ``dtype`` is compatible with the wrapper class, and ``False`` otherwise. For many data types, this check is as simple
 as checking that ``cls.dtype_cls`` matches ``type(dtype)``, i.e. checking that the data type class wrapped
@@ -150,17 +150,17 @@ in which case this method is overridden so that additional properties of ``dtype
 the expectations of ``cls``.
 
 (class method) ``from_dict(cls, dtype) -> Self``
-^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This class method creates a ``DTypeWrapper`` from an appropriately structured dictionary. The default
 implementation first checks that the dictionary has the correct structure, and then uses its data
 to instantiate the ``DTypeWrapper`` instance.
 
 (method) ``to_dict(self) -> dict[str, JSON]``
-^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Returns a dictionary form of the wrapped data type. This is used prior to writing array metadata.
 
 (class method) ``get_name(self, zarr_format: Literal[2, 3]) -> str``
-^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This method generates a name for the wrapped data type, depending on the Zarr format. If ``zarr_format`` is
 2 and the wrapped data type is a Numpy data type, then the Numpy string representation of that data type is returned.
 If ``zarr_format`` is 3, then the Zarr V3 name for the wrapped data type is returned. For most data types
@@ -169,14 +169,14 @@ name must be computed at runtime based on the parameters of the data type.
 
 
 (method) ``to_json_value(self, data: scalar, zarr_format: Literal[2, 3]) -> JSON``
-^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 This method converts a scalar instance of the data type into a JSON-serialiazable value.
 For some data types like bool and integers this conversion is simple -- just return a JSON boolean
 or number -- but other data types define a JSON serialization for scalars that is a bit more involved.
 And this JSON serialization depends on the Zarr format.
 
 (method) ``from_json_value(self, data: JSON, zarr_format: Literal[2, 3]) -> scalar``
-^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Convert a JSON-serialiazed scalar to a native scalar. This inverts the operation of ``to_json_value``.
 
 
