@@ -295,8 +295,7 @@ component of the version identifier is incremented on release.
   Minor releases are safe for most users and downstream projects to adopt.
 
 
-* ``patch`` releases (for example, ``3.1.0`` -> ``3.1.1``) are for changes with very low likelihood of
-  breaking code for a downstream project or user.
+* ``patch`` releases (for example, ``3.1.0`` -> ``3.1.1``) are for changes that contain no breaking or behaviour changes for downstream projects or users. Examples of changes in a patch release are bugfixes and documentation improvements.
 
 
   Users should always feel safe upgrading to a the latest patch release.
