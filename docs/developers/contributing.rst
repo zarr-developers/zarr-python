@@ -314,7 +314,7 @@ Data format compatibility
 The Zarr library is an implementation of a file format standard defined externally -- see the `Zarr specifications website <https://zarr-specs.readthedocs.io>`_ for the list of Zarr file format specifications.
 
 
-If an existing Zarr file format version changes, or a new version of the Zarr file format is released, then the Zarr library will generally require changes. It is very likely that
+If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that
 a new Zarr file format will require extensive breaking changes to the Zarr library, and so support for a new Zarr file format in the Zarr library will almost certainly come in new ``major`` release.
 For some period of time after the Zarr library adds support for a new Zarr file format, there may be a period of accelerated changes as developers refine APIs that were added to support the new format.
 Breaking changes may more frequent until a new API is fully stabilized, and these breaking changes may occur in ``minor`` releases.
