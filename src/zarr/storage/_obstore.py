@@ -59,7 +59,7 @@ class ObjectStore(Store):
         if not isinstance(value, ObjectStore):
             return False
 
-        if self.read_only != value.read_only:
+        if not self.read_only == value.read_only:
             return False
 
         if not isinstance(self.store, type(value.store)):
