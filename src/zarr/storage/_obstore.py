@@ -62,9 +62,6 @@ class ObjectStore(Store):
         if not self.read_only == value.read_only:
             return False
 
-        if not isinstance(self.store, type(value.store)):
-            return False
-
         return self.store == value.store
 
     def __init__(self, store: _UpstreamObjectStore, *, read_only: bool = False) -> None:
