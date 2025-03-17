@@ -70,7 +70,6 @@ from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     DTypeWrapper,
     FixedLengthAsciiString,
-    FixedLengthUnicodeString,
     VariableLengthString,
     parse_data_type,
 )
@@ -4248,19 +4247,15 @@ def _get_default_chunk_encoding_v2(
     """
     Get the default chunk encoding for Zarr format 2 arrays, given a dtype
     """
-    from numcodecs import VLenBytes as numcodecs_VLenBytes
-    from numcodecs import VLenUTF8 as numcodecs_VLenUTF8
-    from numcodecs import Zstd as numcodecs_zstd
-
-    if isinstance(dtype, VariableLengthString | FixedLengthUnicodeString):
-        filters = (numcodecs_VLenUTF8(),)
-    elif isinstance(dtype, FixedLengthAsciiString):
-        filters = (numcodecs_VLenBytes(),)
+    if dtype._zarr_v3_name in zarr_config.get("array.v2_default_filters"):
+        filters = zarr_config.get(f"array.v2_default_filters.{dtype._zarr_v3_name}")
     else:
-        filters = None
+        filters = zarr_config.get("array.v2_default_filters.default")
 
-    compressor = numcodecs_zstd(level=0, checksum=False)
-
+    if dtype._zarr_v3_name in zarr_config.get("array.v2_default_compressor"):
+        compressor = zarr_config.get(f"array.v2_default_compressor.{dtype._zarr_v3_name}")
+    else:
+        compressor = zarr_config.get("array.v2_default_compressor.default")
     return filters, compressor
 
 
