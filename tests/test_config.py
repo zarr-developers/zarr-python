@@ -19,10 +19,12 @@ from zarr.codecs import (
     GzipCodec,
     ShardingCodec,
 )
+from zarr.core.array import create_array
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
+from zarr.core.dtype import get_data_type_from_numpy
 from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
     fully_qualified_name,
@@ -52,33 +54,24 @@ def test_config_defaults_set() -> None:
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
-                "v2_default_compressor": {
-                    "numeric": {"id": "zstd", "level": 0, "checksum": False},
-                    "string": {"id": "zstd", "level": 0, "checksum": False},
-                    "bytes": {"id": "zstd", "level": 0, "checksum": False},
-                },
+                "v2_default_compressor": {"default": {"id": "zstd", "level": 0, "checksum": False}},
                 "v2_default_filters": {
-                    "numeric": None,
-                    "string": [{"id": "vlen-utf8"}],
-                    "bytes": [{"id": "vlen-bytes"}],
-                    "raw": None,
+                    "default": None,
+                    "variable_length_utf8": [{"id": "vlen-utf8"}],
+                    "fixed_length_ucs4": [{"id": "vlen-utf8"}],
+                    "fixed_length_ascii": [{"id": "vlen-bytes"}],
                 },
-                "v3_default_filters": {"numeric": [], "string": [], "bytes": []},
+                "v3_default_filters": {"default": []},
                 "v3_default_serializer": {
-                    "numeric": {"name": "bytes", "configuration": {"endian": "little"}},
-                    "string": {"name": "vlen-utf8"},
-                    "bytes": {"name": "vlen-bytes"},
+                    "default": {"name": "bytes", "configuration": {"endian": "little"}},
+                    "variable_length_utf8": {"name": "vlen-utf8"},
+                    "fixed_length_ucs4": {"name": "vlen-utf8"},
+                    "r*": {"name": "vlen-bytes"},
                 },
                 "v3_default_compressors": {
-                    "numeric": [
+                    "default": [
                         {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                    "string": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                    "bytes": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
+                    ]
                 },
             },
             "async": {"concurrency": 10, "timeout": None},
@@ -306,26 +299,22 @@ def test_warning_on_missing_codec_config() -> None:
 
 @pytest.mark.parametrize("dtype", ["int", "bytes", "str"])
 async def test_default_codecs(dtype: str) -> None:
-    with config.set(
-        {
-            "array.v3_default_compressors": {  # test setting non-standard codecs
-                "numeric": [
-                    {"name": "gzip", "configuration": {"level": 5}},
-                ],
-                "string": [
-                    {"name": "gzip", "configuration": {"level": 5}},
-                ],
-                "bytes": [
-                    {"name": "gzip", "configuration": {"level": 5}},
-                ],
-            }
-        }
-    ):
-        arr = await zarr.api.asynchronous.create_array(
+    """
+    Test that the default compressors are sensitive to the current setting of the config.
+    """
+    zdtype = get_data_type_from_numpy(dtype)
+    expected_compressors = (GzipCodec(),)
+    new_conf = {
+        f"array.v3_default_compressors.{zdtype._zarr_v3_name}": [
+            c.to_dict() for c in expected_compressors
+        ]
+    }
+    with config.set(new_conf):
+        arr = await create_array(
             shape=(100,),
             chunks=(100,),
-            dtype=np.dtype(dtype),
+            dtype=dtype,
             zarr_format=3,
             store=MemoryStore(),
         )
-        assert arr.compressors == (GzipCodec(),)
+        assert arr.compressors == expected_compressors

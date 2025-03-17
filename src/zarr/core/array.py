@@ -30,6 +30,7 @@ from zarr._compat import _deprecate_positional_args
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
+from zarr.codecs.bytes import BytesCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArraySpec, parse_array_config
 from zarr.core.attributes import Attributes
@@ -4231,7 +4232,6 @@ def _get_default_chunk_encoding_v3(
         compressors = zarr_config.get(f"array.v3_default_compressors.{dtype._zarr_v3_name}")
     else:
         compressors = zarr_config.get("array.v3_default_compressors.default")
-
     if dtype._zarr_v3_name in zarr_config.get("array.v3_default_serializer"):
         serializer = zarr_config.get(f"array.v3_default_serializer.{dtype._zarr_v3_name}")
     else:
@@ -4353,6 +4353,14 @@ def _parse_chunk_encoding_v3(
 
         out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
 
+    # specialize codecs as needed given the dtype
+
+    # TODO: refactor so that the config only contains the name of the codec, and we use the dtype
+    # to create the codec instance, instead of storing a dict representation of a full codec.
+
+    if isinstance(out_array_bytes, BytesCodec) and dtype.to_dtype().itemsize == 1:
+        # The default endianness in the bytescodec might not be None, so we need to replace it
+        out_array_bytes = replace(out_array_bytes, endian=None)
     return out_array_array, out_array_bytes, out_bytes_bytes
 
 
