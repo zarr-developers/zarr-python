@@ -64,18 +64,22 @@ async def test_make_store_path_none(path: str) -> None:
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
-@pytest.mark.parametrize("store_type", [str, Path])
+@pytest.mark.parametrize("store_type", [str, Path, LEGACY_PATH])
 @pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_local(
     tmpdir: LEGACY_PATH,
-    store_type: type[str] | type[Path] | type[LocalStore],
+    store_type: type[str] | type[Path] | type[LEGACY_PATH],
     path: str,
     mode: AccessModeLiteral,
 ) -> None:
     """
     Test the various ways of invoking make_store_path that create a LocalStore
     """
-    store_like = store_type(str(tmpdir))
+
+    if store_type is LEGACY_PATH:
+        store_like = tmpdir
+    else:
+        store_like = store_type(tmpdir)
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
     assert Path(store_path.store.root) == Path(tmpdir)

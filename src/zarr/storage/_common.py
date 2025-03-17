@@ -297,6 +297,8 @@ async def make_store_path(
             store = await MemoryStore.open(read_only=_read_only)
         elif isinstance(store_like, Path):
             store = await LocalStore.open(root=store_like, read_only=_read_only)
+        elif _is_pytest_legacy_path(store_like):
+            store = await LocalStore.open(root=Path(str(store_like)), read_only=_read_only)
         elif isinstance(store_like, str):
             storage_options = storage_options or {}
 
@@ -338,6 +340,15 @@ def _is_fsspec_uri(uri: str) -> bool:
     False
     """
     return "://" in uri or ("::" in uri and "local://" not in uri)
+
+
+def _is_pytest_legacy_path(path: Any) -> bool:
+    # https://docs.pytest.org/en/stable/how-to/tmp_path.html#tmp-path
+    try:
+        from _pytest.compat import LEGACY_PATH
+    except ImportError:
+        return False
+    return isinstance(path, LEGACY_PATH)
 
 
 async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
