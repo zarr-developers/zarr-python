@@ -1,3 +1,5 @@
+import pytest
+
 import zarr.core
 import zarr.core.attributes
 import zarr.storage
@@ -59,3 +61,24 @@ def test_update_no_changes() -> None:
 
     z.update_attributes({})
     assert dict(z.attrs) == {"a": [], "b": 3}
+
+
+@pytest.mark.parametrize("group", [True, False])
+def test_del_works(group: bool) -> None:
+    store = zarr.storage.MemoryStore()
+    z: zarr.Group | zarr.Array
+    if group:
+        z = zarr.create_group(store)
+    else:
+        z = zarr.create_array(store=store, shape=10, dtype=int)
+    assert dict(z.attrs) == {}
+    z.update_attributes({"a": [3, 4], "c": 4})
+    del z.attrs["a"]
+    assert dict(z.attrs) == {"c": 4}
+
+    z2: zarr.Group | zarr.Array
+    if group:
+        z2 = zarr.open_group(store)
+    else:
+        z2 = zarr.open_array(store)
+    assert dict(z2.attrs) == {"c": 4}
