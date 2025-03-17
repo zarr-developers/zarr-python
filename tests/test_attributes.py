@@ -67,4 +67,5 @@ def test_del_works() -> None:
     assert dict(z.attrs) == {}
     z.update_attributes({"a": [3, 4], "c": 4})
     del z.attrs["a"]
+    assert "a" not in z.attrs
     assert "c" in z.attrs
