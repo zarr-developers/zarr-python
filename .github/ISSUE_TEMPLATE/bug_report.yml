@@ -10,7 +10,8 @@ body:
     id: version-info
     attributes:
       label: Versions
-      description: Output of ``zarr.print_debug_info()``
+      description: Output of ``zarr.print_debug_info()``. This will automatically be rendered as code, no need for backticks.
+      render: shell
       placeholder: |
         platform: macOS-15.3-arm64-arm-64bit-Mach-O
         python: 3.13.2
