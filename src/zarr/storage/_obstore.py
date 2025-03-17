@@ -56,67 +56,16 @@ class ObjectStore(Store):
     """The underlying obstore instance."""
 
     def __eq__(self, value: object) -> bool:
-        from obstore.store import (
-            AzureStore,
-            GCSStore,
-            HTTPStore,
-            LocalStore,
-            MemoryStore,
-            S3Store,
-        )
-
         if not isinstance(value, ObjectStore):
+            return False
+
+        if self.read_only != value.read_only:
             return False
 
         if not isinstance(self.store, type(value.store)):
             return False
-        if not self.read_only == value.read_only:
-            return False
 
-        match value.store:
-            case AzureStore():
-                assert isinstance(self.store, AzureStore)
-                if (
-                    (self.store.config != value.store.config)
-                    or (self.store.client_options != value.store.client_options)
-                    or (self.store.prefix != value.store.prefix)
-                    or (self.store.retry_config != value.store.retry_config)
-                ):
-                    return False
-            case GCSStore():
-                assert isinstance(self.store, GCSStore)
-                if (
-                    (self.store.config != value.store.config)
-                    or (self.store.client_options != value.store.client_options)
-                    or (self.store.prefix != value.store.prefix)
-                    or (self.store.retry_config != value.store.retry_config)
-                ):
-                    return False
-            case S3Store():
-                assert isinstance(self.store, S3Store)
-                if (
-                    (self.store.config != value.store.config)
-                    or (self.store.client_options != value.store.client_options)
-                    or (self.store.prefix != value.store.prefix)
-                    or (self.store.retry_config != value.store.retry_config)
-                ):
-                    return False
-            case HTTPStore():
-                assert isinstance(self.store, HTTPStore)
-                if (
-                    (self.store.url != value.store.url)
-                    or (self.store.client_options != value.store.client_options)
-                    or (self.store.retry_config != value.store.retry_config)
-                ):
-                    return False
-            case LocalStore():
-                assert isinstance(self.store, LocalStore)
-                if self.store.prefix != value.store.prefix:
-                    return False
-            case MemoryStore():
-                if self.store is not value.store:
-                    return False  # Two memory stores can't be equal because we can't pickle memory stores
-        return True
+        return self.store == value.store
 
     def __init__(self, store: _UpstreamObjectStore, *, read_only: bool = False) -> None:
         import obstore as obs
