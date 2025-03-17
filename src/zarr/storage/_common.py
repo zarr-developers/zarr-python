@@ -346,7 +346,7 @@ def _is_pytest_legacy_path(path: Any) -> bool:
     # https://docs.pytest.org/en/stable/how-to/tmp_path.html#tmp-path
     try:
         from _pytest.compat import LEGACY_PATH
-    except ImportError:
+    except ImportError:  # pragma: no cover
         return False
     return isinstance(path, LEGACY_PATH)
 
