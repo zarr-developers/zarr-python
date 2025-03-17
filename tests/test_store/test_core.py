@@ -121,6 +121,8 @@ async def test_make_store_path_invalid() -> None:
 
 async def test_make_store_path_fsspec(monkeypatch) -> None:
     pytest.importorskip("fsspec")
+    pytest.importorskip("requests")
+    pytest.importorskip("aiohttp")
     store_path = await make_store_path("http://foo.com/bar")
     assert isinstance(store_path.store, FsspecStore)
 
