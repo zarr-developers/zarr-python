@@ -38,6 +38,9 @@ assert not __version__.startswith("0.0.0")
 
 
 def print_debug_info() -> None:
+    """
+    Print version info for use in bug reports.
+    """
     import platform
     from importlib import import_module
 
