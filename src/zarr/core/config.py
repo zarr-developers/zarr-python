@@ -36,8 +36,6 @@ from donfig import Config as DConfig
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
 
-from collections import defaultdict
-
 
 class BadConfigError(ValueError):
     _msg = "bad Config: %r"
@@ -109,15 +107,15 @@ config = Config(
                 "v2_default_compressor": {"default": {"id": "zstd", "level": 0, "checksum": False}},
                 "v2_default_filters": {
                     "default": None,
-                    "numpy.variable_length_unicode_string": [{"id": "vlen-utf8"}],
-                    "numpy.fixed_length_unicode_string": [{"id": "vlen-utf8"}],
-                    "r*": [{"id": "vlen-bytes"}],
+                    "variable_length_utf8": [{"id": "vlen-utf8"}],
+                    "fixed_length_ucs4": [{"id": "vlen-utf8"}],
+                    "fixed_length_ascii": [{"id": "vlen-bytes"}],
                 },
-                "v3_default_filters": defaultdict(list),
+                "v3_default_filters": {"default": ()},
                 "v3_default_serializer": {
                     "default": {"name": "bytes", "configuration": {"endian": "little"}},
-                    "numpy.variable_length_unicode_string": [{"name": "vlen-utf8"}],
-                    "numpy.fixed_length_unicode_string": [{"name": "vlen-utf8"}],
+                    "variable_length_utf8": {"name": "vlen-utf8"},
+                    "fixed_length_ucs4": {"name": "vlen-utf8"},
                     "r*": {"name": "vlen-bytes"},
                 },
                 "v3_default_compressors": {

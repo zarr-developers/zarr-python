@@ -29,9 +29,6 @@ import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
-from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
-from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArraySpec, parse_array_config
 from zarr.core.attributes import Attributes
@@ -71,8 +68,6 @@ from zarr.core.config import categorize_data_type
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     DTypeWrapper,
-    FixedLengthAsciiString,
-    VariableLengthString,
     parse_data_type,
 )
 from zarr.core.indexing import (
@@ -4664,21 +4659,29 @@ def _get_default_chunk_encoding_v3(
     """
     Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
     """
-    filters = ()
-    compressors = (ZstdCodec(level=0, checksum=False),)
     # TODO: find a registry-style solution for this that isn't bloated
     # We need to associate specific dtypes with specific encoding schemes
 
-    if isinstance(dtype, VariableLengthString):
-        serializer = VLenUTF8Codec()
-    elif isinstance(dtype, FixedLengthAsciiString):
-        serializer = VLenBytesCodec()
+    if dtype._zarr_v3_name in zarr_config.get("array.v3_default_filters"):
+        filters = zarr_config.get(f"array.v3_default_filters.{dtype._zarr_v3_name}")
     else:
-        if dtype.to_dtype().itemsize == 1:
-            serializer = BytesCodec(endian=None)
-        else:
-            serializer = BytesCodec()
-    return filters, serializer, compressors
+        filters = zarr_config.get("array.v3_default_filters.default")
+
+    if dtype._zarr_v3_name in zarr_config.get("array.v3_default_compressors"):
+        compressors = zarr_config.get(f"array.v3_default_compressors.{dtype._zarr_v3_name}")
+    else:
+        compressors = zarr_config.get("array.v3_default_compressors.default")
+
+    if dtype._zarr_v3_name in zarr_config.get("array.v3_default_serializer"):
+        serializer = zarr_config.get(f"array.v3_default_serializer.{dtype._zarr_v3_name}")
+    else:
+        serializer = zarr_config.get("array.v3_default_serializer.default")
+
+    return (
+        tuple(_parse_array_array_codec(f) for f in filters),
+        _parse_array_bytes_codec(serializer),
+        tuple(_parse_bytes_bytes_codec(c) for c in compressors),
+    )
 
 
 def _get_default_chunk_encoding_v2(
@@ -4698,7 +4701,11 @@ def _get_default_chunk_encoding_v2(
         compressor = zarr_config.get(f"array.v2_default_compressor.{dtype._zarr_v3_name}")
     else:
         compressor = zarr_config.get("array.v2_default_compressor.default")
-    return filters, compressor
+
+    if filters is not None:
+        filters = tuple(numcodecs.get_codec(f) for f in filters)
+
+    return filters, numcodecs.get_codec(compressor)
 
 
 def _parse_chunk_encoding_v2(
