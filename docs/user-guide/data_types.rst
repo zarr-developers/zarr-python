@@ -181,4 +181,7 @@ And this JSON serialization depends on the Zarr format.
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 Convert a JSON-serialiazed scalar to a native scalar. This inverts the operation of ``to_json_value``.
 
+Using a custom data type
+------------------------
 
+TODO
