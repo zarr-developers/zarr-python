@@ -36,7 +36,7 @@ from donfig import Config as DConfig
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
 
-    from zarr.core.dtype.wrapper import ZDType
+from collections import defaultdict
 
 
 class BadConfigError(ValueError):
@@ -106,37 +106,24 @@ config = Config(
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
-                "v2_default_compressor": {
-                    "numeric": {"id": "zstd", "level": 0, "checksum": False},
-                    "string": {"id": "zstd", "level": 0, "checksum": False},
-                    "bytes": {"id": "zstd", "level": 0, "checksum": False},
-                },
+                "v2_default_compressor": {"default": {"id": "zstd", "level": 0, "checksum": False}},
                 "v2_default_filters": {
-                    "numeric": None,
-                    "string": [{"id": "vlen-utf8"}],
-                    "bytes": [{"id": "vlen-bytes"}],
-                    "raw": None,
+                    "default": None,
+                    "numpy.variable_length_unicode_string": [{"id": "vlen-utf8"}],
+                    "numpy.fixed_length_unicode_string": [{"id": "vlen-utf8"}],
+                    "r*": [{"id": "vlen-bytes"}],
                 },
-                "v3_default_filters": {"boolean": [], "numeric": [], "string": [], "bytes": []},
+                "v3_default_filters": defaultdict(list),
                 "v3_default_serializer": {
-                    "boolean": {"name": "bytes", "configuration": {"endian": "little"}},
-                    "numeric": {"name": "bytes", "configuration": {"endian": "little"}},
-                    "string": {"name": "vlen-utf8"},
-                    "bytes": {"name": "vlen-bytes"},
+                    "default": {"name": "bytes", "configuration": {"endian": "little"}},
+                    "numpy.variable_length_unicode_string": [{"name": "vlen-utf8"}],
+                    "numpy.fixed_length_unicode_string": [{"name": "vlen-utf8"}],
+                    "r*": {"name": "vlen-bytes"},
                 },
                 "v3_default_compressors": {
-                    "boolean": [
+                    "default": [
                         {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                    "numeric": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                    "string": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                    "bytes": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
+                    ]
                 },
             },
             "async": {"concurrency": 10, "timeout": None},

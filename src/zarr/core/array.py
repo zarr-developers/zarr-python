@@ -72,7 +72,6 @@ from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     DTypeWrapper,
     FixedLengthAsciiString,
-    FixedLengthUnicodeString,
     VariableLengthString,
     parse_data_type,
 )
@@ -4690,76 +4689,16 @@ def _get_default_chunk_encoding_v2(
 
     This is an empty tuple. No data types have default filters.
     """
-    from numcodecs import VLenBytes as numcodecs_VLenBytes
-    from numcodecs import VLenUTF8 as numcodecs_VLenUTF8
-    from numcodecs import Zstd as numcodecs_zstd
-
-    if isinstance(dtype, VariableLengthString | FixedLengthUnicodeString):
-        filters = (numcodecs_VLenUTF8(),)
-    elif isinstance(dtype, FixedLengthAsciiString):
-        filters = (numcodecs_VLenBytes(),)
+    if dtype._zarr_v3_name in zarr_config.get("array.v2_default_filters"):
+        filters = zarr_config.get(f"array.v2_default_filters.{dtype._zarr_v3_name}")
     else:
-        filters = None
+        filters = zarr_config.get("array.v2_default_filters.default")
 
-    compressor = numcodecs_zstd(level=0, checksum=False)
-
-
-def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
-    """
-    Given a data type, return the default serializer for that data type.
-
-    The default serializer for most data types is the ``BytesCodec``, which may or may not be
-    parameterized with an endianness, depending on whether the data type has endianness. Variable
-    length strings and variable length bytes have hard-coded serializers -- ``VLenUTF8Codec`` and
-    ``VLenBytesCodec``, respectively.
-
-    """
-    serializer: ArrayBytesCodec = BytesCodec(endian=None)
-
-    if isinstance(dtype, HasEndianness):
-        serializer = BytesCodec(endian="little")
-    elif isinstance(dtype, HasObjectCodec):
-        if dtype.object_codec_id == "vlen-bytes":
-            serializer = VLenBytesCodec()
-        elif dtype.object_codec_id == "vlen-utf8":
-            serializer = VLenUTF8Codec()
-        else:
-            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
-            raise ValueError(msg)
-    return serializer
-
-
-def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[numcodecs.abc.Codec] | None:
-    """
-    Given a data type, return the default filters for that data type.
-
-    For data types that require an object codec, namely variable length data types,
-    this is a tuple containing the object codec. Otherwise it's ``None``.
-    """
-    if isinstance(dtype, HasObjectCodec):
-        if dtype.object_codec_id == "vlen-bytes":
-            from numcodecs import VLenBytes
-
-            return (VLenBytes(),)
-        elif dtype.object_codec_id == "vlen-utf8":
-            from numcodecs import VLenUTF8
-
-            return (VLenUTF8(),)
-        else:
-            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
-            raise ValueError(msg)
-    return None
-
-
-def default_compressor_v2(dtype: ZDType[Any, Any]) -> numcodecs.abc.Codec:
-    """
-    Given a data type, return the default compressors for that data type.
-
-    This is just the numcodecs ``Zstd`` codec.
-    """
-    from numcodecs import Zstd
-
-    return Zstd(level=0, checksum=False)
+    if dtype._zarr_v3_name in zarr_config.get("array.v2_default_compressor"):
+        compressor = zarr_config.get(f"array.v2_default_compressor.{dtype._zarr_v3_name}")
+    else:
+        compressor = zarr_config.get("array.v2_default_compressor.default")
+    return filters, compressor
 
 
 def _parse_chunk_encoding_v2(

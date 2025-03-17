@@ -627,7 +627,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthString(DTypeWrapper[np.dtypes.StringDType, str]):
         dtype_cls = np.dtypes.StringDType
-        _zarr_v3_name = "numpy.vlen_string"
+        _zarr_v3_name = "numpy.variable_length_string"
 
         @classmethod
         def _from_dtype_unsafe(cls, dtype: np.dtypes.StringDType) -> Self:
@@ -658,7 +658,7 @@ else:
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthString(DTypeWrapper[np.dtypes.ObjectDType, str]):
         dtype_cls = np.dtypes.ObjectDType
-        _zarr_v3_name = "numpy.vlen_string"
+        _zarr_v3_name = "numpy.variable_length_string"
 
         @classmethod
         def _from_dtype_unsafe(cls, dtype: np.dtypes.ObjectDType) -> Self:
