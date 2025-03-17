@@ -3456,7 +3456,7 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
 
 
 def _build_metadata_v2(
-    zarr_json: dict[str, object], attrs_json: dict[str, JSON]
+    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
 ) -> ArrayV2Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.
