@@ -28,8 +28,9 @@ Thus the JSON identifier for a Numpy-compatible data type is just the Numpy ``st
     >>> import zarr
     >>> import numpy as np
     >>> import json
+    >>> store = {}
     >>> np_dtype = np.dtype('int64')
-    >>> z = zarr.create_array(shape=(1,), dtype=np_dtype, zarr_format=2)
+    >>> z = zarr.create_array(store=store, shape=(1,), dtype=np_dtype, zarr_format=2)
     >>> dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
     >>> assert dtype_meta == np_dtype.str # True
     >>> dtype_meta
