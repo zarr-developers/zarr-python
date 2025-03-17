@@ -58,21 +58,23 @@ Zarr-Python supports two different Zarr formats, and those two formats specify d
 data types in Zarr version 2 are encoded as Numpy-compatible strings, while data types in Zarr version 3 are encoded as either strings or ``JSON`` objects,
 and the Zarr V3 data types don't have any associated endianness information, unlike Zarr V2 data types.
 
-We also want Zarr-Python to support data types beyond what's available in Numpy. So it's crucial that we have a
-model of array data types that can adapt to the differences between Zarr V2 and V3 and doesn't over-fit to Numpy.
+We aspire for Zarr-Python to eventually be array-library-agnostic.
+In the context of data types, this means that we should not design an API that overfits to Numpy's data types.
+We will use the term "native data type" to refer to a data type used by any external array library (including Numpy), e.g. ``np.dtypes.Float64DType()``.
+We will also use the term "native scalar" or "native scalar type" to refer to a scalar value of a native data type. For example, ``np.float64(0)`` generates a scalar with the data dtype ``np.dtypes.Float64DType``
 
-Here are the operations we need to perform on data types in Zarr-Python:
+Zarr-Python needs to support the following operations on native data types:
 
 * Round-trip native data types to fields in array metadata documents.
     For example, the Numpy data type ``np.dtype('>i2')`` should be saved as ``{..., "dtype" : ">i2"}`` in Zarr V2 metadata.
 
     In Zarr V3 metadata, the same Numpy data type would be saved as  ``{..., "data_type": "int16", "codecs": [..., {"name": "bytes", "configuration": {"endian": "big"}, ...]}``
 
-* Define a default fill value. This is not mandated by the Zarr specifications, but it's convenient for users
+* Associate a default fill value with a native data type. This is not mandated by the Zarr specifications, but it's convenient for users
   to have a useful default. For numeric types like integers and floats the default can be statically set to 0, but for
   parametric data types like fixed-length strings the default can only be generated after the data type has been parametrized at runtime.
 
-* Round-trip scalars to the ``fill_value`` field in Zarr V2 and V3 array metadata documents. The Zarr V2 and V3 specifications
+* Round-trip native scalars to the ``fill_value`` field in Zarr V2 and V3 array metadata documents. The Zarr V2 and V3 specifications
   define how scalars of each data type should be stored as JSON in array metadata documents, and in principle each data type
   can define this encoding separately.
 
