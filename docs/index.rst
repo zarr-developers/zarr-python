@@ -14,6 +14,7 @@ Zarr-Python
     release-notes
     developers/index
     about
+    zarr.dev <https://zarr.dev>
 
 **Version**: |version|
 
