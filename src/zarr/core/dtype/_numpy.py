@@ -496,7 +496,7 @@ class Complex128(DTypeWrapper[np.dtypes.Complex128DType, np.complex128]):
 @dataclass(frozen=True, kw_only=True)
 class FixedLengthAsciiString(DTypeWrapper[np.dtypes.BytesDType[Any], np.bytes_]):
     dtype_cls = np.dtypes.BytesDType
-    _zarr_v3_name = "numpy.static_byte_string"
+    _zarr_v3_name = "fixed_length_ascii"
     item_size_bits: ClassVar[int] = 8
     length: int = 1
 
@@ -523,20 +523,20 @@ class FixedLengthAsciiString(DTypeWrapper[np.dtypes.BytesDType[Any], np.bytes_])
 
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthBytes(DTypeWrapper[np.dtypes.VoidDType[Any], np.void]):
+class FixedLengthBytes(DTypeWrapper[np.dtypes.VoidDType, np.void]):
     dtype_cls = np.dtypes.VoidDType
     _zarr_v3_name = "r*"
     item_size_bits: ClassVar[int] = 8
     length: int = 1
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.VoidDType[Any]) -> Self:
+    def _from_dtype_unsafe(cls, dtype: np.dtypes.VoidDType) -> Self:
         return cls(length=dtype.itemsize // (cls.item_size_bits // 8))
 
     def default_value(self) -> np.void:
         return self.cast_value(("\x00" * self.length).encode("ascii"))
 
-    def to_dtype(self) -> np.dtypes.VoidDType[Any]:
+    def to_dtype(self) -> np.dtypes.VoidDType:
         # Numpy does not allow creating a void type
         # by invoking np.dtypes.VoidDType directly
         return np.dtype(f"V{self.length}")
@@ -577,7 +577,7 @@ class FixedLengthBytes(DTypeWrapper[np.dtypes.VoidDType[Any], np.void]):
             isinstance(data, dict)
             and "name" in data
             and isinstance(data["name"], str)
-            and re.match(r"^r\d+$", data["name"])
+            and (re.match(r"^r\d+$", data["name"]) is not None)
         )
 
     def to_json_value(self, data: np.void, *, zarr_format: ZarrFormat) -> str:
@@ -592,7 +592,7 @@ class FixedLengthBytes(DTypeWrapper[np.dtypes.VoidDType[Any], np.void]):
 @dataclass(frozen=True, kw_only=True)
 class FixedLengthUnicodeString(DTypeWrapper[np.dtypes.StrDType[int], np.str_]):
     dtype_cls = np.dtypes.StrDType
-    _zarr_v3_name = "numpy.fixed_length_unicode_string"
+    _zarr_v3_name = "fixed_length_ucs4"
     item_size_bits: ClassVar[int] = 32  # UCS4 is 32 bits per code point
     endianness: Endianness | None = "native"
     length: int = 1
@@ -605,7 +605,10 @@ class FixedLengthUnicodeString(DTypeWrapper[np.dtypes.StrDType[int], np.str_]):
         )
 
     def to_dtype(self) -> np.dtypes.StrDType[int]:
-        return self.dtype_cls(self.length).newbyteorder(endianness_to_numpy_str(self.endianness))
+        return cast(
+            np.dtypes.StrDType[int],
+            self.dtype_cls(self.length).newbyteorder(endianness_to_numpy_str(self.endianness)),
+        )
 
     def default_value(self) -> np.str_:
         return np.str_("")
@@ -627,7 +630,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthString(DTypeWrapper[np.dtypes.StringDType, str]):
         dtype_cls = np.dtypes.StringDType
-        _zarr_v3_name = "numpy.variable_length_string"
+        _zarr_v3_name = "variable_length_utf8"
 
         @classmethod
         def _from_dtype_unsafe(cls, dtype: np.dtypes.StringDType) -> Self:
@@ -658,14 +661,14 @@ else:
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthString(DTypeWrapper[np.dtypes.ObjectDType, str]):
         dtype_cls = np.dtypes.ObjectDType
-        _zarr_v3_name = "numpy.variable_length_string"
+        _zarr_v3_name = "variable_length_utf8"
 
         @classmethod
         def _from_dtype_unsafe(cls, dtype: np.dtypes.ObjectDType) -> Self:
             return cls()
 
         def to_dtype(self) -> np.dtypes.ObjectDType:
-            return self.dtype_cls()
+            return cast(np.dtypes.ObjectDType, self.dtype_cls())
 
         def cast_value(self, value: object) -> str:
             return str(value)
@@ -695,7 +698,7 @@ TimeUnit = Literal["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
 @dataclass(frozen=True, kw_only=True)
 class DateTime64(DTypeWrapper[np.dtypes.DateTime64DType, np.datetime64]):
     dtype_cls = np.dtypes.DateTime64DType
-    _zarr_v3_name = "numpy.datetime64"
+    _zarr_v3_name = "datetime64"
     unit: DateUnit | TimeUnit = "s"
     endianness: Endianness = "native"
 
@@ -713,7 +716,7 @@ class DateTime64(DTypeWrapper[np.dtypes.DateTime64DType, np.datetime64]):
         return cls(unit=unit, endianness=endianness_from_numpy_str(dtype.byteorder))
 
     def cast_value(self, value: object) -> np.datetime64:
-        return self.to_dtype().type(value, self.unit)
+        return cast(np.datetime64, self.to_dtype().type(value, self.unit))
 
     def to_dtype(self) -> np.dtypes.DateTime64DType:
         # Numpy does not allow creating datetime64 via
@@ -734,14 +737,14 @@ class DateTime64(DTypeWrapper[np.dtypes.DateTime64DType, np.datetime64]):
 @dataclass(frozen=True, kw_only=True)
 class Structured(DTypeWrapper[np.dtypes.VoidDType, np.void]):
     dtype_cls = np.dtypes.VoidDType
-    _zarr_v3_name = "numpy.structured"
+    _zarr_v3_name = "structured"
     fields: tuple[tuple[str, DTypeWrapper[Any, Any]], ...]
 
     def default_value(self) -> np.void:
         return self.cast_value(0)
 
     def cast_value(self, value: object) -> np.void:
-        return np.array([value], dtype=self.to_dtype())[0]
+        return cast(np.void, np.array([value], dtype=self.to_dtype())[0])
 
     @classmethod
     def check_dtype(cls, dtype: np.dtypes.DTypeLike) -> TypeGuard[np.dtypes.VoidDType]:
@@ -787,7 +790,7 @@ class Structured(DTypeWrapper[np.dtypes.VoidDType, np.void]):
         return base_dict
 
     @classmethod
-    def check_dict(cls, data: JSON) -> bool:
+    def check_dict(cls, data: JSON) -> TypeGuard[JSON]:
         return (
             isinstance(data, dict)
             and "name" in data
