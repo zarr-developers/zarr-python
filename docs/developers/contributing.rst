@@ -305,6 +305,8 @@ may release breaking changes in ``minor`` releases, or even ``patch`` releases u
 But we should strive to avoid doing so. A better model for our versioning scheme is `Intended Effort Versioning <https://jacobtomlinson.dev/effver/>`_, or "EffVer".
 The guiding principle off EffVer is to categorize releases based on the *expected effort required to upgrade to that release*.
 
+Zarr developers should make changes as smooth as possible for users. This means making backwards-compatible changes wherever possible.
+When a backwards-incompatible change is necessary, users should be notified well in advance, e.g. via informative deprecation warnings.
 
 Data format compatibility
 ^^^^^^^^^^^^^^^^^^^^^^^^^
