@@ -18,11 +18,13 @@ from zarr.codecs import (
     Crc32cCodec,
     ShardingCodec,
 )
+from zarr.core.array import create_array
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
+from zarr.core.dtype import get_data_type_from_numpy
 from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
     fully_qualified_name,
@@ -45,39 +47,55 @@ from zarr.testing.buffer import (
 
 def test_config_defaults_set() -> None:
     # regression test for available defaults
-    assert (
-        config.defaults
-        == [
-            {
-                "default_zarr_format": 3,
-                "array": {
-                    "order": "C",
-                    "write_empty_chunks": False,
+    assert config.defaults == [
+        {
+            "default_zarr_format": 3,
+            "array": {
+                "order": "C",
+                "write_empty_chunks": False,
+                "v2_default_compressor": {"default": {"id": "zstd", "level": 0, "checksum": False}},
+                "v2_default_filters": {
+                    "default": None,
+                    "variable_length_utf8": [{"id": "vlen-utf8"}],
+                    "fixed_length_ucs4": [{"id": "vlen-utf8"}],
+                    "fixed_length_ascii": [{"id": "vlen-bytes"}],
                 },
-                "async": {"concurrency": 10, "timeout": None},
-                "threading": {"max_workers": None},
-                "json_indent": 2,
-                "codec_pipeline": {
-                    "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
-                    "batch_size": 1,
+                "v3_default_filters": {"default": []},
+                "v3_default_serializer": {
+                    "default": {"name": "bytes", "configuration": {"endian": "little"}},
+                    "variable_length_utf8": {"name": "vlen-utf8"},
+                    "fixed_length_ucs4": {"name": "vlen-utf8"},
+                    "r*": {"name": "vlen-bytes"},
                 },
-                "codecs": {
-                    "blosc": "zarr.codecs.blosc.BloscCodec",
-                    "gzip": "zarr.codecs.gzip.GzipCodec",
-                    "zstd": "zarr.codecs.zstd.ZstdCodec",
-                    "bytes": "zarr.codecs.bytes.BytesCodec",
-                    "endian": "zarr.codecs.bytes.BytesCodec",  # compatibility with earlier versions of ZEP1
-                    "crc32c": "zarr.codecs.crc32c_.Crc32cCodec",
-                    "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
-                    "transpose": "zarr.codecs.transpose.TransposeCodec",
-                    "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
-                    "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
+                "v3_default_compressors": {
+                    "default": [
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ]
                 },
-                "buffer": "zarr.buffer.cpu.Buffer",
-                "ndbuffer": "zarr.buffer.cpu.NDBuffer",
-            }
-        ]
-    )
+            },
+            "async": {"concurrency": 10, "timeout": None},
+            "threading": {"max_workers": None},
+            "json_indent": 2,
+            "codec_pipeline": {
+                "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
+                "batch_size": 1,
+            },
+            "buffer": "zarr.core.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+            "codecs": {
+                "blosc": "zarr.codecs.blosc.BloscCodec",
+                "gzip": "zarr.codecs.gzip.GzipCodec",
+                "zstd": "zarr.codecs.zstd.ZstdCodec",
+                "bytes": "zarr.codecs.bytes.BytesCodec",
+                "endian": "zarr.codecs.bytes.BytesCodec",
+                "crc32c": "zarr.codecs.crc32c_.Crc32cCodec",
+                "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
+                "transpose": "zarr.codecs.transpose.TransposeCodec",
+                "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
+                "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
+            },
+        }
+    ]
     assert config.get("array.order") == "C"
     assert config.get("async.concurrency") == 10
     assert config.get("async.timeout") is None
@@ -295,31 +313,24 @@ def test_warning_on_missing_codec_config() -> None:
         get_codec_class("new_codec")
 
 
-@pytest.mark.parametrize(
-    "key",
-    [
-        "array.v2_default_compressor.numeric",
-        "array.v2_default_compressor.string",
-        "array.v2_default_compressor.bytes",
-        "array.v2_default_filters.string",
-        "array.v2_default_filters.bytes",
-        "array.v3_default_filters.numeric",
-        "array.v3_default_filters.raw",
-        "array.v3_default_filters.bytes",
-        "array.v3_default_serializer.numeric",
-        "array.v3_default_serializer.string",
-        "array.v3_default_serializer.bytes",
-        "array.v3_default_compressors.string",
-        "array.v3_default_compressors.bytes",
-        "array.v3_default_compressors",
-    ],
-)
-def test_deprecated_config(key: str) -> None:
+@pytest.mark.parametrize("dtype", ["int", "bytes", "str"])
+async def test_default_codecs(dtype: str) -> None:
     """
-    Test that a valuerror is raised when setting the default chunk encoding for a given
-    data type category
+    Test that the default compressors are sensitive to the current setting of the config.
     """
-
-    with pytest.raises(ValueError):
-        with zarr.config.set({key: "foo"}):
-            pass
+    zdtype = get_data_type_from_numpy(dtype)
+    expected_compressors = (GzipCodec(),)
+    new_conf = {
+        f"array.v3_default_compressors.{zdtype._zarr_v3_name}": [
+            c.to_dict() for c in expected_compressors
+        ]
+    }
+    with config.set(new_conf):
+        arr = await create_array(
+            shape=(100,),
+            chunks=(100,),
+            dtype=dtype,
+            zarr_format=3,
+            store=MemoryStore(),
+        )
+        assert arr.compressors == expected_compressors

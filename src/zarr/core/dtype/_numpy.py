@@ -711,7 +711,7 @@ class DateTime64(DTypeWrapper[np.dtypes.DateTime64DType, np.datetime64]):
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.DateTime64DType) -> Self:
         unit = dtype.name[dtype.name.rfind("[") + 1 : dtype.name.rfind("]")]
-        if unit not in get_args(DateUnit | TimeUnit):
+        if unit not in get_args(DateUnit) and unit not in get_args(TimeUnit):
             raise DataTypeValidationError('Invalid unit for "numpy.datetime64"')
         return cls(unit=unit, endianness=endianness_from_numpy_str(dtype.byteorder))
 

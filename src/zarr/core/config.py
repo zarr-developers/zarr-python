@@ -111,7 +111,7 @@ config = Config(
                     "fixed_length_ucs4": [{"id": "vlen-utf8"}],
                     "fixed_length_ascii": [{"id": "vlen-bytes"}],
                 },
-                "v3_default_filters": {"default": ()},
+                "v3_default_filters": {"default": []},
                 "v3_default_serializer": {
                     "default": {"name": "bytes", "configuration": {"endian": "little"}},
                     "variable_length_utf8": {"name": "vlen-utf8"},

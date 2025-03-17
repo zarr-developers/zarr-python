@@ -1236,12 +1236,19 @@ class TestCreateArray:
         sig = inspect.signature(create_array)
 
         if zarr_format == 3:
-            expected_filters, expected_serializer, expected_compressors = (
-                _get_default_chunk_encoding_v3(dtype=zdtype)
+            expected_filters, expected_serializer, expected_compressors = _parse_chunk_encoding_v3(
+                compressors=sig.parameters["compressors"].default,
+                filters=sig.parameters["filters"].default,
+                serializer=sig.parameters["serializer"].default,
+                dtype=zdtype,
             )
 
         elif zarr_format == 2:
-            default_filters, default_compressors = _get_default_chunk_encoding_v2(dtype=zdtype)
+            default_filters, default_compressors = _parse_chunk_encoding_v2(
+                compressor=sig.parameters["compressors"].default,
+                filters=sig.parameters["filters"].default,
+                dtype=zdtype,
+            )
             if default_filters is None:
                 expected_filters = ()
             else:
