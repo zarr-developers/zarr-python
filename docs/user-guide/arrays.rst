@@ -40,7 +40,7 @@ Pass existing data during array creation for convenience:
    import numpy as np
 
    data = np.random.rand(1000, 1000)
-   arr = zarr.create_array("data.zarr", shape=data.shape, data=data)
+   arr = zarr.create_array("data.zarr", data=data)
 
 Equivalent to separate assignment:
 
