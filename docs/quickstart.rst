@@ -20,8 +20,7 @@ compression, and various backends, making it a versatile choice for scientific a
 large-scale data.
 
 An `ndarray <https://numpy.org/doc/2.2/reference/arrays.ndarray.html>`_ is a (usually fixed-size) multidimensional container of items of the
-same type and size. The number of dimensions and items in an array is defined
-by its shape, which is a tuple of N non-negative integers that specify the sizes of each dimension.
+same type and size. 
 
 
 Main Features are:
