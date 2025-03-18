@@ -23,7 +23,7 @@ An `ndarray <https://numpy.org/doc/2.2/reference/arrays.ndarray.html>`_ is a (us
 same type and size.
 
 
-Main Features are:
+Zarr's core features:
 
 - :ref:`Create<creating-an-array>`  N-dimensional arrays with any NumPy `dtype`.
 - :ref:`Chunk arrays<user-guide-chunks>` along any dimension.
