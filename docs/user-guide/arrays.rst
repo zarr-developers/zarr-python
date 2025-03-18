@@ -30,7 +30,7 @@ module documentation.
 
 .. _user-guide-array:
 
-Initializing with Data
+Initializing with data
 ----------------------
 Pass existing data during array creation for convenience:
 
