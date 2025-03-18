@@ -32,7 +32,7 @@ Main Features are:
 - `Store arrays <https://zarr.readthedocs.io/en/stable/tutorial.html#tutorial-storage>`_ in memory, on disk, inside a zip file, on S3, etc...
 - `Read <https://zarr.readthedocs.io/en/stable/tutorial.html#reading-and-writing-data>`_ an array `concurrently <https://zarr.readthedocs.io/en/stable/tutorial.html#parallel-computing-and-synchronization>`_ from multiple threads or processes.
 - Write to an array concurrently from multiple threads or processes.
-- Organize arrays into hierarchies via `groups <https://zarr.readthedocs.io/en/stable/tutorial.html#groups>`_.
+- Organize arrays into hierarchies via :ref:`groups<hierarchical-groups>`.
 
 
 
@@ -111,6 +111,8 @@ Zarr supports data compression and filters. For example, to use Blosc compressio
     No. bytes          : 40000 (39.1K)
 
 This compresses the data using the Zstandard codec with shuffle enabled for better compression.
+
+.. _hierarchical-groups:
 
 Hierarchical Groups
 -------------------
