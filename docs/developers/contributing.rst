@@ -316,8 +316,7 @@ The Zarr library is an implementation of a file format standard defined external
 
 If an existing Zarr format version changes, or a new version of the Zarr format is released, then the Zarr library will generally require changes. It is very likely that
 a new Zarr format will require extensive breaking changes to the Zarr library, and so support for a new Zarr format in the Zarr library will almost certainly come in new ``major`` release.
-For some period of time after the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine APIs that were added to support the new format.
-Breaking changes may more frequent until a new API is fully stabilized, and these breaking changes may occur in ``minor`` releases.
+When the Zarr library adds support for a new Zarr format, there may be a period of accelerated changes as developers refine newly added APIs and deprecate old APIs. In such a transitional phase breaking changes may be more frequent than usual.
 
 
 Release procedure
