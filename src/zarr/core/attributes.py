@@ -28,7 +28,7 @@ class Attributes(MutableMapping[str, JSON]):
     def __delitem__(self, key: str) -> None:
         new_attrs = dict(self._obj.metadata.attributes)
         del new_attrs[key]
-        self._obj = self._obj.update_attributes(new_attrs)
+        self.put(new_attrs)
 
     def __iter__(self) -> Iterator[str]:
         return iter(self._obj.metadata.attributes)
@@ -50,6 +50,7 @@ class Attributes(MutableMapping[str, JSON]):
            >>> attrs
            {'a': 3, 'c': 4}
         """
+        self._obj.metadata.attributes.clear()
         self._obj = self._obj.update_attributes(d)
 
     def asdict(self) -> dict[str, JSON]:
