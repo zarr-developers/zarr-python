@@ -16,8 +16,6 @@ from typing import (
     overload,
 )
 
-import numpy as np
-
 from zarr.core.config import config as zarr_config
 
 if TYPE_CHECKING:

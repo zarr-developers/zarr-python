@@ -23,12 +23,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from typing import Self
 
-    import numpy as np
-
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -133,7 +132,9 @@ class BatchedCodecPipeline(CodecPipeline):
         yield self.array_bytes_codec
         yield from self.bytes_bytes_codecs
 
-    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self, *, shape: ChunkCoords, dtype: ZDType[_BaseDType, _BaseScalar], chunk_grid: ChunkGrid
+    ) -> None:
         for codec in self:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
 
@@ -295,7 +296,7 @@ class BatchedCodecPipeline(CodecPipeline):
         is_complete_chunk: bool,
         drop_axes: tuple[int, ...],
     ) -> NDBuffer:
-        if chunk_selection == () or is_scalar(value.as_ndarray_like(), chunk_spec.dtype):
+        if chunk_selection == () or is_scalar(value.as_ndarray_like(), chunk_spec.dtype.to_dtype()):
             chunk_value = value
         else:
             chunk_value = value[out_selection]

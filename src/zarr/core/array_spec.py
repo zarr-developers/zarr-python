@@ -11,16 +11,13 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config as zarr_config
-from zarr.core.dtype import parse_data_type
 
 if TYPE_CHECKING:
     from typing import NotRequired
 
-    import numpy.typing as npt
-
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ChunkCoords
-    from zarr.core.dtype.wrapper import DTypeWrapper
+    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
 
 
 class ArrayConfigParams(TypedDict):
@@ -66,7 +63,7 @@ class ArrayConfig:
         """
         kwargs_out: ArrayConfigParams = {}
         for f in fields(ArrayConfig):
-            field_name = cast(Literal["order", "write_empty_chunks"], f.name)
+            field_name = cast("Literal['order', 'write_empty_chunks']", f.name)
             if field_name not in data:
                 kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
             else:
@@ -92,7 +89,7 @@ def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
 @dataclass(frozen=True)
 class ArraySpec:
     shape: ChunkCoords
-    dtype: DTypeWrapper[Any, Any]
+    dtype: ZDType[_BaseDType, _BaseScalar]
     fill_value: Any
     config: ArrayConfig
     prototype: BufferPrototype
@@ -100,18 +97,16 @@ class ArraySpec:
     def __init__(
         self,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike | DTypeWrapper[Any, Any],
+        dtype: ZDType[_BaseDType, _BaseScalar],
         fill_value: Any,
         config: ArrayConfig,
         prototype: BufferPrototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
-        dtype_parsed = parse_data_type(dtype)
-
         fill_value_parsed = parse_fill_value(fill_value)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "dtype", dtype_parsed)
+        object.__setattr__(self, "dtype", dtype)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "config", config)
         object.__setattr__(self, "prototype", prototype)

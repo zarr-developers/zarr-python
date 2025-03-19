@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Literal, TypeGuard, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, TypeGuard, cast
 
 import numpy as np
 
@@ -11,79 +11,10 @@ if TYPE_CHECKING:
     from zarr.core.dtype._numpy import DateUnit, TimeUnit
 
 Endianness = Literal["little", "big", "native"]
-EndiannessNumpy = Literal[">", "<", "=", "|"]
 JSONFloat = float | Literal["NaN", "Infinity", "-Infinity"]
-
-_NUMPY_SUPPORTS_VLEN_STRING = hasattr(np.dtypes, "StringDType")
 
 
 class DataTypeValidationError(ValueError): ...
-
-
-def endianness_to_numpy_str(endianness: Endianness | None) -> EndiannessNumpy:
-    """
-    Convert an endianness literal to its numpy string representation.
-
-    Parameters
-    ----------
-    endianness : Endianness or None
-        The endianness to convert.
-
-    Returns
-    -------
-    Literal[">", "<", "=", "|"]
-        The numpy string representation of the endianness.
-
-    Raises
-    ------
-    ValueError
-        If the endianness is invalid.
-    """
-    match endianness:
-        case "little":
-            return "<"
-        case "big":
-            return ">"
-        case "native":
-            return "="
-        case None:
-            return "|"
-    raise ValueError(
-        f"Invalid endianness: {endianness}. Expected one of {get_args(Endianness)} or None"
-    )
-
-
-def endianness_from_numpy_str(endianness: EndiannessNumpy) -> Endianness | None:
-    """
-    Convert a numpy endianness string literal to a human-readable literal value.
-
-    Parameters
-    ----------
-    endianness : Literal[">", "<", "=", "|"]
-        The numpy string representation of the endianness.
-
-    Returns
-    -------
-    Endianness or None
-        The human-readable representation of the endianness.
-
-    Raises
-    ------
-    ValueError
-        If the endianness is invalid.
-    """
-    match endianness:
-        case "<":
-            return "little"
-        case ">":
-            return "big"
-        case "=":
-            return "native"
-        case "|":
-            return None
-    raise ValueError(
-        f"Invalid endianness: {endianness}. Expected one of {get_args(EndiannessNumpy)}"
-    )
 
 
 def check_json_bool(data: JSON) -> TypeGuard[bool]:

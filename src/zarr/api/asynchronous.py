@@ -28,7 +28,7 @@ from zarr.core.common import (
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
 )
-from zarr.core.dtype import get_data_type_from_numpy
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
@@ -433,7 +433,7 @@ async def save_array(
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
-    zarr_dtype = get_data_type_from_numpy(arr.dtype)
+    zarr_dtype = get_data_type_from_native_dtype(arr.dtype)
     new = await AsyncArray._create(
         store_path,
         zarr_format=zarr_format,
@@ -984,7 +984,7 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-    dtype_wrapped = get_data_type_from_numpy(dtype)
+    dtype_wrapped = get_data_type_from_native_dtype(dtype)
     if zarr_format == 2:
         if chunks is None:
             chunks = shape

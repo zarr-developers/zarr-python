@@ -2,25 +2,30 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Generic, Self, TypeGuard, TypeVar, cast
+from typing import TYPE_CHECKING, ClassVar, Generic, Self, TypeGuard, TypeVar
 
 import numpy as np
 
-from zarr.abc.metadata import Metadata
 from zarr.core.dtype.common import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
-TScalar = TypeVar("TScalar", bound=np.generic | str)
+# This the upper bound for the scalar types we support. It's numpy scalars + str,
+# because the new variable-length string dtype in numpy does not have a corresponding scalar type
+_BaseScalar = np.generic | str
+# This is the bound for the dtypes that we support. If we support non-numpy dtypes,
+# then this bound will need to be widened.
+_BaseDType = np.dtype[np.generic]
+TScalar = TypeVar("TScalar", bound=_BaseScalar)
 # TODO: figure out an interface or protocol that non-numpy dtypes can use
-TDType = TypeVar("TDType", bound=np.dtype[Any])
+TDType = TypeVar("TDType", bound=_BaseDType)
 
 
 @dataclass(frozen=True, kw_only=True)
-class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
+class ZDType(Generic[TDType, TScalar], ABC):
     """
-    Abstract base class for wrapping numpy dtypes.
+    Abstract base class for wrapping native array data types, e.g. numpy dtypes
 
     Attributes
     ----------
@@ -32,12 +37,29 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         have names that depend on their configuration.
     """
 
-    # this class will create a numpy dtype
+    # this class will create a native data type
     # mypy currently disallows class variables to contain type parameters
-    # but it seems like it should be OK for us to use it here:
+    # but it seems OK for us to use it here:
     # https://github.com/python/typing/discussions/1424#discussioncomment-7989934
     dtype_cls: ClassVar[type[TDType]]  # type: ignore[misc]
     _zarr_v3_name: ClassVar[str]
+
+    @classmethod
+    def check_dtype(cls: type[Self], dtype: _BaseDType) -> TypeGuard[TDType]:
+        """
+        Check that a data type matches the dtype_cls class attribute. Used as a type guard.
+
+        Parameters
+        ----------
+        dtype : TDType
+            The dtype to check.
+
+        Returns
+        -------
+        Bool
+            True if the dtype matches, False otherwise.
+        """
+        return type(dtype) is cls.dtype_cls
 
     @classmethod
     def from_dtype(cls: type[Self], dtype: TDType) -> Self:
@@ -81,7 +103,7 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         Self
             The wrapped dtype.
         """
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def to_dtype(self: Self) -> TDType:
@@ -93,26 +115,7 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         TDType
             The unwrapped dtype.
         """
-        raise NotImplementedError
-
-    def cast_value(self: Self, value: object) -> TScalar:
-        """
-        Cast a value to an instance of the scalar type.
-        This implementation assumes a numpy-style dtype class that has a
-        ``type`` method for casting scalars. Non-numpy dtypes will need to
-        override this method.
-
-        Parameters
-        ----------
-        value : object
-            The value to cast.
-
-        Returns
-        -------
-        TScalar
-            The cast value.
-        """
-        return cast(TScalar, self.to_dtype().type(value))
+        ...
 
     @abstractmethod
     def default_value(self) -> TScalar:
@@ -129,24 +132,8 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         ...
 
     @classmethod
-    def check_dtype(cls: type[Self], dtype: TDType) -> TypeGuard[TDType]:
-        """
-        Check that a data type matches the dtype_cls class attribute. Used as a type guard.
-
-        Parameters
-        ----------
-        dtype : TDType
-            The dtype to check.
-
-        Returns
-        -------
-        Bool
-            True if the dtype matches, False otherwise.
-        """
-        return type(dtype) is cls.dtype_cls
-
-    @classmethod
-    def check_dict(cls: type[Self], data: dict[str, JSON]) -> TypeGuard[dict[str, JSON]]:
+    @abstractmethod
+    def check_json(cls: type[Self], data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
         """
         Check that a JSON representation of a data type matches the dtype_cls class attribute. Used
         as a type guard. This base implementation checks that the input is a dictionary,
@@ -158,65 +145,20 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         data : JSON
             The JSON representation of the data type.
 
+        zarr_format : ZarrFormat
+            The zarr format version.
+
         Returns
         -------
         Bool
             True if the JSON representation matches, False otherwise.
         """
-        return "name" in data and data["name"] == cls._zarr_v3_name
+        ...
 
     @abstractmethod
-    def to_dict(self) -> dict[str, JSON]:
+    def to_json(self, zarr_format: ZarrFormat) -> JSON:
         """
-        Convert the wrapped data type to a dictionary.
-
-        Returns
-        -------
-        dict[str, JSON]
-            The dictionary representation of the wrapped data type
-        """
-        raise NotImplementedError
-
-    @classmethod
-    def from_dict(cls: type[Self], data: dict[str, JSON]) -> Self:
-        """
-        Wrap a JSON representation of a data type.
-
-        Parameters
-        ----------
-        data : dict[str, JSON]
-            The JSON representation of the data type.
-
-        Returns
-        -------
-        Self
-            The wrapped data type.
-        """
-        if cls.check_dict(data):
-            return cls._from_dict_unsafe(data)
-        raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
-
-    @classmethod
-    def _from_dict_unsafe(cls: type[Self], data: dict[str, JSON]) -> Self:
-        """
-        Wrap a JSON representation of a data type.
-
-        Parameters
-        ----------
-        data : dict[str, JSON]
-            The JSON representation of the data type.
-
-        Returns
-        -------
-        Self
-            The wrapped data type.
-        """
-        config = data.get("configuration", {})
-        return cls(**config)
-
-    def get_name(self, zarr_format: ZarrFormat) -> str:
-        """
-        Return the name of the wrapped data type.
+        Convert the wrapped data type to a JSON-serializable form.
 
         Parameters
         ----------
@@ -225,20 +167,53 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
 
         Returns
         -------
-        str
-            The name of the wrapped data type.
-
-        Notes
-        -----
-        This is a method, rather than an attribute, because the name of the data type may depend on
-        parameters that are not known until a concrete data type is wrapped.
-
-        As the names of data types vary between zarr versions, this method takes a ``zarr_format``
-        parameter
+        JSON
+            The JSON-serializable representation of the wrapped data type
         """
-        if zarr_format == 2:
-            return self.to_dtype().str
-        return self._zarr_v3_name
+        ...
+
+    @classmethod
+    def from_json(cls: type[Self], data: JSON, zarr_format: ZarrFormat) -> Self:
+        """
+        Wrap a JSON representation of a data type.
+
+        Parameters
+        ----------
+        data : JSON
+            The JSON representation of the data type.
+
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        Self
+            The wrapped data type.
+        """
+        if cls.check_json(data, zarr_format=zarr_format):
+            return cls._from_json_unsafe(data, zarr_format=zarr_format)
+        raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}: {data}")
+
+    @classmethod
+    @abstractmethod
+    def _from_json_unsafe(cls: type[Self], data: JSON, zarr_format: ZarrFormat) -> Self:
+        """
+        Wrap a JSON representation of a data type.
+
+        Parameters
+        ----------
+        data : JSON
+            The JSON representation of the data type.
+
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        Self
+            The wrapped data type.
+        """
+        ...
 
     @abstractmethod
     def to_json_value(self, data: TScalar, *, zarr_format: ZarrFormat) -> JSON:
@@ -255,9 +230,9 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         Returns
         -------
         JSON
-            The JSON-serializable format.
+            The JSON-serializable form of the scalar.
         """
-        raise NotImplementedError
+        ...
 
     @abstractmethod
     def from_json_value(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar:
@@ -274,6 +249,6 @@ class DTypeWrapper(Generic[TDType, TScalar], ABC, Metadata):
         Returns
         -------
         TScalar
-            The numpy scalar.
+            The native scalar value.
         """
-        raise NotImplementedError
+        ...
