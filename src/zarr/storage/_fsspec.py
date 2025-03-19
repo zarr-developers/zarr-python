@@ -298,7 +298,7 @@ class FsspecStore(Store):
         path_to_delete = _dereference_path(self.path, prefix)
 
         with suppress(*self.allowed_exceptions):
-            await self.fs._rm(path_to_delete, recursive=True)
+            await self.fs._rm(path_to_delete + "/", recursive=True)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited

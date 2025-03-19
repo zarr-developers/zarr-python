@@ -1,0 +1,1 @@
+Fix bug with `FsspecStore.delete_dir` (:issue:`2917`)
