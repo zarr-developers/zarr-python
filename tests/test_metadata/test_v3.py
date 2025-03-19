@@ -11,7 +11,7 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
-from zarr.core.dtype import get_data_type_from_numpy
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype._numpy import DateTime64
 from zarr.core.dtype.common import complex_from_json
 from zarr.core.group import GroupMetadata, parse_node_type
@@ -130,7 +130,7 @@ def test_jsonify_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     as length-2 sequences
     """
     zarr_format = 3
-    dtype = get_data_type_from_numpy(dtype_str)
+    dtype = get_data_type_from_native_dtype(dtype_str)
     expected = dtype.to_dtype().type(complex(*fill_value))
     observed = dtype.from_json_value(fill_value, zarr_format=zarr_format)
     assert observed == expected
@@ -144,7 +144,7 @@ def test_complex_to_json_invalid(data: object, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) correctly rejects sequences with length not
     equal to 2
     """
-    dtype_instance = get_data_type_from_numpy(dtype_str)
+    dtype_instance = get_data_type_from_native_dtype(dtype_str)
     match = f"Invalid type: {data}. Expected a sequence of two numbers."
     with pytest.raises(TypeError, match=re.escape(match)):
         complex_from_json(data=data, dtype=dtype_instance, zarr_format=3)
@@ -157,7 +157,7 @@ def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid non-sequential types.
     This test excludes bool because the bool constructor takes anything.
     """
-    dtype_instance = get_data_type_from_numpy(dtype_str)
+    dtype_instance = get_data_type_from_native_dtype(dtype_str)
     with pytest.raises(TypeError, match=f"Invalid type: {fill_value}"):
         dtype_instance.from_json_value(fill_value, zarr_format=3)
 
@@ -178,7 +178,7 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
     This test excludes bool because the bool constructor takes anything, and complex because
     complex values can be created from length-2 sequences.
     """
-    dtype_instance = get_data_type_from_numpy(dtype_str)
+    dtype_instance = get_data_type_from_native_dtype(dtype_str)
     with pytest.raises(TypeError, match=re.escape(f"Invalid type: {fill_value}")):
         dtype_instance.from_json_value(fill_value, zarr_format=3)
 
@@ -279,10 +279,12 @@ async def test_datetime_metadata(fill_value: int, precision: str) -> None:
         "node_type": "array",
         "shape": (1,),
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": dtype.to_dict(),
+        "data_type": dtype.to_json(zarr_format=3),
         "chunk_key_encoding": {"name": "default", "separator": "."},
         "codecs": (BytesCodec(),),
-        "fill_value": dtype.to_json_value(dtype.cast_value(fill_value), zarr_format=3),
+        "fill_value": dtype.to_json_value(
+            dtype.to_dtype().type(fill_value, dtype.unit), zarr_format=3
+        ),
     }
     metadata = ArrayV3Metadata.from_dict(metadata_dict)
     # ensure there isn't a TypeError here.

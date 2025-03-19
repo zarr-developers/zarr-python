@@ -17,7 +17,7 @@ from zarr.core.array import Array
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import ZarrFormat
-from zarr.core.dtype import parse_data_type
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
@@ -139,7 +139,7 @@ def array_metadata(
     ndim = len(shape)
     chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
     np_dtype = draw(v3_dtypes())
-    dtype = parse_data_type(np_dtype)
+    dtype = get_data_type_from_native_dtype(np_dtype)
     fill_value = draw(npst.from_dtype(np_dtype))
     if zarr_format == 2:
         return ArrayV2Metadata(

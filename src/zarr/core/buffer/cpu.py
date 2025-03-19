@@ -150,7 +150,7 @@ class NDBuffer(core.NDBuffer):
         cls,
         *,
         shape: Iterable[int],
-        dtype: np.dtype[Any],
+        dtype: npt.DTypeLike,
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:

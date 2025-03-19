@@ -41,7 +41,7 @@ from zarr.core.array import (
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
-from zarr.core.dtype import get_data_type_from_numpy
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.sync import sync
@@ -1204,7 +1204,7 @@ class TestCreateArray:
             filters=filters,
         )
         filters_expected, compressor_expected = _parse_chunk_encoding_v2(
-            filters=filters, compressor=compressors, dtype=get_data_type_from_numpy(dtype)
+            filters=filters, compressor=compressors, dtype=get_data_type_from_native_dtype(dtype)
         )
         assert arr.metadata.zarr_format == 2  # guard for mypy
         assert arr.metadata.compressor == compressor_expected
@@ -1225,7 +1225,7 @@ class TestCreateArray:
         """
         Test that the default ``filters`` and ``compressors`` are used when ``create_array`` is invoked with ``filters`` and ``compressors`` unspecified.
         """
-        zdtype = get_data_type_from_numpy(dtype_str)
+        zdtype = get_data_type_from_native_dtype(dtype_str)
         arr = await create_array(
             store=store,
             dtype=dtype_str,

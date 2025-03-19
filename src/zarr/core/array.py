@@ -41,7 +41,7 @@ from zarr.core.buffer import (
     default_buffer_prototype,
 )
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
-from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
+from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -68,7 +68,7 @@ from zarr.core.common import (
 from zarr.core.config import categorize_data_type
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
-    DTypeWrapper,
+    ZDType,
     parse_data_type,
 )
 from zarr.core.indexing import (
@@ -129,7 +129,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import CodecPipeline
     from zarr.codecs.sharding import ShardingCodecIndexLocation
-    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
+    from zarr.core.dtype.wrapper import _BaseDType, _BaseScalar
     from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
 
@@ -581,7 +581,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike | DTypeWrapper[Any, Any],
+        dtype: npt.DTypeLike | ZDType[_BaseDType, _BaseScalar],
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
@@ -611,7 +611,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
         """
 
-        dtype_parsed = parse_data_type(dtype)
+        dtype_parsed = parse_data_type(dtype, zarr_format=zarr_format)
         store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
@@ -702,7 +702,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @staticmethod
     def _create_metadata_v3(
         shape: ShapeLike,
-        dtype: DTypeWrapper[Any, Any],
+        dtype: ZDType[_BaseDType, _BaseScalar],
         chunk_shape: ChunkCoords,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
@@ -729,14 +729,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             chunk_key_encoding_parsed = chunk_key_encoding
 
-        if dtype.to_dtype().kind in ("U", "T", "S"):
-            warn(
-                f"The dtype `{dtype}` is currently not part in the Zarr format 3 specification. It "
-                "may not be supported by other zarr implementations and may change in the future.",
-                category=UserWarning,
-                stacklevel=2,
-            )
-
         if fill_value is None:
             # v3 spec will not allow a null fill value
             fill_value_parsed = dtype.default_value()
@@ -761,7 +753,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ShapeLike,
-        dtype: DTypeWrapper[Any, Any],
+        dtype: ZDType[_BaseDType, _BaseScalar],
         chunk_shape: ChunkCoords,
         config: ArrayConfig,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
@@ -809,7 +801,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @staticmethod
     def _create_metadata_v2(
         shape: ChunkCoords,
-        dtype: DTypeWrapper[Any, Any],
+        dtype: ZDType[_BaseDType, _BaseScalar],
         chunks: ChunkCoords,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -839,7 +831,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ChunkCoords,
-        dtype: DTypeWrapper[Any, Any],
+        dtype: ZDType[_BaseDType, _BaseScalar],
         chunks: ChunkCoords,
         order: MemoryOrder,
         config: ArrayConfig,
@@ -996,7 +988,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.metadata.chunks
 
     @cached_property
-    def chunk_grid(self) -> RegularChunkGrid:
+    def chunk_grid(self) -> ChunkGrid:
         if self.metadata.zarr_format == 2:
             return RegularChunkGrid(chunk_shape=self.chunks)
         else:
@@ -1086,7 +1078,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     @property
-    def dtype(self) -> np.dtype[Any]:
+    def _zdtype(self) -> ZDType[_BaseDType, _BaseScalar]:
+        """
+        The zarr-specific representation of the array data type
+        """
+        if self.metadata.zarr_format == 2:
+            return self.metadata.dtype
+        else:
+            return self.metadata.data_type
+
+    @property
+    def dtype(self) -> _BaseDType:
         """Returns the data type of the array.
 
         Returns
@@ -1094,10 +1096,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         np.dtype
             Data type of the array
         """
-        if self.metadata.zarr_format == 2:
-            return self.metadata.dtype.to_dtype()
-        else:
-            return self.metadata.data_type.to_dtype()
+        return self._zdtype.to_dtype()
 
     @property
     def order(self) -> MemoryOrder:
@@ -1326,7 +1325,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
         return ArraySpec(
             shape=self.chunk_grid.chunk_shape,
-            dtype=self.dtype,
+            dtype=self._zdtype,
             fill_value=self.metadata.fill_value,
             config=array_config,
             prototype=prototype,
@@ -4241,7 +4240,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    dtype_wrapped = parse_data_type(dtype)
+    dtype_wrapped = parse_data_type(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
@@ -4655,25 +4654,30 @@ def _parse_chunk_key_encoding(
 
 
 def _get_default_chunk_encoding_v3(
-    dtype: DTypeWrapper[Any, Any],
+    dtype: ZDType[_BaseDType, _BaseScalar],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
     Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
     """
+    # the config will not allow keys to have "."  characters in them
+    # so we will access the config by transforming "." to "__"
+
+    dtype_name_conf = dtype._zarr_v3_name.replace(".", "__")
+
     # TODO: find a registry-style solution for this that isn't bloated
     # We need to associate specific dtypes with specific encoding schemes
 
-    if dtype._zarr_v3_name in zarr_config.get("array.v3_default_filters"):
-        filters = zarr_config.get(f"array.v3_default_filters.{dtype._zarr_v3_name}")
+    if dtype_name_conf in zarr_config.get("array.v3_default_filters"):
+        filters = zarr_config.get(f"array.v3_default_filters.{dtype_name_conf}")
     else:
         filters = zarr_config.get("array.v3_default_filters.default")
 
-    if dtype._zarr_v3_name in zarr_config.get("array.v3_default_compressors"):
-        compressors = zarr_config.get(f"array.v3_default_compressors.{dtype._zarr_v3_name}")
+    if dtype_name_conf in zarr_config.get("array.v3_default_compressors"):
+        compressors = zarr_config.get(f"array.v3_default_compressors.{dtype_name_conf}")
     else:
         compressors = zarr_config.get("array.v3_default_compressors.default")
-    if dtype._zarr_v3_name in zarr_config.get("array.v3_default_serializer"):
-        serializer = zarr_config.get(f"array.v3_default_serializer.{dtype._zarr_v3_name}")
+    if dtype_name_conf in zarr_config.get("array.v3_default_serializer"):
+        serializer = zarr_config.get(f"array.v3_default_serializer.{dtype_name_conf}")
     else:
         serializer = zarr_config.get("array.v3_default_serializer.default")
 
@@ -4685,20 +4689,24 @@ def _get_default_chunk_encoding_v3(
 
 
 def _get_default_chunk_encoding_v2(
-    dtype: DTypeWrapper[Any, Any],
+    dtype: ZDType[_BaseDType, _BaseScalar],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
     Given a data type, return the default filters for that data type.
 
     This is an empty tuple. No data types have default filters.
     """
-    if dtype._zarr_v3_name in zarr_config.get("array.v2_default_filters"):
-        filters = zarr_config.get(f"array.v2_default_filters.{dtype._zarr_v3_name}")
+    # the config will not allow keys to have "."  characters in them
+    # so we will access the config by transforming "." to "__"
+    dtype_name_conf = dtype._zarr_v3_name.replace(".", "__")
+
+    if dtype_name_conf in zarr_config.get("array.v2_default_filters"):
+        filters = zarr_config.get(f"array.v2_default_filters.{dtype_name_conf}")
     else:
         filters = zarr_config.get("array.v2_default_filters.default")
 
-    if dtype._zarr_v3_name in zarr_config.get("array.v2_default_compressor"):
-        compressor = zarr_config.get(f"array.v2_default_compressor.{dtype._zarr_v3_name}")
+    if dtype_name_conf in zarr_config.get("array.v2_default_compressor"):
+        compressor = zarr_config.get(f"array.v2_default_compressor.{dtype_name_conf}")
     else:
         compressor = zarr_config.get("array.v2_default_compressor.default")
 
@@ -4712,7 +4720,7 @@ def _parse_chunk_encoding_v2(
     *,
     compressor: CompressorsLike,
     filters: FiltersLike,
-    dtype: DTypeWrapper[Any, Any],
+    dtype: ZDType[_BaseDType, _BaseScalar],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
     Generate chunk encoding classes for Zarr format 2 arrays with optional defaults.
@@ -4782,7 +4790,7 @@ def _parse_chunk_encoding_v3(
     compressors: CompressorsLike,
     filters: FiltersLike,
     serializer: SerializerLike,
-    dtype: DTypeWrapper[Any, Any],
+    dtype: ZDType[_BaseDType, _BaseScalar],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
     Generate chunk encoding classes for v3 arrays with optional defaults.

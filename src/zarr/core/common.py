@@ -19,8 +19,6 @@ from typing import (
     overload,
 )
 
-from typing_extensions import ReadOnly
-
 from zarr.core.config import config as zarr_config
 
 if TYPE_CHECKING:

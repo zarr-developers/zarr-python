@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
 
 
 def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
@@ -49,7 +49,7 @@ class TransposeCodec(ArrayArrayCodec):
     def validate(
         self,
         shape: tuple[int, ...],
-        dtype: ZDType[TBaseDType, TBaseScalar],
+        dtype: ZDType[_BaseDType, _BaseScalar],
         chunk_grid: ChunkGrid,
     ) -> None:
         if len(self.order) != len(shape):

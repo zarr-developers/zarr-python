@@ -107,15 +107,15 @@ config = Config(
                 "v2_default_compressor": {"default": {"id": "zstd", "level": 0, "checksum": False}},
                 "v2_default_filters": {
                     "default": None,
-                    "variable_length_utf8": [{"id": "vlen-utf8"}],
-                    "fixed_length_ucs4": [{"id": "vlen-utf8"}],
-                    "fixed_length_ascii": [{"id": "vlen-bytes"}],
+                    "numpy__variable_length_utf8": [{"id": "vlen-utf8"}],
+                    "numpy__fixed_length_ucs4": [{"id": "vlen-utf8"}],
+                    "numpy__fixed_length_ascii": [{"id": "vlen-bytes"}],
                 },
                 "v3_default_filters": {"default": []},
                 "v3_default_serializer": {
                     "default": {"name": "bytes", "configuration": {"endian": "little"}},
-                    "variable_length_utf8": {"name": "vlen-utf8"},
-                    "fixed_length_ucs4": {"name": "vlen-utf8"},
+                    "numpy__variable_length_utf8": {"name": "vlen-utf8"},
+                    "numpy__fixed_length_ucs4": {"name": "vlen-utf8"},
                     "r*": {"name": "vlen-bytes"},
                 },
                 "v3_default_compressors": {

@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, TypedDict
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import (
-    DTypeWrapper,
     VariableLengthString,
-    get_data_type_from_dict,
+    ZDType,
+    get_data_type_from_json,
 )
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
+    from zarr.core.dtype.wrapper import _BaseDType, _BaseScalar
 
 
 import json
@@ -86,7 +87,7 @@ def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
     return abcs[0]
 
 
-def validate_codecs(codecs: tuple[Codec, ...], dtype: DTypeWrapper[Any, Any]) -> None:
+def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[_BaseDType, _BaseScalar]) -> None:
     """Check that the codecs are valid for the given dtype"""
     from zarr.codecs.sharding import ShardingCodec
 
@@ -144,7 +145,7 @@ class ArrayV3MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(Metadata):
     shape: ChunkCoords
-    data_type: DTypeWrapper[Any, Any]
+    data_type: ZDType[_BaseDType, _BaseScalar]
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
@@ -159,7 +160,7 @@ class ArrayV3Metadata(Metadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: DTypeWrapper[Any, Any],
+        data_type: ZDType[_BaseDType, _BaseScalar],
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: object,
@@ -173,7 +174,7 @@ class ArrayV3Metadata(Metadata):
         """
 
         # TODO: remove this
-        if not isinstance(data_type, DTypeWrapper):
+        if not isinstance(data_type, ZDType):
             raise TypeError
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
@@ -186,7 +187,7 @@ class ArrayV3Metadata(Metadata):
 
         array_spec = ArraySpec(
             shape=shape_parsed,
-            dtype=data_type.to_dtype(),
+            dtype=data_type,
             fill_value=fill_value_parsed,
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
@@ -220,9 +221,7 @@ class ArrayV3Metadata(Metadata):
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
         for codec in self.codecs:
-            codec.validate(
-                shape=self.shape, dtype=self.data_type.to_dtype(), chunk_grid=self.chunk_grid
-            )
+            codec.validate(shape=self.shape, dtype=self.data_type, chunk_grid=self.chunk_grid)
 
     @property
     def ndim(self) -> int:
@@ -294,10 +293,7 @@ class ArrayV3Metadata(Metadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         data_type_json = _data.pop("data_type")
-        if isinstance(data_type_json, str):
-            data_type = get_data_type_from_dict({"name": data_type_json})
-        else:
-            data_type = get_data_type_from_dict(data_type_json)
+        data_type = get_data_type_from_json(data_type_json, zarr_format=3)
 
         # check that the fill value is consistent with the data type
         fill_value_parsed = data_type.from_json_value(_data.pop("fill_value"), zarr_format=3)
@@ -322,9 +318,15 @@ class ArrayV3Metadata(Metadata):
         # the metadata document
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
-        # if data_type has no configuration, we just serialize the name
-        if "configuration" not in out_dict["data_type"]:
-            out_dict["data_type"] = out_dict["data_type"]["name"]
+
+        # TODO: replace the `to_dict` / `from_dict` on the `Metadata`` class with
+        # to_json, from_json, and have ZDType inherit from `Metadata`
+        # until then, we have this hack here
+        dtype_meta = out_dict["data_type"]
+
+        if isinstance(dtype_meta, ZDType):
+            out_dict["data_type"] = dtype_meta.to_json(zarr_format=3)
+
         return out_dict
 
     def update_shape(self, shape: ChunkCoords) -> Self:

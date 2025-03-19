@@ -504,7 +504,7 @@ class TestConsolidated:
     async def test_consolidated_metadata_v2(self):
         store = zarr.storage.MemoryStore()
         g = await AsyncGroup.from_store(store, attributes={"key": "root"}, zarr_format=2)
-        dtype = parse_data_type("uint8")
+        dtype = parse_data_type("uint8", zarr_format=2)
         await g.create_array(name="a", shape=(1,), attributes={"key": "a"}, dtype=dtype)
         g1 = await g.create_group(name="g1", attributes={"key": "g1"})
         await g1.create_group(name="g2", attributes={"key": "g2"})

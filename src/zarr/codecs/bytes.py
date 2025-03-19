@@ -3,20 +3,21 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
-from zarr.core.dtype.common import endianness_to_numpy_str
+from zarr.core.dtype._numpy import endianness_to_numpy_str
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.dtype.common import Endianness
 
 
 class Endian(Enum):
@@ -73,7 +74,9 @@ class BytesCodec(ArrayBytesCodec):
     ) -> NDBuffer:
         assert isinstance(chunk_bytes, Buffer)
         # TODO: remove endianness enum in favor of literal union
-        endian_str = self.endian.value if self.endian is not None else None
+        endian_str = cast(
+            "Endianness | None", self.endian.value if self.endian is not None else None
+        )
         dtype = chunk_spec.dtype.to_dtype().newbyteorder(endianness_to_numpy_str(endian_str))
 
         as_array_like = chunk_bytes.as_array_like()
