@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import re
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import (
@@ -40,7 +41,7 @@ from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
-EndiannessNumpy = Literal[">", "<", "=", "|"]
+EndiannessNumpy = Literal[">", "<", "|", "="]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -57,7 +58,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
     """
 
     _zarr_v3_name = "bool"
-    _zarr_v2_names: ClassVar[tuple[str,...]] = ("|b1",)
+    _zarr_v2_names: ClassVar[tuple[str, ...]] = ("|b1",)
     dtype_cls = np.dtypes.BoolDType
 
     @classmethod
@@ -314,7 +315,7 @@ class Int16(ZDType[np.dtypes.Int16DType, np.int16]):
     dtype_cls = np.dtypes.Int16DType
     _zarr_v3_name = "int16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i2", "<i2")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Int16DType) -> Self:
@@ -370,7 +371,7 @@ class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16]):
     dtype_cls = np.dtypes.UInt16DType
     _zarr_v3_name = "uint16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u2", "<u2")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt16DType) -> Self:
@@ -426,7 +427,7 @@ class Int32(ZDType[np.dtypes.Int32DType, np.int32]):
     dtype_cls = np.dtypes.Int32DType
     _zarr_v3_name = "int32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i4", "<i4")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Int32DType) -> Self:
@@ -482,7 +483,7 @@ class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32]):
     dtype_cls = np.dtypes.UInt32DType
     _zarr_v3_name = "uint32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u4", "<u4")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt32DType) -> Self:
@@ -538,7 +539,7 @@ class Int64(ZDType[np.dtypes.Int64DType, np.int64]):
     dtype_cls = np.dtypes.Int64DType
     _zarr_v3_name = "int64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i8", "<i8")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Int64DType) -> Self:
@@ -594,7 +595,7 @@ class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64]):
     dtype_cls = np.dtypes.UInt64DType
     _zarr_v3_name = "uint64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u8", "<u8")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt64DType) -> Self:
@@ -650,7 +651,7 @@ class Float16(ZDType[np.dtypes.Float16DType, np.float16]):
     dtype_cls = np.dtypes.Float16DType
     _zarr_v3_name = "float16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f2", "<f2")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Float16DType) -> Self:
@@ -706,7 +707,7 @@ class Float32(ZDType[np.dtypes.Float32DType, np.float32]):
     dtype_cls = np.dtypes.Float32DType
     _zarr_v3_name = "float32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f4", "<f4")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Float32DType) -> Self:
@@ -762,7 +763,7 @@ class Float64(ZDType[np.dtypes.Float64DType, np.float64]):
     dtype_cls = np.dtypes.Float64DType
     _zarr_v3_name = "float64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f8", "<f8")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Float64DType) -> Self:
@@ -818,7 +819,7 @@ class Complex64(ZDType[np.dtypes.Complex64DType, np.complex64]):
     dtype_cls = np.dtypes.Complex64DType
     _zarr_v3_name = "complex64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c8", "<c8")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Complex64DType) -> Self:
@@ -876,7 +877,7 @@ class Complex128(ZDType[np.dtypes.Complex128DType, np.complex128]):
     dtype_cls = np.dtypes.Complex128DType
     _zarr_v3_name = "complex128"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c16", "<c16")
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Complex128DType) -> Self:
@@ -1079,7 +1080,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_]):
     dtype_cls = np.dtypes.StrDType
     _zarr_v3_name = "numpy.fixed_length_ucs4"
     item_size_bits: ClassVar[int] = 32  # UCS4 is 32 bits per code point
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
     length: int = 1
 
     @classmethod
@@ -1263,7 +1264,7 @@ class DateTime64(ZDType[np.dtypes.DateTime64DType, np.datetime64]):
     dtype_cls = np.dtypes.DateTime64DType  # type: ignore[assignment]
     _zarr_v3_name = "numpy.datetime64"
     unit: DateUnit | TimeUnit = "s"
-    endianness: Endianness | None = "native"
+    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.DateTime64DType) -> Self:
@@ -1457,7 +1458,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
             raise TypeError(f"Invalid type: {data}. Expected a string.")
         as_bytes = bytes_from_json(data, zarr_format=zarr_format)
         dtype = self.to_dtype()
-        return cast(np.void, np.array([as_bytes], dtype=dtype.str).view(dtype)[0])
+        return cast("np.void", np.array([as_bytes], dtype=dtype.str).view(dtype)[0])
 
 
 def endianness_to_numpy_str(endianness: Endianness | None) -> EndiannessNumpy:
@@ -1471,7 +1472,7 @@ def endianness_to_numpy_str(endianness: Endianness | None) -> EndiannessNumpy:
 
     Returns
     -------
-    Literal[">", "<", "=", "|"]
+    Literal[">", "<", "|"]
         The numpy string representation of the endianness.
 
     Raises
@@ -1484,8 +1485,6 @@ def endianness_to_numpy_str(endianness: Endianness | None) -> EndiannessNumpy:
             return "<"
         case "big":
             return ">"
-        case "native":
-            return "="
         case None:
             return "|"
     raise ValueError(
@@ -1513,12 +1512,12 @@ def endianness_from_numpy_str(endianness: EndiannessNumpy) -> Endianness | None:
         If the endianness is invalid.
     """
     match endianness:
+        case "=":
+            return sys.byteorder
         case "<":
             return "little"
         case ">":
             return "big"
-        case "=":
-            return "native"
         case "|":
             return None
     raise ValueError(

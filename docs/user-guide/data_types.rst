@@ -10,9 +10,9 @@ Zarr-Python supports creating arrays with Numpy data types::
 
   >>> import zarr
   >>> import numpy as np
-  >>> zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
+  >>> z = zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
   >>> z
-  <Array memory://126225407345920 shape=(10,) dtype=uint8>
+  <Array memory:... shape=(10,) dtype=uint8>
 
 Unlike Numpy arrays, Zarr arrays are designed to be persisted to storage and read by Zarr implementations in different programming languages.
 This means Zarr data types must be interpreted correctly when clients read an array. So each Zarr data type defines a procedure for
@@ -34,7 +34,7 @@ Thus the JSON identifier for a Numpy-compatible data type is just the Numpy ``st
     >>> dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
     >>> assert dtype_meta == np_dtype.str # True
     >>> dtype_meta
-    <i8
+    '<i8'
 
 .. note::
   The ``<`` character in the data type metadata encodes the `endianness <https://numpy.org/doc/2.2/reference/generated/numpy.dtype.byteorder.html>`_, or "byte order", of the data type. Following Numpy's example,
