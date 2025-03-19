@@ -182,7 +182,7 @@ which can be used to print useful diagnostics, e.g.::
    >>> z.info
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.int32
+   Data type          : int32
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -199,7 +199,7 @@ prints additional diagnostics, e.g.::
    >>> z.info_complete()
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.int32
+   Data type          : int32
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -286,7 +286,7 @@ Here is an example using a delta filter with the Blosc compressor::
    >>> z.info
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.int32
+   Data type          : int32
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -600,7 +600,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   >>> a.info_complete()
   Type               : Array
   Zarr format        : 3
-  Data type          : DataType.uint8
+  Data type          : uint8
   Shape              : (10000, 10000)
   Shard shape        : (1000, 1000)
   Chunk shape        : (100, 100)
@@ -608,10 +608,10 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Read-only          : False
   Store type         : LocalStore
   Filters            : ()
-  Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+  Serializer         : BytesCodec(endian=None)
   Compressors        : (ZstdCodec(level=0, checksum=False),)
   No. bytes          : 100000000 (95.4M)
-  No. bytes stored   : 3981552
+  No. bytes stored   : 3981473
   Storage ratio      : 25.1
   Shards Initialized : 100
 

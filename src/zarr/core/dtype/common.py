@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
     from zarr.core.dtype._numpy import DateUnit, TimeUnit
 
-Endianness = Literal["little", "big", "native"]
+Endianness = Literal["little", "big"]
 JSONFloat = float | Literal["NaN", "Infinity", "-Infinity"]
 
 

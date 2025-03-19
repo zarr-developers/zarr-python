@@ -128,7 +128,7 @@ property. E.g.::
    >>> bar.info_complete()
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.int64
+   Data type          : int64
    Shape              : (1000000,)
    Chunk shape        : (100000,)
    Order              : C
@@ -144,7 +144,7 @@ property. E.g.::
    >>> baz.info
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.float32
+   Data type          : float32
    Shape              : (1000, 1000)
    Chunk shape        : (100, 100)
    Order              : C
