@@ -23,10 +23,8 @@ if TYPE_CHECKING:
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from enum import Enum
 from typing import Any, Literal
 
-import numcodecs.abc
 import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -169,60 +167,6 @@ class V3JsonEncoder(json.JSONEncoder):
             default=default,
         )
 
-    def default(self, o: object) -> Any:
-        if isinstance(o, np.dtype):
-            return str(o)
-        if np.isscalar(o):
-            out: Any
-            if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
-                # https://github.com/zarr-developers/zarr-python/issues/2119
-                # `.item()` on a datetime type might or might not return an
-                # integer, depending on the value.
-                # Explicitly cast to an int first, and then grab .item()
-                out = o.view("i8").item()
-            else:
-                # convert numpy scalar to python type, and pass
-                # python types through
-                out = getattr(o, "item", lambda: o)()
-                if isinstance(out, complex):
-                    # python complex types are not JSON serializable, so we use the
-                    # serialization defined in the zarr v3 spec
-                    return _replace_special_floats([out.real, out.imag])
-                elif np.isnan(out):
-                    return "NaN"
-                elif np.isinf(out):
-                    return "Infinity" if out > 0 else "-Infinity"
-            return out
-        elif isinstance(o, Enum):
-            return o.name
-        # this serializes numcodecs compressors
-        # todo: implement to_dict for codecs
-        elif isinstance(o, numcodecs.abc.Codec):
-            config: dict[str, Any] = o.get_config()
-            return config
-        else:
-            return super().default(o)
-
-
-def _replace_special_floats(obj: object) -> Any:
-    """Helper function to replace NaN/Inf/-Inf values with special strings
-
-    Note: this cannot be done in the V3JsonEncoder because Python's `json.dumps` optimistically
-    converts NaN/Inf values to special types outside of the encoding step.
-    """
-    if isinstance(obj, float):
-        if np.isnan(obj):
-            return "NaN"
-        elif np.isinf(obj):
-            return "Infinity" if obj > 0 else "-Infinity"
-    elif isinstance(obj, dict):
-        # Recursively replace in dictionaries
-        return {k: _replace_special_floats(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        # Recursively replace in lists
-        return [_replace_special_floats(item) for item in obj]
-    return obj
-
 
 class ArrayV3MetadataDict(TypedDict):
     """
@@ -264,9 +208,6 @@ class ArrayV3Metadata(Metadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
 
-        # TODO: remove this
-        if not isinstance(data_type, ZDType):
-            raise TypeError
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
