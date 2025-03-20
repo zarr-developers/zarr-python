@@ -22,7 +22,7 @@ TScalar = TypeVar("TScalar", bound=_BaseScalar)
 TDType = TypeVar("TDType", bound=_BaseDType)
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, slots=True)
 class ZDType(Generic[TDType, TScalar], ABC):
     """
     Abstract base class for wrapping native array data types, e.g. numpy dtypes
@@ -62,7 +62,7 @@ class ZDType(Generic[TDType, TScalar], ABC):
         return type(dtype) is cls.dtype_cls
 
     @classmethod
-    def from_dtype(cls: type[Self], dtype: TDType) -> Self:
+    def from_dtype(cls: type[Self], dtype: _BaseDType) -> Self:
         """
         Wrap a dtype object.
 

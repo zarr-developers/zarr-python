@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ChunkCoords
-    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import ZDType
 
 
 class ArrayConfigParams(TypedDict):
@@ -89,7 +89,7 @@ def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
 @dataclass(frozen=True)
 class ArraySpec:
     shape: ChunkCoords
-    dtype: ZDType[_BaseDType, _BaseScalar]
+    dtype: ZDType[Any, Any]
     fill_value: Any
     config: ArrayConfig
     prototype: BufferPrototype
@@ -97,7 +97,7 @@ class ArraySpec:
     def __init__(
         self,
         shape: ChunkCoords,
-        dtype: ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDType[Any, Any],
         fill_value: Any,
         config: ArrayConfig,
         prototype: BufferPrototype,

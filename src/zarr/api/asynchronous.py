@@ -1011,7 +1011,7 @@ async def create(
             chunks = shape
         default_filters, default_compressor = _get_default_chunk_encoding_v2(dtype_wrapped)
         if filters is None:
-            filters = default_filters
+            filters = default_filters  # type: ignore[assignment]
         if compressor is None:
             compressor = default_compressor
     elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]

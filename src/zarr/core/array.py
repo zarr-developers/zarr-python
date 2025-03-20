@@ -742,7 +742,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             chunk_grid=chunk_grid_parsed,
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value_parsed,
-            codecs=codecs_parsed,
+            codecs=codecs_parsed,  # type: ignore[arg-type]
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
         )
@@ -1766,7 +1766,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> Any:
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
-            _data_type=self.dtype,
+            _data_type=self._zdtype,
             _shape=self.shape,
             _order=self.order,
             _shard_shape=self.shards,

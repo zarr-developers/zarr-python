@@ -100,7 +100,8 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[_BaseDType, _BaseSc
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
     codec_class_name = abc.__class__.__name__
-    if isinstance(dtype, VariableLengthString) and not codec_class_name == "VLenUTF8Codec":
+    # TODO: Fix typing here
+    if isinstance(dtype, VariableLengthString) and not codec_class_name == "VLenUTF8Codec":  # type: ignore[unreachable]
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
@@ -321,11 +322,11 @@ class ArrayV3Metadata(Metadata):
 
         # TODO: replace the `to_dict` / `from_dict` on the `Metadata`` class with
         # to_json, from_json, and have ZDType inherit from `Metadata`
-        # until then, we have this hack here
+        # until then, we have this hack here, which relies on the fact that to_dict will pass through
+        # any non-`Metadata` fields as-is.
         dtype_meta = out_dict["data_type"]
-
         if isinstance(dtype_meta, ZDType):
-            out_dict["data_type"] = dtype_meta.to_json(zarr_format=3)
+            out_dict["data_type"] = dtype_meta.to_json(zarr_format=3)  # type: ignore[unreachable]
 
         return out_dict
 

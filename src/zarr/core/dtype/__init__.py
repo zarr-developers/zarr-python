@@ -84,7 +84,11 @@ for dtype in get_args(DTYPE):
     data_type_registry.register(dtype._zarr_v3_name, dtype)
 
 
+# TODO: find a better name for this function
 def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[_BaseDType, _BaseScalar]:
+    """
+    Get a data type wrapper (an instance of ``ZDType``) from a native data type, e.g. a numpy dtype.
+    """
     data_type_registry.lazy_load()
     if not isinstance(dtype, np.dtype):
         if dtype in (str, "str"):

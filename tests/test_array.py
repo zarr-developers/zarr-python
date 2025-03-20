@@ -42,6 +42,7 @@ from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_pr
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype._numpy import Float64
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.sync import sync
@@ -447,7 +448,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
-            _data_type=arr.dtype,
+            _data_type=arr._async_array._zdtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=None,
@@ -464,7 +465,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.dtype,
+            _data_type=arr._async_array._zdtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -489,7 +490,7 @@ class TestInfo:
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.dtype,
+            _data_type=arr._async_array._zdtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -525,7 +526,6 @@ class TestInfo:
         expected = ArrayInfo(
             _zarr_format=2,
             _data_type=Float64(),
-            _fill_value=arr.metadata.fill_value,
             _shape=(8, 8),
             _chunk_shape=(2, 2),
             _shard_shape=None,
@@ -550,7 +550,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.dtype,
+            _data_type=arr._zdtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -577,7 +577,7 @@ class TestInfo:
         result = await arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type=arr.dtype,
+            _data_type=arr._zdtype,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
