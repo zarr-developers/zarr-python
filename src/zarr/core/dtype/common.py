@@ -530,4 +530,4 @@ def datetime_from_json(data: int, unit: DateUnit | TimeUnit) -> np.datetime64:
     np.datetime64
         The datetime64 value.
     """
-    return cast(np.datetime64, np.int64(data).view(f"datetime64[{unit}]"))
+    return cast("np.datetime64", np.int64(data).view(f"datetime64[{unit}]"))

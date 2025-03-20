@@ -22,10 +22,8 @@ if TYPE_CHECKING:
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from enum import Enum
 from typing import Any, Literal
 
-import numcodecs.abc
 import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -134,6 +132,33 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     )
 
 
+class V3JsonEncoder(json.JSONEncoder):
+    def __init__(
+        self,
+        *,
+        skipkeys: bool = False,
+        ensure_ascii: bool = True,
+        check_circular: bool = True,
+        allow_nan: bool = True,
+        sort_keys: bool = False,
+        indent: int | None = None,
+        separators: tuple[str, str] | None = None,
+        default: Callable[[object], object] | None = None,
+    ) -> None:
+        if indent is None:
+            indent = config.get("json_indent")
+        super().__init__(
+            skipkeys=skipkeys,
+            ensure_ascii=ensure_ascii,
+            check_circular=check_circular,
+            allow_nan=allow_nan,
+            sort_keys=sort_keys,
+            indent=indent,
+            separators=separators,
+            default=default,
+        )
+
+
 class ArrayV3MetadataDict(TypedDict):
     """
     A typed dictionary model for zarr v3 metadata.
@@ -174,9 +199,6 @@ class ArrayV3Metadata(Metadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
 
-        # TODO: remove this
-        if not isinstance(data_type, ZDType):
-            raise TypeError
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)

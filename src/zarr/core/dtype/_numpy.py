@@ -77,14 +77,14 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -162,14 +162,14 @@ class Int8(ZDType[np.dtypes.Int8DType, np.int8]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -247,14 +247,14 @@ class UInt8(ZDType[np.dtypes.UInt8DType, np.uint8]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -337,14 +337,14 @@ class Int16(ZDType[np.dtypes.Int16DType, np.int16]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -352,7 +352,7 @@ class Int16(ZDType[np.dtypes.Int16DType, np.int16]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.int16:
         return self.to_dtype().type(0)
@@ -393,14 +393,14 @@ class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -408,7 +408,7 @@ class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.uint16:
         return self.to_dtype().type(0)
@@ -449,14 +449,14 @@ class Int32(ZDType[np.dtypes.Int32DType, np.int32]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -464,7 +464,7 @@ class Int32(ZDType[np.dtypes.Int32DType, np.int32]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.int32:
         return self.to_dtype().type(0)
@@ -505,14 +505,14 @@ class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -520,7 +520,7 @@ class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.uint32:
         return self.to_dtype().type(0)
@@ -561,14 +561,14 @@ class Int64(ZDType[np.dtypes.Int64DType, np.int64]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -576,7 +576,7 @@ class Int64(ZDType[np.dtypes.Int64DType, np.int64]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.int64:
         return self.to_dtype().type(0)
@@ -617,14 +617,14 @@ class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -632,7 +632,7 @@ class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.uint64:
         return self.to_dtype().type(0)
@@ -673,14 +673,14 @@ class Float16(ZDType[np.dtypes.Float16DType, np.float16]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -688,7 +688,7 @@ class Float16(ZDType[np.dtypes.Float16DType, np.float16]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.float16:
         return self.to_dtype().type(0)
@@ -729,14 +729,14 @@ class Float32(ZDType[np.dtypes.Float32DType, np.float32]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -744,7 +744,7 @@ class Float32(ZDType[np.dtypes.Float32DType, np.float32]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.float32:
         return self.to_dtype().type(0)
@@ -785,14 +785,14 @@ class Float64(ZDType[np.dtypes.Float64DType, np.float64]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -800,7 +800,7 @@ class Float64(ZDType[np.dtypes.Float64DType, np.float64]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.float64:
         return self.to_dtype().type(0)
@@ -841,14 +841,14 @@ class Complex64(ZDType[np.dtypes.Complex64DType, np.complex64]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -856,7 +856,7 @@ class Complex64(ZDType[np.dtypes.Complex64DType, np.complex64]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.complex64:
         return self.to_dtype().type(0)
@@ -899,14 +899,14 @@ class Complex128(ZDType[np.dtypes.Complex128DType, np.complex128]):
             return data in cls._zarr_v2_names
         elif zarr_format == 3:
             return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -914,7 +914,7 @@ class Complex128(ZDType[np.dtypes.Complex128DType, np.complex128]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.complex128:
         return self.to_dtype().type(0)
@@ -962,7 +962,7 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_]):
                 and "length_bits" in data["configuration"]
                 and isinstance(data["configuration"]["length_bits"], int)
             )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> JSON:
         if zarr_format == 2:
@@ -972,7 +972,7 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_]):
                 "name": self._zarr_v3_name,
                 "configuration": {"length_bits": self.length * self.item_size_bits},
             }
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -980,7 +980,7 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls(length=data["configuration"]["length_bits"] // cls.item_size_bits)  # type: ignore[arg-type, index, call-overload, operator]
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.bytes_:
         return np.bytes_(b"")
@@ -1025,14 +1025,14 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void]):
                 and isinstance(data["name"], str)
                 and (re.match(r"^r\d+$", data["name"]) is not None)
             )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> JSON:
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
             return {"name": f"r{self.length * self.item_size_bits}"}
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -1040,7 +1040,7 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls(length=int(data["name"][1:]) // cls.item_size_bits)  # type: ignore[arg-type, index, call-overload]
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def check_dtype(cls: type[Self], dtype: _BaseDType) -> TypeGuard[np.dtypes.VoidDType[Any]]:
@@ -1113,7 +1113,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_]):
                 and "length_bits" in data["configuration"]
                 and isinstance(data["configuration"]["length_bits"], int)
             )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> JSON:
         if zarr_format == 2:
@@ -1123,7 +1123,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_]):
                 "name": self._zarr_v3_name,
                 "configuration": {"length_bits": self.length * self.item_size_bits},
             }
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -1131,7 +1131,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls(length=data["configuration"]["length_bits"] // cls.item_size_bits)  # type: ignore[arg-type, index, call-overload, operator]
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.str_:
         return np.str_("")
@@ -1174,7 +1174,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
                 return data == "|O"
             elif zarr_format == 3:
                 return data == cls._zarr_v3_name
-            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
         def to_json(self, zarr_format: ZarrFormat) -> JSON:
             if zarr_format == 2:
@@ -1185,7 +1185,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
                 return "|O"
             elif zarr_format == 3:
                 return self._zarr_v3_name
-            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
         @classmethod
         def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -1227,14 +1227,14 @@ else:
                 return data == "|O"
             elif zarr_format == 3:
                 return data == cls._zarr_v3_name
-            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
         def to_json(self, zarr_format: ZarrFormat) -> JSON:
             if zarr_format == 2:
                 return self.to_dtype().str
             elif zarr_format == 3:
                 return self._zarr_v3_name
-            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
         @classmethod
         def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -1306,7 +1306,7 @@ class DateTime64(ZDType[np.dtypes.DateTime64DType, np.datetime64]):
                 and "unit" in data["configuration"]
                 and data["configuration"]["unit"] in get_args(DateUnit) + get_args(TimeUnit)
             )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.datetime64:
         return np.datetime64("NaT")
@@ -1316,7 +1316,7 @@ class DateTime64(ZDType[np.dtypes.DateTime64DType, np.datetime64]):
             return self.to_dtype().str
         elif zarr_format == 3:
             return {"name": self._zarr_v3_name, "configuration": {"unit": self.unit}}
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -1324,7 +1324,7 @@ class DateTime64(ZDType[np.dtypes.DateTime64DType, np.datetime64]):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls(unit=data["configuration"]["unit"])  # type: ignore[arg-type, index, call-overload]
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
         if check_json_int(data):
@@ -1391,7 +1391,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
             base_dict = {"name": self._zarr_v3_name}
             base_dict["configuration"] = {"fields": fields}  # type: ignore[assignment]
             return cast("JSON", base_dict)
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def check_json(
@@ -1416,7 +1416,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
                 and isinstance(data["configuration"], dict)
                 and "fields" in data["configuration"]
             )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
@@ -1441,7 +1441,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
                             for f_name, f_dtype in meta_fields
                         )
                         return cls(fields=fields)
-            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
         raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
 
     def to_dtype(self) -> np.dtypes.VoidDType[int]:
