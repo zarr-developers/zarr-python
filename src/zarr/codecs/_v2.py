@@ -46,7 +46,7 @@ class V2Codec(ArrayBytesCodec):
         chunk = ensure_ndarray_like(chunk)
         # special case object dtype, because incorrect handling can lead to
         # segfaults and other bad things happening
-        if chunk_spec.dtype != object:
+        if chunk_spec.dtype.dtype_cls is not np.dtypes.ObjectDType:
             try:
                 chunk = chunk.view(chunk_spec.dtype.to_dtype())
             except TypeError:

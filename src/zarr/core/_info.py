@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import dataclasses
 import textwrap
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import numcodecs.abc
 
     from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
     from zarr.core.common import ZarrFormat
-    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import ZDType
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -80,7 +80,7 @@ class ArrayInfo:
 
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
-    _data_type: ZDType[_BaseDType, _BaseScalar]
+    _data_type: ZDType[Any, Any]
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
     _chunk_shape: tuple[int, ...] | None = None
