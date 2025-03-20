@@ -66,7 +66,6 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         Type               : Array
         Zarr format        : {zarr_format}
         Data type          : Int32(endianness='little')
-        Fill value         : 0
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
@@ -108,7 +107,6 @@ def test_array_info_complete(
         Type               : Array
         Zarr format        : {zarr_format}
         Data type          : Int32(endianness='little')
-        Fill value         : 0
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
