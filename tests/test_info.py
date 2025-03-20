@@ -65,7 +65,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
     assert result == textwrap.dedent(f"""\
         Type               : Array
         Zarr format        : {zarr_format}
-        Data type          : int32
+        Data type          : Int32(endianness='little')
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
@@ -106,7 +106,7 @@ def test_array_info_complete(
     assert result == textwrap.dedent(f"""\
         Type               : Array
         Zarr format        : {zarr_format}
-        Data type          : int32
+        Data type          : Int32(endianness='little')
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
