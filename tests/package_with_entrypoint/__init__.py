@@ -1,4 +1,5 @@
-from __future__ import annotations
+from collections.abc import Iterable
+from typing import Any, Literal, Self
 
 from typing import TYPE_CHECKING
 
@@ -9,15 +10,8 @@ import zarr.core.buffer
 from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
 from zarr.codecs import BytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.dtype.common import DataTypeValidationError, DTypeJSON, DTypeSpec_V2
-from zarr.core.dtype.npy.bool import Bool
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
-    from typing import Any, ClassVar, Literal, Self
-
-    from zarr.core.array_spec import ArraySpec
-    from zarr.core.common import ZarrFormat
+from zarr.core.common import BytesLike
+from zarr.core.dtype import Bool
 
 
 class TestEntrypointCodec(ArrayBytesCodec):
@@ -81,21 +75,13 @@ class TestDataType(Bool):
     This is a "data type" that serializes to "test"
     """
 
-    _zarr_v3_name: ClassVar[Literal["test"]] = "test"  # type: ignore[assignment]
+    _zarr_v3_name = "test"
 
     @classmethod
-    def from_json(cls, data: DTypeJSON, *, zarr_format: Literal[2, 3]) -> Self:
-        if zarr_format == 2 and data == {"name": cls._zarr_v3_name, "object_codec_id": None}:
+    def from_json(cls, data: Any, zarr_format: Literal[2, 3]) -> Self:
+        if data == cls._zarr_v3_name:
             return cls()
-        if zarr_format == 3 and data == cls._zarr_v3_name:
-            return cls()
-        raise DataTypeValidationError(
-            f"Invalid JSON representation of {cls.__name__}. Got {data!r}"
-        )
+        raise ValueError
 
-    def to_json(self, zarr_format: ZarrFormat) -> str | DTypeSpec_V2:  # type: ignore[override]
-        if zarr_format == 2:
-            return {"name": self._zarr_v3_name, "object_codec_id": None}
-        if zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError("zarr_format must be 2 or 3")
+    def to_json(self, zarr_format):
+        return self._zarr_v3_name
