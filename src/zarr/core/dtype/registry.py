@@ -12,6 +12,9 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
 
 
+# This class is different from the other registry classes, which inherit from
+# dict. IMO it's simpler to just do a dataclass. But long-term we should
+# have just 1 registry class in use.
 @dataclass(frozen=True, kw_only=True)
 class DataTypeRegistry:
     contents: dict[str, type[ZDType[_BaseDType, _BaseScalar]]] = field(
