@@ -430,6 +430,15 @@ class Int32(ZDType[np.dtypes.Int32DType, np.int32]):
     endianness: Endianness | None = "little"
 
     @classmethod
+    def from_dtype(cls: type[Self], dtype: _BaseDType) -> Self:
+        # We override the base implementation to address a windows-specific, pre-numpy 2 issue where
+        # ``np.dtype('i')`` is an instance of ``np.dtypes.IntDType`` that acts like `int32` instead of ``np.dtype('int32')``
+        if dtype == np.dtypes.Int32DType():
+            return cls._from_dtype_unsafe(np.dtypes.Int32DType().newbyteorder(dtype.byteorder))
+        else:
+            return super().from_dtype(dtype)
+
+    @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Int32DType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
