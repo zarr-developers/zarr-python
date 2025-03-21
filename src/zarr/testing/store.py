@@ -158,10 +158,6 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that data can be read from the store using the store.get method.
         """
-        if isinstance(store, ObjectStore) and not data:
-            pytest.xfail(
-                "Obstore does not allow loading invalid ranges - see https://github.com/apache/arrow-rs/pull/6751#issuecomment-2494702657"
-            )
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
