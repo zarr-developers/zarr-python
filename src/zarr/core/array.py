@@ -23,7 +23,6 @@ from warnings import warn
 import numcodecs
 import numcodecs.abc
 import numpy as np
-import numpy.typing as npt
 from typing_extensions import deprecated
 
 from zarr._compat import _deprecate_positional_args
@@ -67,6 +66,7 @@ from zarr.core.common import (
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     ZDType,
+    ZDTypeLike,
     parse_data_type,
 )
 from zarr.core.indexing import (
@@ -121,6 +121,8 @@ from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
     from typing import Self
+
+    import numpy.typing as npt
 
     from zarr.abc.codec import CodecPipeline
     from zarr.codecs.sharding import ShardingCodecIndexLocation
@@ -295,7 +297,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: ZDTypeLike,
         zarr_format: Literal[2],
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -319,7 +321,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: ZDTypeLike,
         zarr_format: Literal[3],
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -347,7 +349,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: ZDTypeLike,
         zarr_format: Literal[3] = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -375,7 +377,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: ZDTypeLike,
         zarr_format: ZarrFormat,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -410,7 +412,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -446,7 +448,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The store where the array will be created.
         shape : ShapeLike
             The shape of the array.
-        dtype : npt.DTypeLike
+        dtype : ZDTypeLike
             The data type of the array.
         zarr_format : ZarrFormat, optional
             The Zarr format version (default is 3).
@@ -551,7 +553,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike | ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDTypeLike | ZDType[_BaseDType, _BaseScalar],
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -1746,7 +1748,7 @@ class Array:
         *,
         # v2 and v3
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -1781,7 +1783,7 @@ class Array:
             The array store that has already been initialized.
         shape : ChunkCoords
             The shape of the array.
-        dtype : npt.DTypeLike
+        dtype : ZDTypeLike
             The data type of the array.
         chunk_shape : ChunkCoords, optional
             The shape of the Array's chunks.
@@ -1875,7 +1877,7 @@ class Array:
         *,
         # v2 and v3
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -3817,7 +3819,7 @@ async def init_array(
     *,
     store_path: StorePath,
     shape: ShapeLike,
-    dtype: npt.DTypeLike,
+    dtype: ZDTypeLike,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
@@ -3840,7 +3842,7 @@ async def init_array(
         StorePath instance. The path attribute is the name of the array to initialize.
     shape : ChunkCoords
         Shape of the array.
-    dtype : npt.DTypeLike
+    dtype : ZDTypeLike
         Data type of the array.
     chunks : ChunkCoords, optional
         Chunk shape of the array.
@@ -4028,7 +4030,7 @@ async def create_array(
     *,
     name: str | None = None,
     shape: ShapeLike | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
@@ -4057,7 +4059,7 @@ async def create_array(
         at the root of the store.
     shape : ChunkCoords, optional
         Shape of the array. Can be ``None`` if ``data`` is provided.
-    dtype : npt.DTypeLike | None
+    dtype : ZDTypeLike | None
         Data type of the array. Can be ``None`` if ``data`` is provided.
     data : Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
@@ -4401,8 +4403,8 @@ def _parse_data_params(
     *,
     data: np.ndarray[Any, np.dtype[Any]] | None,
     shape: ShapeLike | None,
-    dtype: npt.DTypeLike | None,
-) -> tuple[np.ndarray[Any, np.dtype[Any]] | None, ShapeLike, npt.DTypeLike]:
+    dtype: ZDTypeLike | None,
+) -> tuple[np.ndarray[Any, np.dtype[Any]] | None, ShapeLike, ZDTypeLike]:
     """
     Ensure an array-like ``data`` parameter is consistent with the ``dtype`` and ``shape``
     parameters.
