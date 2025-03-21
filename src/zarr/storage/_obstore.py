@@ -16,6 +16,7 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import BufferPrototype
+from zarr.core.config import config
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable
@@ -299,6 +300,7 @@ async def _make_bounded_requests(
     path: str,
     requests: list[_BoundedRequest],
     prototype: BufferPrototype,
+    semaphore: asyncio.Semaphore,
 ) -> list[_Response]:
     """Make all bounded requests for a specific file.
 
@@ -310,7 +312,8 @@ async def _make_bounded_requests(
 
     starts = [r["start"] for r in requests]
     ends = [r["end"] for r in requests]
-    responses = await obs.get_ranges_async(store, path=path, starts=starts, ends=ends)
+    async with semaphore:
+        responses = await obs.get_ranges_async(store, path=path, starts=starts, ends=ends)
 
     buffer_responses: list[_Response] = []
     for request, response in zip(requests, responses, strict=True):
@@ -328,6 +331,7 @@ async def _make_other_request(
     store: _UpstreamObjectStore,
     request: _OtherRequest,
     prototype: BufferPrototype,
+    semaphore: asyncio.Semaphore,
 ) -> list[_Response]:
     """Make suffix or offset requests.
 
@@ -336,11 +340,13 @@ async def _make_other_request(
     """
     import obstore as obs
 
-    if request["range"] is None:
-        resp = await obs.get_async(store, request["path"])
-    else:
-        resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
-    buffer = await resp.bytes_async()
+    async with semaphore:
+        if request["range"] is None:
+            resp = await obs.get_async(store, request["path"])
+        else:
+            resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
+        buffer = await resp.bytes_async()
+
     return [
         {
             "original_request_index": request["original_request_index"],
@@ -401,17 +407,19 @@ async def _get_partial_values(
         else:
             raise ValueError(f"Unsupported range input: {byte_range}")
 
+    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+
     futs: list[Coroutine[Any, Any, list[_Response]]] = []
     for path, bounded_ranges in per_file_bounded_requests.items():
-        futs.append(_make_bounded_requests(store, path, bounded_ranges, prototype))
+        futs.append(
+            _make_bounded_requests(store, path, bounded_ranges, prototype, semaphore=semaphore)
+        )
 
     for request in other_requests:
-        futs.append(_make_other_request(store, request, prototype))  # noqa: PERF401
+        futs.append(_make_other_request(store, request, prototype, semaphore=semaphore))  # noqa: PERF401
 
     buffers: list[Buffer | None] = [None] * len(key_ranges)
 
-    # TODO: this gather a list of list of Response; not sure if there's a way to
-    # unpack these lists inside of an `asyncio.gather`?
     for responses in await asyncio.gather(*futs):
         for resp in responses:
             buffers[resp["original_request_index"]] = resp["buffer"]
