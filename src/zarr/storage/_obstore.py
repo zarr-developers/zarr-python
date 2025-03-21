@@ -86,7 +86,7 @@ class ObjectStore(Store):
         return f"object_store://{self.store}"
 
     def __repr__(self) -> str:
-        return f"ObjectStore({self})"
+        return f"{type(self)}({self})"
 
     def __getstate__(self) -> dict[Any, Any]:
         state = self.__dict__.copy()
