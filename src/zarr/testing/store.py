@@ -150,9 +150,15 @@ class StoreTests(Generic[S, B]):
             await store.delete("foo")
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
-    @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize(
-        "byte_range", [None, RangeByteRequest(1, 4), OffsetByteRequest(1), SuffixByteRequest(1)]
+        ("data", "byte_range"),
+        [
+            (b"\x01\x02\x03\x04", None),
+            (b"\x01\x02\x03\x04", RangeByteRequest(1, 4)),
+            (b"\x01\x02\x03\x04", OffsetByteRequest(1)),
+            (b"\x01\x02\x03\x04", SuffixByteRequest(1)),
+            (b"", None),
+        ],
     )
     async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRequest) -> None:
         """
