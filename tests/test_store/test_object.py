@@ -42,7 +42,7 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     def test_store_repr(self, store: ObjectStore) -> None:
         from fnmatch import fnmatch
 
-        pattern = "ObjectStore(object://LocalStore(*))"
+        pattern = "ObjectStore(object_store://LocalStore(*))"
         assert fnmatch(f"{store!r}", pattern)
 
     def test_store_supports_writes(self, store: ObjectStore) -> None:

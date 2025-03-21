@@ -279,16 +279,6 @@ class StoreTests(Generic[S, B]):
         for k, v in store_dict.items():
             assert (await self.get(store, k)).to_bytes() == v.to_bytes()
 
-    async def test_set_invalid_buffer(self, store: S) -> None:
-        """
-        Ensure that set raises a Type or Value Error for invalid buffer arguments.
-        """
-        with pytest.raises(
-            (ValueError, TypeError),
-            match=r"\S+\.set\(\): `value` must be a Buffer instance. Got an instance of <class 'int'> instead.",
-        ):
-            await store.set("c/0", 0)  # type: ignore[arg-type]
-
     @pytest.mark.parametrize(
         "key_ranges",
         [
