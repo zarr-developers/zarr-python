@@ -158,6 +158,9 @@ class StoreTests(Generic[S, B]):
             (b"\x01\x02\x03\x04", OffsetByteRequest(1)),
             (b"\x01\x02\x03\x04", SuffixByteRequest(1)),
             (b"", None),
+            # Partially satisfiable ranges
+            (b"\x01\x02\x03\x04", RangeByteRequest(3, 5)),
+            (b"\x01\x02\x03\x04", SuffixByteRequest(5)),
         ],
     )
     async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRequest) -> None:
