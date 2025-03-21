@@ -14,7 +14,6 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import BufferPrototype
 from zarr.core.config import config
 
@@ -25,7 +24,7 @@ if TYPE_CHECKING:
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
-    from zarr.core.buffer import BufferPrototype
+    from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import BytesLike
 
 __all__ = ["ObjectStore"]
