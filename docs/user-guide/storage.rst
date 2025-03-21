@@ -114,7 +114,7 @@ builds on the production quality Rust library `object_store <https://docs.rs/obj
    >>>
    >>> store = ObjectStore(MemoryStore())
    >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
-   <Array object://... shape=(2,) dtype=float64>
+   <Array object_store://... shape=(2,) dtype=float64>
 
 Here's an example of using ObjectStore for accessing remote data:
 
