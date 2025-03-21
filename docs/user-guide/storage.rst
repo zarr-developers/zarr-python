@@ -47,7 +47,7 @@ Explicit Store Creation
 
 In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
 built-in store: :class:`zarr.storage.LocalStore`, :class:`zarr.storage.FsspecStore`,
-:class:`zarr.storage.ZipStore`, and :class:`zarr.storage.MemoryStore`.
+:class:`zarr.storage.ZipStore`, :class:`zarr.storage.MemoryStore`, and :class:`zarr.storage.ObjectStore`.
 
 Local Store
 ~~~~~~~~~~~
@@ -102,10 +102,8 @@ Zarr data (metadata and chunks) to a dictionary.:
 Object Store
 ~~~~~~~~~~~~
 
-
 :class:`zarr.storage.ObjectStore` stores the contents of the Zarr hierarchy using any ObjectStore
-`storage implementation <https://developmentseed.org/obstore/latest/api/store/>`_, such as
-AWS S3, Google Cloud Storage, and Azure Blob Storage. This store is backed by `obstore <https://developmentseed.org/obstore/latest/>`_, which
+`storage implementation <https://developmentseed.org/obstore/latest/api/store/>`_, including AWS S3 (:class:`obstore.store.S3Store`), Google Cloud Storage (:class:`obstore.store.GCSStore`), and Azure Blob Storage (:class:`obstore.store.AzureStore`). This store is backed by `obstore <https://developmentseed.org/obstore/latest/>`_, which
 builds on the production quality Rust library `object_store <https://docs.rs/object_store/latest/object_store/>`_.
 
 
