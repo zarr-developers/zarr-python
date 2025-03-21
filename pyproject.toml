@@ -64,7 +64,7 @@ keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 # User extras
 remote = [
     "fsspec>=2023.10.0",
-    "obstore==0.5.1",
+    "obstore>=0.5.1",
 ]
 gpu = [
     "cupy-cuda12x",
@@ -115,6 +115,12 @@ Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
 
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "pip>=25.0.1",
+]
+
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
@@ -130,7 +136,9 @@ omit = [
 
 [tool.hatch]
 version.source = "vcs"
-build.hooks.vcs.version-file = "src/zarr/_version.py"
+
+[tool.hatch.build]
+hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
 dependencies = [
