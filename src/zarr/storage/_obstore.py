@@ -157,10 +157,7 @@ class ObjectStore(Store):
         import obstore as obs
 
         self._check_writable()
-        if not isinstance(value, Buffer):
-            raise TypeError(
-                f"ObjectStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
-            )
+
         buf = value.to_bytes()
         await obs.put_async(self.store, key, buf)
 
