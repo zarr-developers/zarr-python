@@ -325,7 +325,7 @@ def bytes_to_json(data: bytes, zarr_format: ZarrFormat) -> str:
     Parameters
     ----------
     data : bytes
-        The structured scalar value to convert.
+        The bytes to store.
     zarr_format : ZarrFormat
         The zarr format version.
 
@@ -334,9 +334,8 @@ def bytes_to_json(data: bytes, zarr_format: ZarrFormat) -> str:
     str
         The bytes encoded as ascii using the base64 alphabet.
     """
-    if zarr_format == 2:
-        return base64.b64encode(data).decode("ascii")
-    raise NotImplementedError(f"Invalid zarr format: {zarr_format}. Expected 2.")
+    # TODO: decide if we are going to make this implementation zarr format-specific
+    return base64.b64encode(data).decode("ascii")
 
 
 def bytes_from_json(data: str, zarr_format: ZarrFormat) -> bytes:

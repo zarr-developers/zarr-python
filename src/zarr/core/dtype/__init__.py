@@ -1,19 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, get_args
-
-import numpy as np
-
-from zarr.core.dtype._numpy import _NUMPY_SUPPORTS_VLEN_STRING
-from zarr.core.dtype.wrapper import _BaseDType, _BaseScalar
+from typing import TYPE_CHECKING, Any, TypeAlias, get_args
 
 if TYPE_CHECKING:
-    import numpy.typing as npt
+    from zarr.core.common import ZarrFormat
 
-    from zarr.core.common import JSON, ZarrFormat
+import numpy as np
+import numpy.typing as npt
 
-
+from zarr.core.common import JSON
 from zarr.core.dtype._numpy import (
+    _NUMPY_SUPPORTS_VLEN_STRING,
     Bool,
     Complex64,
     Complex128,
@@ -36,7 +33,7 @@ from zarr.core.dtype._numpy import (
     VariableLengthString,
 )
 from zarr.core.dtype.registry import DataTypeRegistry
-from zarr.core.dtype.wrapper import ZDType
+from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
 
 __all__ = [
     "Complex64",
@@ -80,6 +77,8 @@ DTYPE = (
     | DateTime64
 )
 
+ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[Any, Any] | dict[str, JSON]
+
 for dtype in get_args(DTYPE):
     data_type_registry.register(dtype._zarr_v3_name, dtype)
 
@@ -112,9 +111,10 @@ def get_data_type_from_json(
     return data_type_registry.match_json(dtype, zarr_format=zarr_format)
 
 
-def parse_data_type(
-    dtype: npt.DTypeLike | ZDType[Any, Any] | dict[str, JSON], zarr_format: ZarrFormat
-) -> ZDType[Any, Any]:
+def parse_data_type(dtype: ZDTypeLike, zarr_format: ZarrFormat) -> ZDType[Any, Any]:
+    """
+    Interpret the input as a ZDType instance.
+    """
     if isinstance(dtype, ZDType):
         return dtype
     elif isinstance(dtype, dict):

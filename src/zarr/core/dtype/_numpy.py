@@ -44,7 +44,25 @@ if TYPE_CHECKING:
 EndiannessNumpy = Literal[">", "<", "|", "="]
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True)
+class HasEndianness:
+    """
+    This is a mix-in class for data types with an endianness attribute
+    """
+
+    endianness: Endianness | None = "little"
+
+
+@dataclass(frozen=True)
+class HasLength:
+    """
+    This is a mix-in class for data types with a length attribute
+    """
+
+    length: int
+
+
+@dataclass(frozen=True, kw_only=True, slots=True)
 class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
     """
     Wrapper for numpy boolean dtype.
@@ -311,11 +329,10 @@ class UInt8(ZDType[np.dtypes.UInt8DType, np.uint8]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int16(ZDType[np.dtypes.Int16DType, np.int16]):
+class Int16(ZDType[np.dtypes.Int16DType, np.int16], HasEndianness):
     dtype_cls = np.dtypes.Int16DType
     _zarr_v3_name = "int16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i2", "<i2")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Int16DType) -> Self:
@@ -367,11 +384,10 @@ class Int16(ZDType[np.dtypes.Int16DType, np.int16]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16]):
+class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     dtype_cls = np.dtypes.UInt16DType
     _zarr_v3_name = "uint16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u2", "<u2")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt16DType) -> Self:
@@ -423,16 +439,18 @@ class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int32(ZDType[np.dtypes.Int32DType, np.int32]):
+class Int32(ZDType[np.dtypes.Int32DType, np.int32], HasEndianness):
     dtype_cls = np.dtypes.Int32DType
     _zarr_v3_name = "int32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i4", "<i4")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def from_dtype(cls: type[Self], dtype: _BaseDType) -> Self:
         # We override the base implementation to address a windows-specific, pre-numpy 2 issue where
         # ``np.dtype('i')`` is an instance of ``np.dtypes.IntDType`` that acts like `int32` instead of ``np.dtype('int32')``
+        # In this case, ``type(np.dtype('i')) == np.dtypes.Int32DType``  will evaluate to ``True``,
+        # despite the two classes being different. Thus we will create an instance of `cls` with the
+        # latter dtype, after pulling in the byte order of the input
         if dtype == np.dtypes.Int32DType():
             return cls._from_dtype_unsafe(np.dtypes.Int32DType().newbyteorder(dtype.byteorder))
         else:
@@ -488,11 +506,10 @@ class Int32(ZDType[np.dtypes.Int32DType, np.int32]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32]):
+class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     dtype_cls = np.dtypes.UInt32DType
     _zarr_v3_name = "uint32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u4", "<u4")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt32DType) -> Self:
@@ -544,11 +561,10 @@ class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int64(ZDType[np.dtypes.Int64DType, np.int64]):
+class Int64(ZDType[np.dtypes.Int64DType, np.int64], HasEndianness):
     dtype_cls = np.dtypes.Int64DType
     _zarr_v3_name = "int64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i8", "<i8")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Int64DType) -> Self:
@@ -600,11 +616,10 @@ class Int64(ZDType[np.dtypes.Int64DType, np.int64]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64]):
+class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     dtype_cls = np.dtypes.UInt64DType
     _zarr_v3_name = "uint64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u8", "<u8")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt64DType) -> Self:
@@ -656,11 +671,10 @@ class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float16(ZDType[np.dtypes.Float16DType, np.float16]):
+class Float16(ZDType[np.dtypes.Float16DType, np.float16], HasEndianness):
     dtype_cls = np.dtypes.Float16DType
     _zarr_v3_name = "float16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f2", "<f2")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Float16DType) -> Self:
@@ -712,11 +726,10 @@ class Float16(ZDType[np.dtypes.Float16DType, np.float16]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float32(ZDType[np.dtypes.Float32DType, np.float32]):
+class Float32(ZDType[np.dtypes.Float32DType, np.float32], HasEndianness):
     dtype_cls = np.dtypes.Float32DType
     _zarr_v3_name = "float32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f4", "<f4")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Float32DType) -> Self:
@@ -768,11 +781,10 @@ class Float32(ZDType[np.dtypes.Float32DType, np.float32]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float64(ZDType[np.dtypes.Float64DType, np.float64]):
+class Float64(ZDType[np.dtypes.Float64DType, np.float64], HasEndianness):
     dtype_cls = np.dtypes.Float64DType
     _zarr_v3_name = "float64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f8", "<f8")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Float64DType) -> Self:
@@ -824,11 +836,10 @@ class Float64(ZDType[np.dtypes.Float64DType, np.float64]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Complex64(ZDType[np.dtypes.Complex64DType, np.complex64]):
+class Complex64(ZDType[np.dtypes.Complex64DType, np.complex64], HasEndianness):
     dtype_cls = np.dtypes.Complex64DType
     _zarr_v3_name = "complex64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c8", "<c8")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Complex64DType) -> Self:
@@ -882,11 +893,10 @@ class Complex64(ZDType[np.dtypes.Complex64DType, np.complex64]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class Complex128(ZDType[np.dtypes.Complex128DType, np.complex128]):
+class Complex128(ZDType[np.dtypes.Complex128DType, np.complex128], HasEndianness):
     dtype_cls = np.dtypes.Complex128DType
     _zarr_v3_name = "complex128"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c16", "<c16")
-    endianness: Endianness | None = "little"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.Complex128DType) -> Self:
@@ -940,11 +950,10 @@ class Complex128(ZDType[np.dtypes.Complex128DType, np.complex128]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_]):
+class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
     dtype_cls = np.dtypes.BytesDType
     _zarr_v3_name = "numpy.fixed_length_ascii"
     item_size_bits: ClassVar[int] = 8
-    length: int = 1
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.BytesDType[int]) -> Self:
@@ -1004,14 +1013,13 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void]):
+class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
     # np.dtypes.VoidDType is specified in an odd way in numpy
     # it cannot be used to create instances of the dtype
     # so we have to tell mypy to ignore this here
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
     _zarr_v3_name = "numpy.void"
     item_size_bits: ClassVar[int] = 8
-    length: int = 1
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.VoidDType[int]) -> Self:
@@ -1085,12 +1093,10 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void]):
 
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_]):
+class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness, HasLength):
     dtype_cls = np.dtypes.StrDType
     _zarr_v3_name = "numpy.fixed_length_ucs4"
     item_size_bits: ClassVar[int] = 32  # UCS4 is 32 bits per code point
-    endianness: Endianness | None = "little"
-    length: int = 1
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.StrDType[int]) -> Self:
@@ -1269,11 +1275,10 @@ TimeUnit = Literal["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
 
 
 @dataclass(frozen=True, kw_only=True)
-class DateTime64(ZDType[np.dtypes.DateTime64DType, np.datetime64]):
+class DateTime64(ZDType[np.dtypes.DateTime64DType, np.datetime64], HasEndianness):
     dtype_cls = np.dtypes.DateTime64DType  # type: ignore[assignment]
     _zarr_v3_name = "numpy.datetime64"
-    unit: DateUnit | TimeUnit = "s"
-    endianness: Endianness | None = "little"
+    unit: DateUnit | TimeUnit
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: np.dtypes.DateTime64DType) -> Self:

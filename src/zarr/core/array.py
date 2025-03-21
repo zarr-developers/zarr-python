@@ -69,6 +69,7 @@ from zarr.core.config import categorize_data_type
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     ZDType,
+    ZDTypeLike,
     parse_data_type,
 )
 from zarr.core.indexing import (
@@ -581,7 +582,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: npt.DTypeLike | ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDTypeLike | ZDType[_BaseDType, _BaseScalar],
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
