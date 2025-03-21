@@ -245,7 +245,7 @@ async def _transform_list_dir(
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
     prefixes = [obj.lstrip(prefix).lstrip("/") for obj in list_result["common_prefixes"]]
-    objects = [obj["path"].lstrip(prefix).lstrip("/") for obj in list_result["objects"]]
+    objects = [obj["path"].removeprefix(prefix).lstrip("/") for obj in list_result["objects"]]
     for item in prefixes + objects:
         yield item
 
