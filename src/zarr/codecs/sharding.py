@@ -43,6 +43,7 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
+from zarr.core.dtype._numpy import UInt64
 from zarr.core.indexing import (
     BasicIndexer,
     SelectorTuple,
@@ -58,6 +59,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.common import JSON
+    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
 
 MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, Buffer]
@@ -355,9 +357,10 @@ class ShardingCodec(
         object.__setattr__(self, "index_location", index_location_parsed)
 
         # Use instance-local lru_cache to avoid memory leaks
-        object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
-        object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
-        object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+        # TODO: fix these when we don't get hashability errors for certain numpy dtypes
+        # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
+        # object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
+        # object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
 
     # todo: typedict return type
     def __getstate__(self) -> dict[str, Any]:
@@ -402,7 +405,13 @@ class ShardingCodec(
             return replace(self, codecs=evolved_codecs)
         return self
 
-    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self,
+        *,
+        shape: ChunkCoords,
+        dtype: ZDType[_BaseDType, _BaseScalar],
+        chunk_grid: ChunkGrid,
+    ) -> None:
         if len(self.chunk_shape) != len(shape):
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
@@ -439,7 +448,10 @@ class ShardingCodec(
 
         # setup output array
         out = chunk_spec.prototype.nd_buffer.create(
-            shape=shard_shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
+            shape=shard_shape,
+            dtype=shard_spec.dtype.to_dtype(),
+            order=shard_spec.order,
+            fill_value=0,
         )
         shard_dict = await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
 
@@ -483,7 +495,10 @@ class ShardingCodec(
 
         # setup output array
         out = shard_spec.prototype.nd_buffer.create(
-            shape=indexer.shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
+            shape=indexer.shape,
+            dtype=shard_spec.dtype.to_dtype(),
+            order=shard_spec.order,
+            fill_value=0,
         )
 
         indexed_chunks = list(indexer)
@@ -678,7 +693,7 @@ class ShardingCodec(
     def _get_index_chunk_spec(self, chunks_per_shard: ChunkCoords) -> ArraySpec:
         return ArraySpec(
             shape=chunks_per_shard + (2,),
-            dtype=np.dtype("<u8"),
+            dtype=UInt64(endianness="little"),
             fill_value=MAX_UINT_64,
             config=ArrayConfig(
                 order="C", write_empty_chunks=False

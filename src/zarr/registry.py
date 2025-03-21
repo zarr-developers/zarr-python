@@ -6,6 +6,7 @@ from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from zarr.core.config import BadConfigError, config
+from zarr.core.dtype import data_type_registry
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
@@ -43,6 +44,7 @@ class Registry(dict[str, type[T]], Generic[T]):
     def lazy_load(self) -> None:
         for e in self.lazy_load_list:
             self.register(e.load())
+
         self.lazy_load_list.clear()
 
     def register(self, cls: type[T]) -> None:
@@ -58,12 +60,14 @@ __ndbuffer_registry: Registry[NDBuffer] = Registry()
 The registry module is responsible for managing implementations of codecs,
 pipelines, buffers and ndbuffers and collecting them from entrypoints.
 The implementation used is determined by the config.
+
+The registry module is also responsible for managing dtypes.
 """
 
 
 def _collect_entrypoints() -> list[Registry[Any]]:
     """
-    Collects codecs, pipelines, buffers and ndbuffers from entrypoints.
+    Collects codecs, pipelines, dtypes, buffers and ndbuffers from entrypoints.
     Entry points can either be single items or groups of items.
     Allowed syntax for entry_points.txt is e.g.
 
@@ -86,6 +90,10 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     __buffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="buffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
+
+    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
+    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
+
     __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     __pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
@@ -148,7 +156,8 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
         if len(codec_classes) == 1:
             return next(iter(codec_classes.values()))
         warnings.warn(
-            f"Codec '{key}' not configured in config. Selecting any implementation.", stacklevel=2
+            f"Codec '{key}' not configured in config. Selecting any implementation.",
+            stacklevel=2,
         )
         return list(codec_classes.values())[-1]
     selected_codec_cls = codec_classes[config_entry]

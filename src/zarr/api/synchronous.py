@@ -37,6 +37,7 @@ if TYPE_CHECKING:
         ShapeLike,
         ZarrFormat,
     )
+    from zarr.core.dtype import ZDTypeLike
     from zarr.storage import StoreLike
 
 __all__ = [
@@ -748,7 +749,7 @@ def create_array(
     *,
     name: str | None = None,
     shape: ShapeLike | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
@@ -778,7 +779,7 @@ def create_array(
         at the root of the store.
     shape : ChunkCoords, optional
         Shape of the array. Can be ``None`` if ``data`` is provided.
-    dtype : npt.DTypeLike, optional
+    dtype : ZDTypeLike, optional
         Data type of the array. Can be ``None`` if ``data`` is provided.
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the

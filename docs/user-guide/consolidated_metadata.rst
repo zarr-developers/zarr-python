@@ -47,7 +47,7 @@ that can be used.:
    >>> from pprint import pprint
    >>> pprint(dict(sorted(consolidated_metadata.items())))
    {'a': ArrayV3Metadata(shape=(1,),
-                          data_type=<DataType.float64: 'float64'>,
+                          data_type=Float64(endianness='little'),
                           chunk_grid=RegularChunkGrid(chunk_shape=(1,)),
                           chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
                                                                      separator='/'),
@@ -60,7 +60,7 @@ that can be used.:
                           node_type='array',
                           storage_transformers=()),
      'b': ArrayV3Metadata(shape=(2, 2),
-                          data_type=<DataType.float64: 'float64'>,
+                          data_type=Float64(endianness='little'),
                           chunk_grid=RegularChunkGrid(chunk_shape=(2, 2)),
                           chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
                                                                      separator='/'),
@@ -73,7 +73,7 @@ that can be used.:
                           node_type='array',
                           storage_transformers=()),
      'c': ArrayV3Metadata(shape=(3, 3, 3),
-                          data_type=<DataType.float64: 'float64'>,
+                          data_type=Float64(endianness='little'),
                           chunk_grid=RegularChunkGrid(chunk_shape=(3, 3, 3)),
                           chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
                                                                      separator='/'),

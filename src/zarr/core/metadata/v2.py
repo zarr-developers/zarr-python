@@ -3,13 +3,13 @@ from __future__ import annotations
 import base64
 import warnings
 from collections.abc import Iterable
-from enum import Enum
-from functools import cached_property
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, TypedDict
 
 import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
+from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype.wrapper import TDType, TScalar, ZDType, _BaseDType, _BaseScalar
 
 if TYPE_CHECKING:
     from typing import Any, Literal, Self
@@ -26,7 +26,6 @@ import numcodecs
 import numpy as np
 
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import JSON, ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
@@ -46,7 +45,7 @@ class ArrayV2MetadataDict(TypedDict):
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
     chunks: ChunkCoords
-    dtype: np.dtype[Any]
+    dtype: ZDType[_BaseDType, _BaseScalar]
     fill_value: int | float | str | bytes | None = 0
     order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
@@ -59,7 +58,7 @@ class ArrayV2Metadata(Metadata):
         self,
         *,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: ZDType[TDType, TScalar],
         chunks: ChunkCoords,
         fill_value: Any,
         order: MemoryOrder,
@@ -72,18 +71,19 @@ class ArrayV2Metadata(Metadata):
         Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
-
+        # TODO: remove this
+        if not isinstance(dtype, ZDType):
+            raise TypeError
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype_parsed)
+        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype.to_dtype())
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "dtype", dtype_parsed)
+        object.__setattr__(self, "dtype", dtype)
         object.__setattr__(self, "chunks", chunks_parsed)
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
@@ -99,58 +99,17 @@ class ArrayV2Metadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    @cached_property
-    def chunk_grid(self) -> RegularChunkGrid:
-        return RegularChunkGrid(chunk_shape=self.chunks)
-
     @property
     def shards(self) -> ChunkCoords | None:
         return None
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        def _json_convert(
-            o: Any,
-        ) -> Any:
-            if isinstance(o, np.dtype):
-                if o.fields is None:
-                    return o.str
-                else:
-                    return o.descr
-            if isinstance(o, numcodecs.abc.Codec):
-                codec_config = o.get_config()
-
-                # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
-                if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
-                    codec_config.pop("checksum", None)
-
-                return codec_config
-            if np.isscalar(o):
-                out: Any
-                if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
-                    # https://github.com/zarr-developers/zarr-python/issues/2119
-                    # `.item()` on a datetime type might or might not return an
-                    # integer, depending on the value.
-                    # Explicitly cast to an int first, and then grab .item()
-                    out = o.view("i8").item()
-                else:
-                    # convert numpy scalar to python type, and pass
-                    # python types through
-                    out = getattr(o, "item", lambda: o)()
-                    if isinstance(out, complex):
-                        # python complex types are not JSON serializable, so we use the
-                        # serialization defined in the zarr v3 spec
-                        return [out.real, out.imag]
-                return out
-            if isinstance(o, Enum):
-                return o.name
-            raise TypeError
-
         zarray_dict = self.to_dict()
         zattrs_dict = zarray_dict.pop("attributes", {})
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
+                json.dumps(zarray_dict, indent=json_indent).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
                 json.dumps(zattrs_dict, indent=json_indent).encode()
@@ -163,9 +122,9 @@ class ArrayV2Metadata(Metadata):
         _data = data.copy()
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
-        dtype = parse_dtype(_data["dtype"])
-
-        if dtype.kind in "SV":
+        dtype = get_data_type_from_native_dtype(_data["dtype"])
+        _data["dtype"] = dtype
+        if dtype.to_dtype().kind in "SV":
             fill_value_encoded = _data.get("fill_value")
             if fill_value_encoded is not None:
                 fill_value = base64.standard_b64decode(fill_value_encoded)
@@ -195,23 +154,32 @@ class ArrayV2Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
+        if isinstance(zarray_dict["compressor"], numcodecs.abc.Codec):
+            codec_config = zarray_dict["compressor"].get_config()
+            # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
+            if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
+                codec_config.pop("checksum")
+            zarray_dict["compressor"] = codec_config
 
-        if self.dtype.kind in "SV" and self.fill_value is not None:
-            # There's a relationship between self.dtype and self.fill_value
-            # that mypy isn't aware of. The fact that we have S or V dtype here
-            # means we should have a bytes-type fill_value.
-            fill_value = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
+        if zarray_dict["filters"] is not None:
+            raw_filters = zarray_dict["filters"]
+            # TODO: remove this when we can stratically type the output JSON data structure
+            # entirely
+            if not isinstance(raw_filters, list | tuple):
+                raise TypeError("Invalid type for filters. Expected a list or tuple.")
+            new_filters = []
+            for f in raw_filters:
+                if isinstance(f, numcodecs.abc.Codec):
+                    new_filters.append(f.get_config())
+                else:
+                    new_filters.append(f)
+            zarray_dict["filters"] = new_filters
+
+        if self.fill_value is not None:
+            fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)  # type: ignore[arg-type]
             zarray_dict["fill_value"] = fill_value
 
-        _ = zarray_dict.pop("dtype")
-        dtype_json: JSON
-        # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
-        dtype_descr = self.dtype.descr
-        if self.dtype.kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
-            dtype_json = tuple(self.dtype.descr)
-        else:
-            dtype_json = self.dtype.str
-        zarray_dict["dtype"] = dtype_json
+        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)
 
         return zarray_dict
 
@@ -345,74 +313,3 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
             raise ValueError(msg) from e
 
     return fill_value
-
-
-def _default_fill_value(dtype: np.dtype[Any]) -> Any:
-    """
-    Get the default fill value for a type.
-
-    Notes
-    -----
-    This differs from :func:`parse_fill_value`, which parses a fill value
-    stored in the Array metadata into an in-memory value. This only gives
-    the default fill value for some type.
-
-    This is useful for reading Zarr format 2 arrays, which allow the fill
-    value to be unspecified.
-    """
-    if dtype.kind == "S":
-        return b""
-    elif dtype.kind in "UO":
-        return ""
-    elif dtype.kind in "Mm":
-        return dtype.type("nat")
-    elif dtype.kind == "V":
-        if dtype.fields is not None:
-            default = tuple(_default_fill_value(field[0]) for field in dtype.fields.values())
-            return np.array([default], dtype=dtype)
-        else:
-            return np.zeros(1, dtype=dtype)
-    else:
-        return dtype.type(0)
-
-
-def _default_compressor(
-    dtype: np.dtype[Any],
-) -> dict[str, JSON] | None:
-    """Get the default filters and compressor for a dtype.
-
-    https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
-    """
-    default_compressor = config.get("array.v2_default_compressor")
-    if dtype.kind in "biufcmM":
-        dtype_key = "numeric"
-    elif dtype.kind in "U":
-        dtype_key = "string"
-    elif dtype.kind in "OSV":
-        dtype_key = "bytes"
-    else:
-        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
-
-    return cast(dict[str, JSON] | None, default_compressor.get(dtype_key, None))
-
-
-def _default_filters(
-    dtype: np.dtype[Any],
-) -> list[dict[str, JSON]] | None:
-    """Get the default filters and compressor for a dtype.
-
-    https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
-    """
-    default_filters = config.get("array.v2_default_filters")
-    if dtype.kind in "biufcmM":
-        dtype_key = "numeric"
-    elif dtype.kind in "U":
-        dtype_key = "string"
-    elif dtype.kind in "OS":
-        dtype_key = "bytes"
-    elif dtype.kind == "V":
-        dtype_key = "raw"
-    else:
-        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
-
-    return cast(list[dict[str, JSON]] | None, default_filters.get(dtype_key, None))

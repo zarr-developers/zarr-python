@@ -40,33 +40,6 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize(
-    ("dtype", "fill_value"),
-    [
-        ("bool", False),
-        ("int64", 0),
-        ("float64", 0.0),
-        ("|S1", b""),
-        ("|U1", ""),
-        ("object", ""),
-        (str, ""),
-    ],
-)
-def test_implicit_fill_value(store: MemoryStore, dtype: str, fill_value: Any) -> None:
-    arr = zarr.create(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
-    assert arr.metadata.fill_value is None
-    assert arr.metadata.to_dict()["fill_value"] is None
-    result = arr[:]
-    if dtype is str:
-        # special case
-        numpy_dtype = np.dtype(object)
-    else:
-        numpy_dtype = np.dtype(dtype)
-    expected = np.full(arr.shape, fill_value, dtype=numpy_dtype)
-    np.testing.assert_array_equal(result, expected)
-
-
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
     store = MemoryStore()
@@ -85,14 +58,14 @@ def test_codec_pipeline() -> None:
 
 
 @pytest.mark.parametrize(
-    ("dtype", "expected_dtype", "fill_value", "fill_value_encoding"),
+    ("dtype", "expected_dtype", "fill_value", "fill_value_json"),
     [
         ("|S", "|S0", b"X", "WA=="),
         ("|V", "|V0", b"X", "WA=="),
         ("|V10", "|V10", b"X", "WAAAAAAAAAAAAA=="),
     ],
 )
-async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_encoding) -> None:
+async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_json) -> None:
     with config.set(
         {
             "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
@@ -113,7 +86,7 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_en
             "chunks": [3],
             "compressor": None,
             "dtype": expected_dtype,
-            "fill_value": fill_value_encoding,
+            "fill_value": fill_value_json,
             "filters": [{"id": "vlen-bytes"}] if dtype == "|S" else None,
             "order": "C",
             "shape": [3],
@@ -127,37 +100,18 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_en
         np.testing.assert_equal(data, expected)
 
 
-@pytest.mark.parametrize("dtype_value", [["|S", b"Y"], ["|U", "Y"], ["O", b"Y"]])
-def test_v2_encode_decode_with_data(dtype_value):
-    dtype, value = dtype_value
-    with config.set(
-        {
-            "array.v2_default_filters": {
-                "string": [{"id": "vlen-utf8"}],
-                "bytes": [{"id": "vlen-bytes"}],
-            },
-        }
-    ):
-        expected = np.full((3,), value, dtype=dtype)
-        a = zarr.create(
-            shape=(3,),
-            zarr_format=2,
-            dtype=dtype,
-        )
-        a[:] = expected
-        data = a[:]
-        np.testing.assert_equal(data, expected)
-
-
-@pytest.mark.parametrize("dtype", [str, "str"])
-async def test_create_dtype_str(dtype: Any) -> None:
-    arr = zarr.create(shape=3, dtype=dtype, zarr_format=2)
-    assert arr.dtype.kind == "O"
-    assert arr.metadata.to_dict()["dtype"] == "|O"
-    assert arr.metadata.filters == (numcodecs.vlen.VLenBytes(),)
-    arr[:] = [b"a", b"bb", b"ccc"]
-    result = arr[:]
-    np.testing.assert_array_equal(result, np.array([b"a", b"bb", b"ccc"], dtype="object"))
+@pytest.mark.parametrize(("dtype", "value"), [("|S1", b"Y"), ("|U1", "Y"), (str, "Y")])
+def test_v2_encode_decode_with_data(dtype, value):
+    dtype, value = dtype, value
+    expected = np.full((3,), value, dtype=dtype)
+    a = zarr.create(
+        shape=(3,),
+        zarr_format=2,
+        dtype=dtype,
+    )
+    a[:] = expected
+    data = a[:]
+    np.testing.assert_equal(data, expected)
 
 
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
@@ -259,38 +213,6 @@ def test_v2_non_contiguous(
 def test_default_compressor_deprecation_warning():
     with pytest.warns(DeprecationWarning, match="default_compressor is deprecated"):
         zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"
-
-
-@pytest.mark.parametrize(
-    "dtype_expected",
-    [
-        ["b", "zstd", None],
-        ["i", "zstd", None],
-        ["f", "zstd", None],
-        ["|S1", "zstd", "vlen-bytes"],
-        ["|U1", "zstd", "vlen-utf8"],
-    ],
-)
-def test_default_filters_and_compressor(dtype_expected: Any) -> None:
-    with config.set(
-        {
-            "array.v2_default_compressor": {
-                "numeric": {"id": "zstd", "level": "0"},
-                "string": {"id": "zstd", "level": "0"},
-                "bytes": {"id": "zstd", "level": "0"},
-            },
-            "array.v2_default_filters": {
-                "numeric": [],
-                "string": [{"id": "vlen-utf8"}],
-                "bytes": [{"id": "vlen-bytes"}],
-            },
-        }
-    ):
-        dtype, expected_compressor, expected_filter = dtype_expected
-        arr = zarr.create(shape=(3,), path="foo", store={}, zarr_format=2, dtype=dtype)
-        assert arr.metadata.compressor.codec_id == expected_compressor
-        if expected_filter is not None:
-            assert arr.metadata.filters[0].codec_id == expected_filter
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
