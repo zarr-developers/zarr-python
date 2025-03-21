@@ -65,19 +65,7 @@ class ObjectStore(Store):
         return self.store == value.store
 
     def __init__(self, store: _UpstreamObjectStore, *, read_only: bool = False) -> None:
-        import obstore as obs
-
-        if not isinstance(
-            store,
-            (
-                obs.store.AzureStore,
-                obs.store.GCSStore,
-                obs.store.HTTPStore,
-                obs.store.S3Store,
-                obs.store.LocalStore,
-                obs.store.MemoryStore,
-            ),
-        ):
+        if not store.__class__.__module__.startswith("obstore"):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
         super().__init__(read_only=read_only)
         self.store = store
