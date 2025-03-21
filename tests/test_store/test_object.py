@@ -4,10 +4,15 @@ from typing import Any
 import pytest
 
 obstore = pytest.importorskip("obstore")
+import pytest
+from hypothesis.stateful import (
+    run_state_machine_as_test,
+)
 from obstore.store import LocalStore, MemoryStore
 
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import ObjectStore
+from zarr.testing.stateful import ZarrHierarchyStateMachine
 from zarr.testing.store import StoreTests
 
 
@@ -69,3 +74,13 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         """Test __init__ raises appropriate error for improper store type"""
         with pytest.raises(TypeError):
             ObjectStore("path/to/store")
+
+
+@pytest.mark.slow_hypothesis
+def test_zarr_hierarchy():
+    sync_store = ObjectStore(MemoryStore())
+
+    def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
+        return ZarrHierarchyStateMachine(sync_store)
+
+    run_state_machine_as_test(mk_test_instance_sync)
