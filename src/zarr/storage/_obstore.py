@@ -83,7 +83,7 @@ class ObjectStore(Store):
         self.store = store
 
     def __str__(self) -> str:
-        return f"object://{self.store}"
+        return f"object_store://{self.store}"
 
     def __repr__(self) -> str:
         return f"ObjectStore({self})"
