@@ -1,0 +1,2 @@
+Define a new versioning policy based on Effective Effort Versioning. This replaces the old
+Semantic Versioning-based policy.
