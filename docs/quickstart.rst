@@ -12,9 +12,28 @@ Quickstart
 Welcome to the Zarr-Python Quickstart guide! This page will help you get up and running with
 the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
 
+Introduction
+------------
+
 Zarr is a powerful library for storage of n-dimensional arrays, supporting chunking,
 compression, and various backends, making it a versatile choice for scientific and
 large-scale data.
+
+An `ndarray <https://numpy.org/doc/2.2/reference/arrays.ndarray.html>`_ is a (usually fixed-size) multidimensional container of items of the
+same type and size.
+
+
+Zarr's core features:
+
+- :ref:`Create<creating-an-array>`  N-dimensional arrays with any NumPy `dtype`.
+- :ref:`Chunk arrays<user-guide-chunks>` along any dimension.
+- :ref:`Compress<user-guide-compress>` and/or filter chunks using any NumCodecs codec.
+- :ref:`Store arrays<user-guide-storage>` in memory, on disk, inside a zip file, on S3, etc...
+- :ref:`Read<user-guide-array>` an array :ref:`concurrently <user-guide-sync>` from multiple threads or processes.
+- :ref:`Write<user-guide-array>` to an array concurrently from multiple threads or processes.
+- Organize arrays into hierarchies via :ref:`groups<hierarchical-groups>`.
+
+
 
 Installation
 ------------
@@ -30,6 +49,8 @@ or `conda`:
 .. code-block:: bash
 
     conda install --channel conda-forge zarr
+
+.. _creating-an-array:
 
 Creating an Array
 -----------------
@@ -91,6 +112,8 @@ Zarr supports data compression and filters. For example, to use Blosc compressio
     No. bytes          : 40000 (39.1K)
 
 This compresses the data using the Zstandard codec with shuffle enabled for better compression.
+
+.. _hierarchical-groups:
 
 Hierarchical Groups
 -------------------
