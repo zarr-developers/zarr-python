@@ -9,3 +9,12 @@ def test_exports() -> None:
 
     for export in __all__:
         getattr(zarr, export)
+
+
+def test_print_debug_info() -> None:
+    """
+    Ensure that print_debug_info does not raise an error
+    """
+    from zarr import print_debug_info
+
+    print_debug_info()
