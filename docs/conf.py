@@ -369,6 +369,7 @@ intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "numcodecs": ("https://numcodecs.readthedocs.io/en/stable/", None),
+    "obstore": ("https://developmentseed.org/obstore/latest/", None),
 }
 
 
