@@ -26,13 +26,43 @@ For more information, see the
 
 Configuration options include the following:
 
-- Default Zarr format ``default_zarr_version``
-- Default array order in memory ``array.order``
+- ``default_zarr_version``  
+  Sets the default Zarr format version. The options are ``2`` or ``3``.
+
+  - **Default:** ``3`` 
+
+- **array.order**  
+  Defines the default memory layout for arrays.  
+
+  - ``'C'`` → Row-major (The default value used for NumPy arrays)  
+  - ``'F'`` → Column-major (like Fortran)  
+  - **Default:** ``'C'``  
+ 
+
 - Default filters, serializers and compressors, e.g. ``array.v3_default_filters``, ``array.v3_default_serializer``, ``array.v3_default_compressors``, ``array.v2_default_filters`` and ``array.v2_default_compressor``
-- Whether empty chunks are written to storage ``array.write_empty_chunks``
-- Async and threading options, e.g. ``async.concurrency`` and ``threading.max_workers``
-- Selections of implementations of codecs, codec pipelines and buffers
-- Enabling GPU support with ``zarr.config.enable_gpu()``. See :ref:`user-guide-gpu` for more.
+
+- ``array.write_empty_chunks``
+  Determines whether empty chunks (filled with default values) are written to storage. Setting this to ``False`` can reduce the number of write operations and objects created when writing arrays with large empty regions.
+
+  - ``False`` → Empty chunks are **not written**.  
+  - ``True`` → Empty chunks are explicitly stored.  
+  - **Default:** ``False``  
+
+- ``async.concurrency``
+  Sets the number of concurrent async operations.
+
+  - **Default:** ``10``  
+
+- ``threading.max_workers``
+  Defines the maximum number of worker threads for parallel execution.
+
+  - **Default**: ``None`` (uses system default)  
+
+- ``codecs`` / ``codec_pipeline`` / ``buffer``
+  Allows selection of custom implementations for codecs, encoding pipelines, and data buffers.  
+
+- GPU Support : Enabling GPU support with ``zarr.config.enable_gpu()``. See :ref:`user-guide-gpu` for more. 
+
 
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers,
 first register the implementations in the registry and then select them in the config.
