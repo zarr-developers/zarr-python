@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from typing import Self
@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON
 
 from dataclasses import dataclass, fields
+
+import numpy as np
 
 __all__ = ["Metadata"]
 
@@ -44,3 +46,23 @@ class Metadata:
         """
 
         return cls(**data)
+    
+    def __eq__(self, other: Any) -> bool:
+        """Checks metadata are identical, including special treatment for NaN fill_values."""
+        if not isinstance(other, type(self)):
+            return False
+        
+        metadata_dict1 = self.to_dict()
+        metadata_dict2 = other.to_dict()
+
+        # fill_value is a special case because numpy NaNs cannot be compared using __eq__, see https://stackoverflow.com/a/10059796
+        fill_value1 = metadata_dict1.pop("fill_value")
+        fill_value2 = metadata_dict2.pop("fill_value")
+        if np.isnan(fill_value1) and np.isnan(fill_value2):
+            fill_values_equal = fill_value1.dtype == fill_value2.dtype
+        else:
+            fill_values_equal = fill_value1 == fill_value2
+
+        # everything else in ArrayV3Metadata is a string, Enum, or Dataclass
+        return fill_values_equal and metadata_dict1 == metadata_dict2
+

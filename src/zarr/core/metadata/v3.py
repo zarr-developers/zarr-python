@@ -233,7 +233,7 @@ class ArrayV3MetadataDict(TypedDict):
     attributes: dict[str, JSON]
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, eq=False)
 class ArrayV3Metadata(Metadata):
     shape: ChunkCoords
     data_type: DataType
