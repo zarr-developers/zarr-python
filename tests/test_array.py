@@ -1704,3 +1704,19 @@ def test_explicit_endianness(store: Store, endianness: Endianness) -> None:
             zarr_format=3,
             serializer=serializer,
         )
+
+    # additional check for the case where the serializer has endian=None
+    none_serializer = dataclasses.replace(serializer, endian=None)
+    msg = (
+        f"The endianness of the requested serializer ({none_serializer}) does not match the endianness of the dtype ({dtype.endianness}). "
+        "The endianness of the serializer and the dtype must match."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        _ = zarr.create_array(
+            store=store,
+            shape=(1,),
+            dtype=dtype,
+            zarr_format=3,
+            serializer=none_serializer,
+        )
