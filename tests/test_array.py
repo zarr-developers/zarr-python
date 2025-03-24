@@ -40,11 +40,14 @@ from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype._numpy import Float64
+from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
+
+from .conftest import zdtype_examples
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
@@ -177,32 +180,42 @@ def test_array_name_properties_with_group(
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("specifiy_fill_value", [True, False])
-@pytest.mark.parametrize("dtype_str", ["bool", "uint8", "complex64"])
-def test_array_v3_fill_value_default(
-    store: MemoryStore, specifiy_fill_value: bool, dtype_str: str
+@pytest.mark.parametrize(
+    "zdtype", zdtype_examples, ids=tuple(str(type(v)) for v in zdtype_examples)
+)
+def test_array_fill_value_default(
+    store: MemoryStore, specifiy_fill_value: bool, zdtype: ZDType[Any, Any]
 ) -> None:
     """
     Test that creating an array with the fill_value parameter set to None, or unspecified,
     results in the expected fill_value attribute of the array, i.e. 0 cast to the array's dtype.
     """
     shape = (10,)
-    default_fill_value = 0
     if specifiy_fill_value:
         arr = zarr.create_array(
             store=store,
             shape=shape,
-            dtype=dtype_str,
+            dtype=zdtype,
             zarr_format=3,
             chunks=shape,
             fill_value=None,
         )
     else:
-        arr = zarr.create_array(
-            store=store, shape=shape, dtype=dtype_str, zarr_format=3, chunks=shape
-        )
+        arr = zarr.create_array(store=store, shape=shape, dtype=zdtype, zarr_format=3, chunks=shape)
+    expected_fill_value = zdtype.default_value()
+    if isinstance(expected_fill_value, np.datetime64 | np.timedelta64):
+        if np.isnat(expected_fill_value):
+            assert np.isnat(arr.fill_value)
+    elif isinstance(expected_fill_value, np.floating | np.complexfloating):
+        if np.isnan(expected_fill_value):
+            assert np.isnan(arr.fill_value)
+    else:
+        assert arr.fill_value == expected_fill_value
+    # A simpler check would be to ensure that arr.fill_value.dtype == arr.dtype
+    # But for some numpy data types (namely, U), scalars might not have length. An empty string
+    # scalar from a `>U4` array would have dtype `>U`, and arr.fill_value.dtype == arr.dtype will fail.
 
-    assert arr.fill_value == np.dtype(dtype_str).type(default_fill_value)
-    assert arr.fill_value.dtype == arr.dtype
+    assert type(arr.fill_value) is type(np.array([arr.fill_value], dtype=arr.dtype)[0])
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1004,7 +1017,7 @@ class TestCreateArray:
             filters=filters,
             compressors=compressors,
             serializer="auto",
-            dtype=arr.metadata.data_type,  # type: ignore[union-attr]
+            dtype=arr._zdtype,
         )
         assert arr.filters == filters_expected
         assert arr.compressors == compressors_expected
@@ -1369,4 +1382,4 @@ async def test_sharding_coordinate_selection() -> None:
         shards=(2, 4, 4),
     )
     arr[:] = np.arange(2 * 3 * 4).reshape((2, 3, 4))
-    assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()  # type: ignore[index]
+    assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()

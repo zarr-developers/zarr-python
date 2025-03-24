@@ -31,7 +31,7 @@ def check_json_bool(data: JSON) -> TypeGuard[bool]:
     Bool
         True if the data is a boolean, False otherwise.
     """
-    return bool(isinstance(data, bool))
+    return isinstance(data, bool)
 
 
 def check_json_str(data: JSON) -> TypeGuard[str]:
@@ -293,7 +293,7 @@ def complex_to_json_v3(data: complex | np.complexfloating[Any, Any]) -> tuple[JS
     return float_to_json_v3(data.real), float_to_json_v3(data.imag)
 
 
-def complex_to_json(
+def complex_float_to_json(
     data: complex | np.complexfloating[Any, Any], zarr_format: ZarrFormat
 ) -> tuple[JSONFloat, JSONFloat]:
     """
@@ -424,9 +424,7 @@ def float_from_json(data: JSONFloat, zarr_format: ZarrFormat) -> float:
         return float_from_json_v3(data)
 
 
-def complex_from_json_v2(
-    data: tuple[JSONFloat, JSONFloat], dtype: np.dtypes.Complex64DType | np.dtypes.Complex128DType
-) -> np.complexfloating[Any, Any]:
+def complex_float_from_json_v2(data: tuple[JSONFloat, JSONFloat]) -> complex:
     """
     Convert a JSON complex float to a complex number (v2).
 
@@ -434,20 +432,16 @@ def complex_from_json_v2(
     ----------
     data : tuple[JSONFloat, JSONFloat]
         The JSON complex float to convert.
-    dtype : Any
-        The numpy dtype.
 
     Returns
     -------
     np.complexfloating
         The complex number.
     """
-    return dtype.type(complex(float_from_json_v2(data[0]), float_from_json_v2(data[1])))
+    return complex(float_from_json_v2(data[0]), float_from_json_v2(data[1]))
 
 
-def complex_from_json_v3(
-    data: tuple[JSONFloat, JSONFloat], dtype: np.dtypes.Complex64DType | np.dtypes.Complex128DType
-) -> np.complexfloating[Any, Any]:
+def complex_float_from_json_v3(data: tuple[JSONFloat, JSONFloat]) -> complex:
     """
     Convert a JSON complex float to a complex number (v3).
 
@@ -455,20 +449,16 @@ def complex_from_json_v3(
     ----------
     data : tuple[JSONFloat, JSONFloat]
         The JSON complex float to convert.
-    dtype : Any
-        The numpy dtype.
 
     Returns
     -------
     np.complexfloating
         The complex number.
     """
-    return dtype.type(complex(float_from_json_v3(data[0]), float_from_json_v3(data[1])))
+    return complex(float_from_json_v3(data[0]), float_from_json_v3(data[1]))
 
 
-def complex_from_json(
-    data: tuple[JSONFloat, JSONFloat], dtype: Any, zarr_format: ZarrFormat
-) -> np.complexfloating[Any, Any]:
+def complex_float_from_json(data: tuple[JSONFloat, JSONFloat], zarr_format: ZarrFormat) -> complex:
     """
     Convert a JSON complex float to a complex number based on zarr format.
 
@@ -476,8 +466,6 @@ def complex_from_json(
     ----------
     data : tuple[JSONFloat, JSONFloat]
         The JSON complex float to convert.
-    dtype : Any
-        The numpy dtype.
     zarr_format : ZarrFormat
         The zarr format version.
 
@@ -487,12 +475,9 @@ def complex_from_json(
         The complex number.
     """
     if zarr_format == 2:
-        return complex_from_json_v2(data, dtype)
+        return complex_float_from_json_v2(data)
     else:
-        if check_json_complex_float_v3(data):
-            return complex_from_json_v3(data, dtype)
-        else:
-            raise TypeError(f"Invalid type: {data}. Expected a sequence of two numbers.")
+        return complex_float_from_json_v3(data)
     raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
 
 
