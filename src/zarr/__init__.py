@@ -42,17 +42,42 @@ def print_debug_info() -> None:
     Print version info for use in bug reports.
     """
     import platform
-    from importlib import import_module
+    from importlib.metadata import version
+
+    def print_packages(packages: list[str]) -> None:
+        for package in packages:
+            try:
+                print(f"{package}: {version(package)}")
+            except ModuleNotFoundError:
+                continue
+
+    required = [
+        "packaging",
+        "numpy",
+        "numcodecs",
+        "typing_extensions",
+        "donfig",
+    ]
+    optional = [
+        "botocore",
+        "cupy-cuda12x",
+        "fsspec",
+        "numcodecs",
+        "s3fs",
+        "gcsfs",
+        "universal-pathlib",
+        # "rich", # doesn't provide __version__
+        "obstore",
+    ]
 
     print(f"platform: {platform.platform()}")
     print(f"python: {platform.python_version()}\n")
 
     print(f"zarr: {__version__}\n")
-    for package in ["numcodecs", "numpy", "fsspec", "s3fs", "botocore", "gcsfs"]:
-        try:
-            print(f"{package}: {import_module(package).__version__}")
-        except ModuleNotFoundError:
-            continue
+    print("Required dependencies:")
+    print_packages(required)
+    print("Optional dependencies:")
+    print_packages(optional)
 
 
 __all__ = [

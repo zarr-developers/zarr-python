@@ -1,3 +1,5 @@
+import pytest
+
 import zarr
 
 
@@ -11,10 +13,17 @@ def test_exports() -> None:
         getattr(zarr, export)
 
 
-def test_print_debug_info() -> None:
+def test_print_debug_info(capsys: pytest.CaptureFixture[str]) -> None:
     """
     Ensure that print_debug_info does not raise an error
     """
-    from zarr import print_debug_info
+    from numpy import __version__ as np_v
+
+    from zarr import __version__, print_debug_info
 
     print_debug_info()
+    captured = capsys.readouterr()
+    # test that at least some of what we expect is
+    # printed out
+    assert f"zarr: {__version__}" in captured.out
+    assert f"numpy: {np_v}" in captured.out
