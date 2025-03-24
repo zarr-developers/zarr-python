@@ -7,7 +7,7 @@ import pickle
 import re
 import sys
 from itertools import accumulate
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 from unittest import mock
 
 import numcodecs
@@ -42,7 +42,8 @@ from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_pr
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype._numpy import Float64
+from zarr.core.dtype._numpy import Float64, endianness_from_numpy_str
+from zarr.core.dtype.common import Endianness
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
@@ -1661,3 +1662,20 @@ async def test_sharding_coordinate_selection() -> None:
     )
     arr[:] = np.arange(2 * 3 * 4).reshape((2, 3, 4))
     assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("endianness", get_args(Endianness))
+def test_endianness(store: Store, zarr_format: ZarrFormat, endianness: Endianness) -> None:
+    """
+    Test that that endianness is correctly set when creating an array.
+    """
+    if endianness == "little":
+        np_dtype = "<i2"
+    else:
+        np_dtype = ">i2"
+
+    arr = zarr.create_array(store=store, shape=(1,), dtype=np_dtype, zarr_format=zarr_format)
+    assert endianness_from_numpy_str(arr[:].dtype.byteorder) == endianness
+    if zarr_format == 3:
+        assert str(arr.metadata.codecs[0].endian.value) == endianness
