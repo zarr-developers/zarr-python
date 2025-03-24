@@ -66,7 +66,7 @@ def print_debug_info() -> None:
         "s3fs",
         "gcsfs",
         "universal-pathlib",
-        # "rich", # doesn't provide __version__
+        "rich",
         "obstore",
     ]
 
