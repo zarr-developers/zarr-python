@@ -17,7 +17,7 @@ def test_print_debug_info(capsys: pytest.CaptureFixture[str]) -> None:
     """
     Ensure that print_debug_info does not raise an error
     """
-    from numpy import __version__ as np_v
+    from importlib.metadata import version
 
     from zarr import __version__, print_debug_info
 
@@ -26,4 +26,4 @@ def test_print_debug_info(capsys: pytest.CaptureFixture[str]) -> None:
     # test that at least some of what we expect is
     # printed out
     assert f"zarr: {__version__}" in captured.out
-    assert f"numpy: {np_v}" in captured.out
+    assert f"numpy: {version('numpy')}" in captured.out
