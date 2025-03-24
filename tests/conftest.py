@@ -21,7 +21,8 @@ from zarr.core.array import (
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
 from zarr.core.common import JSON, parse_shapelike
 from zarr.core.config import config as zarr_config
-from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype import data_type_registry, get_data_type_from_native_dtype
+from zarr.core.dtype._numpy import DateTime64, HasLength, Structured
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
@@ -432,10 +433,15 @@ def meta_from_array(
     )
 
 
-def skip_object_dtype(dtype: ZDType[Any, Any]) -> None:
-    if dtype.dtype_cls is type(np.dtype("O")):
-        msg = (
-            f"{dtype} uses the numpy object data type, which is not a valid target for data "
-            "type resolution"
-        )
-        pytest.skip(msg)
+# Generate a collection of zdtype instances for use in testing.
+zdtype_examples: tuple[ZDType[Any, Any], ...] = ()
+for wrapper_cls in data_type_registry.contents.values():
+    # The Structured dtype has to be constructed with some actual fields
+    if wrapper_cls is Structured:
+        zdtype_examples += (wrapper_cls.from_dtype(np.dtype([("a", np.float64), ("b", np.int8)])),)
+    elif issubclass(wrapper_cls, HasLength):
+        zdtype_examples += (wrapper_cls(length=1),)
+    elif issubclass(wrapper_cls, DateTime64):
+        zdtype_examples += (wrapper_cls(unit="s"),)
+    else:
+        zdtype_examples += (wrapper_cls(),)

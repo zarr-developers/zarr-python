@@ -8,7 +8,7 @@ import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype.wrapper import TDType, TScalar, ZDType, _BaseDType, _BaseScalar
+from zarr.core.dtype.wrapper import TDType_co, TScalar_co, ZDType, _BaseDType, _BaseScalar
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -74,7 +74,7 @@ class ArrayV2Metadata(Metadata):
         self,
         *,
         shape: ChunkCoords,
-        dtype: ZDType[TDType, TScalar],
+        dtype: ZDType[TDType_co, TScalar_co],
         chunks: ChunkCoords,
         fill_value: Any,
         order: MemoryOrder,
@@ -195,7 +195,7 @@ class ArrayV2Metadata(Metadata):
             zarray_dict["filters"] = new_filters
 
         if self.fill_value is not None:
-            fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)  # type: ignore[arg-type]
+            fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
         zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)

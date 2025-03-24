@@ -17,13 +17,14 @@ _BaseScalar = np.generic | str
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
 _BaseDType = np.dtype[np.generic]
-TScalar = TypeVar("TScalar", bound=_BaseScalar)
+TScalar_co = TypeVar("TScalar_co", bound=_BaseScalar, covariant=True)
 # TODO: figure out an interface or protocol that non-numpy dtypes can use
-TDType = TypeVar("TDType", bound=_BaseDType)
+# These two type parameters are covariant because we want isinstance(ZDType[Subclass](), ZDType[BaseDType]) to be True
+TDType_co = TypeVar("TDType_co", bound=_BaseDType, covariant=True)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class ZDType(Generic[TDType, TScalar], ABC):
+class ZDType(Generic[TDType_co, TScalar_co], ABC):
     """
     Abstract base class for wrapping native array data types, e.g. numpy dtypes
 
@@ -41,11 +42,11 @@ class ZDType(Generic[TDType, TScalar], ABC):
     # mypy currently disallows class variables to contain type parameters
     # but it seems OK for us to use it here:
     # https://github.com/python/typing/discussions/1424#discussioncomment-7989934
-    dtype_cls: ClassVar[type[TDType]]  # type: ignore[misc]
+    dtype_cls: ClassVar[type[TDType_co]]  # type: ignore[misc]
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
-    def check_dtype(cls: type[Self], dtype: _BaseDType) -> TypeGuard[TDType]:
+    def check_dtype(cls: type[Self], dtype: _BaseDType) -> TypeGuard[TDType_co]:
         """
         Check that a data type matches the dtype_cls class attribute. Used as a type guard.
 
@@ -89,7 +90,7 @@ class ZDType(Generic[TDType, TScalar], ABC):
 
     @classmethod
     @abstractmethod
-    def _from_dtype_unsafe(cls: type[Self], dtype: TDType) -> Self:
+    def _from_dtype_unsafe(cls: type[Self], dtype: _BaseDType) -> Self:
         """
         Wrap a native dtype without checking.
 
@@ -106,7 +107,7 @@ class ZDType(Generic[TDType, TScalar], ABC):
         ...
 
     @abstractmethod
-    def to_dtype(self: Self) -> TDType:
+    def to_dtype(self: Self) -> TDType_co:
         """
         Return an instance of the wrapped dtype.
 
@@ -117,8 +118,61 @@ class ZDType(Generic[TDType, TScalar], ABC):
         """
         ...
 
+    def cast_value(self, data: object) -> TScalar_co:
+        """
+        Cast a value to the wrapped scalar type. The type is first checked for compatibility. If it's
+        incompatible with the associated scalar type, a ``TypeError`` will be raised.
+
+        Parameters
+        ----------
+        data : TScalar
+            The scalar value to cast.
+
+        Returns
+        -------
+        TScalar
+            The cast value.
+        """
+        if self.check_value(data):
+            return self._cast_value_unsafe(data)
+        raise TypeError(f"Invalid value: {data}")
+
     @abstractmethod
-    def default_value(self) -> TScalar:
+    def check_value(self, data: object) -> bool:
+        """
+        Check that a value is a valid value for the wrapped data type.
+
+        Parameters
+        ----------
+        data : object
+            A value to check.
+
+        Returns
+        -------
+        Bool
+            True if the value is valid, False otherwise.
+        """
+        ...
+
+    @abstractmethod
+    def _cast_value_unsafe(self, data: object) -> TScalar_co:
+        """
+        Cast a value to the wrapped data type. This method should not perform any input validation.
+
+        Parameters
+        ----------
+        data : TScalar
+            The scalar value to cast.
+
+        Returns
+        -------
+        TScalar
+            The cast value.
+        """
+        ...
+
+    @abstractmethod
+    def default_value(self) -> TScalar_co:
         """
         Get the default value for the wrapped data type. This is a method, rather than an attribute,
         because the default value for some data types may depend on parameters that are not known
@@ -216,7 +270,7 @@ class ZDType(Generic[TDType, TScalar], ABC):
         ...
 
     @abstractmethod
-    def to_json_value(self, data: TScalar, *, zarr_format: ZarrFormat) -> JSON:
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> JSON:
         """
         Convert a single value to JSON-serializable format.
 
@@ -235,7 +289,7 @@ class ZDType(Generic[TDType, TScalar], ABC):
         ...
 
     @abstractmethod
-    def from_json_value(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar:
+    def from_json_value(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar_co:
         """
         Read a JSON-serializable value as a scalar.
 

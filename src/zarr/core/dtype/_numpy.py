@@ -11,7 +11,12 @@ from typing import (
     ClassVar,
     Literal,
     Self,
+    SupportsComplex,
+    SupportsFloat,
+    SupportsIndex,
+    SupportsInt,
     TypeGuard,
+    TypeVar,
     cast,
     get_args,
 )
@@ -21,7 +26,6 @@ import numpy as np
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     Endianness,
-    JSONFloat,
     bytes_from_json,
     bytes_to_json,
     check_json_bool,
@@ -29,8 +33,8 @@ from zarr.core.dtype.common import (
     check_json_float,
     check_json_int,
     check_json_str,
-    complex_from_json,
-    complex_to_json,
+    complex_float_from_json,
+    complex_float_to_json,
     datetime_from_json,
     datetime_to_json,
     float_from_json,
@@ -42,6 +46,9 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 EndiannessNumpy = Literal[">", "<", "|", "="]
+IntLike = SupportsInt | SupportsIndex | bytes | str
+FloatLike = SupportsIndex | SupportsFloat | bytes | str
+ComplexLike = SupportsFloat | SupportsIndex | SupportsComplex | bytes | str | None
 
 
 @dataclass(frozen=True)
@@ -80,7 +87,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
     dtype_cls = np.dtypes.BoolDType
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.BoolDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         return cls()
 
     def to_dtype(self: Self) -> np.dtypes.BoolDType:
@@ -119,9 +126,9 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
         """
         return np.False_
 
-    def to_json_value(self, data: np.bool_, zarr_format: ZarrFormat) -> bool:
+    def to_json_value(self, data: object, zarr_format: ZarrFormat) -> bool:
         """
-        Convert a boolean value to JSON-serializable format.
+        Convert a scalar to a python bool.
 
         Parameters
         ----------
@@ -154,188 +161,175 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
             The numpy boolean scalar.
         """
         if check_json_bool(data):
-            return np.bool_(data)
+            return self._cast_value_unsafe(data)
         raise TypeError(f"Invalid type: {data}. Expected a boolean.")
+
+    def check_value(self, data: object) -> bool:
+        # Anything can become a bool
+        return True
+
+    def cast_value(self, value: object) -> np.bool_:
+        return self._cast_value_unsafe(value)
+
+    def _cast_value_unsafe(self, value: object) -> np.bool_:
+        return np.bool_(value)
+
+
+_NumpyIntDType = (
+    np.dtypes.Int8DType
+    | np.dtypes.Int16DType
+    | np.dtypes.Int32DType
+    | np.dtypes.Int64DType
+    | np.dtypes.UInt8DType
+    | np.dtypes.UInt16DType
+    | np.dtypes.UInt32DType
+    | np.dtypes.UInt64DType
+)
+_NumpyIntScalar = (
+    np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
+)
+TIntDType_co = TypeVar("TIntDType_co", bound=_NumpyIntDType, covariant=True)
+TIntScalar_co = TypeVar("TIntScalar_co", bound=_NumpyIntScalar, covariant=True)
+
+
+@dataclass(frozen=True)
+class BaseInt(ZDType[TIntDType_co, TIntScalar_co]):
+    # This attribute holds the possible zarr v2 JSON names for the data type
+    _zarr_v2_names: ClassVar[tuple[str, ...]]
+
+    def to_json(self, zarr_format: ZarrFormat) -> str:
+        """
+        Convert the wrapped data type to a JSON-serializable form.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        str
+            The JSON-serializable representation of the wrapped data type
+        """
+        if zarr_format == 2:
+            return self.to_dtype().str
+        elif zarr_format == 3:
+            return self._zarr_v3_name
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
+    @classmethod
+    def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
+        """
+        Check that the input is a valid JSON representation of this data type.
+        """
+        if zarr_format == 2:
+            return data in cls._zarr_v2_names
+        elif zarr_format == 3:
+            return data == cls._zarr_v3_name
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
+    def check_value(self, value: object) -> TypeGuard[IntLike]:
+        return isinstance(value, IntLike)
+
+    def _cast_value_unsafe(self, value: object) -> TIntScalar_co:
+        if self.check_value(value):
+            return self.to_dtype().type(value)  # type: ignore[return-value]
+        raise TypeError(f"Invalid type: {value}. Expected a value castable to an integer.")
+
+    def default_value(self) -> TIntScalar_co:
+        """
+        Get the default value, which is 0 cast to this dtype
+
+        Returns
+        -------
+        Int scalar
+            The default value.
+        """
+        return self._cast_value_unsafe(0)
+
+    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> TIntScalar_co:
+        """
+        Read a JSON-serializable value as a numpy int scalar.
+
+        Parameters
+        ----------
+        data : JSON
+            The JSON-serializable value.
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        TScalar_co
+            The numpy scalar.
+        """
+        if check_json_int(data):
+            return self._cast_value_unsafe(data)
+        raise TypeError(f"Invalid type: {data}. Expected an integer.")
+
+    def to_json_value(self, data: object, zarr_format: ZarrFormat) -> int:
+        """
+        Convert an object to JSON-serializable scalar.
+
+        Parameters
+        ----------
+        data : _BaseScalar
+            The value to convert.
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        int
+            The JSON-serializable form of the scalar.
+        """
+        return int(self.cast_value(data))
 
 
 @dataclass(frozen=True, kw_only=True)
-class Int8(ZDType[np.dtypes.Int8DType, np.int8]):
+class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     dtype_cls = np.dtypes.Int8DType
     _zarr_v3_name = "int8"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = ("|i1",)
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Int8DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         return cls()
 
     def to_dtype(self: Self) -> np.dtypes.Int8DType:
         return self.dtype_cls()
 
     @classmethod
-    def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[Literal["int8", "|i1"]]:
-        """
-        Check that the input is a valid JSON representation of a 8-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         return cls()
 
-    def default_value(self) -> np.int8:
-        """
-        Get the default value.
-
-        Returns
-        -------
-        np.int8
-            The default value.
-        """
-        return np.int8(0)
-
-    def to_json_value(self, data: np.int8, zarr_format: ZarrFormat) -> int:
-        """
-        Convert a numpy 8-bit int to JSON-serializable format.
-
-        Parameters
-        ----------
-        data : np.int8
-            The value to convert.
-        zarr_format : ZarrFormat
-            The zarr format version.
-
-        Returns
-        -------
-        int
-            The JSON-serializable form of the scalar.
-        """
-        return int(data)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.int8:
-        """
-        Read a JSON-serializable value as a numpy int8 scalar.
-
-        Parameters
-        ----------
-        data : JSON
-            The JSON-serializable value.
-        zarr_format : ZarrFormat
-            The zarr format version.
-
-        Returns
-        -------
-        np.bool_
-            The numpy boolean scalar.
-        """
-        if check_json_int(data):
-            return np.int8(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class UInt8(ZDType[np.dtypes.UInt8DType, np.uint8]):
+class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     dtype_cls = np.dtypes.UInt8DType
     _zarr_v3_name = "uint8"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = ("|u1",)
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt8DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         return cls()
 
     def to_dtype(self: Self) -> np.dtypes.UInt8DType:
         return self.dtype_cls()
 
     @classmethod
-    def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[Literal["uint8", "|u1"]]:
-        """
-        Check that the input is a valid JSON representation of an unsigned 8-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         return cls()
 
-    def default_value(self) -> np.uint8:
-        """
-        Get the default value for this data type.
-
-        Returns
-        -------
-        np.uint8
-            The default value.
-        """
-        return np.uint8(0)
-
-    def to_json_value(self, data: np.uint8, zarr_format: ZarrFormat) -> int:
-        """
-        Convert a numpy unsigned 8-bit integer to JSON-serializable format.
-
-        Parameters
-        ----------
-        data : np.uint8
-            The value to convert.
-        zarr_format : ZarrFormat
-            The zarr format version.
-
-        Returns
-        -------
-        int
-            The JSON-serializable form of the scalar.
-        """
-        return int(data)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.uint8:
-        """
-        Read a JSON-serializable value as a numpy boolean scalar.
-
-        Parameters
-        ----------
-        data : JSON
-            The JSON-serializable value.
-        zarr_format : ZarrFormat
-            The zarr format version.
-
-        Returns
-        -------
-        np.bool_
-            The numpy boolean scalar.
-        """
-        if check_json_int(data):
-            return np.uint8(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class Int16(ZDType[np.dtypes.Int16DType, np.int16], HasEndianness):
+class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     dtype_cls = np.dtypes.Int16DType
     _zarr_v3_name = "int16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i2", "<i2")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Int16DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -344,53 +338,23 @@ class Int16(ZDType[np.dtypes.Int16DType, np.int16], HasEndianness):
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["int16", ">i2", "<i2"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2:
+            # This ensures that we get the endianness correct without annoying string parsing
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def default_value(self) -> np.int16:
-        return self.to_dtype().type(0)
-
-    def to_json_value(self, data: np.int16, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.int16:
-        if check_json_int(data):
-            return self.to_dtype().type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16], HasEndianness):
+class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     dtype_cls = np.dtypes.UInt16DType
     _zarr_v3_name = "uint16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u2", "<u2")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt16DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -399,26 +363,6 @@ class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["uint16", ">u2", "<u2"]]:
-        """
-        Check that the input is a valid JSON representation of an unsigned 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2:
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
@@ -426,20 +370,9 @@ class UInt16(ZDType[np.dtypes.UInt16DType, np.uint16], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def default_value(self) -> np.uint16:
-        return self.to_dtype().type(0)
-
-    def to_json_value(self, data: np.uint16, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.uint16:
-        if check_json_int(data):
-            return self.to_dtype().type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class Int32(ZDType[np.dtypes.Int32DType, np.int32], HasEndianness):
+class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     dtype_cls = np.dtypes.Int32DType
     _zarr_v3_name = "int32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i4", "<i4")
@@ -457,7 +390,7 @@ class Int32(ZDType[np.dtypes.Int32DType, np.int32], HasEndianness):
             return super().from_dtype(dtype)
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Int32DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -466,26 +399,6 @@ class Int32(ZDType[np.dtypes.Int32DType, np.int32], HasEndianness):
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["int32", ">i4", "<i4"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 32-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2:
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
@@ -493,26 +406,15 @@ class Int32(ZDType[np.dtypes.Int32DType, np.int32], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def default_value(self) -> np.int32:
-        return self.to_dtype().type(0)
-
-    def to_json_value(self, data: np.int32, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.int32:
-        if check_json_int(data):
-            return self.to_dtype().type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32], HasEndianness):
+class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     dtype_cls = np.dtypes.UInt32DType
     _zarr_v3_name = "uint32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u4", "<u4")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt32DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -521,26 +423,6 @@ class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["uint32", ">u4", "<u4"]]:
-        """
-        Check that the input is a valid JSON representation of an unsigned 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2:
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
@@ -548,26 +430,15 @@ class UInt32(ZDType[np.dtypes.UInt32DType, np.uint32], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def default_value(self) -> np.uint32:
-        return self.to_dtype().type(0)
-
-    def to_json_value(self, data: np.uint32, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.uint32:
-        if check_json_int(data):
-            return self.to_dtype().type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class Int64(ZDType[np.dtypes.Int64DType, np.int64], HasEndianness):
+class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     dtype_cls = np.dtypes.Int64DType
     _zarr_v3_name = "int64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i8", "<i8")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Int64DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -576,26 +447,6 @@ class Int64(ZDType[np.dtypes.Int64DType, np.int64], HasEndianness):
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["int64", ">i8", "<i8"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2:
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
@@ -603,26 +454,15 @@ class Int64(ZDType[np.dtypes.Int64DType, np.int64], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def default_value(self) -> np.int64:
-        return self.to_dtype().type(0)
-
-    def to_json_value(self, data: np.int64, zarr_format: ZarrFormat) -> int:
-        return int(data)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.int64:
-        if check_json_int(data):
-            return self.to_dtype().type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64], HasEndianness):
+class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     dtype_cls = np.dtypes.UInt64DType
     _zarr_v3_name = "uint64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u8", "<u8")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.UInt64DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -631,19 +471,52 @@ class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["uint64", ">u8", "<u8"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 16-bit integer.
-        """
+    def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2:
-            return data in cls._zarr_v2_names
+            return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
-            return data == cls._zarr_v3_name
+            return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
+
+TFloatDType_co = TypeVar(
+    "TFloatDType_co",
+    bound=np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float64DType,
+    covariant=True,
+)
+TFloatScalar_co = TypeVar(
+    "TFloatScalar_co", bound=np.float16 | np.float32 | np.float64, covariant=True
+)
+
+
+@dataclass(frozen=True)
+class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness):
+    # This attribute holds the possible zarr v2 JSON names for the data type
+    _zarr_v2_names: ClassVar[tuple[str, ...]]
+
+    @classmethod
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+        byte_order = cast("EndiannessNumpy", dtype.byteorder)
+        return cls(endianness=endianness_from_numpy_str(byte_order))
+
+    def to_dtype(self) -> TFloatDType_co:
+        byte_order = endianness_to_numpy_str(self.endianness)
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
+
     def to_json(self, zarr_format: ZarrFormat) -> str:
+        """
+        Convert the wrapped data type to a JSON-serializable form.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        str
+            The JSON-serializable representation of the wrapped data type
+        """
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
@@ -658,157 +531,133 @@ class UInt64(ZDType[np.dtypes.UInt64DType, np.uint64], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def default_value(self) -> np.uint64:
-        return self.to_dtype().type(0)
+    @classmethod
+    def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
+        """
+        Check that the input is a valid JSON representation of this data type.
+        """
+        if zarr_format == 2:
+            return data in cls._zarr_v2_names
+        elif zarr_format == 3:
+            return data == cls._zarr_v3_name
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def to_json_value(self, data: np.uint64, zarr_format: ZarrFormat) -> int:
-        return int(data)
+    def check_value(self, value: object) -> TypeGuard[FloatLike]:
+        return isinstance(value, FloatLike)
 
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.uint64:
-        if check_json_int(data):
-            return self.to_dtype().type(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
+    def _cast_value_unsafe(self, value: object) -> TFloatScalar_co:
+        if self.check_value(value):
+            return self.to_dtype().type(value)  # type: ignore[return-value]
+        raise TypeError(f"Invalid type: {value}. Expected a value castable to a float.")
+
+    def default_value(self) -> TFloatScalar_co:
+        """
+        Get the default value, which is 0 cast to this dtype
+
+        Returns
+        -------
+        Int scalar
+            The default value.
+        """
+        return self._cast_value_unsafe(0)
+
+    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> TFloatScalar_co:
+        """
+        Read a JSON-serializable value as a numpy float.
+
+        Parameters
+        ----------
+        data : JSON
+            The JSON-serializable value.
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        TScalar_co
+            The numpy float.
+        """
+        if check_json_float(data, zarr_format=zarr_format):
+            return self._cast_value_unsafe(float_from_json(data, zarr_format=zarr_format))
+        raise TypeError(
+            f"Invalid type: {data}. Expected a float or a special string encoding of a float."
+        )
+
+    def to_json_value(self, data: object, zarr_format: ZarrFormat) -> float | str:
+        """
+        Convert an object to a JSON-serializable float.
+
+        Parameters
+        ----------
+        data : _BaseScalar
+            The value to convert.
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        JSON
+            The JSON-serializable form of the float, which is potentially a number or a string.
+            See the zarr specifications for details on the JSON encoding for floats.
+        """
+        return float_to_json(self._cast_value_unsafe(data), zarr_format=zarr_format)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Float16(ZDType[np.dtypes.Float16DType, np.float16], HasEndianness):
+class Float16(BaseFloat[np.dtypes.Float16DType, np.float16]):
     dtype_cls = np.dtypes.Float16DType
     _zarr_v3_name = "float16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f2", "<f2")
 
-    @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Float16DType) -> Self:
-        byte_order = cast("EndiannessNumpy", dtype.byteorder)
-        return cls(endianness=endianness_from_numpy_str(byte_order))
-
-    def to_dtype(self) -> np.dtypes.Float16DType:
-        byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["float", ">f2", "<f2"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
-    def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
-        if zarr_format == 2:
-            return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def default_value(self) -> np.float16:
-        return self.to_dtype().type(0)
-
-    def to_json_value(self, data: np.float16, zarr_format: ZarrFormat) -> JSONFloat:
-        return float_to_json(data, zarr_format)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.float16:
-        if check_json_float(data, zarr_format=zarr_format):
-            return self.to_dtype().type(float_from_json(data, zarr_format))
-        raise TypeError(f"Invalid type: {data}. Expected a float.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class Float32(ZDType[np.dtypes.Float32DType, np.float32], HasEndianness):
+class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
     dtype_cls = np.dtypes.Float32DType
     _zarr_v3_name = "float32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f4", "<f4")
 
-    @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Float32DType) -> Self:
-        byte_order = cast("EndiannessNumpy", dtype.byteorder)
-        return cls(endianness=endianness_from_numpy_str(byte_order))
-
-    def to_dtype(self) -> np.dtypes.Float32DType:
-        byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["float32", ">f4", "<f4"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
-    def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
-        if zarr_format == 2:
-            return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def default_value(self) -> np.float32:
-        return self.to_dtype().type(0)
-
-    def to_json_value(self, data: np.float32, zarr_format: ZarrFormat) -> JSONFloat:
-        return float_to_json(data, zarr_format)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.float32:
-        if check_json_float(data, zarr_format=zarr_format):
-            return self.to_dtype().type(float_from_json(data, zarr_format))
-        raise TypeError(f"Invalid type: {data}. Expected a float.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class Float64(ZDType[np.dtypes.Float64DType, np.float64], HasEndianness):
+class Float64(BaseFloat[np.dtypes.Float64DType, np.float64]):
     dtype_cls = np.dtypes.Float64DType
     _zarr_v3_name = "float64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f8", "<f8")
 
+
+TComplexDType_co = TypeVar(
+    "TComplexDType_co", bound=np.dtypes.Complex64DType | np.dtypes.Complex128DType, covariant=True
+)
+TComplexScalar_co = TypeVar("TComplexScalar_co", bound=np.complex64 | np.complex128, covariant=True)
+
+
+@dataclass(frozen=True)
+class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness):
+    # This attribute holds the possible zarr v2 JSON names for the data type
+    _zarr_v2_names: ClassVar[tuple[str, ...]]
+
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Float64DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
-    def to_dtype(self) -> np.dtypes.Float64DType:
+    def to_dtype(self) -> TComplexDType_co:
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["float64", ">f8", "<f8"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     def to_json(self, zarr_format: ZarrFormat) -> str:
+        """
+        Convert the wrapped data type to a JSON-serializable form.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        str
+            The JSON-serializable representation of the wrapped data type
+        """
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
@@ -823,130 +672,90 @@ class Float64(ZDType[np.dtypes.Float64DType, np.float64], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def default_value(self) -> np.float64:
-        return self.to_dtype().type(0)
+    @classmethod
+    def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
+        """
+        Check that the input is a valid JSON representation of this data type.
+        """
+        if zarr_format == 2:
+            return data in cls._zarr_v2_names
+        elif zarr_format == 3:
+            return data == cls._zarr_v3_name
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def to_json_value(self, data: np.float64, zarr_format: ZarrFormat) -> JSONFloat:
-        return float_to_json(data, zarr_format)
+    def check_value(self, value: object) -> bool:
+        return isinstance(value, ComplexLike)
 
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.float64:
-        if check_json_float(data, zarr_format=zarr_format):
-            return self.to_dtype().type(float_from_json(data, zarr_format))
-        raise TypeError(f"Invalid type: {data}. Expected a float.")
+    def _cast_value_unsafe(self, value: object) -> TComplexScalar_co:
+        if self.check_value(value):
+            return self.to_dtype().type(value)  # type: ignore[arg-type, return-value]
+        raise TypeError(f"Invalid type: {value}. Expected a value castable to a complex scalar.")
+
+    def default_value(self) -> TComplexScalar_co:
+        """
+        Get the default value, which is 0 cast to this dtype
+
+        Returns
+        -------
+        Int scalar
+            The default value.
+        """
+        return self._cast_value_unsafe(0)
+
+    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> TComplexScalar_co:
+        """
+        Read a JSON-serializable value as a numpy float.
+
+        Parameters
+        ----------
+        data : JSON
+            The JSON-serializable value.
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        TScalar_co
+            The numpy float.
+        """
+        if check_json_complex_float(data, zarr_format=zarr_format):
+            return self._cast_value_unsafe(complex_float_from_json(data, zarr_format=zarr_format))
+        raise TypeError(
+            f"Invalid type: {data}. Expected a float or a special string encoding of a float."
+        )
+
+    def to_json_value(self, data: object, zarr_format: ZarrFormat) -> JSON:
+        """
+        Convert an object to a JSON-serializable float.
+
+        Parameters
+        ----------
+        data : _BaseScalar
+            The value to convert.
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        JSON
+            The JSON-serializable form of the complex number, which is a list of two floats,
+            each of which is encoding according to a zarr-format-specific encoding.
+        """
+        return complex_float_to_json(self.cast_value(data), zarr_format=zarr_format)
 
 
 @dataclass(frozen=True, kw_only=True)
-class Complex64(ZDType[np.dtypes.Complex64DType, np.complex64], HasEndianness):
+class Complex64(BaseComplex[np.dtypes.Complex64DType, np.complex64]):
     dtype_cls = np.dtypes.Complex64DType
     _zarr_v3_name = "complex64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c8", "<c8")
 
-    @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Complex64DType) -> Self:
-        byte_order = cast("EndiannessNumpy", dtype.byteorder)
-        return cls(endianness=endianness_from_numpy_str(byte_order))
-
-    def to_dtype(self) -> np.dtypes.Complex64DType:
-        byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["complex64", ">c8", "<c8"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
-    def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
-        if zarr_format == 2:
-            return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def default_value(self) -> np.complex64:
-        return self.to_dtype().type(0)
-
-    def to_json_value(
-        self, data: np.complex64, zarr_format: ZarrFormat
-    ) -> tuple[JSONFloat, JSONFloat]:
-        return complex_to_json(data, zarr_format)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.complex64:
-        if check_json_complex_float(data, zarr_format=zarr_format):
-            return complex_from_json(data, dtype=self.to_dtype(), zarr_format=zarr_format)
-        raise TypeError(f"Invalid type: {data}. Expected a complex float.")
-
 
 @dataclass(frozen=True, kw_only=True)
-class Complex128(ZDType[np.dtypes.Complex128DType, np.complex128], HasEndianness):
+class Complex128(BaseComplex[np.dtypes.Complex128DType, np.complex128], HasEndianness):
     dtype_cls = np.dtypes.Complex128DType
     _zarr_v3_name = "complex128"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c16", "<c16")
-
-    @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.Complex128DType) -> Self:
-        byte_order = cast("EndiannessNumpy", dtype.byteorder)
-        return cls(endianness=endianness_from_numpy_str(byte_order))
-
-    def to_dtype(self) -> np.dtypes.Complex128DType:
-        byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[Literal["complex128", ">c16", "<c16"]]:
-        """
-        Check that the input is a valid JSON representation of a signed 16-bit integer.
-        """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        if zarr_format == 2:
-            return self.to_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
-    def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
-        if zarr_format == 2:
-            return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def default_value(self) -> np.complex128:
-        return self.to_dtype().type(0)
-
-    def to_json_value(
-        self, data: np.complex128, zarr_format: ZarrFormat
-    ) -> tuple[JSONFloat, JSONFloat]:
-        return complex_to_json(data, zarr_format)
-
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.complex128:
-        if check_json_complex_float(data, zarr_format=zarr_format):
-            return complex_from_json(data, dtype=self.to_dtype(), zarr_format=zarr_format)
-        raise TypeError(f"Invalid type: {data}. Expected a complex float.")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -956,7 +765,7 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
     item_size_bits: ClassVar[int] = 8
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.BytesDType[int]) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         return cls(length=dtype.itemsize // (cls.item_size_bits // 8))
 
     def to_dtype(self) -> np.dtypes.BytesDType[int]:
@@ -1003,13 +812,19 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
     def default_value(self) -> np.bytes_:
         return np.bytes_(b"")
 
-    def to_json_value(self, data: np.bytes_, *, zarr_format: ZarrFormat) -> str:
-        return base64.standard_b64encode(data).decode("ascii")
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        return base64.standard_b64encode(data).decode("ascii")  # type: ignore[arg-type]
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bytes_:
         if check_json_str(data):
             return self.to_dtype().type(base64.standard_b64decode(data.encode("ascii")))
         raise TypeError(f"Invalid type: {data}. Expected a string.")
+
+    def check_value(self, data: object) -> bool:
+        return isinstance(data, np.bytes_ | str | bytes)
+
+    def _cast_value_unsafe(self, value: object) -> np.bytes_:
+        return self.to_dtype().type(value)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1022,7 +837,7 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
     item_size_bits: ClassVar[int] = 8
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.VoidDType[int]) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         return cls(length=dtype.itemsize // (cls.item_size_bits // 8))
 
     def to_dtype(self) -> np.dtypes.VoidDType[int]:
@@ -1083,13 +898,19 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
     def default_value(self) -> np.void:
         return self.to_dtype().type(("\x00" * self.length).encode("ascii"))
 
-    def to_json_value(self, data: np.void, *, zarr_format: ZarrFormat) -> str:
-        return base64.standard_b64encode(data.tobytes()).decode("ascii")
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        return base64.standard_b64encode(self.cast_value(data).tobytes()).decode("ascii")
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         if check_json_str(data):
             return self.to_dtype().type(base64.standard_b64decode(data))
         raise DataTypeValidationError(f"Invalid type: {data}. Expected a string.")
+
+    def check_value(self, data: object) -> bool:
+        return isinstance(data, np.bytes_ | str | bytes)
+
+    def _cast_value_unsafe(self, value: object) -> np.void:
+        return self.to_dtype().type(value)  # type: ignore[call-overload, no-any-return]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1099,7 +920,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
     item_size_bits: ClassVar[int] = 32  # UCS4 is 32 bits per code point
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.StrDType[int]) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(
             length=dtype.itemsize // (cls.item_size_bits // 8),
@@ -1151,13 +972,19 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
     def default_value(self) -> np.str_:
         return np.str_("")
 
-    def to_json_value(self, data: np.str_, *, zarr_format: ZarrFormat) -> str:
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> str:
         return str(data)
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.str_:
         if not check_json_str(data):
             raise TypeError(f"Invalid type: {data}. Expected a string.")
         return self.to_dtype().type(data)
+
+    def check_value(self, data: object) -> bool:
+        return isinstance(data, str | np.str_ | bytes)
+
+    def _cast_value_unsafe(self, value: object) -> np.str_:
+        return self.to_dtype().type(value)
 
 
 _NUMPY_SUPPORTS_VLEN_STRING = hasattr(np.dtypes, "StringDType")
@@ -1171,7 +998,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
         _zarr_v3_name = "numpy.variable_length_utf8"
 
         @classmethod
-        def _from_dtype_unsafe(cls, dtype: np.dtypes.StringDType) -> Self:
+        def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
             return cls()
 
         def to_dtype(self) -> np.dtypes.StringDType:
@@ -1217,6 +1044,12 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
                 raise TypeError(f"Invalid type: {data}. Expected a string.")
             return data
 
+        def check_value(self, data: object) -> bool:
+            return isinstance(data, str)
+
+        def _cast_value_unsafe(self, value: object) -> str:
+            return str(value)
+
 else:
 
     @dataclass(frozen=True, kw_only=True)
@@ -1225,7 +1058,7 @@ else:
         _zarr_v3_name = "numpy.variable_length_utf8"
 
         @classmethod
-        def _from_dtype_unsafe(cls, dtype: np.dtypes.ObjectDType) -> Self:
+        def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
             return cls()
 
         def to_dtype(self) -> np.dtypes.ObjectDType:
@@ -1258,8 +1091,8 @@ else:
         def default_value(self) -> str:
             return ""
 
-        def to_json_value(self, data: str, *, zarr_format: ZarrFormat) -> str:
-            return data
+        def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> str:
+            return data  # type: ignore[return-value]
 
         def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> str:
             """
@@ -1269,19 +1102,25 @@ else:
                 raise TypeError(f"Invalid type: {data}. Expected a string.")
             return data
 
+        def check_value(self, data: object) -> bool:
+            return isinstance(data, str)
+
+        def _cast_value_unsafe(self, value: object) -> str:
+            return str(value)
+
 
 DateUnit = Literal["Y", "M", "W", "D"]
 TimeUnit = Literal["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
 
 
-@dataclass(frozen=True, kw_only=True)
+@dataclass(frozen=True, kw_only=True, slots=True)
 class DateTime64(ZDType[np.dtypes.DateTime64DType, np.datetime64], HasEndianness):
     dtype_cls = np.dtypes.DateTime64DType  # type: ignore[assignment]
     _zarr_v3_name = "numpy.datetime64"
     unit: DateUnit | TimeUnit
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.DateTime64DType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         unit: DateUnit | TimeUnit = dtype.name[dtype.name.rfind("[") + 1 : dtype.name.rfind("]")]  # type: ignore[assignment]
         if unit not in get_args(DateUnit) and unit not in get_args(TimeUnit):
             raise DataTypeValidationError('Invalid unit for "numpy.datetime64"')
@@ -1345,8 +1184,19 @@ class DateTime64(ZDType[np.dtypes.DateTime64DType, np.datetime64], HasEndianness
             return datetime_from_json(data, self.unit)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
-    def to_json_value(self, data: np.datetime64, *, zarr_format: ZarrFormat) -> int:
-        return datetime_to_json(data)
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> int:
+        return datetime_to_json(data)  # type: ignore[arg-type]
+
+    def check_value(self, data: object) -> bool:
+        # not sure which values we should accept for structured dtypes.
+        try:
+            np.array([data], dtype=self.to_dtype())
+            return True  # noqa: TRY300
+        except ValueError:
+            return False
+
+    def _cast_value_unsafe(self, value: object) -> np.datetime64:
+        return self.to_dtype().type(value)  # type: ignore[no-any-return, call-overload]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -1356,9 +1206,9 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
     fields: tuple[tuple[str, ZDType[_BaseDType, _BaseScalar]], ...]
 
     def default_value(self) -> np.void:
-        return self.cast_value(0)
+        return self._cast_value_unsafe(0)
 
-    def cast_value(self, value: object) -> np.void:
+    def _cast_value_unsafe(self, value: object) -> np.void:
         return cast("np.void", np.array([value], dtype=self.to_dtype())[0])
 
     @classmethod
@@ -1379,7 +1229,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
         return super().check_dtype(dtype) and dtype.fields is not None
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: np.dtypes.VoidDType[int]) -> Self:
+    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         from zarr.core.dtype import get_data_type_from_native_dtype
 
         fields: list[tuple[str, ZDType[Any, Any]]] = []
@@ -1464,8 +1314,16 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
             np.dtype([(key, dtype.to_dtype()) for (key, dtype) in self.fields]),
         )
 
-    def to_json_value(self, data: np.generic, *, zarr_format: ZarrFormat) -> str:
-        return bytes_to_json(data.tobytes(), zarr_format)
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        return bytes_to_json(self.cast_value(data).tobytes(), zarr_format)
+
+    def check_value(self, data: object) -> bool:
+        # not sure which values we should accept for structured dtypes.
+        try:
+            np.array([data], dtype=self.to_dtype())
+            return True  # noqa: TRY300
+        except ValueError:
+            return False
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         if not check_json_str(data):

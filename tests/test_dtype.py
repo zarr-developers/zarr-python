@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any, get_args
 import zarr
 from zarr.core.config import config
 
+from .conftest import zdtype_examples
+
 if TYPE_CHECKING:
     from collections.abc import Generator
 
@@ -64,6 +66,17 @@ else:
     VLEN_STRING_CODE = "O"
 
 
+def test_zdtype_examples() -> None:
+    """
+    Test that all the elements of the exported union type DTYPE have an example in the variable
+    zdtype_examples, which we use for testing.
+
+    If this test fails, that means that either there is a data type that does not have an example,
+    or there is a data type that is missing from the DTYPE union type.
+    """
+    assert set(map(type, zdtype_examples)) == set(get_args(DTYPE))
+
+
 @pytest.mark.parametrize(
     ("wrapper_cls", "np_dtype"),
     [
@@ -88,9 +101,7 @@ else:
         (DateTime64, "datetime64[s]"),
     ],
 )
-def test_wrap(
-    wrapper_cls: type[ZDType[_BaseDType, _BaseScalar]], np_dtype: np.dtype[np.generic] | str
-) -> None:
+def test_wrap(wrapper_cls: type[ZDType[Any, Any]], np_dtype: np.dtype[np.generic] | str) -> None:
     """
     Test that the wrapper class has the correct dtype class bound to the dtype_cls variable
     Test that the ``wrap`` method produces an instance of the wrapper class
@@ -102,19 +113,17 @@ def test_wrap(
 
     with pytest.raises(DataTypeValidationError, match="Invalid dtype"):
         wrapper_cls.from_dtype("not a dtype")  # type: ignore[arg-type]
-
     assert isinstance(wrapped, wrapper_cls)
     assert wrapped.to_dtype() == dt
 
 
-@pytest.mark.parametrize("wrapper_cls", get_args(DTYPE))
-def test_dict_serialization(wrapper_cls: Any, zarr_format: ZarrFormat) -> None:
-    if issubclass(wrapper_cls, Structured):
-        instance = wrapper_cls(fields=((("a", Bool()),)))
-    else:
-        instance = wrapper_cls()
-    as_dict = instance.to_json(zarr_format=zarr_format)
-    assert wrapper_cls.from_json(as_dict, zarr_format=zarr_format) == instance
+@pytest.mark.parametrize("zdtype", zdtype_examples)
+def test_to_json_roundtrip(zdtype: ZDType[Any, Any], zarr_format: ZarrFormat) -> None:
+    """
+    Test that a zdtype instance can round-trip through its JSON form
+    """
+    as_dict = zdtype.to_json(zarr_format=zarr_format)
+    assert zdtype.from_json(as_dict, zarr_format=zarr_format) == zdtype
 
 
 @pytest.mark.parametrize(
@@ -138,7 +147,7 @@ def test_dict_serialization(wrapper_cls: Any, zarr_format: ZarrFormat) -> None:
         (FixedLengthBytes(length=3), np.void(b"\x00\x00\x00")),
         (FixedLengthUnicode(length=3), np.str_("")),
         (
-            Structured(fields=(("a", Float64()), ("b", Int8()))),  # type: ignore[arg-type]
+            Structured(fields=(("a", Float64()), ("b", Int8()))),
             np.array([0], dtype=[("a", np.float64), ("b", np.int8)])[0],
         ),
         (VariableLengthString(), ""),
@@ -188,6 +197,42 @@ def test_to_json_value_v2(
     assert wrapper.to_json_value(input_value, zarr_format=2) == expected_json
 
 
+# NOTE! This test is currently a direct copy of the v2 version. When or if we change JSON serialization
+# in a v3-specific manner, this test must be changed.
+# TODO: Apply zarr-v3-specific changes to this test as needed
+@pytest.mark.parametrize(
+    ("wrapper", "input_value", "expected_json"),
+    [
+        (Bool(), np.bool_(True), True),
+        (Int8(), np.int8(42), 42),
+        (UInt8(), np.uint8(42), 42),
+        (Int16(), np.int16(42), 42),
+        (UInt16(), np.uint16(42), 42),
+        (Int32(), np.int32(42), 42),
+        (UInt32(), np.uint32(42), 42),
+        (Int64(), np.int64(42), 42),
+        (UInt64(), np.uint64(42), 42),
+        (Float16(), np.float16(42.0), 42.0),
+        (Float32(), np.float32(42.0), 42.0),
+        (Float64(), np.float64(42.0), 42.0),
+        (Complex64(), np.complex64(42.0 + 1.0j), (42.0, 1.0)),
+        (Complex128(), np.complex128(42.0 + 1.0j), (42.0, 1.0)),
+        (FixedLengthAscii(length=4), np.bytes_(b"test"), "dGVzdA=="),
+        (FixedLengthBytes(length=4), np.void(b"test"), "dGVzdA=="),
+        (FixedLengthUnicode(length=4), np.str_("test"), "test"),
+        (VariableLengthString(), "test", "test"),
+        (DateTime64(unit="s"), np.datetime64("2021-01-01T00:00:00", "s"), 1609459200),
+    ],
+)
+def test_to_json_value_v3(
+    wrapper: ZDType[_BaseDType, _BaseScalar], input_value: Any, expected_json: Any
+) -> None:
+    """
+    Test the to_json_value method for each dtype wrapper for zarr v3
+    """
+    assert wrapper.to_json_value(input_value, zarr_format=3) == expected_json
+
+
 @pytest.mark.parametrize(
     ("wrapper", "json_value", "expected_value"),
     [
@@ -227,7 +272,7 @@ class TestRegistry:
         """
         Test that registering a dtype in a data type registry works.
         """
-        data_type_registry_fixture.register(Bool._zarr_v3_name, Bool)  # type: ignore[arg-type]
+        data_type_registry_fixture.register(Bool._zarr_v3_name, Bool)
         assert data_type_registry_fixture.get(Bool._zarr_v3_name) == Bool
         assert isinstance(data_type_registry_fixture.match_dtype(np.dtype("bool")), Bool)
 
@@ -236,13 +281,13 @@ class TestRegistry:
         """
         Test that registering a new dtype with the same name works (overriding the previous one).
         """
-        data_type_registry_fixture.register(Bool._zarr_v3_name, Bool)  # type: ignore[arg-type]
+        data_type_registry_fixture.register(Bool._zarr_v3_name, Bool)
 
         class NewBool(Bool):
             def default_value(self) -> np.bool_:
                 return np.True_
 
-        data_type_registry_fixture.register(NewBool._zarr_v3_name, NewBool)  # type: ignore[arg-type]
+        data_type_registry_fixture.register(NewBool._zarr_v3_name, NewBool)
         assert isinstance(data_type_registry_fixture.match_dtype(np.dtype("bool")), NewBool)
 
     @staticmethod
@@ -275,30 +320,26 @@ class TestRegistry:
             data_type_registry_fixture.get(outside_dtype)
 
     @staticmethod
-    @pytest.mark.parametrize("wrapper_cls", get_args(DTYPE))
+    @pytest.mark.parametrize("zdtype", zdtype_examples)
     def test_registered_dtypes(
-        wrapper_cls: type[ZDType[_BaseDType, _BaseScalar]], zarr_format: ZarrFormat
+        zdtype: ZDType[_BaseDType, _BaseScalar], zarr_format: ZarrFormat
     ) -> None:
         """
         Test that the registered dtypes can be retrieved from the registry.
         """
-        if issubclass(wrapper_cls, Structured):
-            instance = wrapper_cls(fields=((("a", Bool()),)))  # type: ignore[misc]
-        else:
-            instance = wrapper_cls()
 
-        assert data_type_registry.match_dtype(instance.to_dtype()) == instance
+        assert data_type_registry.match_dtype(zdtype.to_dtype()) == zdtype
         assert (
             data_type_registry.match_json(
-                instance.to_json(zarr_format=zarr_format), zarr_format=zarr_format
+                zdtype.to_json(zarr_format=zarr_format), zarr_format=zarr_format
             )
-            == instance
+            == zdtype
         )
 
     @staticmethod
-    @pytest.mark.parametrize("wrapper_cls", get_args(DTYPE))
+    @pytest.mark.parametrize("zdtype", zdtype_examples)
     def test_match_dtype_unique(
-        wrapper_cls: type[ZDType[_BaseDType, _BaseScalar]],
+        zdtype: ZDType[Any, Any],
         data_type_registry_fixture: DataTypeRegistry,
         zarr_format: ZarrFormat,
     ) -> None:
@@ -308,20 +349,16 @@ class TestRegistry:
         fails to match anything in the registry
         """
         for _cls in get_args(DTYPE):
-            if _cls is not wrapper_cls:
+            if _cls is not type(zdtype):
                 data_type_registry_fixture.register(_cls._zarr_v3_name, _cls)
 
-        if issubclass(wrapper_cls, Structured):
-            instance = wrapper_cls(fields=((("a", Bool()),)))  # type: ignore[misc]
-        else:
-            instance = wrapper_cls()
-        dtype_instance = instance.to_dtype()
+        dtype_instance = zdtype.to_dtype()
 
         msg = f"No data type wrapper found that matches dtype '{dtype_instance}'"
         with pytest.raises(ValueError, match=re.escape(msg)):
             data_type_registry_fixture.match_dtype(dtype_instance)
 
-        instance_dict = instance.to_json(zarr_format=zarr_format)
+        instance_dict = zdtype.to_json(zarr_format=zarr_format)
         msg = f"No data type wrapper found that matches {instance_dict}"
         with pytest.raises(ValueError, match=re.escape(msg)):
             data_type_registry_fixture.match_json(instance_dict, zarr_format=zarr_format)
