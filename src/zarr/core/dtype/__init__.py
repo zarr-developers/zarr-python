@@ -99,7 +99,12 @@ def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[_BaseDType, 
             # this is a valid _VoidDTypeLike check
             na_dtype = np.dtype([tuple(d) for d in dtype])
         else:
-            na_dtype = np.dtype(dtype)
+            if dtype == "|T16":
+                # `|T16` is the numpy dtype str form for variable length strings. unfortunately
+                # numpy cannot create these directly from np.dtype("|T16")
+                na_dtype = np.dtypes.StringDType()
+            else:
+                na_dtype = np.dtype(dtype)
     else:
         na_dtype = dtype
     return data_type_registry.match_dtype(na_dtype)

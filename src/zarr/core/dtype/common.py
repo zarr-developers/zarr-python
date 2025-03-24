@@ -356,7 +356,10 @@ def bytes_from_json(data: str, zarr_format: ZarrFormat) -> bytes:
     """
     if zarr_format == 2:
         return base64.b64decode(data.encode("ascii"))
-    raise NotImplementedError(f"Invalid zarr format: {zarr_format}. Expected 2.")
+    # TODO: differentiate these as needed. This is a spec question.
+    if zarr_format == 3:
+        return base64.b64decode(data.encode("ascii"))
+    raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
 
 
 def float_from_json_v2(data: JSONFloat) -> float:

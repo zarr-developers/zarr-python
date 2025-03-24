@@ -42,7 +42,13 @@ from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_pr
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype._numpy import Float64, Int16, endianness_from_numpy_str
+from zarr.core.dtype._numpy import (
+    DateTime64,
+    Float64,
+    Int16,
+    Structured,
+    endianness_from_numpy_str,
+)
 from zarr.core.dtype.common import Endianness
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import AsyncGroup
@@ -981,16 +987,58 @@ class TestCreateArray:
 
     @staticmethod
     @pytest.mark.parametrize("dtype", zdtype_examples)
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     def test_default_fill_value(dtype: ZDType[Any, Any], store: Store) -> None:
         """
         Test that the fill value of an array is set to the default value for the dtype object
         """
         a = zarr.create_array(store, shape=(5,), chunks=(5,), dtype=dtype)
-        if isinstance(dtype, DateTime64 | TimeDelta64) and np.isnat(a.fill_value):
-            assert np.isnat(dtype.default_scalar())
+        if isinstance(dtype, DateTime64) and np.isnat(a.fill_value):
+            assert np.isnat(dtype.default_value())
         else:
-            assert a.fill_value == dtype.default_scalar()
+            assert a.fill_value == dtype.default_value()
+
+    @staticmethod
+    @pytest.mark.parametrize("dtype", zdtype_examples)
+    def test_dtype_forms(dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat) -> None:
+        """
+        Test that the same array is produced from a ZDType instance, a numpy dtype, or a numpy string
+        """
+        a = zarr.create_array(
+            store, name="a", shape=(5,), chunks=(5,), dtype=dtype, zarr_format=zarr_format
+        )
+        b = zarr.create_array(
+            store,
+            name="b",
+            shape=(5,),
+            chunks=(5,),
+            dtype=dtype.to_dtype(),
+            zarr_format=zarr_format,
+        )
+        assert a.dtype == b.dtype
+
+        # Structured dtypes do not have a numpy string representation that uniquely identifies them
+        if not isinstance(dtype, Structured):
+            c = zarr.create_array(
+                store,
+                name="c",
+                shape=(5,),
+                chunks=(5,),
+                dtype=dtype.to_dtype().str,
+                zarr_format=zarr_format,
+            )
+            assert a.dtype == c.dtype
+
+    @staticmethod
+    @pytest.mark.parametrize("dtype", zdtype_examples)
+    def test_dtype_roundtrip(
+        dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat
+    ) -> None:
+        """
+        Test that creating an array, then opening it, gets the same array.
+        """
+        a = zarr.create_array(store, shape=(5,), chunks=(5,), dtype=dtype, zarr_format=zarr_format)
+        b = zarr.open_array(store)
+        assert a.dtype == b.dtype
 
     @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str", "U3", "S4", "V1"])
@@ -1381,18 +1429,63 @@ class TestCreateArray:
                 )
 
     @staticmethod
-    @pytest.mark.parametrize("endianness", ENDIANNESS_STR)
+    @pytest.mark.parametrize("endianness", get_args(Endianness))
     def test_default_endianness(
-        store: Store, zarr_format: ZarrFormat, endianness: EndiannessStr
+        store: Store, zarr_format: ZarrFormat, endianness: Endianness
     ) -> None:
         """
         Test that that endianness is correctly set when creating an array when not specifying a serializer
         """
         dtype = Int16(endianness=endianness)
         arr = zarr.create_array(store=store, shape=(1,), dtype=dtype, zarr_format=zarr_format)
-        byte_order: str = arr[:].dtype.byteorder  # type: ignore[union-attr]
-        assert byte_order in NUMPY_ENDIANNESS_STR
-        assert endianness_from_numpy_str(byte_order) == endianness  # type: ignore[arg-type]
+        assert endianness_from_numpy_str(arr[:].dtype.byteorder) == endianness
+        if zarr_format == 3:
+            assert isinstance(arr.metadata, ArrayV3Metadata)  # mypy
+            assert str(arr.metadata.codecs[0].endian.value) == endianness  # type: ignore[union-attr]
+
+    @staticmethod
+    @pytest.mark.parametrize("endianness", get_args(Endianness))
+    def test_explicit_endianness(store: Store, endianness: Endianness) -> None:
+        """
+        Test that that a mismatch between the bytescodec endianness and the dtype endianness is an error
+        """
+        if endianness == "little":
+            dtype = Int16(endianness="big")
+        else:
+            dtype = Int16(endianness="little")
+
+        serializer = BytesCodec(endian=endianness)
+
+        msg = (
+            f"The endianness of the requested serializer ({serializer}) does not match the endianness of the dtype ({dtype.endianness}). "
+            "The endianness of the serializer and the dtype must match."
+        )
+
+        with pytest.raises(ValueError, match=re.escape(msg)):
+            _ = zarr.create_array(
+                store=store,
+                shape=(1,),
+                dtype=dtype,
+                zarr_format=3,
+                serializer=serializer,
+            )
+
+        # additional check for the case where the serializer has endian=None
+        none_serializer = dataclasses.replace(serializer, endian=None)
+        msg = (
+            f"The endianness of the requested serializer ({none_serializer}) does not match the endianness of the dtype ({dtype.endianness}). "
+            "The endianness of the serializer and the dtype must match."
+        )
+
+        with pytest.raises(ValueError, match=re.escape(msg)):
+            _ = zarr.create_array(
+                store=store,
+                shape=(1,),
+                dtype=dtype,
+                zarr_format=3,
+                serializer=none_serializer,
+            )
+
 
 
 @pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
@@ -1662,61 +1755,3 @@ async def test_sharding_coordinate_selection() -> None:
     )
     arr[:] = np.arange(2 * 3 * 4).reshape((2, 3, 4))
     assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()
-
-
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("endianness", get_args(Endianness))
-def test_default_endianness(store: Store, zarr_format: ZarrFormat, endianness: Endianness) -> None:
-    """
-    Test that that endianness is correctly set when creating an array when not specifying a serializer
-    """
-    dtype = Int16(endianness=endianness)
-    arr = zarr.create_array(store=store, shape=(1,), dtype=dtype, zarr_format=zarr_format)
-    assert endianness_from_numpy_str(arr[:].dtype.byteorder) == endianness
-    if zarr_format == 3:
-        assert isinstance(arr.metadata, ArrayV3Metadata)  # mypy
-        assert str(arr.metadata.codecs[0].endian.value) == endianness  # type: ignore[union-attr]
-
-
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("endianness", get_args(Endianness))
-def test_explicit_endianness(store: Store, endianness: Endianness) -> None:
-    """
-    Test that that a mismatch between the bytescodec endianness and the dtype endianness is an error
-    """
-    if endianness == "little":
-        dtype = Int16(endianness="big")
-    else:
-        dtype = Int16(endianness="little")
-
-    serializer = BytesCodec(endian=endianness)
-
-    msg = (
-        f"The endianness of the requested serializer ({serializer}) does not match the endianness of the dtype ({dtype.endianness}). "
-        "The endianness of the serializer and the dtype must match."
-    )
-
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        _ = zarr.create_array(
-            store=store,
-            shape=(1,),
-            dtype=dtype,
-            zarr_format=3,
-            serializer=serializer,
-        )
-
-    # additional check for the case where the serializer has endian=None
-    none_serializer = dataclasses.replace(serializer, endian=None)
-    msg = (
-        f"The endianness of the requested serializer ({none_serializer}) does not match the endianness of the dtype ({dtype.endianness}). "
-        "The endianness of the serializer and the dtype must match."
-    )
-
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        _ = zarr.create_array(
-            store=store,
-            shape=(1,),
-            dtype=dtype,
-            zarr_format=3,
-            serializer=none_serializer,
-        )

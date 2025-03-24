@@ -4695,11 +4695,11 @@ def _get_default_chunk_encoding_v3(
     # api for this.
     # All of these things are acceptable right now because there is only 1 serializer that affects
     # endianness, but this design will not last if this situation changes.
-    if "endian" in serializer["configuration"]:
+    if serializer.get("configuration") is not None:
         if isinstance(dtype, HasEndianness):
             serializer["configuration"]["endian"] = dtype.endianness
         else:
-            serializer["configuration"].pop("endian")
+            serializer["configuration"].pop("endian", None)
 
     return (
         tuple(_parse_array_array_codec(f) for f in filters),

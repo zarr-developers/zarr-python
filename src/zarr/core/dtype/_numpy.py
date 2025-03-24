@@ -907,7 +907,7 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
         raise DataTypeValidationError(f"Invalid type: {data}. Expected a string.")
 
     def check_value(self, data: object) -> bool:
-        return isinstance(data, np.bytes_ | str | bytes)
+        return isinstance(data, np.bytes_ | str | bytes | np.void)
 
     def _cast_value_unsafe(self, value: object) -> np.void:
         return self.to_dtype().type(value)  # type: ignore[call-overload, no-any-return]
