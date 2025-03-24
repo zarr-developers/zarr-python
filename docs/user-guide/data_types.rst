@@ -40,7 +40,7 @@ Thus the JSON identifier for a Numpy-compatible data type is just the Numpy ``st
   The ``<`` character in the data type metadata encodes the `endianness <https://numpy.org/doc/2.2/reference/generated/numpy.dtype.byteorder.html>`_, or "byte order", of the data type. Following Numpy's example,
   in Zarr version 2 each data type has an endianness where applicable. However, Zarr version 3 data types do not store endianness information.
 
-In addition to defining a representation of the data type itself (which in the example above was just a simple string ``"<i8"``, Zarr also
+In addition to defining a representation of the data type itself (which in the example above was just a simple string ``"<i8"``), Zarr also
 defines a metadata representation of scalars associated with that data type. Integers are stored as ``JSON`` numbers,
 as are floats, with the caveat that `NaN`, positive infinity, and negative infinity are stored as special strings.
 
