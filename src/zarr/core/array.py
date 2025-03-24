@@ -72,6 +72,7 @@ from zarr.core.dtype import (
     ZDTypeLike,
     parse_data_type,
 )
+from zarr.core.dtype._numpy import HasEndianness
 from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -4682,6 +4683,24 @@ def _get_default_chunk_encoding_v3(
     else:
         serializer = zarr_config.get("array.v3_default_serializer.default")
 
+    # Modify the default serializer so that it matches the endianness of the dtype, otherwise unset the
+    # endian key
+
+    # This is effective problematic for many reasons:
+    # - we are assuming that endianness is set by the serializer, when it could also be changed
+    # by any one of the filters.
+    # - we are assuming that the serializer has a specific configuration. A different serializer that
+    # alters endianness might not use the same configuration structure.
+    # - we are mutating a configuration dictionary. It would be much better to work with the codec
+    # api for this.
+    # All of these things are acceptable right now because there is only 1 serializer that affects
+    # endianness, but this design will not last if this situation changes.
+    if "endian" in serializer["configuration"]:
+        if isinstance(dtype, HasEndianness):
+            serializer["configuration"]["endian"] = dtype.endianness
+        else:
+            serializer["configuration"].pop("endian")
+
     return (
         tuple(_parse_array_array_codec(f) for f in filters),
         _parse_array_bytes_codec(serializer),
@@ -4816,6 +4835,20 @@ def _parse_chunk_encoding_v3(
         # array-array codecs. For example, if a sequence of array-array codecs produces an
         # array with a single-byte data type, then the serializer should not specify endiannesss.
         out_array_bytes = _parse_array_bytes_codec(serializer)
+        # check that the endianness of the requested serializer matches the dtype of the data, if applicable
+        if (
+            isinstance(out_array_bytes, BytesCodec)
+            and isinstance(dtype, HasEndianness)
+            and (
+                out_array_bytes.endian is None
+                or str(out_array_bytes.endian.value) != dtype.endianness
+            )
+        ):
+            msg = (
+                f"The endianness of the requested serializer ({out_array_bytes}) does not match the endianness of the dtype ({dtype.endianness}). "
+                "The endianness of the serializer and the dtype must match."
+            )
+            raise ValueError(msg)
 
     if compressors is None:
         out_bytes_bytes: tuple[BytesBytesCodec, ...] = ()
