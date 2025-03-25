@@ -1,0 +1,2 @@
+Adds zarr-specific data type classes. This replaces the direct use of numpy data types for zarr
+v2 and a fixed set of string enums for zarr v3. For more on this new feature, see the `documentation <https://zarr.readthedocs.io/en/stable/user-guide/data_types.html>`_
