@@ -91,7 +91,7 @@ To use sharding, you need to specify the ``shards`` parameter when creating the 
    >>> z6.info
    Type               : Array
    Zarr format        : 3
-   Data type          : uint8
+   Data type          : UInt8()
    Shape              : (10000, 10000, 1000)
    Shard shape        : (1000, 1000, 1000)
    Chunk shape        : (100, 100, 100)
@@ -121,7 +121,7 @@ ratios, depending on the correlation structure within the data. E.g.::
    >>> c.info_complete()
    Type               : Array
    Zarr format        : 3
-   Data type          : int32
+   Data type          : Int32(endianness='little')
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -140,7 +140,7 @@ ratios, depending on the correlation structure within the data. E.g.::
    >>> f.info_complete()
    Type               : Array
    Zarr format        : 3
-   Data type          : int32
+   Data type          : Int32(endianness='little')
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : F
