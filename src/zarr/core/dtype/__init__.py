@@ -90,7 +90,10 @@ def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[_BaseDType, 
     """
     data_type_registry.lazy_load()
     if not isinstance(dtype, np.dtype):
-        if dtype in (str, "str"):
+        # TODO: This check has a lot of assumptions in it! Chiefly, we assume that the
+        # numpy object dtype contains variable length strings, which is not in general true
+        # When / if zarr python supports ragged arrays, for example, this check will fail!
+        if dtype in (str, "str", "|T16", "O", "|O", np.dtypes.ObjectDType()):
             if _NUMPY_SUPPORTS_VLEN_STRING:
                 na_dtype = np.dtype("T")
             else:
@@ -99,12 +102,7 @@ def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[_BaseDType, 
             # this is a valid _VoidDTypeLike check
             na_dtype = np.dtype([tuple(d) for d in dtype])
         else:
-            if dtype == "|T16":
-                # `|T16` is the numpy dtype str form for variable length strings. unfortunately
-                # numpy cannot create these directly from np.dtype("|T16")
-                na_dtype = np.dtypes.StringDType()
-            else:
-                na_dtype = np.dtype(dtype)
+            na_dtype = np.dtype(dtype)
     else:
         na_dtype = dtype
     return data_type_registry.match_dtype(na_dtype)
