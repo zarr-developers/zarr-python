@@ -51,7 +51,7 @@ extensions = [
 issues_github_path = "zarr-developers/zarr-python"
 
 autoapi_dirs = ['../src/zarr']
-autoapi_add_toctree_entry = False
+autoapi_add_toctree_entry = True
 autoapi_generate_api_docs = True
 autoapi_member_order = "groupwise"
 autoapi_root = "api"
@@ -68,10 +68,7 @@ def skip_submodules(
       ) -> bool:
     # Skip documenting zarr.codecs submodules
     # codecs are documented in the main zarr.codecs namespace
-    # TODO: just document everything instead using this weak case-by-case logic
-    if what == "module" and name.startswith("zarr.core.dtype."):
-        skip = False
-    elif what == "module" and name.startswith("zarr.codecs.") or name.startswith("zarr.core"):
+    if what == "module" and name.startswith("zarr.codecs.") or name.startswith("zarr.core"):
         skip = True
     return skip
 
