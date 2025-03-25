@@ -4846,9 +4846,9 @@ def _parse_chunk_encoding_v3(
         ):
             msg = (
                 f"The endianness of the requested serializer ({out_array_bytes}) does not match the endianness of the dtype ({dtype.endianness}). "
-                "The endianness of the serializer and the dtype must match."
+                "In this situation the serializer's endianness takes priority. To avoid this warning, ensure the endianness of the serializer matches the endianness of the dtype."
             )
-            raise ValueError(msg)
+            warnings.warn(msg, UserWarning, stacklevel=2)
 
     if compressors is None:
         out_bytes_bytes: tuple[BytesBytesCodec, ...] = ()
