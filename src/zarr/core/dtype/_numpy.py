@@ -1051,7 +1051,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             return str(value)
 
 else:
-
+    # Numpy pre-2 does not have a variable length string dtype, so we use the Object dtype instead.
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthString(ZDType[np.dtypes.ObjectDType, str]):  # type: ignore[no-redef]
         dtype_cls = np.dtypes.ObjectDType
