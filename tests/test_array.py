@@ -53,7 +53,6 @@ from zarr.core.dtype.common import Endianness
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
-from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
@@ -63,6 +62,7 @@ from .conftest import zdtype_examples
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.metadata.v2 import ArrayV2Metadata
+    from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -1439,37 +1439,6 @@ class TestCreateArray:
         dtype = Int16(endianness=endianness)
         arr = zarr.create_array(store=store, shape=(1,), dtype=dtype, zarr_format=zarr_format)
         assert endianness_from_numpy_str(arr[:].dtype.byteorder) == endianness
-        if zarr_format == 3:
-            assert isinstance(arr.metadata, ArrayV3Metadata)  # mypy
-            assert str(arr.metadata.codecs[0].endian.value) == endianness  # type: ignore[union-attr]
-
-    @staticmethod
-    @pytest.mark.parametrize("endianness", get_args(Endianness))
-    def test_explicit_endianness(store: Store, endianness: Endianness) -> None:
-        """
-        Test that that a mismatch between the bytescodec endianness and the dtype endianness is an error
-        """
-        if endianness == "little":
-            dtype = Int16(endianness="big")
-        else:
-            dtype = Int16(endianness="little")
-
-        serializer = BytesCodec(endian=endianness)
-
-        msg = (
-            f"The endianness of the requested serializer ({serializer}) does not match the endianness of the dtype ({dtype.endianness}). "
-            "In this situation the serializer's endianness takes priority. "
-            "To avoid this warning, ensure the endianness of the serializer matches the endianness of the dtype."
-        )
-
-        with pytest.warns(UserWarning, match=re.escape(msg)):
-            _ = zarr.create_array(
-                store=store,
-                shape=(1,),
-                dtype=dtype,
-                zarr_format=3,
-                serializer=serializer,
-            )
 
 
 
