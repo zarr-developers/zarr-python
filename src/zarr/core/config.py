@@ -36,6 +36,8 @@ from donfig import Config as DConfig
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
 
+    from zarr.core.dtype.wrapper import ZDType
+
 
 class BadConfigError(ValueError):
     _msg = "bad Config: %r"
@@ -104,24 +106,26 @@ config = Config(
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
-                "v2_default_compressor": {"default": {"id": "zstd", "level": 0, "checksum": False}},
+                "v2_default_compressor": {
+                    "default": {"id": "zstd", "level": 0, "checksum": False},
+                    "variable-length-string": {"id": "zstd", "level": 0, "checksum": False},
+                },
                 "v2_default_filters": {
                     "default": None,
-                    "numpy__variable_length_utf8": [{"id": "vlen-utf8"}],
-                    "numpy__fixed_length_ucs4": [{"id": "vlen-utf8"}],
-                    "numpy__fixed_length_ascii": [{"id": "vlen-bytes"}],
+                    "variable-length-string": [{"id": "vlen-utf8"}],
                 },
-                "v3_default_filters": {"default": []},
+                "v3_default_filters": {"default": [], "variable-length-string": []},
                 "v3_default_serializer": {
                     "default": {"name": "bytes", "configuration": {"endian": "little"}},
-                    "numpy__variable_length_utf8": {"name": "vlen-utf8"},
-                    "numpy__fixed_length_ucs4": {"name": "vlen-utf8"},
-                    "r*": {"name": "vlen-bytes"},
+                    "variable-length-string": {"name": "vlen-utf8"},
                 },
                 "v3_default_compressors": {
                     "default": [
                         {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ]
+                    ],
+                    "variable-length-string": [
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}}
+                    ],
                 },
             },
             "async": {"concurrency": 10, "timeout": None},
@@ -160,13 +164,13 @@ def parse_indexing_order(data: Any) -> Literal["C", "F"]:
 
 def categorize_data_type(dtype: ZDType[Any, Any]) -> DTypeCategory:
     """
-    Classify a ZDType. The return value is a string which belongs to the type ``DTypeCategory``.
+    Classify a ZDType. The return value is a string which belongs to the type ``DTypeKind``.
 
     This is used by the config system to determine how to encode arrays with the associated data type
     when the user has not specified a particular serialization scheme.
     """
-    from zarr.core.dtype import VariableLengthUTF8
+    from zarr.core.dtype._numpy import VariableLengthString
 
-    if isinstance(dtype, VariableLengthUTF8):
+    if isinstance(dtype, VariableLengthString):
         return "variable-length-string"
     return "default"
