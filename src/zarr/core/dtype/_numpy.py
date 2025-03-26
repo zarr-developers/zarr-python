@@ -1232,7 +1232,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
     def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
         from zarr.core.dtype import get_data_type_from_native_dtype
 
-        fields: list[tuple[str, ZDType[Any, Any]]] = []
+        fields: list[tuple[str, ZDType[_BaseDType, _BaseScalar]]] = []
 
         if dtype.fields is None:
             raise ValueError("numpy dtype has no fields")
