@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, TypeAlias, get_args
+from typing import TYPE_CHECKING, TypeAlias, get_args
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -77,7 +77,7 @@ DTYPE = (
     | DateTime64
 )
 
-ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[Any, Any] | dict[str, JSON]
+ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[_BaseDType, _BaseScalar] | dict[str, JSON]
 
 for dtype in get_args(DTYPE):
     data_type_registry.register(dtype._zarr_v3_name, dtype)
@@ -114,7 +114,7 @@ def get_data_type_from_json(
     return data_type_registry.match_json(dtype, zarr_format=zarr_format)
 
 
-def parse_data_type(dtype: ZDTypeLike, zarr_format: ZarrFormat) -> ZDType[Any, Any]:
+def parse_data_type(dtype: ZDTypeLike, zarr_format: ZarrFormat) -> ZDType[_BaseDType, _BaseScalar]:
     """
     Interpret the input as a ZDType instance.
     """
