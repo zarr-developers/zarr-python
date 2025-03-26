@@ -51,10 +51,10 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value.as_numpy_array().tobytes())
+            f.write(value.as_numpy_array())
         return None
     else:
-        view = memoryview(value.as_numpy_array().tobytes())
+        view = memoryview(value.as_numpy_array())
         if exclusive:
             mode = "xb"
         else:
