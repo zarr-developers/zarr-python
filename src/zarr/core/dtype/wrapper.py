@@ -1,3 +1,25 @@
+"""
+Wrapper for native array data types.
+
+The `ZDType` class is an abstract base class for wrapping native array data types, e.g. numpy dtypes.
+It provides a common interface for working with data types in a way that is independent of the
+underlying data type system.
+
+The wrapper class encapsulates a native data type. Instances of the class can be created from a
+native data type instance, and a native data type instance can be created from an instance of the
+wrapper class.
+
+The wrapper class is responsible for:
+- Reversibly serializing a native data type to Zarr V2 or Zarr V3 metadata.
+  This ensures that the data type can be properly stored and retrieved from array metadata.
+- Reversibly serializing scalar values to Zarr V2 or Zarr V3 metadata. This is important for
+  storing a fill value for an array in a manner that is valid for the data type.
+
+To add support for a new data type in Zarr, you should subclass the wrapper class and adapt its methods
+to support your native data type. The wrapper class must be added to a data type registry
+(defined elsewhere) before ``create_array`` can properly handle the new data type.
+"""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -17,9 +39,10 @@ _BaseScalar = np.generic | str
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
 _BaseDType = np.dtype[np.generic]
+# These two type parameters are covariant because we want
+# x : ZDType[BaseDType, BaseScalar] = ZDType[SubDType, SubScalar]
+# to type check
 TScalar_co = TypeVar("TScalar_co", bound=_BaseScalar, covariant=True)
-# TODO: figure out an interface or protocol that non-numpy dtypes can use
-# These two type parameters are covariant because we want isinstance(ZDType[Subclass](), ZDType[BaseDType]) to be True
 TDType_co = TypeVar("TDType_co", bound=_BaseDType, covariant=True)
 
 
