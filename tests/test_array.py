@@ -761,7 +761,6 @@ def test_append_config_passed(store: LocalStore, open: str, zarr_format: ZarrFor
         zarr_format=zarr_format,
     )
     z[:] = 0
-    print(store)
 
     def assert_correct_files_written(expected: list[str]) -> None:
         """Helper to compare written files"""
