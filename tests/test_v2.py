@@ -92,7 +92,7 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_js
             "compressor": None,
             "dtype": expected_dtype,
             "fill_value": fill_value_json,
-            "filters": [{"id": "vlen-bytes"}] if dtype == "|S" else None,
+            "filters": None,
             "order": "C",
             "shape": [3],
             "zarr_format": 2,
