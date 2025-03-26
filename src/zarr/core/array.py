@@ -63,6 +63,7 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
+from zarr.core.config import categorize_data_type
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     ZDType,
@@ -4224,27 +4225,12 @@ def _get_default_chunk_encoding_v3(
     """
     Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
     """
-    # the config will not allow keys to have "."  characters in them
-    # so we will access the config by transforming "." to "__"
 
-    dtype_name_conf = dtype._zarr_v3_name.replace(".", "__")
+    dtype_category = categorize_data_type(dtype)
 
-    # TODO: find a registry-style solution for this that isn't bloated
-    # We need to associate specific dtypes with specific encoding schemes
-
-    if dtype_name_conf in zarr_config.get("array.v3_default_filters"):
-        filters = zarr_config.get(f"array.v3_default_filters.{dtype_name_conf}")
-    else:
-        filters = zarr_config.get("array.v3_default_filters.default")
-
-    if dtype_name_conf in zarr_config.get("array.v3_default_compressors"):
-        compressors = zarr_config.get(f"array.v3_default_compressors.{dtype_name_conf}")
-    else:
-        compressors = zarr_config.get("array.v3_default_compressors.default")
-    if dtype_name_conf in zarr_config.get("array.v3_default_serializer"):
-        serializer = zarr_config.get(f"array.v3_default_serializer.{dtype_name_conf}")
-    else:
-        serializer = zarr_config.get("array.v3_default_serializer.default")
+    filters = zarr_config.get("array.v3_default_filters").get(dtype_category)
+    compressors = zarr_config.get("array.v3_default_compressors").get(dtype_category)
+    serializer = zarr_config.get("array.v3_default_serializer").get(dtype_category)
 
     return (
         tuple(_parse_array_array_codec(f) for f in filters),
@@ -4259,20 +4245,9 @@ def _get_default_chunk_encoding_v2(
     """
     Get the default chunk encoding for Zarr format 2 arrays, given a dtype
     """
-    # the config will not allow keys to have "."  characters in them
-    # so we will access the config by transforming "." to "__"
-    dtype_name_conf = dtype._zarr_v3_name.replace(".", "__")
-
-    if dtype_name_conf in zarr_config.get("array.v2_default_filters"):
-        filters = zarr_config.get(f"array.v2_default_filters.{dtype_name_conf}")
-    else:
-        filters = zarr_config.get("array.v2_default_filters.default")
-
-    if dtype_name_conf in zarr_config.get("array.v2_default_compressor"):
-        compressor = zarr_config.get(f"array.v2_default_compressor.{dtype_name_conf}")
-    else:
-        compressor = zarr_config.get("array.v2_default_compressor.default")
-
+    dtype_category = categorize_data_type(dtype)
+    filters = zarr_config.get("array.v2_default_filters").get(dtype_category)
+    compressor = zarr_config.get("array.v2_default_compressor").get(dtype_category)
     if filters is not None:
         filters = tuple(numcodecs.get_codec(f) for f in filters)
 

@@ -182,7 +182,7 @@ which can be used to print useful diagnostics, e.g.::
    >>> z.info
    Type               : Array
    Zarr format        : 3
-   Data type          : int32
+   Data type          : Int32(endianness='little')
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -199,7 +199,7 @@ prints additional diagnostics, e.g.::
    >>> z.info_complete()
    Type               : Array
    Zarr format        : 3
-   Data type          : int32
+   Data type          : Int32(endianness='little')
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -246,7 +246,7 @@ built-in delta filter::
 The default compressor can be changed by setting the value of the using Zarr's
 :ref:`user-guide-config`, e.g.::
 
-   >>> with zarr.config.set({'array.v2_default_compressor.numeric': {'id': 'blosc'}}):
+   >>> with zarr.config.set({'array.v2_default_compressor.default': {'id': 'blosc'}}):
    ...     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
    >>> z.filters
    ()
@@ -286,7 +286,7 @@ Here is an example using a delta filter with the Blosc compressor::
    >>> z.info
    Type               : Array
    Zarr format        : 3
-   Data type          : int32
+   Data type          : Int32(endianness='little')
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -600,7 +600,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   >>> a.info_complete()
   Type               : Array
   Zarr format        : 3
-  Data type          : uint8
+  Data type          : UInt8()
   Shape              : (10000, 10000)
   Shard shape        : (1000, 1000)
   Chunk shape        : (100, 100)
