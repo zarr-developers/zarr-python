@@ -45,11 +45,16 @@ def print_debug_info() -> None:
     from importlib.metadata import version
 
     def print_packages(packages: list[str]) -> None:
+        not_installed = []
         for package in packages:
             try:
                 print(f"{package}: {version(package)}")
             except ModuleNotFoundError:
-                continue
+                not_installed.append(package)
+        if not_installed:
+            print("\n**Not Installed:**")
+            for package in not_installed:
+                print(package)
 
     required = [
         "packaging",
@@ -71,12 +76,11 @@ def print_debug_info() -> None:
     ]
 
     print(f"platform: {platform.platform()}")
-    print(f"python: {platform.python_version()}\n")
-
+    print(f"python: {platform.python_version()}")
     print(f"zarr: {__version__}\n")
-    print("Required dependencies:")
+    print("**Required dependencies:**")
     print_packages(required)
-    print("Optional dependencies:")
+    print("\n**Optional dependencies:**")
     print_packages(optional)
 
 
