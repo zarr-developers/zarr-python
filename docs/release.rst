@@ -14,11 +14,12 @@ Release notes
     # re-indented so that it does not show up in the notes.
 
 .. note::
-   Zarr-Python 2.* is in support mode now, and no new features will be added.
+   Zarr-Python 2 is in support mode now, and no new features will be added.
 
+.. _release_2.18.5:
 
-Unreleased
-----------
+2.18.5
+------
 
 Fixes
 ~~~~~
