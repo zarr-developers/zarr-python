@@ -6,21 +6,36 @@ body:
     attributes:
       value: |
         Please provide the following information.
-  - type: textarea
-    id: version-info
+  - type: input
+    id: Zarr-version
     attributes:
-      label: Versions
-      description: Output of ``zarr.print_debug_info()``. This will automatically be rendered as code, no need for backticks.
-      render: shell
-      placeholder: |
-        platform: macOS-15.3-arm64-arm-64bit-Mach-O
-        python: 3.13.2
-
-        zarr: 3.0.5
-
-        numcodecs: 0.15.1
-        numpy: 2.2.3
-        fsspec: 2025.3.0
+      label: Zarr version
+      description: Value of ``zarr.__version__``
+      placeholder: v2.10.2, v2.11.3, v2.12.0, etc.
+    validations:
+      required: true
+  - type: input
+    id: Numcodecs-version
+    attributes:
+      label: Numcodecs version
+      description: Value of ``numcodecs.__version__``
+      placeholder: v0.8.1, v0.9.0, v0.10.0, etc.
+    validations:
+      required: true
+  - type: input
+    id: Python-version
+    attributes:
+      label: Python Version
+      description: Version of Python interpreter
+      placeholder: 3.10, 3.11, 3.12 etc.
+    validations:
+      required: true
+  - type: input
+    id: OS
+    attributes:
+      label: Operating System
+      description: Operating System
+      placeholder: (Linux/Windows/Mac)
     validations:
       required: true
   - type: input
