@@ -23,7 +23,12 @@ from zarr.core.common import (
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
 )
-from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
+from zarr.core.group import (
+    AsyncGroup,
+    ConsolidatedMetadata,
+    GroupMetadata,
+    create_hierarchy,
+)
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
@@ -49,6 +54,7 @@ __all__ = [
     "copy_store",
     "create",
     "create_array",
+    "create_hierarchy",
     "empty",
     "empty_like",
     "full",
