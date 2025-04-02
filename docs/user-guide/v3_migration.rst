@@ -124,6 +124,30 @@ The Store class
 The Store API has changed significant in Zarr-Python 3. The most notable changes to the
 Store API are:
 
+Store Import Paths
+^^^^^^^^^^^^^^^^^^
+Several store implementations have moved from the top-level module to ``zarr.storage``:
+
+.. code-block:: diff
+   :caption: Store import changes from v2 to v3
+
+   # Before (v2)
+   - from zarr import MemoryStore, DirectoryStore
+   + from zarr.storage import MemoryStore, LocalStore  # LocalStore replaces DirectoryStore
+
+Common replacements:
+
++-------------------------+------------------------------------+
+| v2 Import               | v3 Import                          |
++=========================+====================================+
+| ``zarr.MemoryStore``    | ``zarr.storage.MemoryStore``       |
++-------------------------+------------------------------------+
+| ``zarr.DirectoryStore`` | ``zarr.storage.LocalStore``        |
++-------------------------+------------------------------------+
+| ``zarr.TempStore``      | Use ``tempfile.TemporaryDirectory``|
+|                         | with ``LocalStore``                |
++-------------------------+------------------------------------+
+
 1. Replaced the ``MutableMapping`` base class in favor of a custom abstract base class
    (:class:`zarr.abc.store.Store`).
 2. Switched to an asynchronous interface for all store methods that result in IO. This
