@@ -451,8 +451,63 @@ def test_string_codecs() -> None:
     assert result1.codecs == expected.codecs
     result2 = ArrayV3Metadata.from_dict(default_metadata_dict(data_type="bool", codecs="bytes"))
     assert result2.codecs == expected.codecs
-    # TODO
-    # with pytest.raises(
-    #     ValueError, match="Expected bytes codec to specify argument endian for data_type=int16"
-    # ):
-    #     ArrayV3Metadata.from_dict(default_metadata_dict(data_type="int16", codecs=["bytes"]))
+
+
+def test_codec_requires_endian() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Expected bytes codec to specify argument endian for data types for which endianness is applicable.",
+    ):
+        ArrayV3Metadata.from_dict(
+            default_metadata_dict(data_type="int16", codecs=[{"name": "bytes"}])
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="Expected bytes codec to specify argument endian for data types for which endianness is applicable.",
+    ):
+        ArrayV3Metadata.from_dict(
+            default_metadata_dict(
+                data_type="int16", codecs=[{"name": "bytes", "configuration": {}}]
+            )
+        )
+
+    ArrayV3Metadata.from_dict(
+        default_metadata_dict(
+            data_type="int16", codecs=[{"name": "bytes", "configuration": {"endian": "little"}}]
+        )
+    )
+
+    ArrayV3Metadata.from_dict(
+        default_metadata_dict(
+            data_type="int16",
+            codecs=[
+                {
+                    "name": "sharding_indexed",
+                    "configuration": {
+                        "chunk_shape": (1,),
+                        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}]
+                    },
+                }
+            ],
+        )
+    )
+
+    #TODO
+    with pytest.raises(
+        ValueError,
+        match="Expected bytes codec to specify argument endian for data types for which endianness is applicable.",
+    ):
+        ArrayV3Metadata.from_dict(
+            default_metadata_dict(
+                data_type="int16",
+                codecs=[
+                    {
+                        "name": "sharding_indexed",
+                        "configuration": {
+                            "chunk_shape": (1,),
+                        },
+                    }
+                ],
+            )
+        )
