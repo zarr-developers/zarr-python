@@ -1279,14 +1279,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             out_buffer = prototype.nd_buffer.create(
                 shape=indexer.shape,
                 dtype=out_dtype,
-                order=self._config.order,
+                order=self.order,
                 fill_value=self.metadata.fill_value,
             )
         if product(indexer.shape) > 0:
             # need to use the order from the metadata for v2
             _config = self._config
             if self.metadata.zarr_format == 2:
-                _config = replace(_config, order=self.metadata.order)
+                _config = replace(_config, order=self.order)
 
             # reading chunks and decoding them
             await self.codec_pipeline.read(
