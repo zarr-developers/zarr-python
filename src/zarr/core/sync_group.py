@@ -6,7 +6,6 @@ from zarr.core.group import Group, GroupMetadata, _parse_async_node
 from zarr.core.group import create_hierarchy as create_hierarchy_async
 from zarr.core.group import create_nodes as create_nodes_async
 from zarr.core.group import create_rooted_hierarchy as create_rooted_hierarchy_async
-from zarr.core.group import get_node as get_node_async
 from zarr.core.sync import _collect_aiterator, sync
 
 if TYPE_CHECKING:
@@ -14,7 +13,6 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.array import Array
-    from zarr.core.common import ZarrFormat
     from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 
 
@@ -138,24 +136,3 @@ def create_rooted_hierarchy(
     """
     async_node = sync(create_rooted_hierarchy_async(store=store, nodes=nodes, overwrite=overwrite))
     return _parse_async_node(async_node)
-
-
-def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
-    """
-    Get an Array or Group from a path in a Store.
-
-    Parameters
-    ----------
-    store : Store
-        The store-like object to read from.
-    path : str
-        The path to the node to read.
-    zarr_format : {2, 3}
-        The zarr format of the node to read.
-
-    Returns
-    -------
-    Array | Group
-    """
-
-    return _parse_async_node(sync(get_node_async(store=store, path=path, zarr_format=zarr_format)))

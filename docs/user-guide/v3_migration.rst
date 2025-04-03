@@ -121,8 +121,7 @@ The Group class
 The Store class
 ~~~~~~~~~~~~~~~
 
-The Store API has changed significant in Zarr-Python 3. The most notable changes to the
-Store API are:
+The Store API has changed significant in Zarr-Python 3.
 
 Store Import Paths
 ^^^^^^^^^^^^^^^^^^
@@ -154,8 +153,30 @@ Common replacements:
    change ensures that all store methods are non-blocking and are as performant as
    possible.
 
-Beyond the changes store interface, a number of deprecated stores were also removed in
-Zarr-Python 3. See :issue:`1274` for more details on the removal of these stores.
+Removed store API
+^^^^^^^^^^^^^^^^^
+
+``zarr.storage.contains_array()`` and ``zarr.storage.contains_group()`` have been removed.
+Instead, use `zarr.storage.get_node`, and check the return type, e.g.,
+
+>>> import zarr
+>>> import zarr.storage
+>>>
+>>> store = zarr.storage.MemoryStore()
+>>> root = zarr.create_group(store=store)
+>>> isinstance(zarr.storage.get_node(store, path="", zarr_format=3), zarr.Group)
+True
+>>>
+>>> root.create_array("b", shape=(1,), dtype=int)
+<Array memory://.../b shape=(1,) dtype=int64>
+>>> isinstance(zarr.storage.get_node(store, path="b", zarr_format=3), zarr.Array)
+True
+
+Removed stores
+^^^^^^^^^^^^^^
+
+A number of deprecated stores were removed in Zarr-Python 3. See :issue:`1274` for more
+details on the removal of these stores.
 
 - ``N5Store`` - see https://github.com/zarr-developers/n5py for an alternative interface to
   N5 formatted data.
