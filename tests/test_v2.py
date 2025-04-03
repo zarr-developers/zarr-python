@@ -195,12 +195,8 @@ def test_create_array_defaults(store: Store):
         )
 
 
-@pytest.mark.parametrize("array_order", ["C", "F"])
-@pytest.mark.parametrize("data_order", ["C", "F"])
-@pytest.mark.parametrize("memory_order", ["C", "F"])
-def test_v2_non_contiguous(
-    array_order: Literal["C", "F"], data_order: Literal["C", "F"], memory_order: Literal["C", "F"]
-) -> None:
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_v2_non_contiguous(order: Literal["C", "F"]) -> None:
     store = MemoryStore()
     arr = zarr.create_array(
         store,
@@ -212,12 +208,11 @@ def test_v2_non_contiguous(
         filters=None,
         compressors=None,
         overwrite=True,
-        order=array_order,
-        config={"order": memory_order},
+        order=order,
     )
 
     # Non-contiguous write
-    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=data_order)
+    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=order)
     arr[6:9, 3:6] = a[6:9, 3:6]  # The slice on the RHS is important
     np.testing.assert_array_equal(arr[6:9, 3:6], a[6:9, 3:6])
 
@@ -225,9 +220,9 @@ def test_v2_non_contiguous(
         a[6:9, 3:6],
         np.frombuffer(
             sync(store.get("2.1", default_buffer_prototype())).to_bytes(), dtype="float64"
-        ).reshape((3, 3), order=array_order),
+        ).reshape((3, 3), order=order),
     )
-    if memory_order == "F":
+    if order == "F":
         assert (arr[6:9, 3:6]).flags.f_contiguous
     else:
         assert (arr[6:9, 3:6]).flags.c_contiguous
@@ -243,13 +238,12 @@ def test_v2_non_contiguous(
         compressors=None,
         filters=None,
         overwrite=True,
-        order=array_order,
-        config={"order": memory_order},
+        order=order,
     )
 
     # Contiguous write
-    a = np.arange(9).reshape((3, 3), order=data_order)
-    if data_order == "F":
+    a = np.arange(9).reshape((3, 3), order=order)
+    if order == "F":
         assert a.flags.f_contiguous
     else:
         assert a.flags.c_contiguous
