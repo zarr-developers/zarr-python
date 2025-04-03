@@ -54,7 +54,7 @@ def _put(
             f.write(value.as_numpy_array())  # type: ignore[arg-type]
         return None
     else:
-        view = memoryview(value.as_numpy_array())
+        view = memoryview(value.as_numpy_array())  # type: ignore[arg-type]
         if exclusive:
             mode = "xb"
         else:
