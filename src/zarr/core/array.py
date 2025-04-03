@@ -609,6 +609,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
             if order is not None:
                 _warn_order_kwarg()
+                config_parsed = replace(config_parsed, order=order)
 
             result = await cls._create_v3(
                 store_path,
