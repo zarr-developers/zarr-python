@@ -1294,9 +1294,9 @@ class TestCreateArray:
             order=order,
             config=config,
         )
+        assert arr.order == expected
         if zarr_format == 2:
             assert arr.metadata.order == expected
-            assert arr.order == expected
 
         vals = np.asarray(arr)
         if expected == "C":

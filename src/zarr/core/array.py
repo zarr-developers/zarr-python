@@ -4259,6 +4259,12 @@ async def init_array(
             chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
 
+        if order is not None:
+            if config is None:
+                config = {}
+            if "order" not in config:
+                config["order"] = order
+
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
             dtype=dtype_parsed,
