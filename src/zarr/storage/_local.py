@@ -51,7 +51,7 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value.as_numpy_array())
+            f.write(value.as_numpy_array())  # type: ignore[arg-type]
         return None
     else:
         view = memoryview(value.as_numpy_array())
