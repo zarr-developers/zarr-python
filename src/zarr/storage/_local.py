@@ -51,6 +51,7 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
+            # write takes any object supporting the buffer protocol
             f.write(value.as_numpy_array())  # type: ignore[arg-type]
         return None
     else:
@@ -60,6 +61,7 @@ def _put(
         else:
             mode = "wb"
         with path.open(mode=mode) as f:
+            # write takes any object supporting the buffer protocol
             return f.write(view)
 
 
