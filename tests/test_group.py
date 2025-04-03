@@ -1534,7 +1534,7 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
         (zarr.core.group.create_hierarchy, zarr.core.sync_group.create_hierarchy),
         (zarr.core.group.create_nodes, zarr.core.sync_group.create_nodes),
         (zarr.core.group.create_rooted_hierarchy, zarr.core.sync_group.create_rooted_hierarchy),
-        (zarr.core.group.get_node, zarr.core.sync_group.get_node),
+        (zarr.core.group.get_node, zarr.storage.get_node),
     ],
 )
 def test_consistent_signatures(
@@ -1594,7 +1594,9 @@ async def test_create_hierarchy(
     else:
         raise ValueError(f"Invalid impl: {impl}")
     if not overwrite:
-        extra_group = sync_group.get_node(store=store, path="group/extra", zarr_format=zarr_format)
+        extra_group = zarr.storage.get_node(
+            store=store, path="group/extra", zarr_format=zarr_format
+        )
         assert extra_group.metadata.attributes == {"path": "group/extra"}
     else:
         with pytest.raises(FileNotFoundError):
@@ -1713,7 +1715,7 @@ async def test_group_create_hierarchy(
             assert all_members[k].metadata == v == extant_created[k].metadata
     # ensure that we left the root group as-is
     assert (
-        sync_group.get_node(store=store, path=group_path, zarr_format=zarr_format).attrs.asdict()
+        zarr.storage.get_node(store=store, path=group_path, zarr_format=zarr_format).attrs.asdict()
         == root_attrs
     )
 
