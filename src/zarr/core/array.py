@@ -1044,7 +1044,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         bool
             Memory order of the array
         """
-        return self.metadata.order
+        if self.metadata.zarr_format == 2:
+            return self.metadata.order
+        else:
+            return self._config.order
 
     @property
     def attrs(self) -> dict[str, JSON]:
