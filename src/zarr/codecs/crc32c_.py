@@ -24,7 +24,14 @@ class Crc32cCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        parse_named_configuration(data, "crc32c", require_configuration=False)
+        _, configuration_parsed = parse_named_configuration(
+            data, "crc32c", require_configuration=False
+        )
+        if configuration_parsed and not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in configuration_parsed.values()
+        ):
+            raise ValueError(f"The `crc32c` codec got an unexpected configuration: {data}")
         return cls()
 
     def to_dict(self) -> dict[str, JSON]:

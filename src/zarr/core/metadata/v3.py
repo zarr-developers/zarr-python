@@ -69,15 +69,19 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
-
+    if isinstance(data, str):
+        data = [data]
     for c in data:
         if isinstance(
             c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
-            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-            out += (get_codec_class(name_parsed).from_dict(c),)
+            if isinstance(c, str):
+                c = {"name": c}
+            name_parsed, config_parsed = parse_named_configuration(c, require_configuration=False)
+            codec = get_codec_class(name_parsed).from_dict(c)
+            out += (codec,)
 
     return out
 
@@ -259,10 +263,17 @@ class ArrayV3Metadata(Metadata):
         attributes: dict[str, JSON] | None,
         dimension_names: Iterable[str] | None,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
+        **kwargs: dict[str, Any],
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"Unexpected zarr metadata keys: {list(kwargs.keys())}")
+
         shape_parsed = parse_shapelike(shape)
         data_type_parsed = DataType.parse(data_type)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)

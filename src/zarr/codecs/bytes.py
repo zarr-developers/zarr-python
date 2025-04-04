@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -36,9 +36,18 @@ class BytesCodec(ArrayBytesCodec):
 
     endian: Endian | None
 
-    def __init__(self, *, endian: Endian | str | None = default_system_endian) -> None:
+    def __init__(
+        self,
+        *,
+        endian: Endian | str | None = default_system_endian,
+        **kwargs: dict[str, Any],
+    ) -> None:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"The `bytes` codec got an unexpected configuration: {kwargs}")
         endian_parsed = None if endian is None else parse_enum(endian, Endian)
-
         object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod
@@ -47,6 +56,7 @@ class BytesCodec(ArrayBytesCodec):
             data, "bytes", require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
+        configuration_parsed.setdefault("endian", None)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
@@ -59,7 +69,7 @@ class BytesCodec(ArrayBytesCodec):
         if array_spec.dtype.itemsize == 0:
             if self.endian is not None:
                 return replace(self, endian=None)
-        elif self.endian is None:
+        elif self.endian is None and array_spec.dtype.itemsize > 1:
             raise ValueError(
                 "The `endian` configuration needs to be specified for multi-byte data types."
             )

@@ -343,7 +343,14 @@ class ShardingCodec(
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
+        **kwargs: dict[str, Any],
     ) -> None:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"The `sharding` codec got an unexpected configuration: {kwargs}")
+
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)
@@ -378,6 +385,8 @@ class ShardingCodec(
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
+        configuration_parsed.setdefault("codecs", "bytes")
+        configuration_parsed.setdefault("index_codecs", ("bytes", "crc32c"))
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     @property

@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numcodecs
 from numcodecs.blosc import Blosc
@@ -101,7 +101,14 @@ class BloscCodec(BytesBytesCodec):
         clevel: int = 5,
         shuffle: BloscShuffle | str | None = None,
         blocksize: int = 0,
+        **kwargs: dict[str, Any],
     ) -> None:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"The `blosc` codec got an unexpected configuration: {kwargs}")
+
         typesize_parsed = parse_typesize(typesize) if typesize is not None else None
         cname_parsed = parse_enum(cname, BloscCname)
         clevel_parsed = parse_clevel(clevel)

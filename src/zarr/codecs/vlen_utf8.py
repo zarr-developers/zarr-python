@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from warnings import warn
 
 import numpy as np
@@ -26,7 +26,13 @@ _vlen_bytes_codec = VLenBytes()
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
-    def __init__(self) -> None:
+    def __init__(self, **kwargs: dict[str, Any]) -> None:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"The `vlen-utf8` codec got an unexpected configuration: {kwargs}")
+
         warn(
             "The codec `vlen-utf8` is currently not part in the Zarr format 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
@@ -81,7 +87,13 @@ class VLenUTF8Codec(ArrayBytesCodec):
 
 @dataclass(frozen=True)
 class VLenBytesCodec(ArrayBytesCodec):
-    def __init__(self) -> None:
+    def __init__(self, **kwargs: dict[str, Any]) -> None:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"The `vlen-bytes` codec got an unexpected configuration: {kwargs}")
+
         warn(
             "The codec `vlen-bytes` is currently not part in the Zarr format 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
