@@ -1902,7 +1902,7 @@ def test_iter_grid(
     """
     Test that iter_grid works as expected for 1, 2, and 3 dimensions.
     """
-    grid_shape = (5,) * ndim
+    grid_shape = (10, 5, 7)[:ndim]
 
     if origin_0d is not None:
         origin_kwarg = origin_0d * ndim
@@ -1984,3 +1984,13 @@ def test_vectorized_indexing_incompatible_shape(store) -> None:
     )
     with pytest.raises(ValueError, match="Attempting to set"):
         arr[np.array([1, 2]), np.array([1, 2])] = np.array([[-1, -2], [-3, -4]])
+
+
+def test_iter_chunk_regions():
+    chunks = (2, 3)
+    a = zarr.create((10, 10), chunks=chunks)
+    a[:] = 1
+    for region in a._iter_chunk_regions():
+        assert_array_equal(a[region], np.ones_like(a[region]))
+        a[region] = 0
+        assert_array_equal(a[region], np.zeros_like(a[region]))
