@@ -1,0 +1,1 @@
+Add public :mod:`zarr.buffer` API for controlling how data is stored in memory.
