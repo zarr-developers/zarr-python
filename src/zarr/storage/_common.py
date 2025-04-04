@@ -7,12 +7,14 @@ from typing import TYPE_CHECKING, Any, Literal
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
+from zarr.core.sync import sync
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
 
 if TYPE_CHECKING:
+    from zarr import Array, Group
     from zarr.core.buffer import BufferPrototype
 
 
@@ -505,3 +507,26 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
         return await (store_path / ZGROUP_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"  # type: ignore[unreachable]
     raise ValueError(msg)
+
+
+def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
+    """
+    Get an Array or Group from a path in a Store.
+
+    Parameters
+    ----------
+    store : Store
+        The store-like object to read from.
+    path : str
+        The path to the node to read.
+    zarr_format : {2, 3}
+        The zarr format of the node to read.
+
+    Returns
+    -------
+    Array | Group
+    """
+    from zarr.core.group import _parse_async_node
+    from zarr.core.group import get_node as get_node_async
+
+    return _parse_async_node(sync(get_node_async(store=store, path=path, zarr_format=zarr_format)))
