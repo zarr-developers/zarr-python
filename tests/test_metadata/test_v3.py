@@ -419,7 +419,7 @@ def default_metadata_dict(**kwargs: Any) -> dict[str, Any]:
         "node_type": "array",
         "shape": (1,),
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": "float64",
+        "data_type": "bool",
         "chunk_key_encoding": {"name": "default", "separator": "."},
         "codecs": [{"name": "bytes"}],
         "fill_value": 0,
@@ -428,10 +428,13 @@ def default_metadata_dict(**kwargs: Any) -> dict[str, Any]:
     return d
 
 
-def test_fail_on_invalid_value() -> None:
+def test_fail_on_invalid_key() -> None:
     ArrayV3Metadata.from_dict(default_metadata_dict())
+
+    # Metadata contains invalid keys
     with pytest.raises(ValueError, match=re.escape("Unexpected zarr metadata keys: ['unknown']")):
         ArrayV3Metadata.from_dict(default_metadata_dict(unknown="value"))
+    # Named configuration contains invalid keys
     with pytest.raises(
         ValueError,
         match=re.escape(
@@ -443,7 +446,7 @@ def test_fail_on_invalid_value() -> None:
         )
 
 
-def test_string_codecs() -> None:
+def test_specify_codecs_with_strings() -> None:
     expected = ArrayV3Metadata.from_dict(
         default_metadata_dict(data_type="bool", codecs=[{"name": "bytes"}])
     )
