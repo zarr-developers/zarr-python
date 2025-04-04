@@ -448,6 +448,54 @@ def test_fail_on_invalid_key() -> None:
             default_metadata_dict(codecs=[{"name": "bytes", "unknown": {}, "configuration": {}}])
         )
 
+    # accepts invalid key with must_understand=false
+    ArrayV3Metadata.from_dict(
+        default_metadata_dict(
+            codecs=[{"name": "bytes", "configuration": {}, "unknown": {"must_understand": False}}]
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "codecs",
+    [
+        [{"name": "bytes", "configuration": {}}],
+        [{"name": "transpose", "configuration": {"order": (0,)}}, "bytes"],
+        [
+            "bytes",
+            {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "lz4",
+                    "clevel": 1,
+                    "shuffle": "shuffle",
+                    "typesize": 4,
+                    "blocksize": 0,
+                },
+            },
+        ],
+        ["bytes", {"name": "gzip", "configuration": {"level": 1}}],
+        ["bytes", {"name": "zstd", "configuration": {"level": 1}}],
+        ["bytes", {"name": "crc32c", "configuration": {}}],
+        [{"name": "sharding_indexed", "configuration": {"chunk_shape": (1,)}}],
+        [{"name": "vlen-utf8", "configuration": {}}],
+        [{"name": "vlen-bytes", "configuration": {}}],
+    ],
+)
+def test_codecs_fail_on_invalid_key(codecs) -> None:
+    ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+
+    for codec in codecs:
+        if codec != "bytes":
+            codec["configuration"]["unknown"] = "value"
+    with pytest.raises(ValueError):
+        ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+    # accepts invalid key with must_understand=false
+    for codec in codecs:
+        if codec != "bytes":
+            codec["configuration"]["unknown"] = {"must_understand": False}
+    ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+
 
 def test_specify_codecs_with_strings() -> None:
     expected = ArrayV3Metadata.from_dict(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -36,9 +36,18 @@ class BytesCodec(ArrayBytesCodec):
 
     endian: Endian | None
 
-    def __init__(self, *, endian: Endian | str | None = default_system_endian) -> None:
+    def __init__(
+        self,
+        *,
+        endian: Endian | str | None = default_system_endian,
+        **kwargs: dict[str, Any],
+    ) -> None:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"The `bytes` codec got an unexpected configuration: {kwargs}")
         endian_parsed = None if endian is None else parse_enum(endian, Endian)
-
         object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod

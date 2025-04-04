@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from numcodecs.gzip import GZip
 
@@ -34,7 +34,13 @@ class GzipCodec(BytesBytesCodec):
 
     level: int = 5
 
-    def __init__(self, *, level: int = 5) -> None:
+    def __init__(self, *, level: int = 5, **kwargs: dict[str, Any]) -> None:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"The `gzip` codec got an unexpected configuration: {kwargs}")
+
         level_parsed = parse_gzip_level(level)
 
         object.__setattr__(self, "level", level_parsed)

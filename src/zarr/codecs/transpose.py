@@ -32,7 +32,13 @@ class TransposeCodec(ArrayArrayCodec):
 
     order: tuple[int, ...]
 
-    def __init__(self, *, order: ChunkCoordsLike) -> None:
+    def __init__(self, *, order: ChunkCoordsLike, **kwargs: dict[str, Any]) -> None:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
+            raise ValueError(f"The `transpose` codec got an unexpected configuration: {kwargs}")
+
         order_parsed = parse_transpose_order(order)
 
         object.__setattr__(self, "order", order_parsed)
