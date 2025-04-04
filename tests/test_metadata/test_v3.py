@@ -382,7 +382,7 @@ async def test_special_float_fill_values(fill_value: str) -> None:
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
         "data_type": "float64",
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": [{"name": "bytes"}],
+        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
         "fill_value": fill_value,  # this is not a valid fill value for uint8
     }
     m = ArrayV3Metadata.from_dict(metadata_dict)
