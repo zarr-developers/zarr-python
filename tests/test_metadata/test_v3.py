@@ -463,6 +463,9 @@ def test_codec_requires_endian() -> None:
         ArrayV3Metadata.from_dict(
             default_metadata_dict(data_type="int16", codecs=bytes_codec_no_conf)
         )
+    # no error for single-byte data types
+    ArrayV3Metadata.from_dict(default_metadata_dict(data_type="int8", codecs=bytes_codec_no_conf))
+
     bytes_codec_empty_conf = [{"name": "bytes", "configuration": {}}]
     with pytest.raises(ValueError, match=raise_msg):
         ArrayV3Metadata.from_dict(
@@ -484,8 +487,11 @@ def test_codec_requires_endian() -> None:
     sharding_codec_no_endian = [
         {"name": "sharding_indexed", "configuration": {"chunk_shape": (1,)}}
     ]
-
     with pytest.raises(ValueError, match=raise_msg):
         ArrayV3Metadata.from_dict(
             default_metadata_dict(data_type="int16", codecs=sharding_codec_no_endian)
         )
+    # no error for single-byte data types
+    ArrayV3Metadata.from_dict(
+        default_metadata_dict(data_type="int8", codecs=sharding_codec_no_endian)
+    )
