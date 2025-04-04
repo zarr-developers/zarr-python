@@ -430,19 +430,22 @@ def default_metadata_dict(**kwargs: Any) -> dict[str, Any]:
 
 def test_fail_on_invalid_key() -> None:
     ArrayV3Metadata.from_dict(default_metadata_dict())
-
     # Metadata contains invalid keys
     with pytest.raises(ValueError, match=re.escape("Unexpected zarr metadata keys: ['unknown']")):
         ArrayV3Metadata.from_dict(default_metadata_dict(unknown="value"))
+    # accepts invalid key with must_understand=false
+    ArrayV3Metadata.from_dict(
+        default_metadata_dict(unknown={"name": "value", "must_understand": False})
+    )
     # Named configuration contains invalid keys
     with pytest.raises(
         ValueError,
         match=re.escape(
-            "Named configuration expects keys 'name' and 'configuration'. Got ['name', 'unknown']."
+            "Named configuration expects keys 'name' and 'configuration'. Got ['name', 'unknown', 'configuration']."
         ),
     ):
         ArrayV3Metadata.from_dict(
-            default_metadata_dict(codecs=[{"name": "bytes", "unknown": "value"}])
+            default_metadata_dict(codecs=[{"name": "bytes", "unknown": {}, "configuration": {}}])
         )
 
 
@@ -454,9 +457,43 @@ def test_specify_codecs_with_strings() -> None:
     assert result1.codecs == expected.codecs
     result2 = ArrayV3Metadata.from_dict(default_metadata_dict(data_type="bool", codecs="bytes"))
     assert result2.codecs == expected.codecs
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Named configuration with name='transpose' requires a 'configuration' key. Got keys ['name']."
+        ),
+    ):
+        ArrayV3Metadata.from_dict(default_metadata_dict(codecs="transpose"))
 
 
-def test_codec_requires_endian() -> None:
+@pytest.mark.parametrize(
+    ("codecs", "insufficient_configuration"),
+    [
+        (["bytes"], False),
+        (["transpose", "bytes"], True),
+        ([{"name": "transpose", "configuration": {"order": (0,)}}, "bytes"], False),
+        (["bytes", "blosc"], True),
+        (["bytes", "gzip"], True),
+        (["bytes", {"name": "gzip", "configuration": {"level": 1}}], False),
+        (["bytes", "zstd"], True),
+        (["bytes", "crc32c"], False),
+        (["sharding_indexed"], True),
+        (["vlen-utf8"], False),
+        (["vlen-bytes"], False),
+    ],
+)
+def test_accept_codecs_as_strings(codecs, insufficient_configuration) -> None:
+    if insufficient_configuration:
+        with pytest.raises(
+            ValueError,
+            match="Named\\ configuration\\ with\\ name='(.)*'\\ requires\\ a\\ 'configuration'\\ key\\.\\ Got\\ keys\\ \\['name'\\]\\.",
+        ):
+            ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+    else:
+        ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+
+
+def test_bytes_codec_requires_endian() -> None:
     raise_msg = "The `endian` configuration needs to be specified for multi-byte data types."
     bytes_codec_no_conf = [{"name": "bytes"}]
     with pytest.raises(ValueError, match=raise_msg):

@@ -268,7 +268,10 @@ class ArrayV3Metadata(Metadata):
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
-        if kwargs:
+        if not all(
+            isinstance(value, dict) and value.get("must_understand") is False
+            for value in kwargs.values()
+        ):
             raise ValueError(f"Unexpected zarr metadata keys: {list(kwargs.keys())}")
 
         shape_parsed = parse_shapelike(shape)
