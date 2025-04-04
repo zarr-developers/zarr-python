@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
-from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
+from typing import TYPE_CHECKING, Literal, Self, TypeVar, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -63,7 +63,9 @@ if TYPE_CHECKING:
         Coroutine,
         Generator,
         Iterable,
+        Iterator,
     )
+    from types import TracebackType
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
@@ -1811,6 +1813,14 @@ class Group(SyncMixin):
         """
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self, typ: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> None:
+        self.store.close()
 
     def __getitem__(self, path: str) -> Array | Group:
         """Obtain a group member.
