@@ -378,11 +378,8 @@ class ShardingCodec(
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
-        configuration_parsed.setdefault(
-            "codecs",
-            (BytesCodec(endian=None),),
-        )
-        configuration_parsed.setdefault("index_codecs", (BytesCodec(endian=None), Crc32cCodec()))
+        configuration_parsed.setdefault("codecs", "bytes")
+        configuration_parsed.setdefault("index_codecs", ("bytes", "crc32c"))
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     @property

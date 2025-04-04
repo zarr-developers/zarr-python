@@ -60,7 +60,7 @@ class BytesCodec(ArrayBytesCodec):
         if array_spec.dtype.itemsize == 0:
             if self.endian is not None:
                 return replace(self, endian=None)
-        elif self.endian is None:
+        elif self.endian is None and array_spec.dtype.itemsize > 1:
             raise ValueError(
                 "The `endian` configuration needs to be specified for multi-byte data types."
             )
