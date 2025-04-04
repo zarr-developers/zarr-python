@@ -64,10 +64,7 @@ def parse_node_type_array(data: object) -> Literal["array"]:
     raise NodeTypeValidationError("node_type", "array", data)
 
 
-def parse_codecs(data: object, data_type_has_endianness: bool) -> tuple[Codec, ...]:
-    """
-    if data type has endianness, then codecs must specify endian attribute
-    """
+def parse_codecs(data: object) -> tuple[Codec, ...]:
     out: tuple[Codec, ...] = ()
 
     if not isinstance(data, Iterable):
@@ -84,15 +81,6 @@ def parse_codecs(data: object, data_type_has_endianness: bool) -> tuple[Codec, .
                 c = {"name": c}
             name_parsed, config_parsed = parse_named_configuration(c, require_configuration=False)
             codec = get_codec_class(name_parsed).from_dict(c)
-
-            if (
-                hasattr(codec, "endian")
-                and data_type_has_endianness
-                and (config_parsed is None or "endian" not in config_parsed)
-            ):
-                raise ValueError(
-                    f"Expected {name_parsed} codec to specify argument endian for data types for which endianness is applicable."
-                )
             out += (codec,)
 
     return out
@@ -295,9 +283,7 @@ class ArrayV3Metadata(Metadata):
             fill_value, dtype=cast(ALL_DTYPES, data_type_parsed.value)
         )
         attributes_parsed = parse_attributes(attributes)
-        codecs_parsed_partial = parse_codecs(
-            codecs, data_type_has_endianness=data_type_parsed.has_endianness
-        )
+        codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(

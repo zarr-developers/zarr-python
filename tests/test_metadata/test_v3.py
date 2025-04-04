@@ -454,60 +454,35 @@ def test_string_codecs() -> None:
 
 
 def test_codec_requires_endian() -> None:
-    with pytest.raises(
-        ValueError,
-        match="Expected bytes codec to specify argument endian for data types for which endianness is applicable.",
-    ):
+    raise_msg = "The `endian` configuration needs to be specified for multi-byte data types."
+    bytes_codec_no_conf = [{"name": "bytes"}]
+    with pytest.raises(ValueError, match=raise_msg):
         ArrayV3Metadata.from_dict(
-            default_metadata_dict(data_type="int16", codecs=[{"name": "bytes"}])
+            default_metadata_dict(data_type="int16", codecs=bytes_codec_no_conf)
         )
-
-    with pytest.raises(
-        ValueError,
-        match="Expected bytes codec to specify argument endian for data types for which endianness is applicable.",
-    ):
+    bytes_codec_empty_conf = [{"name": "bytes", "configuration": {}}]
+    with pytest.raises(ValueError, match=raise_msg):
         ArrayV3Metadata.from_dict(
-            default_metadata_dict(
-                data_type="int16", codecs=[{"name": "bytes", "configuration": {}}]
-            )
+            default_metadata_dict(data_type="int16", codecs=bytes_codec_empty_conf)
         )
-
+    bytes_codec_with_endian = [{"name": "bytes", "configuration": {"endian": "little"}}]
     ArrayV3Metadata.from_dict(
-        default_metadata_dict(
-            data_type="int16", codecs=[{"name": "bytes", "configuration": {"endian": "little"}}]
-        )
+        default_metadata_dict(data_type="int16", codecs=bytes_codec_with_endian)
     )
-
+    sharding_codec_with_endian = [
+        {
+            "name": "sharding_indexed",
+            "configuration": {"chunk_shape": (1,), "codecs": bytes_codec_with_endian},
+        }
+    ]
     ArrayV3Metadata.from_dict(
-        default_metadata_dict(
-            data_type="int16",
-            codecs=[
-                {
-                    "name": "sharding_indexed",
-                    "configuration": {
-                        "chunk_shape": (1,),
-                        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}]
-                    },
-                }
-            ],
-        )
+        default_metadata_dict(data_type="int16", codecs=sharding_codec_with_endian)
     )
+    sharding_codec_no_endian = [
+        {"name": "sharding_indexed", "configuration": {"chunk_shape": (1,)}}
+    ]
 
-    #TODO
-    with pytest.raises(
-        ValueError,
-        match="Expected bytes codec to specify argument endian for data types for which endianness is applicable.",
-    ):
+    with pytest.raises(ValueError, match=raise_msg):
         ArrayV3Metadata.from_dict(
-            default_metadata_dict(
-                data_type="int16",
-                codecs=[
-                    {
-                        "name": "sharding_indexed",
-                        "configuration": {
-                            "chunk_shape": (1,),
-                        },
-                    }
-                ],
-            )
+            default_metadata_dict(data_type="int16", codecs=sharding_codec_no_endian)
         )
