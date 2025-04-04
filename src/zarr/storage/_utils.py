@@ -74,9 +74,58 @@ def _join_paths(paths: Iterable[str]) -> str:
     """
     Filter out instances of '' and join the remaining strings with '/'.
 
-    Because the root node of a zarr hierarchy is represented by an empty string,
+    Parameters
+    ----------
+    paths : Iterable[str]
+
+    Returns
+    -------
+    str
+
+    Examples
+    --------
+    >>> _join_paths(["", "a", "b"])
+    'a/b'
+    >>> _join_paths(["a", "b", "c"])
+    'a/b/c'
     """
     return "/".join(filter(lambda v: v != "", paths))
+
+
+def _relativize_path(path: str, prefix: str) -> str:
+    """
+    Make a "\"-delimited path relative to some prefix. If the prefix is '', then the path is
+    returned as-is. Otherwise, the prefix is removed from the path as well as the separator
+    string "\".
+
+    If ``prefix`` is not the empty string and``path`` does not start with ``prefix``
+    followed by a "/" character, then an error is raised.
+
+    Parameters
+    ----------
+    path : str
+        The path to make relative to the prefix.
+    prefix : str
+        The prefix to make relative to.
+
+    Returns
+    -------
+    str
+
+    Examples
+    --------
+    >>> _relativize_paths("", "a/b")
+    'a/b'
+    >>> _relativize_paths("a/b", "a/b/c")
+    'c'
+    """
+    if prefix == "":
+        return path
+    else:
+        _prefix = prefix + "/"
+        if not path.startswith(_prefix):
+            raise ValueError(f"The first component of {path} does not start with {prefix}.")
+        return path.removeprefix(f"{prefix}/")
 
 
 def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:
