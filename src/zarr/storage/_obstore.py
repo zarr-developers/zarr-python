@@ -7,6 +7,8 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, TypedDict
 
+import numpy as np
+
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -145,7 +147,7 @@ class ObjectStore(Store):
 
         self._check_writable()
 
-        buf = value.to_bytes()
+        buf = value.as_numpy_array().view(np.uint8)
         await obs.put_async(self.store, key, buf)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
@@ -153,7 +155,7 @@ class ObjectStore(Store):
         import obstore as obs
 
         self._check_writable()
-        buf = value.to_bytes()
+        buf = value.as_numpy_array().view(np.uint8)
         with contextlib.suppress(obs.exceptions.AlreadyExistsError):
             await obs.put_async(self.store, key, buf, mode="create")
 
