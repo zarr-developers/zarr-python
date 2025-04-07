@@ -11,7 +11,7 @@ types-setuptools
 pymongo==4.11.3
 # optional test requirements
 coverage
-pytest-cov==6.0.0
+pytest-cov==6.1.1
 pytest-doctestplus==1.4.0
 pytest-timeout==2.3.1
 h5py==3.13.0
