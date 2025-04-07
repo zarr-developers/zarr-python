@@ -1,1 +1,1 @@
-Internally use `typesize` constructor parameter for :class:`numcodecs.Blosc` to improve compression ratios back to the v2-package levels.
+Internally use `typesize` constructor parameter for :class:`numcodecs.blosc.Blosc` to improve compression ratios back to the v2-package levels.
