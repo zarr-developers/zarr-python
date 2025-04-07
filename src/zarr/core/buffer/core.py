@@ -155,7 +155,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -203,7 +203,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -223,7 +223,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     def as_array_like(self) -> ArrayLike:
@@ -354,7 +354,7 @@ class NDBuffer:
                 "Cannot call abstract method on the abstract class 'NDBuffer'"
             )
         return cls(
-            cast(NDArrayLike, None)
+            cast("NDArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -391,7 +391,7 @@ class NDBuffer:
                 "Cannot call abstract method on the abstract class 'NDBuffer'"
             )
         return cls(
-            cast(NDArrayLike, None)
+            cast("NDArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     def as_ndarray_like(self) -> NDArrayLike:
