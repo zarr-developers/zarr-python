@@ -32,7 +32,7 @@ class TransposeCodec(ArrayArrayCodec):
 
     order: tuple[int, ...]
 
-    def __init__(self, *, order: ChunkCoordsLike, **kwargs: dict[str, Any]) -> None:
+    def __init__(self, *, order: ChunkCoordsLike, **kwargs: Any) -> None:
         if not all(
             isinstance(value, dict) and value.get("must_understand") is False
             for value in kwargs.values()

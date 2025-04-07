@@ -40,7 +40,7 @@ class BytesCodec(ArrayBytesCodec):
         self,
         *,
         endian: Endian | str | None = default_system_endian,
-        **kwargs: dict[str, Any],
+        **kwargs: Any,
     ) -> None:
         if not all(
             isinstance(value, dict) and value.get("must_understand") is False

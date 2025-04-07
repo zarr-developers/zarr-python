@@ -26,7 +26,7 @@ _vlen_bytes_codec = VLenBytes()
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
-    def __init__(self, **kwargs: dict[str, Any]) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         if not all(
             isinstance(value, dict) and value.get("must_understand") is False
             for value in kwargs.values()
@@ -87,7 +87,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
 
 @dataclass(frozen=True)
 class VLenBytesCodec(ArrayBytesCodec):
-    def __init__(self, **kwargs: dict[str, Any]) -> None:
+    def __init__(self, **kwargs: Any) -> None:
         if not all(
             isinstance(value, dict) and value.get("must_understand") is False
             for value in kwargs.values()

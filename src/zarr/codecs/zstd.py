@@ -42,7 +42,7 @@ class ZstdCodec(BytesBytesCodec):
     level: int = 0
     checksum: bool = False
 
-    def __init__(self, *, level: int = 0, checksum: bool = False, **kwargs: dict[str, Any]) -> None:
+    def __init__(self, *, level: int = 0, checksum: bool = False, **kwargs: Any) -> None:
         if not all(
             isinstance(value, dict) and value.get("must_understand") is False
             for value in kwargs.values()

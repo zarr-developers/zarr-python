@@ -343,7 +343,7 @@ class ShardingCodec(
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
-        **kwargs: dict[str, Any],
+        **kwargs: Any,
     ) -> None:
         if not all(
             isinstance(value, dict) and value.get("must_understand") is False

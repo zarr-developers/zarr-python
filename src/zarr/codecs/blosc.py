@@ -101,7 +101,7 @@ class BloscCodec(BytesBytesCodec):
         clevel: int = 5,
         shuffle: BloscShuffle | str | None = None,
         blocksize: int = 0,
-        **kwargs: dict[str, Any],
+        **kwargs: Any,
     ) -> None:
         if not all(
             isinstance(value, dict) and value.get("must_understand") is False

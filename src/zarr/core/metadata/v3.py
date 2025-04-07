@@ -263,7 +263,7 @@ class ArrayV3Metadata(Metadata):
         attributes: dict[str, JSON] | None,
         dimension_names: Iterable[str] | None,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
-        **kwargs: dict[str, Any],
+        **kwargs: Any,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
