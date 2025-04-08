@@ -9,7 +9,7 @@ on:
     branches: [ support/v2 ]
 
 jobs:
-  minimum_build:
+  latest-deps:
 
     runs-on: ubuntu-latest
     steps:
