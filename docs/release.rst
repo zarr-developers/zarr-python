@@ -16,16 +16,24 @@ Release notes
 .. note::
    Zarr-Python 2 is in support mode now, and no new features will be added.
 
-.. _release_2.18.6:
+.. _release_2.18.7:
 
-2.18.6
+2.18.7
 ------
 
 Fixes
 ~~~~~
 * Pinned ``numcodecs`` to ``<0.16``. In ``numcodecs`` 0.16 deprecated code was removed
-  that makes it incompatible with zarr-python 2.18.
-  By :user:`David Stansby <dstansby>` (:issue:`2965`)
+  that makes it incompatible with older versions of zarr-python 2.18.
+  By :user:`David Stansby <dstansby>` (:issue:`2973`)
+
+.. _release_2.18.6:
+
+2.18.6
+------
+Note: the numcodecs dependency pin was incorrectly applied in this release, meaning it maintains
+the same issue with numcodecs compatibility as previous releases. Please upgrade
+to 2.18.7 to fix this.
 
 .. _release_2.18.5:
 
