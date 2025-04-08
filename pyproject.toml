@@ -35,7 +35,7 @@ requires-python = ">=3.11"
 dependencies = [
     'packaging>=22.0',
     'numpy>=1.25',
-    'numcodecs[crc32c]>=0.14',
+    'numcodecs[crc32c]>=0.14,<0.16',  # see https://github.com/zarr-developers/numcodecs/issues/721
     'typing_extensions>=4.9',
     'donfig>=0.8',
 ]
