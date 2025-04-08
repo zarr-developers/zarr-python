@@ -251,6 +251,19 @@ class Buffer(ABC):
         """
         ...
 
+    def as_bytes_like(self) -> BytesLike:
+        """Returns the buffer as a bytes-like object.
+
+        Notes
+        -----
+        Might have to copy data, since the implementation uses `.as_numpy_array()`.
+
+        Returns
+        -------
+            A bytes-like object that implements the Python buffer protocol
+        """
+        return memoryview(self.as_numpy_array().view(np.uint8))  # type: ignore[arg-type]
+
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
 
