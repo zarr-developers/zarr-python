@@ -25,7 +25,6 @@ jobs:
         ZARR_V3_EXPERIMENTAL_API: 1
         ZARR_V3_SHARDING: 1
       run: |
-        python -m pip install pytest pytest-cov
+        python -m pip install pytest pytest-cov pytest-timeout
         python -m pip install .
-
         pytest -svx --timeout=300
