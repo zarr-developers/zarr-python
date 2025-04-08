@@ -16,6 +16,17 @@ Release notes
 .. note::
    Zarr-Python 2 is in support mode now, and no new features will be added.
 
+.. _release_2.18.6:
+
+2.18.6
+------
+
+Fixes
+~~~~~
+* Pinned ``numcodecs`` to ``<0.16``. In ``numcodecs`` 0.16 deprecated code was removed
+  that makes it incompatible with zarr-python 2.18.
+  By :user:`David Stansby <dstansby>` (:issue:`2965`)
+
 .. _release_2.18.5:
 
 2.18.5
