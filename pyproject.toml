@@ -42,7 +42,7 @@ docs = [
     'sphinx-copybutton',
     'pydata-sphinx-theme',
     'numpydoc',
-    'numcodecs[msgpack]!=0.14.0,!=0.14.1',
+    'numcodecs[msgpack]!=0.14.0,!=0.14.1,<0.16',
     'pytest-doctestplus',
 ]
 
