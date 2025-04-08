@@ -408,7 +408,7 @@ filterwarnings = [
     "ignore:Duplicate name.*:UserWarning",
     "ignore:The `compressor` argument is deprecated. Use `compressors` instead.:UserWarning",
     "ignore:Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations.:UserWarning",
-    "ignore:Unclosed client session <aiohttp.client.ClientSessionResourceWarning.*:ResourceWarning"
+    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",
