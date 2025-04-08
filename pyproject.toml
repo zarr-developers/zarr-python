@@ -403,6 +403,7 @@ filterwarnings = [
     "ignore:Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__.*:UserWarning",
     "ignore:Automatic shard shape inference is experimental and may change without notice.*:UserWarning",
     "ignore:The codec .* is currently not part in the Zarr format 3 specification.*:UserWarning",
+    "ignore:The dtype .* is currently not part in the Zarr format 3 specification.*:UserWarning",
     "ignore:Use zarr.create_array instead.:DeprecationWarning",
     "ignore:Duplicate name.*:UserWarning",
     "ignore:The `compressor` argument is deprecated. Use `compressors` instead.:UserWarning",
