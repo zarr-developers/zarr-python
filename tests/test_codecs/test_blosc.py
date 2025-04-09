@@ -1,4 +1,5 @@
 import json
+import platform
 
 import numcodecs
 import numpy as np
@@ -63,6 +64,11 @@ async def test_typesize() -> None:
     codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
     z = zarr.array(a, chunks=(10000), codecs=codecs)
     size = len(await z.store.get("c/0", prototype=default_buffer_prototype()))
-    assert size == (402 if Version(numcodecs.__version__) >= Version("0.16.0") else 10216), (
-        "blosc size mismatch, found {size}"
-    )
+    match Version(numcodecs.__version__) >= Version("0.16.0"), platform.system() == "Windows":
+        case True, True:
+            expected_size = 400
+        case True, False:
+            expected_size = 402
+        case False, _:
+            expected_size = 10216
+    assert size == expected_size, f"blosc size mismatch, found {size} but expected {expected_size}"
