@@ -44,7 +44,7 @@ class ChunkKeyEncoding(Metadata):
             return data
 
         # handle ChunkKeyEncodingParams
-        if "name" in data and "separator" in data:
+        if isinstance(data, dict) and data.keys() == {"name", "separator"}:
             data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
 
         # TODO: remove this cast when we are statically typing the JSON metadata completely.
@@ -52,16 +52,26 @@ class ChunkKeyEncoding(Metadata):
 
         # configuration is optional for chunk key encodings
         name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
+
+        if config_parsed and not all(
+            k == "separator" or (isinstance(v, dict) and v.get("must_understand") is False)
+            for k, v in config_parsed.items()
+        ):
+            raise ValueError(
+                f"The chunk key encoding expects a 'separator' key. Got {list(config_parsed.keys())}."
+            )
+
         if name_parsed == "default":
-            if config_parsed is None:
-                # for default, normalize missing configuration to use the "/" separator.
-                config_parsed = {"separator": "/"}
-            return DefaultChunkKeyEncoding(**config_parsed)  # type: ignore[arg-type]
+            # for default, normalize missing configuration to use the "/" separator.
+            return DefaultChunkKeyEncoding(
+                separator=config_parsed.get("separator") if config_parsed else "/"  # type: ignore[arg-type]
+            )
         if name_parsed == "v2":
-            if config_parsed is None:
-                # for v2, normalize missing configuration to use the "." separator.
-                config_parsed = {"separator": "."}
-            return V2ChunkKeyEncoding(**config_parsed)  # type: ignore[arg-type]
+            # for v2, normalize missing configuration to use the "." separator.
+            return V2ChunkKeyEncoding(
+                separator=config_parsed.get("separator") if config_parsed else "."  # type: ignore[arg-type]
+            )
+
         msg = f"Unknown chunk key encoding. Got {name_parsed}, expected one of ('v2', 'default')."
         raise ValueError(msg)
 
@@ -77,7 +87,7 @@ class ChunkKeyEncoding(Metadata):
         pass
 
 
-ChunkKeyEncodingLike: TypeAlias = ChunkKeyEncodingParams | ChunkKeyEncoding
+ChunkKeyEncodingLike: TypeAlias = ChunkKeyEncodingParams | ChunkKeyEncoding | str
 
 
 @dataclass(frozen=True)

@@ -413,7 +413,10 @@ class ArrayV3Metadata(Metadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         # check that the data_type attribute is valid
-        data_type = DataType.parse(_data.pop("data_type"))
+        dt = _data.pop("data_type")
+        if isinstance(dt, dict):
+            dt, _ = parse_named_configuration(dt, require_configuration=False)
+        data_type = DataType.parse(dt)
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)

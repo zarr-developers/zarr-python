@@ -428,32 +428,94 @@ def default_metadata_dict(**kwargs: Any) -> dict[str, Any]:
     return d
 
 
-def test_fail_on_invalid_key() -> None:
-    ArrayV3Metadata.from_dict(default_metadata_dict())
-    # Metadata contains invalid keys
-    with pytest.raises(ValueError, match=re.escape("Unexpected zarr metadata keys: ['unknown']")):
-        ArrayV3Metadata.from_dict(default_metadata_dict(unknown="value"))
-    # accepts invalid key with must_understand=false
-    ArrayV3Metadata.from_dict(
-        default_metadata_dict(unknown={"name": "value", "must_understand": False})
-    )
-    # Named configuration contains invalid keys
-    with pytest.raises(
-        ValueError,
-        match=re.escape(
-            "Named configuration expects keys 'name' and 'configuration'. Got ['name', 'unknown', 'configuration']."
+@pytest.mark.parametrize(
+    ("metadata_dict", "is_valid", "fail_msg"),
+    [
+        (default_metadata_dict(), True, ""),
+        (
+            default_metadata_dict(unknown="value"),
+            False,
+            "Unexpected zarr metadata keys: ['unknown']",
         ),
-    ):
-        ArrayV3Metadata.from_dict(
-            default_metadata_dict(codecs=[{"name": "bytes", "unknown": {}, "configuration": {}}])
-        )
-
-    # accepts invalid key with must_understand=false
-    ArrayV3Metadata.from_dict(
-        default_metadata_dict(
-            codecs=[{"name": "bytes", "configuration": {}, "unknown": {"must_understand": False}}]
-        )
-    )
+        (default_metadata_dict(unknown={"name": "value", "must_understand": False}), True, ""),
+        (
+            default_metadata_dict(codecs=[{"name": "bytes", "unknown": {}, "configuration": {}}]),
+            False,
+            "Named configuration expects keys 'name' and 'configuration'. Got ['name', 'unknown', 'configuration'].",
+        ),
+        (
+            default_metadata_dict(
+                codecs=[
+                    {"name": "bytes", "configuration": {}, "unknown": {"must_understand": False}}
+                ]
+            ),
+            True,
+            "",
+        ),
+        (
+            default_metadata_dict(data_type={"name": "int8", "value": {"must_understand": False}}),
+            True,
+            "",
+        ),
+        (
+            default_metadata_dict(
+                chunk_key_encoding={
+                    "name": "default",
+                    "configuration": {"unknown": {"name": "value", "must_understand": False}},
+                }
+            ),
+            True,
+            "",
+        ),
+        (
+            default_metadata_dict(
+                chunk_key_encoding={"name": "default", "configuration": {"unknown": "value"}}
+            ),
+            False,
+            "The chunk key encoding expects a 'separator' key. Got ['unknown'].",
+        ),
+        (default_metadata_dict(chunk_key_encoding="default"), True, ""),
+        (default_metadata_dict(chunk_key_encoding="invalid"), False, ""),
+        (
+            default_metadata_dict(
+                chunk_grid={"name": "regular", "configuration": {"chunk_shape": [2]}}
+            ),
+            True,
+            "",
+        ),
+        (
+            default_metadata_dict(
+                chunk_grid={
+                    "name": "regular",
+                    "configuration": {"chunk_shape": [2], "unknown": "value"},
+                }
+            ),
+            False,
+            "The chunk grid expects a 'chunk_shape' key. Got ['chunk_shape', 'unknown'].",
+        ),
+        (
+            default_metadata_dict(
+                chunk_grid={
+                    "name": "regular",
+                    "configuration": {
+                        "chunk_shape": [2],
+                        "unknown": {"name": "value", "must_understand": False},
+                    },
+                }
+            ),
+            True,
+            "",
+        ),
+    ],
+)
+def test_fail_on_invalid_metadata_key(
+    metadata_dict: dict[str, Any], is_valid: bool, fail_msg: str
+) -> None:
+    if is_valid:
+        ArrayV3Metadata.from_dict(metadata_dict)
+    else:
+        with pytest.raises(ValueError, match=re.escape(fail_msg)):
+            ArrayV3Metadata.from_dict(metadata_dict)
 
 
 @pytest.mark.parametrize(

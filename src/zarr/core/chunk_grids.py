@@ -179,9 +179,17 @@ class RegularChunkGrid(ChunkGrid):
 
     @classmethod
     def _from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "regular")
+        _, config_parsed = parse_named_configuration(data, "regular")
 
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
+        if config_parsed and not all(
+            k == "chunk_shape" or (isinstance(v, dict) and v.get("must_understand") is False)
+            for k, v in config_parsed.items()
+        ):
+            raise ValueError(
+                f"The chunk grid expects a 'chunk_shape' key. Got {list(config_parsed.keys())}."
+            )
+
+        return cls(chunk_shape=config_parsed.get("chunk_shape"))  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
