@@ -63,4 +63,4 @@ async def test_typesize() -> None:
     codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
     z3 = zarr.array(a, chunks=(10000), codecs=codecs)
     v3_size = len(await z3.store.get("c/0", prototype=default_buffer_prototype()))
-    assert v3_size == 402 if Version(numcodecs.__version__) >= Version("0.16.0") else 10216
+    assert v3_size == (402 if Version(numcodecs.__version__) >= Version("0.16.0") else 10216)
