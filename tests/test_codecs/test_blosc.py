@@ -54,3 +54,11 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
         assert blosc_configuration_json["shuffle"] == "bitshuffle"
     else:
         assert blosc_configuration_json["shuffle"] == "shuffle"
+
+
+async def test_typesize() -> None:
+    a = np.arange(1000000)
+    codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
+    z3 = zarr.array(a, chunks=(10000), codecs=codecs)
+    v3_size = len(await z3.store.get("c/0", prototype=default_buffer_prototype()))
+    assert v3_size == 402
