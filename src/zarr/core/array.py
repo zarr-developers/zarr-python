@@ -1707,7 +1707,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
 @dataclass(frozen=False)
 class Array:
-    """Instantiate an array from an initialized store."""
+    """
+    A Zarr array.
+    """
 
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
