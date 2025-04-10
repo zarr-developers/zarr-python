@@ -441,7 +441,7 @@ def default_metadata_dict(**kwargs: JSON) -> dict[str, JSON]:
         (
             default_metadata_dict(codecs=[{"name": "bytes", "unknown": {}, "configuration": {}}]),
             False,
-            "Named configuration expects keys 'name' and 'configuration'. Got ['name', 'unknown', 'configuration'].",
+            "Unexpected named configuration keys: ['unknown']",
         ),
         (
             default_metadata_dict(
