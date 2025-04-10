@@ -185,6 +185,48 @@ class NDBuffer(core.NDBuffer):
         self._data.__setitem__(key, value)
 
 
+class DelayedBuffer(Buffer):
+    """
+    A Buffer that is the virtual concatenation of other buffers.
+    """
+
+    def __init__(self, array: NDArrayLike | list[NDArrayLike] | None) -> None:
+        if array is None:
+            self._data_list = []
+        elif isinstance(array, list):
+            self._data_list = list(array)
+        else:
+            self._data_list = [array]
+        for array in self._data_list:
+            if array.ndim != 1:
+                raise ValueError("array: only 1-dim allowed")
+            if array.dtype != np.dtype("b"):
+                raise ValueError("array: only byte dtype allowed")
+
+    @property
+    def _data(self) -> npt.NDArray[Any]:
+        return np.concatenate(self._data_list)
+
+    @classmethod
+    def from_buffer(cls, buffer: core.Buffer) -> Self:
+        if isinstance(buffer, cls):
+            return cls(buffer._data_list)
+        else:
+            return cls(buffer._data)
+
+    def __add__(self, other: core.Buffer) -> Self:
+        if isinstance(other, self.__class__):
+            return self.__class__(self._data_list + other._data_list)
+        else:
+            return self.__class__(self._data_list + [other._data])
+
+    def __len__(self) -> int:
+        return sum(map(len, self._data_list))
+
+
+Buffer.Delayed = DelayedBuffer
+
+
 def as_numpy_array_wrapper(
     func: Callable[[npt.NDArray[Any]], bytes], buf: core.Buffer, prototype: core.BufferPrototype
 ) -> core.Buffer:

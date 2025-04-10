@@ -251,7 +251,7 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
         if buffer_prototype is None:
             buffer_prototype = default_buffer_prototype()
         obj = cls()
-        obj.buf = buffer_prototype.buffer.create_zero_length()
+        obj.buf = buffer_prototype.buffer.Delayed.create_zero_length()
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
@@ -585,15 +585,16 @@ class ShardingCodec(
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
 
-        shard_dict = _MergingShardBuilder(
-            await self._load_full_shard_maybe(
-                byte_getter=byte_setter,
-                prototype=chunk_spec.prototype,
-                chunks_per_shard=chunks_per_shard,
-            )
-            or _ShardReader.create_empty(chunks_per_shard),
-            _ShardBuilder.create_empty(chunks_per_shard),
+        shard_read = await self._load_full_shard_maybe(
+            byte_getter=byte_setter,
+            prototype=chunk_spec.prototype,
+            chunks_per_shard=chunks_per_shard,
         )
+        shard_build = _ShardBuilder.create_empty(chunks_per_shard)
+        if shard_read:
+            shard_dict = _MergingShardBuilder(shard_read, shard_build)
+        else:
+            shard_dict = shard_build
 
         indexer = list(
             get_indexer(
