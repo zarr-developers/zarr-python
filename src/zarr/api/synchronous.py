@@ -6,9 +6,8 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 import zarr.core.array
+from zarr import Array, AsyncArray, Group
 from zarr._compat import _deprecate_positional_args
-from zarr.core.array import Array, AsyncArray
-from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
 
