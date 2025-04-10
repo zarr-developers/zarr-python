@@ -584,6 +584,47 @@ class DelayedBuffer(Buffer):
         assert sum(map(len, new_list)) == stop - start
         return self.__class__(new_list)
 
+    def __setitem__(self, key: slice, value: Any) -> None:
+        # This assumes that `value` is a broadcasted array
+        check_item_key_is_1d_contiguous(key)
+        start, stop = key.start, key.stop
+        if start is None:
+            start = 0
+        if stop is None:
+            stop = len(self)
+        new_list = []
+        offset = 0
+        found_last = False
+        value = memoryview(np.asanyarray(value))
+        for chunk in self._data_list:
+            chunk_size = len(chunk)
+            skip = False
+            if offset <= start < offset + chunk_size:
+                # first chunk
+                if stop <= offset + chunk_size:
+                    # also last chunk
+                    chunk = chunk[start-offset:stop-offset]
+                    found_last = True
+                else:
+                    chunk = chunk[start-offset:]
+            elif offset <= stop <= offset + chunk_size:
+                # last chunk
+                chunk = chunk[:stop-offset]
+                found_last = True
+            elif offset + chunk_size <= start:
+                skip = True
+
+            if not skip:
+                chunk[:] = value[:len(chunk)]
+                value = value[len(chunk):]
+                if len(value) == 0:
+                    # nothing left to write
+                    break
+            if found_last:
+                break
+            offset += chunk_size
+        return self.__class__(new_list)
+
 
 # The default buffer prototype used throughout the Zarr codebase.
 def default_buffer_prototype() -> BufferPrototype:
