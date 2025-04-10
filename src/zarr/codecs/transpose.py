@@ -9,6 +9,7 @@ import numpy as np
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
+from zarr.core.metadata.common import reject_must_understand_metadata
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -33,12 +34,7 @@ class TransposeCodec(ArrayArrayCodec):
     order: tuple[int, ...]
 
     def __init__(self, *, order: ChunkCoordsLike, **kwargs: Any) -> None:
-        if not all(
-            isinstance(value, dict) and value.get("must_understand") is False
-            for value in kwargs.values()
-        ):
-            raise ValueError(f"The `transpose` codec got an unexpected configuration: {kwargs}")
-
+        reject_must_understand_metadata(kwargs, "`transpose` codec configuration")
         order_parsed = parse_transpose_order(order)
 
         object.__setattr__(self, "order", order_parsed)

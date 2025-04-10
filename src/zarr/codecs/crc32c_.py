@@ -9,6 +9,7 @@ from crc32c import crc32c
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.metadata.common import reject_must_understand_metadata
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -27,11 +28,7 @@ class Crc32cCodec(BytesBytesCodec):
         _, configuration_parsed = parse_named_configuration(
             data, "crc32c", require_configuration=False
         )
-        if configuration_parsed and not all(
-            isinstance(value, dict) and value.get("must_understand") is False
-            for value in configuration_parsed.values()
-        ):
-            raise ValueError(f"The `crc32c` codec got an unexpected configuration: {data}")
+        reject_must_understand_metadata(configuration_parsed, "`crc32c` codec configuration")
         return cls()
 
     def to_dict(self) -> dict[str, JSON]:

@@ -10,6 +10,7 @@ import numpy as np
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
+from zarr.core.metadata.common import reject_must_understand_metadata
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -42,11 +43,8 @@ class BytesCodec(ArrayBytesCodec):
         endian: Endian | str | None = default_system_endian,
         **kwargs: Any,
     ) -> None:
-        if not all(
-            isinstance(value, dict) and value.get("must_understand") is False
-            for value in kwargs.values()
-        ):
-            raise ValueError(f"The `bytes` codec got an unexpected configuration: {kwargs}")
+        reject_must_understand_metadata(kwargs, "`bytes` codec configuration")
+
         endian_parsed = None if endian is None else parse_enum(endian, Endian)
         object.__setattr__(self, "endian", endian_parsed)
 

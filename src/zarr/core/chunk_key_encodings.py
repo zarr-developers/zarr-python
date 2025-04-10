@@ -4,6 +4,8 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypedDict, cast
 
+from zarr.core.metadata.common import reject_must_understand_metadata
+
 if TYPE_CHECKING:
     from typing import NotRequired
 
@@ -52,24 +54,18 @@ class ChunkKeyEncoding(Metadata):
 
         # configuration is optional for chunk key encodings
         name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
-
-        if config_parsed and not all(
-            k == "separator" or (isinstance(v, dict) and v.get("must_understand") is False)
-            for k, v in config_parsed.items()
-        ):
-            raise ValueError(
-                f"The chunk key encoding expects a 'separator' key. Got {list(config_parsed.keys())}."
-            )
+        separator = config_parsed.pop("separator", None) if config_parsed else None
+        reject_must_understand_metadata(config_parsed, "chunk key encoding configuration")
 
         if name_parsed == "default":
             # for default, normalize missing configuration to use the "/" separator.
             return DefaultChunkKeyEncoding(
-                separator=config_parsed.get("separator") if config_parsed else "/"  # type: ignore[arg-type]
+                separator=separator or "/"  # type: ignore[arg-type]
             )
         if name_parsed == "v2":
             # for v2, normalize missing configuration to use the "." separator.
             return V2ChunkKeyEncoding(
-                separator=config_parsed.get("separator") if config_parsed else "."  # type: ignore[arg-type]
+                separator=separator or "."  # type: ignore[arg-type]
             )
 
         msg = f"Unknown chunk key encoding. Got {name_parsed}, expected one of ('v2', 'default')."

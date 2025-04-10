@@ -50,6 +50,7 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
+from zarr.core.metadata.common import reject_must_understand_metadata
 from zarr.core.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
@@ -345,11 +346,7 @@ class ShardingCodec(
         index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
         **kwargs: Any,
     ) -> None:
-        if not all(
-            isinstance(value, dict) and value.get("must_understand") is False
-            for value in kwargs.values()
-        ):
-            raise ValueError(f"The `sharding` codec got an unexpected configuration: {kwargs}")
+        reject_must_understand_metadata(kwargs, "`sharding` codec configuration")
 
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)

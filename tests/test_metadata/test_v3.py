@@ -472,7 +472,7 @@ def default_metadata_dict(**kwargs: Any) -> dict[str, Any]:
                 chunk_key_encoding={"name": "default", "configuration": {"unknown": "value"}}
             ),
             False,
-            "The chunk key encoding expects a 'separator' key. Got ['unknown'].",
+            "Unexpected chunk key encoding configuration keys: ['unknown']",
         ),
         (default_metadata_dict(chunk_key_encoding="default"), True, ""),
         (default_metadata_dict(chunk_key_encoding="invalid"), False, ""),
@@ -491,7 +491,7 @@ def default_metadata_dict(**kwargs: Any) -> dict[str, Any]:
                 }
             ),
             False,
-            "The chunk grid expects a 'chunk_shape' key. Got ['chunk_shape', 'unknown'].",
+            "Unexpected chunk grid configuration keys: ['unknown']",
         ),
         (
             default_metadata_dict(

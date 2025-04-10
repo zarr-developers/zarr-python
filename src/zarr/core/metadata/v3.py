@@ -36,7 +36,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
-from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata.common import parse_attributes, reject_must_understand_metadata
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
@@ -263,16 +263,12 @@ class ArrayV3Metadata(Metadata):
         attributes: dict[str, JSON] | None,
         dimension_names: Iterable[str] | None,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
-        **kwargs: Any,
+        **kwargs: JSON,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
-        if not all(
-            isinstance(value, dict) and value.get("must_understand") is False
-            for value in kwargs.values()
-        ):
-            raise ValueError(f"Unexpected zarr metadata keys: {list(kwargs.keys())}")
+        reject_must_understand_metadata(kwargs, "zarr metadata")
 
         shape_parsed = parse_shapelike(shape)
         data_type_parsed = DataType.parse(data_type)

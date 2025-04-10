@@ -19,6 +19,7 @@ from typing import (
 import numpy as np
 
 from zarr.core.config import config as zarr_config
+from zarr.core.metadata.common import reject_must_understand_metadata
 from zarr.core.strings import _STRING_DTYPE
 
 if TYPE_CHECKING:
@@ -98,7 +99,7 @@ def parse_name(data: JSON, expected: str | None = None) -> str:
 def parse_configuration(data: JSON) -> JSON:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
-    return data
+    return data.copy()
 
 
 @overload
@@ -121,28 +122,24 @@ def parse_named_configuration(
 ) -> tuple[str, JSON | None]:
     if isinstance(data, str):
         data = {"name": data}
-    if not isinstance(data, dict):
+    elif not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
-    elif not all(
-        k in {"name", "configuration"}
-        or (isinstance(v, dict) and (v.get("must_understand") is False))
-        for k, v in data.items()
-    ):
-        raise ValueError(
-            f"Named configuration expects keys 'name' and 'configuration'. Got {list(data.keys())}."
-        )
-    elif "name" not in data:
-        raise ValueError(f"Named configuration does not have a 'name' key. Got {data}.")
 
-    name_parsed = parse_name(data["name"], expected_name)
-    if "configuration" in data:
-        configuration_parsed = parse_configuration(data["configuration"])
+    _data = data.copy()
+    if "name" not in data:
+        raise ValueError(f"Named configuration does not have a 'name' key. Got {data}.")
+    name_parsed = parse_name(_data.pop("name"), expected_name)
+
+    if "configuration" in _data:
+        configuration_parsed = parse_configuration(_data.pop("configuration"))
     elif require_configuration:
         raise ValueError(
             f"Named configuration with name='{name_parsed}' requires a 'configuration' key. Got keys {list(data.keys())}."
         )
     else:
         configuration_parsed = None
+
+    reject_must_understand_metadata(_data, "named configuration")
     return name_parsed, configuration_parsed
 
 
