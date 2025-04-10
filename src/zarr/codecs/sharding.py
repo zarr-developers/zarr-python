@@ -42,6 +42,7 @@ from zarr.core.common import (
     parse_named_configuration,
     parse_shapelike,
     product,
+    reject_must_understand_metadata,
 )
 from zarr.core.indexing import (
     BasicIndexer,
@@ -50,7 +51,6 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
-from zarr.core.metadata.common import reject_must_understand_metadata
 from zarr.core.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 

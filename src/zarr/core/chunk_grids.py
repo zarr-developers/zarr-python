@@ -20,9 +20,9 @@ from zarr.core.common import (
     ShapeLike,
     parse_named_configuration,
     parse_shapelike,
+    reject_must_understand_metadata,
 )
 from zarr.core.indexing import ceildiv
-from zarr.core.metadata.common import reject_must_understand_metadata
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

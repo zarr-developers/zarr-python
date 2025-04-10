@@ -9,8 +9,12 @@ import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
-from zarr.core.common import JSON, parse_enum, parse_named_configuration
-from zarr.core.metadata.common import reject_must_understand_metadata
+from zarr.core.common import (
+    JSON,
+    parse_enum,
+    parse_named_configuration,
+    reject_must_understand_metadata,
+)
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:

@@ -9,8 +9,7 @@ from numcodecs.vlen import VLenBytes, VLenUTF8
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import JSON, parse_named_configuration
-from zarr.core.metadata.common import reject_must_understand_metadata
+from zarr.core.common import JSON, parse_named_configuration, reject_must_understand_metadata
 from zarr.core.strings import cast_to_string_dtype
 from zarr.registry import register_codec
 

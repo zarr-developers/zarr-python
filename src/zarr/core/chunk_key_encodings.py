@@ -4,8 +4,6 @@ from abc import abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypedDict, cast
 
-from zarr.core.metadata.common import reject_must_understand_metadata
-
 if TYPE_CHECKING:
     from typing import NotRequired
 
@@ -14,6 +12,7 @@ from zarr.core.common import (
     JSON,
     ChunkCoords,
     parse_named_configuration,
+    reject_must_understand_metadata,
 )
 
 SeparatorLiteral = Literal[".", "/"]

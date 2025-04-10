@@ -19,7 +19,6 @@ from typing import (
 import numpy as np
 
 from zarr.core.config import config as zarr_config
-from zarr.core.metadata.common import reject_must_understand_metadata
 from zarr.core.strings import _STRING_DTYPE
 
 if TYPE_CHECKING:
@@ -215,3 +214,10 @@ def _warn_order_kwarg() -> None:
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_version"""
     return cast(ZarrFormat, int(zarr_config.get("default_zarr_format", 3)))
+
+
+def reject_must_understand_metadata(data: dict[str, Any] | None, dict_name: str) -> None:
+    if data and not all(
+        isinstance(value, dict) and value.get("must_understand") is False for value in data.values()
+    ):
+        raise ValueError(f"Unexpected {dict_name} keys: {list(data.keys())}")

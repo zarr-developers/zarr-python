@@ -11,8 +11,12 @@ from numcodecs.blosc import Blosc
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_enum, parse_named_configuration
-from zarr.core.metadata.common import reject_must_understand_metadata
+from zarr.core.common import (
+    JSON,
+    parse_enum,
+    parse_named_configuration,
+    reject_must_understand_metadata,
+)
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:

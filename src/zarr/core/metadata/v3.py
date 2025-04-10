@@ -34,9 +34,10 @@ from zarr.core.common import (
     ChunkCoords,
     parse_named_configuration,
     parse_shapelike,
+    reject_must_understand_metadata,
 )
 from zarr.core.config import config
-from zarr.core.metadata.common import parse_attributes, reject_must_understand_metadata
+from zarr.core.metadata.common import parse_attributes
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError

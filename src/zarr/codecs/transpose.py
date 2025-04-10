@@ -8,8 +8,12 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
-from zarr.core.metadata.common import reject_must_understand_metadata
+from zarr.core.common import (
+    JSON,
+    ChunkCoordsLike,
+    parse_named_configuration,
+    reject_must_understand_metadata,
+)
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
