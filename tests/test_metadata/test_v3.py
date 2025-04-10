@@ -413,7 +413,7 @@ def test_dtypes(dtype_str: str) -> None:
         assert dt.byte_count is None
 
 
-def default_metadata_dict(**kwargs: Any) -> dict[str, Any]:
+def default_metadata_dict(**kwargs: JSON) -> dict[str, JSON]:
     d = {
         "zarr_format": 3,
         "node_type": "array",
@@ -509,7 +509,7 @@ def default_metadata_dict(**kwargs: Any) -> dict[str, Any]:
     ],
 )
 def test_fail_on_invalid_metadata_key(
-    metadata_dict: dict[str, Any], is_valid: bool, fail_msg: str
+    metadata_dict: dict[str, JSON], is_valid: bool, fail_msg: str
 ) -> None:
     if is_valid:
         ArrayV3Metadata.from_dict(metadata_dict)

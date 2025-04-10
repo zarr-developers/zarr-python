@@ -344,7 +344,7 @@ class ShardingCodec(
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
-        **kwargs: Any,
+        **kwargs: JSON,
     ) -> None:
         reject_must_understand_metadata(kwargs, "`sharding` codec configuration")
 

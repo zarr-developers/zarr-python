@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numcodecs
 from numcodecs.blosc import Blosc
@@ -106,7 +106,7 @@ class BloscCodec(BytesBytesCodec):
         clevel: int = 5,
         shuffle: BloscShuffle | str | None = None,
         blocksize: int = 0,
-        **kwargs: Any,
+        **kwargs: JSON,
     ) -> None:
         reject_must_understand_metadata(kwargs, "`blosc` codec configuration")
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numcodecs
 from numcodecs.zstd import Zstd
@@ -42,7 +42,7 @@ class ZstdCodec(BytesBytesCodec):
     level: int = 0
     checksum: bool = False
 
-    def __init__(self, *, level: int = 0, checksum: bool = False, **kwargs: Any) -> None:
+    def __init__(self, *, level: int = 0, checksum: bool = False, **kwargs: JSON) -> None:
         reject_must_understand_metadata(kwargs, "`zstd` codec configuration")
 
         # numcodecs 0.13.0 introduces the checksum attribute for the zstd codec

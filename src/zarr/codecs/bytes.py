@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -45,7 +45,7 @@ class BytesCodec(ArrayBytesCodec):
         self,
         *,
         endian: Endian | str | None = default_system_endian,
-        **kwargs: Any,
+        **kwargs: JSON,
     ) -> None:
         reject_must_understand_metadata(kwargs, "`bytes` codec configuration")
 

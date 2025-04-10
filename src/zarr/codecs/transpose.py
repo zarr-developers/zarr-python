@@ -37,7 +37,7 @@ class TransposeCodec(ArrayArrayCodec):
 
     order: tuple[int, ...]
 
-    def __init__(self, *, order: ChunkCoordsLike, **kwargs: Any) -> None:
+    def __init__(self, *, order: ChunkCoordsLike, **kwargs: JSON) -> None:
         reject_must_understand_metadata(kwargs, "`transpose` codec configuration")
         order_parsed = parse_transpose_order(order)
 

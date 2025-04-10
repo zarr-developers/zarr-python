@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
 
@@ -34,7 +34,7 @@ class GzipCodec(BytesBytesCodec):
 
     level: int = 5
 
-    def __init__(self, *, level: int = 5, **kwargs: Any) -> None:
+    def __init__(self, *, level: int = 5, **kwargs: JSON) -> None:
         reject_must_understand_metadata(kwargs, "`gzip` codec configuration")
         level_parsed = parse_gzip_level(level)
 
