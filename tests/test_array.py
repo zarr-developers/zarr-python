@@ -1466,9 +1466,8 @@ def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkser
     data = np.arange(100)
     arr = zarr.create_array(store=store, data=data)
     ctx = mp.get_context(method)
-    pool = ctx.Pool()
-
-    results = pool.starmap(_index_array, [(arr, slice(len(data)))])
+    with ctx.Pool() as pool:
+        results = pool.starmap(_index_array, [(arr, slice(len(data)))])
     assert all(np.array_equal(r, data) for r in results)
 
 
