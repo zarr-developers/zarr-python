@@ -1,13 +1,25 @@
 from __future__ import annotations
 
+import re
+from typing import TYPE_CHECKING
+
+import numpy as np
 import pytest
 
+import zarr
 from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.storage import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
 
+if TYPE_CHECKING:
+    from zarr.core.common import ZarrFormat
 
+
+# TODO: work out where this warning is coming from and fix it
+@pytest.mark.filterwarnings(
+    re.escape("ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited")
+)
 class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     store_cls = MemoryStore
     buffer_cls = cpu.Buffer
@@ -46,7 +58,28 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     def test_list_prefix(self, store: MemoryStore) -> None:
         assert True
 
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "int64"])
+    @pytest.mark.parametrize("zarr_format", [2, 3])
+    async def test_deterministic_size(
+        self, store: MemoryStore, dtype, zarr_format: ZarrFormat
+    ) -> None:
+        a = zarr.empty(
+            store=store,
+            shape=(3,),
+            chunks=(1000,),
+            dtype=dtype,
+            zarr_format=zarr_format,
+            overwrite=True,
+        )
+        a[...] = 1
+        a.resize((1000,))
 
+        np.testing.assert_array_equal(a[:3], 1)
+        np.testing.assert_array_equal(a[3:], 0)
+
+
+# TODO: fix this warning
+@pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
 @gpu_test
 class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     store_cls = GpuMemoryStore

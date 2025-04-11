@@ -51,15 +51,17 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value.as_numpy_array().tobytes())
+            # write takes any object supporting the buffer protocol
+            f.write(value.as_numpy_array())  # type: ignore[arg-type]
         return None
     else:
-        view = memoryview(value.as_numpy_array().tobytes())
+        view = memoryview(value.as_numpy_array())  # type: ignore[arg-type]
         if exclusive:
             mode = "xb"
         else:
             mode = "wb"
         with path.open(mode=mode) as f:
+            # write takes any object supporting the buffer protocol
             return f.write(view)
 
 
@@ -207,6 +209,19 @@ class LocalStore(Store):
             shutil.rmtree(path)
         else:
             await asyncio.to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
+
+    async def delete_dir(self, prefix: str) -> None:
+        # docstring inherited
+        self._check_writable()
+        path = self.root / prefix
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.is_file():
+            raise ValueError(f"delete_dir was passed a {prefix=!r} that is a file")
+        else:
+            # Non-existent directory
+            # This path is tested by test_group:test_create_creates_parents for one
+            pass
 
     async def exists(self, key: str) -> bool:
         # docstring inherited

@@ -15,6 +15,7 @@ import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.metadata.v2 import _parse_structured_fill_value
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
 
@@ -299,6 +300,108 @@ def test_structured_dtype_roundtrip(fill_value, tmp_path) -> None:
         [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
         dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
     )
+    array_path = tmp_path / "data.zarr"
+    za = zarr.create(
+        shape=(3,),
+        store=array_path,
+        chunks=(2,),
+        fill_value=fill_value,
+        zarr_format=2,
+        dtype=a.dtype,
+    )
+    if fill_value is not None:
+        assert (np.array([fill_value] * a.shape[0], dtype=a.dtype) == za[:]).all()
+    za[...] = a
+    za = zarr.open_array(store=array_path)
+    assert (a == za[:]).all()
+
+
+@pytest.mark.parametrize(
+    (
+        "fill_value",
+        "dtype",
+        "expected_result",
+    ),
+    [
+        (
+            ("Alice", 30),
+            np.dtype([("name", "U10"), ("age", "i4")]),
+            np.array([("Alice", 30)], dtype=[("name", "U10"), ("age", "i4")])[0],
+        ),
+        (
+            ["Bob", 25],
+            np.dtype([("name", "U10"), ("age", "i4")]),
+            np.array([("Bob", 25)], dtype=[("name", "U10"), ("age", "i4")])[0],
+        ),
+        (
+            b"\x01\x00\x00\x00\x02\x00\x00\x00",
+            np.dtype([("x", "i4"), ("y", "i4")]),
+            np.array([(1, 2)], dtype=[("x", "i4"), ("y", "i4")])[0],
+        ),
+        (
+            "BQAAAA==",
+            np.dtype([("val", "i4")]),
+            np.array([(5,)], dtype=[("val", "i4")])[0],
+        ),
+        (
+            {"x": 1, "y": 2},
+            np.dtype([("location", "O")]),
+            np.array([({"x": 1, "y": 2},)], dtype=[("location", "O")])[0],
+        ),
+        (
+            {"x": 1, "y": 2, "z": 3},
+            np.dtype([("location", "O")]),
+            np.array([({"x": 1, "y": 2, "z": 3},)], dtype=[("location", "O")])[0],
+        ),
+    ],
+    ids=[
+        "tuple_input",
+        "list_input",
+        "bytes_input",
+        "string_input",
+        "dictionary_input",
+        "dictionary_input_extra_fields",
+    ],
+)
+def test_parse_structured_fill_value_valid(
+    fill_value: Any, dtype: np.dtype[Any], expected_result: Any
+) -> None:
+    result = _parse_structured_fill_value(fill_value, dtype)
+    assert result.dtype == expected_result.dtype
+    assert result == expected_result
+    if isinstance(expected_result, np.void):
+        for name in expected_result.dtype.names or []:
+            assert result[name] == expected_result[name]
+
+
+@pytest.mark.parametrize(
+    (
+        "fill_value",
+        "dtype",
+    ),
+    [
+        (("Alice", 30), np.dtype([("name", "U10"), ("age", "i4"), ("city", "U20")])),
+        (b"\x01\x00\x00\x00", np.dtype([("x", "i4"), ("y", "i4")])),
+        ("this_is_not_base64", np.dtype([("val", "i4")])),
+        ("hello", np.dtype([("age", "i4")])),
+        ({"x": 1, "y": 2}, np.dtype([("location", "i4")])),
+    ],
+    ids=[
+        "tuple_list_wrong_length",
+        "bytes_wrong_length",
+        "invalid_base64",
+        "wrong_data_type",
+        "wrong_dictionary",
+    ],
+)
+def test_parse_structured_fill_value_invalid(fill_value: Any, dtype: np.dtype[Any]) -> None:
+    with pytest.raises(ValueError):
+        _parse_structured_fill_value(fill_value, dtype)
+
+
+@pytest.mark.parametrize("fill_value", [None, b"x"], ids=["no_fill", "fill"])
+def test_other_dtype_roundtrip(fill_value, tmp_path) -> None:
+    a = np.array([b"a\0\0", b"bb", b"ccc"], dtype="V7")
     array_path = tmp_path / "data.zarr"
     za = zarr.create(
         shape=(3,),

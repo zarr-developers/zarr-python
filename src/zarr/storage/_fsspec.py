@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import (
@@ -177,7 +178,7 @@ class FsspecStore(Store):
             try:
                 from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-                fs = AsyncFileSystemWrapper(fs)
+                fs = AsyncFileSystemWrapper(fs, asynchronous=True)
             except ImportError as e:
                 raise ImportError(
                     f"The filesystem for URL '{url}' is synchronous, and the required "
@@ -286,6 +287,19 @@ class FsspecStore(Store):
         except self.allowed_exceptions:
             pass
 
+    async def delete_dir(self, prefix: str) -> None:
+        # docstring inherited
+        if not self.supports_deletes:
+            raise NotImplementedError(
+                "This method is only available for stores that support deletes."
+            )
+        self._check_writable()
+
+        path_to_delete = _dereference_path(self.path, prefix)
+
+        with suppress(*self.allowed_exceptions):
+            await self.fs._rm(path_to_delete, recursive=True)
+
     async def exists(self, key: str) -> bool:
         # docstring inherited
         path = _dereference_path(self.path, key)
@@ -341,7 +355,7 @@ class FsspecStore(Store):
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
-        for onefile in (a.replace(self.path + "/", "") for a in allfiles):
+        for onefile in (a.removeprefix(self.path + "/") for a in allfiles):
             yield onefile
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:

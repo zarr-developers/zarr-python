@@ -75,6 +75,31 @@ For more information on groups see the :class:`zarr.Group` API docs.
 
 .. _user-guide-diagnostics:
 
+Batch Group Creation
+--------------------
+
+You can also create multiple groups concurrently with a single function call. :func:`zarr.create_hierarchy` takes
+a :class:`zarr.storage.Store` instance and a dict of ``key : metadata`` pairs, parses that dict, and
+writes metadata documents to storage:
+
+   >>> from zarr import create_hierarchy
+   >>> from zarr.core.group import GroupMetadata
+   >>> from zarr.storage import LocalStore
+   >>> node_spec = {'a/b/c': GroupMetadata()}
+   >>> nodes_created = dict(create_hierarchy(store=LocalStore(root='data'), nodes=node_spec))
+   >>> print(sorted(nodes_created.items(), key=lambda kv: len(kv[0])))
+   [('', <Group file://data>), ('a', <Group file://data/a>), ('a/b', <Group file://data/a/b>), ('a/b/c', <Group file://data/a/b/c>)]
+
+Note that we only specified a single group named ``a/b/c``, but 4 groups were created. These additional groups
+were created to ensure that the desired node ``a/b/c`` is connected to the root group ``''`` by a sequence
+of intermediate groups. :func:`zarr.create_hierarchy` normalizes the ``nodes`` keyword argument to
+ensure that the resulting hierarchy is complete, i.e. all groups or arrays are connected to the root
+of the hierarchy via intermediate groups.
+
+Because :func:`zarr.create_hierarchy` concurrently creates metadata documents, it's more efficient
+than repeated calls to :func:`create_group` or :func:`create_array`, provided you can statically define
+the metadata for the groups and arrays you want to create.
+
 Array and group diagnostics
 ---------------------------
 

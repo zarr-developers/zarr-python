@@ -6,23 +6,23 @@ ci:
 default_stages: [pre-commit, pre-push]
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.1
+    rev: v0.9.9
     hooks:
-    - id: ruff
-      args: ["--fix", "--show-fixes"]
-    - id: ruff-format
+      - id: ruff
+        args: ["--fix", "--show-fixes"]
+      - id: ruff-format
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.3.0
+    rev: v2.4.1
     hooks:
       - id: codespell
         args: ["-L", "fo,ihs,kake,te", "-S", "fixture"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-    - id: check-yaml
-    - id: trailing-whitespace
+      - id: check-yaml
+      - id: trailing-whitespace
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.14.1
+    rev: v1.15.0
     hooks:
       - id: mypy
         files: src|tests
@@ -31,13 +31,14 @@ repos:
           - packaging
           - donfig
           - numcodecs[crc32c]
-          - numpy==2.1  # until https://github.com/numpy/numpy/issues/28034 is resolved
+          - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
           - typing_extensions
           - universal-pathlib
+          - obstore>=0.5.1
           # Tests
           - pytest
   - repo: https://github.com/scientific-python/cookie
-    rev: 2024.08.19
+    rev: 2025.01.22
     hooks:
       - id: sp-repo-review
   - repo: https://github.com/pre-commit/pygrep-hooks
@@ -50,6 +51,6 @@ repos:
     hooks:
       - id: numpydoc-validation
   - repo: https://github.com/twisted/towncrier
-    rev: 23.11.0
+    rev: 24.8.0
     hooks:
       - id: towncrier-check

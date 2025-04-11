@@ -64,6 +64,7 @@ keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 # User extras
 remote = [
     "fsspec>=2023.10.0",
+    "obstore>=0.5.1",
 ]
 gpu = [
     "cupy-cuda12x",
@@ -73,10 +74,12 @@ test = [
     "coverage",
     "pytest",
     "pytest-cov",
+    'zarr[remote]',
+    "botocore",
     "s3fs",
+    "moto[s3,server]",
     "pytest-asyncio",
     "pytest-accept",
-    "moto[s3,server]",
     "requests",
     "rich",
     "mypy",
@@ -101,6 +104,7 @@ docs = [
     'numcodecs[msgpack]',
     'rich',
     's3fs',
+    'astroid<4'
 ]
 
 
@@ -110,6 +114,12 @@ Changelog = "https://zarr.readthedocs.io/en/stable/release.html"
 Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29.5",
+    "pip>=25.0.1",
+]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -126,7 +136,9 @@ omit = [
 
 [tool.hatch]
 version.source = "vcs"
-build.hooks.vcs.version-file = "src/zarr/_version.py"
+
+[tool.hatch.build]
+hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
 dependencies = [
@@ -158,11 +170,11 @@ run = "run-coverage --no-cov"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.doctest]
-features = ["test", "optional"]
+features = ["test", "optional", "remote"]
 description = "Test environment for doctests"
 
 [tool.hatch.envs.doctest.scripts]
@@ -208,12 +220,9 @@ dependencies = [
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
     'donfig @ git+https://github.com/pytroll/donfig',
+    'obstore @ git+https://github.com/developmentseed/obstore@main#subdirectory=obstore',
     # test deps
-    'hypothesis',
-    'pytest',
-    'pytest-cov',
-    'pytest-asyncio',
-    'moto[s3]',
+    'zarr[test]',
 ]
 
 [tool.hatch.envs.upstream.env-vars]
@@ -225,6 +234,9 @@ PIP_PRE = "1"
 run = "pytest --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 list-env = "pip list"
 
 [tool.hatch.envs.min_deps]
@@ -244,18 +256,16 @@ dependencies = [
     'typing_extensions==4.9.*',
     'donfig==0.8.*',
     # test deps
-    'hypothesis',
-    'pytest',
-    'pytest-cov',
-    'pytest-asyncio',
-    'moto[s3]',
+    'zarr[test]',
 ]
 
 [tool.hatch.envs.min_deps.scripts]
 run = "pytest --verbose"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
-
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 
 [tool.ruff]
 line-length = 100
@@ -387,15 +397,22 @@ addopts = [
     "--durations=10", "-ra", "--strict-config", "--strict-markers",
 ]
 filterwarnings = [
-    "error:::zarr.*",
-    "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
-    "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
-    "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
-    "ignore:Duplicate name:UserWarning",  # from ZipFile
-    "ignore:.*is currently not part in the Zarr format 3 specification.*:UserWarning",
+    "error",
+    # TODO: explicitly filter or catch the warnings below where we expect them to be emitted in the tests
+    "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification.*:UserWarning",
+    "ignore:Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__.*:UserWarning",
+    "ignore:Automatic shard shape inference is experimental and may change without notice.*:UserWarning",
+    "ignore:The codec .* is currently not part in the Zarr format 3 specification.*:UserWarning",
+    "ignore:The dtype .* is currently not part in the Zarr format 3 specification.*:UserWarning",
+    "ignore:Use zarr.create_array instead.:DeprecationWarning",
+    "ignore:Duplicate name.*:UserWarning",
+    "ignore:The `compressor` argument is deprecated. Use `compressors` instead.:UserWarning",
+    "ignore:Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations.:UserWarning",
+    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
 ]
 markers = [
-    "gpu: mark a test as requiring CuPy and GPU"
+    "gpu: mark a test as requiring CuPy and GPU",
+    "slow_hypothesis: slow hypothesis tests",
 ]
 
 [tool.repo-review]
@@ -425,3 +442,6 @@ directory = 'changes'
 filename = "docs/release-notes.rst"
 underlines = ["-", "~", "^"]
 issue_format = ":issue:`{issue}`"
+
+[tool.codespell]
+ignore-words-list = "astroid"

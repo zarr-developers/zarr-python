@@ -38,7 +38,7 @@ def has_cupy() -> bool:
         return False
 
 
-T_Callable = TypeVar("T_Callable", bound=Callable[[], Coroutine[Any, Any, None]])
+T_Callable = TypeVar("T_Callable", bound=Callable[..., Coroutine[Any, Any, None] | None])
 
 
 # Decorator for GPU tests

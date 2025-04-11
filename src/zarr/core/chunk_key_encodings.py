@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypedDict, cast
+
+if TYPE_CHECKING:
+    from typing import NotRequired
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
@@ -20,9 +23,9 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
     return cast(SeparatorLiteral, data)
 
 
-class ChunkKeyEncodingLike(TypedDict):
+class ChunkKeyEncodingParams(TypedDict):
     name: Literal["v2", "default"]
-    separator: SeparatorLiteral
+    separator: NotRequired[SeparatorLiteral]
 
 
 @dataclass(frozen=True)
@@ -36,15 +39,16 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(
-        cls, data: dict[str, JSON] | ChunkKeyEncoding | ChunkKeyEncodingLike
-    ) -> ChunkKeyEncoding:
+    def from_dict(cls, data: dict[str, JSON] | ChunkKeyEncodingLike) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
             return data
 
         # handle ChunkKeyEncodingParams
         if "name" in data and "separator" in data:
             data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
+
+        # TODO: remove this cast when we are statically typing the JSON metadata completely.
+        data = cast(dict[str, JSON], data)
 
         # configuration is optional for chunk key encodings
         name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
@@ -71,6 +75,9 @@ class ChunkKeyEncoding(Metadata):
     @abstractmethod
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         pass
+
+
+ChunkKeyEncodingLike: TypeAlias = ChunkKeyEncodingParams | ChunkKeyEncoding
 
 
 @dataclass(frozen=True)

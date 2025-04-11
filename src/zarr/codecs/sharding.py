@@ -455,8 +455,9 @@ class ShardingCodec(
                     chunk_spec,
                     chunk_selection,
                     out_selection,
+                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
             out,
         )
@@ -486,7 +487,7 @@ class ShardingCodec(
         )
 
         indexed_chunks = list(indexer)
-        all_chunk_coords = {chunk_coords for chunk_coords, _, _ in indexed_chunks}
+        all_chunk_coords = {chunk_coords for chunk_coords, *_ in indexed_chunks}
 
         # reading bytes of all requested chunks
         shard_dict: ShardMapping = {}
@@ -524,12 +525,17 @@ class ShardingCodec(
                     chunk_spec,
                     chunk_selection,
                     out_selection,
+                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
             out,
         )
-        return out
+
+        if hasattr(indexer, "sel_shape"):
+            return out.reshape(indexer.sel_shape)
+        else:
+            return out
 
     async def _encode_single(
         self,
@@ -558,8 +564,9 @@ class ShardingCodec(
                     chunk_spec,
                     chunk_selection,
                     out_selection,
+                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
             shard_array,
         )
@@ -601,8 +608,9 @@ class ShardingCodec(
                     chunk_spec,
                     chunk_selection,
                     out_selection,
+                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
             shard_array,
         )

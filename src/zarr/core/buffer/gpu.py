@@ -13,6 +13,10 @@ import numpy.typing as npt
 
 from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.registry import (
+    register_buffer,
+    register_ndbuffer,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -215,3 +219,6 @@ class NDBuffer(core.NDBuffer):
 
 
 buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
+
+register_buffer(Buffer)
+register_ndbuffer(NDBuffer)

@@ -69,6 +69,12 @@ jobs:
         path: .hypothesis/
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
 
+    - name: Upload coverage
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        verbose: true # optional (default = false)
+
     - name: Generate and publish the report
       if: |
         failure()

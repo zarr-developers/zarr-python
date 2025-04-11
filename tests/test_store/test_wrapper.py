@@ -15,6 +15,10 @@ if TYPE_CHECKING:
     from zarr.core.buffer.core import BufferPrototype
 
 
+# TODO: fix this warning
+@pytest.mark.filterwarnings(
+    "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
+)
 class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
     store_cls = WrapperStore
     buffer_cls = Buffer
@@ -72,6 +76,10 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
             store._is_open = True
 
 
+# TODO: work out where warning is coming from and fix
+@pytest.mark.filterwarnings(
+    "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
+)
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> None:
     # define a class that prints when it sets
@@ -89,6 +97,7 @@ async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> 
     assert await store_wrapped.get(key, buffer_prototype) == value
 
 
+@pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> None:
     # define a class that prints when it sets

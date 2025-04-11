@@ -3,16 +3,17 @@ from __future__ import annotations
 import asyncio
 import atexit
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from typing_extensions import ParamSpec
 
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Coroutine
+    from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
     from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -87,6 +88,26 @@ def cleanup_resources() -> None:
 
 
 atexit.register(cleanup_resources)
+
+
+def reset_resources_after_fork() -> None:
+    """
+    Ensure that global resources are reset after a fork. Without this function,
+    forked processes will retain invalid references to the parent process's resources.
+    """
+    global loop, iothread, _executor
+    # These lines are excluded from coverage because this function only runs in a child process,
+    # which is not observed by the test coverage instrumentation. Despite the apparent lack of
+    # test coverage, this function should be adequately tested by any test that uses Zarr IO with
+    # multiprocessing.
+    loop[0] = None  # pragma: no cover
+    iothread[0] = None  # pragma: no cover
+    _executor = None  # pragma: no cover
+
+
+# this is only available on certain operating systems
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=reset_resources_after_fork)
 
 
 async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
@@ -194,3 +215,17 @@ class SyncMixin:
             return [item async for item in async_iterator]
 
         return self._sync(iter_to_list())
+
+
+async def _with_semaphore(
+    func: Callable[[], Awaitable[T]], semaphore: asyncio.Semaphore | None = None
+) -> T:
+    """
+    Await the result of invoking the no-argument-callable ``func`` within the context manager
+    provided by a Semaphore, if one is provided. Otherwise, just await the result of invoking
+    ``func``.
+    """
+    if semaphore is None:
+        return await func()
+    async with semaphore:
+        return await func()

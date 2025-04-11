@@ -1,1 +1,0 @@
-Wrap sync fsspec filesystems with AsyncFileSystemWrapper in xarray.to_zarr

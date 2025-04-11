@@ -29,9 +29,12 @@ For more information, see the Donfig documentation at https://github.com/pytroll
 
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from donfig import Config as DConfig
+
+if TYPE_CHECKING:
+    from donfig.config_obj import ConfigSet
 
 
 class BadConfigError(ValueError):
@@ -55,6 +58,14 @@ class Config(DConfig):  # type: ignore[misc]
     def reset(self) -> None:
         self.clear()
         self.refresh()
+
+    def enable_gpu(self) -> ConfigSet:
+        """
+        Configure Zarr to use GPUs where possible.
+        """
+        return self.set(
+            {"buffer": "zarr.core.buffer.gpu.Buffer", "ndbuffer": "zarr.core.buffer.gpu.NDBuffer"}
+        )
 
 
 # The default configuration for zarr

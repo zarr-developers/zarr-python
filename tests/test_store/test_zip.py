@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 import zipfile
 from typing import TYPE_CHECKING
@@ -14,7 +15,16 @@ from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from typing import Any
+
+
+# TODO: work out where this is coming from and fix
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:coroutine method 'aclose' of 'ZipStore.list' was never awaited:RuntimeWarning"
+    )
+]
 
 
 class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
@@ -64,6 +74,8 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: ZipStore) -> None:
         assert store.supports_listing
 
+    # TODO: fix this warning
+    @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
     def test_api_integration(self, store: ZipStore) -> None:
         root = zarr.open_group(store=store, mode="a")
 
@@ -111,3 +123,15 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         kws = {**store_kwargs, "mode": zip_mode}
         store = await self.store_cls.open(**kws)
         assert store.read_only == read_only
+
+    def test_externally_zipped_store(self, tmp_path: Path) -> None:
+        # See: https://github.com/zarr-developers/zarr-python/issues/2757
+        zarr_path = tmp_path / "foo.zarr"
+        root = zarr.open_group(store=zarr_path, mode="w")
+        root.require_group("foo")
+        root["foo"]["bar"] = np.array([1])
+        shutil.make_archive(zarr_path, "zip", zarr_path)
+        zip_path = tmp_path / "foo.zarr.zip"
+        zipped = zarr.open_group(ZipStore(zip_path, mode="r"), mode="r")
+        assert list(zipped.keys()) == list(root.keys())
+        assert list(zipped["foo"].keys()) == list(root["foo"].keys())

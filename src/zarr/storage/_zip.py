@@ -108,7 +108,8 @@ class ZipStore(Store):
         self._sync_open()
 
     def __getstate__(self) -> dict[str, Any]:
-        state = self.__dict__
+        # We need a copy to not modify the state of the original store
+        state = self.__dict__.copy()
         for attr in ["_zf", "_lock"]:
             state.pop(attr, None)
         return state
@@ -282,7 +283,7 @@ class ZipStore(Store):
                     yield key
         else:
             for key in keys:
-                if key.startswith(prefix + "/") and key != prefix:
+                if key.startswith(prefix + "/") and key.strip("/") != prefix:
                     k = key.removeprefix(prefix + "/").split("/")[0]
                     if k not in seen:
                         seen.add(k)

@@ -33,7 +33,7 @@ def test_parse_zarr_format_invalid(data: Any) -> None:
 
 
 @pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
-@pytest.mark.parametrize("filters", [None, (), (numcodecs.GZip(),)])
+@pytest.mark.parametrize("filters", [None, (numcodecs.GZip(),)])
 @pytest.mark.parametrize("compressor", [None, numcodecs.GZip()])
 @pytest.mark.parametrize("fill_value", [None, 0, 1])
 @pytest.mark.parametrize("order", ["C", "F"])
@@ -79,6 +79,24 @@ def test_metadata_to_dict(
         observed.pop("dimension_separator")
 
     assert observed == expected
+
+
+def test_filters_empty_tuple_warns() -> None:
+    metadata_dict = {
+        "zarr_format": 2,
+        "shape": (1,),
+        "chunks": (1,),
+        "dtype": "uint8",
+        "order": "C",
+        "compressor": None,
+        "filters": (),
+        "fill_value": 0,
+    }
+    with pytest.warns(
+        UserWarning, match="Found an empty list of filters in the array metadata document."
+    ):
+        meta = ArrayV2Metadata.from_dict(metadata_dict)
+    assert meta.filters is None
 
 
 class TestConsolidated:

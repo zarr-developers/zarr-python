@@ -8,7 +8,7 @@ from zarr import Group
 from zarr.core.common import AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
 from zarr.storage._common import contains_array, contains_group, make_store_path
-from zarr.storage._utils import normalize_path
+from zarr.storage._utils import _join_paths, _normalize_path_keys, _normalize_paths, normalize_path
 
 
 @pytest.mark.parametrize("path", ["foo", "foo/bar"])
@@ -174,3 +174,48 @@ def test_normalize_path_none():
 def test_normalize_path_invalid(path: str):
     with pytest.raises(ValueError):
         normalize_path(path)
+
+
+@pytest.mark.parametrize("paths", [("", "foo"), ("foo", "bar")])
+def test_join_paths(paths: tuple[str, str]) -> None:
+    """
+    Test that _join_paths joins paths in a way that is robust to an empty string
+    """
+    observed = _join_paths(paths)
+    if paths[0] == "":
+        assert observed == paths[1]
+    else:
+        assert observed == "/".join(paths)
+
+
+class TestNormalizePaths:
+    @staticmethod
+    def test_valid() -> None:
+        """
+        Test that path normalization works as expected
+        """
+        paths = ["a", "b", "c", "d", "", "//a///b//"]
+        assert _normalize_paths(paths) == tuple([normalize_path(p) for p in paths])
+
+    @staticmethod
+    @pytest.mark.parametrize("paths", [("", "/"), ("///a", "a")])
+    def test_invalid(paths: tuple[str, str]) -> None:
+        """
+        Test that name collisions after normalization raise a ``ValueError``
+        """
+        msg = (
+            f"After normalization, the value '{paths[1]}' collides with '{paths[0]}'. "
+            f"Both '{paths[1]}' and '{paths[0]}' normalize to the same value: '{normalize_path(paths[0])}'. "
+            f"You should use either '{paths[1]}' or '{paths[0]}', but not both."
+        )
+        with pytest.raises(ValueError, match=msg):
+            _normalize_paths(paths)
+
+
+def test_normalize_path_keys():
+    """
+    Test that ``_normalize_path_keys`` just applies the normalize_path function to each key of its
+    input
+    """
+    data = {"a": 10, "//b": 10}
+    assert _normalize_path_keys(data) == {normalize_path(k): v for k, v in data.items()}

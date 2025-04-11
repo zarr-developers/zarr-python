@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Iterable
+import warnings
+from collections.abc import Iterable, Sequence
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, Self
+    from typing import Literal, Self
 
     import numpy.typing as npt
 
@@ -19,6 +20,7 @@ if TYPE_CHECKING:
     from zarr.core.common import ChunkCoords
 
 import json
+import numbers
 from dataclasses import dataclass, field, fields, replace
 
 import numcodecs
@@ -145,38 +147,46 @@ class ArrayV2Metadata(Metadata):
             raise TypeError
 
         zarray_dict = self.to_dict()
+        zarray_dict["fill_value"] = _serialize_fill_value(self.fill_value, self.dtype)
         zattrs_dict = zarray_dict.pop("attributes", {})
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
+                json.dumps(
+                    zarray_dict, default=_json_convert, indent=json_indent, allow_nan=False
+                ).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent).encode()
+                json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
             ),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
-        # make a copy to protect the original from modification
+        # Make a copy to protect the original from modification.
         _data = data.copy()
-        # check that the zarr_format attribute is correct
+        # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
-        dtype = parse_dtype(_data["dtype"])
 
-        if dtype.kind in "SV":
-            fill_value_encoded = _data.get("fill_value")
-            if fill_value_encoded is not None:
-                fill_value = base64.standard_b64decode(fill_value_encoded)
-                _data["fill_value"] = fill_value
-
-        # zarr v2 allowed arbitrary keys here.
-        # We don't want the ArrayV2Metadata constructor to fail just because someone put an
-        # extra key in the metadata.
+        # zarr v2 allowed arbitrary keys in the metadata.
+        # Filter the keys to only those expected by the constructor.
         expected = {x.name for x in fields(cls)}
-        # https://github.com/zarr-developers/zarr-python/issues/2269
-        # handle the renames
         expected |= {"dtype", "chunks"}
+
+        # check if `filters` is an empty sequence; if so use None instead and raise a warning
+        filters = _data.get("filters")
+        if (
+            isinstance(filters, Sequence)
+            and not isinstance(filters, (str, bytes))
+            and len(filters) == 0
+        ):
+            msg = (
+                "Found an empty list of filters in the array metadata document. "
+                "This is contrary to the Zarr V2 specification, and will cause an error in the future. "
+                "Use None (or Null in a JSON document) instead of an empty list of filters."
+            )
+            warnings.warn(msg, UserWarning, stacklevel=1)
+            _data["filters"] = None
 
         _data = {k: v for k, v in _data.items() if k in expected}
 
@@ -184,13 +194,6 @@ class ArrayV2Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
-
-        if self.dtype.kind in "SV" and self.fill_value is not None:
-            # There's a relationship between self.dtype and self.fill_value
-            # that mypy isn't aware of. The fact that we have S or V dtype here
-            # means we should have a bytes-type fill_value.
-            fill_value = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
-            zarray_dict["fill_value"] = fill_value
 
         _ = zarray_dict.pop("dtype")
         dtype_json: JSON
@@ -255,7 +258,11 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
             else:
                 msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
                 raise TypeError(msg)
-        return tuple(out)
+        if len(out) == 0:
+            # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
+            return None
+        else:
+            return tuple(out)
     # take a single codec instance and wrap it in a tuple
     if isinstance(data, numcodecs.abc.Codec):
         return (data,)
@@ -285,7 +292,26 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
+def _parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+    """Handle structured dtype/fill value pairs"""
+    print("FILL VALUE", fill_value, "DT", dtype)
+    try:
+        if isinstance(fill_value, list):
+            return np.array([tuple(fill_value)], dtype=dtype)[0]
+        elif isinstance(fill_value, tuple):
+            return np.array([fill_value], dtype=dtype)[0]
+        elif isinstance(fill_value, bytes):
+            return np.frombuffer(fill_value, dtype=dtype)[0]
+        elif isinstance(fill_value, str):
+            decoded = base64.standard_b64decode(fill_value)
+            return np.frombuffer(decoded, dtype=dtype)[0]
+        else:
+            return np.array(fill_value, dtype=dtype)[()]
+    except Exception as e:
+        raise ValueError(f"Fill_value {fill_value} is not valid for dtype {dtype}.") from e
+
+
+def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     """
     Parse a potential fill value into a value that is compatible with the provided dtype.
 
@@ -302,13 +328,16 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     """
 
     if fill_value is None or dtype.hasobject:
-        # no fill value
         pass
+    elif dtype.fields is not None:
+        # the dtype is structured (has multiple fields), so the fill_value might be a
+        # compound value (e.g., a tuple or dict) that needs field-wise processing.
+        # We use parse_structured_fill_value to correctly convert each component.
+        fill_value = _parse_structured_fill_value(fill_value, dtype)
     elif not isinstance(fill_value, np.void) and fill_value == 0:
         # this should be compatible across numpy versions for any array type, including
         # structured arrays
         fill_value = np.zeros((), dtype=dtype)[()]
-
     elif dtype.kind == "U":
         # special case unicode because of encoding issues on Windows if passed through numpy
         # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
@@ -317,6 +346,11 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
             raise ValueError(
                 f"fill_value {fill_value!r} is not valid for dtype {dtype}; must be a unicode string"
             )
+    elif dtype.kind in "SV" and isinstance(fill_value, str):
+        fill_value = base64.standard_b64decode(fill_value)
+    elif dtype.kind == "c" and isinstance(fill_value, list) and len(fill_value) == 2:
+        complex_val = complex(float(fill_value[0]), float(fill_value[1]))
+        fill_value = np.array(complex_val, dtype=dtype)[()]
     else:
         try:
             if isinstance(fill_value, bytes) and dtype.kind == "V":
@@ -330,6 +364,39 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
             raise ValueError(msg) from e
 
     return fill_value
+
+
+def _serialize_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> JSON:
+    serialized: JSON
+
+    if fill_value is None:
+        serialized = None
+    elif dtype.kind in "SV":
+        # There's a relationship between dtype and fill_value
+        # that mypy isn't aware of. The fact that we have S or V dtype here
+        # means we should have a bytes-type fill_value.
+        serialized = base64.standard_b64encode(cast(bytes, fill_value)).decode("ascii")
+    elif isinstance(fill_value, np.datetime64):
+        serialized = np.datetime_as_string(fill_value)
+    elif isinstance(fill_value, numbers.Integral):
+        serialized = int(fill_value)
+    elif isinstance(fill_value, numbers.Real):
+        float_fv = float(fill_value)
+        if np.isnan(float_fv):
+            serialized = "NaN"
+        elif np.isinf(float_fv):
+            serialized = "Infinity" if float_fv > 0 else "-Infinity"
+        else:
+            serialized = float_fv
+    elif isinstance(fill_value, numbers.Complex):
+        serialized = [
+            _serialize_fill_value(fill_value.real, dtype),
+            _serialize_fill_value(fill_value.imag, dtype),
+        ]
+    else:
+        serialized = fill_value
+
+    return serialized
 
 
 def _default_fill_value(dtype: np.dtype[Any]) -> Any:
@@ -349,6 +416,14 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return b""
     elif dtype.kind in "UO":
         return ""
+    elif dtype.kind in "Mm":
+        return dtype.type("nat")
+    elif dtype.kind == "V":
+        if dtype.fields is not None:
+            default = tuple(_default_fill_value(field[0]) for field in dtype.fields.values())
+            return np.array([default], dtype=dtype)
+        else:
+            return np.zeros(1, dtype=dtype)
     else:
         return dtype.type(0)
 

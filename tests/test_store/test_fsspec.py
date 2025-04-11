@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import TYPE_CHECKING
 
 import pytest
-from botocore.session import Session
 from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
@@ -20,12 +20,24 @@ if TYPE_CHECKING:
 
     import botocore.client
 
+# Warning filter due to https://github.com/boto/boto3/issues/3889
+pytestmark = [
+    pytest.mark.filterwarnings(
+        re.escape("ignore:datetime.datetime.utcnow() is deprecated:DeprecationWarning")
+    ),
+    # TODO: fix these warnings
+    pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning"),
+    pytest.mark.filterwarnings(
+        "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
+    ),
+]
 
 fsspec = pytest.importorskip("fsspec")
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
 moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
 moto = pytest.importorskip("moto")
+botocore = pytest.importorskip("botocore")
 
 # ### amended from s3fs ### #
 test_bucket_name = "test"
@@ -52,7 +64,7 @@ def s3_base() -> Generator[None, None, None]:
 
 def get_boto3_client() -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
-    session = Session()
+    session = botocore.session.Session()
     return session.create_client("s3", endpoint_url=endpoint_url)
 
 
@@ -110,7 +122,12 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
 
     @pytest.fixture
     def store_kwargs(self, request) -> dict[str, str | bool]:
-        fs, path = fsspec.url_to_fs(
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            # before fsspec==2024.3.1
+            from fsspec.core import url_to_fs
+        fs, path = url_to_fs(
             f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=True
         )
         return {"fs": fs, "path": path}
@@ -182,6 +199,10 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value-3"}
 
+    @pytest.mark.skipif(
+        parse_version(fsspec.__version__) < parse_version("2024.03.01"),
+        reason="Prior bug in from_upath",
+    )
     def test_from_upath(self) -> None:
         upath = pytest.importorskip("upath")
         path = upath.UPath(
@@ -204,7 +225,12 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             self.store_cls(**store_kwargs)
 
     def test_init_warns_if_fs_asynchronous_is_false(self) -> None:
-        fs, path = fsspec.url_to_fs(
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            # before fsspec==2024.3.1
+            from fsspec.core import url_to_fs
+        fs, path = url_to_fs(
             f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=False
         )
         store_kwargs = {"fs": fs, "path": path}
@@ -216,6 +242,14 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
         assert await store.is_empty("")
+
+    async def test_delete_dir_unsupported_deletes(self, store: FsspecStore) -> None:
+        store.supports_deletes = False
+        with pytest.raises(
+            NotImplementedError,
+            match="This method is only available for stores that support deletes.",
+        ):
+            await store.delete_dir("test_prefix")
 
 
 @pytest.mark.skipif(
@@ -244,3 +278,28 @@ def test_no_wrap_async_filesystem():
 
     assert not isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.async_impl
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+async def test_delete_dir_wrapped_filesystem(tmpdir) -> None:
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+    from fsspec.implementations.local import LocalFileSystem
+
+    wrapped_fs = AsyncFileSystemWrapper(LocalFileSystem(auto_mkdir=True))
+    store = FsspecStore(wrapped_fs, read_only=False, path=f"{tmpdir}/test/path")
+
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.asynchronous
+
+    await store.set("zarr.json", cpu.Buffer.from_bytes(b"root"))
+    await store.set("foo-bar/zarr.json", cpu.Buffer.from_bytes(b"root"))
+    await store.set("foo/zarr.json", cpu.Buffer.from_bytes(b"bar"))
+    await store.set("foo/c/0", cpu.Buffer.from_bytes(b"chunk"))
+    await store.delete_dir("foo")
+    assert await store.exists("zarr.json")
+    assert await store.exists("foo-bar/zarr.json")
+    assert not await store.exists("foo/zarr.json")
+    assert not await store.exists("foo/c/0")
