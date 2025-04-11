@@ -32,7 +32,7 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 
 class FsspecStore(Store):
     """
-    A remote Store based on FSSpec
+    Store for remote data based on FSSpec.
 
     Parameters
     ----------

@@ -18,7 +18,8 @@ T_Store = TypeVar("T_Store", bound=Store)
 
 class WrapperStore(Store, Generic[T_Store]):
     """
-    A store class that wraps an existing ``Store`` instance.
+    Store that wraps an existing Store.
+
     By default all of the store methods are delegated to the wrapped store instance, which is
     accessible via the ``._store`` attribute of this class.
 

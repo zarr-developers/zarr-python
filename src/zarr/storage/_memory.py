@@ -19,7 +19,7 @@ logger = getLogger(__name__)
 
 class MemoryStore(Store):
     """
-    In-memory store.
+    Store for local memory.
 
     Parameters
     ----------
@@ -173,8 +173,10 @@ class MemoryStore(Store):
 
 
 class GpuMemoryStore(MemoryStore):
-    """A GPU only memory store that stores every chunk in GPU memory irrespective
-    of the original location.
+    """
+    Store for GPU memory.
+
+    Stores every chunk in GPU memory irrespective of the original location.
 
     The dictionary of buffers to initialize this memory store with *must* be
     GPU Buffers.
