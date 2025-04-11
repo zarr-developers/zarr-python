@@ -151,25 +151,29 @@ async def test_codecs_use_of_gpu_prototype() -> None:
 @gpu_test
 @pytest.mark.asyncio
 async def test_sharding_use_of_gpu_prototype() -> None:
-    expect = cp.zeros((10, 10), dtype="uint16", order="F")
-    a = await zarr.api.asynchronous.create_array(
-        StorePath(MemoryStore()) / "test_codecs_use_of_gpu_prototype",
-        shape=expect.shape,
-        chunks=(5, 5),
-        shards=(10, 10),
-        dtype=expect.dtype,
-        fill_value=0,
-    )
-    expect[:] = cp.arange(100).reshape(10, 10)
+    with zarr.config.enable_gpu():
+        expect = cp.zeros((10, 10), dtype="uint16", order="F")
 
-    await a.setitem(
-        selection=(slice(0, 10), slice(0, 10)),
-        value=expect[:],
-        prototype=gpu.buffer_prototype,
-    )
-    got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype)
-    assert isinstance(got, cp.ndarray)
-    assert cp.array_equal(expect, got)
+        a = await zarr.api.asynchronous.create_array(
+            StorePath(MemoryStore()) / "test_codecs_use_of_gpu_prototype",
+            shape=expect.shape,
+            chunks=(5, 5),
+            shards=(10, 10),
+            dtype=expect.dtype,
+            fill_value=0,
+        )
+        expect[:] = cp.arange(100).reshape(10, 10)
+
+        await a.setitem(
+            selection=(slice(0, 10), slice(0, 10)),
+            value=expect[:],
+            prototype=gpu.buffer_prototype,
+        )
+        got = await a.getitem(
+            selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
+        )
+        assert isinstance(got, cp.ndarray)
+        assert cp.array_equal(expect, got)
 
 
 def test_numpy_buffer_prototype() -> None:
