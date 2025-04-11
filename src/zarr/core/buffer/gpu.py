@@ -229,6 +229,24 @@ class DelayedBuffer(core.DelayedBuffer, Buffer):
         core.DelayedBuffer.__init__(self, array)
         self._data_list = list(map(cp.asarray, self._data_list))
 
+    @classmethod
+    def create_zero_length(cls) -> Self:
+        return cls(np.array([], dtype="b"))
+
+    @classmethod
+    def from_buffer(cls, buffer: core.Buffer) -> Self:
+        if isinstance(buffer, cls):
+            return cls(buffer._data_list)
+        else:
+            return cls(buffer._data)
+
+    @classmethod
+    def from_bytes(cls, bytes_like: BytesLike) -> Self:
+        return cls(np.asarray(bytes_like, dtype="b"))
+
+    def as_numpy_array(self) -> npt.NDArray[Any]:
+        return np.asanyarray(self._data)
+
 
 Buffer.Delayed = DelayedBuffer
 

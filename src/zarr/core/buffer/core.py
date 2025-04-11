@@ -551,30 +551,44 @@ class DelayedBuffer(Buffer):
     def __getitem__(self, key: slice) -> Self:
         check_item_key_is_1d_contiguous(key)
         start, stop = key.start, key.stop
+        this_len = len(self)
         if start is None:
             start = 0
+        if start < 0:
+            start = this_len + start
         if stop is None:
-            stop = len(self)
+            stop = this_len
+        if stop < 0:
+            stop = this_len + stop
+        if stop > this_len:
+            stop = this_len
+        if stop <= start:
+            return Buffer.from_buffer(b'')
+
         new_list = []
         offset = 0
         found_last = False
         for chunk in self._data_list:
             chunk_size = len(chunk)
             skip = False
-            if offset <= start < offset + chunk_size:
+            if 0 <= start - offset < chunk_size:
                 # first chunk
-                if stop <= offset + chunk_size:
+                if stop - offset <= chunk_size:
                     # also last chunk
                     chunk = chunk[start-offset:stop-offset]
                     found_last = True
                 else:
                     chunk = chunk[start-offset:]
-            elif offset <= stop <= offset + chunk_size:
+            elif 0 <= stop - offset <= chunk_size:
                 # last chunk
                 chunk = chunk[:stop-offset]
                 found_last = True
-            elif offset + chunk_size <= start:
+            elif chunk_size <= start - offset:
+                # before first chunk
                 skip = True
+            else:
+                # middle chunk
+                pass
 
             if not skip:
                 new_list.append(chunk)
@@ -590,29 +604,39 @@ class DelayedBuffer(Buffer):
         start, stop = key.start, key.stop
         if start is None:
             start = 0
+        if start < 0:
+            start = len(self) + start
         if stop is None:
             stop = len(self)
-        new_list = []
+        if stop < 0:
+            stop = len(self) + stop
+        if stop <= start:
+            return
+
         offset = 0
         found_last = False
         value = memoryview(np.asanyarray(value))
         for chunk in self._data_list:
             chunk_size = len(chunk)
             skip = False
-            if offset <= start < offset + chunk_size:
+            if 0 <= start - offset < chunk_size:
                 # first chunk
-                if stop <= offset + chunk_size:
+                if stop - offset <= chunk_size:
                     # also last chunk
                     chunk = chunk[start-offset:stop-offset]
                     found_last = True
                 else:
                     chunk = chunk[start-offset:]
-            elif offset <= stop <= offset + chunk_size:
+            elif 0 <= stop - offset <= chunk_size:
                 # last chunk
                 chunk = chunk[:stop-offset]
                 found_last = True
-            elif offset + chunk_size <= start:
+            elif chunk_size <= start - offset:
+                # before first chunk
                 skip = True
+            else:
+                # middle chunk
+                pass
 
             if not skip:
                 chunk[:] = value[:len(chunk)]
@@ -623,7 +647,6 @@ class DelayedBuffer(Buffer):
             if found_last:
                 break
             offset += chunk_size
-        return self.__class__(new_list)
 
 
 # The default buffer prototype used throughout the Zarr codebase.
