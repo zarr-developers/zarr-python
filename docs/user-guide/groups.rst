@@ -140,7 +140,7 @@ property. E.g.::
    No. bytes          : 8000000 (7.6M)
    No. bytes stored   : 1614
    Storage ratio      : 4956.6
-   Chunks Initialized : 0
+   Chunks Initialized : 10
    >>> baz.info
    Type               : Array
    Zarr format        : 3
