@@ -321,7 +321,7 @@ async def open(
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast(ArrayMetadataDict, metadata_dict)
+            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
             # for v2, the above would already have raised an exception if not an array
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
