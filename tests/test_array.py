@@ -1194,6 +1194,26 @@ class TestCreateArray:
                 filters="nonexistent_filter_name",
             )
 
+        # string representation of a codec is only supported if codec has no required arguments
+        msg = "Delta.__init__() missing 1 required positional argument: 'dtype'"
+        with pytest.raises(TypeError, match=re.escape(msg)):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=2,
+                filters="delta",
+            )
+        msg = "TransposeCodec.__init__() missing 1 required keyword-only argument: 'order'"
+        with pytest.raises(TypeError, match=re.escape(msg)):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=3,
+                filters="transpose",
+            )
+
     @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
     async def test_default_filters_compressors(
