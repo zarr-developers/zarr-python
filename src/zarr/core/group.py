@@ -1429,7 +1429,7 @@ class AsyncGroup:
             group already exists at path ``a``, then this function will leave the group at ``a`` as-is.
 
         Yields
-        -------
+        ------
             tuple[str, AsyncArray | AsyncGroup].
         """
         # check that all the nodes have the same zarr_format as Self

@@ -223,5 +223,5 @@ def numpy_buffer_prototype() -> core.BufferPrototype:
     return core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
 
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)
+register_buffer(Buffer, qualname="zarr.buffer.cpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.buffer.cpu.NDBuffer")
