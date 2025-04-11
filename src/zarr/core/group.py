@@ -68,7 +68,7 @@ if TYPE_CHECKING:
 
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
+    from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
 
 logger = logging.getLogger("zarr.group")
@@ -998,7 +998,7 @@ class AsyncGroup:
         fill_value: Any | None = 0,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
+        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
@@ -2369,7 +2369,7 @@ class Group(SyncMixin):
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
+        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
@@ -2763,7 +2763,7 @@ class Group(SyncMixin):
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
+        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
@@ -3456,7 +3456,7 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
 
 
 def _build_metadata_v2(
-    zarr_json: dict[str, object], attrs_json: dict[str, JSON]
+    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
 ) -> ArrayV2Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.

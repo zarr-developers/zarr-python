@@ -5,7 +5,7 @@ from typing import Any, Literal
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
-from hypothesis import event, given, settings  # noqa: F401
+from hypothesis import event
 from hypothesis.strategies import SearchStrategy
 
 import zarr
@@ -19,6 +19,7 @@ from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
+from zarr.storage._utils import normalize_path
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
@@ -277,11 +278,12 @@ def arrays(
     if a.metadata.zarr_format == 3:
         assert a.fill_value is not None
     assert a.name is not None
+    assert a.path == normalize_path(array_path)
+    assert a.name == "/" + a.path
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunk_shape == a.chunks
     assert shard_shape == a.shards
-    assert array_path == a.path, (path, name, array_path, a.name, a.path)
     assert a.basename == name, (a.basename, name)
     assert dict(a.attrs) == expected_attrs
 

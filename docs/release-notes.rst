@@ -3,6 +3,51 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.6 (2025-03-20)
+------------------
+
+Bugfixes
+~~~~~~~~
+
+- Restore functionality of `del z.attrs['key']` to actually delete the key. (:issue:`2908`)
+
+
+3.0.5 (2025-03-07)
+------------------
+
+Bugfixes
+~~~~~~~~
+
+- Fixed a bug where ``StorePath`` creation would not apply standard path normalization to the ``path`` parameter,
+  which led to the creation of arrays and groups with invalid keys. (:issue:`2850`)
+- Prevent update_attributes calls from deleting old attributes (:issue:`2870`)
+
+
+Misc
+~~~~
+
+- :issue:`2796`
+
+3.0.4 (2025-02-23)
+------------------
+
+Features
+~~~~~~~~
+
+- Adds functions for concurrently creating multiple arrays and groups. (:issue:`2665`)
+
+Bugfixes
+~~~~~~~~
+
+- Fixed a bug where ``ArrayV2Metadata`` could save ``filters`` as an empty array. (:issue:`2847`)
+- Fix a bug when setting values of a smaller last chunk. (:issue:`2851`)
+
+Misc
+~~~~
+
+- :issue:`2828`
+
+
 3.0.3 (2025-02-14)
 ------------------
 
@@ -99,6 +144,8 @@ Other
 
 3.0.1 (Jan. 17, 2025)
 ---------------------
+
+* Implement ``zarr.from_array`` using concurrent streaming (:issue:`2622`).
 
 Bug fixes
 ~~~~~~~~~
