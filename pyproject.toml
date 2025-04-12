@@ -150,12 +150,12 @@ features = ["test"]
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "2.1"]
-version = ["minimal"]
+deps = ["minimal", "optional"]
 
-[[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
-features = ["optional"]
+[tool.hatch.envs.test.overrides]
+matrix.deps.dependencies = [
+  {value = "zarr[remote, remote_tests, test, optional]", if = ["optional"]}
+]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
