@@ -87,11 +87,7 @@ remote_tests = [
     "moto[s3,server]",
     "requests",
 ]
-optional = [
-    "rich",
-    "universal_pathlib",
-    'zarr[remote_tests]',
-]
+optional = ["rich", "universal-pathlib"]
 docs = [
     # Doc building
     'sphinx==8.1.3',
@@ -161,14 +157,8 @@ python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "2.1"]
 features = ["optional"]
 
-[[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
-features = ["gpu"]
-
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 run = "run-coverage --no-cov"
 run-pytest = "run"
