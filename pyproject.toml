@@ -249,6 +249,7 @@ dependencies = [
     'universal_pathlib==0.0.22',
     'typing_extensions==4.9.*',
     'donfig==0.8.*',
+    'obstore==0.5.*',
     # test deps
     'zarr[test]',
 ]
