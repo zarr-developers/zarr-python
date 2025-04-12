@@ -168,7 +168,7 @@ run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tes
 list-env = "pip list"
 
 [tool.hatch.envs.doctest]
-features = ["test", "optional", "remote"]
+features = ["test", "optional", "remote", "remote_tests"]
 description = "Test environment for doctests"
 
 [tool.hatch.envs.doctest.scripts]
