@@ -13,7 +13,7 @@ dependencies = [
     'asciitree',
     'numpy>=1.24',
     'fasteners; sys_platform != "emscripten"',
-    'numcodecs>=0.10.0,!=0.14.0,!=0.14.1,<0.16',
+    'numcodecs>=0.10.0,!=0.14.0,!=0.14.1,<0.17',
 ]
 dynamic = ["version"]
 classifiers = [
@@ -42,7 +42,7 @@ docs = [
     'sphinx-copybutton',
     'pydata-sphinx-theme',
     'numpydoc',
-    'numcodecs[msgpack]!=0.14.0,!=0.14.1,<0.16',
+    'numcodecs[msgpack]!=0.14.0,!=0.14.1,<0.17',
     'pytest-doctestplus',
 ]
 

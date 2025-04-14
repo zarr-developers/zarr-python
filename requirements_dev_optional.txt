@@ -3,12 +3,12 @@
 lmdb==1.6.2; sys_platform != 'win32'
 # optional library requirements for Jupyter
 ipytree==0.2.2
-ipywidgets==8.1.5
+ipywidgets==8.1.6
 azure-storage-blob==12.24.1
 redis==5.2.1
 types-redis
 types-setuptools
-pymongo==4.11.3
+pymongo==4.12.0
 # optional test requirements
 coverage
 pytest-cov==6.1.1
