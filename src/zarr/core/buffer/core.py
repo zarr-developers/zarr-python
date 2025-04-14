@@ -105,6 +105,10 @@ class NDArrayLike(Protocol):
         """
 
 
+ScalarType = int | float | complex | bytes | str | bool | np.generic
+NDArrayLikeOrScalar = ScalarType | NDArrayLike
+
+
 def check_item_key_is_1d_contiguous(key: Any) -> None:
     """Raises error if `key` isn't a 1d contiguous slice"""
     if not isinstance(key, slice):
@@ -431,6 +435,21 @@ class NDBuffer:
             NumPy array of this buffer (might be a data copy)
         """
         ...
+
+    def as_scalar(self) -> ScalarType:
+        """Returns the buffer as a scalar value"""
+        if self._data.size != 1:
+            raise ValueError("Buffer does not contain a single scalar value")
+        item = self.as_numpy_array().item()
+        scalar: ScalarType
+
+        if np.issubdtype(self.dtype, np.datetime64):
+            unit: str = np.datetime_data(self.dtype)[0]  # Extract the unit (e.g., 'Y', 'D', etc.)
+            scalar = np.datetime64(item, unit)
+        else:
+            scalar = self.dtype.type(item)  # Regular conversion for non-datetime types
+
+        return scalar
 
     @property
     def dtype(self) -> np.dtype[Any]:
