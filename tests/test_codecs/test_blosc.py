@@ -1,7 +1,10 @@
 import json
+import platform
 
+import numcodecs
 import numpy as np
 import pytest
+from packaging.version import Version
 
 import zarr
 from zarr.abc.store import Store
@@ -54,3 +57,18 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
         assert blosc_configuration_json["shuffle"] == "bitshuffle"
     else:
         assert blosc_configuration_json["shuffle"] == "shuffle"
+
+
+async def test_typesize() -> None:
+    a = np.arange(1000000)
+    codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
+    z = zarr.array(a, chunks=(10000), codecs=codecs)
+    size = len(await z.store.get("c/0", prototype=default_buffer_prototype()))
+    match Version(numcodecs.__version__) >= Version("0.16.0"), platform.system() == "Windows":
+        case True, True:
+            expected_size = 400
+        case True, False:
+            expected_size = 402
+        case False, _:
+            expected_size = 10216
+    assert size == expected_size, f"blosc size mismatch, found {size} but expected {expected_size}"
