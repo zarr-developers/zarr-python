@@ -49,7 +49,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import V3JsonEncoder
+from zarr.core.metadata.v3 import V3JsonEncoder, _replace_special_floats
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import StoreLike, StorePath
@@ -355,10 +355,10 @@ class GroupMetadata(Metadata):
                 assert isinstance(consolidated_metadata, dict)
                 for k, v in consolidated_metadata.items():
                     attrs = v.pop("attributes", None)
-                    d[f"{k}/{ZATTRS_JSON}"] = attrs
+                    d[f"{k}/{ZATTRS_JSON}"] = _replace_special_floats(attrs)
                     if "shape" in v:
                         # it's an array
-                        d[f"{k}/{ZARRAY_JSON}"] = v
+                        d[f"{k}/{ZARRAY_JSON}"] = _replace_special_floats(v)
                     else:
                         d[f"{k}/{ZGROUP_JSON}"] = {
                             "zarr_format": self.zarr_format,
