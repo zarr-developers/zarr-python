@@ -1,0 +1,1 @@
+Updated the 3.0 migration guide to include the removal of "." sytax for getting group members.
