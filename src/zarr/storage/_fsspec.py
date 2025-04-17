@@ -94,7 +94,7 @@ class FsspecStore(Store):
         self.path = path
         self.allowed_exceptions = allowed_exceptions
 
-        if not self.fs.async_impl:
+        if not self.fs.async_impl or not self.fs.asynchronous:
             raise TypeError("Filesystem needs to support async operations.")
         if not self.fs.asynchronous:
             warnings.warn(
