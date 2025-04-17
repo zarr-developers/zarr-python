@@ -573,3 +573,28 @@ class TestConsolidated:
             assert len([x async for x in good.members()]) == 2
             assert good.metadata.consolidated_metadata
             assert sorted(good.metadata.consolidated_metadata.metadata) == ["a", "b"]
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("fill_value", [np.nan, np.inf, -np.inf])
+async def test_consolidated_metadata_encodes_special_chars(
+    memory_store: Store, zarr_format: ZarrFormat, fill_value: float
+):
+    root = await group(store=memory_store, zarr_format=zarr_format)
+    _time = await root.create_array("time", shape=(12,), dtype=np.float64, fill_value=fill_value)
+    await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+    root = await group(store=memory_store, zarr_format=zarr_format)
+    root_buffer = root.metadata.to_buffer_dict(default_buffer_prototype())
+
+    if zarr_format == 2:
+        root_metadata = root_buffer[".zmetadata"].to_bytes().decode("utf-8")
+    elif zarr_format == 3:
+        root_metadata = root_buffer["zarr.json"].to_bytes().decode("utf-8")
+
+    if np.isnan(fill_value):
+        assert '"NaN"' in root_metadata
+    elif np.isneginf(fill_value):
+        assert '"-Infinity"' in root_metadata
+    elif np.isinf(fill_value):
+        assert '"Infinity"' in root_metadata
