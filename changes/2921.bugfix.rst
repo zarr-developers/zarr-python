@@ -1,0 +1,1 @@
+Ignore stale child metadata when reconsolidating metadata.
