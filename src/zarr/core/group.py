@@ -334,7 +334,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), cls=V3JsonEncoder).encode()
+                    json.dumps(_replace_special_floats(self.to_dict()), cls=V3JsonEncoder).encode()
                 )
             }
         else:
