@@ -575,7 +575,6 @@ class TestConsolidated:
             assert sorted(good.metadata.consolidated_metadata.metadata) == ["a", "b"]
 
 
-@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("fill_value", [np.nan, np.inf, -np.inf])
 async def test_consolidated_metadata_encodes_special_chars(
     memory_store: Store, zarr_format: ZarrFormat, fill_value: float
