@@ -1092,8 +1092,6 @@ async def empty(
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-    if "fill_value" not in kwargs:
-        kwargs["fill_value"] = None
     return await create(shape=shape, **kwargs)
 
 
@@ -1123,7 +1121,7 @@ async def empty_like(
     """
     like_kwargs = _like_args(a) | kwargs
     if isinstance(a, (AsyncArray | Array)):
-        kwargs.setdefault("fill_value", a.metadata.fill_value)
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await empty(**like_kwargs)  # type: ignore[arg-type]
 
 
@@ -1171,7 +1169,7 @@ async def full_like(
     """
     like_kwargs = _like_args(a) | kwargs
     if isinstance(a, (AsyncArray | Array)):
-        kwargs.setdefault("fill_value", a.metadata.fill_value)
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await full(**like_kwargs)  # type: ignore[arg-type]
 
 
