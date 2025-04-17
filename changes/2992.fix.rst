@@ -1,3 +1,3 @@
 Fix a bug preventing ``ones_like``, ``full_like``, ``empty_like`` and ``zeros_like`` functions from accepting
 an explicit specification of array attributes like shape, dtype, chunks etc. The functions ``full_like`` and
-``empty_like`` and ``full_like`` now also more consistently infer a ``fill_value`` parameter from the provided array.
+``empty_like`` now also more consistently infer a ``fill_value`` parameter from the provided array.
