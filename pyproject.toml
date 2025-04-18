@@ -73,18 +73,19 @@ gpu = [
 test = [
     "coverage",
     "pytest",
+    "pytest-asyncio",
     "pytest-cov",
+    "pytest-accept",
+    "rich",
+    "mypy",
+    "hypothesis",
+]
+remote_tests = [
     'zarr[remote]',
     "botocore",
     "s3fs",
     "moto[s3,server]",
-    "pytest-asyncio",
-    "pytest-accept",
     "requests",
-    "rich",
-    "mypy",
-    "hypothesis",
-    "universal-pathlib",
 ]
 optional = ["rich", "universal-pathlib"]
 docs = [
@@ -143,28 +144,21 @@ hooks.vcs.version-file = "src/zarr/_version.py"
 [tool.hatch.envs.test]
 dependencies = [
     "numpy~={matrix:numpy}",
-    "universal_pathlib",
 ]
 features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "2.1"]
-version = ["minimal"]
+deps = ["minimal", "optional"]
 
-[[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
-features = ["optional"]
-
-[[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
-features = ["gpu"]
+[tool.hatch.envs.test.overrides]
+matrix.deps.dependencies = [
+  {value = "zarr[remote, remote_tests, test, optional]", if = ["optional"]}
+]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 run = "run-coverage --no-cov"
 run-pytest = "run"
@@ -174,7 +168,7 @@ run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tes
 list-env = "pip list"
 
 [tool.hatch.envs.doctest]
-features = ["test", "optional", "remote"]
+features = ["test", "optional", "remote", "remote_tests"]
 description = "Test environment for doctests"
 
 [tool.hatch.envs.doctest.scripts]
@@ -255,6 +249,7 @@ dependencies = [
     'universal_pathlib==0.0.22',
     'typing_extensions==4.9.*',
     'donfig==0.8.*',
+    'obstore==0.5.*',
     # test deps
     'zarr[test]',
 ]
