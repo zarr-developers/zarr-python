@@ -106,10 +106,25 @@ class ObjectStore(Store):
                 )
                 return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
             elif isinstance(byte_range, SuffixByteRequest):
-                resp = await obs.get_async(
-                    self.store, key, options={"range": {"suffix": byte_range.suffix}}
-                )
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+                # some object stores (Azure) don't support suffix requests. In this
+                # case, our workaround is to first get the length of the object and then
+                # manually request the byte range at the end.
+                try:
+                    resp = await obs.get_async(
+                        self.store, key, options={"range": {"suffix": byte_range.suffix}}
+                    )
+                    return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+                except obs.exceptions.NotSupportedError:
+                    head_resp = await obs.head_async(self.store, key)
+                    file_size = head_resp["size"]
+                    suffix_len = byte_range.suffix
+                    buffer = await obs.get_range_async(
+                        self.store,
+                        key,
+                        start=file_size - suffix_len,
+                        length=suffix_len,
+                    )
+                    return prototype.buffer.from_bytes(buffer)  # type: ignore[arg-type]
             else:
                 raise ValueError(f"Unexpected byte_range, got {byte_range}")
         except _ALLOWED_EXCEPTIONS:
