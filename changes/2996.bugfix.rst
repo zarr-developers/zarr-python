@@ -1,0 +1,4 @@
+Fixes `ConsolidatedMetadata` serialization of `nan`, `inf`, and `-inf` to be
+consistent with the behavior of `ArrayMetadata`.
+
+

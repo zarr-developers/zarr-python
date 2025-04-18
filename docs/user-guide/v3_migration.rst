@@ -117,6 +117,8 @@ The Group class
 
    - Use :func:`zarr.Group.create_array` in place of :func:`zarr.Group.create_dataset`
    - Use :func:`zarr.Group.require_array` in place of :func:`zarr.Group.require_dataset`
+3. Disallow "." syntax for getting group members. To get a member of a group named ``foo``,
+   use ``group["foo"]`` in place of ``group.foo``.
 
 The Store class
 ~~~~~~~~~~~~~~~
