@@ -9,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
+from zarr.core.array import Array, AsyncArray, create_array, from_array, get_array_metadata
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
+    from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
 
@@ -56,6 +57,7 @@ __all__ = [
     "create_hierarchy",
     "empty",
     "empty_like",
+    "from_array",
     "full",
     "full_like",
     "group",
@@ -238,7 +240,7 @@ async def load(
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     zarr_version: ZarrFormat | None = None,
-) -> NDArrayLike | dict[str, NDArrayLike]:
+) -> NDArrayLikeOrScalar | dict[str, NDArrayLikeOrScalar]:
     """Load data from an array or group into memory.
 
     Parameters
@@ -537,7 +539,7 @@ async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = 
 
 
 async def array(
-    data: npt.ArrayLike, **kwargs: Any
+    data: npt.ArrayLike | Array, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array filled with `data`.
 
@@ -554,13 +556,16 @@ async def array(
         The new array.
     """
 
+    if isinstance(data, Array):
+        return await from_array(data=data, **kwargs)
+
     # ensure data is array-like
     if not hasattr(data, "shape") or not hasattr(data, "dtype"):
         data = np.asanyarray(data)
 
     # setup dtype
     kw_dtype = kwargs.get("dtype")
-    if kw_dtype is None:
+    if kw_dtype is None and hasattr(data, "dtype"):
         kwargs["dtype"] = data.dtype
     else:
         kwargs["dtype"] = kw_dtype

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -15,6 +16,10 @@ if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
 
 
+# TODO: work out where this warning is coming from and fix it
+@pytest.mark.filterwarnings(
+    re.escape("ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited")
+)
 class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     store_cls = MemoryStore
     buffer_cls = cpu.Buffer
@@ -73,6 +78,8 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         np.testing.assert_array_equal(a[3:], 0)
 
 
+# TODO: fix this warning
+@pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
 @gpu_test
 class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     store_cls = GpuMemoryStore
