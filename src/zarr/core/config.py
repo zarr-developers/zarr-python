@@ -111,6 +111,12 @@ config = Config(
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
+            "sharding": {
+                "read": {
+                    "coalesce_max_bytes": 100 * 2**20,  # 100MiB
+                    "coalesce_max_gap_bytes": 2**20,  # 1MiB
+                }
+            },
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",

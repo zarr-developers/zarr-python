@@ -33,6 +33,10 @@ Configuration options include the following:
 - Async and threading options, e.g. ``async.concurrency`` and ``threading.max_workers``
 - Selections of implementations of codecs, codec pipelines and buffers
 - Enabling GPU support with ``zarr.config.enable_gpu()``. See :ref:`user-guide-gpu` for more.
+- Tuning reads from sharded zarrs. When reading less than a complete shard, reads of nearby chunks
+  within the same shard will be combined into a single request if they are less than
+  ``sharding.read.coalesce_max_gap_bytes`` apart and the combined request size is less than
+  ``sharding.read.coalesce_max_bytes``.
 
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers,
 first register the implementations in the registry and then select them in the config.
@@ -79,4 +83,6 @@ This is the current default configuration::
    'default_zarr_format': 3,
    'json_indent': 2,
    'ndbuffer': 'zarr.buffer.cpu.NDBuffer',
+   'sharding': {'read': {'coalesce_max_bytes': 104857600,
+                         'coalesce_max_gap_bytes': 1048576}},
    'threading': {'max_workers': None}}

@@ -103,6 +103,12 @@ def test_config_defaults_set() -> None:
                 },
                 "buffer": "zarr.buffer.cpu.Buffer",
                 "ndbuffer": "zarr.buffer.cpu.NDBuffer",
+                "sharding": {
+                    "read": {
+                        "coalesce_max_bytes": 100 * 2**20,  # 100 MiB
+                        "coalesce_max_gap_bytes": 2**20,  # 1 MiB
+                    }
+                },
             }
         ]
     )
@@ -111,6 +117,8 @@ def test_config_defaults_set() -> None:
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
+    assert config.get("sharding.read.coalesce_max_bytes") == 100 * 2**20  # 100 MiB
+    assert config.get("sharding.read.coalesce_max_gap_bytes") == 2**20  # 1 MiB
 
 
 @pytest.mark.parametrize(

@@ -1,5 +1,6 @@
 import pickle
 from typing import Any
+from unittest.mock import AsyncMock
 
 import numpy as np
 import numpy.typing as npt
@@ -9,7 +10,7 @@ import zarr
 import zarr.api
 import zarr.api.asynchronous
 from zarr import Array
-from zarr.abc.store import Store
+from zarr.abc.store import RangeByteRequest, Store, SuffixByteRequest
 from zarr.codecs import (
     BloscCodec,
     ShardingCodec,
@@ -197,6 +198,7 @@ def test_sharding_partial_read(
     assert np.all(read_data == 1)
 
 
+@pytest.mark.skip("This is profiling rather than a test")
 @pytest.mark.slow_hypothesis
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])
 def test_partial_shard_read_performance(store: Store) -> None:
@@ -230,10 +232,18 @@ def test_partial_shard_read_performance(store: Store) -> None:
 
     num_calls = 20
     experiments = []
-    for concurrency, get_latency, statement in product(
-        [1, 10, 100], [0.0, 0.01], ["a[0, :, :]", "a[:, 0, :]", "a[:, :, 0]"]
+    for concurrency, get_latency, coalesce_max_gap, statement in product(
+        [1, 10, 100],
+        [0.0, 0.01],
+        [-1, 2**20, 10 * 2**20],
+        ["a[0, :, :]", "a[:, 0, :]", "a[:, :, 0]"],
     ):
-        zarr.config.set({"async.concurrency": concurrency})
+        zarr.config.set(
+            {
+                "async.concurrency": concurrency,
+                "sharding.read.coalesce_max_gap_bytes": coalesce_max_gap,
+            }
+        )
 
         async def get_with_latency(*args: Any, get_latency: float, **kwargs: Any) -> Any:
             await asyncio.sleep(get_latency)
@@ -251,15 +261,81 @@ def test_partial_shard_read_performance(store: Store) -> None:
         experiments.append(
             {
                 "concurrency": concurrency,
-                "statement": statement,
+                "coalesce_max_gap": coalesce_max_gap,
                 "get_latency": get_latency,
+                "statement": statement,
                 "time": time,
                 "store_get_calls": store_mock.get.call_count,
             }
         )
 
-    with open("zarr-python-partial-shard-read-performance-no-coalesce.json", "w") as f:
+    with open("zarr-python-partial-shard-read-performance-with-coalesce.json", "w") as f:
         json.dump(experiments, f)
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("coalesce_reads", [True, False])
+def test_sharding_multiple_chunks_partial_shard_read(
+    store: Store, index_location: ShardingCodecIndexLocation, coalesce_reads: bool
+) -> None:
+    array_shape = (16, 64)
+    shard_shape = (8, 32)
+    chunk_shape = (2, 4)
+    data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
+
+    if coalesce_reads:
+        # 1MiB, enough to coalesce all chunks within a shard in this example
+        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": 2**20})
+    else:
+        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": -1})  # disable coalescing
+
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+    a = zarr.create_array(
+        StorePath(store_mock),
+        shape=data.shape,
+        chunks=chunk_shape,
+        shards={"shape": shard_shape, "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        dtype=data.dtype,
+        fill_value=1,
+    )
+    a[:] = data
+
+    store_mock.reset_mock()  # ignore store calls during array creation
+
+    # Reads 3 (2 full, 1 partial) chunks each from 2 shards (a subset of both shards)
+    # for a total of 6 chunks accessed
+    assert np.allclose(a[0, 22:42], np.arange(22, 42, dtype="float32"))
+
+    if coalesce_reads:
+        # 2 shard index requests + 2 coalesced chunk data byte ranges (one for each shard)
+        assert store_mock.get.call_count == 4
+    else:
+        # 2 shard index requests + 6 chunks
+        assert store_mock.get.call_count == 8
+
+    for method, args, kwargs in store_mock.method_calls:
+        assert method == "get"
+        assert args[0].startswith("c/")  # get from a chunk
+        assert isinstance(kwargs["byte_range"], (SuffixByteRequest, RangeByteRequest))
+
+    store_mock.reset_mock()
+
+    # Reads 4 chunks from both shards along dimension 0 for a total of 8 chunks accessed
+    assert np.allclose(a[:, 0], np.arange(0, data.size, array_shape[1], dtype="float32"))
+
+    if coalesce_reads:
+        # 2 shard index requests + 2 coalesced chunk data byte ranges (one for each shard)
+        assert store_mock.get.call_count == 4
+    else:
+        # 2 shard index requests + 8 chunks
+        assert store_mock.get.call_count == 10
+
+    for method, args, kwargs in store_mock.method_calls:
+        assert method == "get"
+        assert args[0].startswith("c/")  # get from a chunk
+        assert isinstance(kwargs["byte_range"], (SuffixByteRequest, RangeByteRequest))
 
 
 @pytest.mark.parametrize(
