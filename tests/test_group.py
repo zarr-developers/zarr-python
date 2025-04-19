@@ -7,7 +7,7 @@ import pickle
 import re
 import time
 import warnings
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import numpy as np
 import pytest
@@ -668,13 +668,16 @@ def test_group_create_array(
     assert np.array_equal(array[:], data)
 
 
-@pytest.mark.parametrize("method_name", ["zeros_like", "ones_like", "empty_like", "full_like"])
+LikeMethodName = Literal["zeros_like", "ones_like", "empty_like", "full_like"]
+
+
+@pytest.mark.parametrize("method_name", get_args(LikeMethodName))
 @pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
 @pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
 @pytest.mark.parametrize("out_dtype", ["keep", "int8"])
 def test_group_array_like_creation(
     zarr_format: ZarrFormat,
-    method_name: str,
+    method_name: LikeMethodName,
     out_shape: Literal["keep"] | tuple[int, ...],
     out_chunks: Literal["keep"] | tuple[int, ...],
     out_dtype: str,

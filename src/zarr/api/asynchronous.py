@@ -1294,7 +1294,7 @@ async def open_like(
     """
     like_kwargs = _like_args(a) | kwargs
     if isinstance(a, (AsyncArray | Array)):
-        kwargs.setdefault("fill_value", a.metadata.fill_value)
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
 
 

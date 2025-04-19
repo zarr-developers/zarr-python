@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 if TYPE_CHECKING:
     import pathlib
@@ -68,13 +68,16 @@ def test_create(memory_store: Store) -> None:
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
 
 
-@pytest.mark.parametrize("func_name", ["zeros_like", "ones_like", "empty_like", "full_like"])
+LikeFuncName = Literal["zeros_like", "ones_like", "empty_like", "full_like", "open_like"]
+
+
+@pytest.mark.parametrize("func_name", get_args(LikeFuncName))
 @pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
 @pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
 @pytest.mark.parametrize("out_dtype", ["keep", "int8"])
 async def test_array_like_creation(
     zarr_format: ZarrFormat,
-    func_name: str,
+    func_name: LikeFuncName,
     out_shape: Literal["keep"] | tuple[int, ...],
     out_chunks: Literal["keep"] | tuple[int, ...],
     out_dtype: str,
@@ -101,6 +104,10 @@ async def test_array_like_creation(
     elif func_name == "empty_like":
         expect_fill = ref_arr.fill_value
         func = zarr.api.asynchronous.empty_like
+    elif func_name == "open_like":
+        expect_fill = ref_arr.fill_value
+        kwargs["mode"] = "w"
+        func = zarr.api.asynchronous.open_like  # type: ignore[assignment]
     else:
         raise AssertionError
     if out_shape != "keep":
