@@ -57,7 +57,7 @@ class Crc32cCodec(BytesBytesCodec):
         # Calculate the checksum and "cast" it to a numpy array
         checksum = np.array([crc32c(cast(typing_extensions.Buffer, data))], dtype=np.uint32)
         # Append the checksum (as bytes) to the data
-        return chunk_spec.prototype.buffer.from_array_like(np.append(data, checksum.view("b")))
+        return chunk_spec.prototype.buffer.from_array_like(np.append(data, checksum.view("B")))
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4
