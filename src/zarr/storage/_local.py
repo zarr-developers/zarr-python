@@ -51,15 +51,17 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value.as_numpy_array().tobytes())
+            # write takes any object supporting the buffer protocol
+            f.write(value.as_numpy_array())  # type: ignore[arg-type]
         return None
     else:
-        view = memoryview(value.as_numpy_array().tobytes())
+        view = memoryview(value.as_numpy_array())  # type: ignore[arg-type]
         if exclusive:
             mode = "xb"
         else:
             mode = "wb"
         with path.open(mode=mode) as f:
+            # write takes any object supporting the buffer protocol
             return f.write(view)
 
 

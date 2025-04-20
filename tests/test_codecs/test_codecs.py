@@ -23,7 +23,7 @@ from zarr.storage import StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
-    from zarr.core.buffer.core import NDArrayLike
+    from zarr.core.buffer import NDArrayLike
     from zarr.core.common import MemoryOrder
 
 

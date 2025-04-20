@@ -11,6 +11,7 @@ from unittest import mock
 
 import numcodecs
 import numpy as np
+import numpy.typing as npt
 import pytest
 from packaging.version import Version
 
@@ -37,7 +38,7 @@ from zarr.core.array import (
     chunks_initialized,
     create_array,
 )
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -654,35 +655,43 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     )
     a = np.arange(105, dtype="i4")
     z[:] = a
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (105,) == z.shape
-    assert (105,) == z[:].shape
+    assert (105,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
-    np.testing.assert_array_equal(a, z[:])
+    np.testing.assert_array_equal(a, result)
 
     z.resize(205)
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (205,) == z.shape
-    assert (205,) == z[:].shape
+    assert (205,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
     np.testing.assert_array_equal(a, z[:105])
     np.testing.assert_array_equal(np.zeros(100, dtype="i4"), z[105:])
 
     z.resize(55)
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55,) == z.shape
-    assert (55,) == z[:].shape
+    assert (55,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
-    np.testing.assert_array_equal(a[:55], z[:])
+    np.testing.assert_array_equal(a[:55], result)
 
     # via shape setter
     new_shape = (105,)
     z.shape = new_shape
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert new_shape == z.shape
-    assert new_shape == z[:].shape
+    assert new_shape == result.shape
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -697,44 +706,54 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     )
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z[:] = a
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (105, 105) == z.shape
-    assert (105, 105) == z[:].shape
+    assert (105, 105) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a, z[:])
+    np.testing.assert_array_equal(a, result)
 
     z.resize((205, 205))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (205, 205) == z.shape
-    assert (205, 205) == z[:].shape
+    assert (205, 205) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a, z[:105, :105])
     np.testing.assert_array_equal(np.zeros((100, 205), dtype="i4"), z[105:, :])
     np.testing.assert_array_equal(np.zeros((205, 100), dtype="i4"), z[:, 105:])
 
     z.resize((55, 55))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55, 55) == z.shape
-    assert (55, 55) == z[:].shape
+    assert (55, 55) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a[:55, :55], z[:])
+    np.testing.assert_array_equal(a[:55, :55], result)
 
     z.resize((55, 1))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55, 1) == z.shape
-    assert (55, 1) == z[:].shape
+    assert (55, 1) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a[:55, :1], z[:])
+    np.testing.assert_array_equal(a[:55, :1], result)
 
     z.resize((1, 55))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (1, 55) == z.shape
-    assert (1, 55) == z[:].shape
+    assert (1, 55) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a[:1, :10], z[:, :10])
     np.testing.assert_array_equal(np.zeros((1, 55 - 10), dtype="i4"), z[:, 10:55])
@@ -742,8 +761,10 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     # via shape setter
     new_shape = (105, 105)
     z.shape = new_shape
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert new_shape == z.shape
-    assert new_shape == z[:].shape
+    assert new_shape == result.shape
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1319,11 +1340,133 @@ class TestCreateArray:
                 )
 
 
-async def test_scalar_array() -> None:
-    arr = zarr.array(1.5)
-    assert arr[...] == 1.5
-    assert arr[()] == 1.5
+@pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
+    arr = zarr.array(value, zarr_format=zarr_format)
+    assert arr[...] == value
     assert arr.shape == ()
+    assert arr.ndim == 0
+    assert isinstance(arr[()], NDArrayLikeOrScalar)
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+@pytest.mark.parametrize("store2", ["local"], indirect=["store2"])
+@pytest.mark.parametrize("src_format", [2, 3])
+@pytest.mark.parametrize("new_format", [2, 3, None])
+async def test_creation_from_other_zarr_format(
+    store: Store,
+    store2: Store,
+    src_format: ZarrFormat,
+    new_format: ZarrFormat | None,
+) -> None:
+    if src_format == 2:
+        src = zarr.create(
+            (50, 50), chunks=(10, 10), store=store, zarr_format=src_format, dimension_separator="/"
+        )
+    else:
+        src = zarr.create(
+            (50, 50),
+            chunks=(10, 10),
+            store=store,
+            zarr_format=src_format,
+            chunk_key_encoding=("default", "."),
+        )
+
+    src[:] = np.arange(50 * 50).reshape((50, 50))
+    result = zarr.from_array(
+        store=store2,
+        data=src,
+        zarr_format=new_format,
+    )
+    np.testing.assert_array_equal(result[:], src[:])
+    assert result.fill_value == src.fill_value
+    assert result.dtype == src.dtype
+    assert result.chunks == src.chunks
+    expected_format = src_format if new_format is None else new_format
+    assert result.metadata.zarr_format == expected_format
+    if src_format == new_format:
+        assert result.metadata == src.metadata
+
+    result2 = zarr.array(
+        data=src,
+        store=store2,
+        overwrite=True,
+        zarr_format=new_format,
+    )
+    np.testing.assert_array_equal(result2[:], src[:])
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
+@pytest.mark.parametrize("store2", ["local", "memory", "zip"], indirect=["store2"])
+@pytest.mark.parametrize("src_chunks", [(40, 10), (11, 50)])
+@pytest.mark.parametrize("new_chunks", [(40, 10), (11, 50)])
+async def test_from_array(
+    store: Store,
+    store2: Store,
+    src_chunks: tuple[int, int],
+    new_chunks: tuple[int, int],
+    zarr_format: ZarrFormat,
+) -> None:
+    src_fill_value = 2
+    src_dtype = np.dtype("uint8")
+    src_attributes = None
+
+    src = zarr.create(
+        (100, 10),
+        chunks=src_chunks,
+        dtype=src_dtype,
+        store=store,
+        fill_value=src_fill_value,
+        attributes=src_attributes,
+    )
+    src[:] = np.arange(1000).reshape((100, 10))
+
+    new_fill_value = 3
+    new_attributes: dict[str, JSON] = {"foo": "bar"}
+
+    result = zarr.from_array(
+        data=src,
+        store=store2,
+        chunks=new_chunks,
+        fill_value=new_fill_value,
+        attributes=new_attributes,
+    )
+
+    np.testing.assert_array_equal(result[:], src[:])
+    assert result.fill_value == new_fill_value
+    assert result.dtype == src_dtype
+    assert result.attrs == new_attributes
+    assert result.chunks == new_chunks
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+@pytest.mark.parametrize("chunks", ["keep", "auto"])
+@pytest.mark.parametrize("write_data", [True, False])
+@pytest.mark.parametrize(
+    "src",
+    [
+        np.arange(1000).reshape(10, 10, 10),
+        zarr.ones((10, 10, 10)),
+        5,
+        [1, 2, 3],
+        [[1, 2, 3], [4, 5, 6]],
+    ],
+)  # add other npt.ArrayLike?
+async def test_from_array_arraylike(
+    store: Store,
+    chunks: Literal["auto", "keep"] | tuple[int, int],
+    write_data: bool,
+    src: Array | npt.ArrayLike,
+) -> None:
+    fill_value = 42
+    result = zarr.from_array(
+        store, data=src, chunks=chunks, write_data=write_data, fill_value=fill_value
+    )
+    if write_data:
+        np.testing.assert_array_equal(result[...], np.array(src))
+    else:
+        np.testing.assert_array_equal(result[...], np.full_like(src, fill_value))
 
 
 async def test_orthogonal_set_total_slice() -> None:
@@ -1417,9 +1560,8 @@ def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkser
     data = np.arange(100)
     arr = zarr.create_array(store=store, data=data)
     ctx = mp.get_context(method)
-    pool = ctx.Pool()
-
-    results = pool.starmap(_index_array, [(arr, slice(len(data)))])
+    with ctx.Pool() as pool:
+        results = pool.starmap(_index_array, [(arr, slice(len(data)))])
     assert all(np.array_equal(r, data) for r in results)
 
 
@@ -1435,4 +1577,6 @@ async def test_sharding_coordinate_selection() -> None:
         shards=(2, 4, 4),
     )
     arr[:] = np.arange(2 * 3 * 4).reshape((2, 3, 4))
-    assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()  # type: ignore[index]
+    result = arr[1, [0, 1]]  # type: ignore[index]
+    assert isinstance(result, NDArrayLike)
+    assert (result == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()
