@@ -3,6 +3,15 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.6 (2025-03-20)
+------------------
+
+Bugfixes
+~~~~~~~~
+
+- Restore functionality of `del z.attrs['key']` to actually delete the key. (:issue:`2908`)
+
+
 3.0.5 (2025-03-07)
 ------------------
 
@@ -135,6 +144,8 @@ Other
 
 3.0.1 (Jan. 17, 2025)
 ---------------------
+
+* Implement ``zarr.from_array`` using concurrent streaming (:issue:`2622`).
 
 Bug fixes
 ~~~~~~~~~
