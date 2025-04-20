@@ -1,0 +1,1 @@
+Avoid an unnecessary memory copy when writing Zarr to a local file
