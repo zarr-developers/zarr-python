@@ -143,7 +143,7 @@ class Buffer(ABC):
     def __init__(self, array_like: ArrayLike) -> None:
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
-        if array_like.dtype != np.dtype("b"):
+        if array_like.dtype != np.dtype("B"):
             raise ValueError("array_like: only byte dtype allowed")
         self._data = array_like
 
@@ -319,7 +319,7 @@ class NDBuffer:
     Notes
     -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
-    is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
+    is a special case of NDBuffer where dim=1, stride=1, and dtype="B". However,
     in order to use Python's type system to differentiate between the contiguous
     Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
     two classes separate.
