@@ -266,7 +266,7 @@ class Buffer(ABC):
         -------
             A bytes-like object that implements the Python buffer protocol
         """
-        return memoryview(self.as_numpy_array().view(np.uint8))  # type: ignore[arg-type]
+        return memoryview(self.as_numpy_array())  # type: ignore[arg-type]
 
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
