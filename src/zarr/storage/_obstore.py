@@ -37,7 +37,8 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 
 
 class ObjectStore(Store):
-    """A Zarr store that uses obstore for fast read/write from AWS, GCP, Azure.
+    """
+    Store that uses obstore for fast read/write from AWS, GCP, Azure.
 
     Parameters
     ----------
