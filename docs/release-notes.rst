@@ -32,8 +32,11 @@ Improved Documentation
 
 Misc
 ~~~~
-
-- :issue:`2714`, :issue:`2924`, :issue:`2944`
+- Define a new versioning policy based on Effective Effort Versioning. This replaces the old Semantic
+  Versioning-based policy. (:issue:`2924`, :issue:`2910`)
+- Make warning filters in the tests more specific, so warnings emitted by tests added in the future
+  are more likely to be caught instead of ignored. (:issue:`2714`)
+- Avoid an unnecessary memory copy when writing Zarr to a local file (:issue:`2944`)
 
 
 3.0.6 (2025-03-20)
