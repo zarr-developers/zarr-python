@@ -569,9 +569,10 @@ class ShardingCodec(
     def _coalesce_chunks(
         self,
         chunks: list[_ChunkCoordsByteSlice],
-        max_gap_bytes: int = 2**20,  # 1MiB
-        coalesce_max_bytes: int = 100 * 2**20,  # 100MiB
     ) -> list[list[_ChunkCoordsByteSlice]]:
+        max_gap_bytes = config.get("sharding.read.coalesce_max_gap_bytes")
+        coalesce_max_bytes = config.get("sharding.read.coalesce_max_bytes")
+
         sorted_chunks = sorted(chunks, key=lambda c: c.byte_slice.start)
 
         groups = []
@@ -589,15 +590,6 @@ class ShardingCodec(
                 current_group = [chunk]
 
         groups.append(current_group)
-
-        from pprint import pprint
-
-        pprint(
-            [
-                f"{len(g)} chunks, {(g[-1].byte_slice.stop - g[0].byte_slice.start) / 1e6:.1f}MB"
-                for g in groups
-            ]
-        )
 
         return groups
 
