@@ -570,6 +570,15 @@ class ShardingCodec(
         self,
         chunks: list[_ChunkCoordsByteSlice],
     ) -> list[list[_ChunkCoordsByteSlice]]:
+        """
+        Combine chunks from a single shard into groups that should be read together
+        in a single request.
+
+        Respects the following configuration options:
+        - `sharding.read.coalesce_max_gap_bytes`: The maximum gap between
+          chunks to coalesce into a single group.
+        - `sharding.read.coalesce_max_bytes`: The maximum number of bytes in a group.
+        """
         max_gap_bytes = config.get("sharding.read.coalesce_max_gap_bytes")
         coalesce_max_bytes = config.get("sharding.read.coalesce_max_bytes")
 
@@ -602,6 +611,7 @@ class ShardingCodec(
         group_start = group[0].byte_slice.start
         group_end = group[-1].byte_slice.stop
 
+        # A single call to retrieve the bytes for the entire group.
         group_bytes = await byte_getter.get(
             prototype=prototype,
             byte_range=RangeByteRequest(group_start, group_end),
@@ -609,10 +619,15 @@ class ShardingCodec(
         if group_bytes is None:
             return {}
 
+        # Extract the bytes corresponding to each chunk in group from group_bytes.
         shard_dict = {}
         for chunk in group:
-            s = slice(chunk.byte_slice.start - group_start, chunk.byte_slice.stop - group_start)
-            shard_dict[chunk.coords] = group_bytes[s]
+            chunk_slice = slice(
+                chunk.byte_slice.start - group_start,
+                chunk.byte_slice.stop - group_start,
+            )
+            shard_dict[chunk.coords] = group_bytes[chunk_slice]
+
         return shard_dict
 
     async def _encode_single(
