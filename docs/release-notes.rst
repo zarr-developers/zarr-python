@@ -27,7 +27,7 @@ Bugfixes
 Improved Documentation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-- Updated the 3.0 migration guide to include the removal of "." syntax for getting group members. (:issue:`2991`)
+- Updated the 3.0 migration guide to include the removal of "." syntax for getting group members. (:issue:`2991`, :issue:`2997`)
 
 
 Misc
