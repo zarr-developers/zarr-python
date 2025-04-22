@@ -258,8 +258,37 @@ def test_partial_shard_read_performance(store: Store) -> None:
             }
         )
 
-    with open("zarr-python-partial-shard-read-performance-no-coalesce.json", "w") as f:
+    with open("zarr-python-partial-shard-read-performance.json", "w") as f:
         json.dump(experiments, f)
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_sharding_multiple_chunks_partial_shard_read(
+    store: Store, index_location: ShardingCodecIndexLocation
+) -> None:
+    array_shape = (8, 64)
+    shard_shape = (4, 32)
+    chunk_shape = (2, 4)
+
+    data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
+
+    a = zarr.create_array(
+        StorePath(store),
+        shape=data.shape,
+        chunks=chunk_shape,
+        shards={"shape": shard_shape, "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        dtype=data.dtype,
+        fill_value=1,
+    )
+    a[:] = data
+
+    # Reads 2.5 (3 full, one partial) chunks each from 2 shards (a subset of both shards)
+    assert np.allclose(a[0, 22:42], np.arange(22, 42, dtype="float32"))
+
+    # Reads 2 chunks from both shards along dimension 0
+    assert np.allclose(a[:, 0], np.arange(0, data.size, array_shape[1], dtype="float32"))
 
 
 @pytest.mark.parametrize(
