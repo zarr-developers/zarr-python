@@ -94,7 +94,7 @@ def parse_node_type(data: object) -> NodeType:
     """Parse the node_type field from metadata."""
     if data in get_args(NodeType):
         return cast(NodeType, data)
-    msg = (f"Invalid node_type. Expected 'array' or 'group'. Got {data!r}.",)
+    msg = f"Invalid node_type. Expected 'array' or 'group'. Got {data!r}."
     raise ValueError(msg)
 
 

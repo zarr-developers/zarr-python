@@ -62,7 +62,7 @@ dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes, *vlen_dtype
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
 def test_parse_zarr_format_invalid(data: Any) -> None:
     with pytest.raises(
-        ValueError, match=f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
+        ValueError, match=f"Invalid value for zarr_format. Expected 3. Got {data!r}."
     ):
         parse_zarr_format(data)
 
@@ -79,8 +79,8 @@ def test_parse_node_type_valid() -> None:
 @pytest.mark.parametrize("node_type", [None, 2, "other"])
 def test_parse_node_type_invalid(node_type: Any) -> None:
     with pytest.raises(
-        MetadataValidationError,
-        match=f"Invalid value for node_type. Expected 'array' or 'group'. Got {node_type!r}.",
+        ValueError,
+        match=f"Invalid node_type. Expected 'array' or 'group'. Got {node_type!r}.",
     ):
         parse_node_type(node_type)
 
@@ -88,7 +88,7 @@ def test_parse_node_type_invalid(node_type: Any) -> None:
 @pytest.mark.parametrize("data", [None, "group"])
 def test_parse_node_type_array_invalid(data: Any) -> None:
     with pytest.raises(
-        ValueError, match=f"Invalid value for node_type. Expected 'array'. Got {data!r}."
+        ValueError, match=f"Invalid node_type. Expected 'array'. Got {data!r}."
     ):
         parse_node_type_array(data)
 

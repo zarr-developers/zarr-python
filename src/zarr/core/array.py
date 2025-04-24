@@ -192,16 +192,16 @@ async def get_array_metadata(
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
             msg = (
-                "Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects "
-                f"exist in store {store_path.store!r} at path {store_path.path!r}. "
+                "Both Zarr V3 Zarr V2 metadata documents "
+                f"were found in store {store_path.store!r} at path {store_path.path!r}. "
                 "The Zarr V3 metadata will be used."
                 "To open Zarr V2 arrays, set zarr_format=2."
             )
             warnings.warn(msg, stacklevel=1)
         if zarr_json_bytes is None and zarray_bytes is None:
             msg = (
-                f"Neither zarr.json (Zarr format 3) nor .zarray (Zarr format 2) metadata objects "
-                f"exist in store {store_path.store!r} at path {store_path.path!r}."
+                f"Neither Zarr V3 nor Zarr V2 array metadata documents "
+                f"were found in store {store_path.store!r} at path {store_path.path!r}."
             )
             raise ArrayNotFoundError(msg)
         # set zarr_format based on which keys were found
