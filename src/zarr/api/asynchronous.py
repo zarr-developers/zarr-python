@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.core.array import Array, AsyncArray, create_array, from_array, get_array_metadata
+from zarr.core.array import Array, AsyncArray, create_array, from_array
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
@@ -25,17 +25,18 @@ from zarr.core.common import (
 )
 from zarr.core.group import (
     AsyncGroup,
-    ConsolidatedMetadata,
-    GroupMetadata,
     create_hierarchy,
+    get_node,
 )
-from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import (
     ArrayNotFoundError,
+    ContainsArrayError,
+    ContainsGroupError,
     GroupNotFoundError,
     NodeNotFoundError,
-    NodeTypeValidationError,
 )
 from zarr.storage._common import make_store_path
 
@@ -320,27 +321,46 @@ async def open(
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
-    # TODO: the mode check below seems wrong!
-    if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
+
+    extant_node: AsyncGroup | AsyncArray[Any] = None
+    # All of these modes will defer to an existing mode
+    if mode in {"a", "r", "r+", "w-"}:
         try:
-            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-            # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast(ArrayMetadataDict, metadata_dict)
-            # for v2, the above would already have raised an exception if not an array
-            zarr_format = _metadata_dict["zarr_format"]
-            is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
-            if is_v3_array or zarr_format == 2:
-                return AsyncArray(store_path=store_path, metadata=_metadata_dict)
-        except (AssertionError, ArrayNotFoundError, NodeTypeValidationError):
-            pass
-        try:
-            return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-        except GroupNotFoundError as e:
-            msg = (
-                "'Neither array nor group metadata were found in '"
-                f"store {store_path.store} at path {store_path.path!r}"
+            extant_node = await get_node(
+                store=store_path.store, path=store_path.path, zarr_format=zarr_format
             )
-            raise NodeNotFoundError(msg) from e
+        except NodeNotFoundError:
+            pass
+    # we successfully found an existing node
+    if extant_node is not None:
+        # an existing node is an error if mode == w-
+        if mode == "w-":
+            if isinstance(extant_node, AsyncArray):
+                node_type = "array"
+                exc = ContainsArrayError
+            else:
+                node_type = "group"
+                exc = ContainsGroupError
+            msg = (
+                f"A Zarr V{extant_node.zarr_format} {node_type} exists in store "
+                f"{store_path.store!r} at path {store_path.path!r}. "
+                f"Attempting to open a pre-existing {node_type} with access mode {mode} is an error. "
+                f"Remove the {node_type} from storage, or use an access mode that is compatible with "
+                "a pre-existing array, such as one of ('r','r+','a','w')."
+            )
+            raise exc(msg)
+        else:
+            # otherwise, return the existing node
+            return extant_node
+    else:
+        if mode in ("r", "r+"):
+            msg = (
+                f"Neither array nor group metadata were found in store {store_path.store!r} at "
+                f"path {store_path.path!r}. Attempting to open an non-existent node with access mode "
+                f"{mode} is an error. Create an array or group first, or use an access mode that "
+                "create an array or group, such as one of ('a', 'w', 'w-')."
+            )
+            raise NodeNotFoundError(msg)
     if "shape" in kwargs:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     else:

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from zarr.core.group import Group, GroupMetadata, _parse_async_node
+from zarr.core.group import Group, _parse_async_node
 from zarr.core.group import create_hierarchy as create_hierarchy_async
 from zarr.core.group import create_nodes as create_nodes_async
 from zarr.core.group import create_rooted_hierarchy as create_rooted_hierarchy_async
 from zarr.core.group import get_node as get_node_async
+from zarr.core.metadata.group import GroupMetadata
 from zarr.core.sync import _collect_aiterator, sync
 
 if TYPE_CHECKING:
@@ -140,7 +141,7 @@ def create_rooted_hierarchy(
     return _parse_async_node(async_node)
 
 
-def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
+def get_node(store: Store, path: str, zarr_format: ZarrFormat | None) -> Array | Group:
     """
     Get an Array or Group from a path in a Store.
 
@@ -150,8 +151,8 @@ def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
         The store-like object to read from.
     path : str
         The path to the node to read.
-    zarr_format : {2, 3}
-        The zarr format of the node to read.
+    zarr_format : {2, 3} | None
+        The zarr format of the node to read. If ``None``, then V3 will be tried first, then V2.
 
     Returns
     -------

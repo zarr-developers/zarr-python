@@ -100,6 +100,8 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata._io import _read_array_metadata
+from zarr.core.metadata.group import GroupMetadata
 from zarr.core.metadata.v2 import (
     _default_compressor,
     _default_filters,
@@ -161,7 +163,7 @@ def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
         raise TypeError
 
 
-async def get_array_metadata(
+async def xget_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
 ) -> dict[str, JSON]:
     if zarr_format == 2:
@@ -913,10 +915,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         <AsyncArray memory://... shape=(100, 100) dtype=int32>
         """
         store_path = await make_store_path(store)
-        metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-        # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast(ArrayV3MetadataDict, metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        metadata_dict = await _read_array_metadata(
+            store_path.store, store_path.path, zarr_format=zarr_format
+        )
+        return cls(store_path=store_path, metadata=metadata_dict)
 
     @property
     def store(self) -> Store:
@@ -3756,7 +3758,7 @@ async def chunks_initialized(
 def _build_parents(
     node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
 ) -> list[AsyncGroup]:
-    from zarr.core.group import AsyncGroup, GroupMetadata
+    from zarr.core.group import AsyncGroup
 
     store = node.store_path.store
     path = node.store_path.path

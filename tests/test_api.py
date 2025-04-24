@@ -1112,7 +1112,7 @@ async def test_metadata_validation_error() -> None:
 )
 def test_open_array_with_mode_r_plus(store: Store) -> None:
     # 'r+' means read/write (must exist)
-    msg = "Neither Zarr V3 nor Zarr V2 array metadata documents were found"
+    msg = "Neither Zarr V2 nor Zarr V3 array metadata documents were found"
     with pytest.raises(ArrayNotFoundError, match=re.escape(msg)):
         zarr.open_array(store=store, mode="r+")
     zarr.ones(store=store, shape=(3, 3))

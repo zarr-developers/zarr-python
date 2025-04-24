@@ -24,10 +24,6 @@ from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
 from zarr.core.group import (
-    ConsolidatedMetadata,
-    GroupMetadata,
-    ImplicitGroupMarker,
-    _build_metadata_v3,
     _get_roots,
     _parse_hierarchy_dict,
     create_hierarchy,
@@ -35,6 +31,8 @@ from zarr.core.group import (
     create_rooted_hierarchy,
     get_node,
 )
+from zarr.core.metadata._io import _build_metadata_v3
+from zarr.core.metadata.group import ConsolidatedMetadata, GroupMetadata, ImplicitGroupMarker
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import (
@@ -2060,7 +2058,7 @@ def test_build_metadata_v3(option: Literal["array", "group", "invalid"]) -> None
             metadata_dict = GroupMetadata(zarr_format=3).to_dict()
             metadata_dict.pop("node_type")
             # TODO: fix the error message
-            msg = "Invalid value for 'node_type'. Expected 'array' or 'group'. Got nothing (the key is missing)."
+            msg = "Invalid value for node_type. Expected 'array' or 'group'. Got nothing (the key is missing)."
             with pytest.raises(MetadataValidationError, match=re.escape(msg)):
                 _build_metadata_v3(metadata_dict)
 
