@@ -66,7 +66,6 @@ from zarr.core.common import (
     product,
 )
 from zarr.core.config import config as zarr_config
-from zarr.core.group import AsyncGroup
 from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -125,6 +124,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import CodecPipeline
     from zarr.codecs.sharding import ShardingCodecIndexLocation
+    from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
 
 
@@ -3739,6 +3739,8 @@ async def chunks_initialized(
 def _build_parents(
     node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
 ) -> list[AsyncGroup]:
+    from zarr.core.group import AsyncGroup
+
     store = node.store_path.store
     path = node.store_path.path
     if not path:
