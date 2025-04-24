@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from zarr.core.group import Group, GroupMetadata, _parse_async_node
+from zarr.core.group import Group, _parse_async_node
 from zarr.core.group import create_hierarchy as create_hierarchy_async
 from zarr.core.group import create_nodes as create_nodes_async
 from zarr.core.group import create_rooted_hierarchy as create_rooted_hierarchy_async
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.array import Array
     from zarr.core.common import ZarrFormat
-    from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+    from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata, GroupMetadata
 
 
 def create_nodes(

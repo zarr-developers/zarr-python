@@ -1,5 +1,6 @@
 from typing import TypeAlias, TypeVar
 
+from .group import ConsolidatedMetadata, GroupMetadata, ImplicitGroupMarker
 from .v2 import ArrayV2Metadata, ArrayV2MetadataDict
 from .v3 import ArrayV3Metadata, ArrayV3MetadataDict
 
@@ -14,4 +15,7 @@ __all__ = [
     "ArrayV2MetadataDict",
     "ArrayV3Metadata",
     "ArrayV3MetadataDict",
+    "ConsolidatedMetadata",
+    "GroupMetadata",
+    "ImplicitGroupMarker",
 ]

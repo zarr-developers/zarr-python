@@ -24,9 +24,6 @@ from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
 from zarr.core.group import (
-    ConsolidatedMetadata,
-    GroupMetadata,
-    ImplicitGroupMarker,
     _build_metadata_v3,
     _get_roots,
     _parse_hierarchy_dict,
@@ -35,7 +32,12 @@ from zarr.core.group import (
     create_rooted_hierarchy,
     get_node,
 )
-from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.core.metadata import (
+    ArrayV3Metadata,
+    ConsolidatedMetadata,
+    GroupMetadata,
+    ImplicitGroupMarker,
+)
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
