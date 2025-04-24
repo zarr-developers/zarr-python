@@ -51,7 +51,14 @@ from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import V3JsonEncoder, _replace_special_floats
 from zarr.core.sync import SyncMixin, sync
-from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
+from zarr.errors import (
+    ArrayNotFoundError,
+    ContainsArrayError,
+    ContainsGroupError,
+    GroupNotFoundError,
+    MetadataValidationError,
+    NodeNotFoundError,
+)
 from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
 from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
@@ -509,7 +516,11 @@ class AsyncGroup:
                 *[path.get() for path in paths]
             )
             if zgroup_bytes is None:
-                raise FileNotFoundError(store_path)
+                msg = (
+                    "Zarr V2 group metadata was not found in "
+                    f"store {store_path.store!r} at path {store_path.path!r}."
+                )
+                raise GroupNotFoundError(msg)
 
             if use_consolidated or use_consolidated is None:
                 maybe_consolidated_metadata_bytes = rest[0]
@@ -520,7 +531,11 @@ class AsyncGroup:
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
-                raise FileNotFoundError(store_path)
+                msg = (
+                    "Zarr V3 group metadata was not found in "
+                    f"{store_path.store!r} at path {store_path.path!r}."
+                )
+                raise GroupNotFoundError(store_path.store, store_path.path)
         elif zarr_format is None:
             (
                 zarr_json_bytes,
@@ -535,19 +550,27 @@ class AsyncGroup:
             )
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
-                msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
+                msg = (
+                    "Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects "
+                    f"exist in store {store_path.store!r} at path {store_path.path!r}. "
+                    "The Zarr V3 metadata will be used."
+                    "To open Zarr V2 groups, set zarr_format=2."
+                )
                 warnings.warn(msg, stacklevel=1)
             if zarr_json_bytes is None and zgroup_bytes is None:
-                raise FileNotFoundError(
-                    f"could not find zarr.json or .zgroup objects in {store_path}"
+                msg = (
+                    f"Neither Zarr V2 nor Zarr V3 Group metadata was not found in store "
+                    f"{store_path.store!r} at path {store_path.path!r}."
                 )
+                raise GroupNotFoundError(msg)
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
             else:
                 zarr_format = 2
         else:
-            raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
+            msg = f"Invalid value for zarr_format. Expected one of 2, 3 or None. Got {zarr_format}."  # type: ignore[unreachable]
+            raise MetadataValidationError(msg)
 
         if zarr_format == 2:
             # this is checked above, asserting here for mypy
@@ -569,7 +592,11 @@ class AsyncGroup:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None
             if not isinstance(use_consolidated, bool | None):
-                raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
+                msg = (
+                    "use_consolidated must be a bool or None for Zarr format 3. "
+                    f"Got {use_consolidated}"
+                )
+                raise TypeError(msg)
 
             return cls._from_bytes_v3(
                 store_path,
@@ -628,7 +655,7 @@ class AsyncGroup:
     ) -> AsyncGroup:
         group_metadata = json.loads(zarr_json_bytes.to_bytes())
         if use_consolidated and group_metadata.get("consolidated_metadata") is None:
-            msg = f"Consolidated metadata requested with 'use_consolidated=True' but not found in '{store_path.path}'."
+            msg = f"Consolidated metadata requested with 'use_consolidated=True' but not found in '{store_path.path!r}'."
             raise ValueError(msg)
 
         elif use_consolidated is False:
@@ -691,7 +718,7 @@ class AsyncGroup:
             return await get_node(
                 store=store_path.store, path=store_path.path, zarr_format=self.metadata.zarr_format
             )
-        except FileNotFoundError as e:
+        except (ArrayNotFoundError, GroupNotFoundError) as e:
             raise KeyError(key) from e
 
     def _getitem_consolidated(
@@ -2981,7 +3008,7 @@ async def create_hierarchy(
 
         for key, value in zip(implicit_group_keys, maybe_extant_groups, strict=True):
             if isinstance(value, BaseException):
-                if isinstance(value, FileNotFoundError):
+                if isinstance(value, GroupNotFoundError):
                     # this is fine -- there was no group there, so we will create one
                     pass
                 else:
@@ -3025,8 +3052,9 @@ async def create_hierarchy(
             for key, extant_node in extant_node_query.items():
                 proposed_node = nodes_parsed[key]
                 if isinstance(extant_node, BaseException):
-                    if isinstance(extant_node, FileNotFoundError):
-                        # ignore FileNotFoundError, because they represent nodes we can safely create
+                    if isinstance(extant_node, (ArrayNotFoundError, GroupNotFoundError)):
+                        # ignore ArrayNotFoundError / GroupNotFoundError.
+                        # They represent nodes we can safely create.
                         pass
                     else:
                         # Any other exception is a real error
@@ -3209,7 +3237,8 @@ def _parse_hierarchy_dict(
             else:
                 if not isinstance(out[subpath], GroupMetadata | ImplicitGroupMarker):
                     msg = (
-                        f"The node at {subpath} contains other nodes, but it is not a Zarr group. "
+                        f"The node at path {subpath!r} contains other nodes, "
+                        "but it is not a Zarr group. "
                         "This is invalid. Only Zarr groups can contain other nodes."
                     )
                     raise ValueError(msg)
@@ -3374,7 +3403,8 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
         _join_paths([path, ZARR_JSON]), prototype=default_buffer_prototype()
     )
     if zarr_json_bytes is None:
-        raise FileNotFoundError(path)
+        msg = f"Neither array nor group metadata were found in store {store!r} at path {path!r}."
+        raise NodeNotFoundError(msg)
     else:
         zarr_json = json.loads(zarr_json_bytes.to_bytes())
         return _build_metadata_v3(zarr_json)
@@ -3383,8 +3413,8 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
 async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
     """
     Given a store_path, return ArrayV2Metadata or GroupMetadata defined by the metadata
-    document stored at store_path.path / (.zgroup | .zarray). If no such document is found,
-    raise a FileNotFoundError.
+    document stored at store_path.path / (.zgroup | .zarray). If no metadata document is found,
+    this routine raises a ``NodeNotFoundError``.
     """
     # TODO: consider first fetching array metadata, and only fetching group metadata when we don't
     # find an array
@@ -3406,8 +3436,12 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
         zmeta = json.loads(zarray_bytes.to_bytes())
     else:
         if zgroup_bytes is None:
-            # neither .zarray or .zgroup were found results in KeyError
-            raise FileNotFoundError(path)
+            # neither .zarray or .zgroup were found results in NodeNotFoundError
+            msg = (
+                "Neither array nor group metadata were found in "
+                f"{store!r} at path {path!r}."
+            )
+            raise NodeNotFoundError(msg)
         else:
             zmeta = json.loads(zgroup_bytes.to_bytes())
 
@@ -3416,21 +3450,39 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
 
 async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
     """
-    Read group metadata or error
+    Read Zarr V2 group metadata.
     """
-    meta = await _read_metadata_v2(store=store, path=path)
+    try:
+        meta = await _read_metadata_v2(store=store, path=path)
+    except NodeNotFoundError as e:
+        # NodeNotFoundError is raised when neither array nor group metadata were found,
+        # but since this function is concerned with group metadata,
+        # it returns a more specific exception here.
+        msg = f"A group metadata document was not found in store {store!r} at path {path!r}."
+        raise GroupNotFoundError(msg) from e
     if not isinstance(meta, GroupMetadata):
-        raise FileNotFoundError(f"Group metadata was not found in {store} at {path}")
+        msg = (f"Group metadata was not found in store {store!r} at path {path!r}. ",)
+        "An array metadata document was found there instead."
+        raise GroupNotFoundError(msg)
     return meta
 
 
 async def _read_group_metadata_v3(store: Store, path: str) -> GroupMetadata:
     """
-    Read group metadata or error
+    Read Zarr V3 group metadata.
     """
-    meta = await _read_metadata_v3(store=store, path=path)
+    try:
+        meta = await _read_metadata_v3(store=store, path=path)
+    except NodeNotFoundError as e:
+        # NodeNotFoundError is raised when neither array nor group metadata were found,
+        # but since this function is concerned with group metadata,
+        # it returns a more specific exception here.
+        msg = f"A group metadata document was not found in store {store!r} at path {path!r}."
+        raise GroupNotFoundError(msg) from e
     if not isinstance(meta, GroupMetadata):
-        raise FileNotFoundError(f"Group metadata was not found in {store} at {path}")
+        msg = (f"Group metadata was not found in store {store!r} at path {path!r}. ",)
+        "An array metadata document was found there instead."
+        raise GroupNotFoundError(msg)
     return meta
 
 

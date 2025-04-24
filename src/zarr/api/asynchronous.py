@@ -28,11 +28,13 @@ from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
     create_hierarchy,
+    get_node,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
-from zarr.errors import NodeTypeValidationError
+from zarr.errors import ArrayNotFoundError, GroupNotFoundError, NodeNotFoundError, NodeTypeValidationError
 from zarr.storage._common import make_store_path
+import contextlib
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -315,30 +317,37 @@ async def open(
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
+    extant_node: AsyncArray[Any] | AsyncGroup | None = None
+    if mode in ('r', 'r+', 'a', 'w-'):
+        # we need to check for an existing node.
+        if zarr_format is None:
+            try:
+                extant_node = await get_node(store_path.store, store_path.path, zarr_format=3)
+            except NodeNotFoundError:
+                with contextlib.suppress(NodeNotFoundError):
+                    extant_node = await get_node(store_path.store, store_path.path, zarr_format=2)
+        else:
+            with contextlib.suppress(NodeNotFoundError):
+                extant_node = await get_node(store_path.store, store_path.path, zarr_format=zarr_format)
 
-    # TODO: the mode check below seems wrong!
-    if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
-        try:
-            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-            # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast(ArrayMetadataDict, metadata_dict)
-            # for v2, the above would already have raised an exception if not an array
-            zarr_format = _metadata_dict["zarr_format"]
-            is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
-            if is_v3_array or zarr_format == 2:
-                return AsyncArray(store_path=store_path, metadata=_metadata_dict)
-        except (AssertionError, FileNotFoundError, NodeTypeValidationError):
-            pass
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+    if mode in ('r', 'r+') and extant_node is None:
+        if zarr_format is None:
+            msg = (
+                "No Zarr V2 or V3 metadata documents were found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
+                )
+        else:
+            msg = (
+                f"No Zarr V{zarr_format} metadata documents were found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
+                )
+        raise NodeNotFoundError(msg)
 
-    try:
-        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-    except (KeyError, NodeTypeValidationError):
-        # KeyError for a missing key
-        # NodeTypeValidationError for failing to parse node metadata as an array when it's
-        # actually a group
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-
+    else:
+        if "shape" in kwargs:
+            return await open_array(store=store_path, mode=mode, zarr_format=zarr_format, **kwargs)
+        else:
+            return await open_group(store=store_path, mode=mode, zarr_format=zarr_format, **kwargs)
 
 async def open_consolidated(
     *args: Any, use_consolidated: Literal[True] = True, **kwargs: Any
@@ -660,7 +669,7 @@ async def group(
 
     try:
         return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
-    except (KeyError, FileNotFoundError):
+    except (KeyError, GroupNotFoundError):
         _zarr_format = zarr_format or _default_zarr_format()
         return await AsyncGroup.from_store(
             store=store_path,
@@ -818,7 +827,7 @@ async def open_group(
             return await AsyncGroup.open(
                 store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
             )
-    except (KeyError, FileNotFoundError):
+    except GroupNotFoundError:
         pass
     if mode in _CREATE_MODES:
         overwrite = _infer_overwrite(mode)
@@ -829,7 +838,8 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    raise FileNotFoundError(f"Unable to find group: {store_path}")
+    msg = f"Group metadata was not found in store {store_path.store!r} at path {store_path.path!r}."
+    raise GroupNotFoundError(msg)
 
 
 async def create(
@@ -1259,7 +1269,7 @@ async def open_array(
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError:
+    except ArrayNotFoundError:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
             _zarr_format = zarr_format or _default_zarr_format()
