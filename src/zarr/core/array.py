@@ -108,7 +108,7 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
-from zarr.errors import ArrayNotFoundError, MetadataValidationError
+from zarr.errors import ArrayNotFoundError
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
@@ -171,8 +171,8 @@ async def get_array_metadata(
         )
         if zarray_bytes is None:
             msg = (
-            "A Zarr V2 array metadata document was not found in store "
-            f"{store_path.store!r} at path {store_path.path!r}."
+                "A Zarr V2 array metadata document was not found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
             )
             raise ArrayNotFoundError(msg)
     elif zarr_format == 3:
@@ -210,7 +210,7 @@ async def get_array_metadata(
         else:
             zarr_format = 2
     else:
-        msg = f"Invalid value for zarr_format. Expected one of 2, 3 or None. Got {zarr_format}."  # type: ignore[unreachable]
+        msg = f"Invalid value for zarr_format. Expected one of 2, 3, or None. Got {zarr_format}."  # type: ignore[unreachable]
         raise ValueError(msg)
 
     metadata_dict: dict[str, JSON]

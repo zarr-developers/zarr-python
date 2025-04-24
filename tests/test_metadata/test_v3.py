@@ -80,7 +80,7 @@ def test_parse_node_type_valid() -> None:
 def test_parse_node_type_invalid(node_type: Any) -> None:
     with pytest.raises(
         MetadataValidationError,
-        match=f"Invalid value for 'node_type'. Expected 'array or group'. Got '{node_type}'.",
+        match=f"Invalid value for node_type. Expected 'array' or 'group'. Got {node_type!r}.",
     ):
         parse_node_type(node_type)
 
@@ -88,7 +88,7 @@ def test_parse_node_type_invalid(node_type: Any) -> None:
 @pytest.mark.parametrize("data", [None, "group"])
 def test_parse_node_type_array_invalid(data: Any) -> None:
     with pytest.raises(
-        ValueError, match=f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
+        ValueError, match=f"Invalid value for node_type. Expected 'array'. Got {data!r}."
     ):
         parse_node_type_array(data)
 

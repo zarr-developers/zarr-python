@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
-from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, get_args, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -52,7 +52,6 @@ from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import V3JsonEncoder, _replace_special_floats
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
-    ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
     GroupNotFoundError,
@@ -83,19 +82,20 @@ logger = logging.getLogger("zarr.group")
 DefaultT = TypeVar("DefaultT")
 
 
-def parse_zarr_format(data: Any) -> ZarrFormat:
+def parse_zarr_format(data: object) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
-    if data in (2, 3):
+    if data in get_args(ZarrFormat):
         return cast(ZarrFormat, data)
-    msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
+    msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data!r}."
     raise ValueError(msg)
 
 
-def parse_node_type(data: Any) -> NodeType:
+def parse_node_type(data: object) -> NodeType:
     """Parse the node_type field from metadata."""
-    if data in ("array", "group"):
-        return cast(Literal["array", "group"], data)
-    raise MetadataValidationError("node_type", "array or group", data)
+    if data in get_args(NodeType):
+        return cast(NodeType, data)
+    msg = (f"Invalid node_type. Expected 'array' or 'group'. Got {data!r}.",)
+    raise ValueError(msg)
 
 
 # todo: convert None to empty dict
@@ -532,10 +532,10 @@ class AsyncGroup:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 msg = (
-                    "Zarr V3 group metadata was not found in "
+                    "Zarr V3 group metadata was not found in store "
                     f"{store_path.store!r} at path {store_path.path!r}."
                 )
-                raise GroupNotFoundError(store_path.store, store_path.path)
+                raise GroupNotFoundError(msg)
         elif zarr_format is None:
             (
                 zarr_json_bytes,
@@ -569,8 +569,10 @@ class AsyncGroup:
             else:
                 zarr_format = 2
         else:
-            msg = f"Invalid value for zarr_format. Expected one of 2, 3 or None. Got {zarr_format}."  # type: ignore[unreachable]
-            raise MetadataValidationError(msg)
+            msg = (  # type: ignore[unreachable]
+                f"Invalid value for zarr_format. Expected one of 2, 3, or None. Got {zarr_format}."
+            )
+            raise ValueError(msg)
 
         if zarr_format == 2:
             # this is checked above, asserting here for mypy
@@ -718,7 +720,7 @@ class AsyncGroup:
             return await get_node(
                 store=store_path.store, path=store_path.path, zarr_format=self.metadata.zarr_format
             )
-        except (ArrayNotFoundError, GroupNotFoundError) as e:
+        except NodeNotFoundError as e:
             raise KeyError(key) from e
 
     def _getitem_consolidated(
@@ -3052,9 +3054,9 @@ async def create_hierarchy(
             for key, extant_node in extant_node_query.items():
                 proposed_node = nodes_parsed[key]
                 if isinstance(extant_node, BaseException):
-                    if isinstance(extant_node, (ArrayNotFoundError, GroupNotFoundError)):
-                        # ignore ArrayNotFoundError / GroupNotFoundError.
-                        # They represent nodes we can safely create.
+                    if isinstance(extant_node, NodeNotFoundError):
+                        # ignore NodeNotFoundErrpr.
+                        # it represents a node we can safely create.
                         pass
                     else:
                         # Any other exception is a real error
@@ -3071,10 +3073,12 @@ async def create_hierarchy(
                         else:
                             # we have proposed an explicit group, which is an error, given that a
                             # group already exists.
-                            raise ContainsGroupError(store, key)
+                            msg = f"A group exists in store {store!r} at path {key!r}."
+                            raise ContainsGroupError(msg)
                     elif isinstance(extant_node, ArrayV2Metadata | ArrayV3Metadata):
                         # we are trying to overwrite an existing array. this is an error.
-                        raise ContainsArrayError(store, key)
+                        msg = f"An array exists in store {store!r} at path {key!r}."
+                        raise ContainsArrayError(msg)
 
     nodes_explicit: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {}
 
@@ -3435,15 +3439,14 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
     if zarray_bytes is not None:
         zmeta = json.loads(zarray_bytes.to_bytes())
     else:
-        if zgroup_bytes is None:
+        if zgroup_bytes is not None:
+            zmeta = json.loads(zgroup_bytes.to_bytes())
+        else:
             # neither .zarray or .zgroup were found results in NodeNotFoundError
             msg = (
-                "Neither array nor group metadata were found in "
-                f"{store!r} at path {path!r}."
+                f"Neither array nor group metadata were found in store {store!r} at path {path!r}."
             )
             raise NodeNotFoundError(msg)
-        else:
-            zmeta = json.loads(zgroup_bytes.to_bytes())
 
     return _build_metadata_v2(zmeta, zattrs)
 
@@ -3461,8 +3464,11 @@ async def _read_group_metadata_v2(store: Store, path: str) -> GroupMetadata:
         msg = f"A group metadata document was not found in store {store!r} at path {path!r}."
         raise GroupNotFoundError(msg) from e
     if not isinstance(meta, GroupMetadata):
-        msg = (f"Group metadata was not found in store {store!r} at path {path!r}. ",)
-        "An array metadata document was found there instead."
+        # TODO: test this exception
+        msg = (
+            f"Group metadata was not found in store {store!r} at path {path!r}. "
+            "An array metadata document was found there instead."
+        )
         raise GroupNotFoundError(msg)
     return meta
 
@@ -3480,8 +3486,11 @@ async def _read_group_metadata_v3(store: Store, path: str) -> GroupMetadata:
         msg = f"A group metadata document was not found in store {store!r} at path {path!r}."
         raise GroupNotFoundError(msg) from e
     if not isinstance(meta, GroupMetadata):
-        msg = (f"Group metadata was not found in store {store!r} at path {path!r}. ",)
-        "An array metadata document was found there instead."
+        # TODO: test this exception
+        msg = (
+            f"Group metadata was not found in store {store!r} at path {path!r}. "
+            "An array metadata document was found there instead."
+        )
         raise GroupNotFoundError(msg)
     return meta
 
@@ -3499,7 +3508,11 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
     if "node_type" not in zarr_json:
-        raise MetadataValidationError("node_type", "array or group", "nothing (the key is missing)")
+        msg = (
+            "Invalid value for 'node_type'. "
+            "Expected 'array' or 'group'. Got nothing (the key is missing)."
+        )
+        raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
             return ArrayV3Metadata.from_dict(zarr_json)

@@ -37,7 +37,13 @@ from zarr.core.group import (
 )
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
-from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    GroupNotFoundError,
+    MetadataValidationError,
+    NodeNotFoundError,
+)
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, normalize_path
@@ -296,7 +302,8 @@ def test_group_open(store: Store, zarr_format: ZarrFormat, overwrite: bool) -> N
     """
     spath = StorePath(store)
     # attempt to open a group that does not exist
-    with pytest.raises(FileNotFoundError):
+    msg = f"Zarr V3 group metadata was not found in store {spath.store!r} at path {spath.path!r}."
+    with pytest.raises(GroupNotFoundError, match=re.escape(msg)):
         Group.open(store)
 
     # create the group
@@ -868,8 +875,8 @@ async def test_asyncgroup_open_wrong_format(
         zarr_format_wrong = 3
     else:
         raise AssertionError
-
-    with pytest.raises(FileNotFoundError):
+    msg = f"Zarr V{zarr_format_wrong} group metadata was not found in store"
+    with pytest.raises(GroupNotFoundError, match=msg):
         await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
 
 
@@ -1597,7 +1604,8 @@ async def test_create_hierarchy(
         extra_group = sync_group.get_node(store=store, path="group/extra", zarr_format=zarr_format)
         assert extra_group.metadata.attributes == {"path": "group/extra"}
     else:
-        with pytest.raises(FileNotFoundError):
+        msg = "Neither array nor group metadata were found in store"
+        with pytest.raises(NodeNotFoundError, match=msg):
             await get_node(store=store, path="group/extra", zarr_format=zarr_format)
     assert expected_meta == {k: v.metadata for k, v in created.items()}
 
@@ -2052,7 +2060,7 @@ def test_build_metadata_v3(option: Literal["array", "group", "invalid"]) -> None
             metadata_dict = GroupMetadata(zarr_format=3).to_dict()
             metadata_dict.pop("node_type")
             # TODO: fix the error message
-            msg = "Invalid value for 'node_type'. Expected 'array or group'. Got 'nothing (the key is missing)'."
+            msg = "Invalid value for 'node_type'. Expected 'array' or 'group'. Got nothing (the key is missing)."
             with pytest.raises(MetadataValidationError, match=re.escape(msg)):
                 _build_metadata_v3(metadata_dict)
 
