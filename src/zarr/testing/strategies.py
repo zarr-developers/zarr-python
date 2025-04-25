@@ -96,11 +96,15 @@ def clear_store(x: Store) -> Store:
 zarr_key_chars = st.sampled_from(
     ".-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 )
-node_names = st.text(zarr_key_chars, min_size=1).filter(
-    lambda t: t not in (".", "..") and not t.startswith("__")
+node_names = (
+    st.text(zarr_key_chars, min_size=1)
+    .filter(lambda t: t not in (".", "..") and not t.startswith("__"))
+    .filter(lambda name: name.lower() != "zarr.json")
 )
-short_node_names = st.text(zarr_key_chars, max_size=3, min_size=1).filter(
-    lambda t: t not in (".", "..") and not t.startswith("__")
+short_node_names = (
+    st.text(zarr_key_chars, max_size=3, min_size=1)
+    .filter(lambda t: t not in (".", "..") and not t.startswith("__"))
+    .filter(lambda name: name.lower() != "zarr.json")
 )
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
