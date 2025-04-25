@@ -253,5 +253,20 @@ class LocalStore(Store):
         except (FileNotFoundError, NotADirectoryError):
             pass
 
+    async def move(self, path: Path | str) -> None:
+        # docstring inherited
+
+        if isinstance(path, str):
+            path = Path(path)
+        if not isinstance(path, Path):
+            raise TypeError(
+                f"'path' must be a string or Path instance. Got an instance of {type(path)} instead."
+            )
+        os.makedirs(path, exist_ok=True)
+        for file_name in os.listdir(self.root):
+            shutil.move(os.path.join(self.root, file_name), path)
+
+        self.root = path
+
     async def getsize(self, key: str) -> int:
         return os.path.getsize(self.root / key)

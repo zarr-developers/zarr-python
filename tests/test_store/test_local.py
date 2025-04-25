@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
 import zarr
+from zarr import create_array
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
 from zarr.testing.store import StoreTests
@@ -74,3 +77,18 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=None)
         assert_bytes_equal(observed, data_buf)
+
+    async def test_move(self, tmp_path: pathlib.Path):
+        origin = tmp_path / "origin"
+        destination = tmp_path / "destintion"
+
+        store = await LocalStore.open(root=origin)
+        array = create_array(store, data=np.arange(10))
+
+        await store.move(destination)
+
+        assert store.root == destination
+        assert destination.exists()
+        assert origin.exists()
+        assert len(os.listdir(origin)) == 0
+        assert np.array_equal(array[...], np.arange(10))

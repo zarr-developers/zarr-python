@@ -77,6 +77,12 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
 
+    async def test_move(self, store: MemoryStore):
+        with pytest.raises(
+            NotImplementedError, match=re.escape("store.move is not valid for MemoryStore")
+        ):
+            await store.move("path")
+
 
 # TODO: fix this warning
 @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
