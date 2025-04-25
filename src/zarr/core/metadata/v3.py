@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, TypedDict, overload
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast, overload
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
@@ -18,7 +18,6 @@ import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any, Literal, cast
 
 import numcodecs.abc
 import numpy as np
@@ -29,9 +28,7 @@ from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
 from zarr.core.common import (
-    JSON,
     ZARR_JSON,
-    ChunkCoords,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -39,7 +36,6 @@ from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
 DEFAULT_DTYPE = "float64"
@@ -55,13 +51,15 @@ SPECIAL_FLOATS_ENCODED = {
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
         return 3
-    raise MetadataValidationError("zarr_format", 3, data)
+    msg = f"Invalid zarr_format. Expected 3. Got {data!r}."
+    raise ValueError(msg)
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
     if data == "array":
         return "array"
-    raise NodeTypeValidationError("node_type", "array", data)
+    msg = f"Invalid node_type. Expected 'array'. Got {data!r}."
+    raise ValueError(msg)
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:

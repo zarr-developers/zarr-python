@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, get_args
+
+from zarr.core.common import AccessModeLiteral
 
 if TYPE_CHECKING:
     import pathlib
@@ -33,7 +36,10 @@ from zarr.api.synchronous import (
     save_group,
 )
 from zarr.core.buffer import NDArrayLike
-from zarr.errors import MetadataValidationError
+from zarr.errors import (
+    ArrayNotFoundError,
+    PathNotFoundError,
+)
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
@@ -137,7 +143,8 @@ async def test_open_array(memory_store: MemoryStore) -> None:
     assert z.read_only
 
     # path not found
-    with pytest.raises(FileNotFoundError):
+    msg = "Neither array nor group metadata were found in "
+    with pytest.raises(PathNotFoundError, match=msg):
         open(store="doesnotexist", mode="r")
 
 
@@ -236,74 +243,53 @@ def test_save_errors() -> None:
         zarr.save("data/example.zarr", a, mode="w")
 
 
-def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
-    # 'r' means read only (must exist)
-    with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmp_path, mode="r")
-    z1 = zarr.ones(store=tmp_path, shape=(3, 3))
-    assert z1.fill_value == 1
-    z2 = zarr.open(store=tmp_path, mode="r")
-    assert isinstance(z2, Array)
-    assert z2.fill_value == 1
-    result = z2[:]
-    assert isinstance(result, NDArrayLike)
-    assert (result == 1).all()
-    with pytest.raises(ValueError):
-        z2[:] = 3
+@pytest.mark.parametrize("mode_str", get_args(AccessModeLiteral))
+@pytest.mark.parametrize("node_type", ["group", "array"])
+@pytest.mark.parametrize("zarr_format", [None, 2, 3])
+def test_open(
+    mode_str: AccessModeLiteral,
+    tmp_path: pathlib.Path,
+    node_type: Literal["group", "array"],
+    zarr_format: None | ZarrFormat,
+) -> None:
+    attrs = {"foo": 10}
+    shape = (3, 3)
+    cls_expect = zarr.Group if node_type == "group" else zarr.Array
+    open_kwargs = (
+        {"shape": shape, "attributes": attrs} if node_type == "array" else {"attributes": attrs}
+    )
+    if mode_str in ("r", "r+"):
+        # Opening a path with no node is an error
+        msg = "Neither array nor group metadata were found in "
+        with pytest.raises(PathNotFoundError, match=msg):
+            zarr.open(store=tmp_path, mode=mode_str, zarr_format=zarr_format)
+    else:
+        # Opening a path with no node creates one
+        assert isinstance(
+            zarr.open(
+                store=tmp_path / "create", mode=mode_str, **open_kwargs, zarr_format=zarr_format
+            ),
+            cls_expect,
+        )
 
+    extant = zarr.open(store=tmp_path, zarr_format=zarr_format, mode="w", **open_kwargs)
+    if mode_str in ("r", "r+", "a"):
+        # Opening a path with an existing node returns the node at that path
+        observed = zarr.open(store=tmp_path, mode=mode_str, zarr_format=zarr_format, **open_kwargs)
+        assert observed.metadata == extant.metadata
 
-def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
-    # 'r+' means read/write (must exist)
-    with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmp_path, mode="r+")
-    zarr.ones(store=tmp_path, shape=(3, 3))
-    z2 = zarr.open(store=tmp_path, mode="r+")
-    assert isinstance(z2, Array)
-    result = z2[:]
-    assert isinstance(result, NDArrayLike)
-    assert (result == 1).all()
-    z2[:] = 3
-
-
-async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
-    # Open without shape argument should default to group
-    g = zarr.open(store=tmp_path, mode="a")
-    assert isinstance(g, Group)
-    await g.store_path.delete()
-
-    # 'a' means read/write (create if doesn't exist)
-    arr = zarr.open(store=tmp_path, mode="a", shape=(3, 3))
-    assert isinstance(arr, Array)
-    arr[...] = 1
-    z2 = zarr.open(store=tmp_path, mode="a")
-    assert isinstance(z2, Array)
-    result = z2[:]
-    assert isinstance(result, NDArrayLike)
-    assert (result == 1).all()
-    z2[:] = 3
-
-
-def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
-    # 'w' means create (overwrite if exists);
-    arr = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
-    assert isinstance(arr, Array)
-
-    arr[...] = 3
-    z2 = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
-    assert isinstance(z2, Array)
-    result = z2[:]
-    assert isinstance(result, NDArrayLike)
-    assert not (result == 3).all()
-    z2[:] = 3
-
-
-def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
-    # 'w-' means create  (fail if exists)
-    arr = zarr.open(store=tmp_path, mode="w-", shape=(3, 3))
-    assert isinstance(arr, Array)
-    arr[...] = 1
-    with pytest.raises(FileExistsError):
-        zarr.open(store=tmp_path, mode="w-")
+    elif mode_str == "w-":
+        # Opening an existing node is an error
+        with pytest.raises(FileExistsError):
+            zarr.open(store=tmp_path, mode=mode_str, zarr_format=zarr_format, **open_kwargs)
+    else:
+        # mode_str is 'w'
+        # opening a path with an existing node overwrites it
+        new_open_kwargs = open_kwargs | {"attributes": {"bar": 20}}
+        observed = zarr.open(
+            store=tmp_path, mode=mode_str, zarr_format=zarr_format, **new_open_kwargs
+        )
+        assert observed.metadata != extant.metadata
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
@@ -1104,29 +1090,17 @@ async def test_open_falls_back_to_open_group_async() -> None:
     assert group.attrs == {"key": "value"}
 
 
-@pytest.mark.parametrize("mode", ["r", "r+", "w", "a"])
-def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
-    # https://github.com/zarr-developers/zarr-python/issues/2490
-    zarr_dir = tmp_path / f"mode-{mode}-test.zarr"
-    if mode in ["r", "r+"]:
-        # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
-        with pytest.raises(FileNotFoundError):
-            zarr.open(store=zarr_dir, mode=mode)
-    else:
-        group = zarr.open(store=zarr_dir, mode=mode)
-        assert isinstance(group, Group)
-
-
 async def test_metadata_validation_error() -> None:
+    msg = "Invalid value for zarr_format. Expected one of 2, 3, or None. Got 3.0."
     with pytest.raises(
-        MetadataValidationError,
-        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+        ValueError,
+        match=msg,
     ):
         await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore [arg-type]
 
     with pytest.raises(
-        MetadataValidationError,
-        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+        ValueError,
+        match=msg,
     ):
         await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore [arg-type]
 
@@ -1138,7 +1112,8 @@ async def test_metadata_validation_error() -> None:
 )
 def test_open_array_with_mode_r_plus(store: Store) -> None:
     # 'r+' means read/write (must exist)
-    with pytest.raises(FileNotFoundError):
+    msg = "Neither Zarr V2 nor Zarr V3 array metadata documents were found"
+    with pytest.raises(ArrayNotFoundError, match=re.escape(msg)):
         zarr.open_array(store=store, mode="r+")
     zarr.ones(store=store, shape=(3, 3))
     z2 = zarr.open_array(store=store, mode="r+")

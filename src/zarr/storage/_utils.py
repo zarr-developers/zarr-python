@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar
 
-from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
+from zarr.abc.store import OffsetByteRequest, RangeByteRequest, Store, SuffixByteRequest
+from zarr.core.buffer import Buffer
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -110,3 +112,32 @@ def _normalize_path_keys(data: Mapping[str, T]) -> dict[str, T]:
     """
     parsed_keys = _normalize_paths(data.keys())
     return dict(zip(parsed_keys, data.values(), strict=True))
+
+
+async def _set_return_key(
+    *, store: Store, key: str, value: Buffer, semaphore: asyncio.Semaphore | None = None
+) -> str:
+    """
+    Write a value to storage at the given key. The key is returned.
+    Useful when saving values via routines that return results in execution order,
+    like asyncio.as_completed, because in this case we need to know which key was saved in order
+    to yield the right object to the caller.
+
+    Parameters
+    ----------
+    store : Store
+        The store to save the value to.
+    key : str
+        The key to save the value to.
+    value : Buffer
+        The value to save.
+    semaphore : asyncio.Semaphore | None
+        An optional semaphore to use to limit the number of concurrent writes.
+    """
+
+    if semaphore is not None:
+        async with semaphore:
+            await store.set(key, value)
+    else:
+        await store.set(key, value)
+    return key

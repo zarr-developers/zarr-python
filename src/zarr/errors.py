@@ -1,4 +1,4 @@
-from typing import Any
+from typing_extensions import deprecated
 
 __all__ = [
     "BaseZarrError",
@@ -12,42 +12,42 @@ __all__ = [
 
 class BaseZarrError(ValueError):
     """
-    Base error which all zarr errors are sub-classed from.
+    Base class for Zarr errors.
     """
-
-    _msg = ""
-
-    def __init__(self, *args: Any) -> None:
-        super().__init__(self._msg.format(*args))
 
 
 class ContainsGroupError(BaseZarrError):
     """Raised when a group already exists at a certain path."""
 
-    _msg = "A group exists in store {!r} at path {!r}."
-
 
 class ContainsArrayError(BaseZarrError):
     """Raised when an array already exists at a certain path."""
 
-    _msg = "An array exists in store {!r} at path {!r}."
+
+class ArrayNotFoundError(BaseZarrError):
+    """Raised when an array does not exist at a certain path."""
+
+
+class GroupNotFoundError(BaseZarrError):
+    """Raised when a group does not exist at a certain path."""
+
+
+@deprecated("Use NodeNotFoundError instead.", category=None)
+class PathNotFoundError(BaseZarrError):
+    # Backwards compatibility with v2. Superseded by NodeNotFoundError.
+    ...
+
+
+class NodeNotFoundError(PathNotFoundError):
+    """Raised when an array or group does not exist at a certain path."""
 
 
 class ContainsArrayAndGroupError(BaseZarrError):
-    """Raised when both array and group metadata are found at the same path."""
-
-    _msg = (
-        "Array and group metadata documents (.zarray and .zgroup) were both found in store "
-        "{!r} at path {!r}. "
-        "Only one of these files may be present in a given directory / prefix. "
-        "Remove the .zarray file, or the .zgroup file, or both."
-    )
+    """Raised when both array and group metadata are found at the same path. Zarr V2 only."""
 
 
 class MetadataValidationError(BaseZarrError):
-    """Raised when the Zarr metadata is invalid in some way"""
-
-    _msg = "Invalid value for '{}'. Expected '{}'. Got '{}'."
+    """Raised when a Zarr metadata document is invalid"""
 
 
 class NodeTypeValidationError(MetadataValidationError):
@@ -56,4 +56,10 @@ class NodeTypeValidationError(MetadataValidationError):
 
     This can be raised when the value is invalid or unexpected given the context,
     for example an 'array' node when we expected a 'group'.
+    """
+
+
+class ReadOnlyError(PermissionError, BaseZarrError):
+    """
+    Exception for when a mutation is attempted on an immutable resource.
     """

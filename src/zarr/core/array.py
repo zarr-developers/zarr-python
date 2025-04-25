@@ -100,6 +100,8 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata._io import _read_array_metadata
+from zarr.core.metadata.group import GroupMetadata
 from zarr.core.metadata.v2 import (
     _default_compressor,
     _default_filters,
@@ -108,7 +110,7 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
-from zarr.errors import MetadataValidationError
+from zarr.errors import ArrayNotFoundError
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
@@ -161,7 +163,7 @@ def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
         raise TypeError
 
 
-async def get_array_metadata(
+async def xget_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
 ) -> dict[str, JSON]:
     if zarr_format == 2:
@@ -170,11 +172,19 @@ async def get_array_metadata(
             (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
         )
         if zarray_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                "A Zarr V2 array metadata document was not found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
     elif zarr_format == 3:
         zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
         if zarr_json_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                "A Zarr V3 array metadata document was not found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
     elif zarr_format is None:
         zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
             (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
@@ -183,17 +193,27 @@ async def get_array_metadata(
         )
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
-            msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
+            msg = (
+                "Both Zarr V3 Zarr V2 metadata documents "
+                f"were found in store {store_path.store!r} at path {store_path.path!r}. "
+                "The Zarr V3 metadata will be used."
+                "To open Zarr V2 arrays, set zarr_format=2."
+            )
             warnings.warn(msg, stacklevel=1)
         if zarr_json_bytes is None and zarray_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                f"Neither Zarr V3 nor Zarr V2 array metadata documents "
+                f"were found in store {store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
         # set zarr_format based on which keys were found
         if zarr_json_bytes is not None:
             zarr_format = 3
         else:
             zarr_format = 2
     else:
-        raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
+        msg = f"Invalid value for zarr_format. Expected one of 2, 3, or None. Got {zarr_format}."  # type: ignore[unreachable]
+        raise ValueError(msg)
 
     metadata_dict: dict[str, JSON]
     if zarr_format == 2:
@@ -895,10 +915,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         <AsyncArray memory://... shape=(100, 100) dtype=int32>
         """
         store_path = await make_store_path(store)
-        metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-        # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast(ArrayV3MetadataDict, metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        metadata_dict = await _read_array_metadata(
+            store_path.store, store_path.path, zarr_format=zarr_format
+        )
+        return cls(store_path=store_path, metadata=metadata_dict)
 
     @property
     def store(self) -> Store:
@@ -3738,7 +3758,7 @@ async def chunks_initialized(
 def _build_parents(
     node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
 ) -> list[AsyncGroup]:
-    from zarr.core.group import AsyncGroup, GroupMetadata
+    from zarr.core.group import AsyncGroup
 
     store = node.store_path.store
     path = node.store_path.path
