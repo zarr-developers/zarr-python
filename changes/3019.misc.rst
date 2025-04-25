@@ -1,0 +1,1 @@
+Move the ``GroupMetadata`` class definition into its own module inside the ``metadata`` module.

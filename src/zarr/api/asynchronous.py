@@ -25,11 +25,15 @@ from zarr.core.common import (
 )
 from zarr.core.group import (
     AsyncGroup,
-    ConsolidatedMetadata,
-    GroupMetadata,
     create_hierarchy,
 )
-from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata import (
+    ArrayMetadataDict,
+    ArrayV2Metadata,
+    ArrayV3Metadata,
+    ConsolidatedMetadata,
+    GroupMetadata,
+)
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
 from zarr.storage._common import make_store_path
