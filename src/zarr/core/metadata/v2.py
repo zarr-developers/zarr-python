@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import warnings
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, TypedDict
 
 import numcodecs.abc
@@ -12,7 +12,7 @@ from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.wrapper import TDType_co, TScalar_co, ZDType, _BaseDType, _BaseScalar
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, Self
+    from typing import Literal, Self
 
     import numpy.typing as npt
 
@@ -112,15 +112,15 @@ class ArrayV2Metadata(Metadata):
                 json.dumps(zarray_dict, indent=json_indent).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent).encode()
+                json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
             ),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
-        # make a copy to protect the original from modification
+        # Make a copy to protect the original from modification.
         _data = data.copy()
-        # check that the zarr_format attribute is correct
+        # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
         dtype = get_data_type_from_native_dtype(_data["dtype"])
         _data["dtype"] = dtype
@@ -134,12 +134,15 @@ class ArrayV2Metadata(Metadata):
         # We don't want the ArrayV2Metadata constructor to fail just because someone put an
         # extra key in the metadata.
         expected = {x.name for x in fields(cls)}
-        # https://github.com/zarr-developers/zarr-python/issues/2269
-        # handle the renames
         expected |= {"dtype", "chunks"}
 
         # check if `filters` is an empty sequence; if so use None instead and raise a warning
-        if _data["filters"] is not None and len(_data["filters"]) == 0:
+        filters = _data.get("filters")
+        if (
+            isinstance(filters, Sequence)
+            and not isinstance(filters, (str, bytes))
+            and len(filters) == 0
+        ):
             msg = (
                 "Found an empty list of filters in the array metadata document. "
                 "This is contrary to the Zarr V2 specification, and will cause an error in the future. "
@@ -268,7 +271,25 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
+def _parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+    """Handle structured dtype/fill value pairs"""
+    try:
+        if isinstance(fill_value, list):
+            return np.array([tuple(fill_value)], dtype=dtype)[0]
+        elif isinstance(fill_value, tuple):
+            return np.array([fill_value], dtype=dtype)[0]
+        elif isinstance(fill_value, bytes):
+            return np.frombuffer(fill_value, dtype=dtype)[0]
+        elif isinstance(fill_value, str):
+            decoded = base64.standard_b64decode(fill_value)
+            return np.frombuffer(decoded, dtype=dtype)[0]
+        else:
+            return np.array(fill_value, dtype=dtype)[()]
+    except Exception as e:
+        raise ValueError(f"Fill_value {fill_value} is not valid for dtype {dtype}.") from e
+
+
+def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     """
     Parse a potential fill value into a value that is compatible with the provided dtype.
 
@@ -285,13 +306,16 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     """
 
     if fill_value is None or dtype.hasobject:
-        # no fill value
         pass
+    elif dtype.fields is not None:
+        # the dtype is structured (has multiple fields), so the fill_value might be a
+        # compound value (e.g., a tuple or dict) that needs field-wise processing.
+        # We use parse_structured_fill_value to correctly convert each component.
+        fill_value = _parse_structured_fill_value(fill_value, dtype)
     elif not isinstance(fill_value, np.void) and fill_value == 0:
         # this should be compatible across numpy versions for any array type, including
         # structured arrays
         fill_value = np.zeros((), dtype=dtype)[()]
-
     elif dtype.kind == "U":
         # special case unicode because of encoding issues on Windows if passed through numpy
         # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
@@ -300,6 +324,11 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
             raise ValueError(
                 f"fill_value {fill_value!r} is not valid for dtype {dtype}; must be a unicode string"
             )
+    elif dtype.kind in "SV" and isinstance(fill_value, str):
+        fill_value = base64.standard_b64decode(fill_value)
+    elif dtype.kind == "c" and isinstance(fill_value, list) and len(fill_value) == 2:
+        complex_val = complex(float(fill_value[0]), float(fill_value[1]))
+        fill_value = np.array(complex_val, dtype=dtype)[()]
     else:
         try:
             if isinstance(fill_value, bytes) and dtype.kind == "V":
