@@ -24,8 +24,6 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
-import numpy as np
-
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
@@ -132,33 +130,6 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     )
 
 
-class V3JsonEncoder(json.JSONEncoder):
-    def __init__(
-        self,
-        *,
-        skipkeys: bool = False,
-        ensure_ascii: bool = True,
-        check_circular: bool = True,
-        allow_nan: bool = True,
-        sort_keys: bool = False,
-        indent: int | None = None,
-        separators: tuple[str, str] | None = None,
-        default: Callable[[object], object] | None = None,
-    ) -> None:
-        if indent is None:
-            indent = config.get("json_indent")
-        super().__init__(
-            skipkeys=skipkeys,
-            ensure_ascii=ensure_ascii,
-            check_circular=check_circular,
-            allow_nan=allow_nan,
-            sort_keys=sort_keys,
-            indent=indent,
-            separators=separators,
-            default=default,
-        )
-
-
 class ArrayV3MetadataDict(TypedDict):
     """
     A typed dictionary model for zarr v3 metadata.
@@ -251,7 +222,7 @@ class ArrayV3Metadata(Metadata):
         return len(self.shape)
 
     @property
-    def dtype(self) -> ZDType[TBaseDType, TBaseScalar]:
+    def dtype(self) -> ZDType[_BaseDType, _BaseScalar]:
         return self.data_type
 
     @property
@@ -301,9 +272,13 @@ class ArrayV3Metadata(Metadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+        json_indent = config.get("json_indent")
         d = self.to_dict()
-        # d = _replace_special_floats(self.to_dict())
-        return {ZARR_JSON: prototype.buffer.from_bytes(json.dumps(d, cls=V3JsonEncoder).encode())}
+        return {
+            ZARR_JSON: prototype.buffer.from_bytes(
+                json.dumps(d, allow_nan=False, indent=json_indent).encode()
+            )
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:

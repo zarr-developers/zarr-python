@@ -326,11 +326,11 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["zarr_format"] == 3
 
     # version-agnostic validations
-    dtype_native = meta.dtype.to_native_dtype()
+    dtype_native = meta.dtype.to_dtype()
     if dtype_native.kind == "f":
         assert serialized_float_is_valid(asdict_dict["fill_value"])
     elif dtype_native.kind == "c":
         # fill_value should be a two-element array [real, imag].
         assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
-    elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
-        assert asdict_dict["fill_value"] == -9223372036854775808
+    elif dtype_native.kind == "M" and np.isnat(meta.fill_value):
+        assert asdict_dict["fill_value"] == "NaT"

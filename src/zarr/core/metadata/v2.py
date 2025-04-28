@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, TypedDict
+from collections.abc import Iterable, Sequence
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import numcodecs.abc
 
@@ -125,7 +125,7 @@ class ArrayV2Metadata(Metadata):
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, indent=json_indent).encode()
+                json.dumps(zarray_dict, indent=json_indent, allow_nan=False).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
                 json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
@@ -194,10 +194,12 @@ class ArrayV2Metadata(Metadata):
                     new_filters.append(f)
             zarray_dict["filters"] = new_filters
 
+        # serialize the fill value after dtype-specific JSON encoding
         if self.fill_value is not None:
             fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
+        # serialize the dtype after fill value-specific JSON encoding
         zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)
 
         return zarray_dict
@@ -287,7 +289,25 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
+def _parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+    """Handle structured dtype/fill value pairs"""
+    try:
+        if isinstance(fill_value, list):
+            return np.array([tuple(fill_value)], dtype=dtype)[0]
+        elif isinstance(fill_value, tuple):
+            return np.array([fill_value], dtype=dtype)[0]
+        elif isinstance(fill_value, bytes):
+            return np.frombuffer(fill_value, dtype=dtype)[0]
+        elif isinstance(fill_value, str):
+            decoded = base64.standard_b64decode(fill_value)
+            return np.frombuffer(decoded, dtype=dtype)[0]
+        else:
+            return np.array(fill_value, dtype=dtype)[()]
+    except Exception as e:
+        raise ValueError(f"Fill_value {fill_value} is not valid for dtype {dtype}.") from e
+
+
+def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     """
     Inspect a sequence of codecs / filters for an "object codec", i.e. a codec
     that can serialize object arrays to contiguous bytes. Zarr python
