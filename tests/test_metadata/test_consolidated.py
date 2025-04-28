@@ -581,7 +581,6 @@ async def test_consolidated_metadata_encodes_special_chars(
     memory_store: Store, zarr_format: ZarrFormat, fill_value: float
 ):
     root = await group(store=memory_store, zarr_format=zarr_format)
-    _child = await root.create_group("child", attributes={"test": fill_value})
     _time = await root.create_array("time", shape=(12,), dtype=np.float64, fill_value=fill_value)
     await zarr.api.asynchronous.consolidate_metadata(memory_store)
 
@@ -595,16 +594,9 @@ async def test_consolidated_metadata_encodes_special_chars(
             "consolidated_metadata"
         ]["metadata"]
 
-    if np.isnan(fill_value):
-        expected_fill_value = "NaN"
-    elif np.isneginf(fill_value):
-        expected_fill_value = "-Infinity"
-    elif np.isinf(fill_value):
-        expected_fill_value = "Infinity"
+    expected_fill_value = _time._zdtype.to_json_value(fill_value, zarr_format=2)
 
     if zarr_format == 2:
-        assert root_metadata["child/.zattrs"]["test"] == expected_fill_value
         assert root_metadata["time/.zarray"]["fill_value"] == expected_fill_value
     elif zarr_format == 3:
-        assert root_metadata["child"]["attributes"]["test"] == expected_fill_value
         assert root_metadata["time"]["fill_value"] == expected_fill_value

@@ -239,6 +239,29 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
 #     assert_array_equal(nparray, zarray[:])
 
 
+def serialized_complex_float_is_valid(
+    serialized: tuple[numbers.Real | str, numbers.Real | str],
+) -> bool:
+    """
+    Validate that the serialized representation of a complex float conforms to the spec.
+
+    The specification requires that a serialized complex float must be either:
+      - A JSON number, or
+      - One of the strings "NaN", "Infinity", or "-Infinity".
+
+    Args:
+        serialized: The value produced by JSON serialization for a complex floating point number.
+
+    Returns:
+        bool: True if the serialized value is valid according to the spec, False otherwise.
+    """
+    return (
+        isinstance(serialized, tuple)
+        and len(serialized) == 2
+        and all(serialized_float_is_valid(x) for x in serialized)
+    )
+
+
 def serialized_float_is_valid(serialized: numbers.Real | str) -> bool:
     """
     Validate that the serialized representation of a float conforms to the spec.
@@ -294,11 +317,11 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["zarr_format"] == 3
 
     # version-agnostic validations
-    if meta.dtype.kind == "f":
+    dtype_native = meta.dtype.to_dtype()
+    if dtype_native.kind == "f":
         assert serialized_float_is_valid(asdict_dict["fill_value"])
-    elif meta.dtype.kind == "c":
+    elif dtype_native.kind == "c":
         # fill_value should be a two-element array [real, imag].
-        assert serialized_float_is_valid(asdict_dict["fill_value"].real)
-        assert serialized_float_is_valid(asdict_dict["fill_value"].imag)
-    elif meta.dtype.kind == "M" and np.isnat(meta.fill_value):
+        assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
+    elif dtype_native.kind == "M" and np.isnat(meta.fill_value):
         assert asdict_dict["fill_value"] == "NaT"

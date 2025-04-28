@@ -223,7 +223,6 @@ async def consolidate_metadata(
         group,
         metadata=metadata,
     )
-
     await group._save_metadata()
     return group
 

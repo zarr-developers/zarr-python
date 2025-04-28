@@ -49,7 +49,6 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import V3JsonEncoder
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import StoreLike, StorePath
@@ -334,7 +333,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), cls=V3JsonEncoder).encode()
+                    json.dumps(self.to_dict(), indent=json_indent, allow_nan=False).encode()
                 )
             }
         else:
@@ -343,7 +342,7 @@ class GroupMetadata(Metadata):
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
                 ZATTRS_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.attributes, indent=json_indent).encode()
+                    json.dumps(self.attributes, indent=json_indent, allow_nan=False).encode()
                 ),
             }
             if self.consolidated_metadata:
@@ -354,6 +353,8 @@ class GroupMetadata(Metadata):
                 consolidated_metadata = self.consolidated_metadata.to_dict()["metadata"]
                 assert isinstance(consolidated_metadata, dict)
                 for k, v in consolidated_metadata.items():
+                    attrs = v.pop("attributes", {})
+                    d[f"{k}/{ZATTRS_JSON}"] = attrs
                     if "shape" in v:
                         # it's an array
                         d[f"{k}/{ZARRAY_JSON}"] = v
@@ -369,7 +370,7 @@ class GroupMetadata(Metadata):
 
                 items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
                     json.dumps(
-                        {"metadata": d, "zarr_consolidated_format": 1}, cls=V3JsonEncoder
+                        {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=False
                     ).encode()
                 )
 
@@ -608,6 +609,7 @@ class AsyncGroup:
                     consolidated_metadata[path].update(v)
                 else:
                     raise ValueError(f"Invalid file type '{kind}' at path '{path}")
+
             group_metadata["consolidated_metadata"] = {
                 "metadata": dict(consolidated_metadata),
                 "kind": "inline",

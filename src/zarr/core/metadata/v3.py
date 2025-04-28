@@ -11,7 +11,6 @@ from zarr.core.dtype import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -24,8 +23,6 @@ import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
-
-import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -42,15 +39,6 @@ from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
-
-DEFAULT_DTYPE = "float64"
-
-# Keep in sync with _replace_special_floats
-SPECIAL_FLOATS_ENCODED = {
-    "Infinity": np.inf,
-    "-Infinity": -np.inf,
-    "NaN": np.nan,
-}
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -139,33 +127,6 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     raise TypeError(
         f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
     )
-
-
-class V3JsonEncoder(json.JSONEncoder):
-    def __init__(
-        self,
-        *,
-        skipkeys: bool = False,
-        ensure_ascii: bool = True,
-        check_circular: bool = True,
-        allow_nan: bool = True,
-        sort_keys: bool = False,
-        indent: int | None = None,
-        separators: tuple[str, str] | None = None,
-        default: Callable[[object], object] | None = None,
-    ) -> None:
-        if indent is None:
-            indent = config.get("json_indent")
-        super().__init__(
-            skipkeys=skipkeys,
-            ensure_ascii=ensure_ascii,
-            check_circular=check_circular,
-            allow_nan=allow_nan,
-            sort_keys=sort_keys,
-            indent=indent,
-            separators=separators,
-            default=default,
-        )
 
 
 class ArrayV3MetadataDict(TypedDict):
@@ -260,6 +221,10 @@ class ArrayV3Metadata(Metadata):
         return len(self.shape)
 
     @property
+    def dtype(self) -> ZDType[_BaseDType, _BaseScalar]:
+        return self.data_type
+
+    @property
     def chunks(self) -> ChunkCoords:
         if isinstance(self.chunk_grid, RegularChunkGrid):
             from zarr.codecs.sharding import ShardingCodec
@@ -306,9 +271,13 @@ class ArrayV3Metadata(Metadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+        json_indent = config.get("json_indent")
         d = self.to_dict()
-        # d = _replace_special_floats(self.to_dict())
-        return {ZARR_JSON: prototype.buffer.from_bytes(json.dumps(d, cls=V3JsonEncoder).encode())}
+        return {
+            ZARR_JSON: prototype.buffer.from_bytes(
+                json.dumps(d, allow_nan=False, indent=json_indent).encode()
+            )
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:

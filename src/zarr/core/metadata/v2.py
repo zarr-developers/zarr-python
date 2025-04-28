@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import warnings
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import numcodecs.abc
 
@@ -109,7 +109,7 @@ class ArrayV2Metadata(Metadata):
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, indent=json_indent).encode()
+                json.dumps(zarray_dict, indent=json_indent, allow_nan=False).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
                 json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
@@ -178,10 +178,12 @@ class ArrayV2Metadata(Metadata):
                     new_filters.append(f)
             zarray_dict["filters"] = new_filters
 
+        # serialize the fill value after dtype-specific JSON encoding
         if self.fill_value is not None:
             fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
+        # serialize the dtype after fill value-specific JSON encoding
         zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)
 
         return zarray_dict
@@ -289,7 +291,7 @@ def _parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
         raise ValueError(f"Fill_value {fill_value} is not valid for dtype {dtype}.") from e
 
 
-def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     """
     Parse a potential fill value into a value that is compatible with the provided dtype.
 
