@@ -307,7 +307,7 @@ def _parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
         raise ValueError(f"Fill_value {fill_value} is not valid for dtype {dtype}.") from e
 
 
-def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
+def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     """
     Inspect a sequence of codecs / filters for an "object codec", i.e. a codec
     that can serialize object arrays to contiguous bytes. Zarr python

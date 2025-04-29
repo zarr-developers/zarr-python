@@ -12,8 +12,8 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype._numpy import DateTime64
-from zarr.core.dtype.common import check_json_complex_float
+from zarr.core.dtype.npy.common import check_json_complex_float
+from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,

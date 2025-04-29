@@ -43,7 +43,7 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
-from zarr.core.dtype._numpy import UInt64
+from zarr.core.dtype.npy.int import UInt64
 from zarr.core.indexing import (
     BasicIndexer,
     SelectorTuple,

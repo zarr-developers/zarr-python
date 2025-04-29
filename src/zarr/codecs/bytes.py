@@ -10,7 +10,7 @@ import numpy as np
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
-from zarr.core.dtype._numpy import endianness_to_numpy_str
+from zarr.core.dtype.npy.common import endianness_to_numpy_str
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:

@@ -24,7 +24,7 @@ from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
-from zarr.core.dtype._numpy import Int8, VariableLengthString
+from zarr.core.dtype import Int8, VariableLengthString
 from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
     fully_qualified_name,

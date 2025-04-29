@@ -42,14 +42,14 @@ from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_pr
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype._numpy import (
-    DateTime64,
-    Float64,
-    Int16,
-    Structured,
-    endianness_from_numpy_str,
-)
 from zarr.core.dtype.common import Endianness
+from zarr.core.dtype.npy.common import endianness_from_numpy_str
+from zarr.core.dtype.npy.float import Float64
+from zarr.core.dtype.npy.int import Int16
+from zarr.core.dtype.npy.sized import (
+    Structured,
+)
+from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv

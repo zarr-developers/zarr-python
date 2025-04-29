@@ -11,7 +11,7 @@ from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
 from zarr.codecs import BytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import BytesLike
-from zarr.core.dtype import Bool
+from zarr.core.dtype.npy.bool import Bool
 
 
 class TestEntrypointCodec(ArrayBytesCodec):

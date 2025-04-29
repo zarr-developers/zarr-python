@@ -22,7 +22,9 @@ from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
 from zarr.core.common import JSON, parse_shapelike
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import data_type_registry, get_data_type_from_native_dtype
-from zarr.core.dtype._numpy import DateTime64, HasLength, Structured
+from zarr.core.dtype.common import HasLength
+from zarr.core.dtype.npy.sized import Structured
+from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync

@@ -174,6 +174,7 @@ class ArrayV3Metadata(Metadata):
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
+        # Note: relying on a type method is numpy-specific
         fill_value_parsed = data_type.to_dtype().type(fill_value)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
