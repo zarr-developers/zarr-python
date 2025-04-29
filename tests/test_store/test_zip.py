@@ -138,10 +138,10 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert list(zipped["foo"].keys()) == list(root["foo"].keys())
 
     async def test_move(self, tmp_path: Path):
-        origin = tmp_path / "origin"
-        destination = tmp_path / "destintion"
+        origin = tmp_path / "origin.zip"
+        destination = tmp_path / "some_folder" / "destination.zip"
 
-        store = await ZipStore.open(path=origin, mode="w")
+        store = await ZipStore.open(path=origin, mode="a")
         array = create_array(store, data=np.arange(10))
 
         await store.move(str(destination))

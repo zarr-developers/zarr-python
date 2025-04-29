@@ -295,7 +295,7 @@ class ZipStore(Store):
         if isinstance(path, str):
             path = Path(path)
         self.close()
-        os.makedirs(path, exist_ok=True)
+        os.makedirs(path.parent, exist_ok=True)
         shutil.move(self.path, path)
         self.path = path
         await self._open()
