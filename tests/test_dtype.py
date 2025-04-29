@@ -7,6 +7,12 @@ from typing import TYPE_CHECKING, Any, get_args
 
 import zarr
 from zarr.core.config import config
+from zarr.core.dtype.npy.bool import Bool
+from zarr.core.dtype.npy.complex import Complex64, Complex128
+from zarr.core.dtype.npy.float import Float16, Float32, Float64
+from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+from zarr.core.dtype.npy.sized import FixedLengthAscii, FixedLengthBytes, FixedLengthUnicode
+from zarr.core.dtype.npy.time import DateTime64
 
 from .conftest import zdtype_examples
 
@@ -26,28 +32,10 @@ from zarr.core.dtype import (
     data_type_registry,
     get_data_type_from_json,
 )
-from zarr.core.dtype._numpy import (
-    Bool,
-    Complex64,
-    Complex128,
-    DateTime64,
-    FixedLengthAscii,
-    FixedLengthBytes,
-    FixedLengthUnicode,
-    Float16,
-    Float32,
-    Float64,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    Structured,
-    UInt8,
-    UInt16,
-    UInt32,
-    UInt64,
-)
 from zarr.core.dtype.common import DataTypeValidationError
+from zarr.core.dtype.npy.sized import (
+    Structured,
+)
 from zarr.core.dtype.registry import DataTypeRegistry
 
 

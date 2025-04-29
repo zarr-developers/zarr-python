@@ -5,7 +5,7 @@ import pytest
 from zarr.codecs.bytes import BytesCodec
 from zarr.core._info import ArrayInfo, GroupInfo, human_readable_size
 from zarr.core.common import ZarrFormat
-from zarr.core.dtype._numpy import Int32
+from zarr.core.dtype.npy.int import Int32
 
 ZARR_FORMATS = [2, 3]
 

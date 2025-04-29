@@ -9,7 +9,8 @@ import zarr.api.asynchronous
 import zarr.storage
 from zarr.core.buffer import cpu
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype._numpy import Float32, Float64, Int16
+from zarr.core.dtype.npy.float import Float32, Float64
+from zarr.core.dtype.npy.int import Int16
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
 from zarr.core.metadata.v2 import parse_zarr_format

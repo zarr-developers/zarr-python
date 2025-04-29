@@ -144,12 +144,12 @@ def parse_indexing_order(data: Any) -> Literal["C", "F"]:
 
 def categorize_data_type(dtype: ZDType[Any, Any]) -> DTypeCategory:
     """
-    Classify a ZDType. The return value is a string which belongs to the type ``DTypeKind``.
+    Classify a ZDType. The return value is a string which belongs to the type ``DTypeCategory``.
 
     This is used by the config system to determine how to encode arrays with the associated data type
     when the user has not specified a particular serialization scheme.
     """
-    from zarr.core.dtype._numpy import VariableLengthString
+    from zarr.core.dtype import VariableLengthString
 
     if isinstance(dtype, VariableLengthString):
         return "variable-length-string"

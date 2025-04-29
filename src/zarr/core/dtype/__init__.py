@@ -2,6 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeAlias, get_args
 
+from zarr.core.dtype.npy.bool import Bool
+from zarr.core.dtype.npy.complex import Complex64, Complex128
+from zarr.core.dtype.npy.float import Float16, Float32, Float64
+from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+from zarr.core.dtype.npy.sized import (
+    FixedLengthAscii,
+    FixedLengthBytes,
+    FixedLengthUnicode,
+    Structured,
+)
+from zarr.core.dtype.npy.time import DateTime64
+
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
 
@@ -9,27 +21,8 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.common import JSON
-from zarr.core.dtype._numpy import (
+from zarr.core.dtype.npy.string import (
     _NUMPY_SUPPORTS_VLEN_STRING,
-    Bool,
-    Complex64,
-    Complex128,
-    DateTime64,
-    FixedLengthAscii,
-    FixedLengthBytes,
-    FixedLengthUnicode,
-    Float16,
-    Float32,
-    Float64,
-    Int8,
-    Int16,
-    Int32,
-    Int64,
-    Structured,
-    UInt8,
-    UInt16,
-    UInt32,
-    UInt64,
     VariableLengthString,
 )
 from zarr.core.dtype.registry import DataTypeRegistry
