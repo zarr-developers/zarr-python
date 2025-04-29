@@ -144,7 +144,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         store = await ZipStore.open(path=origin, mode="w")
         array = create_array(store, data=np.arange(10))
 
-        await store.move(destination)
+        await store.move(str(destination))
 
         assert store.path == destination
         assert destination.exists()

@@ -258,10 +258,6 @@ class LocalStore(Store):
 
         if isinstance(path, str):
             path = Path(path)
-        if not isinstance(path, Path):
-            raise TypeError(
-                f"'path' must be a string or Path instance. Got an instance of {type(path)} instead."
-            )
         os.makedirs(path, exist_ok=True)
         for file_name in os.listdir(self.root):
             shutil.move(os.path.join(self.root, file_name), path)

@@ -295,10 +295,6 @@ class ZipStore(Store):
 
         if isinstance(path, str):
             path = Path(path)
-        if not isinstance(path, Path):
-            raise TypeError(
-                f"'path' must be a string or Path instance. Got an instance of {type(path)} instead."
-            )
         os.makedirs(path, exist_ok=True)
         shutil.move(self.path, path)
         self.path = path

@@ -85,7 +85,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         store = await LocalStore.open(root=origin)
         array = create_array(store, data=np.arange(10))
 
-        await store.move(destination)
+        await store.move(str(destination))
 
         assert store.root == destination
         assert destination.exists()
