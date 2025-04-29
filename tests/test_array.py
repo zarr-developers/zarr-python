@@ -49,7 +49,7 @@ from zarr.core.dtype.npy.int import Int16
 from zarr.core.dtype.npy.sized import (
     Structured,
 )
-from zarr.core.dtype.npy.time import DateTime64
+from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
@@ -992,7 +992,7 @@ class TestCreateArray:
         Test that the fill value of an array is set to the default value for the dtype object
         """
         a = zarr.create_array(store, shape=(5,), chunks=(5,), dtype=dtype)
-        if isinstance(dtype, DateTime64) and np.isnat(a.fill_value):
+        if isinstance(dtype, DateTime64 | TimeDelta64) and np.isnat(a.fill_value):
             assert np.isnat(dtype.default_value())
         else:
             assert a.fill_value == dtype.default_value()
@@ -1438,7 +1438,7 @@ class TestCreateArray:
         """
         dtype = Int16(endianness=endianness)
         arr = zarr.create_array(store=store, shape=(1,), dtype=dtype, zarr_format=zarr_format)
-        assert endianness_from_numpy_str(arr[:].dtype.byteorder) == endianness
+        assert endianness_from_numpy_str(arr[:].dtype.byteorder) == endianness  # type: ignore[union-attr]
 
 
 

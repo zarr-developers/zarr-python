@@ -43,7 +43,21 @@ def paths(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> str:
     return draw(st.just("/") | keys(max_num_nodes=max_num_nodes))
 
 
-def dtypes() -> st.SearchStrategy[np.dtype[Any]]:
+def v3_dtypes() -> st.SearchStrategy[np.dtype]:
+    return (
+        npst.boolean_dtypes()
+        | npst.integer_dtypes(endianness="=")
+        | npst.unsigned_integer_dtypes(endianness="=")
+        | npst.floating_dtypes(endianness="=")
+        | npst.complex_number_dtypes(endianness="=")
+        # | npst.byte_string_dtypes(endianness="=")
+        # | npst.unicode_string_dtypes()
+        # | npst.datetime64_dtypes()
+        # | npst.timedelta64_dtypes()
+    )
+
+
+def v2_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
     return (
         npst.boolean_dtypes()
         | npst.integer_dtypes(endianness="=")
@@ -53,7 +67,7 @@ def dtypes() -> st.SearchStrategy[np.dtype[Any]]:
         | npst.byte_string_dtypes(endianness="=")
         | npst.unicode_string_dtypes(endianness="=")
         | npst.datetime64_dtypes(endianness="=")
-        | npst.timedelta64_dtypes(endianness="=")
+        | npst.timedelta64_dtypes(endianness="?")
     )
 
 

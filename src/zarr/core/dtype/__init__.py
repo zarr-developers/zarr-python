@@ -12,7 +12,7 @@ from zarr.core.dtype.npy.sized import (
     FixedLengthUnicode,
     Structured,
 )
-from zarr.core.dtype.npy.time import DateTime64
+from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -43,6 +43,7 @@ __all__ = [
     "Int32",
     "Int64",
     "Structured",
+    "TimeDelta64",
     "UInt8",
     "UInt16",
     "UInt32",
@@ -68,6 +69,7 @@ DTYPE = (
     | FixedLengthBytes
     | Structured
     | DateTime64
+    | TimeDelta64
 )
 
 ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[_BaseDType, _BaseScalar] | dict[str, JSON]
