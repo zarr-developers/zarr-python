@@ -55,7 +55,7 @@ def v3_dtypes() -> st.SearchStrategy[np.dtype]:
     )
 
 
-def v2_dtypes() -> st.SearchStrategy[np.dtype]:
+def v2_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
     return (
         npst.boolean_dtypes()
         | npst.integer_dtypes(endianness="=")
@@ -65,7 +65,7 @@ def v2_dtypes() -> st.SearchStrategy[np.dtype]:
         | npst.byte_string_dtypes(endianness="=")
         | npst.unicode_string_dtypes(endianness="=")
         | npst.datetime64_dtypes(endianness="=")
-        # | npst.timedelta64_dtypes()
+        | npst.timedelta64_dtypes(endianness="?")
     )
 
 

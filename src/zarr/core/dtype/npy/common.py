@@ -26,8 +26,7 @@ if TYPE_CHECKING:
 IntLike = SupportsInt | SupportsIndex | bytes | str
 FloatLike = SupportsIndex | SupportsFloat | bytes | str
 ComplexLike = SupportsFloat | SupportsIndex | SupportsComplex | bytes | str | None
-DateUnit = Literal["Y", "M", "W", "D"]
-TimeUnit = Literal["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
+DateTimeUnit = Literal["Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
 EndiannessNumpy = Literal[">", "<", "|", "="]
 
 TFloatDType_co = TypeVar(
