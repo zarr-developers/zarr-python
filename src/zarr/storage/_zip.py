@@ -292,9 +292,10 @@ class ZipStore(Store):
 
     async def move(self, path: Path | str) -> None:
         # docstring inherited
-
         if isinstance(path, str):
             path = Path(path)
+        self.close()
         os.makedirs(path, exist_ok=True)
         shutil.move(self.path, path)
         self.path = path
+        await self._open()
