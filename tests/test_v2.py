@@ -195,8 +195,13 @@ def test_create_array_defaults(store: Store):
         )
 
 
-@pytest.mark.parametrize("order", ["C", "F"])
-def test_v2_non_contiguous(order: Literal["C", "F"]) -> None:
+@pytest.mark.parametrize("numpy_order", ["C", "F"])
+@pytest.mark.parametrize("zarr_order", ["C", "F"])
+def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["C", "F"]) -> None:
+    """
+    Make sure zarr v2 arrays save data using the memory order given to the zarr array,
+    not the memory order of the original numpy array.
+    """
     store = MemoryStore()
     arr = zarr.create_array(
         store,
@@ -208,11 +213,11 @@ def test_v2_non_contiguous(order: Literal["C", "F"]) -> None:
         filters=None,
         compressors=None,
         overwrite=True,
-        order=order,
+        order=zarr_order,
     )
 
-    # Non-contiguous write
-    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=order)
+    # Non-contiguous write, using numpy memory order
+    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=numpy_order)
     arr[6:9, 3:6] = a[6:9, 3:6]  # The slice on the RHS is important
     np.testing.assert_array_equal(arr[6:9, 3:6], a[6:9, 3:6])
 
@@ -220,13 +225,15 @@ def test_v2_non_contiguous(order: Literal["C", "F"]) -> None:
         a[6:9, 3:6],
         np.frombuffer(
             sync(store.get("2.1", default_buffer_prototype())).to_bytes(), dtype="float64"
-        ).reshape((3, 3), order=order),
+        ).reshape((3, 3), order=zarr_order),
     )
-    if order == "F":
+    # After writing and reading from zarr array, order should be same as zarr order
+    if zarr_order == "F":
         assert (arr[6:9, 3:6]).flags.f_contiguous
     else:
         assert (arr[6:9, 3:6]).flags.c_contiguous
 
+    # Contiguous write
     store = MemoryStore()
     arr = zarr.create_array(
         store,
@@ -238,17 +245,17 @@ def test_v2_non_contiguous(order: Literal["C", "F"]) -> None:
         compressors=None,
         filters=None,
         overwrite=True,
-        order=order,
+        order=zarr_order,
     )
 
-    # Contiguous write
-    a = np.arange(9).reshape((3, 3), order=order)
-    if order == "F":
-        assert a.flags.f_contiguous
-    else:
-        assert a.flags.c_contiguous
+    a = np.arange(9).reshape((3, 3), order=numpy_order)
     arr[6:9, 3:6] = a
     np.testing.assert_array_equal(arr[6:9, 3:6], a)
+    # After writing and reading from zarr array, order should be same as zarr order
+    if zarr_order == "F":
+        assert (arr[6:9, 3:6]).flags.f_contiguous
+    else:
+        assert (arr[6:9, 3:6]).flags.c_contiguous
 
 
 def test_default_compressor_deprecation_warning():
