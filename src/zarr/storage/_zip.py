@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import time
 import zipfile
@@ -288,3 +289,16 @@ class ZipStore(Store):
                     if k not in seen:
                         seen.add(k)
                         yield k
+
+    async def move(self, path: Path | str) -> None:
+        # docstring inherited
+
+        if isinstance(path, str):
+            path = Path(path)
+        if not isinstance(path, Path):
+            raise TypeError(
+                f"'path' must be a string or Path instance. Got an instance of {type(path)} instead."
+            )
+        os.makedirs(path, exist_ok=True)
+        shutil.move(self.path, path)
+        self.path = path
