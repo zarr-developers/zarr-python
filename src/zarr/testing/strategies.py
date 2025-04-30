@@ -52,8 +52,8 @@ def v3_dtypes() -> st.SearchStrategy[np.dtype]:
         | npst.complex_number_dtypes(endianness="=")
         # | npst.byte_string_dtypes(endianness="=")
         # | npst.unicode_string_dtypes()
-        # | npst.datetime64_dtypes()
-        # | npst.timedelta64_dtypes()
+        | npst.datetime64_dtypes()
+        | npst.timedelta64_dtypes()
     )
 
 

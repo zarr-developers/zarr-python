@@ -21,10 +21,14 @@ from zarr.core.array import (
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
 from zarr.core.common import JSON, parse_shapelike
 from zarr.core.config import config as zarr_config
-from zarr.core.dtype import data_type_registry, get_data_type_from_native_dtype
+from zarr.core.dtype import (
+    DateTime64,
+    Structured,
+    TimeDelta64,
+    data_type_registry,
+    get_data_type_from_native_dtype,
+)
 from zarr.core.dtype.common import HasLength
-from zarr.core.dtype.npy.sized import Structured
-from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
@@ -443,7 +447,7 @@ for wrapper_cls in data_type_registry.contents.values():
         zdtype_examples += (wrapper_cls.from_dtype(np.dtype([("a", np.float64), ("b", np.int8)])),)
     elif issubclass(wrapper_cls, HasLength):
         zdtype_examples += (wrapper_cls(length=1),)
-    elif issubclass(wrapper_cls, DateTime64):
-        zdtype_examples += (wrapper_cls(unit="s"),)
+    elif issubclass(wrapper_cls, DateTime64 | TimeDelta64):
+        zdtype_examples += (wrapper_cls(unit="s", interval=10),)
     else:
         zdtype_examples += (wrapper_cls(),)
