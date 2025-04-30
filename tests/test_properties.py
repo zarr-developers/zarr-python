@@ -1,4 +1,3 @@
-import dataclasses
 import json
 import numbers
 from typing import Any
@@ -209,8 +208,8 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
         zarray_dict = json.loads(buffer_dict[ZARR_JSON].to_bytes().decode())
         metadata_roundtripped = ArrayV3Metadata.from_dict(zarray_dict)
 
-    orig = dataclasses.asdict(metadata)
-    rt = dataclasses.asdict(metadata_roundtripped)
+    orig = metadata.to_dict()
+    rt = metadata_roundtripped.to_dict()
 
     assert deep_equal(orig, rt), f"Roundtrip mismatch:\nOriginal: {orig}\nRoundtripped: {rt}"
 
@@ -323,5 +322,5 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
     elif dtype_native.kind == "c":
         # fill_value should be a two-element array [real, imag].
         assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
-    elif dtype_native.kind == "M" and np.isnat(meta.fill_value):
-        assert asdict_dict["fill_value"] == "NaT"
+    elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
+        assert asdict_dict["fill_value"] == -9223372036854775808

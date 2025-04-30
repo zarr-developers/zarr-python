@@ -44,6 +44,7 @@ __all__ = [
     "Int64",
     "Structured",
     "TimeDelta64",
+    "TimeDelta64",
     "UInt8",
     "UInt16",
     "UInt32",
