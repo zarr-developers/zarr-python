@@ -277,6 +277,69 @@ class TestConsolidated:
         assert air.metadata.shape == (730,)
 
 
+@pytest.mark.parametrize("dtype_str", ["datetime64[s]", "timedelta64[ms]"])
+def test_parse_v2_fill_value_nat_integer(dtype_str: str) -> None:
+    """Verify parsing V2 metadata where NaT is stored as its int64 representation."""
+    nat_int_repr = np.iinfo(np.int64).min  # -9223372036854775808
+    dtype = np.dtype(dtype_str)
+    metadata_dict = {
+        "zarr_format": 2,
+        "shape": (10,),
+        "chunks": (5,),
+        "dtype": dtype.str,
+        "compressor": None,
+        "filters": None,
+        "fill_value": nat_int_repr,
+        "order": "C",
+    }
+    meta = ArrayV2Metadata.from_dict(metadata_dict)
+    assert np.isnat(meta.fill_value)
+    assert meta.fill_value.dtype.kind == dtype.kind
+
+
+@pytest.mark.parametrize("dtype_str", ["datetime64[s]", "timedelta64[ms]"])
+def test_parse_v2_fill_value_nat_string(dtype_str: str) -> None:
+    """Verify parsing V2 metadata where NaT is stored as the string 'NaT'."""
+    dtype = np.dtype(dtype_str)
+    metadata_dict = {
+        "zarr_format": 2,
+        "shape": (10,),
+        "chunks": (5,),
+        "dtype": dtype.str,
+        "compressor": None,
+        "filters": None,
+        "fill_value": "NaT",
+        "order": "C",
+    }
+    meta = ArrayV2Metadata.from_dict(metadata_dict)
+    assert np.isnat(meta.fill_value)
+    assert meta.fill_value.dtype.kind == dtype.kind
+
+
+@pytest.mark.parametrize("dtype_str", ["datetime64[s]", "timedelta64[ms]"])
+def test_parse_v2_fill_value_non_nat(dtype_str: str) -> None:
+    """Verify parsing V2 metadata with a non-NaT datetime/timedelta fill value."""
+    dtype = np.dtype(dtype_str)
+    # Use a valid integer representation for the dtype
+    # Note: zarr v2 serializes non-NaT datetimes/timedeltas as integers
+    fill_value_int = 1234567890 if dtype.kind == "M" else 12345
+    expected_value = np.array(fill_value_int, dtype=dtype)[()]
+
+    metadata_dict = {
+        "zarr_format": 2,
+        "shape": (10,),
+        "chunks": (5,),
+        "dtype": dtype.str,
+        "compressor": None,
+        "filters": None,
+        "fill_value": fill_value_int,
+        "order": "C",
+    }
+    meta = ArrayV2Metadata.from_dict(metadata_dict)
+    assert meta.fill_value == expected_value
+    assert meta.fill_value.dtype == dtype
+
+
 def test_from_dict_extra_fields() -> None:
     data = {
         "_nczarr_array": {"dimrefs": ["/dim1", "/dim2"], "storage": "chunked"},

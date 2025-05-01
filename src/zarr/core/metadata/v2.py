@@ -327,7 +327,15 @@ def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     """
 
     if fill_value is None or dtype.hasobject:
+        # Pass through None or if dtype is object
         pass
+    elif dtype.kind in "M":
+        # Check for both string "NaT" and the int64 representation of NaT
+        if fill_value == "NaT" or fill_value == np.iinfo(np.int64).min:
+            fill_value = dtype.type("NaT")
+        else:
+            fill_value = np.array(fill_value, dtype=dtype)[()]
+        # Fall through for non-NaT datetime/timedelta values (handled below)
     elif dtype.fields is not None:
         # the dtype is structured (has multiple fields), so the fill_value might be a
         # compound value (e.g., a tuple or dict) that needs field-wise processing.
