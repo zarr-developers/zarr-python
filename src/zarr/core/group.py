@@ -45,8 +45,12 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
-from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.group import GroupMetadata, ImplicitGroupMarker
+from zarr.core.metadata import (
+    ArrayV2Metadata,
+    ArrayV3Metadata,
+    GroupMetadata,
+    ImplicitGroupMarker,
+)
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import StoreLike, StorePath

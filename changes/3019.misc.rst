@@ -1,1 +1,1 @@
-Move the ``GroupMetadata`` class definition into its own module inside the ``metadata`` module.
+Move ``GroupMetadata`` and related classes a group-specific module inside the ``metadata`` module.
