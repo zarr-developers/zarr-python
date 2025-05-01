@@ -198,6 +198,7 @@ def test_sharding_partial_read(
     assert np.all(read_data == 1)
 
 
+@pytest.mark.skip("This is profiling rather than a test")
 @pytest.mark.slow_hypothesis
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])
 def test_partial_shard_read_performance(store: Store) -> None:
@@ -231,10 +232,18 @@ def test_partial_shard_read_performance(store: Store) -> None:
 
     num_calls = 20
     experiments = []
-    for concurrency, get_latency, statement in product(
-        [1, 10, 100], [0.0, 0.01], ["a[0, :, :]", "a[:, 0, :]", "a[:, :, 0]"]
+    for concurrency, get_latency, coalesce_max_gap, statement in product(
+        [1, 10, 100],
+        [0.0, 0.01],
+        [-1, 2**20, 10 * 2**20],
+        ["a[0, :, :]", "a[:, 0, :]", "a[:, :, 0]"],
     ):
-        zarr.config.set({"async.concurrency": concurrency})
+        zarr.config.set(
+            {
+                "async.concurrency": concurrency,
+                "sharding.read.coalesce_max_gap_bytes": coalesce_max_gap,
+            }
+        )
 
         async def get_with_latency(*args: Any, get_latency: float, **kwargs: Any) -> Any:
             await asyncio.sleep(get_latency)
@@ -252,14 +261,15 @@ def test_partial_shard_read_performance(store: Store) -> None:
         experiments.append(
             {
                 "concurrency": concurrency,
-                "statement": statement,
+                "coalesce_max_gap": coalesce_max_gap,
                 "get_latency": get_latency,
+                "statement": statement,
                 "time": time,
                 "store_get_calls": store_mock.get.call_count,
             }
         )
 
-    with open("zarr-python-partial-shard-read-performance.json", "w") as f:
+    with open("zarr-python-partial-shard-read-performance-with-coalesce.json", "w") as f:
         json.dump(experiments, f)
 
 
