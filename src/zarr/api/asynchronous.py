@@ -1046,15 +1046,13 @@ async def create(
             )
             warnings.warn(UserWarning(msg), stacklevel=1)
         config_dict["write_empty_chunks"] = write_empty_chunks
-    if order is not None:
-        if config is not None:
-            msg = (
-                "Both order and config keyword arguments are set. "
-                "This is redundant. When both are set, order will be ignored and "
-                "config will be used."
-            )
-            warnings.warn(UserWarning(msg), stacklevel=1)
-        config_dict["order"] = order
+    if order is not None and config is not None:
+        msg = (
+            "Both order and config keyword arguments are set. "
+            "This is redundant. When both are set, order will be ignored and "
+            "config will be used."
+        )
+        warnings.warn(UserWarning(msg), stacklevel=1)
 
     config_parsed = ArrayConfig.from_dict(config_dict)
 
@@ -1068,6 +1066,7 @@ async def create(
         overwrite=overwrite,
         filters=filters,
         dimension_separator=dimension_separator,
+        order=order,
         zarr_format=zarr_format,
         chunk_shape=chunk_shape,
         chunk_key_encoding=chunk_key_encoding,
