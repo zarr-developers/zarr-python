@@ -197,6 +197,71 @@ def test_sharding_partial_read(
     assert np.all(read_data == 1)
 
 
+@pytest.mark.slow_hypothesis
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+def test_partial_shard_read_performance(store: Store) -> None:
+    import asyncio
+    import json
+    from functools import partial
+    from itertools import product
+    from timeit import timeit
+    from unittest.mock import AsyncMock
+
+    # The whole test array is a single shard to keep runtime manageable while
+    # using a realistic shard size (256 MiB uncompressed, ~115 MiB compressed).
+    # In practice, the array is likely to be much larger with many shards of this
+    # rough order of magnitude. There are 512 chunks per shard in this example.
+    array_shape = (512, 512, 512)
+    shard_shape = (512, 512, 512)  # 256 MiB uncompressed unit16s
+    chunk_shape = (64, 64, 64)  # 512 KiB uncompressed unit16s
+    dtype = np.uint16
+
+    a = zarr.create_array(
+        StorePath(store),
+        shape=array_shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        compressors=BloscCodec(cname="zstd"),
+        dtype=dtype,
+        fill_value=np.iinfo(dtype).max,
+    )
+    # Narrow range of values lets zstd compress to about 1/2 of uncompressed size
+    a[:] = np.random.default_rng(123).integers(low=0, high=50, size=array_shape, dtype=dtype)
+
+    num_calls = 20
+    experiments = []
+    for concurrency, get_latency, statement in product(
+        [1, 10, 100], [0.0, 0.01], ["a[0, :, :]", "a[:, 0, :]", "a[:, :, 0]"]
+    ):
+        zarr.config.set({"async.concurrency": concurrency})
+
+        async def get_with_latency(*args: Any, get_latency: float, **kwargs: Any) -> Any:
+            await asyncio.sleep(get_latency)
+            return await store.get(*args, **kwargs)
+
+        store_mock = AsyncMock(wraps=store, spec=store.__class__)
+        store_mock.get.side_effect = partial(get_with_latency, get_latency=get_latency)
+
+        a = zarr.open_array(StorePath(store_mock))
+
+        store_mock.reset_mock()
+
+        # Each timeit call accesses a 512x512 slice covering 64 chunks
+        time = timeit(statement, number=num_calls, globals={"a": a}) / num_calls
+        experiments.append(
+            {
+                "concurrency": concurrency,
+                "statement": statement,
+                "get_latency": get_latency,
+                "time": time,
+                "store_get_calls": store_mock.get.call_count,
+            }
+        )
+
+    with open("zarr-python-partial-shard-read-performance-no-coalesce.json", "w") as f:
+        json.dump(experiments, f)
+
+
 @pytest.mark.parametrize(
     "array_fixture",
     [
