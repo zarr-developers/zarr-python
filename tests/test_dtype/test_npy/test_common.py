@@ -14,10 +14,15 @@ from zarr.core.dtype.npy.common import (
     EndiannessNumpy,
     bytes_from_json,
     bytes_to_json,
+    check_json_bool,
+    check_json_complex_float,
+    check_json_complex_float_v2,
+    check_json_complex_float_v3,
     check_json_float,
     check_json_float_v2,
     check_json_float_v3,
     check_json_int,
+    check_json_str,
     complex_float_to_json,
     complex_float_to_json_v2,
     complex_float_to_json_v3,
@@ -31,7 +36,7 @@ from zarr.core.dtype.npy.common import (
 )
 
 if TYPE_CHECKING:
-    from zarr.core.common import ZarrFormat
+    from zarr.core.common import JSON, ZarrFormat
 
 
 def nan_equal(a: object, b: object) -> bool:
@@ -44,7 +49,7 @@ def nan_equal(a: object, b: object) -> bool:
     return a == b
 
 
-json_float_v2: list[tuple[JSONFloat, float | np.floating[Any]]] = [
+json_float_v2_cases: list[tuple[JSONFloat, float | np.floating[Any]]] = [
     ("Infinity", float("inf")),
     ("Infinity", np.inf),
     ("-Infinity", float("-inf")),
@@ -56,7 +61,7 @@ json_float_v2: list[tuple[JSONFloat, float | np.floating[Any]]] = [
 
 # exactly the same as v2, for now, until we get support for the special NaN encoding defined in the
 # v3 spec
-json_float_v3: list[tuple[JSONFloat, float | np.floating[Any]]] = [
+json_float_v3_cases: list[tuple[JSONFloat, float | np.floating[Any]]] = [
     ("Infinity", float("inf")),
     ("Infinity", np.inf),
     ("-Infinity", float("-inf")),
@@ -101,7 +106,7 @@ def test_endianness_to_numpy_str(data: str | None, expected: str) -> None:
             endianness_to_numpy_str(data)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize(("data", "expected"), json_float_v2 + [("SHOULD_ERR", "")])
+@pytest.mark.parametrize(("data", "expected"), json_float_v2_cases + [("SHOULD_ERR", "")])
 def test_float_from_json_v2(data: JSONFloat | str, expected: float | str) -> None:
     """
     Test that float_from_json_v2 correctly converts a JSON string representation of a float to a float.
@@ -115,7 +120,7 @@ def test_float_from_json_v2(data: JSONFloat | str, expected: float | str) -> Non
             float_from_json_v2(data)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize(("data", "expected"), json_float_v3 + [("SHOULD_ERR", "")])
+@pytest.mark.parametrize(("data", "expected"), json_float_v3_cases + [("SHOULD_ERR", "")])
 def test_float_from_json_v3(data: JSONFloat | str, expected: float | str) -> None:
     """
     Test that float_from_json_v3 correctly converts a JSON string representation of a float to a float.
@@ -129,7 +134,7 @@ def test_float_from_json_v3(data: JSONFloat | str, expected: float | str) -> Non
             float_from_json_v3(data)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize(("data", "expected"), json_float_v2)
+@pytest.mark.parametrize(("data", "expected"), json_float_v2_cases)
 def test_float_from_json(data: JSONFloat, expected: float | str, zarr_format: ZarrFormat) -> None:
     """
     Test that float_from_json_v3 correctly converts a JSON string representation of a float to a float.
@@ -144,7 +149,7 @@ def test_float_from_json(data: JSONFloat, expected: float | str, zarr_format: Za
 
 
 # note the order of parameters relative to the order of the parametrized variable.
-@pytest.mark.parametrize(("expected", "data"), json_float_v2)
+@pytest.mark.parametrize(("expected", "data"), json_float_v2_cases)
 def test_float_to_json_v2(data: float | np.floating[Any], expected: JSONFloat) -> None:
     """
     Test that floats are JSON-encoded properly for zarr v2
@@ -154,7 +159,7 @@ def test_float_to_json_v2(data: float | np.floating[Any], expected: JSONFloat) -
 
 
 # note the order of parameters relative to the order of the parametrized variable.
-@pytest.mark.parametrize(("expected", "data"), json_float_v3)
+@pytest.mark.parametrize(("expected", "data"), json_float_v3_cases)
 def test_float_to_json_v3(data: float | np.floating[Any], expected: JSONFloat) -> None:
     """
     Test that floats are JSON-encoded properly for zarr v3
@@ -188,7 +193,7 @@ def test_bytes_to_json(zarr_format: ZarrFormat) -> None:
 
 
 # note the order of parameters relative to the order of the parametrized variable.
-@pytest.mark.parametrize(("json_expected", "float_data"), json_float_v2)
+@pytest.mark.parametrize(("json_expected", "float_data"), json_float_v2_cases)
 def test_complex_to_json_v2(float_data: float | np.floating[Any], json_expected: JSONFloat) -> None:
     """
     Test that complex numbers are correctly converted to JSON in v2 format.
@@ -204,7 +209,7 @@ def test_complex_to_json_v2(float_data: float | np.floating[Any], json_expected:
 
 
 # note the order of parameters relative to the order of the parametrized variable.
-@pytest.mark.parametrize(("json_expected", "float_data"), json_float_v3)
+@pytest.mark.parametrize(("json_expected", "float_data"), json_float_v3_cases)
 def test_complex_to_json_v3(float_data: float | np.floating[Any], json_expected: JSONFloat) -> None:
     """
     Test that complex numbers are correctly converted to JSON in v3 format.
@@ -219,7 +224,7 @@ def test_complex_to_json_v3(float_data: float | np.floating[Any], json_expected:
     assert complex_float_to_json_v3(cplx_npy) == (json_expected, json_expected)
 
 
-@pytest.mark.parametrize(("json_expected", "float_data"), json_float_v3)
+@pytest.mark.parametrize(("json_expected", "float_data"), json_float_v3_cases)
 def test_complex_float_to_json(
     float_data: float | np.floating[Any], json_expected: JSONFloat, zarr_format: ZarrFormat
 ) -> None:
@@ -272,6 +277,66 @@ def test_check_json_float(data: JSONFloat | int, zarr_format: ZarrFormat) -> Non
     assert observed == expected
 
 
+check_json_complex_float_true_cases = (
+    [0.0, 1.0],
+    (0.0, 1.0),
+    [-1.0, "NaN"],
+    ["Infinity", 1.0],
+    ["Infinity", "NaN"],
+)
+
+check_json_complex_float_false_cases = (
+    0.0,
+    "foo",
+    [0.0],
+    [1.0, 2.0, 3.0],
+    [1.0, "_infinity_"],
+    {"hello": 1.0},
+)
+
+
+@pytest.mark.parametrize("data", check_json_complex_float_true_cases)
+def test_check_json_complex_float_v2_true(data: JSON) -> None:
+    assert check_json_complex_float_v2(data)
+
+
+@pytest.mark.parametrize("data", check_json_complex_float_false_cases)
+def test_check_json_complex_float_v2_false(data: JSON) -> None:
+    assert not check_json_complex_float_v2(data)
+
+
+@pytest.mark.parametrize("data", check_json_complex_float_true_cases)
+def test_check_json_complex_float_v3_true(data: JSON) -> None:
+    assert check_json_complex_float_v3(data)
+
+
+@pytest.mark.parametrize("data", check_json_complex_float_false_cases)
+def test_check_json_complex_float_v3_false(data: JSON) -> None:
+    assert not check_json_complex_float_v3(data)
+
+
+@pytest.mark.parametrize("data", check_json_complex_float_true_cases)
+def test_check_json_complex_float_true(data: JSON, zarr_format: ZarrFormat) -> None:
+    assert check_json_complex_float(data, zarr_format=zarr_format)
+
+
+@pytest.mark.parametrize("data", check_json_complex_float_false_cases)
+def test_check_json_complex_float_false(data: JSON, zarr_format: ZarrFormat) -> None:
+    assert not check_json_complex_float(data, zarr_format=zarr_format)
+
+
 def test_check_json_int() -> None:
     assert check_json_int(0)
     assert not check_json_int(1.0)
+
+
+def test_check_json_str() -> None:
+    assert check_json_str("0")
+    assert not check_json_str(1.0)
+
+
+def test_check_json_bool() -> None:
+    assert check_json_bool(True)
+    assert check_json_bool(False)
+    assert not check_json_bool(1.0)
+    assert not check_json_bool("True")
