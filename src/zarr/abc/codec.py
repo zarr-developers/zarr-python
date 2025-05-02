@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
 
 __all__ = [
@@ -96,7 +96,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         self,
         *,
         shape: ChunkCoords,
-        dtype: ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGrid,
     ) -> None:
         """Validates that the codec configuration is compatible with the array metadata.
@@ -291,7 +291,7 @@ class CodecPipeline:
 
     @abstractmethod
     def validate(
-        self, *, shape: ChunkCoords, dtype: ZDType[_BaseDType, _BaseScalar], chunk_grid: ChunkGrid
+        self, *, shape: ChunkCoords, dtype: ZDType[TBaseDType, TBaseScalar], chunk_grid: ChunkGrid
     ) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.

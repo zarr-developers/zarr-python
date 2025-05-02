@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
-    from zarr.core.dtype.wrapper import _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
 
 
 import json
@@ -82,7 +82,7 @@ def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
     return abcs[0]
 
 
-def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[_BaseDType, _BaseScalar]) -> None:
+def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
     """Check that the codecs are valid for the given dtype"""
     from zarr.codecs.sharding import ShardingCodec
 
@@ -141,7 +141,7 @@ class ArrayV3MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(Metadata):
     shape: ChunkCoords
-    data_type: ZDType[_BaseDType, _BaseScalar]
+    data_type: ZDType[TBaseDType, TBaseScalar]
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
@@ -156,7 +156,7 @@ class ArrayV3Metadata(Metadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: ZDType[_BaseDType, _BaseScalar],
+        data_type: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: object,
@@ -222,7 +222,7 @@ class ArrayV3Metadata(Metadata):
         return len(self.shape)
 
     @property
-    def dtype(self) -> ZDType[_BaseDType, _BaseScalar]:
+    def dtype(self) -> ZDType[TBaseDType, TBaseScalar]:
         return self.data_type
 
     @property

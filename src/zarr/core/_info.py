@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
     from zarr.core.common import ZarrFormat
-    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -80,7 +80,7 @@ class ArrayInfo:
 
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
-    _data_type: ZDType[_BaseDType, _BaseScalar]
+    _data_type: ZDType[TBaseDType, TBaseScalar]
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
     _chunk_shape: tuple[int, ...] | None = None

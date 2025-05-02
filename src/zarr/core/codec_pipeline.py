@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -133,7 +133,7 @@ class BatchedCodecPipeline(CodecPipeline):
         yield from self.bytes_bytes_codecs
 
     def validate(
-        self, *, shape: ChunkCoords, dtype: ZDType[_BaseDType, _BaseScalar], chunk_grid: ChunkGrid
+        self, *, shape: ChunkCoords, dtype: ZDType[TBaseDType, TBaseScalar], chunk_grid: ChunkGrid
     ) -> None:
         for codec in self:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)

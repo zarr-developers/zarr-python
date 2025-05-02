@@ -129,7 +129,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import CodecPipeline
     from zarr.codecs.sharding import ShardingCodecIndexLocation
-    from zarr.core.dtype.wrapper import _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
 
@@ -556,7 +556,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         # v2 and v3
         shape: ShapeLike,
-        dtype: ZDTypeLike | ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDTypeLike | ZDType[TBaseDType, TBaseScalar],
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -675,7 +675,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @staticmethod
     def _create_metadata_v3(
         shape: ShapeLike,
-        dtype: ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
@@ -726,7 +726,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ShapeLike,
-        dtype: ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_shape: ChunkCoords,
         config: ArrayConfig,
         fill_value: Any | None = None,
@@ -774,7 +774,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @staticmethod
     def _create_metadata_v2(
         shape: ChunkCoords,
-        dtype: ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunks: ChunkCoords,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -804,7 +804,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ChunkCoords,
-        dtype: ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunks: ChunkCoords,
         order: MemoryOrder,
         config: ArrayConfig,
@@ -1037,7 +1037,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     @property
-    def _zdtype(self) -> ZDType[_BaseDType, _BaseScalar]:
+    def _zdtype(self) -> ZDType[TBaseDType, TBaseScalar]:
         """
         The zarr-specific representation of the array data type
         """
@@ -1047,7 +1047,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             return self.metadata.data_type
 
     @property
-    def dtype(self) -> _BaseDType:
+    def dtype(self) -> TBaseDType:
         """Returns the data type of the array.
 
         Returns
@@ -4599,7 +4599,7 @@ def _parse_chunk_key_encoding(
 
 
 def _get_default_chunk_encoding_v3(
-    dtype: ZDType[_BaseDType, _BaseScalar],
+    dtype: ZDType[TBaseDType, TBaseScalar],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
     Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
@@ -4619,7 +4619,7 @@ def _get_default_chunk_encoding_v3(
 
 
 def _get_default_chunk_encoding_v2(
-    dtype: ZDType[_BaseDType, _BaseScalar],
+    dtype: ZDType[TBaseDType, TBaseScalar],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
     Get the default chunk encoding for Zarr format 2 arrays, given a dtype
@@ -4637,7 +4637,7 @@ def _parse_chunk_encoding_v2(
     *,
     compressor: CompressorsLike,
     filters: FiltersLike,
-    dtype: ZDType[_BaseDType, _BaseScalar],
+    dtype: ZDType[TBaseDType, TBaseScalar],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
     Generate chunk encoding classes for Zarr format 2 arrays with optional defaults.
@@ -4681,7 +4681,7 @@ def _parse_chunk_encoding_v3(
     compressors: CompressorsLike,
     filters: FiltersLike,
     serializer: SerializerLike,
-    dtype: ZDType[_BaseDType, _BaseScalar],
+    dtype: ZDType[TBaseDType, TBaseScalar],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
     Generate chunk encoding classes for v3 arrays with optional defaults.

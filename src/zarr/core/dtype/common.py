@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 Endianness = Literal["little", "big"]
-JSONFloat = float | Literal["NaN", "Infinity", "-Infinity"]
+SpecialFloats = Literal["NaN", "Infinity", "-Infinity"]
+JSONFloat = float | SpecialFloats
 
 
 class DataTypeValidationError(ValueError): ...

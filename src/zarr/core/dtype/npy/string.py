@@ -10,7 +10,7 @@ from zarr.core.dtype.wrapper import ZDType
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
-    from zarr.core.dtype.wrapper import _BaseDType
+    from zarr.core.dtype.wrapper import TBaseDType
 
 _NUMPY_SUPPORTS_VLEN_STRING = hasattr(np.dtypes, "StringDType")
 
@@ -23,7 +23,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
         _zarr_v3_name = "numpy.variable_length_utf8"
 
         @classmethod
-        def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+        def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
             return cls()
 
         def to_dtype(self) -> np.dtypes.StringDType:
@@ -83,7 +83,7 @@ else:
         _zarr_v3_name = "numpy.variable_length_utf8"
 
         @classmethod
-        def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+        def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
             return cls()
 
         def to_dtype(self) -> np.dtypes.ObjectDType:

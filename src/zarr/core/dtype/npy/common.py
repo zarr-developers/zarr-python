@@ -77,7 +77,7 @@ def endianness_from_numpy_str(endianness: EndiannessNumpy) -> Endianness | None:
             # for dtypes without byte ordering semantics
             return None
     raise ValueError(
-        f"Invalid endianness: {endianness}. Expected one of {get_args(EndiannessNumpy)}"
+        f"Invalid endianness: {endianness!r}. Expected one of {get_args(EndiannessNumpy)}"
     )
 
 
@@ -108,7 +108,7 @@ def endianness_to_numpy_str(endianness: Endianness | None) -> EndiannessNumpy:
         case None:
             return "|"
     raise ValueError(
-        f"Invalid endianness: {endianness}. Expected one of {get_args(Endianness)} or None"
+        f"Invalid endianness: {endianness!r}. Expected one of {get_args(Endianness)} or None"
     )
 
 
@@ -155,7 +155,7 @@ def float_from_json_v3(data: JSONFloat) -> float:
     return float_from_json_v2(data)
 
 
-def float_from_json(data: JSONFloat, zarr_format: ZarrFormat) -> float:
+def float_from_json(data: JSONFloat, *, zarr_format: ZarrFormat) -> float:
     """
     Convert a JSON float to a float based on zarr format.
 
@@ -177,7 +177,7 @@ def float_from_json(data: JSONFloat, zarr_format: ZarrFormat) -> float:
         return float_from_json_v3(data)
 
 
-def bytes_from_json(data: str, zarr_format: ZarrFormat) -> bytes:
+def bytes_from_json(data: str, *, zarr_format: ZarrFormat) -> bytes:
     """
     Convert a JSON string to bytes
 
@@ -198,7 +198,7 @@ def bytes_from_json(data: str, zarr_format: ZarrFormat) -> bytes:
     # TODO: differentiate these as needed. This is a spec question.
     if zarr_format == 3:
         return base64.b64decode(data.encode("ascii"))
-    raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
+    raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")  # pragma: no cover
 
 
 def bytes_to_json(data: bytes, zarr_format: ZarrFormat) -> str:
@@ -261,9 +261,11 @@ def float_to_json_v3(data: float | np.floating[Any]) -> JSONFloat:
     return float_to_json_v2(data)
 
 
-def complex_to_json_v3(data: complex | np.complexfloating[Any, Any]) -> tuple[JSONFloat, JSONFloat]:
+def complex_float_to_json_v3(
+    data: complex | np.complexfloating[Any, Any],
+) -> tuple[JSONFloat, JSONFloat]:
     """
-    Convert a complex number to JSON (v3).
+    Convert a complex number to JSON as defined by the Zarr V3 spec.
 
     Parameters
     ----------
@@ -278,13 +280,15 @@ def complex_to_json_v3(data: complex | np.complexfloating[Any, Any]) -> tuple[JS
     return float_to_json_v3(data.real), float_to_json_v3(data.imag)
 
 
-def complex_to_json_v2(data: complex | np.complexfloating[Any, Any]) -> tuple[JSONFloat, JSONFloat]:
+def complex_float_to_json_v2(
+    data: complex | np.complexfloating[Any, Any],
+) -> tuple[JSONFloat, JSONFloat]:
     """
-    Convert a complex number to JSON (v2).
+    Convert a complex number to JSON as defined by the Zarr V2 spec.
 
     Parameters
     ----------
-    data : complex or np.complexfloating
+    data : complex | np.complexfloating
         The complex value to convert.
 
     Returns
@@ -296,14 +300,14 @@ def complex_to_json_v2(data: complex | np.complexfloating[Any, Any]) -> tuple[JS
 
 
 def complex_float_to_json(
-    data: complex | np.complexfloating[Any, Any], zarr_format: ZarrFormat
+    data: complex | np.complexfloating[Any, Any], *, zarr_format: ZarrFormat
 ) -> tuple[JSONFloat, JSONFloat]:
     """
     Convert a complex number to JSON, parametrized by the zarr format version.
 
     Parameters
     ----------
-    data : complex or np.complexfloating
+    data : complex | np.complexfloating
         The complex value to convert.
     zarr_format : ZarrFormat
         The zarr format version.
@@ -314,19 +318,19 @@ def complex_float_to_json(
         The JSON representation of the complex number.
     """
     if zarr_format == 2:
-        return complex_to_json_v2(data)
+        return complex_float_to_json_v2(data)
     else:
-        return complex_to_json_v3(data)
+        return complex_float_to_json_v3(data)
     raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
 
 
-def float_to_json(data: float | np.floating[Any], zarr_format: ZarrFormat) -> JSONFloat:
+def float_to_json(data: float | np.floating[Any], *, zarr_format: ZarrFormat) -> JSONFloat:
     """
     Convert a float to JSON, parametrized by the zarr format version.
 
     Parameters
     ----------
-    data : float or np.floating
+    data : float | np.floating
         The float value to convert.
     zarr_format : ZarrFormat
         The zarr format version.

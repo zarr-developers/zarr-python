@@ -59,7 +59,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.common import JSON
-    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, Buffer]
@@ -409,7 +409,7 @@ class ShardingCodec(
         self,
         *,
         shape: ChunkCoords,
-        dtype: ZDType[_BaseDType, _BaseScalar],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGrid,
     ) -> None:
         if len(self.chunk_shape) != len(shape):
