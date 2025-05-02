@@ -10,7 +10,6 @@ import zarr.api.asynchronous
 import zarr.storage
 from zarr.core.buffer import cpu
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype.npy.common import bytes_to_json
 from zarr.core.dtype.npy.float import Float32, Float64
 from zarr.core.dtype.npy.int import Int16
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
@@ -337,10 +336,5 @@ def test_structured_dtype_fill_value_serialization(tmp_path, fill_value):
 
     zarr.consolidate_metadata(root_group.store, zarr_format=zarr_format)
     root_group = zarr.open_group(group_path, mode="r")
-    observed = root_group.metadata.consolidated_metadata.to_dict()["metadata"]["structured_dtype"][
-        "fill_value"
-    ]
-    if fill_value is None:
-        assert observed is None
-    else:
-        assert observed == bytes_to_json(fill_value, zarr_format=zarr_format)
+    observed = root_group.metadata.consolidated_metadata.metadata["structured_dtype"].fill_value
+    assert observed == fill_value
