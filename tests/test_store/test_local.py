@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -87,9 +86,9 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         shape = (4,) * ndim
         chunks = (2,) * ndim
         data = np.arange(4**ndim)
-        if ndim>0:
+        if ndim > 0:
             data = data.reshape(*shape)
-        array = create_array(store, data=data, chunks=shape or "auto")
+        array = create_array(store, data=data, chunks=chunks or "auto")
 
         await store.move(str(destination))
 
