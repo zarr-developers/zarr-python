@@ -78,17 +78,22 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         observed = await store.get(key, prototype=None)
         assert_bytes_equal(observed, data_buf)
 
-    async def test_move(self, tmp_path: pathlib.Path):
+    @pytest.mark.parametrize("ndim", [0, 1, 2, 3])
+    async def test_move(self, tmp_path: pathlib.Path, ndim):
         origin = tmp_path / "origin"
         destination = tmp_path / "destintion"
 
         store = await LocalStore.open(root=origin)
-        array = create_array(store, data=np.arange(10))
+        shape = (4,) * ndim
+        chunks = (2,) * ndim
+        data = np.arange(4**ndim)
+        if ndim>0:
+            data = data.reshape(*shape)
+        array = create_array(store, data=data, chunks=shape or "auto")
 
         await store.move(str(destination))
 
         assert store.root == destination
         assert destination.exists()
-        assert origin.exists()
-        assert len(os.listdir(origin)) == 0
-        assert np.array_equal(array[...], np.arange(10))
+        assert not origin.exists()
+        assert np.array_equal(array[...], data)
