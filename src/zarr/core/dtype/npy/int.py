@@ -11,7 +11,7 @@ from zarr.core.dtype.npy.common import (
     endianness_from_numpy_str,
     endianness_to_numpy_str,
 )
-from zarr.core.dtype.wrapper import ZDType, _BaseDType
+from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 _NumpyIntDType = (
     np.dtypes.Int8DType
@@ -132,7 +132,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     _zarr_v2_names: ClassVar[tuple[str, ...]] = ("|i1",)
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         return cls()
 
     def to_dtype(self: Self) -> np.dtypes.Int8DType:
@@ -150,7 +150,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     _zarr_v2_names: ClassVar[tuple[str, ...]] = ("|u1",)
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         return cls()
 
     def to_dtype(self: Self) -> np.dtypes.UInt8DType:
@@ -168,7 +168,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i2", "<i2")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -193,7 +193,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u2", "<u2")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -217,7 +217,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i4", "<i4")
 
     @classmethod
-    def from_dtype(cls: type[Self], dtype: _BaseDType) -> Self:
+    def from_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         # We override the base implementation to address a windows-specific, pre-numpy 2 issue where
         # ``np.dtype('i')`` is an instance of ``np.dtypes.IntDType`` that acts like `int32` instead of ``np.dtype('int32')``
         # In this case, ``type(np.dtype('i')) == np.dtypes.Int32DType``  will evaluate to ``True``,
@@ -229,7 +229,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
             return super().from_dtype(dtype)
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -253,7 +253,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u4", "<u4")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -277,7 +277,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">i8", "<i8")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -301,7 +301,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">u8", "<u8")
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 

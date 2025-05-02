@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeAlias, get_args
 
+from zarr.core.dtype.common import DataTypeValidationError
 from zarr.core.dtype.npy.bool import Bool
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
@@ -26,11 +27,12 @@ from zarr.core.dtype.npy.string import (
     VariableLengthString,
 )
 from zarr.core.dtype.registry import DataTypeRegistry
-from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 __all__ = [
     "Complex64",
     "Complex128",
+    "DataTypeValidationError",
     "DateTime64",
     "FixedLengthAscii",
     "FixedLengthBytes",
@@ -73,14 +75,14 @@ DTYPE = (
     | TimeDelta64
 )
 
-ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[_BaseDType, _BaseScalar] | dict[str, JSON]
+ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | dict[str, JSON]
 
 for dtype in get_args(DTYPE):
     data_type_registry.register(dtype._zarr_v3_name, dtype)
 
 
 # TODO: find a better name for this function
-def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[_BaseDType, _BaseScalar]:
+def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[TBaseDType, TBaseScalar]:
     """
     Get a data type wrapper (an instance of ``ZDType``) from a native data type, e.g. a numpy dtype.
     """
@@ -106,11 +108,11 @@ def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[_BaseDType, 
 
 def get_data_type_from_json(
     dtype: JSON, zarr_format: ZarrFormat
-) -> ZDType[_BaseDType, _BaseScalar]:
+) -> ZDType[TBaseDType, TBaseScalar]:
     return data_type_registry.match_json(dtype, zarr_format=zarr_format)
 
 
-def parse_data_type(dtype: ZDTypeLike, zarr_format: ZarrFormat) -> ZDType[_BaseDType, _BaseScalar]:
+def parse_data_type(dtype: ZDTypeLike, zarr_format: ZarrFormat) -> ZDType[TBaseDType, TBaseScalar]:
     """
     Interpret the input as a ZDType instance.
     """

@@ -9,31 +9,25 @@ import numpy as np
 import pytest
 
 import zarr
-from tests.conftest import skip_object_dtype
 from zarr.core.config import config
 from zarr.core.dtype import (
-    AnyDType,
+    DTYPE,
     Bool,
-    DataTypeRegistry,
-    DateTime64,
-    FixedLengthUTF32,
-    Int8,
-    Int16,
+    FixedLengthUnicode,
     TBaseDType,
     TBaseScalar,
-    VariableLengthUTF8,
     ZDType,
     data_type_registry,
     get_data_type_from_json,
-    parse_data_type,
 )
+from zarr.core.dtype.registry import DataTypeRegistry
+
+from .conftest import zdtype_examples
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
     from zarr.core.common import ZarrFormat
-
-from .test_dtype.conftest import zdtype_examples
 
 
 @pytest.fixture
@@ -59,7 +53,7 @@ class TestRegistry:
         data_type_registry_fixture.register(Bool._zarr_v3_name, Bool)
 
         class NewBool(Bool):
-            def default_scalar(self) -> np.bool_:
+            def default_value(self) -> np.bool_:
                 return np.True_
 
         data_type_registry_fixture.register(NewBool._zarr_v3_name, NewBool)
@@ -67,7 +61,7 @@ class TestRegistry:
 
     @staticmethod
     @pytest.mark.parametrize(
-        ("wrapper_cls", "dtype_str"), [(Bool, "bool"), (FixedLengthUTF32, "|U4")]
+        ("wrapper_cls", "dtype_str"), [(Bool, "bool"), (FixedLengthUnicode, "|U4")]
     )
     def test_match_dtype(
         data_type_registry_fixture: DataTypeRegistry,
@@ -85,31 +79,25 @@ class TestRegistry:
         """
         Test that match_dtype raises an error if the dtype is not registered.
         """
-        outside_dtype_name = "int8"
-        outside_dtype = np.dtype(outside_dtype_name)
-        msg = f"No Zarr data type found that matches dtype '{outside_dtype!r}'"
-        with pytest.raises(ValueError, match=re.escape(msg)):
-            data_type_registry_fixture.match_dtype(outside_dtype)
+        outside_dtype = "int8"
+        with pytest.raises(
+            ValueError, match=f"No data type wrapper found that matches dtype '{outside_dtype}'"
+        ):
+            data_type_registry_fixture.match_dtype(np.dtype(outside_dtype))
 
         with pytest.raises(KeyError):
-            data_type_registry_fixture.get(outside_dtype_name)
+            data_type_registry_fixture.get(outside_dtype)
 
     @staticmethod
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("zdtype", zdtype_examples)
-    def test_registered_dtypes_match_dtype(zdtype: ZDType[TBaseDType, TBaseScalar]) -> None:
+    def test_registered_dtypes(
+        zdtype: ZDType[TBaseDType, TBaseScalar], zarr_format: ZarrFormat
+    ) -> None:
         """
         Test that the registered dtypes can be retrieved from the registry.
         """
-        skip_object_dtype(zdtype)
-        assert data_type_registry.match_dtype(zdtype.to_native_dtype()) == zdtype
 
-    @staticmethod
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-    @pytest.mark.parametrize("zdtype", zdtype_examples)
-    def test_registered_dtypes_match_json(
-        zdtype: ZDType[TBaseDType, TBaseScalar], zarr_format: ZarrFormat
-    ) -> None:
+        assert data_type_registry.match_dtype(zdtype.to_dtype()) == zdtype
         assert (
             data_type_registry.match_json(
                 zdtype.to_json(zarr_format=zarr_format), zarr_format=zarr_format
@@ -118,7 +106,6 @@ class TestRegistry:
         )
 
     @staticmethod
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("zdtype", zdtype_examples)
     def test_match_dtype_unique(
         zdtype: ZDType[Any, Any],
@@ -130,19 +117,18 @@ class TestRegistry:
         that excludes the data type class being tested, and ensure that an instance of the wrapped data type
         fails to match anything in the registry
         """
-        skip_object_dtype(zdtype)
-        for _cls in get_args(AnyDType):
+        for _cls in get_args(DTYPE):
             if _cls is not type(zdtype):
                 data_type_registry_fixture.register(_cls._zarr_v3_name, _cls)
 
-        dtype_instance = zdtype.to_native_dtype()
+        dtype_instance = zdtype.to_dtype()
 
-        msg = f"No Zarr data type found that matches dtype '{dtype_instance!r}'"
+        msg = f"No data type wrapper found that matches dtype '{dtype_instance}'"
         with pytest.raises(ValueError, match=re.escape(msg)):
             data_type_registry_fixture.match_dtype(dtype_instance)
 
         instance_dict = zdtype.to_json(zarr_format=zarr_format)
-        msg = f"No Zarr data type found that matches {instance_dict!r}"
+        msg = f"No data type wrapper found that matches {instance_dict}"
         with pytest.raises(ValueError, match=re.escape(msg)):
             data_type_registry_fixture.match_json(instance_dict, zarr_format=zarr_format)
 
@@ -167,35 +153,6 @@ def set_path() -> Generator[None, None, None]:
 def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
     from package_with_entrypoint import TestDataType
 
-    data_type_registry._lazy_load()
     instance = TestDataType()
     dtype_json = instance.to_json(zarr_format=zarr_format)
     assert get_data_type_from_json(dtype_json, zarr_format=zarr_format) == instance
-    data_type_registry.unregister(TestDataType._zarr_v3_name)
-
-
-@pytest.mark.parametrize(
-    ("dtype_params", "expected", "zarr_format"),
-    [
-        ("str", VariableLengthUTF8(), 2),
-        ("str", VariableLengthUTF8(), 3),
-        ("int8", Int8(), 3),
-        (Int8(), Int8(), 3),
-        (">i2", Int16(endianness="big"), 2),
-        ("datetime64[10s]", DateTime64(unit="s", scale_factor=10), 2),
-        (
-            {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}},
-            DateTime64(unit="s", scale_factor=10),
-            3,
-        ),
-    ],
-)
-def test_parse_data_type(
-    dtype_params: Any, expected: ZDType[Any, Any], zarr_format: ZarrFormat
-) -> None:
-    """
-    Test that parse_data_type accepts alternative representations of ZDType instances, and resolves
-    those inputs to the expected ZDType instance.
-    """
-    observed = parse_data_type(dtype_params, zarr_format=zarr_format)
-    assert observed == expected

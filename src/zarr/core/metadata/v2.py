@@ -8,7 +8,7 @@ import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype.wrapper import TDType_co, TScalar_co, ZDType, _BaseDType, _BaseScalar
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, TDType_co, TScalar_co, ZDType
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -61,7 +61,7 @@ CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
     chunks: ChunkCoords
-    dtype: ZDType[_BaseDType, _BaseScalar]
+    dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: int | float | str | bytes | None = 0
     order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None

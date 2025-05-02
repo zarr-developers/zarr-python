@@ -21,7 +21,7 @@ from zarr.core.dtype.npy.common import (
     endianness_from_numpy_str,
     endianness_to_numpy_str,
 )
-from zarr.core.dtype.wrapper import ZDType, _BaseDType
+from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 if TYPE_CHECKING:
     from zarr.core.dtype.npy.common import EndiannessNumpy
@@ -33,7 +33,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 

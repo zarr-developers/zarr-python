@@ -10,7 +10,7 @@ import zarr.core.buffer
 from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
 from zarr.codecs import BytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import BytesLike
+from zarr.core.common import BytesLike, ZarrFormat
 from zarr.core.dtype.npy.bool import Bool
 
 
@@ -83,5 +83,5 @@ class TestDataType(Bool):
             return cls()
         raise ValueError
 
-    def to_json(self, zarr_format):
+    def to_json(self, zarr_format: ZarrFormat) -> str:
         return self._zarr_v3_name

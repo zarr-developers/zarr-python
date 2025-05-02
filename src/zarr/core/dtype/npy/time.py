@@ -25,7 +25,7 @@ from zarr.core.dtype.npy.common import (
     endianness_from_numpy_str,
     endianness_to_numpy_str,
 )
-from zarr.core.dtype.wrapper import ZDType, _BaseDType
+from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -109,7 +109,7 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness):
     unit: DateTimeUnit
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         unit, interval = np.datetime_data(dtype.name)
         byteorder = cast("EndiannessNumpy", dtype.byteorder)
         return cls(unit=unit, interval=interval, endianness=endianness_from_numpy_str(byteorder))  # type: ignore[arg-type]

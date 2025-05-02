@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
 
     from zarr.core.common import JSON, ZarrFormat
-    from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 # This class is different from the other registry classes, which inherit from
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 # have just 1 registry class in use.
 @dataclass(frozen=True, kw_only=True)
 class DataTypeRegistry:
-    contents: dict[str, type[ZDType[_BaseDType, _BaseScalar]]] = field(
+    contents: dict[str, type[ZDType[TBaseDType, TBaseScalar]]] = field(
         default_factory=dict, init=False
     )
     lazy_load_list: list[EntryPoint] = field(default_factory=list, init=False)
@@ -28,15 +28,15 @@ class DataTypeRegistry:
 
         self.lazy_load_list.clear()
 
-    def register(self: Self, key: str, cls: type[ZDType[_BaseDType, _BaseScalar]]) -> None:
+    def register(self: Self, key: str, cls: type[ZDType[TBaseDType, TBaseScalar]]) -> None:
         # don't register the same dtype twice
         if key not in self.contents or self.contents[key] != cls:
             self.contents[key] = cls
 
-    def get(self, key: str) -> type[ZDType[_BaseDType, _BaseScalar]]:
+    def get(self, key: str) -> type[ZDType[TBaseDType, TBaseScalar]]:
         return self.contents[key]
 
-    def match_dtype(self, dtype: _BaseDType) -> ZDType[_BaseDType, _BaseScalar]:
+    def match_dtype(self, dtype: TBaseDType) -> ZDType[TBaseDType, TBaseScalar]:
         self.lazy_load()
         for val in self.contents.values():
             try:
@@ -45,7 +45,7 @@ class DataTypeRegistry:
                 pass
         raise ValueError(f"No data type wrapper found that matches dtype '{dtype}'")
 
-    def match_json(self, data: JSON, zarr_format: ZarrFormat) -> ZDType[_BaseDType, _BaseScalar]:
+    def match_json(self, data: JSON, zarr_format: ZarrFormat) -> ZDType[TBaseDType, TBaseScalar]:
         self.lazy_load()
         for val in self.contents.values():
             try:

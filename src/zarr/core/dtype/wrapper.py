@@ -35,15 +35,15 @@ if TYPE_CHECKING:
 
 # This the upper bound for the scalar types we support. It's numpy scalars + str,
 # because the new variable-length string dtype in numpy does not have a corresponding scalar type
-_BaseScalar = np.generic | str
+TBaseScalar = np.generic | str
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
-_BaseDType = np.dtype[np.generic]
+TBaseDType = np.dtype[np.generic]
 # These two type parameters are covariant because we want
 # x : ZDType[BaseDType, BaseScalar] = ZDType[SubDType, SubScalar]
 # to type check
-TScalar_co = TypeVar("TScalar_co", bound=_BaseScalar, covariant=True)
-TDType_co = TypeVar("TDType_co", bound=_BaseDType, covariant=True)
+TScalar_co = TypeVar("TScalar_co", bound=TBaseScalar, covariant=True)
+TDType_co = TypeVar("TDType_co", bound=TBaseDType, covariant=True)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -69,7 +69,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
-    def check_dtype(cls: type[Self], dtype: _BaseDType) -> TypeGuard[TDType_co]:
+    def check_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
         """
         Check that a data type matches the dtype_cls class attribute. Used as a type guard.
 
@@ -86,7 +86,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         return type(dtype) is cls.dtype_cls
 
     @classmethod
-    def from_dtype(cls: type[Self], dtype: _BaseDType) -> Self:
+    def from_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
         Wrap a dtype object.
 
@@ -113,7 +113,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
 
     @classmethod
     @abstractmethod
-    def _from_dtype_unsafe(cls: type[Self], dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls: type[Self], dtype: TBaseDType) -> Self:
         """
         Wrap a native dtype without checking.
 

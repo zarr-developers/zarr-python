@@ -5,7 +5,7 @@ import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype.npy.common import check_json_bool
-from zarr.core.dtype.wrapper import ZDType, _BaseDType
+from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -26,7 +26,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
     dtype_cls = np.dtypes.BoolDType
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         return cls()
 
     def to_dtype(self: Self) -> np.dtypes.BoolDType:

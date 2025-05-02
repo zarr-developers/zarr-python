@@ -16,7 +16,7 @@ from zarr.core.dtype.npy.common import (
     endianness_from_numpy_str,
     endianness_to_numpy_str,
 )
-from zarr.core.dtype.wrapper import ZDType, _BaseDType, _BaseScalar
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -26,7 +26,7 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
     item_size_bits: ClassVar[int] = 8
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         return cls(length=dtype.itemsize // (cls.item_size_bits // 8))
 
     def to_dtype(self) -> np.dtypes.BytesDType[int]:
@@ -98,7 +98,7 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
     item_size_bits: ClassVar[int] = 8
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         return cls(length=dtype.itemsize // (cls.item_size_bits // 8))
 
     def to_dtype(self) -> np.dtypes.VoidDType[int]:
@@ -136,7 +136,7 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def check_dtype(cls: type[Self], dtype: _BaseDType) -> TypeGuard[np.dtypes.VoidDType[Any]]:
+    def check_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[Any]]:
         """
         Numpy void dtype comes in two forms:
         * If the ``fields`` attribute is ``None``, then the dtype represents N raw bytes.
@@ -181,7 +181,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
     item_size_bits: ClassVar[int] = 32  # UCS4 is 32 bits per code point
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(
             length=dtype.itemsize // (cls.item_size_bits // 8),
@@ -252,7 +252,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
 class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
     _zarr_v3_name = "structured"
-    fields: tuple[tuple[str, ZDType[_BaseDType, _BaseScalar]], ...]
+    fields: tuple[tuple[str, ZDType[TBaseDType, TBaseScalar]], ...]
 
     def default_value(self) -> np.void:
         return self._cast_value_unsafe(0)
@@ -261,7 +261,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
         return cast("np.void", np.array([value], dtype=self.to_dtype())[0])
 
     @classmethod
-    def check_dtype(cls, dtype: _BaseDType) -> TypeGuard[np.dtypes.VoidDType[int]]:
+    def check_dtype(cls, dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[int]]:
         """
         Check that this dtype is a numpy structured dtype
 
@@ -278,10 +278,10 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
         return super().check_dtype(dtype) and dtype.fields is not None
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         from zarr.core.dtype import get_data_type_from_native_dtype
 
-        fields: list[tuple[str, ZDType[_BaseDType, _BaseScalar]]] = []
+        fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
 
         if dtype.fields is None:
             raise ValueError("numpy dtype has no fields")

@@ -16,7 +16,7 @@ from zarr.core.dtype.npy.common import (
     float_from_json,
     float_to_json,
 )
-from zarr.core.dtype.wrapper import ZDType, _BaseDType
+from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: _BaseDType) -> Self:
+    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
