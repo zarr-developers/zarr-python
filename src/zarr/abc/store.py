@@ -12,7 +12,6 @@ from zarr.core.config import config
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
-    from pathlib import Path
     from types import TracebackType
     from typing import Any, Self, TypeAlias
 
@@ -136,12 +135,6 @@ class Store(ABC):
         async for _ in self.list_prefix(prefix):
             return False
         return True
-
-    async def move(self, path: Path | str) -> None:
-        """
-        Move the store to another path
-        """
-        raise NotImplementedError(f"store.move is not valid for {self.__class__.__name__}")
 
     async def clear(self) -> None:
         """

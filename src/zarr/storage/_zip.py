@@ -291,7 +291,9 @@ class ZipStore(Store):
                         yield k
 
     async def move(self, path: Path | str) -> None:
-        # docstring inherited
+        """
+        Move the store to another path.
+        """
         if isinstance(path, str):
             path = Path(path)
         self.close()

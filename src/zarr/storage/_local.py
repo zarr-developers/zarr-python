@@ -254,8 +254,9 @@ class LocalStore(Store):
             pass
 
     async def move(self, dest_root: Path | str) -> None:
-        # docstring inherited
-
+        """
+        Move the store to another path. The old root directory is deleted.
+        """
         if isinstance(dest_root, str):
             dest_root = Path(dest_root)
         os.makedirs(dest_root, exist_ok=True)
