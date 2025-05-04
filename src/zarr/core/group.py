@@ -7,7 +7,6 @@ import json
 import logging
 import warnings
 from collections import defaultdict
-from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
@@ -65,6 +64,8 @@ if TYPE_CHECKING:
         Coroutine,
         Generator,
         Iterable,
+        Iterator,
+        Mapping,
     )
     from typing import Any
 
