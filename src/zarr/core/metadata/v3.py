@@ -573,9 +573,8 @@ def parse_fill_value(
             and np.isclose(np.imag(fill_value), np.imag(casted_value), equal_nan=True)
         ):
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
-    else:
-        if fill_value != casted_value:
-            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
+    elif fill_value != casted_value:
+        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
 
     return casted_value
 
