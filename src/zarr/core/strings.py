@@ -30,7 +30,7 @@ try:
         data: np.ndarray[Any, np.dtype[Any]],
     ) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
         out = data.astype(_STRING_DTYPE, copy=False)
-        return cast(np.ndarray[Any, np.dtypes.StringDType], out)
+        return cast("np.ndarray[Any, np.dtypes.StringDType]", out)
 
 except AttributeError:
     # if not available, we fall back on an object array of strings, as in Zarr < 3
@@ -41,7 +41,7 @@ except AttributeError:
         data: np.ndarray[Any, np.dtype[Any]],
     ) -> np.ndarray[Any, Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]]:
         out = data.astype(_STRING_DTYPE, copy=False)
-        return cast(np.ndarray[Any, np.dtypes.ObjectDType], out)
+        return cast("np.ndarray[Any, np.dtypes.ObjectDType]", out)
 
 
 def cast_to_string_dtype(

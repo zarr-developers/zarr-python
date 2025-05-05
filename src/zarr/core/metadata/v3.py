@@ -272,7 +272,7 @@ class ArrayV3Metadata(Metadata):
             fill_value = default_fill_value(data_type_parsed)
         # we pass a string here rather than an enum to make mypy happy
         fill_value_parsed = parse_fill_value(
-            fill_value, dtype=cast(ALL_DTYPES, data_type_parsed.value)
+            fill_value, dtype=cast("ALL_DTYPES", data_type_parsed.value)
         )
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
@@ -523,7 +523,7 @@ def parse_fill_value(
         return np.bytes_(fill_value)
 
     # the rest are numeric types
-    np_dtype = cast(np.dtype[Any], data_type.to_numpy())
+    np_dtype = cast("np.dtype[Any]", data_type.to_numpy())
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
@@ -587,7 +587,7 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
         return b""
     else:
         np_dtype = dtype.to_numpy()
-        np_dtype = cast(np.dtype[Any], np_dtype)
+        np_dtype = cast("np.dtype[Any]", np_dtype)
         return np_dtype.type(0)  # type: ignore[misc]
 
 

@@ -80,7 +80,7 @@ DefaultT = TypeVar("DefaultT")
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
     if data in (2, 3):
-        return cast(ZarrFormat, data)
+        return cast("ZarrFormat", data)
     msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
     raise ValueError(msg)
 
@@ -88,7 +88,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
     if data in ("array", "group"):
-        return cast(Literal["array", "group"], data)
+        return cast("Literal['array', 'group']", data)
     raise MetadataValidationError("node_type", "array or group", data)
 
 
@@ -361,7 +361,7 @@ class GroupMetadata(Metadata):
                         # it's an array
                         if isinstance(v.get("fill_value", None), np.void):
                             v["fill_value"] = base64.standard_b64encode(
-                                cast(bytes, v["fill_value"])
+                                cast("bytes", v["fill_value"])
                             ).decode("ascii")
                         else:
                             v = _replace_special_floats(v)
@@ -3245,8 +3245,7 @@ def _ensure_consistent_zarr_format(
         raise ValueError(msg)
 
     return cast(
-        Mapping[str, GroupMetadata | ArrayV2Metadata]
-        | Mapping[str, GroupMetadata | ArrayV3Metadata],
+        "Mapping[str, GroupMetadata | ArrayV2Metadata] | Mapping[str, GroupMetadata | ArrayV3Metadata]",
         data,
     )
 
