@@ -6,12 +6,13 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr.abc.buffer import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.buffer import cpu, gpu
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike, cpu, gpu
 from zarr.storage import MemoryStore, StorePath
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,

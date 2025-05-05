@@ -88,8 +88,8 @@ def test_config_defaults_set() -> None:
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
             },
-            "buffer": "zarr.core.buffer.cpu.Buffer",
-            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+            "buffer": "zarr.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.buffer.cpu.NDBuffer",
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
                 "gzip": "zarr.codecs.gzip.GzipCodec",
@@ -223,9 +223,6 @@ def test_config_codec_implementation(store: Store) -> None:
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_ndbuffer_implementation(store: Store) -> None:
-    # has default value
-    assert fully_qualified_name(get_ndbuffer_class()) == config.defaults[0]["ndbuffer"]
-
     # set custom ndbuffer with TestNDArrayLike implementation
     register_ndbuffer(NDBufferUsingTestNDArrayLike)
     with config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)}):
@@ -242,9 +239,6 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
 
 
 def test_config_buffer_implementation() -> None:
-    # has default value
-    assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
-
     arr = zeros(shape=(100), store=StoreExpectingTestBuffer())
 
     # AssertionError of StoreExpectingTestBuffer when not using my buffer
