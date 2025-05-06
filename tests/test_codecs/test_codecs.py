@@ -421,7 +421,7 @@ async def test_resize(store: Store) -> None:
         (numcodecs.CRC32C(), numcodecs.zarr3.CRC32C),
         (numcodecs.LZ4(), numcodecs.zarr3.LZ4),
         (numcodecs.LZMA(), numcodecs.zarr3.LZMA),
-        # (numcodecs.ZFPY(), numcodecs.zarr3.ZFPY),
+        (numcodecs.ZFPY(), numcodecs.zarr3.ZFPY),
         (numcodecs.Adler32(), numcodecs.zarr3.Adler32),
         (
             numcodecs.AsType(encode_dtype=np.float64, decode_dtype=np.float32),
@@ -437,7 +437,7 @@ async def test_resize(store: Store) -> None:
         (numcodecs.Fletcher32(), numcodecs.zarr3.Fletcher32),
         (numcodecs.GZip(), numcodecs.zarr3.GZip),
         (numcodecs.JenkinsLookup3(), numcodecs.zarr3.JenkinsLookup3),
-        # (numcodecs.PCodec(), numcodecs.zarr3.PCodec),
+        (numcodecs.PCodec(), numcodecs.zarr3.PCodec),
         (numcodecs.PackBits(), numcodecs.zarr3.PackBits),
         (numcodecs.Quantize(digits=1, dtype="f8"), numcodecs.zarr3.Quantize),
         (numcodecs.Shuffle(), numcodecs.zarr3.Shuffle),

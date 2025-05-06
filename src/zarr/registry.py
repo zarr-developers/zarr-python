@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 import numcodecs
 
@@ -179,10 +179,12 @@ def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> Codec:
 
     numcodecs_zarr3_codec_class = getattr(numcodecs_zarr3_module, codec_name)
 
-    config = codec.get_config()
-    config.pop("id", None)
+    codec_config = codec.get_config()
+    codec_config.pop("id", None)
 
-    return numcodecs_zarr3_codec_class(**config)
+    codec = numcodecs_zarr3_codec_class(**codec_config)
+    codec = cast(Codec, codec)
+    return codec
 
 
 def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
@@ -201,9 +203,9 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
             msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
-        if not isinstance(data, BytesBytesCodec):
-            raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, BytesBytesCodec):
+        raise TypeError(f"Expected a BytesBytesCodec. Got {type(result)} instead.")
     return result
 
 
@@ -223,9 +225,9 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
             msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
-        if not isinstance(data, ArrayBytesCodec):
-            raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, ArrayBytesCodec):
+        raise TypeError(f"Expected a ArrayBytesCodec. Got {type(result)} instead.")
     return result
 
 
@@ -245,9 +247,9 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
             msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
-        if not isinstance(data, ArrayArrayCodec):
-            raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, ArrayArrayCodec):
+        raise TypeError(f"Expected a ArrayArrayCodec. Got {type(result)} instead.")
     return result
 
 
