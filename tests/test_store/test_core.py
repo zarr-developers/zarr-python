@@ -197,7 +197,7 @@ class TestNormalizePaths:
         Test that path normalization works as expected
         """
         paths = ["a", "b", "c", "d", "", "//a///b//"]
-        assert _normalize_paths(paths) == tuple([normalize_path(p) for p in paths])
+        assert _normalize_paths(paths) == tuple(normalize_path(p) for p in paths)
 
     @staticmethod
     @pytest.mark.parametrize("paths", [("", "/"), ("///a", "a")])
