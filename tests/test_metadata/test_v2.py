@@ -316,3 +316,28 @@ def test_zstd_checksum() -> None:
         arr.metadata.to_buffer_dict(default_buffer_prototype())[".zarray"].to_bytes()
     )
     assert "checksum" not in metadata["compressor"]
+
+
+@pytest.mark.parametrize(
+    "fill_value", [None, np.void((0, 0), np.dtype([("foo", "i4"), ("bar", "i4")]))]
+)
+def test_structured_dtype_fill_value_serialization(tmp_path, fill_value):
+    group_path = tmp_path / "test.zarr"
+    root_group = zarr.open_group(group_path, mode="w", zarr_format=2)
+    dtype = np.dtype([("foo", "i4"), ("bar", "i4")])
+    root_group.create_array(
+        name="structured_dtype",
+        shape=(100, 100),
+        chunks=(100, 100),
+        dtype=dtype,
+        fill_value=fill_value,
+    )
+
+    zarr.consolidate_metadata(root_group.store, zarr_format=2)
+    root_group = zarr.open_group(group_path, mode="r")
+    assert (
+        root_group.metadata.consolidated_metadata.to_dict()["metadata"]["structured_dtype"][
+            "fill_value"
+        ]
+        == fill_value
+    )

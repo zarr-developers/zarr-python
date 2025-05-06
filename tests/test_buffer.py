@@ -30,6 +30,8 @@ except ImportError:
     cp = None
 
 
+import zarr.api.asynchronous
+
 if TYPE_CHECKING:
     import types
 
@@ -64,7 +66,7 @@ async def test_async_array_prototype() -> None:
     got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=my_prototype)
     # ignoring a mypy error here that TestNDArrayLike doesn't meet the NDArrayLike protocol
     # The test passes, so it clearly does.
-    assert isinstance(got, TestNDArrayLike)  # type: ignore[unreachable]
+    assert isinstance(got, TestNDArrayLike)
     assert np.array_equal(expect, got)  # type: ignore[unreachable]
 
 
@@ -117,7 +119,7 @@ async def test_codecs_use_of_prototype() -> None:
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
     # ignoring a mypy error here that TestNDArrayLike doesn't meet the NDArrayLike protocol
     # The test passes, so it clearly does.
-    assert isinstance(got, TestNDArrayLike)  # type: ignore[unreachable]
+    assert isinstance(got, TestNDArrayLike)
     assert np.array_equal(expect, got)  # type: ignore[unreachable]
 
 
@@ -151,3 +153,11 @@ def test_numpy_buffer_prototype() -> None:
     ndbuffer = cpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
     assert isinstance(buffer.as_array_like(), np.ndarray)
     assert isinstance(ndbuffer.as_ndarray_like(), np.ndarray)
+    with pytest.raises(ValueError, match="Buffer does not contain a single scalar value"):
+        ndbuffer.as_scalar()
+
+
+# TODO: the same test for other buffer classes
+def test_cpu_buffer_as_scalar() -> None:
+    buf = cpu.buffer_prototype.nd_buffer.create(shape=(), dtype="int64")
+    assert buf.as_scalar() == buf.as_ndarray_like()[()]  # type: ignore[index]
