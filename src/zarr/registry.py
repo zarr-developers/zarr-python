@@ -3,10 +3,11 @@ from __future__ import annotations
 import warnings
 from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import numcodecs
 
+from zarr.abc.codec import Codec
 from zarr.core.config import BadConfigError, config
 
 if TYPE_CHECKING:
@@ -16,7 +17,6 @@ if TYPE_CHECKING:
         ArrayArrayCodec,
         ArrayBytesCodec,
         BytesBytesCodec,
-        Codec,
         CodecPipeline,
     )
     from zarr.core.buffer import Buffer, NDBuffer
@@ -183,7 +183,7 @@ def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> Codec:
     codec_config.pop("id", None)
 
     codec = numcodecs_zarr3_codec_class(**codec_config)
-    codec = cast(Codec, codec)
+    assert isinstance(codec, Codec)
     return codec
 
 
