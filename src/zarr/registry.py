@@ -172,17 +172,17 @@ def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> Codec:
     import numcodecs.zarr3
 
     codec_name = codec.__class__.__name__
-    zarr3_module = numcodecs.zarr3
+    numcodecs_zarr3_module = numcodecs.zarr3
 
-    if not hasattr(zarr3_module, codec_name):
+    if not hasattr(numcodecs_zarr3_module, codec_name):
         raise ValueError(f"No Zarr3 wrapper found for numcodec: {codec_name}")
 
-    zarr3_codec_class = getattr(zarr3_module, codec_name)
+    numcodecs_zarr3_codec_class = getattr(numcodecs_zarr3_module, codec_name)
 
     config = codec.get_config()
     config.pop("id", None)
 
-    return zarr3_codec_class(**config)
+    return numcodecs_zarr3_codec_class(**config)
 
 
 def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
