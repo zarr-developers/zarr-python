@@ -4,6 +4,8 @@ import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numcodecs
+import numcodecs.zarr3
 import numpy as np
 import pytest
 
@@ -11,6 +13,7 @@ import zarr
 import zarr.api
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, config
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.codecs import (
     BytesCodec,
     GzipCodec,
@@ -23,6 +26,7 @@ from zarr.storage import StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
+    from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike
     from zarr.core.buffer import NDArrayLike
     from zarr.core.common import MemoryOrder
 
@@ -406,3 +410,68 @@ async def test_resize(store: Store) -> None:
     assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
     assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is None
     assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is None
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize(
+    ("codec_v2", "expected_v3_cls"),
+    [
+        (numcodecs.BZ2(), numcodecs.zarr3.BZ2),
+        (numcodecs.CRC32(), numcodecs.zarr3.CRC32),
+        (numcodecs.CRC32C(), numcodecs.zarr3.CRC32C),
+        (numcodecs.LZ4(), numcodecs.zarr3.LZ4),
+        (numcodecs.LZMA(), numcodecs.zarr3.LZMA),
+        # (numcodecs.ZFPY(), numcodecs.zarr3.ZFPY),
+        (numcodecs.Adler32(), numcodecs.zarr3.Adler32),
+        (
+            numcodecs.AsType(encode_dtype=np.float64, decode_dtype=np.float32),
+            numcodecs.zarr3.AsType,
+        ),
+        (numcodecs.BitRound(keepbits=10), numcodecs.zarr3.BitRound),
+        (numcodecs.Blosc(), numcodecs.zarr3.Blosc),
+        (numcodecs.Delta(dtype=np.float64), numcodecs.zarr3.Delta),
+        (
+            numcodecs.FixedScaleOffset(offset=1000, scale=10, dtype="f8", astype="u1"),
+            numcodecs.zarr3.FixedScaleOffset,
+        ),
+        (numcodecs.Fletcher32(), numcodecs.zarr3.Fletcher32),
+        (numcodecs.GZip(), numcodecs.zarr3.GZip),
+        (numcodecs.JenkinsLookup3(), numcodecs.zarr3.JenkinsLookup3),
+        # (numcodecs.PCodec(), numcodecs.zarr3.PCodec),
+        (numcodecs.PackBits(), numcodecs.zarr3.PackBits),
+        (numcodecs.Quantize(digits=1, dtype="f8"), numcodecs.zarr3.Quantize),
+        (numcodecs.Shuffle(), numcodecs.zarr3.Shuffle),
+        (numcodecs.Zlib(), numcodecs.zarr3.Zlib),
+        (numcodecs.Zstd(), numcodecs.zarr3.Zstd),
+    ],
+)
+def test_numcodecs_in_v3(store: Store, codec_v2, expected_v3_cls) -> None:
+    result_v3 = zarr.registry.numcodec_to_zarr3_codec(codec_v2)
+
+    assert result_v3.__class__ == expected_v3_cls
+    assert result_v3.codec_config == codec_v2.get_config()
+
+    filters: FiltersLike = "auto"
+    serializer: SerializerLike = "auto"
+    compressors: CompressorsLike = "auto"
+    if isinstance(result_v3, ArrayArrayCodec):
+        filters = [codec_v2]
+    elif isinstance(result_v3, ArrayBytesCodec):
+        serializer = codec_v2
+    elif isinstance(result_v3, BytesBytesCodec):
+        compressors = [codec_v2]
+    else:
+        raise TypeError(f"unsupported type: {result_v3.__class__}")
+
+    z = zarr.create_array(
+        store,
+        shape=(64,),
+        chunks=(64,),
+        dtype=np.bool,
+        fill_value=False,
+        filters=filters,
+        compressors=compressors,
+        serializer=serializer,
+    )
+    z[...] = True
+    assert np.all(z[:])
