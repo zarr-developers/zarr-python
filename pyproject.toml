@@ -357,6 +357,7 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 module = [
     "tests.package_with_entrypoint.*",
     "tests.test_codecs.test_transpose",
+    "tests.test_config"
 ]
 strict = false
 
@@ -368,7 +369,6 @@ module = [
     "tests.test_codecs.test_codecs",
     "tests.test_metadata.*",
     "tests.test_store.*",
-    "tests.test_config",
     "tests.test_group",
     "tests.test_indexing",
     "tests.test_properties",
