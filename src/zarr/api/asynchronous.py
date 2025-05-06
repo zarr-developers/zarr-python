@@ -837,7 +837,9 @@ async def create(
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
-    compressor: dict[str, JSON] | None = None,  # TODO: default and type change
+    compressor: dict[str, JSON]
+    | Literal["default"]
+    | None = "default",  # TODO: default and type change
     fill_value: Any | None = 0,  # TODO: need type
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
@@ -990,7 +992,7 @@ async def create(
         dtype = parse_dtype(dtype, zarr_format)
         if not filters:
             filters = _default_filters(dtype)
-        if not compressor:
+        if compressor == "default":
             compressor = _default_compressor(dtype)
     elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
         if chunks is not None:

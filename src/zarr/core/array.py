@@ -301,7 +301,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: dict[str, JSON] | Literal["default"] | None = "default",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -392,7 +392,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: dict[str, JSON] | Literal["default"] | None = "default",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -427,7 +427,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: dict[str, JSON] | Literal["default"] | None = "default",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -568,7 +568,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: dict[str, JSON] | Literal["default"] | None = "default",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -602,7 +602,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(
                     "filters cannot be used for arrays with zarr_format 3. Use array-to-array codecs instead."
                 )
-            if compressor is not None:
+            if compressor != "default":
                 raise ValueError(
                     "compressor cannot be used for arrays with zarr_format 3. Use bytes-to-bytes codecs instead."
                 )
@@ -807,7 +807,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: float | None = None,
         filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
-        compressor: dict[str, JSON] | numcodecs.abc.Codec | None = None,
+        compressor: dict[str, JSON] | numcodecs.abc.Codec | Literal["default"] | None = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArray[ArrayV2Metadata]:
@@ -818,6 +818,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 await ensure_no_existing_node(store_path, zarr_format=2)
         else:
             await ensure_no_existing_node(store_path, zarr_format=2)
+
+        if compressor == "default":
+            compressor = _default_compressor(dtype)
 
         metadata = cls._create_metadata_v2(
             shape=shape,
@@ -1749,7 +1752,7 @@ class Array:
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: dict[str, JSON] | Literal["default"] | None = "default",
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
@@ -1878,7 +1881,7 @@ class Array:
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: dict[str, JSON] | Literal["default"] | None = "default",
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,

@@ -1190,3 +1190,9 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
         # assert_array_equal doesn't check the type
         assert isinstance(result, type(src))
         cp.testing.assert_array_equal(result, src[:10, :10])
+
+
+def test_v2_without_copmpressor() -> None:
+    # Make sure it's possible to set no compressor for v2 arrays
+    arr = zarr.create(store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=None)
+    assert arr.compressors == ()
