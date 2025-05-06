@@ -63,7 +63,8 @@ async def test_typesize() -> None:
     a = np.arange(1000000)
     codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
     z = zarr.array(a, chunks=(10000), codecs=codecs)
-    size = len(await z.store.get("c/0", prototype=default_buffer_prototype()))
+    bytes = (await z.store.get("c/0", prototype=default_buffer_prototype())).to_bytes()
+    size = len(bytes)
     match Version(numcodecs.__version__) >= Version("0.16.0"), platform.system() == "Windows":
         case True, True:
             expected_size = 400
@@ -71,4 +72,6 @@ async def test_typesize() -> None:
             expected_size = 402
         case False, _:
             expected_size = 10216
-    assert size == expected_size, f"blosc size mismatch, found {size} but expected {expected_size}"
+    assert size == expected_size, (
+        f"blosc size mismatch, found {size} but expected {expected_size}.  First 10 bytes: {bytes[:10]} and last 10 bytes: {bytes[-10:]}"
+    )
