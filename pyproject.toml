@@ -356,6 +356,7 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 [[tool.mypy.overrides]]
 module = [
     "tests.package_with_entrypoint.*",
+    "tests.test_codecs.test_transpose",
 ]
 strict = false
 
@@ -365,7 +366,6 @@ strict = false
 module = [
     "zarr.testing.stateful",  # lots of hypothesis decorator errors
     "tests.test_codecs.test_codecs",
-    "tests.test_codecs.test_transpose",
     "tests.test_metadata.*",
     "tests.test_store.*",
     "tests.test_config",
