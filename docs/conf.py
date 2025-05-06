@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-#
 # zarr documentation build configuration file, created by
 # sphinx-quickstart on Mon May  2 21:40:09 2016.
 #
@@ -40,12 +38,13 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
-    'autoapi.extension',
-    "numpydoc",
+    "autoapi.extension",
+    "sphinx.ext.napoleon",
     "sphinx_issues",
-    "sphinx_copybutton",
     "sphinx_design",
-    'sphinx_reredirects',
+    "sphinx_immaterial",
+    "sphinx_immaterial.apidoc.format_signatures",
+    "sphinx_reredirects",
 ]
 
 issues_github_path = "zarr-developers/zarr-python"
@@ -158,7 +157,7 @@ todo_include_todos = False
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "pydata_sphinx_theme"
+html_theme = "sphinx_immaterial"
 
 html_favicon = "_static/logo1.png"
 
@@ -166,19 +165,74 @@ html_favicon = "_static/logo1.png"
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    "github_url": "https://github.com/zarr-developers/zarr-python",
-    "twitter_url": "https://twitter.com/zarr_dev",
-    "icon_links": [
+    "repo_url": "https://github.com/zarr-developers/zarr-python",
+    "social": [
         {
-            "name": "Zarr Dev",
-            "url": "https://zarr.dev/",
-            "icon": "_static/logo1.png",
-            "type": "local",
+            "icon": "fontawesome/brands/twitter",
+            "link": "https://twitter.com/zarr_dev",
+            "name": "@zarr_dev on Twitter",
+        },
+        {
+            "icon": "simple/zulip",
+            "link": "https://ossci.zulipchat.com/",
+            "name": "Developer chat",
+        },
+        {
+            "icon": "fontawesome/brands/github",
+            "link": "https://github.com/zarr-developers/zarr-python/",
+            "name": "Source repository",
         },
     ],
-    "collapse_navigation": True,
+    # "icon_links": [
+    #     {
+    #         "name": "Zarr Dev",
+    #         "url": "https://zarr.dev/",
+    #         "icon": "_static/logo1.png",
+    #         "type": "local",
+    #     },
+    # ],
+    # "collapse_navigation": True,
     "navigation_with_keys": False,
-    "announcement": "Zarr-Python 3 is here! Check out the release announcement <a href='https://zarr.dev/blog/zarr-python-3-release/'>here.</a>",
+    "features": [
+        "navigation.expand",
+        "navigation.tabs",
+        "navigation.tabs.sticky",
+        "navigation.top",
+        "toc.sticky",
+        "toc.follow",
+        "announce.dismiss",
+        "content.action.view",
+        "navigation.footer",
+    ],
+    "palette": [
+        {
+            "media": "(prefers-color-scheme)",
+            "toggle": {
+                "icon": "material/brightness-auto",
+                "name": "Switch to light mode",
+            },
+        },
+        {
+            "media": "(prefers-color-scheme: light)",
+            "scheme": "default",
+            "primary": "indigo",
+            "accent": "indigo",
+            "toggle": {
+                "icon": "material/lightbulb",
+                "name": "Switch to dark mode",
+            },
+        },
+        {
+            "media": "(prefers-color-scheme: dark)",
+            "scheme": "slate",
+            "primary": "black",
+            "accent": "blue",
+            "toggle": {
+                "icon": "material/lightbulb-outline",
+                "name": "Switch to system preference",
+            },
+        },
+    ],
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -279,7 +333,10 @@ html_sidebars = {"tutorial": []}
 # Output file base name for HTML help builder.
 htmlhelp_basename = "zarrdoc"
 
-maximum_signature_line_length = 80
+object_description_options = [
+    ("py:.*", dict(black_format_style={}, include_fields_in_toc=False)),
+    ("py:(parameter|typeParameter)", dict(include_in_toc=False)),
+]
 
 # -- Options for LaTeX output ---------------------------------------------
 

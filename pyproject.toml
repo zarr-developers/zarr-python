@@ -95,10 +95,8 @@ docs = [
     'sphinx-autoapi==3.4.0',
     'sphinx_design',
     'sphinx-issues',
-    'sphinx-copybutton',
     'sphinx-reredirects',
-    'pydata-sphinx-theme',
-    'numpydoc',
+    'sphinx_immaterial[black]>=0.13.2',
     # Changelog generation
     'towncrier',
     # Optional dependencies to run examples
