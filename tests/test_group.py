@@ -450,6 +450,28 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     assert len(group) == 0
 
 
+def test_group_with_context_manager(store: Store, zarr_format: ZarrFormat, overwrite: bool) -> None:
+    spath = StorePath(store)
+
+    # attempt to open a group that does not exist.
+    with pytest.raises(FileNotFoundError):
+        with zarr.open_group(store, mode="r") as group:
+            pass
+
+    attrs = {"path": "foo"}
+
+    with zarr.create_group(
+        store, attributes=attrs, zarr_format=zarr_format, overwrite=overwrite
+    ) as group:
+        assert store._is_open
+        assert group.attrs == attrs
+        assert group.metadata.zarr_format == zarr_format
+        assert group.store_path == spath
+
+    # Check if store was closed after exit.
+    assert not store._is_open
+
+
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__setitem__` method.
