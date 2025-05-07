@@ -193,3 +193,9 @@ def test_gpu_buffer_prototype() -> None:
     assert isinstance(ndbuffer.as_ndarray_like(), cp.ndarray)
     with pytest.raises(ValueError, match="Buffer does not contain a single scalar value"):
         ndbuffer.as_scalar()
+
+
+# TODO: the same test for other buffer classes
+def test_cpu_buffer_as_scalar() -> None:
+    buf = cpu.buffer_prototype.nd_buffer.create(shape=(), dtype="int64")
+    assert buf.as_scalar() == buf.as_ndarray_like()[()]  # type: ignore[index]

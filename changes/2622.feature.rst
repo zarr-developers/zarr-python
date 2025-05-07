@@ -1,1 +1,0 @@
-Add ``zarr.from_array`` using concurrent streaming of source data

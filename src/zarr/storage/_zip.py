@@ -24,7 +24,7 @@ ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
 class ZipStore(Store):
     """
-    Storage class using a ZIP file.
+    Store using a ZIP file.
 
     Parameters
     ----------
