@@ -348,27 +348,27 @@ python_version = "3.11"
 ignore_missing_imports = true
 namespace_packages = false
 
-
 strict = true
 warn_unreachable = true
-
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
 
 [[tool.mypy.overrides]]
 module = [
-    "zarr.v2.*",
+    "tests.package_with_entrypoint.*",
+    "tests.test_codecs.test_transpose",
+    "tests.test_config"
 ]
-ignore_errors = true
+strict = false
 
+# TODO: Move the next modules up to the strict = false section
+# and fix the errors
 [[tool.mypy.overrides]]
 module = [
     "zarr.testing.stateful",  # lots of hypothesis decorator errors
-    "tests.package_with_entrypoint.*",
     "tests.test_codecs.test_codecs",
-    "tests.test_codecs.test_transpose",
     "tests.test_metadata.*",
     "tests.test_store.*",
-    "tests.test_config",
     "tests.test_group",
     "tests.test_indexing",
     "tests.test_properties",
