@@ -9,7 +9,14 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.core.array import Array, AsyncArray, create_array, from_array, get_array_metadata
+from zarr.core.array import (
+    Array,
+    AsyncArray,
+    CompressorLike,
+    create_array,
+    from_array,
+    get_array_metadata,
+)
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
@@ -837,9 +844,7 @@ async def create(
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
-    compressor: dict[str, JSON]
-    | Literal["default"]
-    | None = "default",  # TODO: default and type change
+    compressor: CompressorLike = "auto",
     fill_value: Any | None = 0,  # TODO: need type
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
@@ -992,7 +997,7 @@ async def create(
         dtype = parse_dtype(dtype, zarr_format)
         if not filters:
             filters = _default_filters(dtype)
-        if compressor == "default":
+        if compressor == "auto":
             compressor = _default_compressor(dtype)
     elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
         if chunks is not None:
