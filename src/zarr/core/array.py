@@ -672,7 +672,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         fill_value: Any | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: Iterable[str | None] | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV3Metadata:
         """
@@ -3821,7 +3821,7 @@ async def from_array(
     zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: Iterable[str | None] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigLike | None = None,
@@ -4083,7 +4083,7 @@ async def init_array(
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: Iterable[str | None] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None,
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
@@ -4477,7 +4477,7 @@ def _parse_keep_array_attr(
     order: MemoryOrder | None,
     zarr_format: ZarrFormat | None,
     chunk_key_encoding: ChunkKeyEncodingLike | None,
-    dimension_names: Iterable[str] | None,
+    dimension_names: Iterable[str | None] | None,
 ) -> tuple[
     ChunkCoords | Literal["auto"],
     ShardsLike | None,
@@ -4488,7 +4488,7 @@ def _parse_keep_array_attr(
     MemoryOrder | None,
     ZarrFormat,
     ChunkKeyEncodingLike | None,
-    Iterable[str] | None,
+    Iterable[str | None] | None,
 ]:
     if isinstance(data, Array):
         if chunks == "keep":
