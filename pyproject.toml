@@ -83,7 +83,7 @@ test = [
 remote_tests = [
     'zarr[remote]',
     "botocore",
-    "s3fs",
+    "s3fs>=2023.10.0",
     "moto[s3,server]",
     "requests",
 ]
@@ -104,7 +104,7 @@ docs = [
     # Optional dependencies to run examples
     'numcodecs[msgpack]',
     'rich',
-    's3fs',
+    's3fs>=2023.10.0',
     'astroid<4'
 ]
 
