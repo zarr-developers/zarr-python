@@ -37,21 +37,29 @@ class _TestZDType:
     valid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
     invalid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
 
-    valid_json_v2: ClassVar[tuple[str | dict[str, Any], ...]] = ()
-    invalid_json_v2: ClassVar[tuple[str | dict[str, Any], ...]] = ()
+    valid_json_v2: ClassVar[tuple[str | dict[str, object] | list[object], ...]] = ()
+    invalid_json_v2: ClassVar[tuple[str | dict[str, object] | list[object], ...]] = ()
 
-    valid_json_v3: ClassVar[tuple[str | dict[str, Any], ...]] = ()
-    invalid_json_v3: ClassVar[tuple[str | dict[str, Any], ...]] = ()
+    valid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
+    invalid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
 
-    def test_check_dtype_valid(self, valid_dtype: Any) -> None:
-        assert self.test_cls.check_dtype(valid_dtype)
+    def test_check_dtype_valid(self, valid_dtype: object) -> None:
+        assert self.test_cls.check_dtype(valid_dtype)  # type: ignore[arg-type]
 
-    def test_check_dtype_invalid(self, invalid_dtype: Any) -> None:
-        assert not self.test_cls.check_dtype(invalid_dtype)
+    def test_check_dtype_invalid(self, invalid_dtype: object) -> None:
+        assert not self.test_cls.check_dtype(invalid_dtype)  # type: ignore[arg-type]
 
     def test_from_dtype_roundtrip(self, valid_dtype: Any) -> None:
         zdtype = self.test_cls.from_dtype(valid_dtype)
         assert zdtype.to_dtype() == valid_dtype
+
+    def test_from_json_roundtrip_v2(self, valid_json_v2: Any) -> None:
+        zdtype = self.test_cls.from_json(valid_json_v2, zarr_format=2)
+        assert zdtype.to_json(zarr_format=2) == valid_json_v2
+
+    def test_from_json_roundtrip_v3(self, valid_json_v3: Any) -> None:
+        zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
+        assert zdtype.to_json(zarr_format=3) == valid_json_v3
 
     """ @abc.abstractmethod
     def test_cast_value(self, value: Any) -> None:
