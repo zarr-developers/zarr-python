@@ -57,7 +57,7 @@ from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
 
-from .conftest import zdtype_examples
+from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike

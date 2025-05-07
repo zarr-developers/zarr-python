@@ -22,12 +22,12 @@ from zarr.core.dtype import (
 )
 from zarr.core.dtype.registry import DataTypeRegistry
 
-from .conftest import zdtype_examples
-
 if TYPE_CHECKING:
     from collections.abc import Generator
 
     from zarr.core.common import ZarrFormat
+
+from .test_dtype.conftest import zdtype_examples
 
 
 @pytest.fixture
