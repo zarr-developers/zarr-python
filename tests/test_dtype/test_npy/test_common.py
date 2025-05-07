@@ -61,15 +61,7 @@ json_float_v2_cases: list[tuple[JSONFloat, float | np.floating[Any]]] = [
 
 # exactly the same as v2, for now, until we get support for the special NaN encoding defined in the
 # v3 spec
-json_float_v3_cases: list[tuple[JSONFloat, float | np.floating[Any]]] = [
-    ("Infinity", float("inf")),
-    ("Infinity", np.inf),
-    ("-Infinity", float("-inf")),
-    ("-Infinity", -np.inf),
-    ("NaN", float("nan")),
-    ("NaN", np.nan),
-    (1.0, 1.0),
-]
+json_float_v3_cases = json_float_v2_cases
 
 
 @pytest.mark.parametrize(

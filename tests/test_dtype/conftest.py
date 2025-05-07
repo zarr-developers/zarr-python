@@ -20,3 +20,9 @@ for wrapper_cls in data_type_registry.contents.values():
         zdtype_examples += (wrapper_cls(unit="s", interval=10),)
     else:
         zdtype_examples += (wrapper_cls(),)
+
+
+def pytest_generate_tests(metafunc):
+    for fixture_name in metafunc.fixturenames:
+        if hasattr(metafunc.cls, fixture_name):
+            metafunc.parametrize(fixture_name, getattr(metafunc.cls, fixture_name), scope="class")
