@@ -48,6 +48,7 @@ async def test_transpose(
     read_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, read_data)
 
+    assert isinstance(read_data, np.ndarray)
     if runtime_read_order == "F":
         assert read_data.flags["F_CONTIGUOUS"]
         assert not read_data.flags["C_CONTIGUOUS"]
@@ -90,5 +91,5 @@ def test_transpose_invalid(
                 dtype=data.dtype,
                 fill_value=0,
                 chunk_key_encoding={"name": "v2", "separator": "."},
-                filters=[TransposeCodec(order=order)],
+                filters=[TransposeCodec(order=order)],  # type: ignore[arg-type]
             )
