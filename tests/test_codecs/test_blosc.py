@@ -60,7 +60,7 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
 
 
 async def test_typesize() -> None:
-    a = np.arange(1000000)
+    a = np.arange(1000000, dtype=np.uint64)
     codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
     z = zarr.array(a, chunks=(10000), codecs=codecs)
     bytes = (await z.store.get("c/0", prototype=default_buffer_prototype())).to_bytes()
