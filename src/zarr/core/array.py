@@ -3797,7 +3797,7 @@ FiltersLike: TypeAlias = (
     | Literal["auto"]
     | None
 )
-# Union of acceptable types for v2 and v3 compressors
+# Union of acceptable types for users to pass in for both v2 and v3 compressors
 CompressorLike: TypeAlias = (
     dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec | Literal["auto"] | None
 )
