@@ -17,6 +17,7 @@ from zarr.core.array import Array
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
+from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
@@ -49,10 +50,10 @@ def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
         | npst.unsigned_integer_dtypes(endianness="=")
         | npst.floating_dtypes(endianness="=")
         | npst.complex_number_dtypes(endianness="=")
-        # | npst.byte_string_dtypes(endianness="=")
-        # | npst.unicode_string_dtypes()
-        # | npst.datetime64_dtypes()
-        # | npst.timedelta64_dtypes()
+        | npst.byte_string_dtypes(endianness="=")
+        | npst.unicode_string_dtypes(endianness="=")
+        | npst.datetime64_dtypes(endianness="=")
+        | npst.timedelta64_dtypes(endianness="=")
     )
 
 
@@ -66,7 +67,7 @@ def v2_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
         | npst.byte_string_dtypes(endianness="=")
         | npst.unicode_string_dtypes(endianness="=")
         | npst.datetime64_dtypes(endianness="=")
-        # | npst.timedelta64_dtypes()
+        | npst.timedelta64_dtypes(endianness="=")
     )
 
 
@@ -141,8 +142,9 @@ def array_metadata(
     shape = draw(array_shapes())
     ndim = len(shape)
     chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
-    dtype = draw(v3_dtypes())
-    fill_value = draw(npst.from_dtype(dtype))
+    np_dtype = draw(v3_dtypes())
+    dtype = get_data_type_from_native_dtype(np_dtype)
+    fill_value = draw(npst.from_dtype(np_dtype))
     if zarr_format == 2:
         return ArrayV2Metadata(
             shape=shape,

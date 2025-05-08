@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast
 
-import numpy as np
-
 from zarr.core.common import (
     MemoryOrder,
     parse_bool,
@@ -19,6 +17,7 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ChunkCoords
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 class ArrayConfigParams(TypedDict):
@@ -64,7 +63,7 @@ class ArrayConfig:
         """
         kwargs_out: ArrayConfigParams = {}
         for f in fields(ArrayConfig):
-            field_name = cast(Literal["order", "write_empty_chunks"], f.name)
+            field_name = cast("Literal['order', 'write_empty_chunks']", f.name)
             if field_name not in data:
                 kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
             else:
@@ -90,7 +89,7 @@ def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
 @dataclass(frozen=True)
 class ArraySpec:
     shape: ChunkCoords
-    dtype: np.dtype[Any]
+    dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: Any
     config: ArrayConfig
     prototype: BufferPrototype
@@ -98,17 +97,16 @@ class ArraySpec:
     def __init__(
         self,
         shape: ChunkCoords,
-        dtype: np.dtype[Any],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         fill_value: Any,
         config: ArrayConfig,
         prototype: BufferPrototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
-        dtype_parsed = np.dtype(dtype)
         fill_value_parsed = parse_fill_value(fill_value)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "dtype", dtype_parsed)
+        object.__setattr__(self, "dtype", dtype)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "config", config)
         object.__setattr__(self, "prototype", prototype)
