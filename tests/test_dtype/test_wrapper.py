@@ -1,34 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
-import hypothesis.strategies as st
-import numpy as np
-from hypothesis.extra import numpy as npst
-
-from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-
-
-def all_dtypes() -> st.SearchStrategy[np.dtype[np.generic]]:
-    return (
-        npst.boolean_dtypes()
-        | npst.integer_dtypes(endianness="=")
-        | npst.unsigned_integer_dtypes(endianness="=")
-        | npst.floating_dtypes(endianness="=")
-        | npst.complex_number_dtypes(endianness="=")
-        | npst.byte_string_dtypes(endianness="=")
-        | npst.unicode_string_dtypes(endianness="=")
-        | npst.datetime64_dtypes(endianness="=")
-        | npst.timedelta64_dtypes(endianness="=")
-    )
-
-
-def get_classvar_attributes(cls: type) -> dict[str, Any]:
-    classvar_attributes = {}
-    for name, annotation in cls.__annotations__.items():
-        if getattr(annotation, "__origin__", None) is ClassVar:
-            classvar_attributes[name] = getattr(cls, name)
-    return classvar_attributes
+if TYPE_CHECKING:
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 class _TestZDType:
@@ -42,6 +17,13 @@ class _TestZDType:
 
     valid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
     invalid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
+
+    # for testing scalar round-trip serialization, we need a tuple of (data type json, scalar json)
+    # pairs. the first element of the pair is used to create a dtype instance, and the second
+    # element is the json serialization of the scalar that we want to round-trip.
+
+    scalar_v2_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
+    scalar_v3_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
 
     def test_check_dtype_valid(self, valid_dtype: object) -> None:
         assert self.test_cls.check_dtype(valid_dtype)  # type: ignore[arg-type]
@@ -60,6 +42,26 @@ class _TestZDType:
     def test_from_json_roundtrip_v3(self, valid_json_v3: Any) -> None:
         zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
         assert zdtype.to_json(zarr_format=3) == valid_json_v3
+
+    def test_scalar_roundtrip_v2(self, scalar_v2_params: Any) -> None:
+        dtype_json, scalar_json = scalar_v2_params
+        zdtype = self.test_cls.from_json(dtype_json, zarr_format=2)
+        scalar = zdtype.from_json_value(scalar_json, zarr_format=2)
+        assert self._scalar_equals(scalar_json, zdtype.to_json_value(scalar, zarr_format=2))
+
+    def test_scalar_roundtrip_v3(self, scalar_v3_params: Any) -> None:
+        dtype_json, scalar_json = scalar_v3_params
+        zdtype = self.test_cls.from_json(dtype_json, zarr_format=3)
+        scalar = zdtype.from_json_value(scalar_json, zarr_format=3)
+        assert self._scalar_equals(scalar_json, zdtype.to_json_value(scalar, zarr_format=3))
+
+    @staticmethod
+    def _scalar_equals(a: object, b: object) -> bool:
+        """
+        Compare two scalars for equality. Subclasses that test dtypes with scalars that don't allow
+        simple equality like nans should override this method.
+        """
+        return a == b
 
     """ @abc.abstractmethod
     def test_cast_value(self, value: Any) -> None:

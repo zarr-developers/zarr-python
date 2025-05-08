@@ -105,20 +105,31 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness):
     # because the particular numpy dtype we are wrapping does not allow direct construction via
     # cls.dtype_cls()
     _numpy_name: ClassVar[_DTypeName]
-    interval: int
+    scale_factor: int
     unit: DateTimeUnit
+
+    def __post_init__(self) -> None:
+        if self.scale_factor < 1:
+            raise ValueError(f"scale_factor must be > 0, got {self.scale_factor}.")
+        if self.scale_factor >= 2**31:
+            raise ValueError(f"scale_factor must be < 2147483648, got {self.scale_factor}.")
+        if self.unit not in get_args(DateTimeUnit):
+            raise ValueError(f"unit must be one of {get_args(DateTimeUnit)}, got {self.unit!r}.")
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
-        unit, interval = np.datetime_data(dtype.name)
+        unit, scale_factor = np.datetime_data(dtype.name)
+        unit = cast("DateTimeUnit", unit)
         byteorder = cast("EndiannessNumpy", dtype.byteorder)
-        return cls(unit=unit, interval=interval, endianness=endianness_from_numpy_str(byteorder))  # type: ignore[arg-type]
+        return cls(
+            unit=unit, scale_factor=scale_factor, endianness=endianness_from_numpy_str(byteorder)
+        )
 
     def to_dtype(self) -> _BaseTimeDType_co:
         # Numpy does not allow creating datetime64 or timedelta64 via
         # np.dtypes.{dtype_name}()
         # so we use np.dtype with a formatted string.
-        dtype_string = f"{self._numpy_name}[{self.interval}{self.unit}]"
+        dtype_string = f"{self._numpy_name}[{self.scale_factor}{self.unit}]"
         return np.dtype(dtype_string).newbyteorder(endianness_to_numpy_str(self.endianness))  # type: ignore[return-value]
 
     @classmethod
@@ -127,8 +138,8 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness):
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
             unit = data["configuration"]["unit"]  # type: ignore[index, call-overload]
-            interval = data["configuration"]["interval"]  # type: ignore[index, call-overload]
-            return cls(unit=unit, interval=interval)  # type: ignore[arg-type]
+            scale_factor = data["configuration"]["scale_factor"]  # type: ignore[index, call-overload]
+            return cls(unit=unit, scale_factor=scale_factor)  # type: ignore[arg-type]
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json(self, zarr_format: ZarrFormat) -> JSON:
@@ -137,7 +148,7 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness):
         elif zarr_format == 3:
             return {
                 "name": self._zarr_v3_name,
-                "configuration": {"unit": self.unit, "interval": self.interval},
+                "configuration": {"unit": self.unit, "scale_factor": self.scale_factor},
             }
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -166,7 +177,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     _zarr_v3_name = "numpy.timedelta64"
     _zarr_v2_names = (">m8", "<m8")
     _numpy_name = "timedelta64"
-    interval: int = 1
+    scale_factor: int = 1
     unit: DateTimeUnit = "generic"
 
     def default_value(self) -> np.timedelta64:
@@ -174,7 +185,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
         if check_json_int(data):
-            return self.to_dtype().type(data, f"{self.interval}{self.unit}")
+            return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
     def _cast_value_unsafe(self, value: object) -> np.timedelta64:
@@ -202,8 +213,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
                 and data["name"] == cls._zarr_v3_name
                 and set(data.keys()) == {"name", "configuration"}
                 and isinstance(data["configuration"], dict)
-                and set(data["configuration"].keys()) == {"unit", "interval"}
-                and data["configuration"]["unit"] in get_args(DateTimeUnit)
+                and set(data["configuration"].keys()) == {"unit", "scale_factor"}
             )
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -215,14 +225,14 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
     _zarr_v2_names = (">M8", "<M8")
     _numpy_name = "datetime64"
     unit: DateTimeUnit = "generic"
-    interval: int = 1
+    scale_factor: int = 1
 
     def default_value(self) -> np.datetime64:
         return np.datetime64("NaT")
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
         if check_json_int(data):
-            return self.to_dtype().type(data, f"{self.interval}{self.unit}")
+            return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
     def _cast_value_unsafe(self, value: object) -> np.datetime64:
@@ -248,7 +258,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
                 isinstance(data, dict)
                 and set(data.keys()) == {"name", "configuration"}
                 and data["name"] == cls._zarr_v3_name
-                and set(data["configuration"].keys()) == {"unit", "interval"}
+                and set(data["configuration"].keys()) == {"unit", "scale_factor"}
                 and data["configuration"]["unit"] in get_args(DateTimeUnit)
             )
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover

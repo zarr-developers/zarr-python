@@ -14,8 +14,8 @@ class TestInt8(_TestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = Int8._zarr_v2_names
-    valid_json_v3_cases = (Int8._zarr_v3_name,)
+    valid_json_v2 = ("|i1",)
+    valid_json_v3 = ("int8",)
     invalid_json_v2 = (
         ">i1",
         "int8",
@@ -27,6 +27,9 @@ class TestInt8(_TestZDType):
         {"name": "int8", "configuration": {"endianness": "little"}},
     )
 
+    scalar_v2_params = (("|i1", 1), ("|i1", -1))
+    scalar_v3_params = (("int8", 1), ("int8", -1))
+
 
 class TestInt16(_TestZDType):
     test_cls = Int16
@@ -36,8 +39,8 @@ class TestInt16(_TestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = Int16._zarr_v2_names
-    valid_json_v3_cases = (Int16._zarr_v3_name,)
+    valid_json_v2 = (">i2", "<i2")
+    valid_json_v3 = ("int16",)
     invalid_json_v2 = (
         "|i2",
         "int16",
@@ -49,6 +52,9 @@ class TestInt16(_TestZDType):
         {"name": "int16", "configuration": {"endianness": "little"}},
     )
 
+    scalar_v2_params = (("<i2", 1), (">i2", -1))
+    scalar_v3_params = (("int16", 1), ("int16", -1))
+
 
 class TestInt32(_TestZDType):
     test_cls = Int32
@@ -58,8 +64,8 @@ class TestInt32(_TestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = Int32._zarr_v2_names
-    valid_json_v3_cases = (Int32._zarr_v3_name,)
+    valid_json_v2 = (">i4", "<i4")
+    valid_json_v3 = ("int32",)
     invalid_json_v2 = (
         "|i4",
         "int32",
@@ -71,6 +77,9 @@ class TestInt32(_TestZDType):
         {"name": "int32", "configuration": {"endianness": "little"}},
     )
 
+    scalar_v2_params = (("<i4", 1), (">i4", -1))
+    scalar_v3_params = (("int32", 1), ("int32", -1))
+
 
 class TestInt64(_TestZDType):
     test_cls = Int64
@@ -80,8 +89,8 @@ class TestInt64(_TestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = Int64._zarr_v2_names
-    valid_json_v3_cases = (Int64._zarr_v3_name,)
+    valid_json_v2 = (">i8", "<i8")
+    valid_json_v3 = ("int64",)
     invalid_json_v2 = (
         "|i8",
         "int64",
@@ -93,6 +102,9 @@ class TestInt64(_TestZDType):
         {"name": "int64", "configuration": {"endianness": "little"}},
     )
 
+    scalar_v2_params = (("<i8", 1), (">i8", -1))
+    scalar_v3_params = (("int64", 1), ("int64", -1))
+
 
 class TestUInt8(_TestZDType):
     test_cls = UInt8
@@ -102,8 +114,8 @@ class TestUInt8(_TestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = UInt8._zarr_v2_names
-    valid_json_v3_cases = (UInt8._zarr_v3_name,)
+    valid_json_v2 = ("|u1",)
+    valid_json_v3 = ("uint8",)
     invalid_json_v2 = (
         "|u1",
         "uint8",
@@ -115,6 +127,9 @@ class TestUInt8(_TestZDType):
         {"name": "uint8", "configuration": {"endianness": "little"}},
     )
 
+    scalar_v2_params = (("|u1", 1), ("|u1", 0))
+    scalar_v3_params = (("uint8", 1), ("uint8", 0))
+
 
 class TestUInt16(_TestZDType):
     test_cls = UInt16
@@ -124,8 +139,8 @@ class TestUInt16(_TestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = UInt16._zarr_v2_names
-    valid_json_v3_cases = (UInt16._zarr_v3_name,)
+    valid_json_v2 = (">u2", "<u2")
+    valid_json_v3 = ("uint16",)
     invalid_json_v2 = (
         "|u2",
         "uint16",
@@ -137,6 +152,9 @@ class TestUInt16(_TestZDType):
         {"name": "uint16", "configuration": {"endianness": "little"}},
     )
 
+    scalar_v2_params = (("<u2", 1), (">u2", 0))
+    scalar_v3_params = (("uint16", 1), ("uint16", 0))
+
 
 class TestUInt32(_TestZDType):
     test_cls = UInt32
@@ -146,8 +164,8 @@ class TestUInt32(_TestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = UInt32._zarr_v2_names
-    valid_json_v3_cases = (UInt32._zarr_v3_name,)
+    valid_json_v2 = (">u4", "<u4")
+    valid_json_v3 = ("uint32",)
     invalid_json_v2 = (
         "|u4",
         "uint32",
@@ -159,6 +177,9 @@ class TestUInt32(_TestZDType):
         {"name": "uint32", "configuration": {"endianness": "little"}},
     )
 
+    scalar_v2_params = (("<u4", 1), (">u4", 0))
+    scalar_v3_params = (("uint32", 1), ("uint32", 0))
+
 
 class TestUInt64(_TestZDType):
     test_cls = UInt64
@@ -168,8 +189,8 @@ class TestUInt64(_TestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = UInt64._zarr_v2_names
-    valid_json_v3_cases = (UInt64._zarr_v3_name,)
+    valid_json_v2 = (">u8", "<u8")
+    valid_json_v3 = ("uint64",)
     invalid_json_v2 = (
         "|u8",
         "uint64",
@@ -180,3 +201,6 @@ class TestUInt64(_TestZDType):
         "|f8",
         {"name": "uint64", "configuration": {"endianness": "little"}},
     )
+
+    scalar_v2_params = (("<u8", 1), (">u8", 0))
+    scalar_v3_params = (("uint64", 1), ("uint64", 0))
