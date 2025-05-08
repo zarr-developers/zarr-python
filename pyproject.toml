@@ -291,8 +291,8 @@ extend-exclude = [
 extend-select = [
     "ANN",  # flake8-annotations
     "B",    # flake8-bugbear
-    "EXE",  # flake8-executable
     "C4",   # flake8-comprehensions
+    "EXE",  # flake8-executable
     "FA",   # flake8-future-annotations
     "FLY",  # flynt
     "FURB", # refurb
@@ -310,7 +310,7 @@ extend-select = [
     "RUF",
     "SIM",  # flake8-simplify
     "SLOT", # flake8-slots
-    "TCH",  # flake8-type-checking
+    "TC",   # flake8-type-checking
     "TRY",  # tryceratops
     "UP",   # pyupgrade
     "W",    # pycodestyle warnings
