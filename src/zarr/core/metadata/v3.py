@@ -32,6 +32,7 @@ from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ChunkCoords,
+    DimensionNames,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -147,7 +148,7 @@ class ArrayV3Metadata(Metadata):
     fill_value: Any
     codecs: tuple[Codec, ...]
     attributes: dict[str, Any] = field(default_factory=dict)
-    dimension_names: tuple[str, ...] | None = None
+    dimension_names: tuple[str | None, ...] | None = None
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
@@ -162,7 +163,7 @@ class ArrayV3Metadata(Metadata):
         fill_value: object,
         codecs: Iterable[Codec | dict[str, JSON]],
         attributes: dict[str, JSON] | None,
-        dimension_names: Iterable[str] | None,
+        dimension_names: DimensionNames,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
     ) -> None:
         """
