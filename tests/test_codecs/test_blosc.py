@@ -1,5 +1,4 @@
 import json
-import platform
 
 import numcodecs
 import numpy as np
@@ -66,20 +65,9 @@ async def test_typesize() -> None:
     bytes = (await z.store.get("c/0", prototype=default_buffer_prototype())).to_bytes()
     size = len(bytes)
     msg = f"Blosc size mismatch.  First 10 bytes: {bytes[:20]} and last 10 bytes: {bytes[-20:]}"
-    match (
-        Version(numcodecs.__version__) >= Version("0.16.0"),
-        platform.system() == "Windows",
-        Version(np.__version__) < Version("2.0.0"),
-    ):
-        case True, True, True:
-            # See https://github.com/zarr-developers/zarr-python/pull/2962
-            # for why this condition is distinct.  It's not clear
-            # if it's the python version of the numpy version with windows.
-            expected_size = 400
-            assert size == 400, msg
-        case (True, True, False) | (True, False, _):
-            expected_size = 402
-            assert size == expected_size, msg
-        case False, _, _:
-            expected_size = 10216
-            assert size == expected_size, msg
+    if Version(numcodecs.__version__) >= Version("0.16.0"):
+        expected_size = 402
+        assert size == expected_size, msg
+    else:
+        expected_size = 10216
+    assert size == expected_size, msg
