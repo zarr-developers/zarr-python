@@ -9,7 +9,7 @@ from numcodecs.vlen import VLenBytes, VLenUTF8
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import JSON, parse_named_configuration, reject_must_understand_metadata
 from zarr.core.strings import cast_to_string_dtype
 from zarr.registry import register_codec
 
@@ -26,7 +26,8 @@ _vlen_bytes_codec = VLenBytes()
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
-    def __init__(self) -> None:
+    def __init__(self, **kwargs: JSON) -> None:
+        reject_must_understand_metadata(kwargs, "`vlen-utf8` codec configuration")
         warn(
             "The codec `vlen-utf8` is currently not part in the Zarr format 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
@@ -81,7 +82,8 @@ class VLenUTF8Codec(ArrayBytesCodec):
 
 @dataclass(frozen=True)
 class VLenBytesCodec(ArrayBytesCodec):
-    def __init__(self) -> None:
+    def __init__(self, **kwargs: JSON) -> None:
+        reject_must_understand_metadata(kwargs, "`vlen-bytes` codec configuration")
         warn(
             "The codec `vlen-bytes` is currently not part in the Zarr format 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
