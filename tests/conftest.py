@@ -18,7 +18,7 @@ from zarr.core.array import (
     _parse_chunk_key_encoding,
 )
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
-from zarr.core.common import JSON, parse_dtype, parse_shapelike
+from zarr.core.common import JSON, DimensionNames, parse_dtype, parse_shapelike
 from zarr.core.config import config as zarr_config
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
@@ -26,7 +26,7 @@ from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable
+    from collections.abc import Generator
     from typing import Any, Literal
 
     from _pytest.compat import LEGACY_PATH
@@ -255,7 +255,7 @@ def create_array_metadata(
     zarr_format: ZarrFormat,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNames = None,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
     """
     Create array metadata
@@ -388,7 +388,7 @@ def meta_from_array(
     zarr_format: ZarrFormat = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNames = None,
 ) -> ArrayV3Metadata | ArrayV2Metadata:
     """
     Create array metadata from an array
