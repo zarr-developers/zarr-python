@@ -126,7 +126,7 @@ class BytesCodec(ArrayBytesCodec):
 
         nd_array = chunk_array.as_ndarray_like()
         # Flatten the nd-array (only copy if needed) and reinterpret as bytes
-        nd_array = nd_array.ravel().view(dtype="b")
+        nd_array = nd_array.ravel().view(dtype="B")
         return chunk_spec.prototype.buffer.from_array_like(nd_array)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:

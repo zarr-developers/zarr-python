@@ -67,7 +67,7 @@ def _put(
 
 class LocalStore(Store):
     """
-    Local file system store.
+    Store for the local file system.
 
     Parameters
     ----------

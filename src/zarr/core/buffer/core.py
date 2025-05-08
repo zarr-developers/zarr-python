@@ -143,7 +143,7 @@ class Buffer(ABC):
     def __init__(self, array_like: ArrayLike) -> None:
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
-        if array_like.dtype != np.dtype("b"):
+        if array_like.dtype != np.dtype("B"):
             raise ValueError("array_like: only byte dtype allowed")
         self._data = array_like
 
@@ -306,7 +306,7 @@ class NDBuffer:
     Notes
     -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
-    is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
+    is a special case of NDBuffer where dim=1, stride=1, and dtype="B". However,
     in order to use Python's type system to differentiate between the contiguous
     Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
     two classes separate.
@@ -427,16 +427,7 @@ class NDBuffer:
         """Returns the buffer as a scalar value"""
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
-        item = self.as_numpy_array().item()
-        scalar: ScalarType
-
-        if np.issubdtype(self.dtype, np.datetime64):
-            unit: str = np.datetime_data(self.dtype)[0]  # Extract the unit (e.g., 'Y', 'D', etc.)
-            scalar = np.datetime64(item, unit)
-        else:
-            scalar = self.dtype.type(item)  # Regular conversion for non-datetime types
-
-        return scalar
+        return cast(ScalarType, self.as_numpy_array()[()])
 
     @property
     def dtype(self) -> np.dtype[Any]:

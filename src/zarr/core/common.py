@@ -40,6 +40,7 @@ NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
+DimensionNames = Iterable[str | None] | None
 
 
 def product(tup: ChunkCoords) -> int:
