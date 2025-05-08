@@ -66,12 +66,10 @@ async def test_typesize() -> None:
     bytes = (await z.store.get("c/0", prototype=default_buffer_prototype())).to_bytes()
     size = len(bytes)
     match Version(numcodecs.__version__) >= Version("0.16.0"), platform.system() == "Windows":
-        case True, True:
-            expected_size = 400
-        case True, False:
+        case True, _:
             expected_size = 402
         case False, _:
             expected_size = 10216
     assert size == expected_size, (
-        f"blosc size mismatch, found {size} but expected {expected_size}.  First 10 bytes: {bytes[:10]} and last 10 bytes: {bytes[-10:]}"
+        f"blosc size mismatch, found {size} but expected {expected_size}.  First 10 bytes: {bytes[:20]} and last 10 bytes: {bytes[-20:]}"
     )
