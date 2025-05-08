@@ -70,13 +70,19 @@ def test_create(memory_store: Store) -> None:
 
 # TODO: parametrize over everything this function takes
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_create_array(store: Store) -> None:
+def test_create_array(store: Store, zarr_format: ZarrFormat) -> None:
     attrs: dict[str, JSON] = {"foo": 100}  # explicit type annotation to avoid mypy error
     shape = (10, 10)
     path = "foo"
     data_val = 1
     array_w = create_array(
-        store, name=path, shape=shape, attributes=attrs, chunks=shape, dtype="uint8"
+        store,
+        name=path,
+        shape=shape,
+        attributes=attrs,
+        chunks=shape,
+        dtype="uint8",
+        zarr_format=zarr_format,
     )
     array_w[:] = data_val
     assert array_w.shape == shape
@@ -85,18 +91,27 @@ def test_create_array(store: Store) -> None:
 
 
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
-def test_write_empty_chunks_warns(write_empty_chunks: bool) -> None:
+def test_write_empty_chunks_warns(write_empty_chunks: bool, zarr_format: ZarrFormat) -> None:
     """
     Test that using the `write_empty_chunks` kwarg on array access will raise a warning.
     """
     match = "The `write_empty_chunks` keyword argument .*"
     with pytest.warns(RuntimeWarning, match=match):
         _ = zarr.array(
-            data=np.arange(10), shape=(10,), dtype="uint8", write_empty_chunks=write_empty_chunks
+            data=np.arange(10),
+            shape=(10,),
+            dtype="uint8",
+            write_empty_chunks=write_empty_chunks,
+            zarr_format=zarr_format,
         )
 
     with pytest.warns(RuntimeWarning, match=match):
-        _ = zarr.create(shape=(10,), dtype="uint8", write_empty_chunks=write_empty_chunks)
+        _ = zarr.create(
+            shape=(10,),
+            dtype="uint8",
+            write_empty_chunks=write_empty_chunks,
+            zarr_format=zarr_format,
+        )
 
 
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
@@ -113,18 +128,18 @@ def test_open_normalized_path(
     assert node.path == normalize_path(path)
 
 
-async def test_open_array(memory_store: MemoryStore) -> None:
+async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) -> None:
     store = memory_store
 
     # open array, create if doesn't exist
-    z = open(store=store, shape=100)
+    z = open(store=store, shape=100, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (100,)
 
     # open array, overwrite
     # store._store_dict = {}
     store = MemoryStore()
-    z = open(store=store, shape=200)
+    z = open(store=store, shape=200, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
@@ -138,7 +153,7 @@ async def test_open_array(memory_store: MemoryStore) -> None:
 
     # path not found
     with pytest.raises(FileNotFoundError):
-        open(store="doesnotexist", mode="r")
+        open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -161,9 +176,9 @@ async def test_open_group(memory_store: MemoryStore) -> None:
     assert "foo" in g
 
     # open group, overwrite
-    # g = open_group(store=store)
-    # assert isinstance(g, Group)
-    # assert "foo" not in g
+    g = open_group(store=store, mode="w")
+    assert isinstance(g, Group)
+    assert "foo" not in g
 
     # open group, read-only
     store_cls = type(store)
@@ -306,7 +321,6 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
         zarr.open(store=tmp_path, mode="w-")
 
 
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_array_order(zarr_format: ZarrFormat) -> None:
     arr = zarr.ones(shape=(2, 2), order=None, zarr_format=zarr_format)
     expected = zarr.config.get("array.order")
@@ -322,7 +336,6 @@ def test_array_order(zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("order", ["C", "F"])
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
     with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
         arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
@@ -1135,13 +1148,14 @@ async def test_metadata_validation_error() -> None:
     ["local", "memory", "zip"],
     indirect=True,
 )
-def test_open_array_with_mode_r_plus(store: Store) -> None:
+def test_open_array_with_mode_r_plus(store: Store, zarr_format: ZarrFormat) -> None:
     # 'r+' means read/write (must exist)
     with pytest.raises(FileNotFoundError):
-        zarr.open_array(store=store, mode="r+")
-    zarr.ones(store=store, shape=(3, 3))
+        zarr.open_array(store=store, mode="r+", zarr_format=zarr_format)
+    zarr.ones(store=store, shape=(3, 3), zarr_format=zarr_format)
     z2 = zarr.open_array(store=store, mode="r+")
     assert isinstance(z2, Array)
+    assert z2.metadata.zarr_format == zarr_format
     result = z2[:]
     assert isinstance(result, NDArrayLike)
     assert (result == 1).all()

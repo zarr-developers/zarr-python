@@ -227,10 +227,13 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
     assert arr.fill_value.dtype == arr.dtype
 
 
-def test_create_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="Pass"):
-        zarr.Array.create(store, (2, 2), dtype="f8")
+async def test_create_deprecated() -> None:
+    with pytest.warns(DeprecationWarning):
+        with pytest.warns(FutureWarning, match="Pass"):
+            await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8")
+    with pytest.warns(DeprecationWarning):
+        with pytest.warns(FutureWarning, match="Pass"):
+            zarr.Array.create(MemoryStore(), (2, 2), dtype="f8")
 
 
 def test_selection_positional_args_deprecated() -> None:
