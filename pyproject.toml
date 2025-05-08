@@ -3,20 +3,13 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-  "/.github",
-  "/bench",
-  "/docs",
-  "/notebooks"
-]
+exclude = ["/.github", "/bench", "/docs", "/notebooks"]
 
 [project]
 name = "zarr"
 description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
 readme = { file = "README.md", content-type = "text/markdown" }
-authors = [
-    { name = "Alistair Miles", email = "alimanfoo@googlemail.com" },
-]
+authors = [{ name = "Alistair Miles", email = "alimanfoo@googlemail.com" }]
 maintainers = [
     { name = "Davis Bennett", email = "davis.v.bennett@gmail.com" },
     { name = "jakirkham" },
@@ -28,7 +21,7 @@ maintainers = [
     { name = "Ryan Abernathey" },
     { name = "David Stansby" },
     { name = "Tom Augspurger", email = "tom.w.augspurger@gmail.com" },
-    { name = "Deepak Cherian" }
+    { name = "Deepak Cherian" },
 ]
 requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
@@ -40,9 +33,7 @@ dependencies = [
     'donfig>=0.8',
 ]
 
-dynamic = [
-  "version",
-]
+dynamic = ["version"]
 classifiers = [
     'Development Status :: 6 - Mature',
     'Intended Audience :: Developers',
@@ -57,18 +48,13 @@ classifiers = [
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
 ]
-license = {text = "MIT License"}
+license = { text = "MIT License" }
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
 # User extras
-remote = [
-    "fsspec>=2023.10.0",
-    "obstore>=0.5.1",
-]
-gpu = [
-    "cupy-cuda12x",
-]
+remote = ["fsspec>=2023.10.0", "obstore>=0.5.1"]
+gpu = ["cupy-cuda12x"]
 # Development extras
 test = [
     "coverage",
@@ -105,7 +91,7 @@ docs = [
     'numcodecs[msgpack]',
     'rich',
     's3fs>=2023.10.0',
-    'astroid<4'
+    'astroid<4',
 ]
 
 
@@ -117,23 +103,18 @@ Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
 
 [dependency-groups]
-dev = [
-    "ipykernel>=6.29.5",
-    "pip>=25.0.1",
-]
+dev = ["ipykernel>=6.29.5", "pip>=25.0.1"]
 
 [tool.coverage.report]
 exclude_lines = [
     "pragma: no cover",
     "if TYPE_CHECKING:",
     "pragma: ${PY_MAJOR_VERSION} no cover",
-    '.*\.\.\.' # Ignore "..." lines
+    '.*\.\.\.',                             # Ignore "..." lines
 ]
 
 [tool.coverage.run]
-omit = [
-    "bench/compress_normal.py",
-]
+omit = ["bench/compress_normal.py"]
 
 [tool.hatch]
 version.source = "vcs"
@@ -142,9 +123,7 @@ version.source = "vcs"
 hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
-dependencies = [
-    "numpy~={matrix:numpy}",
-]
+dependencies = ["numpy~={matrix:numpy}"]
 features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
@@ -154,7 +133,9 @@ deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
 matrix.deps.dependencies = [
-  {value = "zarr[remote, remote_tests, test, optional]", if = ["optional"]}
+    { value = "zarr[remote, remote_tests, test, optional]", if = [
+        "optional",
+    ] },
 ]
 
 [tool.hatch.envs.test.scripts]
@@ -177,10 +158,7 @@ fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
-dependencies = [
-    "numpy~={matrix:numpy}",
-    "universal_pathlib",
-]
+dependencies = ["numpy~={matrix:numpy}", "universal_pathlib"]
 features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
@@ -207,7 +185,7 @@ serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 python = "3.13"
 dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
-    'numpy',  # from scientific-python-nightly-wheels
+    'numpy',                                                                              # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
     'fsspec @ git+https://github.com/fsspec/filesystem_spec',
     's3fs @ git+https://github.com/fsspec/s3fs',
@@ -243,7 +221,7 @@ dependencies = [
     'zarr[remote]',
     'packaging==22.*',
     'numpy==1.25.*',
-    'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
+    'numcodecs==0.14.*',         # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.0.22',
@@ -280,7 +258,7 @@ extend-exclude = [
     "buck-out",
     "build",
     "dist",
-    "notebooks", # temporary, until we achieve compatibility with ruff ≥ 0.6
+    "notebooks",      # temporary, until we achieve compatibility with ruff ≥ 0.6
     "venv",
     "docs",
     "src/zarr/v2/",
@@ -357,7 +335,8 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 module = [
     "tests.package_with_entrypoint.*",
     "tests.test_codecs.test_transpose",
-    "tests.test_config"
+    "tests.test_config",
+    "tests.test_metadata.*",
 ]
 strict = false
 
@@ -365,9 +344,8 @@ strict = false
 # and fix the errors
 [[tool.mypy.overrides]]
 module = [
-    "zarr.testing.stateful",  # lots of hypothesis decorator errors
+    "zarr.testing.stateful",         # lots of hypothesis decorator errors
     "tests.test_codecs.test_codecs",
-    "tests.test_metadata.*",
     "tests.test_store.*",
     "tests.test_group",
     "tests.test_indexing",
@@ -388,9 +366,7 @@ doctest_optionflags = [
     "ELLIPSIS",
     "IGNORE_EXCEPTION_DETAIL",
 ]
-addopts = [
-    "--durations=10", "-ra", "--strict-config", "--strict-markers",
-]
+addopts = ["--durations=10", "-ra", "--strict-config", "--strict-markers"]
 filterwarnings = [
     "error",
     # TODO: explicitly filter or catch the warnings below where we expect them to be emitted in the tests
@@ -403,7 +379,7 @@ filterwarnings = [
     "ignore:Duplicate name.*:UserWarning",
     "ignore:The `compressor` argument is deprecated. Use `compressors` instead.:UserWarning",
     "ignore:Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations.:UserWarning",
-    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
+    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning",
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",
@@ -412,8 +388,8 @@ markers = [
 
 [tool.repo-review]
 ignore = [
-	"PC111",  # fix Python code in documentation - enable later
-	"PC180",  # for JavaScript - not interested
+    "PC111", # fix Python code in documentation - enable later
+    "PC180", # for JavaScript - not interested
 ]
 
 [tool.numpydoc_validation]
