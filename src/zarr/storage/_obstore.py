@@ -161,7 +161,7 @@ class ObjectStore(Store):
 
         self._check_writable()
 
-        buf = value.to_bytes()
+        buf = value.as_buffer_like()
         await obs.put_async(self.store, key, buf)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
@@ -169,7 +169,7 @@ class ObjectStore(Store):
         import obstore as obs
 
         self._check_writable()
-        buf = value.to_bytes()
+        buf = value.as_buffer_like()
         with contextlib.suppress(obs.exceptions.AlreadyExistsError):
             await obs.put_async(self.store, key, buf, mode="create")
 
