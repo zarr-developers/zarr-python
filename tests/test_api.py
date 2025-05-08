@@ -1106,13 +1106,16 @@ def test_open_falls_back_to_open_group() -> None:
     assert group.attrs == {"key": "value"}
 
 
-async def test_open_falls_back_to_open_group_async() -> None:
+async def test_open_falls_back_to_open_group_async(zarr_format: ZarrFormat) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     store = MemoryStore()
-    await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
+    await zarr.api.asynchronous.open_group(
+        store, attributes={"key": "value"}, zarr_format=zarr_format
+    )
 
     group = await zarr.api.asynchronous.open(store=store)
     assert isinstance(group, zarr.core.group.AsyncGroup)
+    assert group.metadata.zarr_format == zarr_format
     assert group.attrs == {"key": "value"}
 
 
