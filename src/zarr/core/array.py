@@ -137,7 +137,8 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
-        if data["zarr_format"] == 3:
+        zarr_format = data.get("zarr_format")
+        if zarr_format == 3:
             meta_out = ArrayV3Metadata.from_dict(data)
             if len(meta_out.storage_transformers) > 0:
                 msg = (
@@ -146,8 +147,10 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
                 )
                 raise ValueError(msg)
             return meta_out
-        elif data["zarr_format"] == 2:
+        elif zarr_format == 2:
             return ArrayV2Metadata.from_dict(data)
+        else:
+            raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
     raise TypeError
 
 
@@ -265,17 +268,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None:
-        if isinstance(metadata, dict):
-            zarr_format = metadata["zarr_format"]
-            # TODO: remove this when we extensively type the dict representation of metadata
-            _metadata = cast(dict[str, JSON], metadata)
-            if zarr_format == 2:
-                metadata = ArrayV2Metadata.from_dict(_metadata)
-            elif zarr_format == 3:
-                metadata = ArrayV3Metadata.from_dict(_metadata)
-            else:
-                raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
-
         metadata_parsed = parse_array_metadata(metadata)
         config_parsed = parse_array_config(config)
 
