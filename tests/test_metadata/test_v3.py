@@ -142,7 +142,7 @@ def test_default_fill_value(dtype_str: str) -> None:
         (0j, "complex64"),
     ],
 )
-def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
+def test_parse_fill_value_valid(fill_value: bool | float, dtype_str: str) -> None:
     """
     Test that parse_fill_value(fill_value, dtype) casts fill_value to the given dtype.
     """
@@ -156,18 +156,18 @@ def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
 
 @pytest.mark.parametrize("fill_value", ["not a valid value"])
 @pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes, *complex_dtypes])
-def test_parse_fill_value_invalid_value(fill_value: Any, dtype_str: str) -> None:
+def test_parse_fill_value_invalid_value(fill_value: str, dtype_str: str) -> None:
     """
     Test that parse_fill_value(fill_value, dtype) raises ValueError for invalid values.
     This test excludes bool because the bool constructor takes anything.
     """
     with pytest.raises(ValueError):
-        parse_fill_value(fill_value, dtype_str)
+        parse_fill_value(fill_value, dtype_str)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("fill_value", [[1.0, 0.0], [0, 1], complex(1, 1), np.complex64(0)])
 @pytest.mark.parametrize("dtype_str", [*complex_dtypes])
-def test_parse_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
+def test_parse_fill_value_complex(fill_value: list[int] | complex, dtype_str: str) -> None:
     """
     Test that parse_fill_value(fill_value, dtype) correctly handles complex values represented
     as length-2 sequences
@@ -193,18 +193,18 @@ def test_parse_fill_value_complex_invalid(fill_value: Any, dtype_str: str) -> No
         f"length {len(fill_value)}."
     )
     with pytest.raises(ValueError, match=re.escape(match)):
-        parse_fill_value(fill_value=fill_value, dtype=dtype_str)
+        parse_fill_value(fill_value=fill_value, dtype=dtype_str)  # type; ignore[arg-type]
 
 
 @pytest.mark.parametrize("fill_value", [{"foo": 10}])
 @pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes, *complex_dtypes])
-def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
+def test_parse_fill_value_invalid_type(fill_value: dict[str, int], dtype_str: str) -> None:
     """
     Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid non-sequential types.
     This test excludes bool because the bool constructor takes anything.
     """
     with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
-        parse_fill_value(fill_value, dtype_str)
+        parse_fill_value(fill_value, dtype_str)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

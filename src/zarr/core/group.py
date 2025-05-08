@@ -146,7 +146,7 @@ class ConsolidatedMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
+    def from_dict(cls, data: Mapping[str, JSON]) -> ConsolidatedMetadata:
         data = dict(data)
 
         kind = data.get("kind")

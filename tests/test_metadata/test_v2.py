@@ -8,6 +8,7 @@ import pytest
 
 import zarr.api.asynchronous
 import zarr.storage
+from zarr.core.array import AsyncArray
 from zarr.core.buffer import cpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
+    from zarr.core.common import JSON
+
 
 import numcodecs
 
@@ -104,7 +107,7 @@ class TestConsolidated:
     async def v2_consolidated_metadata(
         self, memory_store: zarr.storage.MemoryStore
     ) -> zarr.storage.MemoryStore:
-        zmetadata = {
+        zmetadata: dict[str, JSON] = {
             "metadata": {
                 ".zattrs": {
                     "Conventions": "COARDS",
@@ -274,6 +277,7 @@ class TestConsolidated:
         store = v2_consolidated_metadata
         group = await zarr.api.asynchronous.open_consolidated(store=store, zarr_format=2)
         air = await group.getitem("air")
+        assert isinstance(air, AsyncArray[ArrayV2Metadata])
         assert air.metadata.shape == (730,)
 
 
@@ -335,6 +339,7 @@ def test_structured_dtype_fill_value_serialization(tmp_path, fill_value):
 
     zarr.consolidate_metadata(root_group.store, zarr_format=2)
     root_group = zarr.open_group(group_path, mode="r")
+    assert isinstance(root_group.metadata.consolidated_metadata, ConsolidatedMetadata)
     assert (
         root_group.metadata.consolidated_metadata.to_dict()["metadata"]["structured_dtype"][
             "fill_value"
