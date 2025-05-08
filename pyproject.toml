@@ -97,6 +97,9 @@ docs = [
     'sphinx-issues',
     'sphinx-copybutton',
     'sphinx-reredirects',
+    # See https://github.com/sphinx-doc/sphinx/issues/13533;
+    # pin can be removed once that issue is fixed.
+    'snowballstemmer<3',
     'pydata-sphinx-theme',
     'numpydoc',
     # Changelog generation
