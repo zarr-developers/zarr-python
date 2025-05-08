@@ -253,5 +253,21 @@ class LocalStore(Store):
         except (FileNotFoundError, NotADirectoryError):
             pass
 
+    async def move(self, dest_root: Path | str) -> None:
+        """
+        Move the store to another path. The old root directory is deleted.
+        """
+        if isinstance(dest_root, str):
+            dest_root = Path(dest_root)
+        os.makedirs(dest_root, exist_ok=True)
+        for src_file in self.root.rglob("*"):
+            if src_file.is_file():
+                relative_path = src_file.relative_to(self.root)
+                dest_file_path = dest_root / relative_path
+                dest_file_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src_file), str(dest_file_path))
+        shutil.rmtree(self.root)
+        self.root = dest_root
+
     async def getsize(self, key: str) -> int:
         return os.path.getsize(self.root / key)
