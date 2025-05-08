@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import zarr.codecs
+
 if TYPE_CHECKING:
     import pathlib
 
@@ -1196,3 +1198,14 @@ def test_v2_without_copmpressor() -> None:
     # Make sure it's possible to set no compressor for v2 arrays
     arr = zarr.create(store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=None)
     assert arr.compressors == ()
+
+
+def test_v2_with_v3_copmpressor() -> None:
+    # Check trying to create a v2 array with a v3 compressor fails
+    with pytest.raises(
+        ValueError,
+        match="Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. Use a numcodecs codec directly instead.",
+    ):
+        zarr.create(
+            store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=zarr.codecs.BloscCodec()
+        )
