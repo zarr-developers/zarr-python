@@ -23,11 +23,10 @@ from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
     dtype_cls = np.dtypes.BytesDType
     _zarr_v3_name = "numpy.fixed_length_ascii"
-    item_size_bits: ClassVar[int] = 8
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
-        return cls(length=dtype.itemsize // (cls.item_size_bits // 8))
+        return cls(length=dtype.itemsize)
 
     def to_dtype(self) -> np.dtypes.BytesDType[int]:
         return self.dtype_cls(self.length)
@@ -43,12 +42,10 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
         elif zarr_format == 3:
             return (
                 isinstance(data, dict)
-                and "name" in data
+                and set(data.keys()) == {"name", "configuration"}
                 and data["name"] == cls._zarr_v3_name
-                and "configuration" in data
                 and isinstance(data["configuration"], dict)
-                and "length_bits" in data["configuration"]
-                and isinstance(data["configuration"]["length_bits"], int)
+                and "length_bytes" in data["configuration"]
             )
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -58,7 +55,7 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
         elif zarr_format == 3:
             return {
                 "name": self._zarr_v3_name,
-                "configuration": {"length_bits": self.length * self.item_size_bits},
+                "configuration": {"length_bytes": self.length},
             }
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -67,7 +64,7 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
         if zarr_format == 2:
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
-            return cls(length=data["configuration"]["length_bits"] // cls.item_size_bits)  # type: ignore[arg-type, index, call-overload, operator]
+            return cls(length=data["configuration"]["length_bytes"])  # type: ignore[arg-type, index, call-overload]
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.bytes_:
@@ -94,12 +91,11 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
     # it cannot be used to create instances of the dtype
     # so we have to tell mypy to ignore this here
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
-    _zarr_v3_name = "numpy.void"
-    item_size_bits: ClassVar[int] = 8
+    _zarr_v3_name = "numpy.fixed_length_bytes"
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
-        return cls(length=dtype.itemsize // (cls.item_size_bits // 8))
+        return cls(length=dtype.itemsize)
 
     def to_dtype(self) -> np.dtypes.VoidDType[int]:
         # Numpy does not allow creating a void type
@@ -114,9 +110,10 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
         elif zarr_format == 3:
             return (
                 isinstance(data, dict)
-                and "name" in data
-                and isinstance(data["name"], str)
-                and (re.match(r"^r\d+$", data["name"]) is not None)
+                and set(data.keys()) == {"name", "configuration"}
+                and data["name"] == cls._zarr_v3_name
+                and isinstance(data["configuration"], dict)
+                and set(data["configuration"].keys()) == {"length_bytes"}
             )
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -124,7 +121,7 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
         if zarr_format == 2:
             return self.to_dtype().str
         elif zarr_format == 3:
-            return {"name": f"r{self.length * self.item_size_bits}"}
+            return {"name": self._zarr_v3_name, "configuration": {"length_bytes": self.length}}
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
@@ -132,7 +129,7 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
         if zarr_format == 2:
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
-            return cls(length=int(data["name"][1:]) // cls.item_size_bits)  # type: ignore[arg-type, index, call-overload]
+            return cls(length=data["configuration"]["length_bytes"])  # type: ignore[arg-type, index, call-overload]
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
@@ -178,13 +175,13 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
 class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness, HasLength):
     dtype_cls = np.dtypes.StrDType
     _zarr_v3_name = "numpy.fixed_length_ucs4"
-    item_size_bits: ClassVar[int] = 32  # UCS4 is 32 bits per code point
+    item_size_bytes: ClassVar[int] = 4  # UCS4 is 4 bytes per code point
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(
-            length=dtype.itemsize // (cls.item_size_bits // 8),
+            length=dtype.itemsize // (cls.item_size_bytes),
             endianness=endianness_from_numpy_str(byte_order),
         )
 
@@ -203,12 +200,12 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
         elif zarr_format == 3:
             return (
                 isinstance(data, dict)
-                and "name" in data
+                and set(data.keys()) == {"name", "configuration"}
                 and data["name"] == cls._zarr_v3_name
                 and "configuration" in data
                 and isinstance(data["configuration"], dict)
-                and "length_bits" in data["configuration"]
-                and isinstance(data["configuration"]["length_bits"], int)
+                and set(data["configuration"].keys()) == {"length_bytes"}
+                and isinstance(data["configuration"]["length_bytes"], int)
             )
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -218,7 +215,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
         elif zarr_format == 3:
             return {
                 "name": self._zarr_v3_name,
-                "configuration": {"length_bits": self.length * self.item_size_bits},
+                "configuration": {"length_bytes": self.length * self.item_size_bytes},
             }
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -227,7 +224,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
         if zarr_format == 2:
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
-            return cls(length=data["configuration"]["length_bits"] // cls.item_size_bits)  # type: ignore[arg-type, index, call-overload, operator]
+            return cls(length=data["configuration"]["length_bytes"] // cls.item_size_bytes)  # type: ignore[arg-type, index, call-overload, operator]
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.str_:
@@ -344,7 +341,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
                         for f_name, f_dtype in data
                     )
                 )
-            elif zarr_format == 3:  # noqa: SIM102
+            elif zarr_format == 3:
                 if isinstance(data, dict) and "configuration" in data:
                     config = data["configuration"]
                     if isinstance(config, dict) and "fields" in config:
@@ -354,6 +351,10 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
                             for f_name, f_dtype in meta_fields
                         )
                         return cls(fields=fields)
+                    else:
+                        raise TypeError(f"Invalid type: {data}. Expected a dictionary.")
+                else:
+                    raise TypeError(f"Invalid type: {data}. Expected a dictionary.")
             raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
         raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
 

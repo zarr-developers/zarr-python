@@ -14,8 +14,8 @@ class TestBool(_TestZDType):
         np.dtype(np.float64),
         np.dtype(np.uint16),
     )
-    valid_json_v2 = Bool._zarr_v2_names
-    valid_json_v3_cases = (Bool._zarr_v3_name,)
+    valid_json_v2 = ("|b1",)
+    valid_json_v3 = ("bool",)
     invalid_json_v2 = (
         "|b1",
         "bool",
@@ -26,3 +26,6 @@ class TestBool(_TestZDType):
         "|f8",
         {"name": "bool", "configuration": {"endianness": "little"}},
     )
+
+    scalar_v2_params = (("|b1", True), ("|b1", False))
+    scalar_v3_params = (("bool", True), ("bool", False))

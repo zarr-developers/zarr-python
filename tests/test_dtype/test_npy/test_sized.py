@@ -20,9 +20,7 @@ class TestFixedLengthAscii(_TestZDType):
         np.dtype("|U10"),
     )
     valid_json_v2 = ("|S0", "|S2", "|S4")
-    valid_json_v3_cases = (
-        {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": 80}},
-    )
+    valid_json_v3 = ({"name": "numpy.fixed_length_ascii", "configuration": {"length_bytes": 10}},)
     invalid_json_v2 = (
         "|S",
         "|U10",
@@ -31,6 +29,13 @@ class TestFixedLengthAscii(_TestZDType):
     invalid_json_v3 = (
         {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": 0}},
         {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": "invalid"}},
+    )
+
+    scalar_v2_params = (("|S0", ""), ("|S2", "YWI="), ("|S4", "YWJjZA=="))
+    scalar_v3_params = (
+        ({"name": "numpy.fixed_length_ascii", "configuration": {"length_bytes": 0}}, ""),
+        ({"name": "numpy.fixed_length_ascii", "configuration": {"length_bytes": 16}}, "YWI="),
+        ({"name": "numpy.fixed_length_ascii", "configuration": {"length_bytes": 32}}, "YWJjZA=="),
     )
 
 
@@ -43,15 +48,26 @@ class TestFixedLengthBytes(_TestZDType):
         np.dtype("|S10"),
     )
     valid_json_v2 = ("|V10",)
-    valid_json_v3_cases = ({"name": "r80"},)
+    valid_json_v3 = (
+        {"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 0}},
+        {"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 8}},
+    )
+
     invalid_json_v2 = (
         "|V",
         "|S10",
         "|f8",
     )
     invalid_json_v3 = (
-        {"name": "r0"},
+        {"name": "r10"},
         {"name": "r-80"},
+    )
+
+    scalar_v2_params = (("|V0", ""), ("|V2", "YWI="), ("|V4", "YWJjZA=="))
+    scalar_v3_params = (
+        ({"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 2}}, ""),
+        ({"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 2}}, "YWI="),
+        ({"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 4}}, "YWJjZA=="),
     )
 
 
@@ -64,9 +80,7 @@ class TestFixedLengthUnicode(_TestZDType):
         np.dtype("|S10"),
     )
     valid_json_v2 = (">U10", "<U10")
-    valid_json_v3_cases = (
-        {"name": "numpy.fixed_length_ucs4", "configuration": {"length_bits": 320}},
-    )
+    valid_json_v3 = ({"name": "numpy.fixed_length_ucs4", "configuration": {"length_bytes": 320}},)
     invalid_json_v2 = (
         "|U",
         "|S10",
@@ -75,6 +89,13 @@ class TestFixedLengthUnicode(_TestZDType):
     invalid_json_v3 = (
         {"name": "numpy.fixed_length_ucs4", "configuration": {"length_bits": 0}},
         {"name": "numpy.fixed_length_ucs4", "configuration": {"length_bits": "invalid"}},
+    )
+
+    scalar_v2_params = ((">U0", ""), ("<U2", "hi"))
+    scalar_v3_params = (
+        ({"name": "numpy.fixed_length_ucs4", "configuration": {"length_bytes": 0}}, ""),
+        ({"name": "numpy.fixed_length_ucs4", "configuration": {"length_bytes": 8}}, "hi"),
+        ({"name": "numpy.fixed_length_ucs4", "configuration": {"length_bytes": 16}}, "hihi"),
     )
 
 
@@ -93,13 +114,13 @@ class TestStructured(_TestZDType):
         [("field1", ">i4"), ("field2", ">f8")],
         [("field1", ">i8"), ("field2", ">i4")],
     )
-    valid_json_v3_cases = (
+    valid_json_v3 = (
         {
             "name": "structured",
             "configuration": {
                 "fields": [
-                    ("field1", {"name": "int32", "configuration": {"endianness": "big"}}),
-                    ("field2", {"name": "float64", "configuration": {"endianness": "big"}}),
+                    ("field1", "int32"),
+                    ("field2", "float64"),
                 ]
             },
         },
@@ -107,8 +128,17 @@ class TestStructured(_TestZDType):
             "name": "structured",
             "configuration": {
                 "fields": [
-                    ("field1", {"name": "int64", "configuration": {"endianness": "big"}}),
-                    ("field2", {"name": "int32", "configuration": {"endianness": "big"}}),
+                    (
+                        "field1",
+                        {
+                            "name": "numpy.datetime64",
+                            "configuration": {"unit": "s", "scale_factor": 1},
+                        },
+                    ),
+                    (
+                        "field2",
+                        {"name": "numpy.fixed_length_ucs4", "configuration": {"length_bytes": 32}},
+                    ),
                 ]
             },
         },

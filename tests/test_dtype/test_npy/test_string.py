@@ -16,7 +16,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             np.dtype("|S10"),
         )
         valid_json_v2 = ("|O",)
-        valid_json_v3_cases = ({"name": "numpy.variable_length_utf8"},)
+        valid_json_v3 = ("numpy.variable_length_utf8",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
@@ -38,7 +38,7 @@ else:
             np.dtype("|S10"),
         )
         valid_json_v2 = ("|O",)
-        valid_json_v3_cases = ({"name": "numpy.variable_length_utf8"},)
+        valid_json_v3 = ("numpy.variable_length_utf8",)
         invalid_json_v2 = (
             "|S10",
             "|f8",

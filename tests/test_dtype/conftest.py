@@ -17,7 +17,7 @@ for wrapper_cls in data_type_registry.contents.values():
     elif issubclass(wrapper_cls, HasLength):
         zdtype_examples += (wrapper_cls(length=1),)
     elif issubclass(wrapper_cls, DateTime64 | TimeDelta64):
-        zdtype_examples += (wrapper_cls(unit="s", interval=10),)
+        zdtype_examples += (wrapper_cls(unit="s", scale_factor=10),)
     else:
         zdtype_examples += (wrapper_cls(),)
 
