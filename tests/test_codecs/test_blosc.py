@@ -65,11 +65,21 @@ async def test_typesize() -> None:
     z = zarr.array(a, chunks=(10000), codecs=codecs)
     bytes = (await z.store.get("c/0", prototype=default_buffer_prototype())).to_bytes()
     size = len(bytes)
-    match Version(numcodecs.__version__) >= Version("0.16.0"), platform.system() == "Windows":
-        case True, _:
+    msg = f"Blosc size mismatch.  First 10 bytes: {bytes[:20]} and last 10 bytes: {bytes[-20:]}"
+    match (
+        Version(numcodecs.__version__) >= Version("0.16.0"),
+        platform.system() == "Windows",
+        Version(np.__version__) < Version("2.0.0"),
+    ):
+        case True, True, True:
+            # See https://github.com/zarr-developers/zarr-python/pull/2962
+            # for why this condition is distinct.  It's not clear
+            # if it's the python version of the numpy version with windows.
+            expected_size = 400
+            assert size == 400, msg
+        case (True, True, False) | (True, False, _):
             expected_size = 402
-        case False, _:
+            assert size == expected_size, msg
+        case False, _, _:
             expected_size = 10216
-    assert size == expected_size, (
-        f"blosc size mismatch, found {size} but expected {expected_size}.  First 10 bytes: {bytes[:20]} and last 10 bytes: {bytes[-20:]}"
-    )
+            assert size == expected_size, msg
