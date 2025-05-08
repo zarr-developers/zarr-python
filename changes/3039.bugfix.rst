@@ -1,0 +1,5 @@
+It is now possible to specify no compressor when creating a zarr format 2 array.
+This can be done by passing ``compressor=None`` to the various array creation routines.
+
+The default behaviour of automatically choosing a suitable default compressor remains if the compressor argument is not given.
+To reproduce the behaviour in previous zarr-python versions when ``compressor=None`` was passed, pass ``compressor='auto'`` instead.
