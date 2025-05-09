@@ -401,13 +401,12 @@ def test_array_order(zarr_format: ZarrFormat) -> None:
 def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
     with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
         arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
-    expected = order or zarr.config.get("array.order")
-    assert arr.order == expected
+    assert arr.order == order
 
     vals = np.asarray(arr)
-    if expected == "C":
+    if order == "C":
         assert vals.flags.c_contiguous
-    elif expected == "F":
+    elif order == "F":
         assert vals.flags.f_contiguous
     else:
         raise AssertionError

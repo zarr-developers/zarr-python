@@ -683,7 +683,7 @@ class ShardingCodec(
             config=ArrayConfig(
                 order="C", write_empty_chunks=False
             ),  # Note: this is hard-coded for simplicity -- it is not surfaced into user code,
-            prototype=numpy_buffer_prototype(),
+            prototype=default_buffer_prototype(),
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
