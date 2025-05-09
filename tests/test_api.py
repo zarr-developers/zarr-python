@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -154,6 +155,15 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     # path not found
     with pytest.raises(FileNotFoundError):
         open(store="doesnotexist", mode="r", zarr_format=zarr_format)
+
+
+@pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=True)
+def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
+    zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)
+    zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=2)
+    msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store}. Zarr v3 will be used."
+    with pytest.warns(UserWarning, match=re.escape(msg)):
+        zarr.open(store=store, mode="r")
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

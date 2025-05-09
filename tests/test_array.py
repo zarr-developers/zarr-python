@@ -1662,13 +1662,10 @@ async def test_sharding_coordinate_selection() -> None:
     assert isinstance(result, NDArrayLike)
     assert (result == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()
 
+
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_array_repr(store: Store) -> None:
     shape = (2, 3, 4)
     dtype = "uint8"
-    arr = zarr.create_array(
-        store,
-        shape=shape,
-        dtype=dtype
-    )
+    arr = zarr.create_array(store, shape=shape, dtype=dtype)
     assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"

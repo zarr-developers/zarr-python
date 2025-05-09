@@ -134,7 +134,7 @@ __all__ = ["create_codec_pipeline", "parse_array_metadata"]
 logger = getLogger(__name__)
 
 
-def parse_array_metadata(data: ArrayMetadata | ArrayMetadataDict) -> ArrayMetadata:
+def parse_array_metadata(data: ArrayMetadata | dict[str, JSON]) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
@@ -152,7 +152,7 @@ def parse_array_metadata(data: ArrayMetadata | ArrayMetadataDict) -> ArrayMetada
             return ArrayV2Metadata.from_dict(data)
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
-    raise TypeError
+    raise TypeError  # pragma: no cover
 
 
 def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
@@ -161,8 +161,7 @@ def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
     elif isinstance(metadata, ArrayV2Metadata):
         v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
         return get_pipeline_class().from_codecs([v2_codec])
-    else:
-        raise TypeError
+    raise TypeError  # pragma: no cover
 
 
 async def get_array_metadata(
