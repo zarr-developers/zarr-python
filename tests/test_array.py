@@ -230,7 +230,7 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 async def test_create_deprecated() -> None:
     with pytest.warns(DeprecationWarning):
         with pytest.warns(FutureWarning, match="Pass"):
-            await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8")
+            await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8", zarr_format=3)
     with pytest.warns(DeprecationWarning):
         with pytest.warns(FutureWarning, match="Pass"):
             zarr.Array.create(MemoryStore(), (2, 2), dtype="f8")
