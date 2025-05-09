@@ -41,6 +41,7 @@ from zarr.core.array import (
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
+from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
@@ -1137,7 +1138,7 @@ class TestCreateArray:
     async def test_chunk_key_encoding(
         name: str, separator: str, zarr_format: ZarrFormat, store: MemoryStore
     ) -> None:
-        chunk_key_encoding = {"name": name, "separator": separator}
+        chunk_key_encoding = ChunkKeyEncodingParams(name=name, separator=separator)  # type: ignore[arg-type]
         error_msg = ""
         if name == "invalid":
             error_msg = "Unknown chunk key encoding."
@@ -1164,6 +1165,22 @@ class TestCreateArray:
             )
             if isinstance(arr.metadata, ArrayV2Metadata):
                 assert arr.metadata.dimension_separator == separator
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("kwargs", "error_msg"),
+        [
+            ({"serializer": "bytes"}, "Zarr format 2 arrays do not support `serializer`."),
+            ({"dimension_names": ["test"]}, "Zarr format 2 arrays do not support dimension names."),
+        ],
+    )
+    async def test_invalid_v2_arguments(
+        kwargs: dict[str, Any], error_msg: str, store: MemoryStore
+    ) -> None:
+        with pytest.raises(ValueError, match=re.escape(error_msg)):
+            await create_array(
+                store=store, dtype="uint8", shape=(10,), chunks=(1,), zarr_format=2, **kwargs
+            )
 
     @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
