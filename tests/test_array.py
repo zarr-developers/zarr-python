@@ -230,7 +230,7 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 async def test_create_deprecated() -> None:
     with pytest.warns(DeprecationWarning):
         with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
-            await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8")  # type: ignore[arg-type]
+            await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8")  # type: ignore[call-overload]
     with pytest.warns(DeprecationWarning):
         with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
             zarr.Array.create(MemoryStore(), (2, 2), dtype="f8")
@@ -325,12 +325,13 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3, "invalid"])
-def test_storage_transformers(store: MemoryStore, zarr_format) -> None:
+def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     """
     Test that providing an actual storage transformer produces a warning and otherwise passes through
     """
+    metadata_dict: dict[str, JSON]
     if zarr_format == 3:
-        metadata_dict: dict[str, JSON] = {
+        metadata_dict = {
             "zarr_format": 3,
             "node_type": "array",
             "shape": (10,),
@@ -342,7 +343,7 @@ def test_storage_transformers(store: MemoryStore, zarr_format) -> None:
             "storage_transformers": ({"test": "should_raise"}),
         }
     else:
-        metadata_dict: dict[str, JSON] = {
+        metadata_dict = {
             "zarr_format": zarr_format,
             "shape": (10,),
             "chunks": (1,),
