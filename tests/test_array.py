@@ -1138,7 +1138,7 @@ class TestCreateArray:
     async def test_chunk_key_encoding(
         name: str, separator: str, zarr_format: ZarrFormat, store: MemoryStore
     ) -> None:
-        chunk_key_encoding = ChunkKeyEncodingParams(name=name, separator=separator)  # type: ignore[arg-type]
+        chunk_key_encoding = ChunkKeyEncodingParams(name=name, separator=separator)  # type: ignore[typeddict-item"]
         error_msg = ""
         if name == "invalid":
             error_msg = "Unknown chunk key encoding."
@@ -1661,3 +1661,14 @@ async def test_sharding_coordinate_selection() -> None:
     result = arr[1, [0, 1]]  # type: ignore[index]
     assert isinstance(result, NDArrayLike)
     assert (result == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_array_repr(store: Store) -> None:
+    shape = (2, 3, 4)
+    dtype = "uint8"
+    arr = zarr.create_array(
+        store,
+        shape=shape,
+        dtype=dtype
+    )
+    assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"
