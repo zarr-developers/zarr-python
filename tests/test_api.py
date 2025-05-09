@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
 
 if TYPE_CHECKING:
     import pathlib
@@ -66,6 +66,81 @@ def test_create(memory_store: Store) -> None:
     # create array with float chunk shape
     with pytest.raises(TypeError):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
+
+
+LikeFuncName = Literal["zeros_like", "ones_like", "empty_like", "full_like", "open_like"]
+
+
+@pytest.mark.parametrize("func_name", get_args(LikeFuncName))
+@pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_dtype", ["keep", "int8"])
+async def test_array_like_creation(
+    zarr_format: ZarrFormat,
+    func_name: LikeFuncName,
+    out_shape: Literal["keep"] | tuple[int, ...],
+    out_chunks: Literal["keep"] | tuple[int, ...],
+    out_dtype: str,
+) -> None:
+    """
+    Test zeros_like, ones_like, empty_like, full_like, ensuring that we can override the
+    shape, chunks, and dtype of the array-like object provided to these functions with
+    appropriate keyword arguments
+    """
+    ref_arr = zarr.ones(
+        store={}, shape=(11, 12), dtype="uint8", chunks=(11, 12), zarr_format=zarr_format
+    )
+    kwargs: dict[str, object] = {}
+    if func_name == "full_like":
+        expect_fill = 4
+        kwargs["fill_value"] = expect_fill
+        func = zarr.api.asynchronous.full_like
+    elif func_name == "zeros_like":
+        expect_fill = 0
+        func = zarr.api.asynchronous.zeros_like
+    elif func_name == "ones_like":
+        expect_fill = 1
+        func = zarr.api.asynchronous.ones_like
+    elif func_name == "empty_like":
+        expect_fill = ref_arr.fill_value
+        func = zarr.api.asynchronous.empty_like
+    elif func_name == "open_like":
+        expect_fill = ref_arr.fill_value
+        kwargs["mode"] = "w"
+        func = zarr.api.asynchronous.open_like  # type: ignore[assignment]
+    else:
+        raise AssertionError
+    if out_shape != "keep":
+        kwargs["shape"] = out_shape
+        expect_shape = out_shape
+    else:
+        expect_shape = ref_arr.shape
+    if out_chunks != "keep":
+        kwargs["chunks"] = out_chunks
+        expect_chunks = out_chunks
+    else:
+        expect_chunks = ref_arr.chunks
+    if out_dtype != "keep":
+        kwargs["dtype"] = out_dtype
+        expect_dtype = out_dtype
+    else:
+        expect_dtype = ref_arr.dtype  # type: ignore[assignment]
+
+    new_arr = await func(ref_arr, path="foo", **kwargs)
+    assert new_arr.shape == expect_shape
+    assert new_arr.chunks == expect_chunks
+    assert new_arr.dtype == expect_dtype
+    assert np.all(Array(new_arr)[:] == expect_fill)
+
+
+async def test_invalid_full_like() -> None:
+    """
+    Test that a fill value that is incompatible with the proposed dtype is rejected
+    """
+    ref_arr = zarr.ones(store={}, shape=(11, 12), dtype="uint8", chunks=(11, 12))
+    fill = 4
+    with pytest.raises(ValueError, match=f"fill value {fill} is not valid for dtype DataType.bool"):
+        await zarr.api.asynchronous.full_like(ref_arr, path="foo", fill_value=fill, dtype="bool")
 
 
 # TODO: parametrize over everything this function takes
