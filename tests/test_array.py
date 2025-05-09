@@ -51,7 +51,7 @@ from zarr.storage import LocalStore, MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
-    from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -325,7 +325,7 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3, "invalid"])
-def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat) -> None:
+def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str) -> None:
     """
     Test that providing an actual storage transformer produces a warning and otherwise passes through
     """
@@ -1130,6 +1130,40 @@ class TestCreateArray:
         )
         assert arr.filters == filters_expected
         assert arr.compressors == compressors_expected
+
+    @staticmethod
+    @pytest.mark.parametrize("name", ["v2", "default", "invalid"])
+    @pytest.mark.parametrize("separator", [".", "/"])
+    async def test_chunk_key_encoding(
+        name: str, separator: str, zarr_format: ZarrFormat, store: MemoryStore
+    ) -> None:
+        chunk_key_encoding = {"name": name, "separator": separator}
+        error_msg = ""
+        if name == "invalid":
+            error_msg = "Unknown chunk key encoding."
+        if zarr_format == 2 and name == "default":
+            error_msg = "Invalid chunk key encoding. For Zarr format 2 arrays, the `name` field of the chunk key encoding must be 'v2'."
+        if error_msg:
+            with pytest.raises(ValueError, match=re.escape(error_msg)):
+                arr = await create_array(
+                    store=store,
+                    dtype="uint8",
+                    shape=(10,),
+                    chunks=(1,),
+                    zarr_format=zarr_format,
+                    chunk_key_encoding=chunk_key_encoding,
+                )
+        else:
+            arr = await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                chunks=(1,),
+                zarr_format=zarr_format,
+                chunk_key_encoding=chunk_key_encoding,
+            )
+            if isinstance(arr.metadata, ArrayV2Metadata):
+                assert arr.metadata.dimension_separator == separator
 
     @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
