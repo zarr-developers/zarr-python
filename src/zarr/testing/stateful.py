@@ -326,8 +326,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.store.clear()
 
     @rule(key=zarr_keys(), data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
-    def set(self, key: str, data: DataObject) -> None:
-        note(f"(set) Setting {key!r} with {data}")
+    def set(self, key: str, data: bytes) -> None:
+        note(f"(set) Setting {key!r} with {data!r}")
         assert not self.store.read_only
         data_buf = cpu.Buffer.from_bytes(data)
         self.store.set(key, data_buf)
