@@ -324,24 +324,46 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_storage_transformers(store: MemoryStore) -> None:
+@pytest.mark.parametrize("zarr_format", [2, 3, "invalid"])
+def test_storage_transformers(store: MemoryStore, zarr_format) -> None:
     """
     Test that providing an actual storage transformer produces a warning and otherwise passes through
     """
-    metadata_dict: dict[str, JSON] = {
-        "zarr_format": 3,
-        "node_type": "array",
-        "shape": (10,),
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": "uint8",
-        "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
-        "codecs": (BytesCodec().to_dict(),),
-        "fill_value": 0,
-        "storage_transformers": ({"test": "should_raise"}),
-    }
-    match = "Arrays with storage transformers are not supported in zarr-python at this time."
-    with pytest.raises(ValueError, match=match):
+    if zarr_format == 3:
+        metadata_dict: dict[str, JSON] = {
+            "zarr_format": 3,
+            "node_type": "array",
+            "shape": (10,),
+            "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+            "data_type": "uint8",
+            "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
+            "codecs": (BytesCodec().to_dict(),),
+            "fill_value": 0,
+            "storage_transformers": ({"test": "should_raise"}),
+        }
+    else:
+        metadata_dict: dict[str, JSON] = {
+            "zarr_format": zarr_format,
+            "shape": (10,),
+            "chunks": (1,),
+            "dtype": "uint8",
+            "dimension_separator": ".",
+            "codecs": (BytesCodec().to_dict(),),
+            "fill_value": 0,
+            "order": "C",
+            "storage_transformers": ({"test": "should_raise"}),
+        }
+    if zarr_format == 3:
+        match = "Arrays with storage transformers are not supported in zarr-python at this time."
+        with pytest.raises(ValueError, match=match):
+            Array.from_dict(StorePath(store), data=metadata_dict)
+    elif zarr_format == 2:
+        # no warning
         Array.from_dict(StorePath(store), data=metadata_dict)
+    else:
+        match = f"Invalid zarr_format: {zarr_format}. Expected 2 or 3"
+        with pytest.raises(ValueError, match=match):
+            Array.from_dict(StorePath(store), data=metadata_dict)
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
