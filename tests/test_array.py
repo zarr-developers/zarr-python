@@ -406,12 +406,13 @@ async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]
         assert observed == expected
 
 
-async def test_chunks_initialized() -> None:
+@pytest.mark.parametrize("path", ["", "foo"])
+async def test_chunks_initialized(path: str) -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
     store = MemoryStore()
-    arr = zarr.create_array(store, shape=(100,), chunks=(10,), dtype="i4")
+    arr = zarr.create_array(store, name=path, shape=(100,), chunks=(10,), dtype="i4")
 
     chunks_accumulated = tuple(
         accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_chunk_keys()))
