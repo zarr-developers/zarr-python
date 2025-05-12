@@ -98,7 +98,7 @@ def _relativize_path(path: str, prefix: str) -> str:
     returned as-is. Otherwise, the prefix is removed from the path as well as the separator
     string "\".
 
-    If ``prefix`` is not the empty string and``path`` does not start with ``prefix``
+    If ``prefix`` is not the empty string and ``path`` does not start with ``prefix``
     followed by a "/" character, then an error is raised.
 
     Parameters
