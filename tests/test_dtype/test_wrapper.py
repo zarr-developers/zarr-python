@@ -5,6 +5,23 @@ from typing import TYPE_CHECKING, Any, ClassVar
 if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
+import pytest
+import requests
+
+
+class _TestZDTypeSchema:
+    # subclasses define the URL for the schema, if available
+    schema_url: ClassVar[str] = ""
+
+    @pytest.fixture(scope="class")
+    def get_schema(self) -> object:
+        response = requests.get(self.schema_url)
+        response.raise_for_status()
+        return json_schema.loads(response.text)
+
+    def test_schema(self, schema: json_schema.Schema) -> None:
+        assert schema.is_valid(self.test_cls.to_json(zarr_format=2))
+
 
 class _TestZDType:
     test_cls: type[ZDType[TBaseDType, TBaseScalar]]
@@ -47,50 +64,10 @@ class _TestZDType:
         dtype_json, scalar_json = scalar_v2_params
         zdtype = self.test_cls.from_json(dtype_json, zarr_format=2)
         scalar = zdtype.from_json_value(scalar_json, zarr_format=2)
-        assert self._scalar_equals(scalar_json, zdtype.to_json_value(scalar, zarr_format=2))
+        assert scalar_json == zdtype.to_json_value(scalar, zarr_format=2)
 
     def test_scalar_roundtrip_v3(self, scalar_v3_params: Any) -> None:
         dtype_json, scalar_json = scalar_v3_params
         zdtype = self.test_cls.from_json(dtype_json, zarr_format=3)
         scalar = zdtype.from_json_value(scalar_json, zarr_format=3)
-        assert self._scalar_equals(scalar_json, zdtype.to_json_value(scalar, zarr_format=3))
-
-    @staticmethod
-    def _scalar_equals(a: object, b: object) -> bool:
-        """
-        Compare two scalars for equality. Subclasses that test dtypes with scalars that don't allow
-        simple equality like nans should override this method.
-        """
-        return a == b
-
-    """ @abc.abstractmethod
-    def test_cast_value(self, value: Any) -> None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def test_check_value(self) -> None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def test_default_value(self) -> None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def test_check_json(self, value: Any) -> None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def test_from_json_roundtrip_v2(self, value: Any) -> None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def test_from_json_roundtrip_v3(self, value: Any) -> None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def test_from_json_value_roundtrip_v2(self, value: Any) -> None:
-        raise NotImplementedError
-
-    @abc.abstractmethod
-    def test_from_json_value_roundtrip_v3(self, value: Any) -> None:
-        raise NotImplementedError """
+        assert scalar_json == zdtype.to_json_value(scalar, zarr_format=3)
