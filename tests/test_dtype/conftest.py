@@ -53,6 +53,14 @@ def pytest_generate_tests(metafunc: Any) -> None:
         param_a = [1, 2, 100, 10]
 
     """
+    # Iterate over all the fixtures defined in the class
+    # and parametrize them with the values defined in the class
+    # This allows us to define class-scoped fixtures as class attributes
+    # and then generate the parametrize calls for pytest
     for fixture_name in metafunc.fixturenames:
         if hasattr(metafunc.cls, fixture_name):
-            metafunc.parametrize(fixture_name, getattr(metafunc.cls, fixture_name), scope="class")
+            params = getattr(metafunc.cls, fixture_name)
+            if len(params) == 0:
+                msg = f"{metafunc.cls}.{fixture_name} is empty. Please provide a non-empty sequence of values."
+                raise ValueError(msg)
+            metafunc.parametrize(fixture_name, params, scope="class")
