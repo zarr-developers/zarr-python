@@ -92,7 +92,7 @@ def _join_paths(paths: Iterable[str]) -> str:
     return "/".join(filter(lambda v: v != "", paths))
 
 
-def _relativize_path(path: str, prefix: str) -> str:
+def _relativize_path(*, path: str, prefix: str) -> str:
     """
     Make a "/"-delimited path relative to some prefix. If the prefix is '', then the path is
     returned as-is. Otherwise, the prefix is removed from the path as well as the separator
@@ -116,9 +116,9 @@ def _relativize_path(path: str, prefix: str) -> str:
 
     Examples
     --------
-    >>> _relativize_path("", "a/b")
+    >>> _relativize_path(path="", prefix="a/b")
     'a/b'
-    >>> _relativize_path("a/b", "a/b/c")
+    >>> _relativize_path(path="a/b", prefix="a/b/c")
     'c'
     """
     if prefix == "":
