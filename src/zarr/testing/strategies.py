@@ -120,7 +120,9 @@ stores = st.builds(MemoryStore, st.just({})).map(clear_store)
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([3, 2])
 # We de-prioritize arrays having dim sizes 0, 1, 2
-array_shapes = npst.array_shapes(max_dims=4, min_side=3) | npst.array_shapes(max_dims=4, min_side=0)
+array_shapes = npst.array_shapes(max_dims=4, min_side=3, max_side=5) | npst.array_shapes(
+    max_dims=4, min_side=0
+)
 
 
 @st.composite
