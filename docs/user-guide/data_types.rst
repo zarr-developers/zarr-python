@@ -147,8 +147,3 @@ Example Usage
     # Deserialize a scalar value
     scalar_value = int8.from_json_value(42, zarr_format=3)
     assert scalar_value == np.int8(42)
-
-Custom Data Types
-~~~~~~~~~~~~~~~~~
-
-<TODO: example of defining a custom data type>
