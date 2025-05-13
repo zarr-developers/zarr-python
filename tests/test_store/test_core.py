@@ -8,7 +8,13 @@ from zarr import Group
 from zarr.core.common import AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
 from zarr.storage._common import contains_array, contains_group, make_store_path
-from zarr.storage._utils import _join_paths, _normalize_path_keys, _normalize_paths, normalize_path
+from zarr.storage._utils import (
+    _join_paths,
+    _normalize_path_keys,
+    _normalize_paths,
+    _relativize_path,
+    normalize_path,
+)
 
 
 @pytest.mark.parametrize("path", ["foo", "foo/bar"])
@@ -221,3 +227,27 @@ def test_normalize_path_keys():
     """
     data = {"a": 10, "//b": 10}
     assert _normalize_path_keys(data) == {normalize_path(k): v for k, v in data.items()}
+
+
+@pytest.mark.parametrize(
+    ("path", "prefix", "expected"),
+    [
+        ("a", "", "a"),
+        ("a/b/c", "a/b", "c"),
+        ("a/b/c", "a", "b/c"),
+    ],
+)
+def test_relativize_path_valid(path: str, prefix: str, expected: str) -> None:
+    """
+    Test the normal behavior of the _relativize_path function. Prefixes should be removed from the
+    path argument.
+    """
+    assert _relativize_path(path=path, prefix=prefix) == expected
+
+
+def test_relativize_path_invalid() -> None:
+    path = "a/b/c"
+    prefix = "b"
+    msg = f"The first component of {path} does not start with {prefix}."
+    with pytest.raises(ValueError, match=msg):
+        _relativize_path(path="a/b/c", prefix="b")

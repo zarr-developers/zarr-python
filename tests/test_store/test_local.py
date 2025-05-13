@@ -30,7 +30,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         (store.root / key).write_bytes(value.to_bytes())
 
     @pytest.fixture
-    def store_kwargs(self, tmpdir) -> dict[str, str]:
+    def store_kwargs(self, tmpdir: str) -> dict[str, str]:
         return {"root": str(tmpdir)}
 
     def test_store_repr(self, store: LocalStore) -> None:
@@ -50,14 +50,14 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         (store.root / "foo/bar").mkdir(parents=True)
         assert await store.is_empty("")
 
-    def test_creates_new_directory(self, tmp_path: pathlib.Path):
+    def test_creates_new_directory(self, tmp_path: pathlib.Path) -> None:
         target = tmp_path.joinpath("a", "b", "c")
         assert not target.exists()
 
         store = self.store_cls(root=target)
         zarr.group(store=store)
 
-    def test_invalid_root_raises(self):
+    def test_invalid_root_raises(self) -> None:
         """
         Test that a TypeError is raised when a non-str/Path type is used for the `root` argument
         """
@@ -65,9 +65,9 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
             TypeError,
             match=r"'root' must be a string or Path instance. Got an instance of <class 'int'> instead.",
         ):
-            LocalStore(root=0)
+            LocalStore(root=0)  # type: ignore[arg-type]
 
-    async def test_get_with_prototype_default(self, store: LocalStore):
+    async def test_get_with_prototype_default(self, store: LocalStore) -> None:
         """
         Ensure that data can be read via ``store.get`` if the prototype keyword argument is unspecified, i.e. set to ``None``.
         """
