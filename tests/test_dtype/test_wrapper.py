@@ -5,10 +5,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
-import pytest
-import requests
 
-
+"""
 class _TestZDTypeSchema:
     # subclasses define the URL for the schema, if available
     schema_url: ClassVar[str] = ""
@@ -21,11 +19,12 @@ class _TestZDTypeSchema:
 
     def test_schema(self, schema: json_schema.Schema) -> None:
         assert schema.is_valid(self.test_cls.to_json(zarr_format=2))
+"""
 
 
 class _TestZDType:
     test_cls: type[ZDType[TBaseDType, TBaseScalar]]
-
+    scalar_type: ClassVar[type[TBaseScalar]]
     valid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
     invalid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
 
@@ -41,6 +40,18 @@ class _TestZDType:
 
     scalar_v2_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
     scalar_v3_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
+
+    cast_value_params: ClassVar[tuple[tuple[Any, Any, Any], ...]]
+
+    def json_scalar_equals(self, scalar1: object, scalar2: object) -> bool:
+        # An equality check for json-encoded scalars. This defaults to regular equality,
+        # but some classes may need to override this for special cases
+        return scalar1 == scalar2
+
+    def scalar_equals(self, scalar1: object, scalar2: object) -> bool:
+        # An equality check for scalars. This defaults to regular equality,
+        # but some classes may need to override this for special cases
+        return scalar1 == scalar2
 
     def test_check_dtype_valid(self, valid_dtype: object) -> None:
         assert self.test_cls.check_dtype(valid_dtype)  # type: ignore[arg-type]
@@ -60,14 +71,17 @@ class _TestZDType:
         zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
         assert zdtype.to_json(zarr_format=3) == valid_json_v3
 
-    def test_scalar_roundtrip_v2(self, scalar_v2_params: Any) -> None:
-        dtype_json, scalar_json = scalar_v2_params
-        zdtype = self.test_cls.from_json(dtype_json, zarr_format=2)
+    def test_scalar_roundtrip_v2(self, scalar_v2_params: tuple[Any, Any]) -> None:
+        zdtype, scalar_json = scalar_v2_params
         scalar = zdtype.from_json_value(scalar_json, zarr_format=2)
-        assert scalar_json == zdtype.to_json_value(scalar, zarr_format=2)
+        assert self.json_scalar_equals(scalar_json, zdtype.to_json_value(scalar, zarr_format=2))
 
-    def test_scalar_roundtrip_v3(self, scalar_v3_params: Any) -> None:
-        dtype_json, scalar_json = scalar_v3_params
-        zdtype = self.test_cls.from_json(dtype_json, zarr_format=3)
+    def test_scalar_roundtrip_v3(self, scalar_v3_params: tuple[Any, Any]) -> None:
+        zdtype, scalar_json = scalar_v3_params
         scalar = zdtype.from_json_value(scalar_json, zarr_format=3)
-        assert scalar_json == zdtype.to_json_value(scalar, zarr_format=3)
+        assert self.json_scalar_equals(scalar_json, zdtype.to_json_value(scalar, zarr_format=3))
+
+    def test_cast_value(self, cast_value_params: tuple[Any, Any, Any]) -> None:
+        zdtype, value, expected = cast_value_params
+        observed = zdtype.cast_value(value)
+        assert self.scalar_equals(expected, observed)

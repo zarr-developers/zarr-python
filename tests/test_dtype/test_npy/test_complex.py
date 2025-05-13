@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from tests.test_dtype.test_wrapper import _TestZDType
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 
 
-class TestComplex64(_TestZDType):
+class _BaseTestFloat(_TestZDType):
+    def scalar_equals(self, scalar1: object, scalar2: object) -> bool:
+        if np.isnan(scalar1) and np.isnan(scalar2):  # type: ignore[call-overload]
+            return True
+        return super().scalar_equals(scalar1, scalar2)
+
+
+class TestComplex64(_BaseTestFloat):
     test_cls = Complex64
     valid_dtype = (np.dtype(">c8"), np.dtype("<c8"))
     invalid_dtype = (
@@ -14,7 +23,7 @@ class TestComplex64(_TestZDType):
         np.dtype(np.float64),
         np.dtype(np.complex128),
     )
-    valid_json_v2 = (">c8", ">c8")
+    valid_json_v2 = (">c8", "<c8")
     valid_json_v3 = ("complex64",)
     invalid_json_v2 = (
         "|c8",
@@ -27,15 +36,24 @@ class TestComplex64(_TestZDType):
         {"name": "complex64", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((">c8", (1.0, 1.0)), ("<c8", (-1.0, "Infinity")), (">c8", (0, "NaN")))
+    scalar_v2_params = (
+        (Complex64(), (1.0, 1.0)),
+        (Complex64(), (-1.0, "Infinity")),
+        (Complex64(), (0, "NaN")),
+    )
     scalar_v3_params = (
-        ("complex64", (1.0, 1.0)),
-        ("complex64", (-1.0, "Infinity")),
-        ("complex64", (0, "NaN")),
+        (Complex64(), (1.0, 1.0)),
+        (Complex64(), (-1.0, "Infinity")),
+        (Complex64(), (0, "NaN")),
+    )
+    cast_value_params = (
+        (Complex64(), complex(1.0, 1.0), np.complex64(complex(1.0, 1.0))),
+        (Complex64(), complex(-1.0, math.inf), np.complex64(complex(-1.0, math.inf))),
+        (Complex64(), complex(0, math.nan), np.complex64(complex(0, math.nan))),
     )
 
 
-class TestComplex128(_TestZDType):
+class TestComplex128(_BaseTestFloat):
     test_cls = Complex128
     valid_dtype = (np.dtype(">c16"), np.dtype("<c16"))
     invalid_dtype = (
@@ -56,9 +74,18 @@ class TestComplex128(_TestZDType):
         {"name": "complex128", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((">c16", (1.0, 1.0)), ("<c16", (-1.0, "Infinity")), (">c16", (0, "NaN")))
+    scalar_v2_params = (
+        (Complex128(), (1.0, 1.0)),
+        (Complex128(), (-1.0, "Infinity")),
+        (Complex128(), (0, "NaN")),
+    )
     scalar_v3_params = (
-        ("complex128", (1.0, 1.0)),
-        ("complex128", (-1.0, "Infinity")),
-        ("complex128", (0, "NaN")),
+        (Complex128(), (1.0, 1.0)),
+        (Complex128(), (-1.0, "Infinity")),
+        (Complex128(), (0, "NaN")),
+    )
+    cast_value_params = (
+        (Complex128(), complex(1.0, 1.0), np.complex128(complex(1.0, 1.0))),
+        (Complex128(), complex(-1.0, math.inf), np.complex128(complex(-1.0, math.inf))),
+        (Complex128(), complex(0, math.nan), np.complex128(complex(0, math.nan))),
     )

@@ -76,9 +76,7 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness):
         return isinstance(value, FloatLike)
 
     def _cast_value_unsafe(self, value: object) -> TFloatScalar_co:
-        if self.check_value(value):
-            return self.to_dtype().type(value)  # type: ignore[return-value]
-        raise TypeError(f"Invalid type: {value}. Expected a value castable to a float.")
+        return self.to_dtype().type(value)  # type: ignore[return-value, arg-type]
 
     def default_value(self) -> TFloatScalar_co:
         """

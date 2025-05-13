@@ -8,6 +8,7 @@ from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UI
 
 class TestInt8(_TestZDType):
     test_cls = Int8
+    scalar_type = np.int8
     valid_dtype = (np.dtype(np.int8),)
     invalid_dtype = (
         np.dtype(np.int16),
@@ -27,12 +28,17 @@ class TestInt8(_TestZDType):
         {"name": "int8", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("|i1", 1), ("|i1", -1))
-    scalar_v3_params = (("int8", 1), ("int8", -1))
+    scalar_v2_params = ((Int8(), 1), (Int8(), -1))
+    scalar_v3_params = ((Int8(), 1), (Int8(), -1))
+    cast_value_params = (
+        (Int8(), 1, np.int8(1)),
+        (Int8(), -1, np.int8(-1)),
+    )
 
 
 class TestInt16(_TestZDType):
     test_cls = Int16
+    scalar_type = np.int16
     valid_dtype = (np.dtype(">i2"), np.dtype("<i2"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -52,12 +58,17 @@ class TestInt16(_TestZDType):
         {"name": "int16", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("<i2", 1), (">i2", -1))
-    scalar_v3_params = (("int16", 1), ("int16", -1))
+    scalar_v2_params = ((Int16(), 1), (Int16(), -1))
+    scalar_v3_params = ((Int16(), 1), (Int16(), -1))
+    cast_value_params = (
+        (Int16(), 1, np.int16(1)),
+        (Int16(), -1, np.int16(-1)),
+    )
 
 
 class TestInt32(_TestZDType):
     test_cls = Int32
+    scalar_type = np.int32
     valid_dtype = (np.dtype(">i4"), np.dtype("<i4"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -77,12 +88,17 @@ class TestInt32(_TestZDType):
         {"name": "int32", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("<i4", 1), (">i4", -1))
-    scalar_v3_params = (("int32", 1), ("int32", -1))
+    scalar_v2_params = ((Int32(), 1), (Int32(), -1))
+    scalar_v3_params = ((Int32(), 1), (Int32(), -1))
+    cast_value_params = (
+        (Int32(), 1, np.int32(1)),
+        (Int32(), -1, np.int32(-1)),
+    )
 
 
 class TestInt64(_TestZDType):
     test_cls = Int64
+    scalar_type = np.int64
     valid_dtype = (np.dtype(">i8"), np.dtype("<i8"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -102,12 +118,17 @@ class TestInt64(_TestZDType):
         {"name": "int64", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("<i8", 1), (">i8", -1))
-    scalar_v3_params = (("int64", 1), ("int64", -1))
+    scalar_v2_params = ((Int64(), 1), (Int64(), -1))
+    scalar_v3_params = ((Int64(), 1), (Int64(), -1))
+    cast_value_params = (
+        (Int64(), 1, np.int64(1)),
+        (Int64(), -1, np.int64(-1)),
+    )
 
 
 class TestUInt8(_TestZDType):
     test_cls = UInt8
+    scalar_type = np.uint8
     valid_dtype = (np.dtype(np.uint8),)
     invalid_dtype = (
         np.dtype(np.int8),
@@ -127,12 +148,17 @@ class TestUInt8(_TestZDType):
         {"name": "uint8", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("|u1", 1), ("|u1", 0))
-    scalar_v3_params = (("uint8", 1), ("uint8", 0))
+    scalar_v2_params = ((UInt8(), 1), (UInt8(), 0))
+    scalar_v3_params = ((UInt8(), 1), (UInt8(), 0))
+    cast_value_params = (
+        (UInt8(), 1, np.uint8(1)),
+        (UInt8(), 0, np.uint8(0)),
+    )
 
 
 class TestUInt16(_TestZDType):
     test_cls = UInt16
+    scalar_type = np.uint16
     valid_dtype = (np.dtype(">u2"), np.dtype("<u2"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -152,12 +178,17 @@ class TestUInt16(_TestZDType):
         {"name": "uint16", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("<u2", 1), (">u2", 0))
-    scalar_v3_params = (("uint16", 1), ("uint16", 0))
+    scalar_v2_params = ((UInt16(), 1), (UInt16(), 0))
+    scalar_v3_params = ((UInt16(), 1), (UInt16(), 0))
+    cast_value_params = (
+        (UInt16(), 1, np.uint16(1)),
+        (UInt16(), 0, np.uint16(0)),
+    )
 
 
 class TestUInt32(_TestZDType):
     test_cls = UInt32
+    scalar_type = np.uint32
     valid_dtype = (np.dtype(">u4"), np.dtype("<u4"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -177,12 +208,17 @@ class TestUInt32(_TestZDType):
         {"name": "uint32", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("<u4", 1), (">u4", 0))
-    scalar_v3_params = (("uint32", 1), ("uint32", 0))
+    scalar_v2_params = ((UInt32(), 1), (UInt32(), 0))
+    scalar_v3_params = ((UInt32(), 1), (UInt32(), 0))
+    cast_value_params = (
+        (UInt32(), 1, np.uint32(1)),
+        (UInt32(), 0, np.uint32(0)),
+    )
 
 
 class TestUInt64(_TestZDType):
     test_cls = UInt64
+    scalar_type = np.uint64
     valid_dtype = (np.dtype(">u8"), np.dtype("<u8"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -202,5 +238,9 @@ class TestUInt64(_TestZDType):
         {"name": "uint64", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("<u8", 1), (">u8", 0))
-    scalar_v3_params = (("uint64", 1), ("uint64", 0))
+    scalar_v2_params = ((UInt64(), 1), (UInt64(), 0))
+    scalar_v3_params = ((UInt64(), 1), (UInt64(), 0))
+    cast_value_params = (
+        (UInt64(), 1, np.uint64(1)),
+        (UInt64(), 0, np.uint64(0)),
+    )

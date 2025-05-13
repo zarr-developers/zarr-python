@@ -75,11 +75,11 @@ def deep_equal(a: Any, b: Any) -> bool:
     return a == b
 
 
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(data=st.data())
-def test_array_roundtrip(data: st.DataObject) -> None:
-    nparray = data.draw(numpy_arrays())
-    zarray = data.draw(arrays(arrays=st.just(nparray)))
+@settings(deadline=300)
+@given(data=st.data(), zarr_format=zarr_formats)
+def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
+    nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
+    zarray = data.draw(arrays(arrays=st.just(nparray), zarr_formats=st.just(zarr_format)))
     assert_array_equal(nparray, zarray[:])
 
 
