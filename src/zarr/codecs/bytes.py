@@ -58,7 +58,10 @@ class BytesCodec(ArrayBytesCodec):
             return {"name": "bytes", "configuration": {"endian": self.endian.value}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        if array_spec.dtype.to_dtype().itemsize == 1:
+        # Note: this check is numpy-dtype-specific
+        # For single-byte (e.g., uint8) or 0-byte (e.g., S0) dtypes,
+        # endianness does not apply.
+        if array_spec.dtype.to_dtype().itemsize < 2:
             if self.endian is not None:
                 return replace(self, endian=None)
         elif self.endian is None:
@@ -77,7 +80,8 @@ class BytesCodec(ArrayBytesCodec):
         endian_str = cast(
             "Endianness | None", self.endian.value if self.endian is not None else None
         )
-        dtype = chunk_spec.dtype.to_dtype().newbyteorder(endianness_to_numpy_str(endian_str))
+        new_byte_order = endianness_to_numpy_str(endian_str)
+        dtype = chunk_spec.dtype.to_dtype().newbyteorder(new_byte_order)
 
         as_array_like = chunk_bytes.as_array_like()
         if isinstance(as_array_like, NDArrayLike):
