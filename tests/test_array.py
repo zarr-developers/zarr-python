@@ -49,6 +49,7 @@ from zarr.core.dtype.npy.int import Int16
 from zarr.core.dtype.npy.sized import (
     Structured,
 )
+from zarr.core.dtype.npy.string import VariableLengthString
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import AsyncGroup
@@ -1018,14 +1019,26 @@ class TestCreateArray:
 
         # Structured dtypes do not have a numpy string representation that uniquely identifies them
         if not isinstance(dtype, Structured):
-            c = zarr.create_array(
-                store,
-                name="c",
-                shape=(5,),
-                chunks=(5,),
-                dtype=dtype.to_dtype().str,
-                zarr_format=zarr_format,
-            )
+            if isinstance(dtype, VariableLengthString):
+                # in numpy 2.3, StringDType().str becomes the string 'StringDType()' which numpy
+                # does not accept as a string representation of the dtype.
+                c = zarr.create_array(
+                    store,
+                    name="c",
+                    shape=(5,),
+                    chunks=(5,),
+                    dtype=dtype.to_dtype().char,
+                    zarr_format=zarr_format,
+                )
+            else:
+                c = zarr.create_array(
+                    store,
+                    name="c",
+                    shape=(5,),
+                    chunks=(5,),
+                    dtype=dtype.to_dtype().str,
+                    zarr_format=zarr_format,
+                )
             assert a.dtype == c.dtype
 
     @staticmethod
