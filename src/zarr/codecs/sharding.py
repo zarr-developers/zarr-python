@@ -360,7 +360,7 @@ class ShardingCodec(
 
         # numpy void scalars are not hashable, which means an array spec with a fill value that is
         # a numpy void scalar will break the lru_cache. This is commented for now but should be
-        # fixed
+        # fixed. See https://github.com/zarr-developers/zarr-python/issues/3054
         # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
