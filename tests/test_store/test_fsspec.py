@@ -114,7 +114,8 @@ async def test_basic() -> None:
     data = b"hello"
     await store.set("foo", cpu.Buffer.from_bytes(data))
     assert await store.exists("foo")
-    assert (buf := (await store.get("foo", prototype=default_buffer_prototype()))) is not None
+    buf = await store.get("foo", prototype=default_buffer_prototype())
+    assert buf is not None
     assert buf.to_bytes() == data
     out = await store.get_partial_values(
         prototype=default_buffer_prototype(), key_ranges=[("foo", OffsetByteRequest(1))]
