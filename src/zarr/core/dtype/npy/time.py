@@ -173,7 +173,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     unit for ``TimeDelta64`` is optional.
     """
 
-    dtype_cls = np.dtypes.TimeDelta64DType
+    dtype_cls = np.dtypes.TimeDelta64DType  # type: ignore[assignment]
     _zarr_v3_name = "numpy.timedelta64"
     _zarr_v2_names = (">m8", "<m8")
     _numpy_name = "timedelta64"
@@ -185,7 +185,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
         if check_json_int(data) or data == "NaT":
-            return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")
+            return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[arg-type]
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
     def _cast_value_unsafe(self, value: object) -> np.timedelta64:
@@ -220,7 +220,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEndianness):
-    dtype_cls = np.dtypes.DateTime64DType
+    dtype_cls = np.dtypes.DateTime64DType  # type: ignore[assignment]
     _zarr_v3_name = "numpy.datetime64"
     _zarr_v2_names = (">M8", "<M8")
     _numpy_name = "datetime64"
@@ -232,7 +232,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
         if check_json_int(data) or data == "NaT":
-            return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")
+            return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[arg-type]
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
     def _cast_value_unsafe(self, value: object) -> np.datetime64:
