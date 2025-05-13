@@ -1182,13 +1182,23 @@ class TestCreateArray:
             await zarr.api.asynchronous.create_array(
                 store=store, dtype="uint8", shape=(10,), chunks=(1,), zarr_format=2, **kwargs
             )
+
     @staticmethod
     @pytest.mark.parametrize(
         ("kwargs", "error_msg"),
         [
-            ({"dimension_names": ["test"]}, "dimension_names cannot be used for arrays with zarr_format 2."),
-            ({"chunk_key_encoding": {"name": "default", "separator": "/"}}, "chunk_key_encoding cannot be used for arrays with zarr_format 2. Use dimension_separator instead."),
-            ({"codecs": "bytes"}, "codecs cannot be used for arrays with zarr_format 2. Use filters and compressor instead."),
+            (
+                {"dimension_names": ["test"]},
+                "dimension_names cannot be used for arrays with zarr_format 2.",
+            ),
+            (
+                {"chunk_key_encoding": {"name": "default", "separator": "/"}},
+                "chunk_key_encoding cannot be used for arrays with zarr_format 2. Use dimension_separator instead.",
+            ),
+            (
+                {"codecs": "bytes"},
+                "codecs cannot be used for arrays with zarr_format 2. Use filters and compressor instead.",
+            ),
         ],
     )
     async def test_create_invalid_v2_arguments(
@@ -1203,10 +1213,22 @@ class TestCreateArray:
     @pytest.mark.parametrize(
         ("kwargs", "error_msg"),
         [
-            ({"chunk_shape": (1,), "chunks": (2,)}, "Only one of chunk_shape or chunks can be provided."),
-            ({"dimension_separator": "/"}, "dimension_separator cannot be used for arrays with zarr_format 3. Use chunk_key_encoding instead."),
-            ({"filters": []}, "filters cannot be used for arrays with zarr_format 3. Use array-to-array codecs instead"),
-            ({"compressor": "blosc"}, "compressor cannot be used for arrays with zarr_format 3. Use bytes-to-bytes codecs instead"),
+            (
+                {"chunk_shape": (1,), "chunks": (2,)},
+                "Only one of chunk_shape or chunks can be provided.",
+            ),
+            (
+                {"dimension_separator": "/"},
+                "dimension_separator cannot be used for arrays with zarr_format 3. Use chunk_key_encoding instead.",
+            ),
+            (
+                {"filters": []},
+                "filters cannot be used for arrays with zarr_format 3. Use array-to-array codecs instead",
+            ),
+            (
+                {"compressor": "blosc"},
+                "compressor cannot be used for arrays with zarr_format 3. Use bytes-to-bytes codecs instead",
+            ),
         ],
     )
     async def test_invalid_v3_arguments(
@@ -1214,9 +1236,7 @@ class TestCreateArray:
     ) -> None:
         kwargs.setdefault("chunks", (1,))
         with pytest.raises(ValueError, match=re.escape(error_msg)):
-            zarr.create(
-                store=store, dtype="uint8", shape=(10,), zarr_format=3, **kwargs
-            )
+            zarr.create(store=store, dtype="uint8", shape=(10,), zarr_format=3, **kwargs)
 
     @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
