@@ -1194,13 +1194,13 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
         cp.testing.assert_array_equal(result, src[:10, :10])
 
 
-def test_v2_without_copmpressor() -> None:
+def test_v2_without_compressor() -> None:
     # Make sure it's possible to set no compressor for v2 arrays
     arr = zarr.create(store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=None)
     assert arr.compressors == ()
 
 
-def test_v2_with_v3_copmpressor() -> None:
+def test_v2_with_v3_compressor() -> None:
     # Check trying to create a v2 array with a v3 compressor fails
     with pytest.raises(
         ValueError,
