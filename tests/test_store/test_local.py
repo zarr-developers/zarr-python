@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import pathlib
 
 import numpy as np
 import pytest
@@ -11,9 +11,6 @@ from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
-
-if TYPE_CHECKING:
-    import pathlib
 
 
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
@@ -77,11 +74,20 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         observed = await store.get(key, prototype=None)
         assert_bytes_equal(observed, data_buf)
 
-    @pytest.mark.parametrize("ndim", [0, 1, 2, 3])
-    async def test_move(self, tmp_path: pathlib.Path, ndim):
+    @pytest.mark.parametrize("ndim", [0, 1, 3])
+    @pytest.mark.parametrize(
+        "destination", ["destination", "foo/bar/destintion", pathlib.Path("foo/bar/destintion")]
+    )
+    async def test_move(
+        self, tmp_path: pathlib.Path, ndim: int, destination: pathlib.Path | str
+    ) -> None:
         origin = tmp_path / "origin"
-        destination = tmp_path / "destintion"
+        if isinstance(destination, str):
+            destination = str(tmp_path / destination)
+        else:
+            destination = tmp_path / destination
 
+        print(type(destination))
         store = await LocalStore.open(root=origin)
         shape = (4,) * ndim
         chunks = (2,) * ndim
@@ -90,9 +96,13 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
             data = data.reshape(*shape)
         array = create_array(store, data=data, chunks=chunks or "auto")
 
-        await store.move(str(destination))
+        await store.move(destination)
 
-        assert store.root == destination
-        assert destination.exists()
+        assert store.root == pathlib.Path(destination)
+        assert pathlib.Path(destination).exists()
         assert not origin.exists()
         assert np.array_equal(array[...], data)
+
+        store2 = await LocalStore.open(root=origin)
+        with pytest.raises(FileExistsError, match=f"Destination root {destination} already exists"):
+            await store2.move(destination)

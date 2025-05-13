@@ -142,7 +142,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert isinstance(group := zipped["foo"], Group)
         assert list(group.keys()) == list(group.keys())
 
-    async def test_move(self, tmp_path: Path):
+    async def test_move(self, tmp_path: Path) -> None:
         origin = tmp_path / "origin.zip"
         destination = tmp_path / "some_folder" / "destination.zip"
 

@@ -259,14 +259,10 @@ class LocalStore(Store):
         """
         if isinstance(dest_root, str):
             dest_root = Path(dest_root)
-        os.makedirs(dest_root, exist_ok=True)
-        for src_file in self.root.rglob("*"):
-            if src_file.is_file():
-                relative_path = src_file.relative_to(self.root)
-                dest_file_path = dest_root / relative_path
-                dest_file_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(src_file), str(dest_file_path))
-        shutil.rmtree(self.root)
+        os.makedirs(dest_root.parent, exist_ok=True)
+        if os.path.exists(dest_root):
+            raise FileExistsError(f"Destination root {dest_root} already exists.")
+        shutil.move(self.root, dest_root)
         self.root = dest_root
 
     async def getsize(self, key: str) -> int:
