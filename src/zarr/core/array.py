@@ -135,9 +135,7 @@ __all__ = ["create_codec_pipeline", "parse_array_metadata"]
 logger = getLogger(__name__)
 
 
-def parse_array_metadata(
-    data: ArrayMetadata | ArrayMetadataDict | dict[str, JSON],
-) -> ArrayMetadata:
+def parse_array_metadata(data: Any) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
