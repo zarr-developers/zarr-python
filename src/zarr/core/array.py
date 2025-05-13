@@ -117,6 +117,7 @@ from zarr.registry import (
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
+from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -3737,7 +3738,12 @@ async def chunks_initialized(
     store_contents = [
         x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
     ]
-    return tuple(chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents)
+    store_contents_relative = [
+        _relativize_path(path=key, prefix=array.store_path.path) for key in store_contents
+    ]
+    return tuple(
+        chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents_relative
+    )
 
 
 def _build_parents(

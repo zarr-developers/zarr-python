@@ -1,0 +1,1 @@
+Fix a bug that prevented the number of initialized chunks being counted properly.
