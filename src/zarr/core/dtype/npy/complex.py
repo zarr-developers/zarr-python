@@ -84,9 +84,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness):
         return isinstance(value, ComplexLike)
 
     def _cast_value_unsafe(self, value: object) -> TComplexScalar_co:
-        if self.check_value(value):
-            return self.to_dtype().type(value)  # type: ignore[arg-type, return-value]
-        raise TypeError(f"Invalid type: {value}. Expected a value castable to a complex scalar.")
+        return self.to_dtype().type(value)  # type: ignore[arg-type, return-value]
 
     def default_value(self) -> TComplexScalar_co:
         """

@@ -76,7 +76,7 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bytes_:
         if check_json_str(data):
             return self.to_dtype().type(base64.standard_b64decode(data.encode("ascii")))
-        raise TypeError(f"Invalid type: {data}. Expected a string.")
+        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
     def check_value(self, data: object) -> bool:
         return isinstance(data, np.bytes_ | str | bytes)
@@ -162,7 +162,7 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         if check_json_str(data):
             return self.to_dtype().type(base64.standard_b64decode(data))
-        raise DataTypeValidationError(f"Invalid type: {data}. Expected a string.")
+        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
     def check_value(self, data: object) -> bool:
         return isinstance(data, np.bytes_ | str | bytes | np.void)
@@ -234,9 +234,9 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
         return str(data)
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.str_:
-        if not check_json_str(data):
-            raise TypeError(f"Invalid type: {data}. Expected a string.")
-        return self.to_dtype().type(data)
+        if check_json_str(data):
+            return self.to_dtype().type(data)
+        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
     def check_value(self, data: object) -> bool:
         return isinstance(data, str | np.str_ | bytes)
@@ -332,6 +332,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         from zarr.core.dtype import get_data_type_from_json
 
+        # This is a horrible mess, because this data type is recursive
         if cls.check_json(data, zarr_format=zarr_format):
             if zarr_format == 2:
                 # structured dtypes are constructed directly from a list of lists
@@ -352,9 +353,13 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
                         )
                         return cls(fields=fields)
                     else:
-                        raise TypeError(f"Invalid type: {data}. Expected a dictionary.")
+                        raise TypeError(
+                            f"Invalid type: {data}. Expected a dictionary."
+                        )  # pragma: no cover
                 else:
-                    raise TypeError(f"Invalid type: {data}. Expected a dictionary.")
+                    raise TypeError(
+                        f"Invalid type: {data}. Expected a dictionary."
+                    )  # pragma: no cover
             raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
         raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
 
@@ -368,16 +373,12 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
         return bytes_to_json(self.cast_value(data).tobytes(), zarr_format)
 
     def check_value(self, data: object) -> bool:
-        # not sure which values we should accept for structured dtypes.
-        try:
-            np.array([data], dtype=self.to_dtype())
-            return True  # noqa: TRY300
-        except ValueError:
-            return False
+        # TODO: implement something here!
+        return True
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
-        if not check_json_str(data):
-            raise TypeError(f"Invalid type: {data}. Expected a string.")
-        as_bytes = bytes_from_json(data, zarr_format=zarr_format)
-        dtype = self.to_dtype()
-        return cast("np.void", np.array([as_bytes], dtype=dtype.str).view(dtype)[0])
+        if check_json_str(data):
+            as_bytes = bytes_from_json(data, zarr_format=zarr_format)
+            dtype = self.to_dtype()
+            return cast("np.void", np.array([as_bytes]).view(dtype)[0])
+        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover

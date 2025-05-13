@@ -159,7 +159,13 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         """
         if self.check_value(data):
             return self._cast_value_unsafe(data)
-        raise TypeError(f"Invalid value: {data}")
+        msg = (
+            f"The value {data} failed a type check."
+            f"It cannot be safely cast to a scalar compatible with {self.dtype_cls}."
+            f"Consult the documentation for {self} to determine the possible values that can"
+            "be cast to scalars of the wrapped data type."
+        )
+        raise TypeError(msg)
 
     @abstractmethod
     def check_value(self, data: object) -> bool:

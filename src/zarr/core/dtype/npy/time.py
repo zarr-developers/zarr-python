@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 _DTypeName = Literal["datetime64", "timedelta64"]
 
 
-def datetime_from_int(data: int, *, unit: DateTimeUnit, interval: int) -> np.datetime64:
+def datetime_from_int(data: int, *, unit: DateTimeUnit, scale_factor: int) -> np.datetime64:
     """
     Convert an integer to a datetime64.
 
@@ -43,15 +43,15 @@ def datetime_from_int(data: int, *, unit: DateTimeUnit, interval: int) -> np.dat
         The integer to convert.
     unit : DateTimeUnit
         The unit of the datetime64.
-    interval : int
-        The interval of the datetime64.
+    scale_factor : int
+        The scale factor of the datetime64.
 
     Returns
     -------
     np.datetime64
         The datetime64 value.
     """
-    dtype_name = f"datetime64[{interval}{unit}]"
+    dtype_name = f"datetime64[{scale_factor}{unit}]"
     return cast("np.datetime64", np.int64(data).view(dtype_name))
 
 
@@ -184,9 +184,9 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         return np.timedelta64("NaT")
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
-        if check_json_int(data):
+        if check_json_int(data) or data == "NaT":
             return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
+        raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
     def _cast_value_unsafe(self, value: object) -> np.timedelta64:
         return self.to_dtype().type(value)  # type: ignore[arg-type]
@@ -231,9 +231,9 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         return np.datetime64("NaT")
 
     def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
-        if check_json_int(data):
+        if check_json_int(data) or data == "NaT":
             return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")
+        raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
     def _cast_value_unsafe(self, value: object) -> np.datetime64:
         return self.to_dtype().type(value)  # type: ignore[no-any-return, call-overload]

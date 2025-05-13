@@ -101,14 +101,11 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
         """
         if check_json_bool(data):
             return self._cast_value_unsafe(data)
-        raise TypeError(f"Invalid type: {data}. Expected a boolean.")
+        raise TypeError(f"Invalid type: {data}. Expected a boolean.")  # pragma: no cover
 
     def check_value(self, data: object) -> bool:
         # Anything can become a bool
         return True
-
-    def cast_value(self, value: object) -> np.bool_:
-        return self._cast_value_unsafe(value)
 
     def _cast_value_unsafe(self, value: object) -> np.bool_:
         return np.bool_(value)

@@ -6,7 +6,14 @@ from tests.test_dtype.test_wrapper import _TestZDType
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 
 
-class TestFloat16(_TestZDType):
+class _BaseTestFloat(_TestZDType):
+    def scalar_equals(self, scalar1: object, scalar2: object) -> bool:
+        if np.isnan(scalar1) and np.isnan(scalar2):  # type: ignore[call-overload]
+            return True
+        return super().scalar_equals(scalar1, scalar2)
+
+
+class TestFloat16(_BaseTestFloat):
     test_cls = Float16
     valid_dtype = (np.dtype(">f2"), np.dtype("<f2"))
     invalid_dtype = (
@@ -27,17 +34,28 @@ class TestFloat16(_TestZDType):
         {"name": "float16", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((">f2", 1.0), ("<f2", -1.0), ("<f2", "NaN"), (">f2", "Infinity"))
+    scalar_v2_params = (
+        (Float16(), 1.0),
+        (Float16(), -1.0),
+        (Float16(), "NaN"),
+        (Float16(), "Infinity"),
+    )
     scalar_v3_params = (
-        ("float16", 1.0),
-        ("float16", -1.0),
-        ("float16", "NaN"),
-        ("float16", "Infinity"),
+        (Float16(), 1.0),
+        (Float16(), -1.0),
+        (Float16(), "NaN"),
+        (Float16(), "Infinity"),
+    )
+    cast_value_params = (
+        (Float16(), 1.0, np.float16(1.0)),
+        (Float16(), -1.0, np.float16(-1.0)),
+        (Float16(), "NaN", np.float16("NaN")),
     )
 
 
-class TestFloat32(_TestZDType):
+class TestFloat32(_BaseTestFloat):
     test_cls = Float32
+    scalar_type = np.float32
     valid_dtype = (np.dtype(">f4"), np.dtype("<f4"))
     invalid_dtype = (
         np.dtype(np.int8),
@@ -57,16 +75,27 @@ class TestFloat32(_TestZDType):
         {"name": "float32", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((">f4", 1.0), ("<f4", -1.0), ("<f4", "NaN"), (">f4", "Infinity"))
+    scalar_v2_params = (
+        (Float32(), 1.0),
+        (Float32(), -1.0),
+        (Float32(), "NaN"),
+        (Float32(), "Infinity"),
+    )
     scalar_v3_params = (
-        ("float32", 1.0),
-        ("float32", -1.0),
-        ("float32", "NaN"),
-        ("float32", "Infinity"),
+        (Float32(), 1.0),
+        (Float32(), -1.0),
+        (Float32(), "NaN"),
+        (Float32(), "Infinity"),
+    )
+
+    cast_value_params = (
+        (Float32(), 1.0, np.float32(1.0)),
+        (Float32(), -1.0, np.float32(-1.0)),
+        (Float32(), "NaN", np.float32("NaN")),
     )
 
 
-class TestFloat64(_TestZDType):
+class TestFloat64(_BaseTestFloat):
     test_cls = Float64
     valid_dtype = (np.dtype(">f8"), np.dtype("<f8"))
     invalid_dtype = (
@@ -87,10 +116,21 @@ class TestFloat64(_TestZDType):
         {"name": "float64", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((">f8", 1.0), ("<f8", -1.0), ("<f8", "NaN"), (">f8", "Infinity"))
+    scalar_v2_params = (
+        (Float64(), 1.0),
+        (Float64(), -1.0),
+        (Float64(), "NaN"),
+        (Float64(), "Infinity"),
+    )
     scalar_v3_params = (
-        ("float64", 1.0),
-        ("float64", -1.0),
-        ("float64", "NaN"),
-        ("float64", "Infinity"),
+        (Float64(), 1.0),
+        (Float64(), -1.0),
+        (Float64(), "NaN"),
+        (Float64(), "Infinity"),
+    )
+
+    cast_value_params = (
+        (Float64(), 1.0, np.float64(1.0)),
+        (Float64(), -1.0, np.float64(-1.0)),
+        (Float64(), "NaN", np.float64("NaN")),
     )

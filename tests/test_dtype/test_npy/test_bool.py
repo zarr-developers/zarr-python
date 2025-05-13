@@ -8,6 +8,7 @@ from zarr.core.dtype.npy.bool import Bool
 
 class TestBool(_TestZDType):
     test_cls = Bool
+
     valid_dtype = (np.dtype(np.bool_),)
     invalid_dtype = (
         np.dtype(np.int8),
@@ -27,5 +28,13 @@ class TestBool(_TestZDType):
         {"name": "bool", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = (("|b1", True), ("|b1", False))
-    scalar_v3_params = (("bool", True), ("bool", False))
+    scalar_v2_params = ((Bool(), True), (Bool(), False))
+    scalar_v3_params = ((Bool(), True), (Bool(), False))
+
+    cast_value_params = (
+        (Bool(), "true", np.True_),
+        (Bool(), True, np.True_),
+        (Bool(), False, np.False_),
+        (Bool(), np.True_, np.True_),
+        (Bool(), np.False_, np.False_),
+    )

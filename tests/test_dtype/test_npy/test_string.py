@@ -8,8 +8,8 @@ from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING, VariableLeng
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
     class TestVariableLengthString(_TestZDType):
-        test_cls = VariableLengthString
-        valid_dtype = (np.dtypes.StringDType(),)
+        test_cls = VariableLengthString  # type: ignore[assignment]
+        valid_dtype = (np.dtypes.StringDType(),)  # type: ignore[assignment]
         invalid_dtype = (
             np.dtype(np.int8),
             np.dtype(np.float64),
@@ -27,10 +27,21 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             {"name": "invalid_name"},
         )
 
+        scalar_v2_params = ((VariableLengthString(), ""), (VariableLengthString(), "hi"))
+        scalar_v3_params = (
+            (VariableLengthString(), ""),
+            (VariableLengthString(), "hi"),
+        )
+
+        cast_value_params = (
+            (VariableLengthString(), "", np.str_("")),
+            (VariableLengthString(), "hi", np.str_("hi")),
+        )
+
 else:
 
-    class TestVariableLengthString(_TestZDType):
-        test_cls = VariableLengthString
+    class TestVariableLengthString(_TestZDType):  # type: ignore[no-redef]
+        test_cls = VariableLengthString  # type: ignore[assignment]
         valid_dtype = (np.dtype("O"),)
         invalid_dtype = (
             np.dtype(np.int8),
@@ -47,4 +58,15 @@ else:
         invalid_json_v3 = (
             {"name": "numpy.variable_length_utf8", "configuration": {"invalid_key": "value"}},
             {"name": "invalid_name"},
+        )
+
+        scalar_v2_params = ((VariableLengthString(), ""), (VariableLengthString(), "hi"))
+        scalar_v3_params = (
+            (VariableLengthString(), ""),
+            (VariableLengthString(), "hi"),
+        )
+
+        cast_value_params = (
+            (VariableLengthString(), "", np.str_("")),
+            (VariableLengthString(), "hi", np.str_("hi")),
         )

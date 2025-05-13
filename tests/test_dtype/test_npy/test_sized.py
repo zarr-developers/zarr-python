@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 
 from tests.test_dtype.test_wrapper import _TestZDType
+from zarr.core.dtype.npy.float import Float16, Float64
+from zarr.core.dtype.npy.int import Int32, Int64
 from zarr.core.dtype.npy.sized import (
     FixedLengthAscii,
     FixedLengthBytes,
@@ -31,11 +35,20 @@ class TestFixedLengthAscii(_TestZDType):
         {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": "invalid"}},
     )
 
-    scalar_v2_params = (("|S0", ""), ("|S2", "YWI="), ("|S4", "YWJjZA=="))
+    scalar_v2_params = (
+        (FixedLengthAscii(length=0), ""),
+        (FixedLengthAscii(length=2), "YWI="),
+        (FixedLengthAscii(length=4), "YWJjZA=="),
+    )
     scalar_v3_params = (
-        ({"name": "numpy.fixed_length_ascii", "configuration": {"length_bytes": 0}}, ""),
-        ({"name": "numpy.fixed_length_ascii", "configuration": {"length_bytes": 16}}, "YWI="),
-        ({"name": "numpy.fixed_length_ascii", "configuration": {"length_bytes": 32}}, "YWJjZA=="),
+        (FixedLengthAscii(length=0), ""),
+        (FixedLengthAscii(length=2), "YWI="),
+        (FixedLengthAscii(length=4), "YWJjZA=="),
+    )
+    cast_value_params = (
+        (FixedLengthAscii(length=0), "", np.bytes_("")),
+        (FixedLengthAscii(length=2), "ab", np.bytes_("ab")),
+        (FixedLengthAscii(length=4), "abcd", np.bytes_("abcd")),
     )
 
 
@@ -63,11 +76,20 @@ class TestFixedLengthBytes(_TestZDType):
         {"name": "r-80"},
     )
 
-    scalar_v2_params = (("|V0", ""), ("|V2", "YWI="), ("|V4", "YWJjZA=="))
+    scalar_v2_params = (
+        (FixedLengthBytes(length=0), ""),
+        (FixedLengthBytes(length=2), "YWI="),
+        (FixedLengthBytes(length=4), "YWJjZA=="),
+    )
     scalar_v3_params = (
-        ({"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 2}}, ""),
-        ({"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 2}}, "YWI="),
-        ({"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 4}}, "YWJjZA=="),
+        (FixedLengthBytes(length=0), ""),
+        (FixedLengthBytes(length=2), "YWI="),
+        (FixedLengthBytes(length=4), "YWJjZA=="),
+    )
+    cast_value_params = (
+        (FixedLengthBytes(length=0), b"", np.void(b"")),
+        (FixedLengthBytes(length=2), b"ab", np.void(b"ab")),
+        (FixedLengthBytes(length=4), b"abcd", np.void(b"abcd")),
     )
 
 
@@ -91,11 +113,17 @@ class TestFixedLengthUnicode(_TestZDType):
         {"name": "numpy.fixed_length_ucs4", "configuration": {"length_bits": "invalid"}},
     )
 
-    scalar_v2_params = ((">U0", ""), ("<U2", "hi"))
+    scalar_v2_params = ((FixedLengthUnicode(length=0), ""), (FixedLengthUnicode(length=2), "hi"))
     scalar_v3_params = (
-        ({"name": "numpy.fixed_length_ucs4", "configuration": {"length_bytes": 0}}, ""),
-        ({"name": "numpy.fixed_length_ucs4", "configuration": {"length_bytes": 8}}, "hi"),
-        ({"name": "numpy.fixed_length_ucs4", "configuration": {"length_bytes": 16}}, "hihi"),
+        (FixedLengthUnicode(length=0), ""),
+        (FixedLengthUnicode(length=2), "hi"),
+        (FixedLengthUnicode(length=4), "hihi"),
+    )
+
+    cast_value_params = (
+        (FixedLengthUnicode(length=0), "", np.str_("")),
+        (FixedLengthUnicode(length=2), "hi", np.str_("hi")),
+        (FixedLengthUnicode(length=4), "hihi", np.str_("hihi")),
     )
 
 
@@ -159,3 +187,30 @@ class TestStructured(_TestZDType):
         },
         {"name": "invalid_name"},
     )
+
+    scalar_v2_params = (
+        (Structured(fields=(("field1", Int32()), ("field2", Float64()))), "AQAAAAAAAAAAAPA/"),
+        (Structured(fields=(("field1", Float16()), ("field2", Int32()))), "AQAAAAAA"),
+    )
+    scalar_v3_params = (
+        (Structured(fields=(("field1", Int32()), ("field2", Float64()))), "AQAAAAAAAAAAAPA/"),
+        (Structured(fields=(("field1", Int64()), ("field2", Int32()))), "AQAAAAAAAAAAAPA/"),
+    )
+
+    cast_value_params = (
+        (
+            Structured(fields=(("field1", Int32()), ("field2", Float64()))),
+            (1, 2.0),
+            np.array((1, 2.0), dtype=[("field1", np.int32), ("field2", np.float64)]),
+        ),
+        (
+            Structured(fields=(("field1", Int64()), ("field2", Int32()))),
+            (3, 4.5),
+            np.array((3, 4.5), dtype=[("field1", np.int64), ("field2", np.int32)]),
+        ),
+    )
+
+    def scalar_equals(self, scalar1: Any, scalar2: Any) -> bool:
+        if hasattr(scalar1, "shape") and hasattr(scalar2, "shape"):
+            return np.array_equal(scalar1, scalar2)
+        return super().scalar_equals(scalar1, scalar2)

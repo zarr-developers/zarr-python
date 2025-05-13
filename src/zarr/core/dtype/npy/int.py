@@ -71,9 +71,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co]):
         return isinstance(value, IntLike)
 
     def _cast_value_unsafe(self, value: object) -> TIntScalar_co:
-        if self.check_value(value):
-            return self.to_dtype().type(value)  # type: ignore[return-value]
-        raise TypeError(f"Invalid type: {value}. Expected a value castable to an integer.")
+        return self.to_dtype().type(value)  # type: ignore[return-value, arg-type]
 
     def default_value(self) -> TIntScalar_co:
         """
