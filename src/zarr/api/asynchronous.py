@@ -23,6 +23,7 @@ from zarr.core.common import (
     JSON,
     AccessModeLiteral,
     ChunkCoords,
+    DimensionNames,
     MemoryOrder,
     ZarrFormat,
     _default_zarr_format,
@@ -872,7 +873,7 @@ async def create(
         | None
     ) = None,
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNames = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
     **kwargs: Any,
