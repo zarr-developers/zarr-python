@@ -23,6 +23,40 @@ class _TestZDTypeSchema:
 
 
 class _TestZDType:
+    """
+    A base class for testing ZDType subclasses. This class works in conjunction with the custom
+    pytest collection function ``pytest_generate_tests`` defined in conftest.py, which applies the
+    following procedure when generating tests:
+
+    At test generation time, for each test fixture referenced by a method on this class
+    pytest will look for an attribute with the same name as that fixture. Pytest will assume that
+    this class attribute is a tuple of values to be used for generating a parametrized test fixture.
+
+    This means that child classes can, by using different values for these class attributes, have
+    customized test parametrization.
+
+    Attributes
+    ----------
+    test_cls : type[ZDType[TBaseDType, TBaseScalar]]
+        The ZDType subclass being tested.
+    scalar_type : ClassVar[type[TBaseScalar]]
+        The expected scalar type for the ZDType.
+    valid_dtype : ClassVar[tuple[TBaseDType, ...]]
+        A tuple of valid numpy dtypes for the ZDType.
+    invalid_dtype : ClassVar[tuple[TBaseDType, ...]]
+        A tuple of invalid numpy dtypes for the ZDType.
+    valid_json_v2 : ClassVar[tuple[str | dict[str, object] | list[object], ...]]
+        A tuple of valid JSON representations for Zarr format version 2.
+    invalid_json_v2 : ClassVar[tuple[str | dict[str, object] | list[object], ...]]
+        A tuple of invalid JSON representations for Zarr format version 2.
+    valid_json_v3 : ClassVar[tuple[str | dict[str, object], ...]]
+        A tuple of valid JSON representations for Zarr format version 3.
+    invalid_json_v3 : ClassVar[tuple[str | dict[str, object], ...]]
+        A tuple of invalid JSON representations for Zarr format version 3.
+    cast_value_params : ClassVar[tuple[tuple[Any, Any, Any], ...]]
+        A tuple of (dtype, value, expected) tuples for testing ZDType.cast_value.
+    """
+
     test_cls: type[ZDType[TBaseDType, TBaseScalar]]
     scalar_type: ClassVar[type[TBaseScalar]]
     valid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
