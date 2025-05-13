@@ -58,7 +58,7 @@ class StoreTests(Generic[S, B]):
 
     @abstractmethod
     @pytest.fixture
-    def store_kwargs(self) -> dict[str, Any]:
+    def store_kwargs(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Kwargs for instantiating a store"""
         ...
 

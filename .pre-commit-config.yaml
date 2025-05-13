@@ -37,6 +37,8 @@ repos:
           - obstore>=0.5.1
           # Tests
           - pytest
+          - hypothesis
+          - s3fs
   - repo: https://github.com/scientific-python/cookie
     rev: 2025.01.22
     hooks:
