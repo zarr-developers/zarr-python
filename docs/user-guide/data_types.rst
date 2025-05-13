@@ -9,7 +9,6 @@ array's elements. As Zarr Python is tightly integrated with `NumPy <https://nump
 it's easy to create arrays with NumPy data types:
 
 .. code-block:: python
-
   >>> import zarr
   >>> import numpy as np
   >>> z = zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
@@ -122,28 +121,51 @@ API for the following operations:
 Example Usage
 ~~~~~~~~~~~~~
 
+Create a ``ZDType`` from a native data type:
+
 .. code-block:: python
 
-    from zarr.core.dtype.wrapper import Int8
+  >>> from zarr.core.dtype import Int8
+  >>> import numpy as np
+  >>> int8 = Int8.from_dtype(np.dtype('int8'))
 
-    # Create a ZDType instance from a native dtype
-    int8 = Int8.from_dtype(np.dtype('int8'))
+Convert back to native data type:
 
-    # Convert back to native dtype
-    native_dtype = int8.to_dtype()
-    assert native_dtype == np.dtype('int8')
+.. code-block:: python
 
-    # Get the default value
-    default_value = int8.default_value()
-    assert default_value == np.int8(0)
+  >>> native_dtype = int8.to_dtype()
+  >>> assert native_dtype == np.dtype('int8')
 
-    # Serialize to JSON
-    json_representation = int8.to_json(zarr_format=3)
+Get the default scalar value for the data type:
 
-    # Serialize a scalar value
-    json_value = int8.to_json_value(42, zarr_format=3)
-    assert json_value == 42
+.. code-block:: python
 
-    # Deserialize a scalar value
-    scalar_value = int8.from_json_value(42, zarr_format=3)
-    assert scalar_value == np.int8(42)
+  >>> default_value = int8.default_value()
+  >>> assert default_value == np.int8(0)
+
+
+Serialize to JSON for Zarr V2 and V3
+
+.. code-block:: python
+
+  >>> json_v2 = int8.to_json(zarr_format=2)
+  >>> json_v2
+  '|i1'
+  >>> json_v3 = int8.to_json(zarr_format=3)
+  >>> json_v3
+  'int8'
+
+Serialize a scalar value to JSON:
+
+.. code-block:: python
+
+  >>> json_value = int8.to_json_value(42, zarr_format=3)
+  >>> json_value
+  42
+
+Deserialize a scalar value from JSON:
+
+.. code-block:: python
+
+  >>> scalar_value = int8.from_json_value(42, zarr_format=3)
+  >>> assert scalar_value == np.int8(42)
