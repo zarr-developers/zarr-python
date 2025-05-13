@@ -9,6 +9,7 @@ array's elements. As Zarr Python is tightly integrated with `NumPy <https://nump
 it's easy to create arrays with NumPy data types:
 
 .. code-block:: python
+
   >>> import zarr
   >>> import numpy as np
   >>> z = zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
