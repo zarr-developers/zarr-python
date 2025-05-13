@@ -52,7 +52,7 @@ a chunk shape is based on simple heuristics and may be far from optimal. E.g.::
 
    >>> z4 = zarr.create_array(store={}, shape=(10000, 10000), chunks='auto', dtype='int32')
    >>> z4.chunks
-   (313, 625)
+   (625, 625)
 
 If you know you are always going to be loading the entire array into memory, you
 can turn off chunks by providing ``chunks`` equal to ``shape``, in which case there
