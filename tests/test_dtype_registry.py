@@ -11,16 +11,20 @@ import pytest
 import zarr
 from zarr.core.config import config
 from zarr.core.dtype import (
-    DTYPE,
+    AnyDType,
     Bool,
+    DataTypeRegistry,
+    DateTime64,
     FixedLengthUnicode,
+    Int8,
+    Int16,
     TBaseDType,
     TBaseScalar,
     ZDType,
     data_type_registry,
     get_data_type_from_json,
+    parse_data_type,
 )
-from zarr.core.dtype.registry import DataTypeRegistry
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -117,7 +121,7 @@ class TestRegistry:
         that excludes the data type class being tested, and ensure that an instance of the wrapped data type
         fails to match anything in the registry
         """
-        for _cls in get_args(DTYPE):
+        for _cls in get_args(AnyDType):
             if _cls is not type(zdtype):
                 data_type_registry_fixture.register(_cls._zarr_v3_name, _cls)
 
@@ -156,3 +160,28 @@ def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
     instance = TestDataType()
     dtype_json = instance.to_json(zarr_format=zarr_format)
     assert get_data_type_from_json(dtype_json, zarr_format=zarr_format) == instance
+
+
+@pytest.mark.parametrize(
+    ("dtype_params", "expected", "zarr_format"),
+    [
+        ("int8", Int8(), 3),
+        (Int8(), Int8(), 3),
+        (">i2", Int16(endianness="big"), 2),
+        ("datetime64[10s]", DateTime64(unit="s", scale_factor=10), 2),
+        (
+            {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}},
+            DateTime64(unit="s", scale_factor=10),
+            3,
+        ),
+    ],
+)
+def test_parse_data_type(
+    dtype_params: Any, expected: ZDType[Any, Any], zarr_format: ZarrFormat
+) -> None:
+    """
+    Test that parse_data_type accepts alternative representations of ZDType instances, and resolves
+    those inputs to the expected ZDType instance.
+    """
+    observed = parse_data_type(dtype_params, zarr_format=zarr_format)
+    assert observed == expected

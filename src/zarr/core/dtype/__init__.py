@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeAlias, get_args
+from typing import TYPE_CHECKING, TypeAlias
 
 from zarr.core.dtype.common import DataTypeValidationError
 from zarr.core.dtype.npy.bool import Bool
@@ -30,8 +30,10 @@ from zarr.core.dtype.registry import DataTypeRegistry
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 __all__ = [
+    "Bool",
     "Complex64",
     "Complex128",
+    "DataTypeRegistry",
     "DataTypeValidationError",
     "DateTime64",
     "FixedLengthAscii",
@@ -45,6 +47,8 @@ __all__ = [
     "Int32",
     "Int64",
     "Structured",
+    "TBaseDType",
+    "TBaseScalar",
     "TimeDelta64",
     "TimeDelta64",
     "UInt8",
@@ -59,25 +63,47 @@ __all__ = [
 
 data_type_registry = DataTypeRegistry()
 
-INTEGER_DTYPE = Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64
-FLOAT_DTYPE = Float16 | Float32 | Float64
-COMPLEX_DTYPE = Complex64 | Complex128
-STRING_DTYPE = FixedLengthUnicode | VariableLengthString | FixedLengthAscii
-DTYPE = (
+IntegerDType = Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64
+INTEGER_DTYPE = Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+
+FloatDType = Float16 | Float32 | Float64
+FLOAT_DTYPE = Float16, Float32, Float64
+
+ComplexFloatDType = Complex64 | Complex128
+COMPLEX_FLOAT_DTYPE = Complex64, Complex128
+
+StringDType = FixedLengthUnicode | VariableLengthString | FixedLengthAscii
+STRING_DTYPE = FixedLengthUnicode, VariableLengthString, FixedLengthAscii
+
+TimeDType = DateTime64 | TimeDelta64
+TIME_DTYPE = DateTime64, TimeDelta64
+
+AnyDType = (
     Bool
-    | INTEGER_DTYPE
-    | FLOAT_DTYPE
-    | COMPLEX_DTYPE
-    | STRING_DTYPE
+    | IntegerDType
+    | FloatDType
+    | ComplexFloatDType
+    | StringDType
     | FixedLengthBytes
     | Structured
-    | DateTime64
-    | TimeDelta64
+    | TimeDType
+)
+# mypy has trouble inferring the type of variablelengthstring dtype, because its class definition
+# depends on the installed numpy version. That's why the type: ignore statement is needed here.
+ANY_DTYPE: tuple[type[ZDType[TBaseDType, TBaseScalar]], ...] = (  # type: ignore[assignment]
+    Bool,
+    *INTEGER_DTYPE,
+    *FLOAT_DTYPE,
+    *COMPLEX_FLOAT_DTYPE,
+    *STRING_DTYPE,
+    FixedLengthBytes,
+    Structured,
+    *TIME_DTYPE,
 )
 
 ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | dict[str, JSON]
 
-for dtype in get_args(DTYPE):
+for dtype in ANY_DTYPE:
     data_type_registry.register(dtype._zarr_v3_name, dtype)
 
 

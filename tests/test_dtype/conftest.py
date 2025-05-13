@@ -24,7 +24,7 @@ for wrapper_cls in data_type_registry.contents.values():
 
 def pytest_generate_tests(metafunc: Any) -> None:
     """
-    pytest hook to parametrize class-scoped fixtures.
+    This is a pytest hook to parametrize class-scoped fixtures.
 
     This hook allows us to define class-scoped fixtures as class attributes and then
     generate the parametrize calls for pytest. This allows the fixtures to be

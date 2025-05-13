@@ -1,6 +1,6 @@
 import os
 from collections.abc import Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest import mock
 from unittest.mock import Mock
 
@@ -43,6 +43,9 @@ from zarr.testing.buffer import (
     TestBuffer,
     TestNDArrayLike,
 )
+
+if TYPE_CHECKING:
+    from zarr.core.dtype.wrapper import ZDType
 
 
 def test_config_defaults_set() -> None:
@@ -323,6 +326,7 @@ async def test_default_codecs(dtype_category: str) -> None:
     """
     Test that the default compressors are sensitive to the current setting of the config.
     """
+    zdtype: ZDType[Any, Any]
     if dtype_category == "variable-length-string":
         zdtype = VariableLengthString()
     else:
