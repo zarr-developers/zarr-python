@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
 import itertools
 import json
 from dataclasses import asdict, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Literal, assert_never, cast
+
+import numpy as np
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
@@ -97,7 +100,13 @@ class GroupMetadata(Metadata):
                     d[f"{k}/{ZATTRS_JSON}"] = _replace_special_floats(attrs)
                     if "shape" in v:
                         # it's an array
-                        d[f"{k}/{ZARRAY_JSON}"] = _replace_special_floats(v)
+                        if isinstance(v.get("fill_value", None), np.void):
+                            v["fill_value"] = base64.standard_b64encode(
+                                cast(bytes, v["fill_value"])
+                            ).decode("ascii")
+                        else:
+                            v = _replace_special_floats(v)
+                        d[f"{k}/{ZARRAY_JSON}"] = v
                     else:
                         d[f"{k}/{ZGROUP_JSON}"] = {
                             "zarr_format": self.zarr_format,
