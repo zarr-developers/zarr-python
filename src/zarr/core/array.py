@@ -102,6 +102,7 @@ from zarr.core.metadata import (
     T_ArrayMetadata,
 )
 from zarr.core.metadata.v2 import (
+    CompressorLikev2,
     _default_compressor,
     _default_filters,
     parse_compressor,
@@ -117,6 +118,7 @@ from zarr.registry import (
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
+from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -302,7 +304,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: CompressorLikev2 | Literal["auto"] = "auto",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -393,7 +395,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -428,7 +430,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -569,7 +571,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -603,7 +605,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(
                     "filters cannot be used for arrays with zarr_format 3. Use array-to-array codecs instead."
                 )
-            if compressor is not None:
+            if compressor != "auto":
                 raise ValueError(
                     "compressor cannot be used for arrays with zarr_format 3. Use bytes-to-bytes codecs instead."
                 )
@@ -767,7 +769,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: float | None = None,
         filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
-        compressor: dict[str, JSON] | numcodecs.abc.Codec | None = None,
+        compressor: CompressorLikev2 = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV2Metadata:
         if dimension_separator is None:
@@ -808,7 +810,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: float | None = None,
         filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
-        compressor: dict[str, JSON] | numcodecs.abc.Codec | None = None,
+        compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArray[ArrayV2Metadata]:
@@ -820,6 +822,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             await ensure_no_existing_node(store_path, zarr_format=2)
 
+        compressor_parsed: CompressorLikev2
+        if compressor == "auto":
+            compressor_parsed = _default_compressor(dtype)
+        elif isinstance(compressor, BytesBytesCodec):
+            raise ValueError(
+                "Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. "
+                "Use a numcodecs codec directly instead."
+            )
+        else:
+            compressor_parsed = compressor
+
         metadata = cls._create_metadata_v2(
             shape=shape,
             dtype=dtype,
@@ -828,7 +841,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             dimension_separator=dimension_separator,
             fill_value=fill_value,
             filters=filters,
-            compressor=compressor,
+            compressor=compressor_parsed,
             attributes=attributes,
         )
 
@@ -1750,7 +1763,7 @@ class Array:
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
@@ -1879,7 +1892,7 @@ class Array:
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
@@ -3737,7 +3750,12 @@ async def chunks_initialized(
     store_contents = [
         x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
     ]
-    return tuple(chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents)
+    store_contents_relative = [
+        _relativize_path(path=key, prefix=array.store_path.path) for key in store_contents
+    ]
+    return tuple(
+        chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents_relative
+    )
 
 
 def _build_parents(
@@ -3786,7 +3804,11 @@ FiltersLike: TypeAlias = (
     | Literal["auto"]
     | None
 )
-CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec | None
+# Union of acceptable types for users to pass in for both v2 and v3 compressors
+CompressorLike: TypeAlias = (
+    dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec | Literal["auto"] | None
+)
+
 CompressorsLike: TypeAlias = (
     Iterable[dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec]
     | dict[str, JSON]

@@ -358,7 +358,11 @@ module = [
     "tests.package_with_entrypoint.*",
     "zarr.testing.stateful",
     "tests.test_codecs.test_transpose",
-    "tests.test_config"
+    "tests.test_config",
+    "tests.test_store.test_zip",
+    "tests.test_store.test_local",
+    "tests.test_store.test_fsspec",
+    "tests.test_store.test_memory",
 ]
 strict = false
 
@@ -368,7 +372,11 @@ strict = false
 module = [
     "tests.test_codecs.test_codecs",
     "tests.test_metadata.*",
-    "tests.test_store.*",
+    "tests.test_store.test_core",
+    "tests.test_store.test_logging",
+    "tests.test_store.test_object",
+    "tests.test_store.test_stateful",
+    "tests.test_store.test_wrapper",
     "tests.test_group",
     "tests.test_indexing",
     "tests.test_properties",
