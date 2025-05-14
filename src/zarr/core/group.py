@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import itertools
 import json
 import logging
@@ -42,6 +43,7 @@ from zarr.core.common import (
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
     ChunkCoords,
+    DimensionNames,
     NodeType,
     ShapeLike,
     ZarrFormat,
@@ -358,7 +360,13 @@ class GroupMetadata(Metadata):
                     d[f"{k}/{ZATTRS_JSON}"] = _replace_special_floats(attrs)
                     if "shape" in v:
                         # it's an array
-                        d[f"{k}/{ZARRAY_JSON}"] = _replace_special_floats(v)
+                        if isinstance(v.get("fill_value", None), np.void):
+                            v["fill_value"] = base64.standard_b64encode(
+                                cast(bytes, v["fill_value"])
+                            ).decode("ascii")
+                        else:
+                            v = _replace_special_floats(v)
+                        d[f"{k}/{ZARRAY_JSON}"] = v
                     else:
                         d[f"{k}/{ZGROUP_JSON}"] = {
                             "zarr_format": self.zarr_format,
@@ -999,7 +1007,7 @@ class AsyncGroup:
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
@@ -1744,6 +1752,10 @@ class AsyncGroup:
 
 @dataclass(frozen=True)
 class Group(SyncMixin):
+    """
+    A Zarr group.
+    """
+
     _async_group: AsyncGroup
 
     @classmethod
@@ -2370,7 +2382,7 @@ class Group(SyncMixin):
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
@@ -2764,7 +2776,7 @@ class Group(SyncMixin):
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
