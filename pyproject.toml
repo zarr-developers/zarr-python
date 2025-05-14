@@ -338,6 +338,7 @@ ignore = [
     "Q003",
     "COM812",
     "COM819",
+    "TC006",
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
