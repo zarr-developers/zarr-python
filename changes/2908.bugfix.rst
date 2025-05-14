@@ -1,1 +1,0 @@
-Restore functionality of `del z.attrs['key']` to actually delete the key.

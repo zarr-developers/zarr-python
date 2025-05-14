@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import zarr.codecs
+
 if TYPE_CHECKING:
     import pathlib
 
@@ -32,6 +34,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
+from zarr.core.buffer import NDArrayLike
 from zarr.errors import MetadataValidationError
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
@@ -244,7 +247,9 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
     z2 = zarr.open(store=tmp_path, mode="r")
     assert isinstance(z2, Array)
     assert z2.fill_value == 1
-    assert (z2[:] == 1).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert (result == 1).all()
     with pytest.raises(ValueError):
         z2[:] = 3
 
@@ -256,7 +261,9 @@ def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
     zarr.ones(store=tmp_path, shape=(3, 3))
     z2 = zarr.open(store=tmp_path, mode="r+")
     assert isinstance(z2, Array)
-    assert (z2[:] == 1).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert (result == 1).all()
     z2[:] = 3
 
 
@@ -272,7 +279,9 @@ async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
     arr[...] = 1
     z2 = zarr.open(store=tmp_path, mode="a")
     assert isinstance(z2, Array)
-    assert (z2[:] == 1).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert (result == 1).all()
     z2[:] = 3
 
 
@@ -284,7 +293,9 @@ def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
     arr[...] = 3
     z2 = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
     assert isinstance(z2, Array)
-    assert not (z2[:] == 3).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert not (result == 3).all()
     z2[:] = 3
 
 
@@ -317,13 +328,12 @@ def test_array_order(zarr_format: ZarrFormat) -> None:
 def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
     with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
         arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
-    expected = order or zarr.config.get("array.order")
-    assert arr.order == expected
+    assert arr.order == order
 
     vals = np.asarray(arr)
-    if expected == "C":
+    if order == "C":
         assert vals.flags.c_contiguous
-    elif expected == "F":
+    elif order == "F":
         assert vals.flags.f_contiguous
     else:
         raise AssertionError
@@ -1134,7 +1144,9 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     zarr.ones(store=store, shape=(3, 3))
     z2 = zarr.open_array(store=store, mode="r+")
     assert isinstance(z2, Array)
-    assert (z2[:] == 1).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert (result == 1).all()
     z2[:] = 3
 
 
@@ -1180,3 +1192,20 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
         # assert_array_equal doesn't check the type
         assert isinstance(result, type(src))
         cp.testing.assert_array_equal(result, src[:10, :10])
+
+
+def test_v2_without_compressor() -> None:
+    # Make sure it's possible to set no compressor for v2 arrays
+    arr = zarr.create(store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=None)
+    assert arr.compressors == ()
+
+
+def test_v2_with_v3_compressor() -> None:
+    # Check trying to create a v2 array with a v3 compressor fails
+    with pytest.raises(
+        ValueError,
+        match="Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. Use a numcodecs codec directly instead.",
+    ):
+        zarr.create(
+            store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=zarr.codecs.BloscCodec()
+        )

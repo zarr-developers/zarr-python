@@ -105,6 +105,10 @@ class NDArrayLike(Protocol):
         """
 
 
+ScalarType = int | float | complex | bytes | str | bool | np.generic
+NDArrayLikeOrScalar = ScalarType | NDArrayLike
+
+
 def check_item_key_is_1d_contiguous(key: Any) -> None:
     """Raises error if `key` isn't a 1d contiguous slice"""
     if not isinstance(key, slice):
@@ -139,7 +143,7 @@ class Buffer(ABC):
     def __init__(self, array_like: ArrayLike) -> None:
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
-        if array_like.dtype != np.dtype("b"):
+        if array_like.dtype != np.dtype("B"):
             raise ValueError("array_like: only byte dtype allowed")
         self._data = array_like
 
@@ -251,6 +255,19 @@ class Buffer(ABC):
         """
         ...
 
+    def as_buffer_like(self) -> BytesLike:
+        """Returns the buffer as an object that implements the Python buffer protocol.
+
+        Notes
+        -----
+        Might have to copy data, since the implementation uses `.as_numpy_array()`.
+
+        Returns
+        -------
+            An object that implements the Python buffer protocol
+        """
+        return memoryview(self.as_numpy_array())  # type: ignore[arg-type]
+
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
 
@@ -302,7 +319,7 @@ class NDBuffer:
     Notes
     -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
-    is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
+    is a special case of NDBuffer where dim=1, stride=1, and dtype="B". However,
     in order to use Python's type system to differentiate between the contiguous
     Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
     two classes separate.
@@ -418,6 +435,12 @@ class NDBuffer:
             NumPy array of this buffer (might be a data copy)
         """
         ...
+
+    def as_scalar(self) -> ScalarType:
+        """Returns the buffer as a scalar value"""
+        if self._data.size != 1:
+            raise ValueError("Buffer does not contain a single scalar value")
+        return cast(ScalarType, self.as_numpy_array()[()])
 
     @property
     def dtype(self) -> np.dtype[Any]:

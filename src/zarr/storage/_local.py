@@ -51,21 +51,23 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value.as_numpy_array().tobytes())
+            # write takes any object supporting the buffer protocol
+            f.write(value.as_buffer_like())
         return None
     else:
-        view = memoryview(value.as_numpy_array().tobytes())
+        view = value.as_buffer_like()
         if exclusive:
             mode = "xb"
         else:
             mode = "wb"
         with path.open(mode=mode) as f:
+            # write takes any object supporting the buffer protocol
             return f.write(view)
 
 
 class LocalStore(Store):
     """
-    Local file system store.
+    Store for the local file system.
 
     Parameters
     ----------

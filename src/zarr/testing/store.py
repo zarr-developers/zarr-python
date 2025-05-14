@@ -42,7 +42,7 @@ class StoreTests(Generic[S, B]):
     async def set(self, store: S, key: str, value: Buffer) -> None:
         """
         Insert a value into a storage backend, with a specific key.
-        This should not not use any store methods. Bypassing the store methods allows them to be
+        This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
         ...
@@ -51,14 +51,14 @@ class StoreTests(Generic[S, B]):
     async def get(self, store: S, key: str) -> Buffer:
         """
         Retrieve a value from a storage backend, by key.
-        This should not not use any store methods. Bypassing the store methods allows them to be
+        This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
         ...
 
     @abstractmethod
     @pytest.fixture
-    def store_kwargs(self) -> dict[str, Any]:
+    def store_kwargs(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Kwargs for instantiating a store"""
         ...
 
@@ -150,9 +150,15 @@ class StoreTests(Generic[S, B]):
             await store.delete("foo")
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
-    @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize(
-        "byte_range", [None, RangeByteRequest(1, 4), OffsetByteRequest(1), SuffixByteRequest(1)]
+        ("data", "byte_range"),
+        [
+            (b"\x01\x02\x03\x04", None),
+            (b"\x01\x02\x03\x04", RangeByteRequest(1, 4)),
+            (b"\x01\x02\x03\x04", OffsetByteRequest(1)),
+            (b"\x01\x02\x03\x04", SuffixByteRequest(1)),
+            (b"", None),
+        ],
     )
     async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRequest) -> None:
         """
@@ -272,16 +278,6 @@ class StoreTests(Generic[S, B]):
         await store._set_many(store_dict.items())
         for k, v in store_dict.items():
             assert (await self.get(store, k)).to_bytes() == v.to_bytes()
-
-    async def test_set_invalid_buffer(self, store: S) -> None:
-        """
-        Ensure that set raises a Type or Value Error for invalid buffer arguments.
-        """
-        with pytest.raises(
-            (ValueError, TypeError),
-            match=r"\S+\.set\(\): `value` must be a Buffer instance. Got an instance of <class 'int'> instead.",
-        ):
-            await store.set("c/0", 0)  # type: ignore[arg-type]
 
     @pytest.mark.parametrize(
         "key_ranges",

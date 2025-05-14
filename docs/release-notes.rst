@@ -3,6 +3,51 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.7 (2025-04-22)
+------------------
+
+Features
+~~~~~~~~
+
+- Add experimental ObjectStore storage class based on obstore. (:issue:`1661`)
+- Add ``zarr.from_array`` using concurrent streaming of source data (:issue:`2622`)
+
+
+Bugfixes
+~~~~~~~~
+
+- 0-dimensional arrays are now returning a scalar. Therefore, the return type of ``__getitem__`` changed
+  to NDArrayLikeOrScalar. This change is to make the behavior of 0-dimensional arrays consistent with
+  ``numpy`` scalars. (:issue:`2718`)
+- Fix `fill_value` serialization for `NaN` in `ArrayV2Metadata` and add property-based testing of round-trip serialization (:issue:`2802`)
+- Fixes `ConsolidatedMetadata` serialization of `nan`, `inf`, and `-inf` to be
+  consistent with the behavior of `ArrayMetadata`. (:issue:`2996`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Updated the 3.0 migration guide to include the removal of "." syntax for getting group members. (:issue:`2991`, :issue:`2997`)
+
+
+Misc
+~~~~
+- Define a new versioning policy based on Effective Effort Versioning. This replaces the old Semantic
+  Versioning-based policy. (:issue:`2924`, :issue:`2910`)
+- Make warning filters in the tests more specific, so warnings emitted by tests added in the future
+  are more likely to be caught instead of ignored. (:issue:`2714`)
+- Avoid an unnecessary memory copy when writing Zarr to a local file (:issue:`2944`)
+
+
+3.0.6 (2025-03-20)
+------------------
+
+Bugfixes
+~~~~~~~~
+
+- Restore functionality of `del z.attrs['key']` to actually delete the key. (:issue:`2908`)
+
+
 3.0.5 (2025-03-07)
 ------------------
 
@@ -135,6 +180,8 @@ Other
 
 3.0.1 (Jan. 17, 2025)
 ---------------------
+
+* Implement ``zarr.from_array`` using concurrent streaming (:issue:`2622`).
 
 Bug fixes
 ~~~~~~~~~
