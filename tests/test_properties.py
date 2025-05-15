@@ -13,7 +13,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given, settings, HealthCheck
+from hypothesis import HealthCheck, assume, given, settings
 
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
@@ -74,6 +74,7 @@ def deep_equal(a: Any, b: Any) -> bool:
         return all(deep_equal(x, y) for x, y in zip(a, b, strict=False))
 
     return a == b
+
 
 @settings(deadline=None)  # Increased from default 200ms to None
 @given(data=st.data(), zarr_format=zarr_formats)
@@ -148,8 +149,7 @@ def test_vindex(data: st.DataObject) -> None:
 
     indexer = data.draw(
         npst.integer_array_indices(
-            shape=nparray.shape,
-            result_shape=npst.array_shapes(min_side=1, max_dims=2, max_side=8)
+            shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=2, max_side=8)
         )
     )
     actual = zarray.vindex[indexer]
