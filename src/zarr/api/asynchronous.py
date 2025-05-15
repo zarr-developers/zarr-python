@@ -1019,11 +1019,6 @@ async def create(
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
     if read_only is not None:
         warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
-    if dimension_separator is not None and zarr_format == 3:
-        raise ValueError(
-            "dimension_separator is not supported for zarr format 3, use chunk_key_encoding instead"
-        )
-
     if order is not None:
         _warn_order_kwarg()
     if write_empty_chunks is not None:
