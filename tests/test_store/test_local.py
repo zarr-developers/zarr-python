@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 
 import numpy as np
 import pytest
@@ -104,5 +105,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert np.array_equal(array[...], data)
 
         store2 = await LocalStore.open(root=origin)
-        with pytest.raises(FileExistsError, match=f"Destination root {destination} already exists"):
+        with pytest.raises(
+            FileExistsError, match=re.escape(f"Destination root {destination} already exists")
+        ):
             await store2.move(destination)
