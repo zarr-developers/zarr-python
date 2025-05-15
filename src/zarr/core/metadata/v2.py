@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import warnings
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 import numcodecs.abc
 
@@ -41,6 +41,10 @@ class ArrayV2MetadataDict(TypedDict):
     attributes: dict[str, JSON]
 
 
+# Union of acceptable types for v2 compressors
+CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
+
+
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
@@ -50,7 +54,7 @@ class ArrayV2Metadata(Metadata):
     order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: numcodecs.abc.Codec | None = None
+    compressor: CompressorLikev2
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
@@ -63,7 +67,7 @@ class ArrayV2Metadata(Metadata):
         fill_value: Any,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
-        compressor: numcodecs.abc.Codec | dict[str, JSON] | None = None,
+        compressor: CompressorLikev2 = None,
         filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> None:

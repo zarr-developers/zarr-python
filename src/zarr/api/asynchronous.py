@@ -12,6 +12,7 @@ from typing_extensions import deprecated
 from zarr.core.array import (
     Array,
     AsyncArray,
+    CompressorLike,
     _get_default_chunk_encoding_v2,
     create_array,
     from_array,
@@ -844,7 +845,7 @@ async def create(
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
-    compressor: dict[str, JSON] | None = None,  # TODO: default and type change
+    compressor: CompressorLike = "auto",
     fill_value: Any | None = 0,  # TODO: need type
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
@@ -995,9 +996,9 @@ async def create(
         if chunks is None:
             chunks = shape
         default_filters, default_compressor = _get_default_chunk_encoding_v2(dtype_wrapped)
-        if filters is None:
+        if not filters:
             filters = default_filters  # type: ignore[assignment]
-        if compressor is None:
+        if compressor == "auto":
             compressor = default_compressor
     elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
         if chunks is not None:
