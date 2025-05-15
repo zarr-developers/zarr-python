@@ -115,6 +115,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
                 path=path,
                 store=store,
                 fill_value=fill_value,
+                # Chose bytes codec to avoid wasting time compressing the data being written
                 codecs=[BytesCodec()],
             )
         self.all_arrays.add(path)
