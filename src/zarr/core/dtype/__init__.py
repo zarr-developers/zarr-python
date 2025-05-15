@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Final, TypeAlias
 
 from zarr.core.dtype.common import DataTypeValidationError
 from zarr.core.dtype.npy.bool import Bool
@@ -64,19 +64,19 @@ __all__ = [
 data_type_registry = DataTypeRegistry()
 
 IntegerDType = Int8 | Int16 | Int32 | Int64 | UInt8 | UInt16 | UInt32 | UInt64
-INTEGER_DTYPE = Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+INTEGER_DTYPE: Final = Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
 
 FloatDType = Float16 | Float32 | Float64
-FLOAT_DTYPE = Float16, Float32, Float64
+FLOAT_DTYPE: Final = Float16, Float32, Float64
 
 ComplexFloatDType = Complex64 | Complex128
-COMPLEX_FLOAT_DTYPE = Complex64, Complex128
+COMPLEX_FLOAT_DTYPE: Final = Complex64, Complex128
 
 StringDType = FixedLengthUnicode | VariableLengthString | FixedLengthAscii
-STRING_DTYPE = FixedLengthUnicode, VariableLengthString, FixedLengthAscii
+STRING_DTYPE: Final = FixedLengthUnicode, VariableLengthString, FixedLengthAscii
 
 TimeDType = DateTime64 | TimeDelta64
-TIME_DTYPE = DateTime64, TimeDelta64
+TIME_DTYPE: Final = DateTime64, TimeDelta64
 
 AnyDType = (
     Bool
@@ -90,7 +90,7 @@ AnyDType = (
 )
 # mypy has trouble inferring the type of variablelengthstring dtype, because its class definition
 # depends on the installed numpy version. That's why the type: ignore statement is needed here.
-ANY_DTYPE: tuple[type[ZDType[TBaseDType, TBaseScalar]], ...] = (  # type: ignore[assignment]
+ANY_DTYPE: Final = (
     Bool,
     *INTEGER_DTYPE,
     *FLOAT_DTYPE,
@@ -101,10 +101,12 @@ ANY_DTYPE: tuple[type[ZDType[TBaseDType, TBaseScalar]], ...] = (  # type: ignore
     *TIME_DTYPE,
 )
 
-ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | dict[str, JSON]
+# This type models inputs that can be coerced to a ZDType
+ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | dict[str, JSON] | str
 
 for dtype in ANY_DTYPE:
-    data_type_registry.register(dtype._zarr_v3_name, dtype)
+    # mypy does not know that all the elements of ANY_DTYPE are subclasses of ZDType
+    data_type_registry.register(dtype._zarr_v3_name, dtype)  # type: ignore[arg-type]
 
 
 # TODO: find a better name for this function
