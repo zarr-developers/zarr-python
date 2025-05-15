@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
+import zarr.codecs
+
 if TYPE_CHECKING:
     import pathlib
 
@@ -1217,3 +1219,20 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
         # assert_array_equal doesn't check the type
         assert isinstance(result, type(src))
         cp.testing.assert_array_equal(result, src[:10, :10])
+
+
+def test_v2_without_compressor() -> None:
+    # Make sure it's possible to set no compressor for v2 arrays
+    arr = zarr.create(store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=None)
+    assert arr.compressors == ()
+
+
+def test_v2_with_v3_compressor() -> None:
+    # Check trying to create a v2 array with a v3 compressor fails
+    with pytest.raises(
+        ValueError,
+        match="Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. Use a numcodecs codec directly instead.",
+    ):
+        zarr.create(
+            store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=zarr.codecs.BloscCodec()
+        )
