@@ -1,4 +1,3 @@
-import dataclasses
 import json
 import numbers
 from typing import Any
@@ -209,8 +208,8 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
         zarray_dict = json.loads(buffer_dict[ZARR_JSON].to_bytes().decode())
         metadata_roundtripped = ArrayV3Metadata.from_dict(zarray_dict)
 
-    orig = dataclasses.asdict(metadata)
-    rt = dataclasses.asdict(metadata_roundtripped)
+    orig = metadata.to_dict()
+    rt = metadata_roundtripped.to_dict()
 
     assert deep_equal(orig, rt), f"Roundtrip mismatch:\nOriginal: {orig}\nRoundtripped: {rt}"
 
@@ -237,6 +236,29 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
 #     nparray = data.draw(np_arrays)
 #     zarray = data.draw(arrays(arrays=st.just(nparray)))
 #     assert_array_equal(nparray, zarray[:])
+
+
+def serialized_complex_float_is_valid(
+    serialized: tuple[numbers.Real | str, numbers.Real | str],
+) -> bool:
+    """
+    Validate that the serialized representation of a complex float conforms to the spec.
+
+    The specification requires that a serialized complex float must be either:
+      - A JSON number, or
+      - One of the strings "NaN", "Infinity", or "-Infinity".
+
+    Args:
+        serialized: The value produced by JSON serialization for a complex floating point number.
+
+    Returns:
+        bool: True if the serialized value is valid according to the spec, False otherwise.
+    """
+    return (
+        isinstance(serialized, tuple)
+        and len(serialized) == 2
+        and all(serialized_float_is_valid(x) for x in serialized)
+    )
 
 
 def serialized_float_is_valid(serialized: numbers.Real | str) -> bool:
@@ -294,11 +316,11 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["zarr_format"] == 3
 
     # version-agnostic validations
-    if meta.dtype.kind == "f":
+    dtype_native = meta.dtype.to_dtype()
+    if dtype_native.kind == "f":
         assert serialized_float_is_valid(asdict_dict["fill_value"])
-    elif meta.dtype.kind == "c":
+    elif dtype_native.kind == "c":
         # fill_value should be a two-element array [real, imag].
-        assert serialized_float_is_valid(asdict_dict["fill_value"].real)
-        assert serialized_float_is_valid(asdict_dict["fill_value"].imag)
-    elif meta.dtype.kind == "M" and np.isnat(meta.fill_value):
-        assert asdict_dict["fill_value"] == "NaT"
+        assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
+    elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
+        assert asdict_dict["fill_value"] == -9223372036854775808
