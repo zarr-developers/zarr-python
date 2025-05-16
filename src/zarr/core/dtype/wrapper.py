@@ -55,7 +55,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     Attributes
     ----------
     dtype_cls : ClassVar[type[TDType]]
-        The numpy dtype class. This is a class variable. Instances of this class cannot set it.
+        The wrapped dtype class. This is a class variable. Instances of this class cannot set it.
     _zarr_v3_name : ClassVar[str]
         The name given to the wrapped data type by a zarr v3 data type specification. Note that this
         is not necessarily the same name that will appear in metadata documents, as some data types
