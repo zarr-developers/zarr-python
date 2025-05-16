@@ -310,7 +310,7 @@ extend-select = [
     "RUF",
     "SIM",  # flake8-simplify
     "SLOT", # flake8-slots
-    "TCH",  # flake8-type-checking
+    "TC",  # flake8-type-checking
     "TRY",  # tryceratops
     "UP",   # pyupgrade
     "W",    # pycodestyle warnings
@@ -338,6 +338,7 @@ ignore = [
     "Q003",
     "COM812",
     "COM819",
+    "TC006",
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
