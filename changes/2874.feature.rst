@@ -1,2 +1,9 @@
-Adds zarr-specific data type classes. This replaces the direct use of numpy data types for zarr
-v2 and a fixed set of string enums for zarr v3. For more on this new feature, see the `documentation </user-guide/data_types.html>`_
+Adds zarr-specific data type classes. This replaces the internal use of numpy data types for zarr
+v2 and a fixed set of string enums for zarr v3. This change is largely internal, but it does
+change the type of the ``dtype`` and ``data_type`` fields on the ``ArrayV2Metadata`` and
+``ArrayV3Metadata`` classes. It also changes the JSON metadata representation of the
+variable-length string data type, but the old metadata representation can still be
+used when reading arrays. The logic for automatically choosing the chunk encoding for a given data
+type has also changed, and this necessitated changes to the ``config`` API.
+
+For more on this new feature, see the `documentation </user-guide/data_types.html>`_
