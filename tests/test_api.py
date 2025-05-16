@@ -1278,7 +1278,7 @@ def test_no_overwrite_group(tmp_path: Path, create_function: Callable, overwrite
         assert existing_fpath.exists()
 
 
-@pytest.mark.parametrize("open_func", [open, open_group])
+@pytest.mark.parametrize("open_func", [zarr.open, open_group])
 @pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
 def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> None:  # type:ignore[type-arg]
     store = zarr.storage.LocalStore(tmp_path)
