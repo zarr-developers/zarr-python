@@ -18,6 +18,7 @@ from packaging.version import Version
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
 from zarr import Array, AsyncArray, Group
+from zarr.abc.codec import BytesBytesCodec
 from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
@@ -49,10 +50,12 @@ from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
+from zarr.registry import register_codec
 from zarr.storage import LocalStore, MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
+from zarr.core.array_spec import ArraySpec
 from zarr.core.metadata.v2 import ArrayV2Metadata
 
 
@@ -1327,24 +1330,90 @@ class TestCreateArray:
                 filters="nonexistent_filter_name",
             )
 
-        # string representation of a codec is only supported if codec has no required arguments
-        msg = "Delta.__init__() missing 1 required positional argument: 'dtype'"
-        with pytest.raises(TypeError, match=re.escape(msg)):
-            await create_array(
-                store=store,
-                dtype="uint8",
-                shape=(10,),
-                zarr_format=2,
-                filters="delta",
-            )
-        msg = "TransposeCodec.__init__() missing 1 required keyword-only argument: 'order'"
-        with pytest.raises(TypeError, match=re.escape(msg)):
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("argument_key", "codec"),
+        [
+            ("filters", "bytes"),
+            ("filters", "gzip"),
+            ("serializer", "blosc"),
+            ("compressors", "bytes"),
+        ],
+    )
+    async def test_chunk_encoding_wrong_type(argument_key, codec, store: MemoryStore) -> None:
+        """
+        Test that passing an invalid codec to create_array raises an error.
+        """
+        msg = "Expected a representation of a .*Codec; got a representation of a <class 'zarr.codecs.*Codec'> instead"
+        with pytest.raises(TypeError, match=msg):
             await create_array(
                 store=store,
                 dtype="uint8",
                 shape=(10,),
                 zarr_format=3,
-                filters="transpose",
+                **{argument_key: codec},
+            )
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("argument_key", "codec", "codec_cls_name", "zarr_format"),
+        [
+            ("filters", "delta", "Delta", 2),
+            ("filters", ("delta",), "Delta", 2),
+            ("filters", "transpose", "TransposeCodec", 3),
+            ("filters", ("transpose",), "TransposeCodec", 3),
+            ("serializer", "sharding_indexed", "ShardingCodec", 3),
+            ("compressors", "mock_compressor_v3", "MockCompressorRequiresConfig3", 3),
+            ("compressors", ("mock_compressor_v3",), "MockCompressorRequiresConfig3", 3),
+            ("compressors", "mock_compressor_v2", "MockCompressorRequiresConfig2", 2),
+        ],
+    )
+    async def test_chunk_encoding_missing_arguments(
+        store: MemoryStore, argument_key, codec, codec_cls_name, zarr_format
+    ) -> None:
+        codec_key = codec if not isinstance(codec, tuple) else codec[0]
+        argument_key_single = argument_key.removesuffix("s")
+        error_msg = (
+            f'A string representation for {argument_key_single} "{codec_key}" was provided which specifies codec {codec_cls_name}. But that codec '
+            f"cannot be specified by a string because it takes a required configuration. Use either the dict "
+            f"representation of {codec_key} codec, or pass in a concrete {codec_cls_name} instance instead"
+        )
+        if codec == "mock_compressor_v3":
+
+            class MockCompressorRequiresConfig3(BytesBytesCodec):
+                def compute_encoded_size(
+                    self, input_byte_length: int, chunk_spec: ArraySpec
+                ) -> int:
+                    pass
+
+                def __init__(self, *, argument: str) -> None:
+                    super().__init__()
+
+            register_codec("mock_compressor_v3", MockCompressorRequiresConfig3)
+        elif codec == "mock_compressor_v2":
+
+            class MockCompressorRequiresConfig2(numcodecs.abc.Codec):
+                def __init__(self, *, argument: str) -> None:
+                    super().__init__()
+
+                def encode(self: Any, buf) -> Any:
+                    pass
+
+                def decode(self, buf: Any, out=None) -> Any:
+                    pass
+
+            numcodecs.register_codec(
+                MockCompressorRequiresConfig2,
+                "mock_compressor_v2",
+            )
+        # string representation of a codec is only supported if codec has no required arguments
+        with pytest.raises(TypeError, match=re.escape(error_msg)):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=zarr_format,
+                **{argument_key: codec},
             )
 
     @staticmethod

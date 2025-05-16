@@ -175,16 +175,23 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | str | Codec) -> BytesBytesC
     from zarr.abc.codec import BytesBytesCodec
 
     if isinstance(data, str):
-        data = {"name": data, "configuration": {}}
-    if isinstance(data, dict):
+        try:
+            result = _resolve_codec({"name": data, "configuration": {}})
+        except TypeError as e:
+            codec_cls = get_codec_class(data)
+            msg = (
+                f'A string representation for compressor "{data}" was provided which specifies codec {codec_cls.__name__}. '
+                f"But that codec cannot be specified by a string because it takes a required configuration. Use either "
+                f"the dict representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
-        if not isinstance(result, BytesBytesCodec):
-            msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
     else:
-        if not isinstance(data, BytesBytesCodec):
-            raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, BytesBytesCodec):
+        msg = f"Expected a representation of a BytesBytesCodec; got a representation of a {type(result)} instead."
+        raise TypeError(msg)
     return result
 
 
@@ -197,16 +204,23 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | str | Codec) -> ArrayBytesC
     from zarr.abc.codec import ArrayBytesCodec
 
     if isinstance(data, str):
-        data = {"name": data, "configuration": {}}
-    if isinstance(data, dict):
+        try:
+            result = _resolve_codec({"name": data, "configuration": {}})
+        except TypeError as e:
+            codec_cls = get_codec_class(data)
+            msg = (
+                f'A string representation for serializer "{data}" was provided which specifies codec {codec_cls.__name__}. '
+                f"But that codec cannot be specified by a string because it takes a required configuration. Use either "
+                f"the dict representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
-        if not isinstance(result, ArrayBytesCodec):
-            msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
     else:
-        if not isinstance(data, ArrayBytesCodec):
-            raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, ArrayBytesCodec):
+        msg = f"Expected a representation of a ArrayBytesCodec; got a representation of a {type(result)} instead."
+        raise TypeError(msg)
     return result
 
 
@@ -218,17 +232,25 @@ def _parse_array_array_codec(data: dict[str, JSON] | str | Codec) -> ArrayArrayC
     """
     from zarr.abc.codec import ArrayArrayCodec
 
+    result: ArrayArrayCodec
     if isinstance(data, str):
-        data = {"name": data, "configuration": {}}
-    if isinstance(data, dict):
+        try:
+            result = _resolve_codec({"name": data, "configuration": {}})
+        except TypeError as e:
+            codec_cls = get_codec_class(data)
+            msg = (
+                f'A string representation for filter "{data}" was provided which specifies codec {codec_cls.__name__}. '
+                f"But that codec cannot be specified by a string because it takes a required configuration. Use either "
+                f"the dict representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
-        if not isinstance(result, ArrayArrayCodec):
-            msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
     else:
-        if not isinstance(data, ArrayArrayCodec):
-            raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, ArrayArrayCodec):
+        msg = f"Expected a representation of a ArrayArrayCodec; got a representation of a {type(result)} instead."
+        raise TypeError(msg)
     return result
 
 

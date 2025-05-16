@@ -254,7 +254,16 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
     if data is None:
         return data
     if isinstance(data, str):
-        return (numcodecs.get_codec({"id": data}),)
+        try:
+            return (numcodecs.get_codec({"id": data}),)
+        except TypeError as e:
+            codec_cls = numcodecs.registry.codec_registry.get(data)
+            msg = (
+                f'A string representation for filter "{data}" was provided which specifies codec {codec_cls.__name__}. But that codec '
+                f"cannot be specified by a string because it takes a required configuration. Use either the dict "
+                f"representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
     if isinstance(data, Iterable):
         for idx, val in enumerate(data):
             if isinstance(val, numcodecs.abc.Codec):
@@ -262,7 +271,7 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
             elif isinstance(val, dict):
                 out.append(numcodecs.get_codec(val))
             elif isinstance(val, str):
-                out.append(numcodecs.get_codec({"id": val}))
+                out.append(parse_filters(val)[0])
             else:
                 msg = f"For Zarr format 2 arrays, all elements of `filters` must be a numcodecs.abc.Codec or a dict or str representation of numcodecs.abc.Codec. Got {type(val)} at index {idx} instead."
                 raise TypeError(msg)
@@ -287,7 +296,16 @@ def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
     if isinstance(data, dict):
         return numcodecs.get_codec(data)
     if isinstance(data, str):
-        return numcodecs.get_codec({"id": data})
+        try:
+            return numcodecs.get_codec({"id": data})
+        except TypeError as e:
+            codec_cls = numcodecs.registry.codec_registry.get(data)
+            msg = (
+                f'A string representation for compressor "{data}" was provided which specifies codec {codec_cls.__name__}. But that codec '
+                f"cannot be specified by a string because it takes a required configuration. Use either the dict "
+                f"representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
     msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Expected None, a numcodecs.abc.Codec, or a dict or str representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 
