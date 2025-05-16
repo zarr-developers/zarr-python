@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 
-class BaseZarrError(ValueError):
+class BaseZarrError(Exception):
     """
     Base error which all zarr errors are sub-classed from.
     """
@@ -19,6 +19,14 @@ class BaseZarrError(ValueError):
 
     def __init__(self, *args: Any) -> None:
         super().__init__(self._msg.format(*args))
+
+
+class GroupNotFoundError(BaseZarrError, FileNotFoundError):
+    """
+    Raised when a group isn't found at a certain path.
+    """
+
+    _msg = "No group found in store {!r} at path {!r}"
 
 
 class ContainsGroupError(BaseZarrError):
