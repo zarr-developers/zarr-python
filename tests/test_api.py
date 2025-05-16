@@ -4,6 +4,7 @@ import re
 from typing import TYPE_CHECKING
 
 import zarr.codecs
+import zarr.storage
 
 if TYPE_CHECKING:
     import pathlib
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 
+import contextlib
 import warnings
 from typing import Literal
 
@@ -27,6 +29,7 @@ from zarr.api.synchronous import (
     create,
     create_array,
     create_group,
+    from_array,
     group,
     load,
     open_group,
@@ -41,6 +44,7 @@ from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 
@@ -1240,11 +1244,60 @@ def test_v2_with_v3_compressor() -> None:
         )
 
 
-def test_create_no_delete_file(tmp_path: Path) -> None:
-    with open(tmp_path / "file.txt", "w") as f:
-        f.write("abc")
+def add_empty_file(path: Path) -> Path:
+    fpath = path / "a.txt"
+    fpath.touch()
+    return fpath
 
-    with pytest.raises(NotImplementedError, match="loading groups not yet supported"):
-        zarr.load("./tmp")
-    # Even though above fails, it shouldn't delete existing file
-    assert (tmp_path / "file.txt").exists()
+
+@pytest.mark.parametrize("create_function", [create_array, from_array])
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_no_overwrite_array(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type:ignore[type-arg]
+    store = zarr.storage.LocalStore(tmp_path)
+    existing_fpath = add_empty_file(tmp_path)
+
+    assert existing_fpath.exists()
+    create_function(store=store, data=np.ones(shape=(1,)), overwrite=overwrite)
+    if overwrite:
+        assert not existing_fpath.exists()
+    else:
+        assert existing_fpath.exists()
+
+
+@pytest.mark.parametrize("create_function", [create_group, group])
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_no_overwrite_group(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type:ignore[type-arg]
+    store = zarr.storage.LocalStore(tmp_path)
+    existing_fpath = add_empty_file(tmp_path)
+
+    assert existing_fpath.exists()
+    create_function(store=store, overwrite=overwrite)
+    if overwrite:
+        assert not existing_fpath.exists()
+    else:
+        assert existing_fpath.exists()
+
+
+@pytest.mark.parametrize("open_func", [open, open_group])
+@pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
+def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> None:  # type:ignore[type-arg]
+    store = zarr.storage.LocalStore(tmp_path)
+    existing_fpath = add_empty_file(tmp_path)
+
+    assert existing_fpath.exists()
+    with contextlib.suppress(FileExistsError, FileNotFoundError):
+        open_func(store=store, mode=mode)
+    if mode == "w":
+        assert not existing_fpath.exists()
+    else:
+        assert existing_fpath.exists()
+
+
+def test_no_overwrite_load(tmp_path: Path) -> None:
+    store = zarr.storage.LocalStore(tmp_path)
+    existing_fpath = add_empty_file(tmp_path)
+
+    assert existing_fpath.exists()
+    with contextlib.suppress(NotImplementedError):
+        zarr.load(store)
+    assert existing_fpath.exists()
