@@ -1155,8 +1155,11 @@ class AsyncGroup:
         # create_dataset in zarr 2.x requires shape but not dtype if data is
         # provided. Allow this configuration by inferring dtype from data if
         # necessary and passing it to create_array
-        if "dtype" not in kwargs and data is not None:
-            kwargs["dtype"] = data.dtype
+        if "dtype" not in kwargs:
+            if data is not None:
+                kwargs["dtype"] = data.dtype
+            else:
+                raise ValueError("dtype must be provided if data is None")
         array = await self.create_array(name, shape=shape, **kwargs)
         if data is not None:
             await array.setitem(slice(None), data)
@@ -2544,12 +2547,17 @@ class Group(SyncMixin):
         ----------
         name : str
             Array name.
-        **kwargs :
-            See :func:`zarr.Group.create_dataset`.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : str or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
 
         Returns
         -------
-        a : Array
+        a : AsyncArray
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
@@ -2562,12 +2570,17 @@ class Group(SyncMixin):
         ----------
         name : str
             Array name.
-        **kwargs :
-            See :func:`zarr.Group.create_array`.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : str or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
 
         Returns
         -------
-        a : Array
+        a : AsyncArray
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
