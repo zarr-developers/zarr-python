@@ -18,8 +18,7 @@ from zarr.api.asynchronous import (
     open_consolidated,
 )
 from zarr.core.buffer import cpu, default_buffer_prototype
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata
-from zarr.core.metadata import ArrayV3Metadata
+from zarr.core.metadata import ArrayV3Metadata, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.storage import StorePath
 

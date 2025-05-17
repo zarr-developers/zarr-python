@@ -99,6 +99,7 @@ from zarr.core.metadata import (
     ArrayV2MetadataDict,
     ArrayV3Metadata,
     ArrayV3MetadataDict,
+    GroupMetadata,
     T_ArrayMetadata,
 )
 from zarr.core.metadata.v2 import (
@@ -3752,7 +3753,7 @@ async def chunks_initialized(
 def _build_parents(
     node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
 ) -> list[AsyncGroup]:
-    from zarr.core.group import AsyncGroup, GroupMetadata
+    from zarr.core.group import AsyncGroup
 
     store = node.store_path.store
     path = node.store_path.path
