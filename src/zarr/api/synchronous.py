@@ -858,6 +858,7 @@ def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
+        If `True`, all existing paths in the store will be deleted.
     config : ArrayConfigLike, optional
         Runtime configuration for the array.
     write_data : bool
