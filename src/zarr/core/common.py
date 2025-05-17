@@ -99,7 +99,7 @@ def parse_name(data: JSON, expected: str | None = None) -> str:
 def parse_configuration(data: JSON) -> JSON:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
-    return data
+    return data.copy()
 
 
 @overload
@@ -115,19 +115,31 @@ def parse_named_configuration(
 
 
 def parse_named_configuration(
-    data: JSON, expected_name: str | None = None, *, require_configuration: bool = True
+    data: JSON,
+    expected_name: str | None = None,
+    *,
+    require_configuration: bool = True,
 ) -> tuple[str, JSON | None]:
-    if not isinstance(data, dict):
+    if isinstance(data, str):
+        data = {"name": data}
+    elif not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
+
+    _data = data.copy()
     if "name" not in data:
         raise ValueError(f"Named configuration does not have a 'name' key. Got {data}.")
-    name_parsed = parse_name(data["name"], expected_name)
-    if "configuration" in data:
-        configuration_parsed = parse_configuration(data["configuration"])
+    name_parsed = parse_name(_data.pop("name"), expected_name)
+
+    if "configuration" in _data:
+        configuration_parsed = parse_configuration(_data.pop("configuration"))
     elif require_configuration:
-        raise ValueError(f"Named configuration does not have a 'configuration' key. Got {data}.")
+        raise ValueError(
+            f"Named configuration with name='{name_parsed}' requires a 'configuration' key. Got keys {list(data.keys())}."
+        )
     else:
         configuration_parsed = None
+
+    reject_must_understand_metadata(_data, "named configuration")
     return name_parsed, configuration_parsed
 
 
@@ -203,3 +215,10 @@ def _warn_order_kwarg() -> None:
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_version"""
     return cast(ZarrFormat, int(zarr_config.get("default_zarr_format", 3)))
+
+
+def reject_must_understand_metadata(data: dict[str, Any] | None, dict_name: str) -> None:
+    if data and not all(
+        isinstance(value, dict) and value.get("must_understand") is False for value in data.values()
+    ):
+        raise ValueError(f"Unexpected {dict_name} keys: {list(data.keys())}")

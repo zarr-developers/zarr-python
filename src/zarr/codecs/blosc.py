@@ -12,7 +12,12 @@ from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_enum, parse_named_configuration
+from zarr.core.common import (
+    JSON,
+    parse_enum,
+    parse_named_configuration,
+    reject_must_understand_metadata,
+)
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -102,7 +107,10 @@ class BloscCodec(BytesBytesCodec):
         clevel: int = 5,
         shuffle: BloscShuffle | str | None = None,
         blocksize: int = 0,
+        **kwargs: JSON,
     ) -> None:
+        reject_must_understand_metadata(kwargs, "`blosc` codec configuration")
+
         typesize_parsed = parse_typesize(typesize) if typesize is not None else None
         cname_parsed = parse_enum(cname, BloscCname)
         clevel_parsed = parse_clevel(clevel)

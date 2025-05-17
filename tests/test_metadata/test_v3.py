@@ -382,7 +382,7 @@ async def test_special_float_fill_values(fill_value: str) -> None:
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
         "data_type": "float64",
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": [{"name": "bytes"}],
+        "codecs": [{"name": "bytes", "configuration": {"endian": "little"}}],
         "fill_value": fill_value,  # this is not a valid fill value for uint8
     }
     m = ArrayV3Metadata.from_dict(metadata_dict)
@@ -411,3 +411,234 @@ def test_dtypes(dtype_str: str) -> None:
     else:
         # return type for vlen types may vary depending on numpy version
         assert dt.byte_count is None
+
+
+def default_metadata_dict(**kwargs: JSON) -> dict[str, JSON]:
+    d = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": "bool",
+        "chunk_key_encoding": {"name": "default", "separator": "."},
+        "codecs": [{"name": "bytes"}],
+        "fill_value": 0,
+    }
+    d.update(kwargs)
+    return d
+
+
+@pytest.mark.parametrize(
+    ("metadata_dict", "is_valid", "fail_msg"),
+    [
+        (default_metadata_dict(), True, ""),
+        (
+            default_metadata_dict(unknown="value"),
+            False,
+            "Unexpected zarr metadata keys: ['unknown']",
+        ),
+        (default_metadata_dict(unknown={"name": "value", "must_understand": False}), True, ""),
+        (
+            default_metadata_dict(codecs=[{"name": "bytes", "unknown": {}, "configuration": {}}]),
+            False,
+            "Unexpected named configuration keys: ['unknown']",
+        ),
+        (
+            default_metadata_dict(
+                codecs=[
+                    {"name": "bytes", "configuration": {}, "unknown": {"must_understand": False}}
+                ]
+            ),
+            True,
+            "",
+        ),
+        (
+            default_metadata_dict(data_type={"name": "int8", "value": {"must_understand": False}}),
+            True,
+            "",
+        ),
+        (
+            default_metadata_dict(
+                chunk_key_encoding={
+                    "name": "default",
+                    "configuration": {"unknown": {"name": "value", "must_understand": False}},
+                }
+            ),
+            True,
+            "",
+        ),
+        (
+            default_metadata_dict(
+                chunk_key_encoding={"name": "default", "configuration": {"unknown": "value"}}
+            ),
+            False,
+            "Unexpected chunk key encoding configuration keys: ['unknown']",
+        ),
+        (default_metadata_dict(chunk_key_encoding="default"), True, ""),
+        (default_metadata_dict(chunk_key_encoding="invalid"), False, ""),
+        (
+            default_metadata_dict(
+                chunk_grid={"name": "regular", "configuration": {"chunk_shape": [2]}}
+            ),
+            True,
+            "",
+        ),
+        (
+            default_metadata_dict(
+                chunk_grid={
+                    "name": "regular",
+                    "configuration": {"chunk_shape": [2], "unknown": "value"},
+                }
+            ),
+            False,
+            "Unexpected chunk grid configuration keys: ['unknown']",
+        ),
+        (
+            default_metadata_dict(
+                chunk_grid={
+                    "name": "regular",
+                    "configuration": {
+                        "chunk_shape": [2],
+                        "unknown": {"name": "value", "must_understand": False},
+                    },
+                }
+            ),
+            True,
+            "",
+        ),
+    ],
+)
+def test_fail_on_invalid_metadata_key(
+    metadata_dict: dict[str, JSON], is_valid: bool, fail_msg: str
+) -> None:
+    if is_valid:
+        ArrayV3Metadata.from_dict(metadata_dict)
+    else:
+        with pytest.raises(ValueError, match=re.escape(fail_msg)):
+            ArrayV3Metadata.from_dict(metadata_dict)
+
+
+@pytest.mark.parametrize(
+    "codecs",
+    [
+        [{"name": "bytes", "configuration": {}}],
+        [{"name": "transpose", "configuration": {"order": (0,)}}, "bytes"],
+        [
+            "bytes",
+            {
+                "name": "blosc",
+                "configuration": {
+                    "cname": "lz4",
+                    "clevel": 1,
+                    "shuffle": "shuffle",
+                    "typesize": 4,
+                    "blocksize": 0,
+                },
+            },
+        ],
+        ["bytes", {"name": "gzip", "configuration": {"level": 1}}],
+        ["bytes", {"name": "zstd", "configuration": {"level": 1}}],
+        ["bytes", {"name": "crc32c", "configuration": {}}],
+        [{"name": "sharding_indexed", "configuration": {"chunk_shape": (1,)}}],
+        [{"name": "vlen-utf8", "configuration": {}}],
+        [{"name": "vlen-bytes", "configuration": {}}],
+    ],
+)
+def test_codecs_fail_on_invalid_key(codecs) -> None:
+    ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+
+    for codec in codecs:
+        if codec != "bytes":
+            codec["configuration"]["unknown"] = "value"
+    with pytest.raises(ValueError):
+        ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+    # accepts invalid key with must_understand=false
+    for codec in codecs:
+        if codec != "bytes":
+            codec["configuration"]["unknown"] = {"must_understand": False}
+    ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+
+
+def test_specify_codecs_with_strings() -> None:
+    expected = ArrayV3Metadata.from_dict(
+        default_metadata_dict(data_type="bool", codecs=[{"name": "bytes"}])
+    )
+    result1 = ArrayV3Metadata.from_dict(default_metadata_dict(data_type="bool", codecs=["bytes"]))
+    assert result1.codecs == expected.codecs
+    result2 = ArrayV3Metadata.from_dict(default_metadata_dict(data_type="bool", codecs="bytes"))
+    assert result2.codecs == expected.codecs
+    with pytest.raises(
+        ValueError,
+        match=re.escape(
+            "Named configuration with name='transpose' requires a 'configuration' key. Got keys ['name']."
+        ),
+    ):
+        ArrayV3Metadata.from_dict(default_metadata_dict(codecs="transpose"))
+
+
+@pytest.mark.parametrize(
+    ("codecs", "insufficient_configuration"),
+    [
+        (["bytes"], False),
+        (["transpose", "bytes"], True),
+        ([{"name": "transpose", "configuration": {"order": (0,)}}, "bytes"], False),
+        (["bytes", "blosc"], True),
+        (["bytes", "gzip"], True),
+        (["bytes", {"name": "gzip", "configuration": {"level": 1}}], False),
+        (["bytes", "zstd"], True),
+        (["bytes", "crc32c"], False),
+        (["sharding_indexed"], True),
+        (["vlen-utf8"], False),
+        (["vlen-bytes"], False),
+    ],
+)
+def test_accept_codecs_as_strings(codecs, insufficient_configuration) -> None:
+    if insufficient_configuration:
+        with pytest.raises(
+            ValueError,
+            match="Named\\ configuration\\ with\\ name='(.)*'\\ requires\\ a\\ 'configuration'\\ key\\.\\ Got\\ keys\\ \\['name'\\]\\.",
+        ):
+            ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+    else:
+        ArrayV3Metadata.from_dict(default_metadata_dict(codecs=codecs))
+
+
+def test_bytes_codec_requires_endian() -> None:
+    raise_msg = "The `endian` configuration needs to be specified for multi-byte data types."
+    bytes_codec_no_conf = [{"name": "bytes"}]
+    with pytest.raises(ValueError, match=raise_msg):
+        ArrayV3Metadata.from_dict(
+            default_metadata_dict(data_type="int16", codecs=bytes_codec_no_conf)
+        )
+    # no error for single-byte data types
+    ArrayV3Metadata.from_dict(default_metadata_dict(data_type="int8", codecs=bytes_codec_no_conf))
+
+    bytes_codec_empty_conf = [{"name": "bytes", "configuration": {}}]
+    with pytest.raises(ValueError, match=raise_msg):
+        ArrayV3Metadata.from_dict(
+            default_metadata_dict(data_type="int16", codecs=bytes_codec_empty_conf)
+        )
+    bytes_codec_with_endian = [{"name": "bytes", "configuration": {"endian": "little"}}]
+    ArrayV3Metadata.from_dict(
+        default_metadata_dict(data_type="int16", codecs=bytes_codec_with_endian)
+    )
+    sharding_codec_with_endian = [
+        {
+            "name": "sharding_indexed",
+            "configuration": {"chunk_shape": (1,), "codecs": bytes_codec_with_endian},
+        }
+    ]
+    ArrayV3Metadata.from_dict(
+        default_metadata_dict(data_type="int16", codecs=sharding_codec_with_endian)
+    )
+    sharding_codec_no_endian = [
+        {"name": "sharding_indexed", "configuration": {"chunk_shape": (1,)}}
+    ]
+    with pytest.raises(ValueError, match=raise_msg):
+        ArrayV3Metadata.from_dict(
+            default_metadata_dict(data_type="int16", codecs=sharding_codec_no_endian)
+        )
+    # no error for single-byte data types
+    ArrayV3Metadata.from_dict(
+        default_metadata_dict(data_type="int8", codecs=sharding_codec_no_endian)
+    )

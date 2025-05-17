@@ -1,0 +1,2 @@
+If metadata JSON contains invalid keys, or if a value object contains invalid keys, the zarr array will be rejected unless it contains the key-value-pair ``"must_understand": false``.
+New codecs are required to validate their metadata and raise an error if it is invalid.
