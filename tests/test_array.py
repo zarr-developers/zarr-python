@@ -211,7 +211,15 @@ def test_array_v3_fill_value_default(
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize(
     ("dtype_str", "fill_value"),
-    [("bool", True), ("uint8", 99), ("float32", -99.9), ("complex64", 3 + 4j)],
+    [
+        ("bool", True),
+        ("uint8", 99),
+        ("float32", -99.9),
+        ("complex64", 3 + 4j),
+        ("m8[ns]", 0),
+        ("M8[s]", None),
+        ("<m8[D]", "NaT"),
+    ],
 )
 def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str) -> None:
     shape = (10,)
@@ -223,9 +231,13 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
         chunks=shape,
         fill_value=fill_value,
     )
-
-    assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
+    if np.isfinite(arr.fill_value):
+        assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
+    else:
+        if arr.dtype.kind in "Mm":
+            assert np.isnat(arr.fill_value)
+            assert np.isnat(np.dtype(dtype_str).type(fill_value))
 
 
 async def test_create_deprecated() -> None:
