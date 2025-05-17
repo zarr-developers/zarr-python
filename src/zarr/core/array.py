@@ -877,6 +877,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
         """
         Async method to open an existing Zarr array from a given store.
@@ -887,6 +888,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The store containing the Zarr array.
         zarr_format : ZarrFormat | None, optional
             The Zarr format version (default is 3).
+        config : ArrayConfigLike, optional
+            Runtime configuration for the array.
 
         Returns
         -------
@@ -904,7 +907,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast(ArrayV3MetadataDict, metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        return cls(store_path=store_path, metadata=_metadata_dict, config=config)
 
     @property
     def store(self) -> Store:
