@@ -171,7 +171,7 @@ def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=2)
     msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store}. Zarr v3 will be used."
     with pytest.warns(UserWarning, match=re.escape(msg)):
-        zarr.open(store=store, mode="r")
+        zarr.open(store=store)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
