@@ -295,7 +295,11 @@ class ArrayV3Metadata(Metadata):
         data_type = get_data_type_from_json(data_type_json, zarr_format=3)
 
         # check that the fill value is consistent with the data type
-        fill_value_parsed = data_type.from_json_value(_data.pop("fill_value"), zarr_format=3)
+        try:
+            fill = _data.pop("fill_value")
+            fill_value_parsed = data_type.from_json_value(fill, zarr_format=3)
+        except ValueError as e:
+            raise TypeError(f"Invalid fill_value: {fill!r}") from e
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)

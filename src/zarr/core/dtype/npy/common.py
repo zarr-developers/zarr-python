@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import struct
 import sys
 from collections.abc import Sequence
 from typing import (
@@ -18,7 +19,7 @@ from typing import (
 
 import numpy as np
 
-from zarr.core.dtype.common import Endianness, JSONFloat
+from zarr.core.dtype.common import SPECIAL_FLOAT_STRINGS, Endianness, JSONFloatV2, JSONFloatV3
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -112,7 +113,7 @@ def endianness_to_numpy_str(endianness: Endianness | None) -> EndiannessNumpy:
     )
 
 
-def float_from_json_v2(data: JSONFloat) -> float:
+def float_from_json_v2(data: JSONFloatV2) -> float:
     """
     Convert a JSON float to a float (Zarr v2).
 
@@ -137,7 +138,7 @@ def float_from_json_v2(data: JSONFloat) -> float:
             return float(data)
 
 
-def float_from_json_v3(data: JSONFloat) -> float:
+def float_from_json_v3(data: JSONFloatV3) -> float:
     """
     Convert a JSON float to a float (v3).
 
@@ -150,31 +151,35 @@ def float_from_json_v3(data: JSONFloat) -> float:
     -------
     float
         The float value.
+
+    Notes
+    -----
+    Zarr V3 allows floats to be stored as hex strings. To quote the spec:
+       "...for float32, "NaN" is equivalent to "0x7fc00000".
+       This representation is the only way to specify a NaN value other than the specific NaN value
+       denoted by "NaN"."
     """
-    # todo: support the v3-specific NaN handling
+
+    if isinstance(data, str):
+        if data in SPECIAL_FLOAT_STRINGS:
+            return float_from_json_v2(data)  # type: ignore[arg-type]
+        if not data.startswith("0x"):
+            msg = (
+                f"Invalid float value: {data!r}. Expected a string starting with the hex prefix"
+                " '0x', or one of 'NaN', 'Infinity', or '-Infinity'."
+            )
+            raise ValueError(msg)
+        if len(data[2:]) == 4:
+            dtype_code = ">e"
+        elif len(data[2:]) == 8:
+            dtype_code = ">f"
+        elif len(data[2:]) == 16:
+            dtype_code = ">d"
+        else:
+            msg = f"Invalid float value: {data!r}. Expected a string of length 4, 8, or 16."
+            raise ValueError(msg)
+        return float(struct.unpack(dtype_code, bytes.fromhex(data[2:]))[0])
     return float_from_json_v2(data)
-
-
-def float_from_json(data: JSONFloat, *, zarr_format: ZarrFormat) -> float:
-    """
-    Convert a JSON float to a float based on zarr format.
-
-    Parameters
-    ----------
-    data : JSONFloat
-        The JSON float to convert.
-    zarr_format : ZarrFormat
-        The zarr format version.
-
-    Returns
-    -------
-    float
-        The float value.
-    """
-    if zarr_format == 2:
-        return float_from_json_v2(data)
-    else:
-        return float_from_json_v3(data)
 
 
 def bytes_from_json(data: str, *, zarr_format: ZarrFormat) -> bytes:
@@ -221,7 +226,7 @@ def bytes_to_json(data: bytes, zarr_format: ZarrFormat) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
-def float_to_json_v2(data: float | np.floating[Any]) -> JSONFloat:
+def float_to_json_v2(data: float | np.floating[Any]) -> JSONFloatV2:
     """
     Convert a float to JSON (v2).
 
@@ -242,7 +247,7 @@ def float_to_json_v2(data: float | np.floating[Any]) -> JSONFloat:
     return float(data)
 
 
-def float_to_json_v3(data: float | np.floating[Any]) -> JSONFloat:
+def float_to_json_v3(data: float | np.floating[Any]) -> JSONFloatV3:
     """
     Convert a float to JSON (v3).
 
@@ -261,32 +266,9 @@ def float_to_json_v3(data: float | np.floating[Any]) -> JSONFloat:
     return float_to_json_v2(data)
 
 
-def float_to_json(data: float | np.floating[Any], *, zarr_format: ZarrFormat) -> JSONFloat:
-    """
-    Convert a float to JSON, parametrized by the zarr format version.
-
-    Parameters
-    ----------
-    data : float | np.floating
-        The float value to convert.
-    zarr_format : ZarrFormat
-        The zarr format version.
-
-    Returns
-    -------
-    JSONFloat
-        The JSON representation of the float.
-    """
-    if zarr_format == 2:
-        return float_to_json_v2(data)
-    else:
-        return float_to_json_v3(data)
-    raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
-
-
 def complex_float_to_json_v3(
     data: complex | np.complexfloating[Any, Any],
-) -> tuple[JSONFloat, JSONFloat]:
+) -> tuple[JSONFloatV3, JSONFloatV3]:
     """
     Convert a complex number to JSON as defined by the Zarr V3 spec.
 
@@ -305,7 +287,7 @@ def complex_float_to_json_v3(
 
 def complex_float_to_json_v2(
     data: complex | np.complexfloating[Any, Any],
-) -> tuple[JSONFloat, JSONFloat]:
+) -> tuple[JSONFloatV2, JSONFloatV2]:
     """
     Convert a complex number to JSON as defined by the Zarr V2 spec.
 
@@ -322,32 +304,7 @@ def complex_float_to_json_v2(
     return float_to_json_v2(data.real), float_to_json_v2(data.imag)
 
 
-def complex_float_to_json(
-    data: complex | np.complexfloating[Any, Any], *, zarr_format: ZarrFormat
-) -> tuple[JSONFloat, JSONFloat]:
-    """
-    Convert a complex number to JSON, parametrized by the zarr format version.
-
-    Parameters
-    ----------
-    data : complex | np.complexfloating
-        The complex value to convert.
-    zarr_format : ZarrFormat
-        The zarr format version.
-
-    Returns
-    -------
-    tuple[JSONFloat, JSONFloat] or JSONFloat
-        The JSON representation of the complex number.
-    """
-    if zarr_format == 2:
-        return complex_float_to_json_v2(data)
-    else:
-        return complex_float_to_json_v3(data)
-    raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
-
-
-def complex_float_from_json_v2(data: tuple[JSONFloat, JSONFloat]) -> complex:
+def complex_float_from_json_v2(data: tuple[JSONFloatV2, JSONFloatV2]) -> complex:
     """
     Convert a JSON complex float to a complex number (v2).
 
@@ -364,7 +321,7 @@ def complex_float_from_json_v2(data: tuple[JSONFloat, JSONFloat]) -> complex:
     return complex(float_from_json_v2(data[0]), float_from_json_v2(data[1]))
 
 
-def complex_float_from_json_v3(data: tuple[JSONFloat, JSONFloat]) -> complex:
+def complex_float_from_json_v3(data: tuple[JSONFloatV3, JSONFloatV3]) -> complex:
     """
     Convert a JSON complex float to a complex number (v3).
 
@@ -381,30 +338,7 @@ def complex_float_from_json_v3(data: tuple[JSONFloat, JSONFloat]) -> complex:
     return complex(float_from_json_v3(data[0]), float_from_json_v3(data[1]))
 
 
-def complex_float_from_json(data: tuple[JSONFloat, JSONFloat], zarr_format: ZarrFormat) -> complex:
-    """
-    Convert a JSON complex float to a complex number based on zarr format.
-
-    Parameters
-    ----------
-    data : tuple[JSONFloat, JSONFloat]
-        The JSON complex float to convert.
-    zarr_format : ZarrFormat
-        The zarr format version.
-
-    Returns
-    -------
-    np.complexfloating
-        The complex number.
-    """
-    if zarr_format == 2:
-        return complex_float_from_json_v2(data)
-    else:
-        return complex_float_from_json_v3(data)
-    raise ValueError(f"Invalid zarr format: {zarr_format}. Expected 2 or 3.")
-
-
-def check_json_float_v2(data: JSON) -> TypeGuard[JSONFloat]:
+def check_json_float_v2(data: JSON) -> TypeGuard[JSONFloatV2]:
     """
     Check if a JSON value represents a float (v2).
 
@@ -423,7 +357,7 @@ def check_json_float_v2(data: JSON) -> TypeGuard[JSONFloat]:
     return isinstance(data, float | int)
 
 
-def check_json_float_v3(data: JSON) -> TypeGuard[JSONFloat]:
+def check_json_float_v3(data: JSON) -> TypeGuard[JSONFloatV3]:
     """
     Check if a JSON value represents a float (v3).
 
@@ -437,11 +371,10 @@ def check_json_float_v3(data: JSON) -> TypeGuard[JSONFloat]:
     Bool
         True if the data is a float, False otherwise.
     """
-    # TODO: handle the special JSON serialization of different NaN values
-    return check_json_float_v2(data)
+    return check_json_float_v2(data) or (isinstance(data, str) and data.startswith("0x"))
 
 
-def check_json_complex_float_v2(data: JSON) -> TypeGuard[tuple[JSONFloat, JSONFloat]]:
+def check_json_complex_float_v2(data: JSON) -> TypeGuard[tuple[JSONFloatV2, JSONFloatV2]]:
     """
     Check if a JSON value represents a complex float, as per the behavior of zarr-python 2.x
 
@@ -464,7 +397,7 @@ def check_json_complex_float_v2(data: JSON) -> TypeGuard[tuple[JSONFloat, JSONFl
     )
 
 
-def check_json_complex_float_v3(data: JSON) -> TypeGuard[tuple[JSONFloat, JSONFloat]]:
+def check_json_complex_float_v3(data: JSON) -> TypeGuard[tuple[JSONFloatV3, JSONFloatV3]]:
     """
     Check if a JSON value represents a complex float, as per the zarr v3 spec
 
@@ -485,51 +418,6 @@ def check_json_complex_float_v3(data: JSON) -> TypeGuard[tuple[JSONFloat, JSONFl
         and check_json_float_v3(data[0])
         and check_json_float_v3(data[1])
     )
-
-
-def check_json_complex_float(
-    data: JSON, zarr_format: ZarrFormat
-) -> TypeGuard[tuple[JSONFloat, JSONFloat]]:
-    """
-    Check if a JSON value represents a complex float, given a zarr format.
-
-    Parameters
-    ----------
-    data : JSON
-        The JSON value to check.
-    zarr_format : ZarrFormat
-        The zarr format version.
-
-    Returns
-    -------
-    Bool
-        True if the data represents a complex float, False otherwise.
-    """
-    if zarr_format == 2:
-        return check_json_complex_float_v2(data)
-    return check_json_complex_float_v3(data)
-
-
-def check_json_float(data: JSON, zarr_format: ZarrFormat) -> TypeGuard[float]:
-    """
-    Check if a JSON value represents a float based on zarr format.
-
-    Parameters
-    ----------
-    data : JSON
-        The JSON value to check.
-    zarr_format : ZarrFormat
-        The zarr format version.
-
-    Returns
-    -------
-    Bool
-        True if the data is a float, False otherwise.
-    """
-    if zarr_format == 2:
-        return check_json_float_v2(data)
-    else:
-        return check_json_float_v3(data)
 
 
 def check_json_int(data: JSON) -> TypeGuard[int]:

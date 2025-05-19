@@ -12,6 +12,15 @@ class _BaseTestFloat(_TestZDType):
             return True
         return super().scalar_equals(scalar1, scalar2)
 
+    hex_nan_params: tuple[str, ...] = ()
+
+    def test_hex_nan(self, hex_nan_params: str) -> None:
+        """
+        Test that hexadecimal strings can be read as NaN values
+        """
+        zdtype = self.test_cls()
+        assert np.isnan(zdtype.from_json_value(hex_nan_params, zarr_format=3))
+
 
 class TestFloat16(_BaseTestFloat):
     test_cls = Float16
@@ -51,6 +60,8 @@ class TestFloat16(_BaseTestFloat):
         (Float16(), -1.0, np.float16(-1.0)),
         (Float16(), "NaN", np.float16("NaN")),
     )
+
+    hex_nan_params = ("0x7fc0", "0x7fc1")
 
 
 class TestFloat32(_BaseTestFloat):
@@ -94,6 +105,8 @@ class TestFloat32(_BaseTestFloat):
         (Float32(), "NaN", np.float32("NaN")),
     )
 
+    hex_nan_params = ("0x7fc00000", "0x7fc00001")
+
 
 class TestFloat64(_BaseTestFloat):
     test_cls = Float64
@@ -134,3 +147,5 @@ class TestFloat64(_BaseTestFloat):
         (Float64(), -1.0, np.float64(-1.0)),
         (Float64(), "NaN", np.float64("NaN")),
     )
+
+    hex_nan_params = ("0x7ff8000000000000", "0x7ff8000000000001")

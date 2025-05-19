@@ -15,9 +15,12 @@ from zarr.core.dtype.npy.common import (
     ComplexLike,
     TComplexDType_co,
     TComplexScalar_co,
-    check_json_complex_float,
-    complex_float_from_json,
-    complex_float_to_json,
+    check_json_complex_float_v2,
+    check_json_complex_float_v3,
+    complex_float_from_json_v2,
+    complex_float_from_json_v3,
+    complex_float_to_json_v2,
+    complex_float_to_json_v3,
     endianness_from_numpy_str,
     endianness_to_numpy_str,
 )
@@ -113,11 +116,19 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness):
         TScalar_co
             The numpy float.
         """
-        if check_json_complex_float(data, zarr_format=zarr_format):
-            return self._cast_value_unsafe(complex_float_from_json(data, zarr_format=zarr_format))
-        raise TypeError(
-            f"Invalid type: {data}. Expected a float or a special string encoding of a float."
-        )
+        if zarr_format == 2:
+            if check_json_complex_float_v2(data):
+                return self._cast_value_unsafe(complex_float_from_json_v2(data))
+            raise TypeError(
+                f"Invalid type: {data}. Expected a float or a special string encoding of a float."
+            )
+        elif zarr_format == 3:
+            if check_json_complex_float_v3(data):
+                return self._cast_value_unsafe(complex_float_from_json_v3(data))
+            raise TypeError(
+                f"Invalid type: {data}. Expected a float or a special string encoding of a float."
+            )
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json_value(self, data: object, zarr_format: ZarrFormat) -> JSON:
         """
@@ -136,7 +147,11 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness):
             The JSON-serializable form of the complex number, which is a list of two floats,
             each of which is encoding according to a zarr-format-specific encoding.
         """
-        return complex_float_to_json(self.cast_value(data), zarr_format=zarr_format)
+        if zarr_format == 2:
+            return complex_float_to_json_v2(self.cast_value(data))
+        elif zarr_format == 3:
+            return complex_float_to_json_v3(self.cast_value(data))
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
 
 @dataclass(frozen=True, kw_only=True)
