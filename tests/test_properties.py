@@ -13,7 +13,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import assume, given, settings
 
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
@@ -76,7 +76,6 @@ def deep_equal(a: Any, b: Any) -> bool:
     return a == b
 
 
-@settings(deadline=None)  # Increased from default 200ms to None
 @given(data=st.data(), zarr_format=zarr_formats)
 def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
@@ -118,11 +117,10 @@ def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
-@settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=8)))
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
 
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
@@ -140,16 +138,15 @@ def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
-@settings(deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=3, min_side=1, max_side=8)))
+    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
 
     indexer = data.draw(
         npst.integer_array_indices(
-            shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=2, max_side=8)
+            shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
         )
     )
     actual = zarray.vindex[indexer]
