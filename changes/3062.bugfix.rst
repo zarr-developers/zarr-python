@@ -1,1 +1,0 @@
-Using various functions to open data with ``mode='a'`` no longer deletes existing data in the store.
