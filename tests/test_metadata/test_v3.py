@@ -12,7 +12,6 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
 from zarr.core.dtype import get_data_type_from_native_dtype
-from zarr.core.dtype.npy.common import check_json_complex_float
 from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
@@ -28,7 +27,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
-    from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.common import JSON
 
 
 from zarr.core.metadata.v3 import (
@@ -133,14 +132,6 @@ def test_jsonify_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     observed = dtype.from_json_value(fill_value, zarr_format=zarr_format)
     assert observed == expected
     assert dtype.to_json_value(observed, zarr_format=zarr_format) == tuple(fill_value)
-
-
-@pytest.mark.parametrize("data", [[1.0, 0.0, 3.0], [0, 1, 3], [1]])
-def test_complex_to_json_invalid(data: object, zarr_format: ZarrFormat) -> None:
-    assert not check_json_complex_float(data, zarr_format=zarr_format)
-    # match = f"Invalid type: {data}. Expected a sequence of two numbers."
-    # with pytest.raises(TypeError, match=re.escape(match)):
-    # complex_float_from_json(data=data, zarr_format=3)
 
 
 @pytest.mark.parametrize("fill_value", [{"foo": 10}])

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 Endianness = Literal["little", "big"]
-SpecialFloats = Literal["NaN", "Infinity", "-Infinity"]
-JSONFloat = float | SpecialFloats
+SpecialFloatStrings = Literal["NaN", "Infinity", "-Infinity"]
+SPECIAL_FLOAT_STRINGS: Final = ("NaN", "Infinity", "-Infinity")
+JSONFloatV2 = float | SpecialFloatStrings
+JSONFloatV3 = float | SpecialFloatStrings | str
 
 
 class DataTypeValidationError(ValueError): ...

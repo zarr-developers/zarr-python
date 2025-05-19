@@ -10,11 +10,14 @@ from zarr.core.dtype.npy.common import (
     FloatLike,
     TFloatDType_co,
     TFloatScalar_co,
-    check_json_float,
+    check_json_float_v2,
+    check_json_float_v3,
     endianness_from_numpy_str,
     endianness_to_numpy_str,
-    float_from_json,
-    float_to_json,
+    float_from_json_v2,
+    float_from_json_v3,
+    float_to_json_v2,
+    float_to_json_v3,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
@@ -72,11 +75,11 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness):
             return data == cls._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def check_value(self, value: object) -> TypeGuard[FloatLike]:
-        return isinstance(value, FloatLike)
+    def check_value(self, data: object) -> TypeGuard[FloatLike]:
+        return isinstance(data, FloatLike)
 
-    def _cast_value_unsafe(self, value: object) -> TFloatScalar_co:
-        return self.to_dtype().type(value)  # type: ignore[return-value, arg-type]
+    def _cast_value_unsafe(self, data: object) -> TFloatScalar_co:
+        return self.to_dtype().type(data)  # type: ignore[return-value, arg-type]
 
     def default_value(self) -> TFloatScalar_co:
         """
@@ -105,13 +108,24 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness):
         TScalar_co
             The numpy float.
         """
-        if check_json_float(data, zarr_format=zarr_format):
-            return self._cast_value_unsafe(float_from_json(data, zarr_format=zarr_format))
-        raise TypeError(
-            f"Invalid type: {data}. Expected a float or a special string encoding of a float."
-        )
+        if zarr_format == 2:
+            if check_json_float_v2(data):
+                return self._cast_value_unsafe(float_from_json_v2(data))
+            else:
+                raise TypeError(
+                    f"Invalid type: {data}. Expected a float or a special string encoding of a float."
+                )
+        elif zarr_format == 3:
+            if check_json_float_v3(data):
+                return self._cast_value_unsafe(float_from_json_v3(data))
+            else:
+                raise TypeError(
+                    f"Invalid type: {data}. Expected a float or a special string encoding of a float."
+                )
+        else:
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def to_json_value(self, data: object, zarr_format: ZarrFormat) -> float | str:
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> float | str:
         """
         Convert an object to a JSON-serializable float.
 
@@ -128,7 +142,12 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness):
             The JSON-serializable form of the float, which is potentially a number or a string.
             See the zarr specifications for details on the JSON encoding for floats.
         """
-        return float_to_json(self._cast_value_unsafe(data), zarr_format=zarr_format)
+        if zarr_format == 2:
+            return float_to_json_v2(self._cast_value_unsafe(data))
+        elif zarr_format == 3:
+            return float_to_json_v3(self._cast_value_unsafe(data))
+        else:
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
 
 @dataclass(frozen=True, kw_only=True)
