@@ -88,7 +88,7 @@ __all__ = [
 
 _READ_MODES: tuple[AccessModeLiteral, ...] = ("r", "r+", "a")
 _CREATE_MODES: tuple[AccessModeLiteral, ...] = ("a", "w", "w-")
-_OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("a", "r+", "w")
+_OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("w",)
 
 
 def _infer_overwrite(mode: AccessModeLiteral) -> bool:
@@ -817,7 +817,6 @@ async def open_group(
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
-
     if attributes is None:
         attributes = {}
 
@@ -1019,11 +1018,6 @@ async def create(
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
     if read_only is not None:
         warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
-    if dimension_separator is not None and zarr_format == 3:
-        raise ValueError(
-            "dimension_separator is not supported for zarr format 3, use chunk_key_encoding instead"
-        )
-
     if order is not None:
         _warn_order_kwarg()
     if write_empty_chunks is not None:
