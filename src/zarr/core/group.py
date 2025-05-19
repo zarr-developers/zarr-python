@@ -1174,16 +1174,16 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
+        with h5py, Zarr groups also implement the :func:`zarr.Group.create_dataset` method.
 
-        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_array`.
+        Other `kwargs` are as per :func:`zarr.Group.create_array`.
 
         Parameters
         ----------
@@ -1191,12 +1191,15 @@ class AsyncGroup:
             Array name.
         shape : int or tuple of ints
             Array shape.
-        **kwargs
-            Additional keyword arguments passed to :func:`zarr.AsyncGroup.create_array`.
+        dtype : str or dtype, optional
+            NumPy dtype. If None, the dtype will be inferred from the existing array.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If False, require
+            `dtype` can be cast from array dtype.
 
         Returns
         -------
-        a : AsyncArray
+        a : Array
         """
         return self.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
 
@@ -2554,9 +2557,9 @@ class Group(SyncMixin):
         shape : int or tuple of ints
             Array shape.
         dtype : str or dtype, optional
-            NumPy dtype.
+            NumPy dtype. If None, the dtype will be inferred from the existing array.
         exact : bool, optional
-            If True, require `dtype` to match exactly. If false, require
+            If True, require `dtype` to match exactly. If False, require
             `dtype` can be cast from array dtype.
 
         Returns
@@ -2592,9 +2595,15 @@ class Group(SyncMixin):
 
         Returns
         -------
-        a : Array
+        a : AsyncArray
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)))
+        return Array(
+            self._sync(
+                self._async_group.require_array(
+                    name, shape=shape, dtype=dtype, exact=exact, **kwargs
+                )
+            )
+        )
 
     @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
