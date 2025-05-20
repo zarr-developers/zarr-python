@@ -1354,7 +1354,7 @@ class TestCreateArray:
                 dtype="uint8",
                 shape=(10,),
                 zarr_format=3,
-                **{argument_key: codec},
+                **{argument_key: codec},  # type: ignore[arg-type]
             )
 
     @staticmethod
@@ -1375,7 +1375,10 @@ class TestCreateArray:
     async def test_chunk_encoding_missing_arguments(
         store: MemoryStore,
         argument_key: str,
-        codec: str | tuple[FiltersLike | SerializerLike | CompressorsLike],
+        codec: FiltersLike
+        | SerializerLike
+        | CompressorsLike
+        | tuple[FiltersLike | SerializerLike | CompressorsLike],
         codec_cls_name: str,
         zarr_format: ZarrFormat,
     ) -> None:
@@ -1392,15 +1395,15 @@ class TestCreateArray:
                 def compute_encoded_size(
                     self, input_byte_length: int, chunk_spec: ArraySpec
                 ) -> int:
-                    pass
+                    return 0
 
                 def __init__(self, *, argument: str) -> None:
                     super().__init__()
 
             register_codec("mock_compressor_v3", MockCompressorRequiresConfig3)
         elif "mock_compressor_v2" in codec:
-
-            class MockCompressorRequiresConfig2(numcodecs.abc.Codec):
+            # ignore mypy error because numcodecs is not typed
+            class MockCompressorRequiresConfig2(numcodecs.abc.Codec): # type: ignore[misc]
                 def __init__(self, *, argument: str) -> None:
                     super().__init__()
 
@@ -1421,7 +1424,7 @@ class TestCreateArray:
                 dtype="uint8",
                 shape=(10,),
                 zarr_format=zarr_format,
-                **{argument_key: codec},
+                **{argument_key: codec},  # type: ignore[arg-type]
             )
 
     @staticmethod
