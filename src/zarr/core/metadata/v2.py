@@ -271,7 +271,9 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
             elif isinstance(val, dict):
                 out.append(numcodecs.get_codec(val))
             elif isinstance(val, str):
-                out.append(parse_filters(val)[0])
+                filter = parse_filters(val)
+                if filter is not None:
+                    out.extend(filter)
             else:
                 msg = f"For Zarr format 2 arrays, all elements of `filters` must be a numcodecs.abc.Codec or a dict or str representation of numcodecs.abc.Codec. Got {type(val)} at index {idx} instead."
                 raise TypeError(msg)

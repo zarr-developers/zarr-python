@@ -232,7 +232,6 @@ def _parse_array_array_codec(data: dict[str, JSON] | str | Codec) -> ArrayArrayC
     """
     from zarr.abc.codec import ArrayArrayCodec
 
-    result: ArrayArrayCodec
     if isinstance(data, str):
         try:
             result = _resolve_codec({"name": data, "configuration": {}})

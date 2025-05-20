@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
 import numcodecs
+import numcodecs.abc
 import numpy as np
 import numpy.typing as npt
 import pytest
@@ -1340,7 +1341,9 @@ class TestCreateArray:
             ("compressors", "bytes"),
         ],
     )
-    async def test_chunk_encoding_wrong_type(argument_key, codec, store: MemoryStore) -> None:
+    async def test_chunk_encoding_wrong_type(
+        argument_key: str, codec: str, store: MemoryStore
+    ) -> None:
         """
         Test that passing an invalid codec to create_array raises an error.
         """
@@ -1369,7 +1372,11 @@ class TestCreateArray:
         ],
     )
     async def test_chunk_encoding_missing_arguments(
-        store: MemoryStore, argument_key, codec, codec_cls_name, zarr_format
+        store: MemoryStore,
+        argument_key: str,
+        codec: str,
+        codec_cls_name: str,
+        zarr_format: ZarrFormat,
     ) -> None:
         codec_key = codec if not isinstance(codec, tuple) else codec[0]
         argument_key_single = argument_key.removesuffix("s")
