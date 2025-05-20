@@ -1342,7 +1342,7 @@ class TestCreateArray:
         ],
     )
     async def test_chunk_encoding_wrong_type(
-        argument_key: str, codec: str, store: MemoryStore
+        argument_key: str, codec: FiltersLike | SerializerLike | CompressorsLike, store: MemoryStore
     ) -> None:
         """
         Test that passing an invalid codec to create_array raises an error.
@@ -1369,12 +1369,13 @@ class TestCreateArray:
             ("compressors", "mock_compressor_v3", "MockCompressorRequiresConfig3", 3),
             ("compressors", ("mock_compressor_v3",), "MockCompressorRequiresConfig3", 3),
             ("compressors", "mock_compressor_v2", "MockCompressorRequiresConfig2", 2),
+            ("compressors", ("mock_compressor_v2",), "MockCompressorRequiresConfig2", 2),
         ],
     )
     async def test_chunk_encoding_missing_arguments(
         store: MemoryStore,
         argument_key: str,
-        codec: str,
+        codec: str | tuple[FiltersLike | SerializerLike | CompressorsLike],
         codec_cls_name: str,
         zarr_format: ZarrFormat,
     ) -> None:
@@ -1385,7 +1386,7 @@ class TestCreateArray:
             f"cannot be specified by a string because it takes a required configuration. Use either the dict "
             f"representation of {codec_key} codec, or pass in a concrete {codec_cls_name} instance instead"
         )
-        if codec == "mock_compressor_v3":
+        if "mock_compressor_v3" in codec:
 
             class MockCompressorRequiresConfig3(BytesBytesCodec):
                 def compute_encoded_size(
@@ -1397,16 +1398,16 @@ class TestCreateArray:
                     super().__init__()
 
             register_codec("mock_compressor_v3", MockCompressorRequiresConfig3)
-        elif codec == "mock_compressor_v2":
+        elif "mock_compressor_v2" in codec:
 
             class MockCompressorRequiresConfig2(numcodecs.abc.Codec):
                 def __init__(self, *, argument: str) -> None:
                     super().__init__()
 
-                def encode(self: Any, buf) -> Any:
+                def encode(self: Any, buf) -> Any:  # type: ignore[no-untyped-def]
                     pass
 
-                def decode(self, buf: Any, out=None) -> Any:
+                def decode(self, buf: Any, out=None) -> Any:  # type: ignore[no-untyped-def]
                     pass
 
             numcodecs.register_codec(
