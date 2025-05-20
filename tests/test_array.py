@@ -1375,10 +1375,7 @@ class TestCreateArray:
     async def test_chunk_encoding_missing_arguments(
         store: MemoryStore,
         argument_key: str,
-        codec: FiltersLike
-        | SerializerLike
-        | CompressorsLike
-        | tuple[FiltersLike | SerializerLike | CompressorsLike],
+        codec: str | tuple[str],
         codec_cls_name: str,
         zarr_format: ZarrFormat,
     ) -> None:
@@ -1403,7 +1400,7 @@ class TestCreateArray:
             register_codec("mock_compressor_v3", MockCompressorRequiresConfig3)
         elif "mock_compressor_v2" in codec:
             # ignore mypy error because numcodecs is not typed
-            class MockCompressorRequiresConfig2(numcodecs.abc.Codec): # type: ignore[misc]
+            class MockCompressorRequiresConfig2(numcodecs.abc.Codec):  # type: ignore[misc]
                 def __init__(self, *, argument: str) -> None:
                     super().__init__()
 
