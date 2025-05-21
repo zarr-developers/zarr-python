@@ -1339,3 +1339,23 @@ def test_auto_chunks(f: Callable[..., Array]) -> None:
 
     a = f(**kwargs)
     assert a.chunks == (500, 500)
+
+
+def test_order_warning() -> None:
+    # Passing order shouldn't warn for v2
+    zarr.create(
+        (1,),
+        store={},
+        order="F",
+        zarr_format=2,
+    )
+    # Passing order should warn for v3
+    with pytest.warns(
+        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+    ):
+        zarr.create(
+            (1,),
+            store={},
+            order="F",
+            zarr_format=3,
+        )
