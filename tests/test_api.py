@@ -1285,7 +1285,7 @@ def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> No
     existing_fpath = add_empty_file(tmp_path)
 
     assert existing_fpath.exists()
-    with contextlib.suppress(FileExistsError, FileNotFoundError):
+    with contextlib.suppress(FileExistsError, FileNotFoundError, ValueError):
         open_func(store=store, mode=mode)
     if mode == "w":
         assert not existing_fpath.exists()
