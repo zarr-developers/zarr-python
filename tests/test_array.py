@@ -1360,7 +1360,7 @@ class TestCreateArray:
         elif impl == "async":
             arr = await create_array(store, name=name, data=data, zarr_format=3)
             stored = await arr._get_selection(
-                BasicIndexer(..., shape=arr.shape, chunk_grid=arr.chunk_grid),
+                BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
                 prototype=default_buffer_prototype(),
             )
         else:
