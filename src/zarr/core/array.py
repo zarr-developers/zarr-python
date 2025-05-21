@@ -4269,8 +4269,10 @@ async def init_array(
 
         if config is None:
             config = {}
-        if order is not None and isinstance(config, dict):
-            config["order"] = config.get("order", order)
+        if order is not None:
+            _warn_order_kwarg()
+            if isinstance(config, dict):
+                config["order"] = config.get("order", order)
 
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,

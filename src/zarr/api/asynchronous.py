@@ -27,7 +27,6 @@ from zarr.core.common import (
     MemoryOrder,
     ZarrFormat,
     _default_zarr_format,
-    _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
 )
@@ -1243,8 +1242,6 @@ async def open_array(
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    if "order" in kwargs:
-        _warn_order_kwarg()
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()
 
