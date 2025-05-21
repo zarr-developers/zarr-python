@@ -4531,7 +4531,7 @@ def _parse_keep_array_attr(
                 serializer = "auto"
         if fill_value is None:
             fill_value = data.fill_value
-        if order is None:
+        if order is None and zarr_format == 2:
             order = data.order
         if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
             if isinstance(data.metadata, ArrayV2Metadata):
