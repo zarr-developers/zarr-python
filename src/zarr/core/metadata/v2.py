@@ -3,11 +3,13 @@ from __future__ import annotations
 import base64
 import warnings
 from collections.abc import Iterable, Sequence
+from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
 
 import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
+from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, TDType_co, TScalar_co, ZDType
 
@@ -102,6 +104,10 @@ class ArrayV2Metadata(Metadata):
     @property
     def ndim(self) -> int:
         return len(self.shape)
+
+    @cached_property
+    def chunk_grid(self) -> RegularChunkGrid:
+        return RegularChunkGrid(chunk_shape=self.chunks)
 
     @property
     def shards(self) -> ChunkCoords | None:

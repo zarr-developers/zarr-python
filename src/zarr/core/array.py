@@ -5,7 +5,6 @@ import warnings
 from asyncio import gather
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from functools import cached_property
 from itertools import starmap
 from logging import getLogger
 from typing import (
@@ -32,7 +31,7 @@ from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.core._info import ArrayInfo
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArraySpec, parse_array_config
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -42,7 +41,7 @@ from zarr.core.buffer import (
     default_buffer_prototype,
 )
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
-from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid, _auto_partition, normalize_chunks
+from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -951,13 +950,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         return self.metadata.chunks
 
-    @cached_property
-    def chunk_grid(self) -> ChunkGrid:
-        if self.metadata.zarr_format == 2:
-            return RegularChunkGrid(chunk_shape=self.chunks)
-        else:
-            return self.metadata.chunk_grid
-
     @property
     def shards(self) -> ChunkCoords | None:
         """Returns the shard shape of the Array.
@@ -1281,20 +1273,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         return self.size * self.dtype.itemsize
 
-    def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
-    ) -> ArraySpec:
-        assert isinstance(self.chunk_grid, RegularChunkGrid), (
-            "Currently, only regular chunk grid is supported"
-        )
-        return ArraySpec(
-            shape=self.chunk_grid.chunk_shape,
-            dtype=self._zdtype,
-            fill_value=self.metadata.fill_value,
-            config=array_config,
-            prototype=prototype,
-        )
-
     async def _get_selection(
         self,
         indexer: Indexer,
@@ -1334,7 +1312,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 [
                     (
                         self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                        self.get_chunk_spec(chunk_coords, _config, prototype=prototype),
+                        self.metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
                         chunk_selection,
                         out_selection,
                         is_complete_chunk,
@@ -1389,7 +1367,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
-            chunk_grid=self.chunk_grid,
+            chunk_grid=self.metadata.chunk_grid,
         )
         return await self._get_selection(indexer, prototype=prototype)
 
@@ -1464,7 +1442,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.get_chunk_spec(chunk_coords, _config, prototype),
+                    self.metadata.get_chunk_spec(chunk_coords, _config, prototype),
                     chunk_selection,
                     out_selection,
                     is_complete_chunk,
@@ -1519,7 +1497,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
-            chunk_grid=self.chunk_grid,
+            chunk_grid=self.metadata.chunk_grid,
         )
         return await self._set_selection(indexer, value, prototype=prototype)
 
@@ -1556,8 +1534,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         if delete_outside_chunks:
             # Remove all chunks outside of the new shape
-            old_chunk_coords = set(self.chunk_grid.all_chunk_coords(self.metadata.shape))
-            new_chunk_coords = set(self.chunk_grid.all_chunk_coords(new_shape))
+            old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
+            new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
 
             async def _delete_key(key: str) -> None:
                 await (self.store_path / key).delete()
@@ -2687,7 +2665,7 @@ class Array:
             prototype = default_buffer_prototype()
         return sync(
             self._async_array._get_selection(
-                BasicIndexer(selection, self.shape, self._async_array.chunk_grid),
+                BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
                 out=out,
                 fields=fields,
                 prototype=prototype,
@@ -2787,7 +2765,7 @@ class Array:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BasicIndexer(selection, self.shape, self._async_array.chunk_grid)
+        indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     @_deprecate_positional_args
@@ -2908,7 +2886,7 @@ class Array:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._async_array.chunk_grid)
+        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
@@ -3021,7 +2999,7 @@ class Array:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = OrthogonalIndexer(selection, self.shape, self._async_array.chunk_grid)
+        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
         )
@@ -3102,7 +3080,7 @@ class Array:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._async_array.chunk_grid)
+        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
@@ -3185,7 +3163,7 @@ class Array:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = MaskIndexer(mask, self.shape, self._async_array.chunk_grid)
+        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     @_deprecate_positional_args
@@ -3266,7 +3244,7 @@ class Array:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = CoordinateIndexer(selection, self.shape, self._async_array.chunk_grid)
+        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
         out_array = sync(
             self._async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
@@ -3352,7 +3330,7 @@ class Array:
         if prototype is None:
             prototype = default_buffer_prototype()
         # setup indexer
-        indexer = CoordinateIndexer(selection, self.shape, self._async_array.chunk_grid)
+        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
 
         # handle value - need ndarray-like flatten value
         if not is_scalar(value, self.dtype):
@@ -3468,7 +3446,7 @@ class Array:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._async_array.chunk_grid)
+        indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
@@ -3562,7 +3540,7 @@ class Array:
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        indexer = BlockIndexer(selection, self.shape, self._async_array.chunk_grid)
+        indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     @property

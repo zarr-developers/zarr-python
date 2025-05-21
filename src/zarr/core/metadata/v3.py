@@ -269,6 +269,20 @@ class ArrayV3Metadata(Metadata):
                 return self.codecs[0].codecs
         return self.codecs
 
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
+    ) -> ArraySpec:
+        assert isinstance(self.chunk_grid, RegularChunkGrid), (
+            "Currently, only regular chunk grid is supported"
+        )
+        return ArraySpec(
+            shape=self.chunk_grid.chunk_shape,
+            dtype=self.dtype,
+            fill_value=self.fill_value,
+            config=array_config,
+            prototype=prototype,
+        )
+
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
