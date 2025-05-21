@@ -1041,6 +1041,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         bool
             Memory order of the array
+
+        Notes
+        -----
+        For Zarr format 2 arrays this is the memory order in which
+        data is stored and returned when read in to a NumPy array.
+
+        For Zarr format 3 arrays this is just the memory order
+        in which data is returned when read into a NumPy array.
         """
         if self.metadata.zarr_format == 2:
             return self.metadata.order
