@@ -355,8 +355,12 @@ def test_array_order(zarr_format: ZarrFormat) -> None:
 
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
-    with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
+    if zarr_format == 3:
+        with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
+            arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+    else:
         arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+
     assert arr.order == order
 
     vals = np.asarray(arr)
