@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr import create_array
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.group import Group
 from zarr.storage import ZipStore
@@ -140,3 +141,17 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert list(zipped.keys()) == list(root.keys())
         assert isinstance(group := zipped["foo"], Group)
         assert list(group.keys()) == list(group.keys())
+
+    async def test_move(self, tmp_path: Path) -> None:
+        origin = tmp_path / "origin.zip"
+        destination = tmp_path / "some_folder" / "destination.zip"
+
+        store = await ZipStore.open(path=origin, mode="a")
+        array = create_array(store, data=np.arange(10))
+
+        await store.move(str(destination))
+
+        assert store.path == destination
+        assert destination.exists()
+        assert not origin.exists()
+        assert np.array_equal(array[...], np.arange(10))

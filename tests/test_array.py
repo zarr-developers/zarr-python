@@ -1487,7 +1487,7 @@ class TestCreateArray:
             for parent_path in parents:
                 # this will raise if these groups were not created
                 _ = await zarr.api.asynchronous.open_group(
-                    store=store, path=parent_path, mode="r", zarr_format=zarr_format
+                    store=store, path=parent_path, zarr_format=zarr_format
                 )
 
     @staticmethod
@@ -1687,7 +1687,7 @@ def test_roundtrip_numcodecs() -> None:
 
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
-    root = zarr.open_group(store, mode="r")
+    root = zarr.open_group(store)
     metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
