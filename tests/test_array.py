@@ -18,6 +18,7 @@ from packaging.version import Version
 
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
+from tests.conftest import skip_object_dtype
 from zarr import Array, AsyncArray, Group
 from zarr.abc.store import Store
 from zarr.codecs import (
@@ -43,8 +44,8 @@ from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.common import Endianness
 from zarr.core.dtype.npy.common import endianness_from_numpy_str
-from zarr.core.dtype.npy.float import Float64
-from zarr.core.dtype.npy.int import Int16
+from zarr.core.dtype.npy.float import Float32, Float64
+from zarr.core.dtype.npy.int import Int16, UInt8
 from zarr.core.dtype.npy.sized import (
     Structured,
 )
@@ -1009,9 +1010,11 @@ class TestCreateArray:
         """
         Test that the same array is produced from a ZDType instance, a numpy dtype, or a numpy string
         """
+        skip_object_dtype(dtype)
         a = zarr.create_array(
             store, name="a", shape=(5,), chunks=(5,), dtype=dtype, zarr_format=zarr_format
         )
+
         b = zarr.create_array(
             store,
             name="b",
@@ -1054,12 +1057,13 @@ class TestCreateArray:
         """
         Test that creating an array, then opening it, gets the same array.
         """
+        skip_object_dtype(dtype)
         a = zarr.create_array(store, shape=(5,), chunks=(5,), dtype=dtype, zarr_format=zarr_format)
         b = zarr.open_array(store)
         assert a.dtype == b.dtype
 
     @staticmethod
-    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str", "U3", "S4", "V1"])
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "U3", "S4", "V1"])
     @pytest.mark.parametrize(
         "compressors",
         [
@@ -1244,7 +1248,7 @@ class TestCreateArray:
             zarr.create(store=store, dtype="uint8", shape=(10,), zarr_format=3, **kwargs)
 
     @staticmethod
-    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+    @pytest.mark.parametrize("dtype", ["uint8", "float32"])
     @pytest.mark.parametrize(
         "compressors",
         [
@@ -1284,17 +1288,17 @@ class TestCreateArray:
         assert arr.filters == filters_expected
 
     @staticmethod
-    @pytest.mark.parametrize("dtype_str", ["uint8", "float32", "str"])
+    @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthString()])
     async def test_default_filters_compressors(
-        store: MemoryStore, dtype_str: str, zarr_format: ZarrFormat
+        store: MemoryStore, dtype: UInt8 | Float32 | VariableLengthString, zarr_format: ZarrFormat
     ) -> None:
         """
         Test that the default ``filters`` and ``compressors`` are used when ``create_array`` is invoked with ``filters`` and ``compressors`` unspecified.
         """
-        zdtype = get_data_type_from_native_dtype(dtype_str)
+
         arr = await create_array(
             store=store,
-            dtype=dtype_str,
+            dtype=dtype,
             shape=(10,),
             zarr_format=zarr_format,
         )
@@ -1306,14 +1310,14 @@ class TestCreateArray:
                 compressors=sig.parameters["compressors"].default,
                 filters=sig.parameters["filters"].default,
                 serializer=sig.parameters["serializer"].default,
-                dtype=zdtype,
+                dtype=dtype,
             )
 
         elif zarr_format == 2:
             default_filters, default_compressors = _parse_chunk_encoding_v2(
                 compressor=sig.parameters["compressors"].default,
                 filters=sig.parameters["filters"].default,
-                dtype=zdtype,
+                dtype=dtype,
             )
             if default_filters is None:
                 expected_filters = ()

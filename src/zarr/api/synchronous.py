@@ -599,7 +599,7 @@ def create(
     shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | int | bool | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = None,  # TODO: need type
     order: MemoryOrder | None = None,
