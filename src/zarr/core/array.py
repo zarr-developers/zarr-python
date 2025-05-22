@@ -812,7 +812,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> ArrayV2Metadata:
         if dimension_separator is None:
             dimension_separator = "."
-
+        if fill_value is None:
+            fill_value = dtype.default_value()  # type: ignore[assignment]
         return ArrayV2Metadata(
             shape=shape,
             dtype=dtype,
