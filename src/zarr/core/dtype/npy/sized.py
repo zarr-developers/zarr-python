@@ -7,7 +7,7 @@ from typing import Any, ClassVar, Self, TypeGuard, cast
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import DataTypeValidationError, HasEndianness, HasLength
+from zarr.core.dtype.common import DataTypeValidationError, HasEndianness, HasItemSize, HasLength
 from zarr.core.dtype.npy.common import (
     EndiannessNumpy,
     bytes_from_json,
@@ -20,7 +20,7 @@ from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
+class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength, HasItemSize):
     dtype_cls = np.dtypes.BytesDType
     _zarr_v3_name = "numpy.fixed_length_ascii"
 
@@ -85,9 +85,13 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
     def _cast_value_unsafe(self, value: object) -> np.bytes_:
         return self.to_dtype().type(value)
 
+    @property
+    def item_size(self) -> int:
+        return self.length
+
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
+class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize):
     # np.dtypes.VoidDType is specified in an odd way in numpy
     # it cannot be used to create instances of the dtype
     # so we have to tell mypy to ignore this here
@@ -168,25 +172,31 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
     def check_value(self, data: object) -> bool:
         return isinstance(data, np.bytes_ | str | bytes | np.void)
 
-    def _cast_value_unsafe(self, value: object) -> np.void:
+    def _cast_value_unsafe(self, data: object) -> np.void:
         native_dtype = self.to_dtype()
         # Without the second argument, numpy will return a void scalar for dtype V1.
         # The second argument ensures that, if native_dtype is something like V10,
         # the result will actually be a V10 scalar.
-        return native_dtype.type(value, native_dtype)
+        return native_dtype.type(data, native_dtype)
+
+    @property
+    def item_size(self) -> int:
+        return self.length
 
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness, HasLength):
+class FixedLengthUnicode(
+    ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness, HasLength, HasItemSize
+):
     dtype_cls = np.dtypes.StrDType
     _zarr_v3_name = "numpy.fixed_length_ucs4"
-    item_size_bytes: ClassVar[int] = 4  # UCS4 is 4 bytes per code point
+    code_point_bytes: ClassVar[int] = 4  # UCS4 is 4 bytes per code point
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(
-            length=dtype.itemsize // (cls.item_size_bytes),
+            length=dtype.itemsize // (cls.code_point_bytes),
             endianness=endianness_from_numpy_str(byte_order),
         )
 
@@ -220,7 +230,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
         elif zarr_format == 3:
             return {
                 "name": self._zarr_v3_name,
-                "configuration": {"length_bytes": self.length * self.item_size_bytes},
+                "configuration": {"length_bytes": self.length * self.code_point_bytes},
             }
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -229,7 +239,7 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
         if zarr_format == 2:
             return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
-            return cls(length=data["configuration"]["length_bytes"] // cls.item_size_bytes)  # type: ignore[arg-type, index, call-overload, operator]
+            return cls(length=data["configuration"]["length_bytes"] // cls.code_point_bytes)  # type: ignore[arg-type, index, call-overload, operator]
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def default_value(self) -> np.str_:
@@ -247,12 +257,16 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
         # this is generous for backwards compatibility
         return isinstance(data, str | np.str_ | bytes | int)
 
-    def _cast_value_unsafe(self, value: object) -> np.str_:
-        return self.to_dtype().type(value)
+    def _cast_value_unsafe(self, data: object) -> np.str_:
+        return self.to_dtype().type(data)
+
+    @property
+    def item_size(self) -> int:
+        return self.length * self.code_point_bytes
 
 
 @dataclass(frozen=True, kw_only=True)
-class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
+class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
     _zarr_v3_name = "structured"
     fields: tuple[tuple[str, ZDType[TBaseDType, TBaseScalar]], ...]
@@ -395,3 +409,8 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
             dtype = self.to_dtype()
             return cast("np.void", np.array([as_bytes]).view(dtype)[0])
         raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
+
+    @property
+    def item_size(self) -> int:
+        # Lets have numpy do the arithmetic here
+        return self.to_dtype().itemsize

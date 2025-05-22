@@ -72,8 +72,8 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
         def check_value(self, data: object) -> bool:
             return isinstance(data, str)
 
-        def _cast_value_unsafe(self, value: object) -> str:
-            return str(value)
+        def _cast_value_unsafe(self, data: object) -> str:
+            return str(data)
 
 else:
     # Numpy pre-2 does not have a variable length string dtype, so we use the Object dtype instead.
@@ -130,5 +130,5 @@ else:
         def check_value(self, data: object) -> bool:
             return isinstance(data, str)
 
-        def _cast_value_unsafe(self, value: object) -> str:
-            return str(value)
+        def _cast_value_unsafe(self, data: object) -> str:
+            return str(data)

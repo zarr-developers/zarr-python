@@ -37,6 +37,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             (VariableLengthString(), "", np.str_("")),
             (VariableLengthString(), "hi", np.str_("hi")),
         )
+        item_size_params = (VariableLengthString(),)
 
 else:
 
@@ -70,3 +71,5 @@ else:
             (VariableLengthString(), "", np.str_("")),
             (VariableLengthString(), "hi", np.str_("hi")),
         )
+
+        item_size_params = (VariableLengthString(),)
