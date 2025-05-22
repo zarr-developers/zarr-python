@@ -51,21 +51,23 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value.as_numpy_array().tobytes())
+            # write takes any object supporting the buffer protocol
+            f.write(value.as_buffer_like())
         return None
     else:
-        view = memoryview(value.as_numpy_array().tobytes())
+        view = value.as_buffer_like()
         if exclusive:
             mode = "xb"
         else:
             mode = "wb"
         with path.open(mode=mode) as f:
+            # write takes any object supporting the buffer protocol
             return f.write(view)
 
 
 class LocalStore(Store):
     """
-    Local file system store.
+    Store for the local file system.
 
     Parameters
     ----------
@@ -250,6 +252,18 @@ class LocalStore(Store):
                 yield key.relative_to(base).as_posix()
         except (FileNotFoundError, NotADirectoryError):
             pass
+
+    async def move(self, dest_root: Path | str) -> None:
+        """
+        Move the store to another path. The old root directory is deleted.
+        """
+        if isinstance(dest_root, str):
+            dest_root = Path(dest_root)
+        os.makedirs(dest_root.parent, exist_ok=True)
+        if os.path.exists(dest_root):
+            raise FileExistsError(f"Destination root {dest_root} already exists.")
+        shutil.move(self.root, dest_root)
+        self.root = dest_root
 
     async def getsize(self, key: str) -> int:
         return os.path.getsize(self.root / key)

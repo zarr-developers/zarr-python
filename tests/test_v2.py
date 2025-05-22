@@ -15,6 +15,7 @@ import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.metadata.v2 import _parse_structured_fill_value
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
 
@@ -194,12 +195,13 @@ def test_create_array_defaults(store: Store):
         )
 
 
-@pytest.mark.parametrize("array_order", ["C", "F"])
-@pytest.mark.parametrize("data_order", ["C", "F"])
-@pytest.mark.parametrize("memory_order", ["C", "F"])
-def test_v2_non_contiguous(
-    array_order: Literal["C", "F"], data_order: Literal["C", "F"], memory_order: Literal["C", "F"]
-) -> None:
+@pytest.mark.parametrize("numpy_order", ["C", "F"])
+@pytest.mark.parametrize("zarr_order", ["C", "F"])
+def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["C", "F"]) -> None:
+    """
+    Make sure zarr v2 arrays save data using the memory order given to the zarr array,
+    not the memory order of the original numpy array.
+    """
     store = MemoryStore()
     arr = zarr.create_array(
         store,
@@ -211,12 +213,11 @@ def test_v2_non_contiguous(
         filters=None,
         compressors=None,
         overwrite=True,
-        order=array_order,
-        config={"order": memory_order},
+        order=zarr_order,
     )
 
-    # Non-contiguous write
-    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=data_order)
+    # Non-contiguous write, using numpy memory order
+    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=numpy_order)
     arr[6:9, 3:6] = a[6:9, 3:6]  # The slice on the RHS is important
     np.testing.assert_array_equal(arr[6:9, 3:6], a[6:9, 3:6])
 
@@ -224,13 +225,15 @@ def test_v2_non_contiguous(
         a[6:9, 3:6],
         np.frombuffer(
             sync(store.get("2.1", default_buffer_prototype())).to_bytes(), dtype="float64"
-        ).reshape((3, 3), order=array_order),
+        ).reshape((3, 3), order=zarr_order),
     )
-    if memory_order == "F":
+    # After writing and reading from zarr array, order should be same as zarr order
+    if zarr_order == "F":
         assert (arr[6:9, 3:6]).flags.f_contiguous
     else:
         assert (arr[6:9, 3:6]).flags.c_contiguous
 
+    # Contiguous write
     store = MemoryStore()
     arr = zarr.create_array(
         store,
@@ -242,18 +245,17 @@ def test_v2_non_contiguous(
         compressors=None,
         filters=None,
         overwrite=True,
-        order=array_order,
-        config={"order": memory_order},
+        order=zarr_order,
     )
 
-    # Contiguous write
-    a = np.arange(9).reshape((3, 3), order=data_order)
-    if data_order == "F":
-        assert a.flags.f_contiguous
-    else:
-        assert a.flags.c_contiguous
+    a = np.arange(9).reshape((3, 3), order=numpy_order)
     arr[6:9, 3:6] = a
     np.testing.assert_array_equal(arr[6:9, 3:6], a)
+    # After writing and reading from zarr array, order should be same as zarr order
+    if zarr_order == "F":
+        assert (arr[6:9, 3:6]).flags.f_contiguous
+    else:
+        assert (arr[6:9, 3:6]).flags.c_contiguous
 
 
 def test_default_compressor_deprecation_warning():
@@ -313,6 +315,89 @@ def test_structured_dtype_roundtrip(fill_value, tmp_path) -> None:
     za[...] = a
     za = zarr.open_array(store=array_path)
     assert (a == za[:]).all()
+
+
+@pytest.mark.parametrize(
+    (
+        "fill_value",
+        "dtype",
+        "expected_result",
+    ),
+    [
+        (
+            ("Alice", 30),
+            np.dtype([("name", "U10"), ("age", "i4")]),
+            np.array([("Alice", 30)], dtype=[("name", "U10"), ("age", "i4")])[0],
+        ),
+        (
+            ["Bob", 25],
+            np.dtype([("name", "U10"), ("age", "i4")]),
+            np.array([("Bob", 25)], dtype=[("name", "U10"), ("age", "i4")])[0],
+        ),
+        (
+            b"\x01\x00\x00\x00\x02\x00\x00\x00",
+            np.dtype([("x", "i4"), ("y", "i4")]),
+            np.array([(1, 2)], dtype=[("x", "i4"), ("y", "i4")])[0],
+        ),
+        (
+            "BQAAAA==",
+            np.dtype([("val", "i4")]),
+            np.array([(5,)], dtype=[("val", "i4")])[0],
+        ),
+        (
+            {"x": 1, "y": 2},
+            np.dtype([("location", "O")]),
+            np.array([({"x": 1, "y": 2},)], dtype=[("location", "O")])[0],
+        ),
+        (
+            {"x": 1, "y": 2, "z": 3},
+            np.dtype([("location", "O")]),
+            np.array([({"x": 1, "y": 2, "z": 3},)], dtype=[("location", "O")])[0],
+        ),
+    ],
+    ids=[
+        "tuple_input",
+        "list_input",
+        "bytes_input",
+        "string_input",
+        "dictionary_input",
+        "dictionary_input_extra_fields",
+    ],
+)
+def test_parse_structured_fill_value_valid(
+    fill_value: Any, dtype: np.dtype[Any], expected_result: Any
+) -> None:
+    result = _parse_structured_fill_value(fill_value, dtype)
+    assert result.dtype == expected_result.dtype
+    assert result == expected_result
+    if isinstance(expected_result, np.void):
+        for name in expected_result.dtype.names or []:
+            assert result[name] == expected_result[name]
+
+
+@pytest.mark.parametrize(
+    (
+        "fill_value",
+        "dtype",
+    ),
+    [
+        (("Alice", 30), np.dtype([("name", "U10"), ("age", "i4"), ("city", "U20")])),
+        (b"\x01\x00\x00\x00", np.dtype([("x", "i4"), ("y", "i4")])),
+        ("this_is_not_base64", np.dtype([("val", "i4")])),
+        ("hello", np.dtype([("age", "i4")])),
+        ({"x": 1, "y": 2}, np.dtype([("location", "i4")])),
+    ],
+    ids=[
+        "tuple_list_wrong_length",
+        "bytes_wrong_length",
+        "invalid_base64",
+        "wrong_data_type",
+        "wrong_dictionary",
+    ],
+)
+def test_parse_structured_fill_value_invalid(fill_value: Any, dtype: np.dtype[Any]) -> None:
+    with pytest.raises(ValueError):
+        _parse_structured_fill_value(fill_value, dtype)
 
 
 @pytest.mark.parametrize("fill_value", [None, b"x"], ids=["no_fill", "fill"])

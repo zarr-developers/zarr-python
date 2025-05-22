@@ -17,6 +17,7 @@ from hypothesis.strategies import DataObject
 import zarr
 from zarr import Array
 from zarr.abc.store import Store
+from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import Buffer, BufferPrototype, cpu, default_buffer_prototype
 from zarr.core.sync import SyncMixin
 from zarr.storage import LocalStore, MemoryStore
@@ -108,7 +109,15 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         assume(self.can_add(path))
         note(f"Adding array:  path='{path}'  shape={array.shape}  chunks={chunks}")
         for store in [self.store, self.model]:
-            zarr.array(array, chunks=chunks, path=path, store=store, fill_value=fill_value)
+            zarr.array(
+                array,
+                chunks=chunks,
+                path=path,
+                store=store,
+                fill_value=fill_value,
+                # Chose bytes codec to avoid wasting time compressing the data being written
+                codecs=[BytesCodec()],
+            )
         self.all_arrays.add(path)
 
     # @precondition(lambda self: bool(self.all_groups))
@@ -326,8 +335,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.store.clear()
 
     @rule(key=zarr_keys(), data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
-    def set(self, key: str, data: DataObject) -> None:
-        note(f"(set) Setting {key!r} with {data}")
+    def set(self, key: str, data: bytes) -> None:
+        note(f"(set) Setting {key!r} with {data!r}")
         assert not self.store.read_only
         data_buf = cpu.Buffer.from_bytes(data)
         self.store.set(key, data_buf)

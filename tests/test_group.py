@@ -1584,14 +1584,12 @@ async def test_create_hierarchy(
             sync_group.create_hierarchy(store=store, nodes=hierarchy_spec, overwrite=overwrite)
         )
     elif impl == "async":
-        created = dict(
-            [
-                a
-                async for a in create_hierarchy(
-                    store=store, nodes=hierarchy_spec, overwrite=overwrite
-                )
-            ]
-        )
+        created = {
+            k: v
+            async for k, v in create_hierarchy(
+                store=store, nodes=hierarchy_spec, overwrite=overwrite
+            )
+        }
     else:
         raise ValueError(f"Invalid impl: {impl}")
     if not overwrite:

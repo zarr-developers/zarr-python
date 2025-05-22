@@ -12,6 +12,7 @@ from unittest import mock
 
 import numcodecs
 import numpy as np
+import numpy.typing as npt
 import pytest
 from packaging.version import Version
 
@@ -38,9 +39,10 @@ from zarr.core.array import (
     chunks_initialized,
     create_array,
 )
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
+from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
@@ -51,7 +53,7 @@ from zarr.storage import LocalStore, MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
-    from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -227,10 +229,13 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
     assert arr.fill_value.dtype == arr.dtype
 
 
-def test_create_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="Pass"):
-        zarr.Array.create(store, (2, 2), dtype="f8")
+async def test_create_deprecated() -> None:
+    with pytest.warns(DeprecationWarning):
+        with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
+            await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8")  # type: ignore[call-overload]
+    with pytest.warns(DeprecationWarning):
+        with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
+            zarr.Array.create(MemoryStore(), (2, 2), dtype="f8")
 
 
 def test_selection_positional_args_deprecated() -> None:
@@ -321,24 +326,47 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_storage_transformers(store: MemoryStore) -> None:
+@pytest.mark.parametrize("zarr_format", [2, 3, "invalid"])
+def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str) -> None:
     """
     Test that providing an actual storage transformer produces a warning and otherwise passes through
     """
-    metadata_dict: dict[str, JSON] = {
-        "zarr_format": 3,
-        "node_type": "array",
-        "shape": (10,),
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": "uint8",
-        "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
-        "codecs": (BytesCodec().to_dict(),),
-        "fill_value": 0,
-        "storage_transformers": ({"test": "should_raise"}),
-    }
-    match = "Arrays with storage transformers are not supported in zarr-python at this time."
-    with pytest.raises(ValueError, match=match):
+    metadata_dict: dict[str, JSON]
+    if zarr_format == 3:
+        metadata_dict = {
+            "zarr_format": 3,
+            "node_type": "array",
+            "shape": (10,),
+            "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+            "data_type": "uint8",
+            "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
+            "codecs": (BytesCodec().to_dict(),),
+            "fill_value": 0,
+            "storage_transformers": ({"test": "should_raise"}),
+        }
+    else:
+        metadata_dict = {
+            "zarr_format": zarr_format,
+            "shape": (10,),
+            "chunks": (1,),
+            "dtype": "uint8",
+            "dimension_separator": ".",
+            "codecs": (BytesCodec().to_dict(),),
+            "fill_value": 0,
+            "order": "C",
+            "storage_transformers": ({"test": "should_raise"}),
+        }
+    if zarr_format == 3:
+        match = "Arrays with storage transformers are not supported in zarr-python at this time."
+        with pytest.raises(ValueError, match=match):
+            Array.from_dict(StorePath(store), data=metadata_dict)
+    elif zarr_format == 2:
+        # no warning
         Array.from_dict(StorePath(store), data=metadata_dict)
+    else:
+        match = f"Invalid zarr_format: {zarr_format}. Expected 2 or 3"
+        with pytest.raises(ValueError, match=match):
+            Array.from_dict(StorePath(store), data=metadata_dict)
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
@@ -387,12 +415,13 @@ async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]
         assert observed == expected
 
 
-async def test_chunks_initialized() -> None:
+@pytest.mark.parametrize("path", ["", "foo"])
+async def test_chunks_initialized(path: str) -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
     store = MemoryStore()
-    arr = zarr.create_array(store, shape=(100,), chunks=(10,), dtype="i4")
+    arr = zarr.create_array(store, name=path, shape=(100,), chunks=(10,), dtype="i4")
 
     chunks_accumulated = tuple(
         accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_chunk_keys()))
@@ -655,35 +684,43 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     )
     a = np.arange(105, dtype="i4")
     z[:] = a
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (105,) == z.shape
-    assert (105,) == z[:].shape
+    assert (105,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
-    np.testing.assert_array_equal(a, z[:])
+    np.testing.assert_array_equal(a, result)
 
     z.resize(205)
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (205,) == z.shape
-    assert (205,) == z[:].shape
+    assert (205,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
     np.testing.assert_array_equal(a, z[:105])
     np.testing.assert_array_equal(np.zeros(100, dtype="i4"), z[105:])
 
     z.resize(55)
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55,) == z.shape
-    assert (55,) == z[:].shape
+    assert (55,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
-    np.testing.assert_array_equal(a[:55], z[:])
+    np.testing.assert_array_equal(a[:55], result)
 
     # via shape setter
     new_shape = (105,)
     z.shape = new_shape
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert new_shape == z.shape
-    assert new_shape == z[:].shape
+    assert new_shape == result.shape
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -698,44 +735,54 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     )
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z[:] = a
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (105, 105) == z.shape
-    assert (105, 105) == z[:].shape
+    assert (105, 105) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a, z[:])
+    np.testing.assert_array_equal(a, result)
 
     z.resize((205, 205))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (205, 205) == z.shape
-    assert (205, 205) == z[:].shape
+    assert (205, 205) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a, z[:105, :105])
     np.testing.assert_array_equal(np.zeros((100, 205), dtype="i4"), z[105:, :])
     np.testing.assert_array_equal(np.zeros((205, 100), dtype="i4"), z[:, 105:])
 
     z.resize((55, 55))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55, 55) == z.shape
-    assert (55, 55) == z[:].shape
+    assert (55, 55) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a[:55, :55], z[:])
+    np.testing.assert_array_equal(a[:55, :55], result)
 
     z.resize((55, 1))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55, 1) == z.shape
-    assert (55, 1) == z[:].shape
+    assert (55, 1) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a[:55, :1], z[:])
+    np.testing.assert_array_equal(a[:55, :1], result)
 
     z.resize((1, 55))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (1, 55) == z.shape
-    assert (1, 55) == z[:].shape
+    assert (1, 55) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a[:1, :10], z[:, :10])
     np.testing.assert_array_equal(np.zeros((1, 55 - 10), dtype="i4"), z[:, 10:55])
@@ -743,8 +790,10 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     # via shape setter
     new_shape = (105, 105)
     z.shape = new_shape
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert new_shape == z.shape
-    assert new_shape == z[:].shape
+    assert new_shape == result.shape
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1122,6 +1171,111 @@ class TestCreateArray:
         assert arr.compressors == compressors_expected
 
     @staticmethod
+    @pytest.mark.parametrize("name", ["v2", "default", "invalid"])
+    @pytest.mark.parametrize("separator", [".", "/"])
+    async def test_chunk_key_encoding(
+        name: str, separator: Literal[".", "/"], zarr_format: ZarrFormat, store: MemoryStore
+    ) -> None:
+        chunk_key_encoding = ChunkKeyEncodingParams(name=name, separator=separator)  # type: ignore[typeddict-item]
+        error_msg = ""
+        if name == "invalid":
+            error_msg = "Unknown chunk key encoding."
+        if zarr_format == 2 and name == "default":
+            error_msg = "Invalid chunk key encoding. For Zarr format 2 arrays, the `name` field of the chunk key encoding must be 'v2'."
+        if error_msg:
+            with pytest.raises(ValueError, match=re.escape(error_msg)):
+                arr = await create_array(
+                    store=store,
+                    dtype="uint8",
+                    shape=(10,),
+                    chunks=(1,),
+                    zarr_format=zarr_format,
+                    chunk_key_encoding=chunk_key_encoding,
+                )
+        else:
+            arr = await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                chunks=(1,),
+                zarr_format=zarr_format,
+                chunk_key_encoding=chunk_key_encoding,
+            )
+            if isinstance(arr.metadata, ArrayV2Metadata):
+                assert arr.metadata.dimension_separator == separator
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("kwargs", "error_msg"),
+        [
+            ({"serializer": "bytes"}, "Zarr format 2 arrays do not support `serializer`."),
+            ({"dimension_names": ["test"]}, "Zarr format 2 arrays do not support dimension names."),
+        ],
+    )
+    async def test_create_array_invalid_v2_arguments(
+        kwargs: dict[str, Any], error_msg: str, store: MemoryStore
+    ) -> None:
+        with pytest.raises(ValueError, match=re.escape(error_msg)):
+            await zarr.api.asynchronous.create_array(
+                store=store, dtype="uint8", shape=(10,), chunks=(1,), zarr_format=2, **kwargs
+            )
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("kwargs", "error_msg"),
+        [
+            (
+                {"dimension_names": ["test"]},
+                "dimension_names cannot be used for arrays with zarr_format 2.",
+            ),
+            (
+                {"chunk_key_encoding": {"name": "default", "separator": "/"}},
+                "chunk_key_encoding cannot be used for arrays with zarr_format 2. Use dimension_separator instead.",
+            ),
+            (
+                {"codecs": "bytes"},
+                "codecs cannot be used for arrays with zarr_format 2. Use filters and compressor instead.",
+            ),
+        ],
+    )
+    async def test_create_invalid_v2_arguments(
+        kwargs: dict[str, Any], error_msg: str, store: MemoryStore
+    ) -> None:
+        with pytest.raises(ValueError, match=re.escape(error_msg)):
+            await zarr.api.asynchronous.create(
+                store=store, dtype="uint8", shape=(10,), chunks=(1,), zarr_format=2, **kwargs
+            )
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("kwargs", "error_msg"),
+        [
+            (
+                {"chunk_shape": (1,), "chunks": (2,)},
+                "Only one of chunk_shape or chunks can be provided.",
+            ),
+            (
+                {"dimension_separator": "/"},
+                "dimension_separator cannot be used for arrays with zarr_format 3. Use chunk_key_encoding instead.",
+            ),
+            (
+                {"filters": []},
+                "filters cannot be used for arrays with zarr_format 3. Use array-to-array codecs instead",
+            ),
+            (
+                {"compressor": "blosc"},
+                "compressor cannot be used for arrays with zarr_format 3. Use bytes-to-bytes codecs instead",
+            ),
+        ],
+    )
+    async def test_invalid_v3_arguments(
+        kwargs: dict[str, Any], error_msg: str, store: MemoryStore
+    ) -> None:
+        kwargs.setdefault("chunks", (1,))
+        with pytest.raises(ValueError, match=re.escape(error_msg)):
+            zarr.create(store=store, dtype="uint8", shape=(10,), zarr_format=3, **kwargs)
+
+    @staticmethod
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
     @pytest.mark.parametrize(
         "compressors",
@@ -1278,9 +1432,11 @@ class TestCreateArray:
             await create_array(store, data=data, shape=None, dtype=data.dtype, overwrite=True)
 
     @staticmethod
-    @pytest.mark.parametrize("order_config", ["C", "F", None])
+    @pytest.mark.parametrize("order", ["C", "F", None])
+    @pytest.mark.parametrize("with_config", [True, False])
     def test_order(
-        order_config: MemoryOrder | None,
+        order: MemoryOrder | None,
+        with_config: bool,
         zarr_format: ZarrFormat,
         store: MemoryStore,
     ) -> None:
@@ -1288,29 +1444,31 @@ class TestCreateArray:
         Test that the arrays generated by array indexing have a memory order defined by the config order
         value, and that for zarr v2 arrays, the ``order`` field in the array metadata is set correctly.
         """
-        config: ArrayConfigLike = {}
-        if order_config is None:
+        config: ArrayConfigLike | None = {}
+        if order is None:
             config = {}
             expected = zarr.config.get("array.order")
         else:
-            config = {"order": order_config}
-            expected = order_config
+            config = {"order": order}
+            expected = order
+
+        if not with_config:
+            # Test without passing config parameter
+            config = None
+
+        arr = zarr.create_array(
+            store=store,
+            shape=(2, 2),
+            zarr_format=zarr_format,
+            dtype="i4",
+            order=order,
+            config=config,
+        )
+        assert arr.order == expected
         if zarr_format == 2:
-            arr = zarr.create_array(
-                store=store,
-                shape=(2, 2),
-                zarr_format=zarr_format,
-                dtype="i4",
-                order=expected,
-                config=config,
-            )
-            # guard for type checking
             assert arr.metadata.zarr_format == 2
             assert arr.metadata.order == expected
-        else:
-            arr = zarr.create_array(
-                store=store, shape=(2, 2), zarr_format=zarr_format, dtype="i4", config=config
-            )
+
         vals = np.asarray(arr)
         if expected == "C":
             assert vals.flags.c_contiguous
@@ -1352,15 +1510,137 @@ class TestCreateArray:
             for parent_path in parents:
                 # this will raise if these groups were not created
                 _ = await zarr.api.asynchronous.open_group(
-                    store=store, path=parent_path, mode="r", zarr_format=zarr_format
+                    store=store, path=parent_path, zarr_format=zarr_format
                 )
 
 
-async def test_scalar_array() -> None:
-    arr = zarr.array(1.5)
-    assert arr[...] == 1.5
-    assert arr[()] == 1.5
+@pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
+    arr = zarr.array(value, zarr_format=zarr_format)
+    assert arr[...] == value
     assert arr.shape == ()
+    assert arr.ndim == 0
+    assert isinstance(arr[()], NDArrayLikeOrScalar)
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+@pytest.mark.parametrize("store2", ["local"], indirect=["store2"])
+@pytest.mark.parametrize("src_format", [2, 3])
+@pytest.mark.parametrize("new_format", [2, 3, None])
+async def test_creation_from_other_zarr_format(
+    store: Store,
+    store2: Store,
+    src_format: ZarrFormat,
+    new_format: ZarrFormat | None,
+) -> None:
+    if src_format == 2:
+        src = zarr.create(
+            (50, 50), chunks=(10, 10), store=store, zarr_format=src_format, dimension_separator="/"
+        )
+    else:
+        src = zarr.create(
+            (50, 50),
+            chunks=(10, 10),
+            store=store,
+            zarr_format=src_format,
+            chunk_key_encoding=("default", "."),
+        )
+
+    src[:] = np.arange(50 * 50).reshape((50, 50))
+    result = zarr.from_array(
+        store=store2,
+        data=src,
+        zarr_format=new_format,
+    )
+    np.testing.assert_array_equal(result[:], src[:])
+    assert result.fill_value == src.fill_value
+    assert result.dtype == src.dtype
+    assert result.chunks == src.chunks
+    expected_format = src_format if new_format is None else new_format
+    assert result.metadata.zarr_format == expected_format
+    if src_format == new_format:
+        assert result.metadata == src.metadata
+
+    result2 = zarr.array(
+        data=src,
+        store=store2,
+        overwrite=True,
+        zarr_format=new_format,
+    )
+    np.testing.assert_array_equal(result2[:], src[:])
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
+@pytest.mark.parametrize("store2", ["local", "memory", "zip"], indirect=["store2"])
+@pytest.mark.parametrize("src_chunks", [(40, 10), (11, 50)])
+@pytest.mark.parametrize("new_chunks", [(40, 10), (11, 50)])
+async def test_from_array(
+    store: Store,
+    store2: Store,
+    src_chunks: tuple[int, int],
+    new_chunks: tuple[int, int],
+    zarr_format: ZarrFormat,
+) -> None:
+    src_fill_value = 2
+    src_dtype = np.dtype("uint8")
+    src_attributes = None
+
+    src = zarr.create(
+        (100, 10),
+        chunks=src_chunks,
+        dtype=src_dtype,
+        store=store,
+        fill_value=src_fill_value,
+        attributes=src_attributes,
+    )
+    src[:] = np.arange(1000).reshape((100, 10))
+
+    new_fill_value = 3
+    new_attributes: dict[str, JSON] = {"foo": "bar"}
+
+    result = zarr.from_array(
+        data=src,
+        store=store2,
+        chunks=new_chunks,
+        fill_value=new_fill_value,
+        attributes=new_attributes,
+    )
+
+    np.testing.assert_array_equal(result[:], src[:])
+    assert result.fill_value == new_fill_value
+    assert result.dtype == src_dtype
+    assert result.attrs == new_attributes
+    assert result.chunks == new_chunks
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+@pytest.mark.parametrize("chunks", ["keep", "auto"])
+@pytest.mark.parametrize("write_data", [True, False])
+@pytest.mark.parametrize(
+    "src",
+    [
+        np.arange(1000).reshape(10, 10, 10),
+        zarr.ones((10, 10, 10)),
+        5,
+        [1, 2, 3],
+        [[1, 2, 3], [4, 5, 6]],
+    ],
+)  # add other npt.ArrayLike?
+async def test_from_array_arraylike(
+    store: Store,
+    chunks: Literal["auto", "keep"] | tuple[int, int],
+    write_data: bool,
+    src: Array | npt.ArrayLike,
+) -> None:
+    fill_value = 42
+    result = zarr.from_array(
+        store, data=src, chunks=chunks, write_data=write_data, fill_value=fill_value
+    )
+    if write_data:
+        np.testing.assert_array_equal(result[...], np.array(src))
+    else:
+        np.testing.assert_array_equal(result[...], np.full_like(src, fill_value))
 
 
 async def test_orthogonal_set_total_slice() -> None:
@@ -1418,7 +1698,7 @@ def test_roundtrip_numcodecs() -> None:
 
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
-    root = zarr.open_group(store, mode="r")
+    root = zarr.open_group(store)
     metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
@@ -1454,9 +1734,8 @@ def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkser
     data = np.arange(100)
     arr = zarr.create_array(store=store, data=data)
     ctx = mp.get_context(method)
-    pool = ctx.Pool()
-
-    results = pool.starmap(_index_array, [(arr, slice(len(data)))])
+    with ctx.Pool() as pool:
+        results = pool.starmap(_index_array, [(arr, slice(len(data)))])
     assert all(np.array_equal(r, data) for r in results)
 
 
@@ -1491,4 +1770,14 @@ async def test_sharding_coordinate_selection() -> None:
         shards=(2, 4, 4),
     )
     arr[:] = np.arange(2 * 3 * 4).reshape((2, 3, 4))
-    assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()  # type: ignore[index]
+    result = arr[1, [0, 1]]  # type: ignore[index]
+    assert isinstance(result, NDArrayLike)
+    assert (result == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_array_repr(store: Store) -> None:
+    shape = (2, 3, 4)
+    dtype = "uint8"
+    arr = zarr.create_array(store, shape=shape, dtype=dtype)
+    assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"
