@@ -8,9 +8,9 @@ from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
 from zarr.core.dtype.npy.sized import (
-    FixedLengthAscii,
+    FixedLengthASCII,
     FixedLengthBytes,
-    FixedLengthUnicode,
+    FixedLengthUTF32,
     Structured,
 )
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
@@ -36,9 +36,9 @@ __all__ = [
     "DataTypeRegistry",
     "DataTypeValidationError",
     "DateTime64",
-    "FixedLengthAscii",
+    "FixedLengthASCII",
     "FixedLengthBytes",
-    "FixedLengthUnicode",
+    "FixedLengthUTF32",
     "Float16",
     "Float32",
     "Float64",
@@ -72,8 +72,8 @@ FLOAT_DTYPE: Final = Float16, Float32, Float64
 ComplexFloatDType = Complex64 | Complex128
 COMPLEX_FLOAT_DTYPE: Final = Complex64, Complex128
 
-StringDType = FixedLengthUnicode | VariableLengthString | FixedLengthAscii
-STRING_DTYPE: Final = FixedLengthUnicode, VariableLengthString, FixedLengthAscii
+StringDType = FixedLengthUTF32 | VariableLengthString | FixedLengthASCII
+STRING_DTYPE: Final = FixedLengthUTF32, VariableLengthString, FixedLengthASCII
 
 TimeDType = DateTime64 | TimeDelta64
 TIME_DTYPE: Final = DateTime64, TimeDelta64

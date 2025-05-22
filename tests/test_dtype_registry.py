@@ -9,13 +9,14 @@ import numpy as np
 import pytest
 
 import zarr
+from tests.conftest import skip_object_dtype
 from zarr.core.config import config
 from zarr.core.dtype import (
     AnyDType,
     Bool,
     DataTypeRegistry,
     DateTime64,
-    FixedLengthUnicode,
+    FixedLengthUTF32,
     Int8,
     Int16,
     TBaseDType,
@@ -65,7 +66,7 @@ class TestRegistry:
 
     @staticmethod
     @pytest.mark.parametrize(
-        ("wrapper_cls", "dtype_str"), [(Bool, "bool"), (FixedLengthUnicode, "|U4")]
+        ("wrapper_cls", "dtype_str"), [(Bool, "bool"), (FixedLengthUTF32, "|U4")]
     )
     def test_match_dtype(
         data_type_registry_fixture: DataTypeRegistry,
@@ -100,7 +101,7 @@ class TestRegistry:
         """
         Test that the registered dtypes can be retrieved from the registry.
         """
-
+        skip_object_dtype(zdtype)
         assert data_type_registry.match_dtype(zdtype.to_dtype()) == zdtype
         assert (
             data_type_registry.match_json(
@@ -121,6 +122,7 @@ class TestRegistry:
         that excludes the data type class being tested, and ensure that an instance of the wrapped data type
         fails to match anything in the registry
         """
+        skip_object_dtype(zdtype)
         for _cls in get_args(AnyDType):
             if _cls is not type(zdtype):
                 data_type_registry_fixture.register(_cls._zarr_v3_name, _cls)

@@ -20,7 +20,7 @@ from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength, HasItemSize):
+class FixedLengthASCII(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength, HasItemSize):
     dtype_cls = np.dtypes.BytesDType
     _zarr_v3_name = "numpy.fixed_length_ascii"
 
@@ -185,12 +185,12 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, Has
 
 
 @dataclass(frozen=True, kw_only=True)
-class FixedLengthUnicode(
+class FixedLengthUTF32(
     ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness, HasLength, HasItemSize
 ):
     dtype_cls = np.dtypes.StrDType
-    _zarr_v3_name = "numpy.fixed_length_ucs4"
-    code_point_bytes: ClassVar[int] = 4  # UCS4 is 4 bytes per code point
+    _zarr_v3_name = "numpy.fixed_length_utf32"
+    code_point_bytes: ClassVar[int] = 4  # utf32 is 4 bytes per code point
 
     @classmethod
     def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:

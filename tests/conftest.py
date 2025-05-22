@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import ChunkCoords, MemoryOrder, ShapeLike, ZarrFormat
+    from zarr.core.dtype.wrapper import ZDType
 
 
 async def parse_store(
@@ -432,3 +433,12 @@ def meta_from_array(
         chunk_key_encoding=chunk_key_encoding,
         dimension_names=dimension_names,
     )
+
+
+def skip_object_dtype(dtype: ZDType[Any, Any]) -> None:
+    if dtype.dtype_cls is type(np.dtype("O")):
+        msg = (
+            f"{dtype} uses the numpy object data type, which is not a valid target for data "
+            "type resolution"
+        )
+        pytest.skip(msg)

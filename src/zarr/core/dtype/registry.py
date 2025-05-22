@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Self
 
+import numpy as np
+
 from zarr.core.dtype.common import DataTypeValidationError
 
 if TYPE_CHECKING:
@@ -38,6 +40,17 @@ class DataTypeRegistry:
 
     def match_dtype(self, dtype: TBaseDType) -> ZDType[TBaseDType, TBaseScalar]:
         self.lazy_load()
+        if dtype == np.dtype("O"):
+            msg = (
+                "Data type resolution failed. "
+                'Attempted to resolve a zarr data type from a numpy "Object" data type, which is '
+                'ambiguous, as multiple zarr data types can be represented by the numpy "Object" '
+                "data type. "
+                "In this case you should construct your array by providing a specific Zarr data "
+                'type. For a list of Zarr data types that are compatible with the numpy "Object"'
+                "data type, see xxxxxxxxxxx"
+            )
+            raise ValueError(msg)
         for val in self.contents.values():
             try:
                 return val.from_dtype(dtype)
