@@ -4221,7 +4221,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    dtype_wrapped = parse_data_type(dtype, zarr_format=zarr_format)
+    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
@@ -4243,7 +4243,7 @@ async def init_array(
         array_shape=shape_parsed,
         shard_shape=shards,
         chunk_shape=chunks,
-        item_size=dtype_wrapped.to_dtype().itemsize,
+        item_size=item_size,
     )
     chunks_out: tuple[int, ...]
     meta: ArrayV2Metadata | ArrayV3Metadata
@@ -4259,7 +4259,7 @@ async def init_array(
             raise ValueError("Zarr format 2 arrays do not support `serializer`.")
 
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
-            compressor=compressors, filters=filters, dtype=dtype_wrapped
+            compressor=compressors, filters=filters, dtype=zdtype
         )
         if dimension_names is not None:
             raise ValueError("Zarr format 2 arrays do not support dimension names.")
@@ -4270,7 +4270,7 @@ async def init_array(
 
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
-            dtype=dtype_wrapped,
+            dtype=zdtype,
             chunks=chunk_shape_parsed,
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
@@ -4284,7 +4284,7 @@ async def init_array(
             compressors=compressors,
             filters=filters,
             serializer=serializer,
-            dtype=dtype_wrapped,
+            dtype=zdtype,
         )
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
         codecs_out: tuple[Codec, ...]
@@ -4299,7 +4299,7 @@ async def init_array(
             )
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
-                dtype=dtype_wrapped,
+                dtype=zdtype,
                 chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
             )
             codecs_out = (sharding_codec,)
@@ -4313,7 +4313,7 @@ async def init_array(
 
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
-            dtype=dtype_wrapped,
+            dtype=zdtype,
             fill_value=fill_value,
             chunk_shape=chunks_out,
             chunk_key_encoding=chunk_key_encoding_parsed,
