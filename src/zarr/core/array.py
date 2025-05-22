@@ -72,7 +72,7 @@ from zarr.core.dtype import (
     ZDTypeLike,
     parse_data_type,
 )
-from zarr.core.dtype.common import HasItemSize
+from zarr.core.dtype.common import HasEndianness, HasItemSize
 from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -4731,7 +4731,7 @@ def _parse_chunk_encoding_v3(
     # TODO: ensure that the serializer is compatible with the ndarray produced by the
     # array-array codecs. For example, if a sequence of array-array codecs produces an
     # array with a single-byte data type, then the serializer should not specify endiannesss.
-    if isinstance(out_array_bytes, BytesCodec) and dtype.to_dtype().itemsize == 1:
+    if isinstance(out_array_bytes, BytesCodec) and not isinstance(dtype, HasEndianness):
         # The default endianness in the bytescodec might not be None, so we need to replace it
         out_array_bytes = replace(out_array_bytes, endian=None)
     return out_array_array, out_array_bytes, out_bytes_bytes
