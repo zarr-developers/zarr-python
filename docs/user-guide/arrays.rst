@@ -183,6 +183,7 @@ which can be used to print useful diagnostics, e.g.::
    Type               : Array
    Zarr format        : 3
    Data type          : DataType.int32
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -200,6 +201,7 @@ prints additional diagnostics, e.g.::
    Type               : Array
    Zarr format        : 3
    Data type          : DataType.int32
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -209,8 +211,8 @@ prints additional diagnostics, e.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 3558573
-   Storage ratio      : 112.4
+   No. bytes stored   : 9696520
+   Storage ratio      : 41.3
    Chunks Initialized : 100
 
 .. note::
@@ -287,6 +289,7 @@ Here is an example using a delta filter with the Blosc compressor::
    Type               : Array
    Zarr format        : 3
    Data type          : DataType.int32
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -601,6 +604,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Type               : Array
   Zarr format        : 3
   Data type          : DataType.uint8
+  Fill value         : 0
   Shape              : (10000, 10000)
   Shard shape        : (1000, 1000)
   Chunk shape        : (100, 100)
