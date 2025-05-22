@@ -154,7 +154,7 @@ class NDBuffer(core.NDBuffer):
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
-        if fill_value is None:
+        if fill_value is None or fill_value == 0:
             return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
         else:
             return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
