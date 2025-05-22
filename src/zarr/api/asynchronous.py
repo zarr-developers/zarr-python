@@ -833,7 +833,7 @@ async def create(
     chunks: ChunkCoords | int | bool | None = None,
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
-    fill_value: Any | None = 0,  # TODO: need type
+    fill_value: Any | None = None,  # TODO: need type
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
