@@ -128,7 +128,7 @@ class TestConsolidated:
                     "chunks": [730],
                     "compressor": None,
                     "dtype": "<f4",
-                    "fill_value": "0.0",
+                    "fill_value": 0.0,
                     "filters": None,
                     "order": "C",
                     "shape": [730],
@@ -147,7 +147,7 @@ class TestConsolidated:
                     "chunks": [730],
                     "compressor": None,
                     "dtype": "<f4",
-                    "fill_value": "0.0",
+                    "fill_value": 0.0,
                     "filters": None,
                     "order": "C",
                     "shape": [730],
@@ -318,9 +318,7 @@ def test_zstd_checksum() -> None:
     assert "checksum" not in metadata["compressor"]
 
 
-@pytest.mark.parametrize(
-    "fill_value", [None, np.void((0, 0), np.dtype([("foo", "i4"), ("bar", "i4")]))]
-)
+@pytest.mark.parametrize("fill_value", [np.void((0, 0), np.dtype([("foo", "i4"), ("bar", "i4")]))])
 def test_structured_dtype_fill_value_serialization(tmp_path, fill_value):
     zarr_format = 2
     group_path = tmp_path / "test.zarr"

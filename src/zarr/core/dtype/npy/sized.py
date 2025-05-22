@@ -79,7 +79,8 @@ class FixedLengthAscii(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength):
         raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
     def check_value(self, data: object) -> bool:
-        return isinstance(data, np.bytes_ | str | bytes)
+        # this is generous for backwards compatibility
+        return isinstance(data, np.bytes_ | str | bytes | int)
 
     def _cast_value_unsafe(self, value: object) -> np.bytes_:
         return self.to_dtype().type(value)
@@ -168,7 +169,11 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength):
         return isinstance(data, np.bytes_ | str | bytes | np.void)
 
     def _cast_value_unsafe(self, value: object) -> np.void:
-        return self.to_dtype().type(value)  # type: ignore[call-overload, no-any-return]
+        native_dtype = self.to_dtype()
+        # Without the second argument, numpy will return a void scalar for dtype V1.
+        # The second argument ensures that, if native_dtype is something like V10,
+        # the result will actually be a V10 scalar.
+        return native_dtype.type(value, native_dtype)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -239,7 +244,8 @@ class FixedLengthUnicode(ZDType[np.dtypes.StrDType[int], np.str_], HasEndianness
         raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
     def check_value(self, data: object) -> bool:
-        return isinstance(data, str | np.str_ | bytes)
+        # this is generous for backwards compatibility
+        return isinstance(data, str | np.str_ | bytes | int)
 
     def _cast_value_unsafe(self, value: object) -> np.str_:
         return self.to_dtype().type(value)
@@ -254,8 +260,15 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void]):
     def default_value(self) -> np.void:
         return self._cast_value_unsafe(0)
 
-    def _cast_value_unsafe(self, value: object) -> np.void:
-        return cast("np.void", np.array([value], dtype=self.to_dtype())[0])
+    def _cast_value_unsafe(self, data: object) -> np.void:
+        na_dtype = self.to_dtype()
+        if isinstance(data, bytes):
+            res = np.frombuffer(data, dtype=na_dtype)[0]
+        elif isinstance(data, list | tuple):
+            res = np.array([tuple(data)], dtype=na_dtype)[0]
+        else:
+            res = np.array([data], dtype=na_dtype)[0]
+        return cast("np.void", res)
 
     @classmethod
     def check_dtype(cls, dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[int]]:

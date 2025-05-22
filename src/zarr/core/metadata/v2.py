@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
@@ -52,7 +51,7 @@ class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
     chunks: ChunkCoords
     dtype: ZDType[TBaseDType, TBaseScalar]
-    fill_value: int | float | str | bytes | None = 0
+    fill_value: int | float | str | bytes | None = None
     order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
@@ -85,7 +84,11 @@ class ArrayV2Metadata(Metadata):
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype.to_dtype())
+        fill_value_parsed: TBaseScalar | None
+        if fill_value is not None:
+            fill_value_parsed = dtype.cast_value(fill_value)
+        else:
+            fill_value_parsed = fill_value
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -134,11 +137,10 @@ class ArrayV2Metadata(Metadata):
         _ = parse_zarr_format(_data.pop("zarr_format"))
         dtype = get_data_type_from_native_dtype(_data["dtype"])
         _data["dtype"] = dtype
-        if dtype.to_dtype().kind in "SV":
-            fill_value_encoded = _data.get("fill_value")
-            if fill_value_encoded is not None:
-                fill_value = base64.standard_b64decode(fill_value_encoded)
-                _data["fill_value"] = fill_value
+        fill_value_encoded = _data.get("fill_value")
+        if fill_value_encoded is not None:
+            fill_value = dtype.from_json_value(fill_value_encoded, zarr_format=2)
+            _data["fill_value"] = fill_value
 
         # zarr v2 allowed arbitrary keys here.
         # We don't want the ArrayV2Metadata constructor to fail just because someone put an
@@ -281,76 +283,3 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
         )
         raise ValueError(msg)
     return data
-
-
-def _parse_structured_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
-    """Handle structured dtype/fill value pairs"""
-    try:
-        if isinstance(fill_value, list):
-            return np.array([tuple(fill_value)], dtype=dtype)[0]
-        elif isinstance(fill_value, tuple):
-            return np.array([fill_value], dtype=dtype)[0]
-        elif isinstance(fill_value, bytes):
-            return np.frombuffer(fill_value, dtype=dtype)[0]
-        elif isinstance(fill_value, str):
-            decoded = base64.standard_b64decode(fill_value)
-            return np.frombuffer(decoded, dtype=dtype)[0]
-        else:
-            return np.array(fill_value, dtype=dtype)[()]
-    except Exception as e:
-        raise ValueError(f"Fill_value {fill_value} is not valid for dtype {dtype}.") from e
-
-
-def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
-    """
-    Parse a potential fill value into a value that is compatible with the provided dtype.
-
-    Parameters
-    ----------
-    fill_value : Any
-        A potential fill value.
-    dtype : np.dtype[Any]
-        A numpy dtype.
-
-    Returns
-    -------
-        An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
-    """
-
-    if fill_value is None or dtype.hasobject:
-        pass
-    elif dtype.fields is not None:
-        # the dtype is structured (has multiple fields), so the fill_value might be a
-        # compound value (e.g., a tuple or dict) that needs field-wise processing.
-        # We use parse_structured_fill_value to correctly convert each component.
-        fill_value = _parse_structured_fill_value(fill_value, dtype)
-    elif not isinstance(fill_value, np.void) and fill_value == 0:
-        # this should be compatible across numpy versions for any array type, including
-        # structured arrays
-        fill_value = np.zeros((), dtype=dtype)[()]
-    elif dtype.kind == "U":
-        # special case unicode because of encoding issues on Windows if passed through numpy
-        # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
-
-        if not isinstance(fill_value, str):
-            raise ValueError(
-                f"fill_value {fill_value!r} is not valid for dtype {dtype}; must be a unicode string"
-            )
-    elif dtype.kind in "SV" and isinstance(fill_value, str):
-        fill_value = base64.standard_b64decode(fill_value)
-    elif dtype.kind == "c" and isinstance(fill_value, list) and len(fill_value) == 2:
-        complex_val = complex(float(fill_value[0]), float(fill_value[1]))
-        fill_value = np.array(complex_val, dtype=dtype)[()]
-    else:
-        try:
-            if isinstance(fill_value, bytes) and dtype.kind == "V":
-                # special case for numpy 1.14 compatibility
-                fill_value = np.array(fill_value, dtype=dtype.str).view(dtype)[()]
-            else:
-                fill_value = np.array(fill_value, dtype=dtype)[()]
-
-        except Exception as e:
-            msg = f"Fill_value {fill_value} is not valid for dtype {dtype}."
-            raise ValueError(msg) from e
-
-    return fill_value
