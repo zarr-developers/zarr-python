@@ -24,6 +24,7 @@ from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     get_data_type_from_native_dtype,
 )
+from zarr.core.dtype.common import HasItemSize
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
@@ -290,7 +291,7 @@ def create_array_metadata(
         array_shape=shape_parsed,
         shard_shape=shards,
         chunk_shape=chunks,
-        item_size=dtype_parsed.to_dtype().itemsize,
+        item_size=item_size,
     )
 
     if order is None:

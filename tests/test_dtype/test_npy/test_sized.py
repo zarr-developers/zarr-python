@@ -50,6 +50,11 @@ class TestFixedLengthAscii(_TestZDType):
         (FixedLengthAscii(length=2), "ab", np.bytes_("ab")),
         (FixedLengthAscii(length=4), "abcd", np.bytes_("abcd")),
     )
+    item_size_params = (
+        FixedLengthAscii(length=0),
+        FixedLengthAscii(length=4),
+        FixedLengthAscii(length=10),
+    )
 
 
 class TestFixedLengthBytes(_TestZDType):
@@ -91,6 +96,11 @@ class TestFixedLengthBytes(_TestZDType):
         (FixedLengthBytes(length=2), b"ab", np.void(b"ab")),
         (FixedLengthBytes(length=4), b"abcd", np.void(b"abcd")),
     )
+    item_size_params = (
+        FixedLengthBytes(length=0),
+        FixedLengthBytes(length=4),
+        FixedLengthBytes(length=10),
+    )
 
 
 class TestFixedLengthUnicode(_TestZDType):
@@ -124,6 +134,11 @@ class TestFixedLengthUnicode(_TestZDType):
         (FixedLengthUnicode(length=0), "", np.str_("")),
         (FixedLengthUnicode(length=2), "hi", np.str_("hi")),
         (FixedLengthUnicode(length=4), "hihi", np.str_("hihi")),
+    )
+    item_size_params = (
+        FixedLengthUnicode(length=0),
+        FixedLengthUnicode(length=4),
+        FixedLengthUnicode(length=10),
     )
 
 
@@ -214,3 +229,8 @@ class TestStructured(_TestZDType):
         if hasattr(scalar1, "shape") and hasattr(scalar2, "shape"):
             return np.array_equal(scalar1, scalar2)
         return super().scalar_equals(scalar1, scalar2)
+
+    item_size_params = (
+        Structured(fields=(("field1", Int32()), ("field2", Float64()))),
+        Structured(fields=(("field1", Int64()), ("field2", Int32()))),
+    )

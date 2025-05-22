@@ -30,3 +30,16 @@ class HasEndianness:
     """
 
     endianness: Endianness | None = "little"
+
+
+@dataclass(frozen=True)
+class HasItemSize:
+    """
+    A mix-in class for data types with an item size attribute.
+    This mix-in bears a property ``item_size``, which denotes the size of each element of the data
+    type, in bytes.
+    """
+
+    @property
+    def item_size(self) -> int:
+        raise NotImplementedError

@@ -71,6 +71,7 @@ from zarr.core.dtype import (
     ZDTypeLike,
     parse_data_type,
 )
+from zarr.core.dtype.common import HasItemSize
 from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -622,9 +623,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if isinstance(dtype_parsed, HasItemSize):
             item_size = dtype_parsed.item_size
         if chunks:
-            _chunks = normalize_chunks(chunks, shape, dtype_parsed.to_dtype().itemsize)
+            _chunks = normalize_chunks(chunks, shape, item_size)
         else:
-            _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.to_dtype().itemsize)
+            _chunks = normalize_chunks(chunk_shape, shape, item_size)
         config_parsed = parse_array_config(config)
 
         result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]

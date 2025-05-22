@@ -34,6 +34,7 @@ class TestInt8(_TestZDType):
         (Int8(), 1, np.int8(1)),
         (Int8(), -1, np.int8(-1)),
     )
+    item_size_params = (Int8(),)
 
 
 class TestInt16(_TestZDType):
@@ -65,6 +66,8 @@ class TestInt16(_TestZDType):
         (Int16(), -1, np.int16(-1)),
     )
 
+    item_size_params = (Int16(),)
+
 
 class TestInt32(_TestZDType):
     test_cls = Int32
@@ -94,6 +97,7 @@ class TestInt32(_TestZDType):
         (Int32(), 1, np.int32(1)),
         (Int32(), -1, np.int32(-1)),
     )
+    item_size_params = (Int32(),)
 
 
 class TestInt64(_TestZDType):
@@ -124,6 +128,7 @@ class TestInt64(_TestZDType):
         (Int64(), 1, np.int64(1)),
         (Int64(), -1, np.int64(-1)),
     )
+    item_size_params = (Int64(),)
 
 
 class TestUInt8(_TestZDType):
@@ -154,6 +159,7 @@ class TestUInt8(_TestZDType):
         (UInt8(), 1, np.uint8(1)),
         (UInt8(), 0, np.uint8(0)),
     )
+    item_size_params = (UInt8(),)
 
 
 class TestUInt16(_TestZDType):
@@ -184,6 +190,7 @@ class TestUInt16(_TestZDType):
         (UInt16(), 1, np.uint16(1)),
         (UInt16(), 0, np.uint16(0)),
     )
+    item_size_params = (UInt16(),)
 
 
 class TestUInt32(_TestZDType):
@@ -214,6 +221,7 @@ class TestUInt32(_TestZDType):
         (UInt32(), 1, np.uint32(1)),
         (UInt32(), 0, np.uint32(0)),
     )
+    item_size_params = (UInt32(),)
 
 
 class TestUInt64(_TestZDType):
@@ -244,3 +252,4 @@ class TestUInt64(_TestZDType):
         (UInt64(), 1, np.uint64(1)),
         (UInt64(), 0, np.uint64(0)),
     )
+    item_size_params = (UInt64(),)

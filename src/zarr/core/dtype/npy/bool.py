@@ -4,12 +4,13 @@ from typing import ClassVar, Literal, Self, TypeGuard
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
+from zarr.core.dtype.common import HasItemSize
 from zarr.core.dtype.npy.common import check_json_bool
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
+class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     """
     Wrapper for numpy boolean dtype.
 
@@ -65,7 +66,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
         """
         return np.False_
 
-    def to_json_value(self, data: object, zarr_format: ZarrFormat) -> bool:
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> bool:
         """
         Convert a scalar to a python bool.
 
@@ -107,5 +108,9 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_]):
         # Anything can become a bool
         return True
 
-    def _cast_value_unsafe(self, value: object) -> np.bool_:
-        return np.bool_(value)
+    def _cast_value_unsafe(self, data: object) -> np.bool_:
+        return np.bool_(data)
+
+    @property
+    def item_size(self) -> int:
+        return 1

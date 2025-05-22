@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, ClassVar
 
+import pytest
+
+from zarr.core.dtype.common import HasItemSize
+
 if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
@@ -74,8 +78,8 @@ class _TestZDType:
 
     scalar_v2_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
     scalar_v3_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
-
     cast_value_params: ClassVar[tuple[tuple[Any, Any, Any], ...]]
+    item_size_params: ClassVar[tuple[ZDType[Any, Any], ...]]
 
     def json_scalar_equals(self, scalar1: object, scalar2: object) -> bool:
         # An equality check for json-encoded scalars. This defaults to regular equality,
@@ -119,3 +123,13 @@ class _TestZDType:
         zdtype, value, expected = cast_value_params
         observed = zdtype.cast_value(value)
         assert self.scalar_equals(expected, observed)
+
+    def test_item_size(self, item_size_params: ZDType[Any, Any]) -> None:
+        """
+        Test that the item_size attribute matches the numpy dtype itemsize attribute, for dtypes
+        with a fixed scalar size.
+        """
+        if isinstance(item_size_params, HasItemSize):
+            assert item_size_params.item_size == item_size_params.to_dtype().itemsize
+        else:
+            pytest.skip(f"Dtype {item_size_params} does not implement HasItemSize")

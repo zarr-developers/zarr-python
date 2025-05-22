@@ -52,6 +52,8 @@ class TestComplex64(_BaseTestFloat):
         (Complex64(), complex(0, math.nan), np.complex64(complex(0, math.nan))),
     )
 
+    item_size_params = (Complex64(),)
+
 
 class TestComplex128(_BaseTestFloat):
     test_cls = Complex128
@@ -89,3 +91,4 @@ class TestComplex128(_BaseTestFloat):
         (Complex128(), complex(-1.0, math.inf), np.complex128(complex(-1.0, math.inf))),
         (Complex128(), complex(0, math.nan), np.complex128(complex(0, math.nan))),
     )
+    item_size_params = (Complex128(),)

@@ -10,7 +10,7 @@ from typing import (
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import HasEndianness
+from zarr.core.dtype.common import HasEndianness, HasItemSize
 from zarr.core.dtype.npy.common import (
     ComplexLike,
     TComplexDType_co,
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness):
+class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, HasItemSize):
     # This attribute holds the possible zarr v2 JSON names for the data type
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
@@ -83,11 +83,11 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness):
             return data == cls._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def check_value(self, value: object) -> bool:
-        return isinstance(value, ComplexLike)
+    def check_value(self, data: object) -> bool:
+        return isinstance(data, ComplexLike)
 
-    def _cast_value_unsafe(self, value: object) -> TComplexScalar_co:
-        return self.to_dtype().type(value)  # type: ignore[arg-type, return-value]
+    def _cast_value_unsafe(self, data: object) -> TComplexScalar_co:
+        return self.to_dtype().type(data)  # type: ignore[arg-type, return-value]
 
     def default_value(self) -> TComplexScalar_co:
         """
@@ -130,7 +130,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness):
             )
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def to_json_value(self, data: object, zarr_format: ZarrFormat) -> JSON:
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> JSON:
         """
         Convert an object to a JSON-serializable float.
 
@@ -160,9 +160,17 @@ class Complex64(BaseComplex[np.dtypes.Complex64DType, np.complex64]):
     _zarr_v3_name = "complex64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c8", "<c8")
 
+    @property
+    def item_size(self) -> int:
+        return 8
+
 
 @dataclass(frozen=True, kw_only=True)
 class Complex128(BaseComplex[np.dtypes.Complex128DType, np.complex128], HasEndianness):
     dtype_cls = np.dtypes.Complex128DType
     _zarr_v3_name = "complex128"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c16", "<c16")
+
+    @property
+    def item_size(self) -> int:
+        return 16

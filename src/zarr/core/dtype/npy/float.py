@@ -4,7 +4,7 @@ from typing import ClassVar, Self, TypeGuard, cast
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import HasEndianness
+from zarr.core.dtype.common import HasEndianness, HasItemSize
 from zarr.core.dtype.npy.common import (
     EndiannessNumpy,
     FloatLike,
@@ -23,7 +23,7 @@ from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 
 @dataclass(frozen=True)
-class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness):
+class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemSize):
     # This attribute holds the possible zarr v2 JSON names for the data type
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
@@ -156,6 +156,10 @@ class Float16(BaseFloat[np.dtypes.Float16DType, np.float16]):
     _zarr_v3_name = "float16"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f2", "<f2")
 
+    @property
+    def item_size(self) -> int:
+        return 2
+
 
 @dataclass(frozen=True, kw_only=True)
 class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
@@ -163,9 +167,17 @@ class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
     _zarr_v3_name = "float32"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f4", "<f4")
 
+    @property
+    def item_size(self) -> int:
+        return 4
+
 
 @dataclass(frozen=True, kw_only=True)
 class Float64(BaseFloat[np.dtypes.Float64DType, np.float64]):
     dtype_cls = np.dtypes.Float64DType
     _zarr_v3_name = "float64"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = (">f8", "<f8")
+
+    @property
+    def item_size(self) -> int:
+        return 8

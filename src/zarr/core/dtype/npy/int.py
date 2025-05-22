@@ -4,7 +4,7 @@ from typing import ClassVar, Self, SupportsIndex, SupportsInt, TypeGuard, TypeVa
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import HasEndianness
+from zarr.core.dtype.common import HasEndianness, HasItemSize
 from zarr.core.dtype.npy.common import (
     EndiannessNumpy,
     check_json_int,
@@ -32,7 +32,7 @@ IntLike = SupportsInt | SupportsIndex | bytes | str
 
 
 @dataclass(frozen=True)
-class BaseInt(ZDType[TIntDType_co, TIntScalar_co]):
+class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
     # This attribute holds the possible zarr v2 JSON names for the data type
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
@@ -67,11 +67,11 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co]):
             return data == cls._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def check_value(self, value: object) -> TypeGuard[IntLike]:
-        return isinstance(value, IntLike)
+    def check_value(self, data: object) -> TypeGuard[IntLike]:
+        return isinstance(data, IntLike)
 
-    def _cast_value_unsafe(self, value: object) -> TIntScalar_co:
-        return self.to_dtype().type(value)  # type: ignore[return-value, arg-type]
+    def _cast_value_unsafe(self, data: object) -> TIntScalar_co:
+        return self.to_dtype().type(data)  # type: ignore[return-value, arg-type]
 
     def default_value(self) -> TIntScalar_co:
         """
@@ -104,7 +104,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co]):
             return self._cast_value_unsafe(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
-    def to_json_value(self, data: object, zarr_format: ZarrFormat) -> int:
+    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> int:
         """
         Convert an object to JSON-serializable scalar.
 
@@ -140,6 +140,10 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         return cls()
 
+    @property
+    def item_size(self) -> int:
+        return 1
+
 
 @dataclass(frozen=True, kw_only=True)
 class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
@@ -157,6 +161,10 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     @classmethod
     def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
         return cls()
+
+    @property
+    def item_size(self) -> int:
+        return 1
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -183,6 +191,10 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
+    @property
+    def item_size(self) -> int:
+        return 2
+
 
 @dataclass(frozen=True, kw_only=True)
 class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
@@ -206,6 +218,10 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         elif zarr_format == 3:
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
+    @property
+    def item_size(self) -> int:
+        return 2
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -243,6 +259,10 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
+    @property
+    def item_size(self) -> int:
+        return 4
+
 
 @dataclass(frozen=True, kw_only=True)
 class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
@@ -266,6 +286,10 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         elif zarr_format == 3:
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
+    @property
+    def item_size(self) -> int:
+        return 4
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -291,6 +315,10 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
+    @property
+    def item_size(self) -> int:
+        return 8
+
 
 @dataclass(frozen=True, kw_only=True)
 class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
@@ -314,3 +342,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         elif zarr_format == 3:
             return cls()
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
+    @property
+    def item_size(self) -> int:
+        return 8

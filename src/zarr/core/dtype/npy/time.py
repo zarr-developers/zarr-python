@@ -17,7 +17,7 @@ from typing import (
 
 import numpy as np
 
-from zarr.core.dtype.common import HasEndianness
+from zarr.core.dtype.common import HasEndianness, HasItemSize
 from zarr.core.dtype.npy.common import (
     DateTimeUnit,
     EndiannessNumpy,
@@ -99,7 +99,7 @@ TimeDelta64MetaParams = NamedConfig[Literal["numpy.timedelta64"], TimeConfig]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness):
+class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness, HasItemSize):
     _zarr_v2_names: ClassVar[tuple[str, ...]]
     # this attribute exists so that we can programmatically create a numpy dtype instance
     # because the particular numpy dtype we are wrapping does not allow direct construction via
@@ -163,6 +163,10 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness):
         except ValueError:
             return False
 
+    @property
+    def item_size(self) -> int:
+        return 8
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], HasEndianness):
@@ -188,8 +192,8 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[arg-type]
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
-    def _cast_value_unsafe(self, value: object) -> np.timedelta64:
-        return self.to_dtype().type(value)  # type: ignore[arg-type]
+    def _cast_value_unsafe(self, data: object) -> np.timedelta64:
+        return self.to_dtype().type(data)  # type: ignore[arg-type]
 
     @classmethod
     def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
@@ -235,8 +239,8 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[arg-type]
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
-    def _cast_value_unsafe(self, value: object) -> np.datetime64:
-        return self.to_dtype().type(value)  # type: ignore[no-any-return, call-overload]
+    def _cast_value_unsafe(self, data: object) -> np.datetime64:
+        return self.to_dtype().type(data)  # type: ignore[no-any-return, call-overload]
 
     @classmethod
     def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
