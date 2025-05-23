@@ -795,6 +795,43 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert new_shape == result.shape
 
 
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+@pytest.mark.parametrize("open", ["open", "open_array"])
+def test_append_config_passed(store: LocalStore, open: str, zarr_format: ZarrFormat) -> None:
+    z = zarr.create_array(
+        store=store,
+        name="test",
+        shape=(2,),
+        dtype=int,
+        fill_value=0,
+        chunks=(1,),
+        config={"write_empty_chunks": True},
+        overwrite=True,
+        zarr_format=zarr_format,
+    )
+    z[:] = 0
+
+    def assert_correct_files_written(expected: list[str]) -> None:
+        """Helper to compare written files"""
+        if zarr_format == 2:
+            actual = [f.name for f in store.root.rglob("test/*")]
+        else:
+            actual = [f.name for f in store.root.rglob("test/c/*")]
+        actual = [f for f in actual if f not in [".zattrs", ".zarray", "zarr.json"]]
+        assert sorted(expected) == sorted(actual)
+
+    assert_correct_files_written(["0", "1"])
+
+    # parametrized over open and open_array
+    z = getattr(zarr, open)(store, path="test", config={"write_empty_chunks": True}, fill_value=0)
+    z.resize((4,))
+    assert_correct_files_written(["0", "1"])
+    z[2:] = 0
+    assert_correct_files_written(["0", "1", "2", "3"])
+    z[:] = 0
+    assert_correct_files_written(["0", "1", "2", "3"])
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_append_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105)

@@ -334,7 +334,11 @@ async def open(
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
-                return AsyncArray(store_path=store_path, metadata=_metadata_dict)
+                return AsyncArray(
+                    store_path=store_path,
+                    metadata=_metadata_dict,
+                    config=kwargs.pop("config", None),
+                )
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
@@ -1253,13 +1257,24 @@ async def open_array(
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
+    config: ArrayConfigParams = kwargs.get("config", {})
     if "order" in kwargs:
         _warn_order_kwarg()
     if "write_empty_chunks" in kwargs:
-        _warn_write_empty_chunks_kwarg()
+        if len(config) != 0:
+            msg = (
+                "Both write_empty_chunks and config keyword arguments are set. "
+                "This is redundant. When both are set, write_empty_chunks will be ignored and "
+                "config will be used."
+            )
+            warnings.warn(UserWarning(msg), stacklevel=1)
+        else:
+            _warn_write_empty_chunks_kwarg()
+            # don't pop as this is only used for AsyncArray.open
+            config["write_empty_chunks"] = kwargs["write_empty_chunks"]
 
     try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        return await AsyncArray.open(store_path, zarr_format=zarr_format, config=config)
     except FileNotFoundError:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
