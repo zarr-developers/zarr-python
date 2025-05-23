@@ -57,7 +57,19 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: Minimal, reproducible code sample, a copy-pastable example if possible.
+      description: Minimal, reproducible code sample. Must list dependencies per [PEP-723](https://peps.python.org/pep-0723/#example). When put in a file named `issue.py` calling `uv run issue.py` should show the issue.
+      placeholder: |
+        ```python
+        # /// script
+        # requires-python = ">=3.11"
+        # dependencies = [
+        #   "zarr==YOUR VERSION HERE",
+        # ]
+        # ///
+
+        import zarr
+        # your reproducer code
+        ```
     validations:
       required: true
   - type: textarea
