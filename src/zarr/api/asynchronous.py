@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -38,12 +38,14 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v2 import _default_compressor, _default_filters
+from zarr.core.metadata.v2 import CompressorLikev2, _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    import numcodecs
 
     from zarr.abc.codec import Codec
     from zarr.core.buffer import NDArrayLikeOrScalar
@@ -116,10 +118,20 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoor
     return shape, chunks
 
 
-def _like_args(a: ArrayLike) -> dict[str, object]:
+class _LikeArgs(TypedDict):
+    shape: NotRequired[ChunkCoords]
+    chunks: NotRequired[ChunkCoords]
+    dtype: NotRequired[np.dtype[np.generic]]
+    order: NotRequired[Literal["C", "F"]]
+    filters: NotRequired[tuple[numcodecs.abc.Codec, ...] | None]
+    compressor: NotRequired[CompressorLikev2]
+    codecs: NotRequired[tuple[Codec, ...]]
+
+
+def _like_args(a: ArrayLike) -> _LikeArgs:
     """Set default values for shape and chunks if they are not present in the array-like object"""
 
-    new: dict[str, object] = {}
+    new: _LikeArgs = {}
 
     shape, chunks = _get_shape_chunks(a)
     if shape is not None:
