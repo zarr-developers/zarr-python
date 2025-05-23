@@ -130,7 +130,7 @@ async def test_array_like_creation(
         else:
             kwargs["fill_value"] = out_fill
             expect_fill = out_fill
-    elif func is zarr.api.asynchronous.open_like:  # type: ignore[assignment]
+    elif func is zarr.api.asynchronous.open_like:  # type: ignore[comparison-overlap]
         if out_fill == "keep":
             expect_fill = ref_fill
         else:
