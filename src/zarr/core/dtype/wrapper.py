@@ -22,7 +22,6 @@ to support your native data type. The wrapper class must be added to a data type
 
 from __future__ import annotations
 
-import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Generic, Self, TypeGuard, TypeVar
@@ -336,15 +335,3 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
             The native scalar value.
         """
         ...
-
-
-def v3_unstable_dtype_warning(dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
-    msg = (
-        f"You are using a data type ({dtype}) that does not have a stable Zarr V3 specification."
-        "Be advised that arrays stored with this data type may be unreadable by other Zarr "
-        "libraries, and possibly future versions of Zarr-Python as well. "
-        "Use this data type at your own risk."
-        "See https://github.com/zarr-developers/zarr-extensions/tree/main/data-types for a list"
-        "of data types with a stable Zarr V3 specification."
-    )
-    warnings.warn(msg, category=FutureWarning, stacklevel=2)

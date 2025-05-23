@@ -1,4 +1,5 @@
 # Generate a collection of zdtype instances for use in testing.
+import warnings
 from typing import Any
 
 import numpy as np
@@ -13,7 +14,11 @@ zdtype_examples: tuple[ZDType[Any, Any], ...] = ()
 for wrapper_cls in data_type_registry.contents.values():
     # The Structured dtype has to be constructed with some actual fields
     if wrapper_cls is Structured:
-        zdtype_examples += (wrapper_cls.from_dtype(np.dtype([("a", np.float64), ("b", np.int8)])),)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            zdtype_examples += (
+                wrapper_cls.from_dtype(np.dtype([("a", np.float64), ("b", np.int8)])),
+            )
     elif issubclass(wrapper_cls, HasLength):
         zdtype_examples += (wrapper_cls(length=1),)
     elif issubclass(wrapper_cls, DateTime64 | TimeDelta64):

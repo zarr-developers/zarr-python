@@ -94,6 +94,7 @@ class TestRegistry:
             data_type_registry_fixture.get(outside_dtype)
 
     @staticmethod
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("zdtype", zdtype_examples)
     def test_registered_dtypes(
         zdtype: ZDType[TBaseDType, TBaseScalar], zarr_format: ZarrFormat
@@ -111,6 +112,7 @@ class TestRegistry:
         )
 
     @staticmethod
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("zdtype", zdtype_examples)
     def test_match_dtype_unique(
         zdtype: ZDType[Any, Any],

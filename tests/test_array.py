@@ -988,6 +988,7 @@ class TestCreateArray:
 
     @staticmethod
     @pytest.mark.parametrize("dtype", zdtype_examples)
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     def test_default_fill_value(dtype: ZDType[Any, Any], store: Store) -> None:
         """
         Test that the fill value of an array is set to the default value for the dtype object
@@ -999,6 +1000,7 @@ class TestCreateArray:
             assert a.fill_value == dtype.default_value()
 
     @staticmethod
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("dtype", zdtype_examples)
     def test_dtype_forms(dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat) -> None:
         """
@@ -1044,6 +1046,7 @@ class TestCreateArray:
             assert a.dtype == c.dtype
 
     @staticmethod
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("dtype", zdtype_examples)
     def test_dtype_roundtrip(
         dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat
