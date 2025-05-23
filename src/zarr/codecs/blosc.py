@@ -88,25 +88,25 @@ def parse_blocksize(data: JSON) -> int:
 class BloscCodec(BytesBytesCodec):
     is_fixed_size = False
 
-    typesize: int | None
+    typesize: int
     cname: BloscCname = BloscCname.zstd
     clevel: int = 5
-    shuffle: BloscShuffle | None = BloscShuffle.noshuffle
+    shuffle: BloscShuffle
     blocksize: int = 0
 
     def __init__(
         self,
         *,
-        typesize: int | None = None,
+        typesize: int,
         cname: BloscCname | str = BloscCname.zstd,
         clevel: int = 5,
-        shuffle: BloscShuffle | str | None = None,
+        shuffle: BloscShuffle | str,
         blocksize: int = 0,
     ) -> None:
-        typesize_parsed = parse_typesize(typesize) if typesize is not None else None
+        typesize_parsed = parse_typesize(typesize)
         cname_parsed = parse_enum(cname, BloscCname)
         clevel_parsed = parse_clevel(clevel)
-        shuffle_parsed = parse_enum(shuffle, BloscShuffle) if shuffle is not None else None
+        shuffle_parsed = parse_enum(shuffle, BloscShuffle)
         blocksize_parsed = parse_blocksize(blocksize)
 
         object.__setattr__(self, "typesize", typesize_parsed)
@@ -121,10 +121,6 @@ class BloscCodec(BytesBytesCodec):
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        if self.typesize is None:
-            raise ValueError("`typesize` needs to be set for serialization.")
-        if self.shuffle is None:
-            raise ValueError("`shuffle` needs to be set for serialization.")
         return {
             "name": "blosc",
             "configuration": {
@@ -142,17 +138,11 @@ class BloscCodec(BytesBytesCodec):
         if new_codec.typesize is None:
             new_codec = replace(new_codec, typesize=dtype.itemsize)
         if new_codec.shuffle is None:
-            new_codec = replace(
-                new_codec,
-                shuffle=(BloscShuffle.bitshuffle if dtype.itemsize == 1 else BloscShuffle.shuffle),
-            )
-
+            new_codec = replace(new_codec,shuffle=(BloscShuffle.bitshuffle if dtype.itemsize == 1 else BloscShuffle.shuffle),)
         return new_codec
 
     @cached_property
     def _blosc_codec(self) -> Blosc:
-        if self.shuffle is None:
-            raise ValueError("`shuffle` needs to be set for decoding and encoding.")
         map_shuffle_str_to_int = {
             BloscShuffle.noshuffle: 0,
             BloscShuffle.shuffle: 1,
