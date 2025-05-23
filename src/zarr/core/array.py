@@ -1370,7 +1370,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
-        return await self._async_array._get_selection(
+        return await self._get_selection(
             indexer=indexer, out=out, fields=fields, prototype=prototype
         )
 
