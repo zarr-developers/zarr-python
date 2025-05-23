@@ -28,7 +28,7 @@ import numpy.typing as npt
 from zarr.core.common import product
 
 if TYPE_CHECKING:
-    from zarr.core.array import Array
+    from zarr.core.array import Array, AsyncArray
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
@@ -950,13 +950,32 @@ class OIndex:
         return self.array.get_orthogonal_selection(
             cast(OrthogonalSelection, new_selection), fields=fields
         )
-
+    
     def __setitem__(self, selection: OrthogonalSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_orthogonal_selection(
             cast(OrthogonalSelection, new_selection), value, fields=fields
+        )
+
+
+@dataclass(frozen=True)
+class AsyncOIndex:
+    array: AsyncArray
+
+    async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
+        from zarr.core.array import Array
+
+        # if input is a Zarr array, we materialize it now.
+        if isinstance(selection, Array):
+            selection = _zarr_array_to_int_or_bool_array(selection)
+
+        fields, new_selection = pop_fields(selection)
+        new_selection = ensure_tuple(new_selection)
+        new_selection = replace_lists(new_selection)
+        return await self.array.get_orthogonal_selection(
+            cast(OrthogonalSelection, new_selection), fields=fields
         )
 
 
