@@ -7,7 +7,13 @@ from typing import Any, ClassVar, Self, TypeGuard, cast
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import DataTypeValidationError, HasEndianness, HasItemSize, HasLength
+from zarr.core.dtype.common import (
+    DataTypeValidationError,
+    HasEndianness,
+    HasItemSize,
+    HasLength,
+    v3_unstable_dtype_warning,
+)
 from zarr.core.dtype.npy.common import (
     EndiannessNumpy,
     bytes_from_json,
@@ -325,6 +331,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         if zarr_format == 2:
             return fields
         elif zarr_format == 3:
+            v3_unstable_dtype_warning(self)
             base_dict = {"name": self._zarr_v3_name}
             base_dict["configuration"] = {"fields": fields}  # type: ignore[assignment]
             return cast("JSON", base_dict)

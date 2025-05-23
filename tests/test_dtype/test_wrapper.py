@@ -105,6 +105,7 @@ class _TestZDType:
         zdtype = self.test_cls.from_json(valid_json_v2, zarr_format=2)
         assert zdtype.to_json(zarr_format=2) == valid_json_v2
 
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     def test_from_json_roundtrip_v3(self, valid_json_v3: Any) -> None:
         zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
         assert zdtype.to_json(zarr_format=3) == valid_json_v3

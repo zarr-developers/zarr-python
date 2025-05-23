@@ -189,6 +189,7 @@ def test_array_name_properties_with_group(
     assert spam.basename == "spam"
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("specifiy_fill_value", [True, False])
 @pytest.mark.parametrize(
@@ -199,7 +200,7 @@ def test_array_fill_value_default(
 ) -> None:
     """
     Test that creating an array with the fill_value parameter set to None, or unspecified,
-    results in the expected fill_value attribute of the array, i.e. 0 cast to the array's dtype.
+    results in the expected fill_value attribute of the array, i.e. the default value of the dtype
     """
     shape = (10,)
     if specifiy_fill_value:
@@ -994,6 +995,7 @@ class TestCreateArray:
 
     @staticmethod
     @pytest.mark.parametrize("dtype", zdtype_examples)
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     def test_default_fill_value(dtype: ZDType[Any, Any], store: Store) -> None:
         """
         Test that the fill value of an array is set to the default value for the dtype object
@@ -1005,6 +1007,7 @@ class TestCreateArray:
             assert a.fill_value == dtype.default_value()
 
     @staticmethod
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("dtype", zdtype_examples)
     def test_dtype_forms(dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat) -> None:
         """
@@ -1050,6 +1053,7 @@ class TestCreateArray:
             assert a.dtype == c.dtype
 
     @staticmethod
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("dtype", zdtype_examples)
     def test_dtype_roundtrip(
         dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat
