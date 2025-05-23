@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, get_args
+from typing import TYPE_CHECKING, Any
 
 import zarr.codecs
 import zarr.storage
@@ -77,16 +77,22 @@ def test_create(memory_store: Store) -> None:
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
 
 
-LikeFuncName = Literal["zeros_like", "ones_like", "empty_like", "full_like", "open_like"]
-
-
-@pytest.mark.parametrize("func_name", get_args(LikeFuncName))
+@pytest.mark.parametrize(
+    "func",
+    [
+        zarr.api.asynchronous.zeros_like,
+        zarr.api.asynchronous.ones_like,
+        zarr.api.asynchronous.empty_like,
+        zarr.api.asynchronous.full_like,
+        zarr.api.asynchronous.open_like,
+    ],
+)
 @pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
 @pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
 @pytest.mark.parametrize("out_dtype", ["keep", "int8"])
 async def test_array_like_creation(
     zarr_format: ZarrFormat,
-    func_name: LikeFuncName,
+    func: Callable[[Any], Any],
     out_shape: Literal["keep"] | tuple[int, ...],
     out_chunks: Literal["keep"] | tuple[int, ...],
     out_dtype: str,
@@ -100,23 +106,18 @@ async def test_array_like_creation(
         store={}, shape=(11, 12), dtype="uint8", chunks=(11, 12), zarr_format=zarr_format
     )
     kwargs: dict[str, object] = {}
-    if func_name == "full_like":
+    if func is zarr.api.asynchronous.full_like:
         expect_fill = 4
         kwargs["fill_value"] = expect_fill
-        func = zarr.api.asynchronous.full_like
-    elif func_name == "zeros_like":
+    elif func is zarr.api.asynchronous.zeros_like:
         expect_fill = 0
-        func = zarr.api.asynchronous.zeros_like
-    elif func_name == "ones_like":
+    elif func is zarr.api.asynchronous.ones_like:
         expect_fill = 1
-        func = zarr.api.asynchronous.ones_like
-    elif func_name == "empty_like":
+    elif func is zarr.api.asynchronous.empty_like:
         expect_fill = ref_arr.fill_value
-        func = zarr.api.asynchronous.empty_like
-    elif func_name == "open_like":
+    elif func is zarr.api.asynchronous.open_like:  # type: ignore[assignment]
         expect_fill = ref_arr.fill_value
         kwargs["mode"] = "w"
-        func = zarr.api.asynchronous.open_like  # type: ignore[assignment]
     else:
         raise AssertionError
     if out_shape != "keep":
@@ -135,7 +136,7 @@ async def test_array_like_creation(
     else:
         expect_dtype = ref_arr.dtype  # type: ignore[assignment]
 
-    new_arr = await func(ref_arr, path="foo", **kwargs)
+    new_arr = await func(ref_arr, path="foo", **kwargs)  # type: ignore[call-arg]
     assert new_arr.shape == expect_shape
     assert new_arr.chunks == expect_chunks
     assert new_arr.dtype == expect_dtype
