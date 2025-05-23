@@ -79,6 +79,7 @@ from zarr.core.indexing import (
     MaskIndexer,
     MaskSelection,
     OIndex,
+    AsyncOIndex,
     OrthogonalIndexer,
     OrthogonalSelection,
     Selection,
@@ -1358,6 +1359,21 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
         return await self._get_selection(indexer, prototype=prototype)
 
+    async def get_orthogonal_selection(
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLike:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        return await self._async_array._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
         Asynchronously save the array metadata.
@@ -1487,6 +1503,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             chunk_grid=self.metadata.chunk_grid,
         )
         return await self._set_selection(indexer, value, prototype=prototype)
+
+    @property
+    def oindex(self) -> AsyncOIndex:
+        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
+        :func:`set_orthogonal_selection` for documentation and examples."""
+        return AsyncOIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
         """
