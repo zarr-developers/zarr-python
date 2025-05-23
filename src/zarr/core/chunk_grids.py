@@ -20,6 +20,7 @@ from zarr.core.common import (
     ShapeLike,
     parse_named_configuration,
     parse_shapelike,
+    reject_must_understand_metadata,
 )
 from zarr.core.indexing import ceildiv
 
@@ -179,9 +180,10 @@ class RegularChunkGrid(ChunkGrid):
 
     @classmethod
     def _from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "regular")
-
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
+        _, config_parsed = parse_named_configuration(data, "regular")
+        chunk_shape = config_parsed.pop("chunk_shape")
+        reject_must_understand_metadata(config_parsed, "chunk grid configuration")
+        return cls(chunk_shape=chunk_shape)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}

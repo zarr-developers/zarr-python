@@ -9,7 +9,12 @@ import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
-from zarr.core.common import JSON, parse_enum, parse_named_configuration
+from zarr.core.common import (
+    JSON,
+    parse_enum,
+    parse_named_configuration,
+    reject_must_understand_metadata,
+)
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -36,9 +41,15 @@ class BytesCodec(ArrayBytesCodec):
 
     endian: Endian | None
 
-    def __init__(self, *, endian: Endian | str | None = default_system_endian) -> None:
-        endian_parsed = None if endian is None else parse_enum(endian, Endian)
+    def __init__(
+        self,
+        *,
+        endian: Endian | str | None = default_system_endian,
+        **kwargs: JSON,
+    ) -> None:
+        reject_must_understand_metadata(kwargs, "`bytes` codec configuration")
 
+        endian_parsed = None if endian is None else parse_enum(endian, Endian)
         object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod
@@ -47,6 +58,7 @@ class BytesCodec(ArrayBytesCodec):
             data, "bytes", require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
+        configuration_parsed.setdefault("endian", None)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
@@ -59,7 +71,7 @@ class BytesCodec(ArrayBytesCodec):
         if array_spec.dtype.itemsize == 0:
             if self.endian is not None:
                 return replace(self, endian=None)
-        elif self.endian is None:
+        elif self.endian is None and array_spec.dtype.itemsize > 1:
             raise ValueError(
                 "The `endian` configuration needs to be specified for multi-byte data types."
             )

@@ -50,6 +50,9 @@ Custom codecs should also implement the following methods:
 - ``evolve_from_array_spec`` (optional), which can be useful for automatically filling in
   codec configuration metadata from the array metadata.
 
+On initialization, custom codecs should reject unexpected metadata keys except for objects
+marked with ``"must_understand": false``.
+
 To use custom codecs in Zarr, they need to be registered using the
 `entrypoint mechanism <https://packaging.python.org/en/latest/specifications/entry-points/>`_.
 Commonly, entrypoints are declared in the ``pyproject.toml`` of your package under the

@@ -8,7 +8,7 @@ from numcodecs.gzip import GZip
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import JSON, parse_named_configuration, reject_must_understand_metadata
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -34,7 +34,8 @@ class GzipCodec(BytesBytesCodec):
 
     level: int = 5
 
-    def __init__(self, *, level: int = 5) -> None:
+    def __init__(self, *, level: int = 5, **kwargs: JSON) -> None:
+        reject_must_understand_metadata(kwargs, "`gzip` codec configuration")
         level_parsed = parse_gzip_level(level)
 
         object.__setattr__(self, "level", level_parsed)

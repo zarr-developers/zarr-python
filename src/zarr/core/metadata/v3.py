@@ -35,6 +35,7 @@ from zarr.core.common import (
     DimensionNames,
     parse_named_configuration,
     parse_shapelike,
+    reject_must_understand_metadata,
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
@@ -70,15 +71,19 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
-
+    if isinstance(data, str):
+        data = [data]
     for c in data:
         if isinstance(
             c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
-            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-            out += (get_codec_class(name_parsed).from_dict(c),)
+            if isinstance(c, str):
+                c = {"name": c}
+            name_parsed, config_parsed = parse_named_configuration(c, require_configuration=False)
+            codec = get_codec_class(name_parsed).from_dict(c)
+            out += (codec,)
 
     return out
 
@@ -260,10 +265,13 @@ class ArrayV3Metadata(Metadata):
         attributes: dict[str, JSON] | None,
         dimension_names: DimensionNames,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
+        **kwargs: JSON,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
+        reject_must_understand_metadata(kwargs, "zarr metadata")
+
         shape_parsed = parse_shapelike(shape)
         data_type_parsed = DataType.parse(data_type)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
@@ -403,7 +411,10 @@ class ArrayV3Metadata(Metadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         # check that the data_type attribute is valid
-        data_type = DataType.parse(_data.pop("data_type"))
+        dt = _data.pop("data_type")
+        if isinstance(dt, dict):
+            dt, _ = parse_named_configuration(dt, require_configuration=False)
+        data_type = DataType.parse(dt)
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)

@@ -11,7 +11,7 @@ from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import JSON, parse_named_configuration, reject_must_understand_metadata
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -42,7 +42,9 @@ class ZstdCodec(BytesBytesCodec):
     level: int = 0
     checksum: bool = False
 
-    def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
+    def __init__(self, *, level: int = 0, checksum: bool = False, **kwargs: JSON) -> None:
+        reject_must_understand_metadata(kwargs, "`zstd` codec configuration")
+
         # numcodecs 0.13.0 introduces the checksum attribute for the zstd codec
         _numcodecs_version = Version(numcodecs.__version__)
         if _numcodecs_version < Version("0.13.0"):
