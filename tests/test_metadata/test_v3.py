@@ -411,3 +411,20 @@ def test_dtypes(dtype_str: str) -> None:
     else:
         # return type for vlen types may vary depending on numpy version
         assert dt.byte_count is None
+
+
+def test_metadata_comparison_with_nan_fill_value():
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/2929
+    metadata_dict = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": np.dtype("float32"),
+        "chunk_key_encoding": {"name": "default", "separator": "."},
+        "codecs": ({'name': 'bytes', 'configuration': {'endian': 'little'}},),
+        "fill_value": np.float32("nan"),
+    }
+    metadata1 = ArrayV3Metadata.from_dict(metadata_dict)
+    metadata2 = ArrayV3Metadata.from_dict(metadata_dict)
+    assert metadata1 == metadata2
