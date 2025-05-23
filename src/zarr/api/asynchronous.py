@@ -39,7 +39,7 @@ from zarr.core.group import (
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
-from zarr.errors import NodeTypeValidationError
+from zarr.errors import GroupNotFoundError, NodeTypeValidationError
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -836,7 +836,7 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    raise FileNotFoundError(f"Unable to find group: {store_path}")
+    raise GroupNotFoundError(store, store_path.path)
 
 
 async def create(
