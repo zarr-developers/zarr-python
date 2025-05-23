@@ -1,1 +1,0 @@
-Specifying the memory order of Zarr format 2 arrays using the ``order`` keyword argument has been fixed.

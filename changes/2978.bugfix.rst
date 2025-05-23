@@ -1,1 +1,0 @@
-Fixed sharding with GPU buffers.
