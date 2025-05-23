@@ -17,7 +17,7 @@ from zarr.core.array import (
     from_array,
     get_array_metadata,
 )
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
+from zarr.core.array_spec import ArrayConfigLike, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
@@ -27,7 +27,6 @@ from zarr.core.common import (
     MemoryOrder,
     ZarrFormat,
     _default_zarr_format,
-    _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
 )
@@ -1018,8 +1017,6 @@ async def create(
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
     if read_only is not None:
         warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
-    if order is not None:
-        _warn_order_kwarg()
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
 
@@ -1042,15 +1039,6 @@ async def create(
             )
             warnings.warn(UserWarning(msg), stacklevel=1)
         config_dict["write_empty_chunks"] = write_empty_chunks
-    if order is not None and config is not None:
-        msg = (
-            "Both order and config keyword arguments are set. "
-            "This is redundant. When both are set, order will be ignored and "
-            "config will be used."
-        )
-        warnings.warn(UserWarning(msg), stacklevel=1)
-
-    config_parsed = ArrayConfig.from_dict(config_dict)
 
     return await AsyncArray._create(
         store_path,
@@ -1069,7 +1057,7 @@ async def create(
         codecs=codecs,
         dimension_names=dimension_names,
         attributes=attributes,
-        config=config_parsed,
+        config=config,
         **kwargs,
     )
 
@@ -1253,8 +1241,6 @@ async def open_array(
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    if "order" in kwargs:
-        _warn_order_kwarg()
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()
 

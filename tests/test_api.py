@@ -355,8 +355,12 @@ def test_array_order(zarr_format: ZarrFormat) -> None:
 
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
-    with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
+    if zarr_format == 3:
+        with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
+            arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+    else:
         arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+
     assert arr.order == order
 
     vals = np.asarray(arr)
@@ -1301,3 +1305,23 @@ def test_no_overwrite_load(tmp_path: Path) -> None:
     with contextlib.suppress(NotImplementedError):
         zarr.load(store)
     assert existing_fpath.exists()
+
+
+def test_order_warning() -> None:
+    # Passing order shouldn't warn for v2
+    zarr.create(
+        (1,),
+        store={},
+        order="F",
+        zarr_format=2,
+    )
+    # Passing order should warn for v3
+    with pytest.warns(
+        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+    ):
+        zarr.create(
+            (1,),
+            store={},
+            order="F",
+            zarr_format=3,
+        )

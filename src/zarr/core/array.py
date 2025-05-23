@@ -584,6 +584,15 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _chunks = normalize_chunks(chunks, shape, dtype_parsed.itemsize)
         else:
             _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.itemsize)
+
+        if order is not None and config is not None:
+            msg = (
+                "Both order and config keyword arguments are set. "
+                "This is redundant. When both are set, order will be ignored and "
+                "config will be used."
+            )
+            warnings.warn(UserWarning(msg), stacklevel=1)
+
         config_parsed = parse_array_config(config)
 
         result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
@@ -1049,6 +1058,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         bool
             Memory order of the array
+
+        Notes
+        -----
+        For Zarr format 2 arrays this is the memory order in which
+        data is stored and returned when read in to a NumPy array.
+
+        For Zarr format 3 arrays this is just the memory order
+        in which data is returned when read into a NumPy array.
         """
         if self.metadata.zarr_format == 2:
             return self.metadata.order
@@ -4276,8 +4293,10 @@ async def init_array(
 
         if config is None:
             config = {}
-        if order is not None and isinstance(config, dict):
-            config["order"] = config.get("order", order)
+        if order is not None:
+            _warn_order_kwarg()
+            if isinstance(config, dict):
+                config["order"] = config.get("order", order)
 
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
@@ -4528,7 +4547,7 @@ def _parse_keep_array_attr(
                 serializer = "auto"
         if fill_value is None:
             fill_value = data.fill_value
-        if order is None:
+        if order is None and zarr_format == 2:
             order = data.order
         if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
             if isinstance(data.metadata, ArrayV2Metadata):
