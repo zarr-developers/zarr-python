@@ -58,17 +58,22 @@ body:
     attributes:
       label: Steps to reproduce
       description: Minimal, reproducible code sample. Must list dependencies per [PEP-723](https://peps.python.org/pep-0723/#example). When put in a file named `issue.py` calling `uv run issue.py` should show the issue.
-      placeholder: |
+      value: |
         ```python
         # /// script
         # requires-python = ">=3.11"
         # dependencies = [
-        #   "zarr==YOUR VERSION HERE",
+        #   "zarr",
         # ]
+        # [tool.uv.sources]
+        # zarr = { git = "https://github.com/zarr-developers/zarr-python" }
         # ///
+        #
+        # This script automatically imports the development branch of zarr to check for issues
 
         import zarr
         # your reproducer code
+        # zarr.print_debug_info()
         ```
     validations:
       required: true
