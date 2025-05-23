@@ -90,33 +90,52 @@ def test_create(memory_store: Store) -> None:
 @pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
 @pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
 @pytest.mark.parametrize("out_dtype", ["keep", "int8"])
+@pytest.mark.parametrize("out_fill", ["keep", 4])
 async def test_array_like_creation(
     zarr_format: ZarrFormat,
     func: Callable[[Any], Any],
     out_shape: Literal["keep"] | tuple[int, ...],
     out_chunks: Literal["keep"] | tuple[int, ...],
     out_dtype: str,
+    out_fill: Literal["keep"] | int,
 ) -> None:
     """
     Test zeros_like, ones_like, empty_like, full_like, ensuring that we can override the
-    shape, chunks, and dtype of the array-like object provided to these functions with
+    shape, chunks, dtype and fill_value of the array-like object provided to these functions with
     appropriate keyword arguments
     """
-    ref_arr = zarr.ones(
-        store={}, shape=(11, 12), dtype="uint8", chunks=(11, 12), zarr_format=zarr_format
+    ref_fill = 100
+    ref_arr = zarr.create_array(
+        store={},
+        shape=(11, 12),
+        dtype="uint8",
+        chunks=(11, 12),
+        zarr_format=zarr_format,
+        fill_value=ref_fill,
     )
     kwargs: dict[str, object] = {}
     if func is zarr.api.asynchronous.full_like:
-        expect_fill = 4
-        kwargs["fill_value"] = expect_fill
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            expect_fill = out_fill
+            kwargs["fill_value"] = expect_fill
     elif func is zarr.api.asynchronous.zeros_like:
         expect_fill = 0
     elif func is zarr.api.asynchronous.ones_like:
         expect_fill = 1
     elif func is zarr.api.asynchronous.empty_like:
-        expect_fill = ref_arr.fill_value
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            kwargs["fill_value"] = out_fill
+            expect_fill = out_fill
     elif func is zarr.api.asynchronous.open_like:  # type: ignore[assignment]
-        expect_fill = ref_arr.fill_value
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            kwargs["fill_value"] = out_fill
+            expect_fill = out_fill
         kwargs["mode"] = "w"
     else:
         raise AssertionError
