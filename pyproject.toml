@@ -210,7 +210,11 @@ dependencies = [
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
     'fsspec @ git+https://github.com/fsspec/filesystem_spec',
-    's3fs @ git+https://github.com/fsspec/s3fs',
+    # we use a fork of s3fs because fsspec/s3fs declares an exact version of fsspec,
+    # which cannot be satisfied when we use the git version of fsspec.
+    # our fork relaxes the upper bound on the fsspec dependency.
+    # see https://github.com/fsspec/s3fs/pull/966
+    's3fs @ git+https://github.com/zarr-developers/s3fs',
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
     'donfig @ git+https://github.com/pytroll/donfig',
