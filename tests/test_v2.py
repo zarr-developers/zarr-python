@@ -15,8 +15,7 @@ import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype.npy.sized import FixedLengthASCII, FixedLengthUTF32, Structured
-from zarr.core.dtype.npy.string import VariableLengthString
+from zarr.core.dtype import FixedLengthASCII, FixedLengthUTF32, Structured, VariableLengthString
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
