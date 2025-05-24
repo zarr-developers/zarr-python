@@ -1,0 +1,1 @@
+Adds ``fill_value`` to the list of attributes displayed in the output of the ``AsyncArray.info()`` method.
