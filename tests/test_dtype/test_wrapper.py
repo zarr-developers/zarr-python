@@ -92,7 +92,7 @@ class _TestZDType:
         return scalar1 == scalar2
 
     def test_check_dtype_valid(self, valid_dtype: object) -> None:
-        assert self.test_cls.check_dtype(valid_dtype)  # type: ignore[arg-type]
+        assert self.test_cls.check_dtype(valid_dtype)
 
     def test_check_dtype_invalid(self, invalid_dtype: object) -> None:
         assert not self.test_cls.check_dtype(invalid_dtype)  # type: ignore[arg-type]
