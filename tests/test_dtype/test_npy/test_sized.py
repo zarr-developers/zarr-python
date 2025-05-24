@@ -5,12 +5,14 @@ from typing import Any
 import numpy as np
 
 from tests.test_dtype.test_wrapper import _TestZDType
-from zarr.core.dtype.npy.float import Float16, Float64
-from zarr.core.dtype.npy.int import Int32, Int64
-from zarr.core.dtype.npy.sized import (
+from zarr.core.dtype import (
     FixedLengthASCII,
     FixedLengthBytes,
     FixedLengthUTF32,
+    Float16,
+    Float64,
+    Int32,
+    Int64,
     Structured,
 )
 
