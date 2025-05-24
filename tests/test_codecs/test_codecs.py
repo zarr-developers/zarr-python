@@ -288,7 +288,7 @@ def test_invalid_metadata(store: Store) -> None:
     spath2 = StorePath(store, "invalid_codec_order")
     with pytest.raises(TypeError):
         Array.create(
-            spath2,
+            store=spath2,
             shape=(16, 16),
             chunk_shape=(16, 16),
             dtype=np.dtype("uint8"),
@@ -301,7 +301,7 @@ def test_invalid_metadata(store: Store) -> None:
     spath3 = StorePath(store, "invalid_order")
     with pytest.raises(TypeError):
         Array.create(
-            spath3,
+            store=spath3,
             shape=(16, 16),
             chunk_shape=(16, 16),
             dtype=np.dtype("uint8"),
@@ -314,7 +314,7 @@ def test_invalid_metadata(store: Store) -> None:
     spath4 = StorePath(store, "invalid_missing_bytes_codec")
     with pytest.raises(ValueError):
         Array.create(
-            spath4,
+            store=spath4,
             shape=(16, 16),
             chunk_shape=(16, 16),
             dtype=np.dtype("uint8"),
@@ -326,7 +326,7 @@ def test_invalid_metadata(store: Store) -> None:
     spath5 = StorePath(store, "invalid_inner_chunk_shape")
     with pytest.raises(ValueError):
         Array.create(
-            spath5,
+            store=spath5,
             shape=(16, 16),
             chunk_shape=(16, 16),
             dtype=np.dtype("uint8"),
@@ -338,7 +338,7 @@ def test_invalid_metadata(store: Store) -> None:
     spath6 = StorePath(store, "invalid_inner_chunk_shape")
     with pytest.raises(ValueError):
         Array.create(
-            spath6,
+            store=spath6,
             shape=(16, 16),
             chunk_shape=(16, 16),
             dtype=np.dtype("uint8"),
@@ -350,7 +350,7 @@ def test_invalid_metadata(store: Store) -> None:
     spath7 = StorePath(store, "warning_inefficient_codecs")
     with pytest.warns(UserWarning):
         Array.create(
-            spath7,
+            store=spath7,
             shape=(16, 16),
             chunk_shape=(16, 16),
             dtype=np.dtype("uint8"),

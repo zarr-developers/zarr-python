@@ -948,7 +948,7 @@ class OIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.get_orthogonal_selection(
-            cast(OrthogonalSelection, new_selection), fields=fields
+            selection=cast(OrthogonalSelection, new_selection), fields=fields
         )
 
     def __setitem__(self, selection: OrthogonalSelection, value: npt.ArrayLike) -> None:
@@ -956,7 +956,7 @@ class OIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_orthogonal_selection(
-            cast(OrthogonalSelection, new_selection), value, fields=fields
+            selection=cast(OrthogonalSelection, new_selection), value=value, fields=fields
         )
 
 
@@ -1050,14 +1050,16 @@ class BlockIndex:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
-        return self.array.get_block_selection(cast(BasicSelection, new_selection), fields=fields)
+        return self.array.get_block_selection(
+            selection=cast(BasicSelection, new_selection), fields=fields
+        )
 
     def __setitem__(self, selection: BasicSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_block_selection(
-            cast(BasicSelection, new_selection), value, fields=fields
+            selection=cast(BasicSelection, new_selection), value=value, fields=fields
         )
 
 
@@ -1248,9 +1250,9 @@ class VIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         if is_coordinate_selection(new_selection, self.array.shape):
-            return self.array.get_coordinate_selection(new_selection, fields=fields)
+            return self.array.get_coordinate_selection(selection=new_selection, fields=fields)
         elif is_mask_selection(new_selection, self.array.shape):
-            return self.array.get_mask_selection(new_selection, fields=fields)
+            return self.array.get_mask_selection(mask=new_selection, fields=fields)
         else:
             raise VindexInvalidSelectionError(new_selection)
 
@@ -1261,9 +1263,9 @@ class VIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         if is_coordinate_selection(new_selection, self.array.shape):
-            self.array.set_coordinate_selection(new_selection, value, fields=fields)
+            self.array.set_coordinate_selection(selection=new_selection, value=value, fields=fields)
         elif is_mask_selection(new_selection, self.array.shape):
-            self.array.set_mask_selection(new_selection, value, fields=fields)
+            self.array.set_mask_selection(mask=new_selection, value=value, fields=fields)
         else:
             raise VindexInvalidSelectionError(new_selection)
 

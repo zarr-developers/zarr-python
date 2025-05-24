@@ -258,7 +258,7 @@ def test_nested_sharding(
     data = array_fixture
     spath = StorePath(store)
     a = Array.create(
-        spath,
+        store=spath,
         shape=data.shape,
         chunk_shape=(64, 64, 64),
         dtype=data.dtype,

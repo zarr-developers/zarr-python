@@ -39,7 +39,6 @@ from zarr.core.array import (
     create_array,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
-from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -73,10 +72,10 @@ def test_array_creation_existing_node(
     expected_exception: type[ContainsArrayError | ContainsGroupError]
     if extant_node == "array":
         expected_exception = ContainsArrayError
-        _ = group.create_array("extant", shape=(10,), dtype="uint8")
+        _ = group.create_array(name="extant", shape=(10,), dtype="uint8")
     elif extant_node == "group":
         expected_exception = ContainsGroupError
-        _ = group.create_group("extant")
+        _ = group.create_group(name="extant")
     else:
         raise AssertionError
 
@@ -165,13 +164,13 @@ def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
     root = Group.from_store(store=store, zarr_format=zarr_format)
-    foo = root.create_array("foo", shape=(100,), chunks=(10,), dtype="i4")
+    foo = root.create_array(name="foo", shape=(100,), chunks=(10,), dtype="i4")
     assert foo.path == "foo"
     assert foo.name == "/foo"
     assert foo.basename == "foo"
 
     bar = root.create_group("bar")
-    spam = bar.create_array("spam", shape=(100,), chunks=(10,), dtype="i4")
+    spam = bar.create_array(name="spam", shape=(100,), chunks=(10,), dtype="i4")
 
     assert spam.path == "bar/spam"
     assert spam.name == "/bar/spam"
@@ -226,50 +225,6 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
-
-
-async def test_create_deprecated() -> None:
-    with pytest.warns(DeprecationWarning):
-        with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
-            await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8")  # type: ignore[call-overload]
-    with pytest.warns(DeprecationWarning):
-        with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
-            zarr.Array.create(MemoryStore(), (2, 2), dtype="f8")
-
-
-def test_selection_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    arr = zarr.create_array(store, shape=(2, 2), dtype="f8")
-
-    with pytest.warns(FutureWarning, match="Pass out"):
-        arr.get_basic_selection(..., NDBuffer(array=np.empty((2, 2))))
-
-    with pytest.warns(FutureWarning, match="Pass fields"):
-        arr.set_basic_selection(..., 1, None)
-
-    with pytest.warns(FutureWarning, match="Pass out"):
-        arr.get_orthogonal_selection(..., NDBuffer(array=np.empty((2, 2))))
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.set_orthogonal_selection(..., 1, None)
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.get_mask_selection(np.zeros((2, 2), dtype=bool), NDBuffer(array=np.empty((0,))))
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.set_mask_selection(np.zeros((2, 2), dtype=bool), 1, None)
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.get_coordinate_selection(([0, 1], [0, 1]), NDBuffer(array=np.empty((2,))))
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.set_coordinate_selection(([0, 1], [0, 1]), 1, None)
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.get_block_selection((0, slice(None)), NDBuffer(array=np.empty((2, 2))))
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.set_block_selection((0, slice(None)), 1, None)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -458,36 +413,41 @@ async def test_nbytes_stored_async() -> None:
     assert result == 902  # the size with all chunks filled.
 
 
-def test_default_fill_values() -> None:
-    a = zarr.Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4")
-    assert a.fill_value == ""
-
-    b = zarr.Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<S4")
-    assert b.fill_value == b""
-
-    c = zarr.Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="i")
-    assert c.fill_value == 0
-
-    d = zarr.Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="f")
-    assert d.fill_value == 0.0
+@pytest.mark.parametrize(
+    ("dtype_str", "fill_value_expected"),
+    [
+        ("<U4", ""),
+        ("<S4", b""),
+        ("i", 0),
+        ("f", 0.0),
+    ],
+)
+def test_default_fill_values(dtype_str: str, fill_value_expected: object) -> None:
+    a = zarr.Array.create(store=MemoryStore(), shape=(5,), chunk_shape=(5,), dtype=dtype_str)
+    assert a.fill_value == fill_value_expected
 
 
 def test_vlen_errors() -> None:
+    shape = (5,)
+    chunks = (5,)
+    dtype = "<U4"
     with pytest.raises(ValueError, match="At least one ArrayBytesCodec is required."):
-        Array.create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[])
+        Array.create(store=MemoryStore(), shape=shape, chunks=chunks, dtype=dtype, codecs=[])
 
     with pytest.raises(
         ValueError,
         match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
     ):
-        Array.create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[BytesCodec()])
+        Array.create(
+            store=MemoryStore(), shape=shape, chunks=chunks, dtype=dtype, codecs=[BytesCodec()]
+        )
 
     with pytest.raises(ValueError, match="Only one ArrayBytesCodec is allowed."):
         Array.create(
-            MemoryStore(),
-            shape=5,
-            chunks=5,
-            dtype="<U4",
+            store=MemoryStore(),
+            shape=shape,
+            chunks=chunks,
+            dtype=dtype,
             codecs=[BytesCodec(), VLenBytesCodec()],
         )
 
@@ -496,7 +456,7 @@ def test_vlen_errors() -> None:
         match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
     ):
         zarr.create_array(
-            MemoryStore(), shape=(5,), chunks=(5,), dtype="<U4", serializer=BytesCodec()
+            MemoryStore(), shape=shape, chunks=(5,), dtype="<U4", serializer=BytesCodec()
         )
 
 
@@ -1647,9 +1607,9 @@ def test_roundtrip_numcodecs() -> None:
     ]
 
     # Create the array with the correct codecs
-    root = zarr.group(store)
+    root = zarr.group(store=store)
     root.create_array(
-        "test",
+        name="test",
         shape=(720, 1440),
         chunks=(720, 1440),
         dtype="float64",
@@ -1661,7 +1621,7 @@ def test_roundtrip_numcodecs() -> None:
 
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
-    root = zarr.open_group(store)
+    root = zarr.open_group(store=store)
     metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
@@ -1704,7 +1664,7 @@ def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkser
 
 async def test_sharding_coordinate_selection() -> None:
     store = MemoryStore()
-    g = zarr.open_group(store, mode="w")
+    g = zarr.open_group(store=store, mode="w")
     arr = g.create_array(
         name="a",
         shape=(2, 3, 4),

@@ -137,7 +137,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         foo["bar"] = np.array([1])
         shutil.make_archive(str(zarr_path), "zip", zarr_path)
         zip_path = tmp_path / "foo.zarr.zip"
-        zipped = zarr.open_group(ZipStore(zip_path, mode="r"), mode="r")
+        zipped = zarr.open_group(store=ZipStore(zip_path, mode="r"), mode="r")
         assert list(zipped.keys()) == list(root.keys())
         assert isinstance(group := zipped["foo"], Group)
         assert list(group.keys()) == list(group.keys())

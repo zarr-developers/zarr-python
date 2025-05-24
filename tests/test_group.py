@@ -179,7 +179,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     subsubsubgroup = subsubgroup.create_group("subsubsubgroup")
 
     members_expected["subarray"] = group.create_array(
-        "subarray", shape=(100,), dtype="uint8", chunks=(10,), overwrite=True
+        name="subarray", shape=(100,), dtype="uint8", chunks=(10,), overwrite=True
     )
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
@@ -250,7 +250,9 @@ def test_group(store: Store, zarr_format: ZarrFormat) -> None:
 
     # create an array from the "bar" group
     data = np.arange(0, 4 * 4, dtype="uint16").reshape((4, 4))
-    arr = bar.create_array("baz", shape=data.shape, dtype=data.dtype, chunks=(2, 2), overwrite=True)
+    arr = bar.create_array(
+        name="baz", shape=data.shape, dtype=data.dtype, chunks=(2, 2), overwrite=True
+    )
     arr[:] = data
 
     # check the array
@@ -498,7 +500,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
 
     expected_group_values[0].create_group("subgroup")
     expected_group_values[0].create_array(
-        "subarray", shape=(1,), dtype=dtype, fill_value=fill_value
+        name="subarray", shape=(1,), dtype=dtype, fill_value=fill_value
     )
 
     expected_array_keys = ["a0", "a1"]
@@ -756,7 +758,7 @@ def test_group_creation_existing_node(
 
     if extant_node == "array":
         expected_exception = ContainsArrayError
-        _ = group.create_array("extant", shape=(10,), dtype="uint8", attributes=attributes)
+        _ = group.create_array(name="extant", shape=(10,), dtype="uint8", attributes=attributes)
     elif extant_node == "group":
         expected_exception = ContainsGroupError
         _ = group.create_group("extant", attributes=attributes)
@@ -1229,9 +1231,9 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
 async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFormat):
     group = Group.from_store(store=store, zarr_format=zarr_format)
     a = group.create_group(name="a")
-    a.create_array("array", shape=(1,), dtype="uint8")
+    a.create_array(name="array", shape=(1,), dtype="uint8")
     b = a.create_group(name="b")
-    b.create_array("array", shape=(1,), dtype="uint8")
+    b.create_array(name="array", shape=(1,), dtype="uint8")
 
     if consolidate:
         group = zarr.api.synchronous.consolidate_metadata(store)
@@ -1244,7 +1246,7 @@ async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFo
     assert paths == expected
 
     # regression test for https://github.com/zarr-developers/zarr-python/pull/2356
-    g = zarr.open_group(store, use_consolidated=False)
+    g = zarr.open_group(store=store, use_consolidated=False)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert list(g)
@@ -1444,33 +1446,13 @@ def test_update_attrs() -> None:
     assert root.attrs["foo"] == "bar"
 
 
-@pytest.mark.parametrize("method", ["empty", "zeros", "ones", "full"])
-def test_group_deprecated_positional_args(method: str) -> None:
-    if method == "full":
-        kwargs = {"fill_value": 0}
-    else:
-        kwargs = {}
-
-    root = zarr.group()
-    with pytest.warns(FutureWarning, match=r"Pass name=.* as keyword args."):
-        arr = getattr(root, method)("foo", shape=1, **kwargs)
-        assert arr.shape == (1,)
-
-    method += "_like"
-    data = np.ones(1)
-
-    with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
-        arr = getattr(root, method)("foo_like", data, **kwargs)
-        assert arr.shape == data.shape
-
-
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2191
     g1 = zarr.group(store=store, zarr_format=zarr_format)
     g1.create_group("0")
     g1.create_group("0/0")
-    arr = g1.create_array("0/0/0", shape=(1,), dtype="uint8")
+    arr = g1.create_array(name="0/0/0", shape=(1,), dtype="uint8")
     arr[:] = 1
     del g1["0"]
     with pytest.raises(KeyError):

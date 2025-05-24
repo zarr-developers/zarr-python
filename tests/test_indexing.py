@@ -146,15 +146,15 @@ def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dty
     arr_np = np.array(value, dtype=dtype)
     arr_z = zarr_array_from_numpy_array(store, arr_np)
 
-    assert_array_equal(arr_np, arr_z.get_basic_selection(Ellipsis))
+    assert_array_equal(arr_np, arr_z.get_basic_selection(selection=Ellipsis))
     assert_array_equal(arr_np, arr_z[...])
-    assert value == arr_z.get_basic_selection(())
+    assert value == arr_z.get_basic_selection(selection=())
     assert value == arr_z[()]
 
     if use_out:
         # test out param
         b = default_buffer_prototype().nd_buffer.from_numpy_array(np.zeros_like(arr_np))
-        arr_z.get_basic_selection(Ellipsis, out=b)
+        arr_z.get_basic_selection(selection=Ellipsis, out=b)
         assert_array_equal(arr_np, b.as_ndarray_like())
 
     # todo: uncomment the structured array tests when we can make them pass,
@@ -260,7 +260,7 @@ def _test_get_basic_selection(
     a: npt.NDArray[Any] | Array, z: Array, selection: BasicSelection
 ) -> None:
     expect = a[selection]
-    actual = z.get_basic_selection(selection)
+    actual = z.get_basic_selection(selection=selection)
     assert_array_equal(expect, actual)
     actual = z[selection]
     assert_array_equal(expect, actual)
@@ -269,7 +269,7 @@ def _test_get_basic_selection(
     b = default_buffer_prototype().nd_buffer.from_numpy_array(
         np.empty(shape=expect.shape, dtype=expect.dtype)
     )
-    z.get_basic_selection(selection, out=b)
+    z.get_basic_selection(selection=selection, out=b)
     assert_array_equal(expect, b.as_numpy_array())
 
 
@@ -284,12 +284,12 @@ def test_get_basic_selection_1d(store: StorePath) -> None:
 
     for selection_bad in basic_selections_1d_bad:
         with pytest.raises(IndexError):
-            z.get_basic_selection(selection_bad)  # type: ignore[arg-type]
+            z.get_basic_selection(selection=selection_bad)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
             z[selection_bad]  # type: ignore[index]
 
     with pytest.raises(IndexError):
-        z.get_basic_selection([1, 0])  # type: ignore[arg-type]
+        z.get_basic_selection(selection=[1, 0])  # type: ignore[arg-type]
 
 
 basic_selections_2d: list[BasicSelection] = [
@@ -359,7 +359,7 @@ def test_get_basic_selection_2d(store: StorePath) -> None:
     ]
     for selection_bad in bad_selections:
         with pytest.raises(IndexError):
-            z.get_basic_selection(selection_bad)  # type: ignore[arg-type]
+            z.get_basic_selection(selection=selection_bad)  # type: ignore[arg-type]
     # check fallback on fancy indexing
     fancy_selection = ([0, 1], [0, 1])
     np.testing.assert_array_equal(z[fancy_selection], [0, 11])
@@ -539,7 +539,7 @@ def test_set_basic_selection_0d(
     arr_z = zarr_array_from_numpy_array(store, arr_np_zeros)
     assert_array_equal(arr_np_zeros, arr_z)
 
-    arr_z.set_basic_selection(Ellipsis, value)
+    arr_z.set_basic_selection(selection=Ellipsis, value=value)
     assert_array_equal(value, arr_z)
     arr_z[...] = 0
     assert_array_equal(arr_np_zeros, arr_z)
@@ -568,7 +568,7 @@ def _test_get_orthogonal_selection(
     a: npt.NDArray[Any], z: Array, selection: OrthogonalSelection
 ) -> None:
     expect = oindex(a, selection)
-    actual = z.get_orthogonal_selection(selection)
+    actual = z.get_orthogonal_selection(selection=selection)
     assert_array_equal(expect, actual)
     actual = z.oindex[selection]
     assert_array_equal(expect, actual)
@@ -631,7 +631,7 @@ def test_get_orthogonal_selection_1d_int(store: StorePath) -> None:
     ]
     for bad_selection in bad_selections:
         with pytest.raises(IndexError):
-            z.get_orthogonal_selection(bad_selection)  # type: ignore[arg-type]
+            z.get_orthogonal_selection(selection=bad_selection)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
             z.oindex[bad_selection]  # type: ignore[index]
 
@@ -693,7 +693,7 @@ def test_get_orthogonal_selection_2d(store: StorePath) -> None:
 
     for selection_2d_bad in basic_selections_2d_bad:
         with pytest.raises(IndexError):
-            z.get_orthogonal_selection(selection_2d_bad)  # type: ignore[arg-type]
+            z.get_orthogonal_selection(selection=selection_2d_bad)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
             z.oindex[selection_2d_bad]  # type: ignore[index]
 
@@ -793,7 +793,7 @@ def _test_set_orthogonal_selection(
         oindex_set(a, selection, value)
         # long-form API
         z[:] = 0
-        z.set_orthogonal_selection(selection, value)
+        z.set_orthogonal_selection(selection=selection, value=value)
         assert_array_equal(a, z[:])
         # short-form API
         z[:] = 0
@@ -830,18 +830,18 @@ def test_set_orthogonal_selection_1d(store: StorePath) -> None:
 def test_set_item_1d_last_two_chunks(store: StorePath):
     # regression test for GH2849
     g = zarr.open_group(store=store, zarr_format=3, mode="w")
-    a = g.create_array("bar", shape=(10,), chunks=(3,), dtype=int)
+    a = g.create_array(name="bar", shape=(10,), chunks=(3,), dtype=int)
     data = np.array([7, 8, 9])
     a[slice(7, 10)] = data
     np.testing.assert_array_equal(a[slice(7, 10)], data)
 
     z = zarr.open_group(store=store, mode="w")
-    z.create_array("zoo", dtype=float, shape=())
+    z.create_array(name="zoo", dtype=float, shape=())
     z["zoo"][...] = np.array(1)  # why doesn't [:] work?
     np.testing.assert_equal(z["zoo"][()], np.array(1))
 
     z = zarr.open_group(store=store, mode="w")
-    z.create_array("zoo", dtype=float, shape=())
+    z.create_array(name="zoo", dtype=float, shape=())
     z["zoo"][...] = 1  # why doesn't [:] work?
     np.testing.assert_equal(z["zoo"][()], np.array(1))
 
@@ -987,7 +987,7 @@ def _test_get_coordinate_selection(
     a: npt.NDArray, z: Array, selection: CoordinateSelection
 ) -> None:
     expect = a[selection]
-    actual = z.get_coordinate_selection(selection)
+    actual = z.get_coordinate_selection(selection=selection)
     assert_array_equal(expect, actual)
     actual = z.vindex[selection]
     assert_array_equal(expect, actual)
@@ -1046,7 +1046,7 @@ def test_get_coordinate_selection_1d(store: StorePath) -> None:
     ]
     for selection in bad_selections:
         with pytest.raises(IndexError):
-            z.get_coordinate_selection(selection)  # type: ignore[arg-type]
+            z.get_coordinate_selection(selection=selection)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
             z.vindex[selection]  # type: ignore[index]
 
@@ -1095,16 +1095,16 @@ def test_get_coordinate_selection_2d(store: StorePath) -> None:
 
     with pytest.raises(IndexError):
         selection = slice(5, 15), [1, 2, 3]
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+        z.get_coordinate_selection(selection=selection)  # type:ignore[arg-type]
     with pytest.raises(IndexError):
         selection = [1, 2, 3], slice(5, 15)
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+        z.get_coordinate_selection(selection=selection)  # type:ignore[arg-type]
     with pytest.raises(IndexError):
         selection = Ellipsis, [1, 2, 3]
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+        z.get_coordinate_selection(selection=selection)  # type:ignore[arg-type]
     with pytest.raises(IndexError):
         selection = Ellipsis
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+        z.get_coordinate_selection(selection=selection)  # type:ignore[arg-type]
 
 
 def _test_set_coordinate_selection(
@@ -1116,7 +1116,7 @@ def _test_set_coordinate_selection(
         a[selection] = value
         # test long-form API
         z[:] = 0
-        z.set_coordinate_selection(selection, value)
+        z.set_coordinate_selection(selection=selection, value=value)
         assert_array_equal(a, z[:])
         # test short-form API
         z[:] = 0
@@ -1143,7 +1143,7 @@ def test_set_coordinate_selection_1d(store: StorePath) -> None:
 
     for selection in coordinate_selections_1d_bad:
         with pytest.raises(IndexError):
-            z.set_coordinate_selection(selection, 42)  # type:ignore[arg-type]
+            z.set_coordinate_selection(selection=selection, value=42)  # type:ignore[arg-type]
         with pytest.raises(IndexError):
             z.vindex[selection] = 42  # type:ignore[index]
 
@@ -1186,7 +1186,7 @@ def _test_get_block_selection(
     expected_idx: slice | tuple[slice, ...],
 ) -> None:
     expect = a[expected_idx]
-    actual = z.get_block_selection(selection)
+    actual = z.get_block_selection(selection=selection)
     assert_array_equal(expect, actual)
     actual = z.blocks[selection]
     assert_array_equal(expect, actual)
@@ -1253,7 +1253,7 @@ def test_get_block_selection_1d(store: StorePath) -> None:
 
     for selection_bad in bad_selections:
         with pytest.raises(IndexError):
-            z.get_block_selection(selection_bad)  # type:ignore[arg-type]
+            z.get_block_selection(selection=selection_bad)  # type:ignore[arg-type]
         with pytest.raises(IndexError):
             z.blocks[selection_bad]  # type:ignore[index]
 
@@ -1301,13 +1301,13 @@ def test_get_block_selection_2d(store: StorePath) -> None:
 
     with pytest.raises(IndexError):
         selection = slice(5, 15), [1, 2, 3]
-        z.get_block_selection(selection)
+        z.get_block_selection(selection=selection)
     with pytest.raises(IndexError):
         selection = Ellipsis, [1, 2, 3]
-        z.get_block_selection(selection)
+        z.get_block_selection(selection=selection)
     with pytest.raises(IndexError):  # out of bounds
         selection = slice(15, 20), slice(None)
-        z.get_block_selection(selection)
+        z.get_block_selection(selection=selection)
 
 
 def _test_set_block_selection(
@@ -1323,7 +1323,7 @@ def _test_set_block_selection(
         a[expected_idx] = value
         # test long-form API
         z[:] = 0
-        z.set_block_selection(selection, value)
+        z.set_block_selection(selection=selection, value=value)
         assert_array_equal(a, z[:])
         # test short-form API
         z[:] = 0
@@ -1344,7 +1344,7 @@ def test_set_block_selection_1d(store: StorePath) -> None:
 
     for selection_bad in block_selections_1d_bad:
         with pytest.raises(IndexError):
-            z.set_block_selection(selection_bad, 42)  # type:ignore[arg-type]
+            z.set_block_selection(selection=selection_bad, value=42)  # type:ignore[arg-type]
         with pytest.raises(IndexError):
             z.blocks[selection_bad] = 42  # type:ignore[index]
 
@@ -1362,18 +1362,18 @@ def test_set_block_selection_2d(store: StorePath) -> None:
 
     with pytest.raises(IndexError):
         selection = slice(5, 15), [1, 2, 3]
-        z.set_block_selection(selection, 42)
+        z.set_block_selection(selection=selection, value=42)
     with pytest.raises(IndexError):
         selection = Ellipsis, [1, 2, 3]
-        z.set_block_selection(selection, 42)
+        z.set_block_selection(selection=selection, value=42)
     with pytest.raises(IndexError):  # out of bounds
         selection = slice(15, 20), slice(None)
-        z.set_block_selection(selection, 42)
+        z.set_block_selection(selection=selection, value=42)
 
 
 def _test_get_mask_selection(a: npt.NDArray[Any], z: Array, selection: npt.NDArray) -> None:
     expect = a[selection]
-    actual = z.get_mask_selection(selection)
+    actual = z.get_mask_selection(mask=selection)
     assert_array_equal(expect, actual)
     actual = z.vindex[selection]
     assert_array_equal(expect, actual)
@@ -1416,7 +1416,7 @@ def test_get_mask_selection_1d(store: StorePath) -> None:
     ]
     for selection in bad_selections:
         with pytest.raises(IndexError):
-            z.get_mask_selection(selection)  # type: ignore[arg-type]
+            z.get_mask_selection(mask=selection)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
             z.vindex[selection]  # type:ignore[index]
 
@@ -1448,7 +1448,7 @@ def _test_set_mask_selection(
     a[:] = 0
     z[:] = 0
     a[selection] = v[selection]
-    z.set_mask_selection(selection, v[selection])
+    z.set_mask_selection(mask=selection, value=v[selection])
     assert_array_equal(a, z[:])
     z[:] = 0
     z.vindex[selection] = v[selection]
@@ -1472,7 +1472,7 @@ def test_set_mask_selection_1d(store: StorePath) -> None:
 
     for selection in mask_selections_1d_bad:
         with pytest.raises(IndexError):
-            z.set_mask_selection(selection, 42)  # type: ignore[arg-type]
+            z.set_mask_selection(mask=selection, value=42)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
             z.vindex[selection] = 42  # type: ignore[index]
 
@@ -1503,7 +1503,7 @@ def test_get_selection_out(store: StorePath) -> None:
     for selection in selections:
         expect = a[selection]
         out = get_ndbuffer_class().from_numpy_array(np.empty(expect.shape))
-        z.get_basic_selection(selection, out=out)
+        z.get_basic_selection(selection=selection, out=out)
         assert_array_equal(expect, out.as_numpy_array()[:])
 
     with pytest.raises(TypeError):
@@ -1533,7 +1533,7 @@ def test_get_selection_out(store: StorePath) -> None:
         for selection in selections:
             expect = oindex(a, selection)
             out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
-            z.get_orthogonal_selection(selection, out=out)
+            z.get_orthogonal_selection(selection=selection, out=out)
             assert_array_equal(expect, out.as_numpy_array()[:])
 
     # coordinate selections
@@ -1555,7 +1555,7 @@ def test_get_selection_out(store: StorePath) -> None:
         for selection in selections:
             expect = a[selection]
             out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
-            z.get_coordinate_selection(selection, out=out)
+            z.get_coordinate_selection(selection=selection, out=out)
             assert_array_equal(expect, out.as_numpy_array()[:])
 
 
@@ -1581,7 +1581,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
     for fields in fields_fixture:
         # total selection
         expect = a[fields]
-        actual = z.get_basic_selection(Ellipsis, fields=fields)
+        actual = z.get_basic_selection(selection=Ellipsis, fields=fields)
         assert_array_equal(expect, actual)
         # alternative API
         if isinstance(fields, str):
@@ -1599,7 +1599,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
 
         # basic selection with slice
         expect = a[fields][0:2]
-        actual = z.get_basic_selection(slice(0, 2), fields=fields)
+        actual = z.get_basic_selection(selection=slice(0, 2), fields=fields)
         assert_array_equal(expect, actual)
         # alternative API
         if isinstance(fields, str):
@@ -1611,7 +1611,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
 
         # basic selection with single item
         expect = a[fields][1]
-        actual = z.get_basic_selection(1, fields=fields)
+        actual = z.get_basic_selection(selection=1, fields=fields)
         assert_array_equal(expect, actual)
         # alternative API
         if isinstance(fields, str):
@@ -1624,7 +1624,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
         # orthogonal selection
         ix = [0, 2]
         expect = a[fields][ix]
-        actual = z.get_orthogonal_selection(ix, fields=fields)
+        actual = z.get_orthogonal_selection(selection=ix, fields=fields)
         assert_array_equal(expect, actual)
         # alternative API
         if isinstance(fields, str):
@@ -1637,7 +1637,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
         # coordinate selection
         ix = [0, 2]
         expect = a[fields][ix]
-        actual = z.get_coordinate_selection(ix, fields=fields)
+        actual = z.get_coordinate_selection(selection=ix, fields=fields)
         assert_array_equal(expect, actual)
         # alternative API
         if isinstance(fields, str):
@@ -1650,7 +1650,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
         # mask selection
         ix = [True, False, True]
         expect = a[fields][ix]
-        actual = z.get_mask_selection(ix, fields=fields)
+        actual = z.get_mask_selection(mask=ix, fields=fields)
         assert_array_equal(expect, actual)
         # alternative API
         if isinstance(fields, str):
@@ -1662,7 +1662,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
 
     # missing/bad fields
     with pytest.raises(IndexError):
-        z.get_basic_selection(Ellipsis, fields=["notafield"])
+        z.get_basic_selection(selection=Ellipsis, fields=["notafield"])
     with pytest.raises(IndexError):
         z.get_basic_selection(Ellipsis, fields=slice(None))  # type: ignore[arg-type]
 
@@ -1693,11 +1693,11 @@ def test_set_selections_with_fields(store: StorePath) -> None:
         # it either
         if isinstance(fields, list) and len(fields) > 1:
             with pytest.raises(IndexError):
-                z.set_basic_selection(Ellipsis, v, fields=fields)
+                z.set_basic_selection(selection=Ellipsis, value=v, fields=fields)
             with pytest.raises(IndexError):
-                z.set_orthogonal_selection([0, 2], v, fields=fields)  # type: ignore[arg-type]
+                z.set_orthogonal_selection(selection=[0, 2], value=v, fields=fields)  # type: ignore[arg-type]
             with pytest.raises(IndexError):
-                z.set_coordinate_selection([0, 2], v, fields=fields)
+                z.set_coordinate_selection(selection=[0, 2], value=v, fields=fields)
             with pytest.raises(IndexError):
                 z.set_mask_selection([True, False, True], v, fields=fields)  # type: ignore[arg-type]
 
@@ -1718,14 +1718,14 @@ def test_set_selections_with_fields(store: StorePath) -> None:
             assert_array_equal(a, z[:])
             a[key] = v[key]
             # total selection
-            z.set_basic_selection(Ellipsis, v[key], fields=fields)
+            z.set_basic_selection(selection=Ellipsis, value=v[key], fields=fields)
             assert_array_equal(a, z[:])
 
             # basic selection with slice
             a[:] = ("", 0, 0)
             z[:] = ("", 0, 0)
             a[key][0:2] = v[key][0:2]
-            z.set_basic_selection(slice(0, 2), v[key][0:2], fields=fields)
+            z.set_basic_selection(selection=slice(0, 2), value=v[key][0:2], fields=fields)
             assert_array_equal(a, z[:])
 
             # orthogonal selection
@@ -1733,7 +1733,7 @@ def test_set_selections_with_fields(store: StorePath) -> None:
             z[:] = ("", 0, 0)
             ix = [0, 2]
             a[key][ix] = v[key][ix]
-            z.set_orthogonal_selection(ix, v[key][ix], fields=fields)
+            z.set_orthogonal_selection(selection=ix, value=v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
 
             # coordinate selection
@@ -1741,7 +1741,7 @@ def test_set_selections_with_fields(store: StorePath) -> None:
             z[:] = ("", 0, 0)
             ix = [0, 2]
             a[key][ix] = v[key][ix]
-            z.set_coordinate_selection(ix, v[key][ix], fields=fields)
+            z.set_coordinate_selection(selection=ix, value=v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
 
             # mask selection
@@ -1749,7 +1749,7 @@ def test_set_selections_with_fields(store: StorePath) -> None:
             z[:] = ("", 0, 0)
             ix = [True, False, True]
             a[key][ix] = v[key][ix]
-            z.set_mask_selection(ix, v[key][ix], fields=fields)
+            z.set_mask_selection(mask=ix, value=v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
 
 

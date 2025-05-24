@@ -78,7 +78,7 @@ def test_del_works(group: bool) -> None:
 
     z2: zarr.Group | zarr.Array
     if group:
-        z2 = zarr.open_group(store)
+        z2 = zarr.open_group(store=store)
     else:
         z2 = zarr.open_array(store)
     assert dict(z2.attrs) == {"c": 4}

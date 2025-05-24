@@ -179,19 +179,19 @@ def test_create_array_defaults(store: Store):
     Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
     parameter does produce a compressor.
     """
-    g = zarr.open(store, mode="w", zarr_format=2)
-    arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
+    g: zarr.Group = zarr.open(store=store, mode="w", zarr_format=2)
+    arr = g.create_array(name="one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
     assert arr._async_array.compressor is None
     assert not (arr.filters)
-    arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
+    arr = g.create_array(name="two", dtype="i8", shape=(1,), chunks=(1,))
     assert arr._async_array.compressor is not None
     assert not (arr.filters)
-    arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
+    arr = g.create_array(name="three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
     assert arr._async_array.compressor is not None
     assert not (arr.filters)
     with pytest.raises(ValueError):
         g.create_array(
-            "four", dtype="i8", shape=(1,), chunks=(1,), compressor=None, compressors=None
+            name="four", dtype="i8", shape=(1,), chunks=(1,), compressor=None, compressors=None
         )
 
 

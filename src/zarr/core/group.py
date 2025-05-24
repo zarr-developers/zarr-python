@@ -17,7 +17,6 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
-from zarr._compat import _deprecate_positional_args
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
@@ -2365,11 +2364,10 @@ class Group(SyncMixin):
         # Backwards compatibility for 2.x
         return self.create_array(*args, **kwargs)
 
-    @_deprecate_positional_args
     def create_array(
         self,
-        name: str,
         *,
+        name: str,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",
@@ -2571,7 +2569,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
         the array's fill value or zeros if no fill value is provided.
@@ -2593,7 +2590,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
@@ -2613,7 +2609,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
@@ -2633,7 +2628,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> Array:
@@ -2661,7 +2655,6 @@ class Group(SyncMixin):
             )
         )
 
-    @_deprecate_positional_args
     def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create an empty sub-array like `data`. The contents will be filled
         with the array's fill value or zeros if no fill value is provided.
@@ -2688,7 +2681,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array of zeros like `data`.
 
@@ -2709,7 +2701,6 @@ class Group(SyncMixin):
 
         return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array of ones like `data`.
 
@@ -2729,7 +2720,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array like `data` filled with the `fill_value` of `data` .
 
@@ -2759,11 +2749,10 @@ class Group(SyncMixin):
         return self._sync(self._async_group.move(source, dest))
 
     @deprecated("Use Group.create_array instead.")
-    @_deprecate_positional_args
     def array(
         self,
-        name: str,
         *,
+        name: str,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",

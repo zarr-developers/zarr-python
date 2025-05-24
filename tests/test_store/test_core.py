@@ -45,7 +45,7 @@ async def test_contains_array(
     """
     root = Group.from_store(store=local_store, zarr_format=zarr_format)
     if write_array:
-        root.create_array(path, shape=(100,), chunks=(10,), dtype="i4")
+        root.create_array(name=path, shape=(100,), chunks=(10,), dtype="i4")
     store_path = StorePath(local_store, path=path)
     assert await contains_array(store_path, zarr_format=zarr_format) == write_array
 
