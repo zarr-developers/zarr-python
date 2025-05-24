@@ -26,7 +26,6 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 import zarr
-from zarr._compat import _deprecate_positional_args
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
@@ -283,8 +282,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @classmethod
     async def create(
         cls,
-        store: StoreLike,
         *,
+        store: StoreLike,
         # v2 and v3
         shape: ShapeLike,
         dtype: npt.DTypeLike,
@@ -307,8 +306,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @classmethod
     async def create(
         cls,
-        store: StoreLike,
         *,
+        store: StoreLike,
         # v2 and v3
         shape: ShapeLike,
         dtype: npt.DTypeLike,
@@ -335,8 +334,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @classmethod
     async def create(
         cls,
-        store: StoreLike,
         *,
+        store: StoreLike,
         # v2 and v3
         shape: ShapeLike,
         dtype: npt.DTypeLike,
@@ -363,8 +362,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @classmethod
     async def create(
         cls,
-        store: StoreLike,
         *,
+        store: StoreLike,
         # v2 and v3
         shape: ShapeLike,
         dtype: npt.DTypeLike,
@@ -395,11 +394,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @classmethod
     @deprecated("Use zarr.api.asynchronous.create_array instead.")
-    @_deprecate_positional_args
     async def create(
         cls,
-        store: StoreLike,
         *,
+        store: StoreLike,
         # v2 and v3
         shape: ShapeLike,
         dtype: npt.DTypeLike,
@@ -1728,11 +1726,10 @@ class Array:
 
     @classmethod
     @deprecated("Use zarr.create_array instead.")
-    @_deprecate_positional_args
     def create(
         cls,
-        store: StoreLike,
         *,
+        store: StoreLike,
         # v2 and v3
         shape: ChunkCoords,
         dtype: npt.DTypeLike,
@@ -2438,9 +2435,11 @@ class Array:
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             return self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
-            return self.get_orthogonal_selection(pure_selection, fields=fields)
+            return self.get_orthogonal_selection(selection=pure_selection, fields=fields)
         else:
-            return self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
+            return self.get_basic_selection(
+                selection=cast(BasicSelection, pure_selection), fields=fields
+            )
 
     def __setitem__(self, selection: Selection, value: npt.ArrayLike) -> None:
         """Modify data for an item or region of the array.
@@ -2537,15 +2536,16 @@ class Array:
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             self.vindex[cast(CoordinateSelection | MaskSelection, selection)] = value
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
-            self.set_orthogonal_selection(pure_selection, value, fields=fields)
+            self.set_orthogonal_selection(selection=pure_selection, value=value, fields=fields)
         else:
-            self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
+            self.set_basic_selection(
+                selection=cast(BasicSelection, pure_selection), value=value, fields=fields
+            )
 
-    @_deprecate_positional_args
     def get_basic_selection(
         self,
-        selection: BasicSelection = Ellipsis,
         *,
+        selection: BasicSelection = Ellipsis,
         out: NDBuffer | None = None,
         prototype: BufferPrototype | None = None,
         fields: Fields | None = None,
@@ -2665,12 +2665,11 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_basic_selection(
         self,
+        *,
         selection: BasicSelection,
         value: npt.ArrayLike,
-        *,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
@@ -2761,11 +2760,10 @@ class Array:
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_orthogonal_selection(
         self,
-        selection: OrthogonalSelection,
         *,
+        selection: OrthogonalSelection,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
@@ -2886,12 +2884,11 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_orthogonal_selection(
         self,
+        *,
         selection: OrthogonalSelection,
         value: npt.ArrayLike,
-        *,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
@@ -2997,11 +2994,10 @@ class Array:
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
         )
 
-    @_deprecate_positional_args
     def get_mask_selection(
         self,
-        mask: MaskSelection,
         *,
+        mask: MaskSelection,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
@@ -3080,12 +3076,11 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_mask_selection(
         self,
+        *,
         mask: MaskSelection,
         value: npt.ArrayLike,
-        *,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
@@ -3159,11 +3154,10 @@ class Array:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_coordinate_selection(
         self,
-        selection: CoordinateSelection,
         *,
+        selection: CoordinateSelection,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
@@ -3249,12 +3243,11 @@ class Array:
             out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
 
-    @_deprecate_positional_args
     def set_coordinate_selection(
         self,
+        *,
         selection: CoordinateSelection,
         value: npt.ArrayLike,
-        *,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:
@@ -3347,11 +3340,10 @@ class Array:
 
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_block_selection(
         self,
-        selection: BasicSelection,
         *,
+        selection: BasicSelection,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
@@ -3446,12 +3438,11 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_block_selection(
         self,
+        *,
         selection: BasicSelection,
         value: npt.ArrayLike,
-        *,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
     ) -> None:

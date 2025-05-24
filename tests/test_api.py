@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 
 import contextlib
-import warnings
 from typing import Literal
 
 import numpy as np
@@ -34,7 +33,6 @@ from zarr.api.synchronous import (
     load,
     open_group,
     save,
-    save_array,
     save_group,
 )
 from zarr.core.buffer import NDArrayLike
@@ -239,12 +237,12 @@ def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
             save(store)
     elif n_args == 1 and n_kwargs == 0:
         save(store, *args)
-        array = zarr.api.synchronous.open(store)
+        array = zarr.api.synchronous.open(store=store)
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
         save(store, *args, **kwargs)  # type: ignore [arg-type]
-        group = zarr.api.synchronous.open(store)
+        group = zarr.api.synchronous.open(store=store)
         assert isinstance(group, Group)
         for array in group.array_values():
             assert_array_equal(array[:], data)
@@ -257,12 +255,9 @@ def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
         save_group("data/group.zarr")
-    with pytest.raises(TypeError):
-        # no array provided
-        save_array("data/group.zarr")
     with pytest.raises(ValueError):
         # no arrays provided
-        save("data/group.zarr")
+        save(store="data/group.zarr")
     with pytest.raises(TypeError):
         # mode is no valid argument and would get handled as an array
         a = np.arange(10)
@@ -403,11 +398,11 @@ def test_load_array(memory_store: Store) -> None:
 def test_tree() -> None:
     pytest.importorskip("rich")
     g1 = zarr.group()
-    g1.create_group("foo")
-    g3 = g1.create_group("bar")
-    g3.create_group("baz")
-    g5 = g3.create_group("qux")
-    g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
+    g1.create_group(name="foo")
+    g3 = g1.create_group(name="bar")
+    g3.create_group(name="baz")
+    g5 = g3.create_group(name="qux")
+    g5.create_array(name="baz", shape=(100,), chunks=(10,), dtype="float64")
     with pytest.warns(DeprecationWarning):
         assert repr(zarr.tree(g1)) == repr(g1.tree())
         assert str(zarr.tree(g1)) == str(g1.tree())
@@ -1080,46 +1075,12 @@ def test_tree() -> None:
 #             copy(source["foo"], dest, dry_run=True, log=True)
 
 
-def test_open_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        zarr.api.synchronous.open(store, "w", shape=(1,))
-
-
-def test_save_array_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", message="zarr_version is deprecated", category=DeprecationWarning
-        )
-        with pytest.warns(FutureWarning, match="pass"):
-            save_array(
-                store,
-                np.ones(
-                    1,
-                ),
-                3,
-            )
-
-
-def test_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        group(store, True)
-
-
-def test_open_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        open_group(store, "w")
-
-
 def test_open_falls_back_to_open_group() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     store = MemoryStore()
-    zarr.open_group(store, attributes={"key": "value"})
+    zarr.open_group(store=store, attributes={"key": "value"})
 
-    group = zarr.open(store)
+    group = zarr.open(store=store)
     assert isinstance(group, Group)
     assert group.attrs == {"key": "value"}
 
@@ -1144,9 +1105,9 @@ def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
     if mode in ["r", "r+"]:
         # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
         with pytest.raises(FileNotFoundError):
-            zarr.open(store=zarr_dir, mode=mode)
+            zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
     else:
-        group = zarr.open(store=zarr_dir, mode=mode)
+        group = zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
         assert isinstance(group, Group)
 
 

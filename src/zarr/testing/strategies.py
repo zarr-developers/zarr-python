@@ -271,10 +271,10 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = _dereference_path(path, name)
-    root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
+    root = zarr.open_group(store=store, mode="w", zarr_format=zarr_format)
 
     a = root.create_array(
-        array_path,
+        name=array_path,
         shape=nparray.shape,
         chunks=chunk_shape,
         shards=shard_shape,
