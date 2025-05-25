@@ -134,6 +134,6 @@ config = Config(
 
 def parse_indexing_order(data: Any) -> Literal["C", "F"]:
     if data in ("C", "F"):
-        return cast(Literal["C", "F"], data)
+        return cast("Literal['C', 'F']", data)
     msg = f"Expected one of ('C', 'F'), got {data} instead."
     raise ValueError(msg)
