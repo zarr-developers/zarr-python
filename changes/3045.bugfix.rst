@@ -1,1 +1,0 @@
-Fixed the typing of ``dimension_names`` arguments throughout so that it now accepts iterables that contain `None` alongside `str`.
