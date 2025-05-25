@@ -1,2 +1,0 @@
-`~zarr.errors.BaseZarrError` now inherits from `Exception` instead of `ValueError`.
-This fix also affects all other exceptions in `zarr.errors`.

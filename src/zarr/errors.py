@@ -10,7 +10,7 @@ __all__ = [
 ]
 
 
-class BaseZarrError(Exception):
+class BaseZarrError(ValueError):
     """
     Base error which all zarr errors are sub-classed from.
     """
