@@ -7,8 +7,6 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
 
-from obstore.store import ObjectStore as _UpstreamObjectStore
-
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -24,6 +22,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
+    from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import BytesLike
@@ -37,7 +36,7 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
     NotADirectoryError,
 )
 
-T_Store = TypeVar("T_Store", bound=_UpstreamObjectStore)
+T_Store = TypeVar("T_Store", bound="_UpstreamObjectStore")
 
 
 class ObjectStore(Store, Generic[T_Store]):
