@@ -9,8 +9,8 @@ from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
 from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.metadata.v3 import ArrayV3Metadata
-from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.storage import StorePath
 
 numpy_str_dtypes: list[type | str | None] = [None, str, "str", np.dtypes.StrDType, "S", "U"]

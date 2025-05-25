@@ -12,6 +12,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
 from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
@@ -19,7 +20,6 @@ from zarr.core.metadata.v3 import (
     parse_dimension_names,
     parse_zarr_format,
 )
-from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.errors import MetadataValidationError
 
 if TYPE_CHECKING:
