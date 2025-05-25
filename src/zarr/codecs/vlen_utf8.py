@@ -10,7 +10,6 @@ from numcodecs.vlen import VLenBytes, VLenUTF8
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
-from zarr.core.strings import cast_to_string_dtype
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -49,6 +48,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self
 
+    # TODO: expand the tests for this function
     async def _decode_single(
         self,
         chunk_bytes: Buffer,
@@ -60,8 +60,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
         decoded = _vlen_utf8_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
         decoded.shape = chunk_spec.shape
-        # coming out of the code, we know this is safe, so don't issue a warning
-        as_string_dtype = cast_to_string_dtype(decoded, safe=True)
+        as_string_dtype = decoded.astype(chunk_spec.dtype.to_dtype(), copy=False)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(as_string_dtype)
 
     async def _encode_single(
