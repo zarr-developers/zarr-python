@@ -1702,6 +1702,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=_data_type,
+            _fill_value=self.metadata.fill_value,
             _shape=self.shape,
             _order=self.order,
             _shard_shape=self.shards,
