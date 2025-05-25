@@ -5,7 +5,9 @@ import contextlib
 import pickle
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
+
+from obstore.store import ObjectStore as _UpstreamObjectStore
 
 from zarr.abc.store import (
     ByteRequest,
@@ -22,10 +24,10 @@ if TYPE_CHECKING:
     from typing import Any
 
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
-    from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import BytesLike
+
 
 __all__ = ["ObjectStore"]
 
@@ -35,8 +37,10 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
     NotADirectoryError,
 )
 
+T_Store = TypeVar("T_Store", bound=_UpstreamObjectStore)
 
-class ObjectStore(Store):
+
+class ObjectStore(Store, Generic[T_Store]):
     """
     Store that uses obstore for fast read/write from AWS, GCP, Azure.
 
@@ -53,19 +57,17 @@ class ObjectStore(Store):
     raise an issue with any comments/concerns about the store.
     """
 
-    store: _UpstreamObjectStore
+    store: T_Store
     """The underlying obstore instance."""
 
     def __eq__(self, value: object) -> bool:
-        if not isinstance(value, ObjectStore):
-            return False
+        return bool(
+            isinstance(value, ObjectStore)
+            and self.read_only == value.read_only
+            and self.store == value.store
+        )
 
-        if not self.read_only == value.read_only:
-            return False
-
-        return self.store == value.store
-
-    def __init__(self, store: _UpstreamObjectStore, *, read_only: bool = False) -> None:
+    def __init__(self, store: T_Store, *, read_only: bool = False) -> None:
         if not store.__class__.__module__.startswith("obstore"):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
         super().__init__(read_only=read_only)

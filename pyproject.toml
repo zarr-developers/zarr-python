@@ -367,6 +367,7 @@ module = [
     "tests.test_codecs.test_codecs",
     "tests.test_store.test_core",
     "tests.test_store.test_logging",
+    "tests.test_store.test_object",
 ]
 strict = false
 
@@ -375,7 +376,6 @@ strict = false
 [[tool.mypy.overrides]]
 module = [
     "tests.test_metadata.*",
-    "tests.test_store.test_object",
     "tests.test_store.test_stateful",
     "tests.test_store.test_wrapper",
     "tests.test_group",
