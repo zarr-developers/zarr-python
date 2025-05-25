@@ -17,6 +17,7 @@ from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.metadata.v2 import _parse_structured_fill_value
 from zarr.core.sync import sync
+from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -259,7 +260,7 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
 
 
 def test_default_compressor_deprecation_warning():
-    with pytest.warns(DeprecationWarning, match="default_compressor is deprecated"):
+    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated"):
         zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"
 
 

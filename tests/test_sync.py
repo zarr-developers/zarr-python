@@ -15,6 +15,7 @@ from zarr.core.sync import (
     loop,
     sync,
 )
+from zarr.errors import ZarrFutureWarning
 from zarr.storage import MemoryStore
 
 
@@ -145,7 +146,7 @@ def test_sync_mixin(sync_loop) -> None:
 
 def test_open_positional_args_deprecate():
     store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
+    with pytest.warns(ZarrFutureWarning, match="pass"):
         zarr.open(store, "w", shape=(1,))
 
 

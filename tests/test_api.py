@@ -38,7 +38,7 @@ from zarr.api.synchronous import (
     save_group,
 )
 from zarr.core.buffer import NDArrayLike
-from zarr.errors import MetadataValidationError
+from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrFutureWarning
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
@@ -408,7 +408,7 @@ def test_tree() -> None:
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(ZarrDeprecationWarning):
         assert repr(zarr.tree(g1)) == repr(g1.tree())
         assert str(zarr.tree(g1)) == str(g1.tree())
 
@@ -1082,7 +1082,7 @@ def test_tree() -> None:
 
 def test_open_positional_args_deprecated() -> None:
     store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
+    with pytest.warns(ZarrFutureWarning, match="pass"):
         zarr.api.synchronous.open(store, "w", shape=(1,))
 
 
@@ -1090,9 +1090,9 @@ def test_save_array_positional_args_deprecated() -> None:
     store = MemoryStore()
     with warnings.catch_warnings():
         warnings.filterwarnings(
-            "ignore", message="zarr_version is deprecated", category=DeprecationWarning
+            "ignore", message="zarr_version is deprecated", category=ZarrDeprecationWarning
         )
-        with pytest.warns(FutureWarning, match="pass"):
+        with pytest.warns(ZarrFutureWarning, match="pass"):
             save_array(
                 store,
                 np.ones(
@@ -1104,13 +1104,13 @@ def test_save_array_positional_args_deprecated() -> None:
 
 def test_group_positional_args_deprecated() -> None:
     store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
+    with pytest.warns(ZarrFutureWarning, match="pass"):
         group(store, True)
 
 
 def test_open_group_positional_args_deprecated() -> None:
     store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
+    with pytest.warns(ZarrFutureWarning, match="pass"):
         open_group(store, "w")
 
 

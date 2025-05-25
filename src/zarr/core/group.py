@@ -53,7 +53,12 @@ from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import V3JsonEncoder, _replace_special_floats
 from zarr.core.sync import SyncMixin, sync
-from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    MetadataValidationError,
+    ZarrDeprecationWarning,
+)
 from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
 from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
@@ -1128,7 +1133,7 @@ class AsyncGroup:
             config=config,
         )
 
-    @deprecated("Use AsyncGroup.create_array instead.")
+    @deprecated("Use AsyncGroup.create_array instead.", category=ZarrDeprecationWarning)
     async def create_dataset(
         self, name: str, *, shape: ShapeLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
@@ -1162,7 +1167,7 @@ class AsyncGroup:
             await array.setitem(slice(None), data)
         return array
 
-    @deprecated("Use AsyncGroup.require_array instead.")
+    @deprecated("Use AsyncGroup.require_array instead.", category=ZarrDeprecationWarning)
     async def require_dataset(
         self,
         name: str,
@@ -2504,7 +2509,7 @@ class Group(SyncMixin):
             )
         )
 
-    @deprecated("Use Group.create_array instead.")
+    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
     def create_dataset(self, name: str, **kwargs: Any) -> Array:
         """Create an array.
 
@@ -2528,7 +2533,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
-    @deprecated("Use Group.require_array instead.")
+    @deprecated("Use Group.require_array instead.", category=ZarrDeprecationWarning)
     def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
@@ -2758,7 +2763,7 @@ class Group(SyncMixin):
         """
         return self._sync(self._async_group.move(source, dest))
 
-    @deprecated("Use Group.create_array instead.")
+    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
     @_deprecate_positional_args
     def array(
         self,

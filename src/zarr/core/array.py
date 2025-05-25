@@ -110,7 +110,7 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
-from zarr.errors import MetadataValidationError
+from zarr.errors import MetadataValidationError, ZarrDeprecationWarning
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
@@ -394,7 +394,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
-    @deprecated("Use zarr.api.asynchronous.create_array instead.")
+    @deprecated("Use zarr.api.asynchronous.create_array instead.", category=ZarrDeprecationWarning)
     @_deprecate_positional_args
     async def create(
         cls,
@@ -1002,7 +1002,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     @property
-    @deprecated("Use AsyncArray.compressors instead.")
+    @deprecated("Use AsyncArray.compressors instead.", category=ZarrDeprecationWarning)
     def compressor(self) -> numcodecs.abc.Codec | None:
         """
         Compressor that is applied to each chunk of the array.
@@ -1727,7 +1727,7 @@ class Array:
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     @classmethod
-    @deprecated("Use zarr.create_array instead.")
+    @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
     @_deprecate_positional_args
     def create(
         cls,
@@ -2115,7 +2115,7 @@ class Array:
         return self._async_array.serializer
 
     @property
-    @deprecated("Use Array.compressors instead.")
+    @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
     def compressor(self) -> numcodecs.abc.Codec | None:
         """
         Compressor that is applied to each chunk of the array.

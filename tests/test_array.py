@@ -47,7 +47,12 @@ from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.sync import sync
-from zarr.errors import ContainsArrayError, ContainsGroupError
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    ZarrDeprecationWarning,
+    ZarrFutureWarning,
+)
 from zarr.storage import LocalStore, MemoryStore, StorePath
 
 if TYPE_CHECKING:
@@ -229,11 +234,11 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
 
 async def test_create_deprecated() -> None:
-    with pytest.warns(DeprecationWarning):
-        with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
+    with pytest.warns(ZarrDeprecationWarning):
+        with pytest.warns(ZarrFutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
             await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8")  # type: ignore[call-overload]
-    with pytest.warns(DeprecationWarning):
-        with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
+    with pytest.warns(ZarrDeprecationWarning):
+        with pytest.warns(ZarrFutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
             zarr.Array.create(MemoryStore(), (2, 2), dtype="f8")
 
 
@@ -241,34 +246,34 @@ def test_selection_positional_args_deprecated() -> None:
     store = MemoryStore()
     arr = zarr.create_array(store, shape=(2, 2), dtype="f8")
 
-    with pytest.warns(FutureWarning, match="Pass out"):
+    with pytest.warns(ZarrFutureWarning, match="Pass out"):
         arr.get_basic_selection(..., NDBuffer(array=np.empty((2, 2))))
 
-    with pytest.warns(FutureWarning, match="Pass fields"):
+    with pytest.warns(ZarrFutureWarning, match="Pass fields"):
         arr.set_basic_selection(..., 1, None)
 
-    with pytest.warns(FutureWarning, match="Pass out"):
+    with pytest.warns(ZarrFutureWarning, match="Pass out"):
         arr.get_orthogonal_selection(..., NDBuffer(array=np.empty((2, 2))))
 
-    with pytest.warns(FutureWarning, match="Pass"):
+    with pytest.warns(ZarrFutureWarning, match="Pass"):
         arr.set_orthogonal_selection(..., 1, None)
 
-    with pytest.warns(FutureWarning, match="Pass"):
+    with pytest.warns(ZarrFutureWarning, match="Pass"):
         arr.get_mask_selection(np.zeros((2, 2), dtype=bool), NDBuffer(array=np.empty((0,))))
 
-    with pytest.warns(FutureWarning, match="Pass"):
+    with pytest.warns(ZarrFutureWarning, match="Pass"):
         arr.set_mask_selection(np.zeros((2, 2), dtype=bool), 1, None)
 
-    with pytest.warns(FutureWarning, match="Pass"):
+    with pytest.warns(ZarrFutureWarning, match="Pass"):
         arr.get_coordinate_selection(([0, 1], [0, 1]), NDBuffer(array=np.empty((2,))))
 
-    with pytest.warns(FutureWarning, match="Pass"):
+    with pytest.warns(ZarrFutureWarning, match="Pass"):
         arr.set_coordinate_selection(([0, 1], [0, 1]), 1, None)
 
-    with pytest.warns(FutureWarning, match="Pass"):
+    with pytest.warns(ZarrFutureWarning, match="Pass"):
         arr.get_block_selection((0, slice(None)), NDBuffer(array=np.empty((2, 2))))
 
-    with pytest.warns(FutureWarning, match="Pass"):
+    with pytest.warns(ZarrFutureWarning, match="Pass"):
         arr.set_block_selection((0, slice(None)), 1, None)
 
 
