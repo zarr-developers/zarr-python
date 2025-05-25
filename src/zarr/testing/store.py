@@ -75,7 +75,15 @@ class StoreTests(Generic[S, B]):
     def test_store_supports_listing(self, store: S) -> None: ...
 
     @pytest.fixture
-    def open_kwargs(self, store_kwargs: dict[str, Any]) -> dict[str, Any]:
+    def open_kwargs(
+        self, store_kwargs: dict[str, Any], *args: Any, **kwargs: Any
+    ) -> dict[str, Any]:
+        """
+        Kwargs for opening a store.
+
+        By default uses the result of the store_kwargs fixture,
+        but can be overridden to be different.
+        """
         return store_kwargs
 
     @pytest.fixture
