@@ -1444,26 +1444,6 @@ def test_update_attrs() -> None:
     assert root.attrs["foo"] == "bar"
 
 
-@pytest.mark.parametrize("method", ["empty", "zeros", "ones", "full"])
-def test_group_deprecated_positional_args(method: str) -> None:
-    if method == "full":
-        kwargs = {"fill_value": 0}
-    else:
-        kwargs = {}
-
-    root = zarr.group()
-    with pytest.warns(FutureWarning, match=r"Pass name=.* as keyword args."):
-        arr = getattr(root, method)("foo", shape=1, **kwargs)
-        assert arr.shape == (1,)
-
-    method += "_like"
-    data = np.ones(1)
-
-    with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
-        arr = getattr(root, method)("foo_like", data, **kwargs)
-        assert arr.shape == data.shape
-
-
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2191
