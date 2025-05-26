@@ -1,21 +1,22 @@
 # /// script
-# requires-python = "3.11"
+# requires-python = ">=3.11"
 # dependencies = [
-#  zarr==2.18,
+#  "zarr==2.18",
+#  "numcodecs==0.15"
 # ]
 # ///
 
 import argparse
 
 import zarr
-from zarr.storage import BaseStore
+from zarr._storage.store import BaseStore
 
 
 def copy_group(
     *, node: zarr.hierarchy.Group, store: zarr.storage.BaseStore, path: str, overwrite: bool
 ) -> zarr.hierarchy.Group:
     result = zarr.group(store=store, path=path, overwrite=overwrite)
-    result.attrs.put(attrs)
+    result.attrs.put(node.attrs.asdict())
     for key, child in node.items():
         child_path = f"{path}/{key}"
         if isinstance(child, zarr.hierarchy.Group):
@@ -36,12 +37,13 @@ def copy_array(
         compressor=node.compressor,
         filters=node.filters,
         order=node.order,
-        dimension_separator=node.dimension_separator,
+        dimension_separator=node._dimension_separator,
         store=store,
         path=path,
         overwrite=overwrite,
     )
     result.attrs.put(node.attrs.asdict())
+    result[:] = node[:]
     return result
 
 
@@ -52,6 +54,8 @@ def copy_node(
         return copy_group(node=node, store=store, path=path, overwrite=overwrite)
     elif isinstance(node, zarr.core.Array):
         return copy_array(node=node, store=store, path=path, overwrite=overwrite)
+    else:
+        raise TypeError(f"Unexpected node type: {type(node)}")  # pragma: no cover
 
 
 def cli() -> None:
@@ -62,10 +66,10 @@ def cli() -> None:
     parser.add_argument("destination", type=str, help="Path to the destination zarr hierarchy")
     args = parser.parse_args()
 
-    src, dst = args.source, args.dest
-
+    src, dst = args.source, args.destination
     root_src = zarr.open(src, mode="r")
-    result = copy_node(node=root_src, store=dst, overwrite=True)
+    result = copy_node(node=root_src, store=zarr.NestedDirectoryStore(dst), path="", overwrite=True)
+
     print(f"successfully created {result} at {dst}")
 
 

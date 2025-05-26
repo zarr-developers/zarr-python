@@ -262,10 +262,10 @@ run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --
 run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 
-[tool.hatch.envs.time_travel]
+[tool.hatch.envs.regression]
 description = "Test environment for tests against older zarr-python versions"
 dependencies = [
-    "hatch ==1.14.1"
+    "uv ==0.7.8"
     ]
 features=["test"]
 
