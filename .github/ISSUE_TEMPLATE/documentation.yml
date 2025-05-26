@@ -1,0 +1,18 @@
+name: Documentation Improvement
+description: Report missing or wrong documentation. Alternatively, you can just open a pull request with the suggested change.
+title: "DOC: "
+labels: [documentation, help wanted]
+
+body:
+- type: textarea
+  attributes:
+    label: Describe the issue linked to the documentation
+    description: >
+      Please provide a description of what documentation you believe needs to be fixed/improved.
+  validations:
+    required: true
+- type: textarea
+  attributes:
+    label: Suggested fix for documentation
+    description: >
+      Please explain the suggested fix and why it's better than the existing documentation.

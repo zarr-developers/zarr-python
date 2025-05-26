@@ -1,16 +1,29 @@
 ---
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  # Updates for main
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
     groups:
       actions:
         patterns:
           - "*"
+
+  # Updates for support/v2 branch
+  - package-ecosystem: "pip"
+    directory: "/"
+    target-branch: "support/v2"
+    schedule:
+      interval: "weekly"
+    groups:
+      requirements:
+        patterns:
+          - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
+    target-branch: "support/v2"
     schedule:
       interval: "weekly"
     groups:

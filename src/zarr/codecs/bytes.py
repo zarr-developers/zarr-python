@@ -8,17 +8,21 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.buffer import Buffer, NDArrayLike, NDBuffer
-from zarr.codecs.registry import register_codec
-from zarr.common import parse_enum, parse_named_configuration
+from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
+from zarr.core.common import JSON, parse_enum, parse_named_configuration
+from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
-    from zarr.common import JSON, ArraySpec
+    from zarr.core.array_spec import ArraySpec
 
 
 class Endian(Enum):
+    """
+    Enum for endian type used by bytes codec.
+    """
+
     big = "big"
     little = "little"
 
@@ -49,7 +53,7 @@ class BytesCodec(ArrayBytesCodec):
         if self.endian is None:
             return {"name": "bytes"}
         else:
-            return {"name": "bytes", "configuration": {"endian": self.endian}}
+            return {"name": "bytes", "configuration": {"endian": self.endian.value}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if array_spec.dtype.itemsize == 0:
@@ -81,7 +85,9 @@ class BytesCodec(ArrayBytesCodec):
             as_nd_array_like = as_array_like
         else:
             as_nd_array_like = np.asanyarray(as_array_like)
-        chunk_array = NDBuffer.from_ndarray_like(as_nd_array_like.view(dtype=dtype))
+        chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
+            as_nd_array_like.view(dtype=dtype)
+        )
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:
@@ -93,20 +99,23 @@ class BytesCodec(ArrayBytesCodec):
     async def _encode_single(
         self,
         chunk_array: NDBuffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
-        if chunk_array.dtype.itemsize > 1:
-            if self.endian is not None and self.endian != chunk_array.byteorder:
-                # type-ignore is a numpy bug
-                # see https://github.com/numpy/numpy/issues/26473
-                new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
-                chunk_array = chunk_array.astype(new_dtype)
+        if (
+            chunk_array.dtype.itemsize > 1
+            and self.endian is not None
+            and self.endian != chunk_array.byteorder
+        ):
+            # type-ignore is a numpy bug
+            # see https://github.com/numpy/numpy/issues/26473
+            new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
+            chunk_array = chunk_array.astype(new_dtype)
 
-        as_nd_array_like = chunk_array.as_ndarray_like()
-        # Flatten the nd-array (only copy if needed)
-        as_nd_array_like = as_nd_array_like.ravel().view(dtype="b")
-        return Buffer.from_array_like(as_nd_array_like)
+        nd_array = chunk_array.as_ndarray_like()
+        # Flatten the nd-array (only copy if needed) and reinterpret as bytes
+        nd_array = nd_array.ravel().view(dtype="B")
+        return chunk_spec.prototype.buffer.from_array_like(nd_array)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

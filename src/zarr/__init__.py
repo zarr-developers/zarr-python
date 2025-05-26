@@ -1,34 +1,125 @@
-from __future__ import annotations
-
-import zarr.codecs  # noqa: F401
 from zarr._version import version as __version__
-from zarr.array import Array, AsyncArray
-from zarr.config import config  # noqa: F401
-from zarr.group import AsyncGroup, Group
-from zarr.store import (
-    StoreLike,
-    make_store_path,
+from zarr.api.synchronous import (
+    array,
+    consolidate_metadata,
+    copy,
+    copy_all,
+    copy_store,
+    create,
+    create_array,
+    create_group,
+    create_hierarchy,
+    empty,
+    empty_like,
+    from_array,
+    full,
+    full_like,
+    group,
+    load,
+    ones,
+    ones_like,
+    open,
+    open_array,
+    open_consolidated,
+    open_group,
+    open_like,
+    save,
+    save_array,
+    save_group,
+    tree,
+    zeros,
+    zeros_like,
 )
-from zarr.sync import sync as _sync
+from zarr.core.array import Array, AsyncArray
+from zarr.core.config import config
+from zarr.core.group import AsyncGroup, Group
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")
 
 
-async def open_auto_async(store: StoreLike) -> AsyncArray | AsyncGroup:
-    store_path = make_store_path(store)
-    try:
-        return await AsyncArray.open(store_path)
-    except KeyError:
-        return await AsyncGroup.open(store_path)
+def print_debug_info() -> None:
+    """
+    Print version info for use in bug reports.
+    """
+    import platform
+    from importlib.metadata import version
+
+    def print_packages(packages: list[str]) -> None:
+        not_installed = []
+        for package in packages:
+            try:
+                print(f"{package}: {version(package)}")
+            except ModuleNotFoundError:
+                not_installed.append(package)
+        if not_installed:
+            print("\n**Not Installed:**")
+            for package in not_installed:
+                print(package)
+
+    required = [
+        "packaging",
+        "numpy",
+        "numcodecs",
+        "typing_extensions",
+        "donfig",
+    ]
+    optional = [
+        "botocore",
+        "cupy-cuda12x",
+        "fsspec",
+        "numcodecs",
+        "s3fs",
+        "gcsfs",
+        "universal-pathlib",
+        "rich",
+        "obstore",
+    ]
+
+    print(f"platform: {platform.platform()}")
+    print(f"python: {platform.python_version()}")
+    print(f"zarr: {__version__}\n")
+    print("**Required dependencies:**")
+    print_packages(required)
+    print("\n**Optional dependencies:**")
+    print_packages(optional)
 
 
-def open_auto(store: StoreLike) -> Array | Group:
-    object = _sync(
-        open_auto_async(store),
-    )
-    if isinstance(object, AsyncArray):
-        return Array(object)
-    if isinstance(object, AsyncGroup):
-        return Group(object)
-    raise TypeError(f"Unexpected object type. Got {type(object)}.")
+__all__ = [
+    "Array",
+    "AsyncArray",
+    "AsyncGroup",
+    "Group",
+    "__version__",
+    "array",
+    "config",
+    "consolidate_metadata",
+    "copy",
+    "copy_all",
+    "copy_store",
+    "create",
+    "create_array",
+    "create_group",
+    "create_hierarchy",
+    "empty",
+    "empty_like",
+    "from_array",
+    "full",
+    "full_like",
+    "group",
+    "load",
+    "ones",
+    "ones_like",
+    "open",
+    "open_array",
+    "open_consolidated",
+    "open_group",
+    "open_like",
+    "print_debug_info",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
+    "zeros",
+    "zeros_like",
+]

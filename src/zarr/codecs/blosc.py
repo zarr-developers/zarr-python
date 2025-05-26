@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
@@ -7,19 +8,25 @@ from typing import TYPE_CHECKING
 
 import numcodecs
 from numcodecs.blosc import Blosc
+from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.buffer import Buffer, as_numpy_array_wrapper
-from zarr.codecs.registry import register_codec
-from zarr.common import parse_enum, parse_named_configuration, to_thread
+from zarr.core.buffer.cpu import as_numpy_array_wrapper
+from zarr.core.common import JSON, parse_enum, parse_named_configuration
+from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
-    from zarr.common import JSON, ArraySpec
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer
 
 
 class BloscShuffle(Enum):
+    """
+    Enum for shuffle filter used by blosc.
+    """
+
     noshuffle = "noshuffle"
     shuffle = "shuffle"
     bitshuffle = "bitshuffle"
@@ -37,6 +44,10 @@ class BloscShuffle(Enum):
 
 
 class BloscCname(Enum):
+    """
+    Enum for compression library used by blosc.
+    """
+
     lz4 = "lz4"
     lz4hc = "lz4hc"
     blosclz = "blosclz"
@@ -45,7 +56,7 @@ class BloscCname(Enum):
     zlib = "zlib"
 
 
-# See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
+# See https://zarr.readthedocs.io/en/stable/user-guide/performance.html#configuring-blosc
 numcodecs.blosc.use_threads = False
 
 
@@ -77,10 +88,10 @@ def parse_blocksize(data: JSON) -> int:
 class BloscCodec(BytesBytesCodec):
     is_fixed_size = False
 
-    typesize: int
+    typesize: int | None
     cname: BloscCname = BloscCname.zstd
     clevel: int = 5
-    shuffle: BloscShuffle = BloscShuffle.noshuffle
+    shuffle: BloscShuffle | None = BloscShuffle.noshuffle
     blocksize: int = 0
 
     def __init__(
@@ -118,25 +129,22 @@ class BloscCodec(BytesBytesCodec):
             "name": "blosc",
             "configuration": {
                 "typesize": self.typesize,
-                "cname": self.cname,
+                "cname": self.cname.value,
                 "clevel": self.clevel,
-                "shuffle": self.shuffle,
+                "shuffle": self.shuffle.value,
                 "blocksize": self.blocksize,
             },
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+        dtype = array_spec.dtype
         new_codec = self
         if new_codec.typesize is None:
-            new_codec = replace(new_codec, typesize=array_spec.dtype.itemsize)
+            new_codec = replace(new_codec, typesize=dtype.itemsize)
         if new_codec.shuffle is None:
             new_codec = replace(
                 new_codec,
-                shuffle=(
-                    BloscShuffle.bitshuffle
-                    if array_spec.dtype.itemsize == 1
-                    else BloscShuffle.shuffle
-                ),
+                shuffle=(BloscShuffle.bitshuffle if dtype.itemsize == 1 else BloscShuffle.shuffle),
             )
 
         return new_codec
@@ -156,24 +164,31 @@ class BloscCodec(BytesBytesCodec):
             "shuffle": map_shuffle_str_to_int[self.shuffle],
             "blocksize": self.blocksize,
         }
+        # See https://github.com/zarr-developers/numcodecs/pull/713
+        if Version(numcodecs.__version__) >= Version("0.16.0"):
+            config_dict["typesize"] = self.typesize
         return Blosc.from_config(config_dict)
 
     async def _decode_single(
         self,
         chunk_bytes: Buffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes)
+        return await asyncio.to_thread(
+            as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes, chunk_spec.prototype
+        )
 
     async def _encode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        # Since blosc only takes bytes, we convert the input and output of the encoding
-        # between bytes and Buffer
-        return await to_thread(
-            lambda chunk: Buffer.from_bytes(self._blosc_codec.encode(chunk.as_array_like())),
+        # Since blosc only support host memory, we convert the input and output of the encoding
+        # between numpy array and buffer
+        return await asyncio.to_thread(
+            lambda chunk: chunk_spec.prototype.buffer.from_bytes(
+                self._blosc_codec.encode(chunk.as_numpy_array())
+            ),
             chunk_bytes,
         )
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import lru_cache
 from operator import itemgetter
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -14,19 +14,28 @@ from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
-    ByteGetter,
-    ByteSetter,
     Codec,
     CodecPipeline,
 )
-from zarr.buffer import Buffer, NDBuffer
-from zarr.chunk_grids import RegularChunkGrid
+from zarr.abc.store import (
+    ByteGetter,
+    ByteRequest,
+    ByteSetter,
+    RangeByteRequest,
+    SuffixByteRequest,
+)
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.codecs.pipeline import BatchedCodecPipeline
-from zarr.codecs.registry import register_codec
-from zarr.common import (
-    ArraySpec,
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer import (
+    Buffer,
+    BufferPrototype,
+    NDBuffer,
+    default_buffer_prototype,
+    numpy_buffer_prototype,
+)
+from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.common import (
     ChunkCoords,
     ChunkCoordsLike,
     parse_enum,
@@ -34,19 +43,21 @@ from zarr.common import (
     parse_shapelike,
     product,
 )
-from zarr.indexing import (
+from zarr.core.indexing import (
     BasicIndexer,
+    SelectorTuple,
     c_order_iter,
+    get_indexer,
     morton_order_iter,
 )
-from zarr.metadata import ArrayMetadata, parse_codecs
+from zarr.core.metadata.v3 import parse_codecs
+from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
+    from typing import Self
 
-    from typing_extensions import Self
-
-    from zarr.common import JSON, SliceSelection
+    from zarr.core.common import JSON
 
 MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, Buffer]
@@ -54,11 +65,15 @@ ShardMutableMapping = MutableMapping[ChunkCoords, Buffer]
 
 
 class ShardingCodecIndexLocation(Enum):
+    """
+    Enum for index location used by the sharding codec.
+    """
+
     start = "start"
     end = "end"
 
 
-def parse_index_location(data: JSON) -> ShardingCodecIndexLocation:
+def parse_index_location(data: object) -> ShardingCodecIndexLocation:
     return parse_enum(data, ShardingCodecIndexLocation)
 
 
@@ -67,8 +82,13 @@ class _ShardingByteGetter(ByteGetter):
     shard_dict: ShardMapping
     chunk_coords: ChunkCoords
 
-    async def get(self, byte_range: tuple[int, int | None] | None = None) -> Buffer | None:
+    async def get(
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+    ) -> Buffer | None:
         assert byte_range is None, "byte_range is not supported within shards"
+        assert prototype == default_buffer_prototype(), (
+            f"prototype is not supported within shards currently. diff: {prototype} != {default_buffer_prototype()}"
+        )
         return self.shard_dict.get(self.chunk_coords)
 
 
@@ -76,12 +96,15 @@ class _ShardingByteGetter(ByteGetter):
 class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
     shard_dict: ShardMutableMapping
 
-    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
         assert byte_range is None, "byte_range is not supported within shards"
         self.shard_dict[self.chunk_coords] = value
 
     async def delete(self) -> None:
         del self.shard_dict[self.chunk_coords]
+
+    async def set_if_not_exists(self, default: Buffer) -> None:
+        self.shard_dict.setdefault(self.chunk_coords, default)
 
 
 class _ShardIndex(NamedTuple):
@@ -90,7 +113,9 @@ class _ShardIndex(NamedTuple):
 
     @property
     def chunks_per_shard(self) -> ChunkCoords:
-        return self.offsets_and_lengths.shape[0:-1]
+        result = tuple(self.offsets_and_lengths.shape[0:-1])
+        # The cast is required until https://github.com/numpy/numpy/pull/27211 is merged
+        return cast("ChunkCoords", result)
 
     def _localize_chunk(self, chunk_coords: ChunkCoords) -> ChunkCoords:
         return tuple(
@@ -102,7 +127,7 @@ class _ShardIndex(NamedTuple):
         return bool(np.array_equiv(self.offsets_and_lengths, MAX_UINT_64))
 
     def get_full_chunk_map(self) -> npt.NDArray[np.bool_]:
-        return self.offsets_and_lengths[..., 0] != MAX_UINT_64
+        return np.not_equal(self.offsets_and_lengths[..., 0], MAX_UINT_64)
 
     def get_chunk_slice(self, chunk_coords: ChunkCoords) -> tuple[int, int] | None:
         localized_chunk = self._localize_chunk(chunk_coords)
@@ -110,7 +135,7 @@ class _ShardIndex(NamedTuple):
         if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
             return None
         else:
-            return (int(chunk_start), int(chunk_start) + int(chunk_len))
+            return (int(chunk_start), int(chunk_start + chunk_len))
 
     def set_chunk_slice(self, chunk_coords: ChunkCoords, chunk_slice: slice | None) -> None:
         localized_chunk = self._localize_chunk(chunk_coords)
@@ -134,7 +159,7 @@ class _ShardIndex(NamedTuple):
 
         # Are all non-empty offsets unique?
         if len(
-            set(offset for offset, _ in sorted_offsets_and_lengths if offset != MAX_UINT_64)
+            {offset for offset, _ in sorted_offsets_and_lengths if offset != MAX_UINT_64}
         ) != len(sorted_offsets_and_lengths):
             return False
 
@@ -170,10 +195,14 @@ class _ShardReader(ShardMapping):
         return obj
 
     @classmethod
-    def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardReader:
+    def create_empty(
+        cls, chunks_per_shard: ChunkCoords, buffer_prototype: BufferPrototype | None = None
+    ) -> _ShardReader:
+        if buffer_prototype is None:
+            buffer_prototype = default_buffer_prototype()
         index = _ShardIndex.create_empty(chunks_per_shard)
         obj = cls()
-        obj.buf = Buffer.create_zero_length()
+        obj.buf = buffer_prototype.buffer.create_zero_length()
         obj.index = index
         return obj
 
@@ -206,7 +235,7 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     ) -> _ShardBuilder:
         obj = cls.create_empty(chunks_per_shard)
         for chunk_coords in morton_order_iter(chunks_per_shard):
-            if tombstones is not None and chunk_coords in tombstones:
+            if chunk_coords in tombstones:
                 continue
             for shard_dict in shard_dicts:
                 maybe_value = shard_dict.get(chunk_coords, None)
@@ -216,16 +245,20 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
         return obj
 
     @classmethod
-    def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardBuilder:
+    def create_empty(
+        cls, chunks_per_shard: ChunkCoords, buffer_prototype: BufferPrototype | None = None
+    ) -> _ShardBuilder:
+        if buffer_prototype is None:
+            buffer_prototype = default_buffer_prototype()
         obj = cls()
-        obj.buf = Buffer.create_zero_length()
+        obj.buf = buffer_prototype.buffer.create_zero_length()
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
     def __setitem__(self, chunk_coords: ChunkCoords, value: Buffer) -> None:
         chunk_start = len(self.buf)
         chunk_length = len(value)
-        self.buf = self.buf + value
+        self.buf += value
         self.index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
 
     def __delitem__(self, chunk_coords: ChunkCoords) -> None:
@@ -238,7 +271,8 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     ) -> Buffer:
         index_bytes = await index_encoder(self.index)
         if index_location == ShardingCodecIndexLocation.start:
-            self.index.offsets_and_lengths[..., 0] += len(index_bytes)
+            empty_chunks_mask = self.index.offsets_and_lengths[..., 0] == MAX_UINT_64
+            self.index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
             index_bytes = await index_encoder(self.index)  # encode again with corrected offsets
             out_buf = index_bytes + self.buf
         else:
@@ -298,34 +332,22 @@ class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
 ):
     chunk_shape: ChunkCoords
-    codecs: CodecPipeline
-    index_codecs: CodecPipeline
+    codecs: tuple[Codec, ...]
+    index_codecs: tuple[Codec, ...]
     index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
 
     def __init__(
         self,
         *,
         chunk_shape: ChunkCoordsLike,
-        codecs: Iterable[Codec | JSON] | None = None,
-        index_codecs: Iterable[Codec | JSON] | None = None,
-        index_location: ShardingCodecIndexLocation | None = ShardingCodecIndexLocation.end,
+        codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
+        index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
+        index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
-        codecs_parsed = (
-            parse_codecs(codecs)
-            if codecs is not None
-            else BatchedCodecPipeline.from_list([BytesCodec()])
-        )
-        index_codecs_parsed = (
-            parse_codecs(index_codecs)
-            if index_codecs is not None
-            else BatchedCodecPipeline.from_list([BytesCodec(), Crc32cCodec()])
-        )
-        index_location_parsed = (
-            parse_index_location(index_location)
-            if index_location is not None
-            else ShardingCodecIndexLocation.end
-        )
+        codecs_parsed = parse_codecs(codecs)
+        index_codecs_parsed = parse_codecs(index_codecs)
+        index_location_parsed = parse_index_location(index_location)
 
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
         object.__setattr__(self, "codecs", codecs_parsed)
@@ -337,40 +359,60 @@ class ShardingCodec(
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
 
+    # todo: typedict return type
+    def __getstate__(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        config = state["configuration"]
+        object.__setattr__(self, "chunk_shape", parse_shapelike(config["chunk_shape"]))
+        object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
+        object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
+        object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
+
+        # Use instance-local lru_cache to avoid memory leaks
+        object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
+        object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
+        object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
+    @property
+    def codec_pipeline(self) -> CodecPipeline:
+        return get_pipeline_class().from_codecs(self.codecs)
+
     def to_dict(self) -> dict[str, JSON]:
         return {
             "name": "sharding_indexed",
             "configuration": {
-                "chunk_shape": list(self.chunk_shape),
-                "codecs": self.codecs.to_dict(),
-                "index_codecs": self.index_codecs.to_dict(),
-                "index_location": self.index_location,
+                "chunk_shape": self.chunk_shape,
+                "codecs": tuple(s.to_dict() for s in self.codecs),
+                "index_codecs": tuple(s.to_dict() for s in self.index_codecs),
+                "index_location": self.index_location.value,
             },
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         shard_spec = self._get_chunk_spec(array_spec)
-        evolved_codecs = self.codecs.evolve_from_array_spec(shard_spec)
+        evolved_codecs = tuple(c.evolve_from_array_spec(array_spec=shard_spec) for c in self.codecs)
         if evolved_codecs != self.codecs:
             return replace(self, codecs=evolved_codecs)
         return self
 
-    def validate(self, array_metadata: ArrayMetadata) -> None:
-        if len(self.chunk_shape) != array_metadata.ndim:
+    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+        if len(self.chunk_shape) != len(shape):
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
             )
-        if not isinstance(array_metadata.chunk_grid, RegularChunkGrid):
-            raise ValueError("Sharding is only compatible with regular chunk grids.")
+        if not isinstance(chunk_grid, RegularChunkGrid):
+            raise TypeError("Sharding is only compatible with regular chunk grids.")
         if not all(
             s % c == 0
             for s, c in zip(
-                array_metadata.chunk_grid.chunk_shape,
+                chunk_grid.chunk_shape,
                 self.chunk_shape,
                 strict=False,
             )
@@ -396,7 +438,7 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = NDBuffer.create(
+        out = chunk_spec.prototype.nd_buffer.create(
             shape=shard_shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
         shard_dict = await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
@@ -406,15 +448,16 @@ class ShardingCodec(
             return out
 
         # decoding chunks and writing them into the output buffer
-        await self.codecs.read(
+        await self.codec_pipeline.read(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
                     chunk_spec,
                     chunk_selection,
                     out_selection,
+                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
             out,
         )
@@ -424,7 +467,7 @@ class ShardingCodec(
     async def _decode_partial_single(
         self,
         byte_getter: ByteGetter,
-        selection: SliceSelection,
+        selection: SelectorTuple,
         shard_spec: ArraySpec,
     ) -> NDBuffer | None:
         shard_shape = shard_spec.shape
@@ -432,25 +475,29 @@ class ShardingCodec(
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
 
-        indexer = BasicIndexer(
+        indexer = get_indexer(
             selection,
             shape=shard_shape,
             chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
         )
 
         # setup output array
-        out = NDBuffer.create(
+        out = shard_spec.prototype.nd_buffer.create(
             shape=indexer.shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
 
         indexed_chunks = list(indexer)
-        all_chunk_coords = set(chunk_coords for chunk_coords, _, _ in indexed_chunks)
+        all_chunk_coords = {chunk_coords for chunk_coords, *_ in indexed_chunks}
 
         # reading bytes of all requested chunks
         shard_dict: ShardMapping = {}
         if self._is_total_shard(all_chunk_coords, chunks_per_shard):
             # read entire shard
-            shard_dict_maybe = await self._load_full_shard_maybe(byte_getter, chunks_per_shard)
+            shard_dict_maybe = await self._load_full_shard_maybe(
+                byte_getter=byte_getter,
+                prototype=chunk_spec.prototype,
+                chunks_per_shard=chunks_per_shard,
+            )
             if shard_dict_maybe is None:
                 return None
             shard_dict = shard_dict_maybe
@@ -463,24 +510,32 @@ class ShardingCodec(
             for chunk_coords in all_chunk_coords:
                 chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
                 if chunk_byte_slice:
-                    chunk_bytes = await byte_getter.get(chunk_byte_slice)
+                    chunk_bytes = await byte_getter.get(
+                        prototype=chunk_spec.prototype,
+                        byte_range=RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]),
+                    )
                     if chunk_bytes:
                         shard_dict[chunk_coords] = chunk_bytes
 
         # decoding chunks and writing them into the output buffer
-        await self.codecs.read(
+        await self.codec_pipeline.read(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
                     chunk_spec,
                     chunk_selection,
                     out_selection,
+                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
             out,
         )
-        return out
+
+        if hasattr(indexer, "sel_shape"):
+            return out.reshape(indexer.sel_shape)
+        else:
+            return out
 
     async def _encode_single(
         self,
@@ -502,15 +557,16 @@ class ShardingCodec(
 
         shard_builder = _ShardBuilder.create_empty(chunks_per_shard)
 
-        await self.codecs.write(
+        await self.codec_pipeline.write(
             [
                 (
                     _ShardingByteSetter(shard_builder, chunk_coords),
                     chunk_spec,
                     chunk_selection,
                     out_selection,
+                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
             shard_array,
         )
@@ -521,7 +577,7 @@ class ShardingCodec(
         self,
         byte_setter: ByteSetter,
         shard_array: NDBuffer,
-        selection: SliceSelection,
+        selection: SelectorTuple,
         shard_spec: ArraySpec,
     ) -> None:
         shard_shape = shard_spec.shape
@@ -530,28 +586,31 @@ class ShardingCodec(
         chunk_spec = self._get_chunk_spec(shard_spec)
 
         shard_dict = _MergingShardBuilder(
-            await self._load_full_shard_maybe(byte_setter, chunks_per_shard)
+            await self._load_full_shard_maybe(
+                byte_getter=byte_setter,
+                prototype=chunk_spec.prototype,
+                chunks_per_shard=chunks_per_shard,
+            )
             or _ShardReader.create_empty(chunks_per_shard),
             _ShardBuilder.create_empty(chunks_per_shard),
         )
 
         indexer = list(
-            BasicIndexer(
-                selection,
-                shape=shard_shape,
-                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            get_indexer(
+                selection, shape=shard_shape, chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape)
             )
         )
 
-        await self.codecs.write(
+        await self.codec_pipeline.write(
             [
                 (
                     _ShardingByteSetter(shard_dict, chunk_coords),
                     chunk_spec,
                     chunk_selection,
                     out_selection,
+                    is_complete_shard,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
             shard_array,
         )
@@ -578,7 +637,9 @@ class ShardingCodec(
     ) -> _ShardIndex:
         index_array = next(
             iter(
-                await self.index_codecs.decode(
+                await get_pipeline_class()
+                .from_codecs(self.index_codecs)
+                .decode(
                     [(index_bytes, self._get_index_chunk_spec(chunks_per_shard))],
                 )
             )
@@ -589,10 +650,12 @@ class ShardingCodec(
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
         index_bytes = next(
             iter(
-                await self.index_codecs.encode(
+                await get_pipeline_class()
+                .from_codecs(self.index_codecs)
+                .encode(
                     [
                         (
-                            NDBuffer.from_numpy_array(index.offsets_and_lengths),
+                            get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths),
                             self._get_index_chunk_spec(index.chunks_per_shard),
                         )
                     ],
@@ -604,8 +667,12 @@ class ShardingCodec(
         return index_bytes
 
     def _shard_index_size(self, chunks_per_shard: ChunkCoords) -> int:
-        return self.index_codecs.compute_encoded_size(
-            16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
+        return (
+            get_pipeline_class()
+            .from_codecs(self.index_codecs)
+            .compute_encoded_size(
+                16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
+            )
         )
 
     def _get_index_chunk_spec(self, chunks_per_shard: ChunkCoords) -> ArraySpec:
@@ -613,7 +680,10 @@ class ShardingCodec(
             shape=chunks_per_shard + (2,),
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
-            order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
+            config=ArrayConfig(
+                order="C", write_empty_chunks=False
+            ),  # Note: this is hard-coded for simplicity -- it is not surfaced into user code,
+            prototype=default_buffer_prototype(),
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
@@ -621,7 +691,8 @@ class ShardingCodec(
             shape=self.chunk_shape,
             dtype=shard_spec.dtype,
             fill_value=shard_spec.fill_value,
-            order=shard_spec.order,
+            config=shard_spec.config,
+            prototype=shard_spec.prototype,
         )
 
     def _get_chunks_per_shard(self, shard_spec: ArraySpec) -> ChunkCoords:
@@ -639,9 +710,14 @@ class ShardingCodec(
     ) -> _ShardIndex | None:
         shard_index_size = self._shard_index_size(chunks_per_shard)
         if self.index_location == ShardingCodecIndexLocation.start:
-            index_bytes = await byte_getter.get((0, shard_index_size))
+            index_bytes = await byte_getter.get(
+                prototype=numpy_buffer_prototype(),
+                byte_range=RangeByteRequest(0, shard_index_size),
+            )
         else:
-            index_bytes = await byte_getter.get((-shard_index_size, None))
+            index_bytes = await byte_getter.get(
+                prototype=numpy_buffer_prototype(), byte_range=SuffixByteRequest(shard_index_size)
+            )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)
         return None
@@ -654,9 +730,9 @@ class ShardingCodec(
         ) or _ShardIndex.create_empty(chunks_per_shard)
 
     async def _load_full_shard_maybe(
-        self, byte_getter: ByteGetter, chunks_per_shard: ChunkCoords
+        self, byte_getter: ByteGetter, prototype: BufferPrototype, chunks_per_shard: ChunkCoords
     ) -> _ShardReader | None:
-        shard_bytes = await byte_getter.get()
+        shard_bytes = await byte_getter.get(prototype=prototype)
 
         return (
             await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)

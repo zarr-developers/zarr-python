@@ -6,7 +6,6 @@
         "highlights": "getting_started.html#highlights",
         "contributing": "contributing.html",
         "projects-using-zarr": "getting_started.html#projects-using-zarr",
-        "acknowledgments": "acknowledgments.html",
         "contents": "getting_started.html#contents",
         "indices-and-tables": "api.html#indices-and-tables"
     }
