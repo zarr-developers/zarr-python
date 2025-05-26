@@ -240,7 +240,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
     def _cast_value_unsafe(self, data: object) -> np.datetime64:
-        return self.to_dtype().type(data)  # type: ignore[no-any-return, call-overload]
+        return self.to_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[no-any-return, call-overload]
 
     @classmethod
     def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
