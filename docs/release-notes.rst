@@ -3,6 +3,44 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.8 (2025-05-19)
+------------------
+
+.. warning::
+
+    In versions 3.0.0 to 3.0.7 opening arrays or groups with ``mode='a'`` (the default for many builtin functions)
+    would cause any existing paths in the store to be deleted. This is fixed in 3.0.8, and
+    we recommend all users upgrade to avoid this bug that could cause unintentional data loss.
+
+Features
+~~~~~~~~
+
+- Added a `print_debug_info` function for bug reports. (:issue:`2913`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Fix a bug that prevented the number of initialized chunks being counted properly. (:issue:`2862`)
+- Fixed sharding with GPU buffers. (:issue:`2978`)
+- Fix structured `dtype` fill value serialization for consolidated metadata (:issue:`2998`)
+- It is now possible to specify no compressor when creating a zarr format 2 array.
+  This can be done by passing ``compressor=None`` to the various array creation routines.
+
+  The default behaviour of automatically choosing a suitable default compressor remains if the compressor argument is not given.
+  To reproduce the behaviour in previous zarr-python versions when ``compressor=None`` was passed, pass ``compressor='auto'`` instead. (:issue:`3039`)
+- Fixed the typing of ``dimension_names`` arguments throughout so that it now accepts iterables that contain `None` alongside `str`. (:issue:`3045`)
+- Using various functions to open data with ``mode='a'`` no longer deletes existing data in the store. (:issue:`3062`)
+- Internally use `typesize` constructor parameter for :class:`numcodecs.blosc.Blosc` to improve compression ratios back to the v2-package levels. (:issue:`2962`)
+- Specifying the memory order of Zarr format 2 arrays using the ``order`` keyword argument has been fixed. (:issue:`2950`)
+
+
+Misc
+~~~~
+
+- :issue:`2972`, :issue:`3027`, :issue:`3049`
+
+
 3.0.7 (2025-04-22)
 ------------------
 
