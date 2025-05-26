@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 
 import contextlib
-import warnings
 from typing import Literal
 
 import numpy as np
@@ -259,7 +258,7 @@ def test_save_errors() -> None:
         save_group("data/group.zarr")
     with pytest.raises(TypeError):
         # no array provided
-        save_array("data/group.zarr")
+        save_array("data/group.zarr")  # type: ignore[call-arg]
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
@@ -1080,40 +1079,6 @@ def test_tree() -> None:
 #             copy(source["foo"], dest, dry_run=True, log=True)
 
 
-def test_open_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        zarr.api.synchronous.open(store, "w", shape=(1,))
-
-
-def test_save_array_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", message="zarr_version is deprecated", category=DeprecationWarning
-        )
-        with pytest.warns(FutureWarning, match="pass"):
-            save_array(
-                store,
-                np.ones(
-                    1,
-                ),
-                3,
-            )
-
-
-def test_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        group(store, True)
-
-
-def test_open_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        open_group(store, "w")
-
-
 def test_open_falls_back_to_open_group() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     store = MemoryStore()
@@ -1144,9 +1109,9 @@ def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
     if mode in ["r", "r+"]:
         # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
         with pytest.raises(FileNotFoundError):
-            zarr.open(store=zarr_dir, mode=mode)
+            zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
     else:
-        group = zarr.open(store=zarr_dir, mode=mode)
+        group = zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
         assert isinstance(group, Group)
 
 

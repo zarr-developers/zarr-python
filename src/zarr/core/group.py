@@ -7,7 +7,6 @@ import json
 import logging
 import warnings
 from collections import defaultdict
-from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
@@ -17,7 +16,6 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
-from zarr._compat import _deprecate_positional_args
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
@@ -65,6 +63,8 @@ if TYPE_CHECKING:
         Coroutine,
         Generator,
         Iterable,
+        Iterator,
+        Mapping,
     )
     from typing import Any
 
@@ -81,7 +81,7 @@ DefaultT = TypeVar("DefaultT")
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
     if data in (2, 3):
-        return cast(ZarrFormat, data)
+        return cast("ZarrFormat", data)
     msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
     raise ValueError(msg)
 
@@ -89,7 +89,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
     if data in ("array", "group"):
-        return cast(Literal["array", "group"], data)
+        return cast("Literal['array', 'group']", data)
     raise MetadataValidationError("node_type", "array or group", data)
 
 
@@ -362,7 +362,7 @@ class GroupMetadata(Metadata):
                         # it's an array
                         if isinstance(v.get("fill_value", None), np.void):
                             v["fill_value"] = base64.standard_b64encode(
-                                cast(bytes, v["fill_value"])
+                                cast("bytes", v["fill_value"])
                             ).decode("ascii")
                         else:
                             v = _replace_special_floats(v)
@@ -2365,7 +2365,6 @@ class Group(SyncMixin):
         # Backwards compatibility for 2.x
         return self.create_array(*args, **kwargs)
 
-    @_deprecate_positional_args
     def create_array(
         self,
         name: str,
@@ -2571,7 +2570,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
         the array's fill value or zeros if no fill value is provided.
@@ -2593,7 +2591,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
@@ -2613,7 +2610,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
@@ -2633,7 +2629,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> Array:
@@ -2661,7 +2656,6 @@ class Group(SyncMixin):
             )
         )
 
-    @_deprecate_positional_args
     def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create an empty sub-array like `data`. The contents will be filled
         with the array's fill value or zeros if no fill value is provided.
@@ -2688,7 +2682,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array of zeros like `data`.
 
@@ -2709,7 +2702,6 @@ class Group(SyncMixin):
 
         return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array of ones like `data`.
 
@@ -2729,7 +2721,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array like `data` filled with the `fill_value` of `data` .
 
@@ -2759,7 +2750,6 @@ class Group(SyncMixin):
         return self._sync(self._async_group.move(source, dest))
 
     @deprecated("Use Group.create_array instead.")
-    @_deprecate_positional_args
     def array(
         self,
         name: str,
@@ -3246,8 +3236,7 @@ def _ensure_consistent_zarr_format(
         raise ValueError(msg)
 
     return cast(
-        Mapping[str, GroupMetadata | ArrayV2Metadata]
-        | Mapping[str, GroupMetadata | ArrayV3Metadata],
+        "Mapping[str, GroupMetadata | ArrayV2Metadata] | Mapping[str, GroupMetadata | ArrayV3Metadata]",
         data,
     )
 

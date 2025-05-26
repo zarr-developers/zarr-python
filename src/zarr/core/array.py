@@ -26,7 +26,6 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 import zarr
-from zarr._compat import _deprecate_positional_args
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
@@ -395,7 +394,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @classmethod
     @deprecated("Use zarr.api.asynchronous.create_array instead.")
-    @_deprecate_positional_args
     async def create(
         cls,
         store: StoreLike,
@@ -903,7 +901,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast(ArrayV3MetadataDict, metadata_dict)
+        _metadata_dict = cast("ArrayV3MetadataDict", metadata_dict)
         return cls(store_path=store_path, metadata=_metadata_dict)
 
     @property
@@ -1399,7 +1397,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             if isinstance(array_like, np._typing._SupportsArrayFunc):
                 # TODO: need to handle array types that don't support __array_function__
                 # like PyTorch and JAX
-                array_like_ = cast(np._typing._SupportsArrayFunc, array_like)
+                array_like_ = cast("np._typing._SupportsArrayFunc", array_like)
             value = np.asanyarray(value, dtype=self.metadata.dtype, like=array_like_)
         else:
             if not hasattr(value, "shape"):
@@ -1413,7 +1411,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     value = value.astype(dtype=self.metadata.dtype, order="A")
                 else:
                     value = np.array(value, dtype=self.metadata.dtype, order="A")
-        value = cast(NDArrayLike, value)
+        value = cast("NDArrayLike", value)
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
@@ -1702,6 +1700,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=_data_type,
+            _fill_value=self.metadata.fill_value,
             _shape=self.shape,
             _order=self.order,
             _shard_shape=self.shards,
@@ -1728,7 +1727,6 @@ class Array:
 
     @classmethod
     @deprecated("Use zarr.create_array instead.")
-    @_deprecate_positional_args
     def create(
         cls,
         store: StoreLike,
@@ -2436,11 +2434,11 @@ class Array:
         """
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
-            return self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
+            return self.vindex[cast("CoordinateSelection | MaskSelection", selection)]
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
             return self.get_orthogonal_selection(pure_selection, fields=fields)
         else:
-            return self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
+            return self.get_basic_selection(cast("BasicSelection", pure_selection), fields=fields)
 
     def __setitem__(self, selection: Selection, value: npt.ArrayLike) -> None:
         """Modify data for an item or region of the array.
@@ -2535,13 +2533,12 @@ class Array:
         """
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
-            self.vindex[cast(CoordinateSelection | MaskSelection, selection)] = value
+            self.vindex[cast("CoordinateSelection | MaskSelection", selection)] = value
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
             self.set_orthogonal_selection(pure_selection, value, fields=fields)
         else:
-            self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
+            self.set_basic_selection(cast("BasicSelection", pure_selection), value, fields=fields)
 
-    @_deprecate_positional_args
     def get_basic_selection(
         self,
         selection: BasicSelection = Ellipsis,
@@ -2665,7 +2662,6 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_basic_selection(
         self,
         selection: BasicSelection,
@@ -2761,7 +2757,6 @@ class Array:
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -2886,7 +2881,6 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -2997,7 +2991,6 @@ class Array:
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
         )
 
-    @_deprecate_positional_args
     def get_mask_selection(
         self,
         mask: MaskSelection,
@@ -3080,7 +3073,6 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_mask_selection(
         self,
         mask: MaskSelection,
@@ -3159,7 +3151,6 @@ class Array:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -3249,7 +3240,6 @@ class Array:
             out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
 
-    @_deprecate_positional_args
     def set_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -3347,7 +3337,6 @@ class Array:
 
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_block_selection(
         self,
         selection: BasicSelection,
@@ -3446,7 +3435,6 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_block_selection(
         self,
         selection: BasicSelection,
@@ -3657,7 +3645,7 @@ class Array:
         # TODO: remove this cast when type inference improves
         new_array = sync(self._async_array.update_attributes(new_attributes))
         # TODO: remove this cast when type inference improves
-        _new_array = cast(AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], new_array)
+        _new_array = cast("AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]", new_array)
         return type(self)(_new_array)
 
     def __repr__(self) -> str:
@@ -4252,7 +4240,7 @@ async def init_array(
             serializer=serializer,
             dtype=dtype_parsed,
         )
-        sub_codecs = cast(tuple[Codec, ...], (*array_array, array_bytes, *bytes_bytes))
+        sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
         codecs_out: tuple[Codec, ...]
         if shard_shape_parsed is not None:
             index_location = None
@@ -4523,7 +4511,7 @@ def _parse_keep_array_attr(
                 compressors = "auto"
         if serializer == "keep":
             if zarr_format == 3 and data.metadata.zarr_format == 3:
-                serializer = cast(SerializerLike, data.serializer)
+                serializer = cast("SerializerLike", data.serializer)
             else:
                 serializer = "auto"
         if fill_value is None:
@@ -4701,7 +4689,7 @@ def _parse_chunk_encoding_v3(
         if isinstance(filters, dict | Codec):
             maybe_array_array = (filters,)
         else:
-            maybe_array_array = cast(Iterable[Codec | dict[str, JSON]], filters)
+            maybe_array_array = cast("Iterable[Codec | dict[str, JSON]]", filters)
         out_array_array = tuple(_parse_array_array_codec(c) for c in maybe_array_array)
 
     if serializer == "auto":
@@ -4718,7 +4706,7 @@ def _parse_chunk_encoding_v3(
         if isinstance(compressors, dict | Codec):
             maybe_bytes_bytes = (compressors,)
         else:
-            maybe_bytes_bytes = cast(Iterable[Codec | dict[str, JSON]], compressors)
+            maybe_bytes_bytes = cast("Iterable[Codec | dict[str, JSON]]", compressors)
 
         out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
 

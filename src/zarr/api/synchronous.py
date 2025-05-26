@@ -6,7 +6,6 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 import zarr.core.array
-from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
@@ -154,7 +153,6 @@ def load(
     )
 
 
-@_deprecate_positional_args
 def open(
     store: StoreLike | None = None,
     *,
@@ -248,7 +246,6 @@ def save(
     )
 
 
-@_deprecate_positional_args
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
@@ -380,7 +377,6 @@ def array(data: npt.ArrayLike | Array, **kwargs: Any) -> Array:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
-@_deprecate_positional_args
 def group(
     store: StoreLike | None = None,
     *,
@@ -448,7 +444,6 @@ def group(
     )
 
 
-@_deprecate_positional_args
 def open_group(
     store: StoreLike | None = None,
     *,

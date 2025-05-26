@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -18,32 +18,33 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.indexing import Selection, morton_order_iter
+from zarr.core.indexing import BasicSelection, morton_order_iter
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
-    from zarr.core.buffer import NDArrayLike
-    from zarr.core.common import MemoryOrder
+    from zarr.core.buffer.core import NDArrayLikeOrScalar
+    from zarr.core.common import ChunkCoords, MemoryOrder
 
 
 @dataclass(frozen=True)
 class _AsyncArrayProxy:
-    array: AsyncArray
+    array: AsyncArray[Any]
 
-    def __getitem__(self, selection: Selection) -> _AsyncArraySelectionProxy:
+    def __getitem__(self, selection: BasicSelection) -> _AsyncArraySelectionProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
 
 
 @dataclass(frozen=True)
 class _AsyncArraySelectionProxy:
-    array: AsyncArray
-    selection: Selection
+    array: AsyncArray[Any]
+    selection: BasicSelection
 
-    async def get(self) -> NDArrayLike:
+    async def get(self) -> NDArrayLikeOrScalar:
         return await self.array.getitem(self.selection)
 
-    async def set(self, value: np.ndarray) -> None:
+    async def set(self, value: np.ndarray[Any, Any]) -> None:
         return await self.array.setitem(self.selection, value)
 
 
@@ -101,6 +102,7 @@ async def test_order(
     read_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, read_data)
 
+    assert isinstance(read_data, np.ndarray)
     if runtime_read_order == "F":
         assert read_data.flags["F_CONTIGUOUS"]
         assert not read_data.flags["C_CONTIGUOUS"]
@@ -142,6 +144,7 @@ def test_order_implicit(
     read_data = a[:, :]
     assert np.array_equal(data, read_data)
 
+    assert isinstance(read_data, np.ndarray)
     if runtime_read_order == "F":
         assert read_data.flags["F_CONTIGUOUS"]
         assert not read_data.flags["C_CONTIGUOUS"]
@@ -209,7 +212,7 @@ def test_morton() -> None:
         [3, 2, 1, 6, 4, 5, 2],
     ],
 )
-def test_morton2(shape) -> None:
+def test_morton2(shape: ChunkCoords) -> None:
     order = list(morton_order_iter(shape))
     for i, x in enumerate(order):
         assert x not in order[:i]  # no duplicates
@@ -263,7 +266,10 @@ async def test_dimension_names(store: Store) -> None:
         dimension_names=("x", "y"),
     )
 
-    assert (await zarr.api.asynchronous.open_array(store=spath)).metadata.dimension_names == (
+    assert isinstance(
+        meta := (await zarr.api.asynchronous.open_array(store=spath)).metadata, ArrayV3Metadata
+    )
+    assert meta.dimension_names == (
         "x",
         "y",
     )
@@ -277,7 +283,8 @@ async def test_dimension_names(store: Store) -> None:
         fill_value=0,
     )
 
-    assert (await AsyncArray.open(spath2)).metadata.dimension_names is None
+    assert isinstance(meta := (await AsyncArray.open(spath2)).metadata, ArrayV3Metadata)
+    assert meta.dimension_names is None
     zarr_json_buffer = await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype())
     assert zarr_json_buffer is not None
     assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())

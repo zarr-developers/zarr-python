@@ -30,7 +30,7 @@ def has_cupy() -> bool:
     try:
         import cupy
 
-        return cast(bool, cupy.cuda.runtime.getDeviceCount() > 0)
+        return cast("bool", cupy.cuda.runtime.getDeviceCount() > 0)
     except ImportError:
         return False
     except cupy.cuda.runtime.CUDARuntimeError:
