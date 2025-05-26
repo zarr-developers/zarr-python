@@ -60,6 +60,7 @@ jobs:
 
       - name: Build Zarr for Pyodide
         run: |
+          pyodide xbuildenv install --url ${{ env.PYODIDE_VERSION }}
           pyodide build
 
       - name: Run Zarr tests for Pyodide
