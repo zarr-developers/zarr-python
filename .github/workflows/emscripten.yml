@@ -9,7 +9,7 @@ on:
 
 env:
   FORCE_COLOR: 3
-  PYODIDE_VERSION: "https://github.com/pyodide/pyodide-build-environment-nightly/releases/download/20250523-emscripten_4.0.9/xbuildenv.tar.bz2"
+  PYODIDE_VERSION: 0.28.0a2
   # PYTHON_VERSION and EMSCRIPTEN_VERSION are determined by PYODIDE_VERSION.
   # The appropriate versions can be found in the Pyodide repodata.json
   # "info" field, or in Makefile.envs:
@@ -60,7 +60,7 @@ jobs:
 
       - name: Build Zarr for Pyodide
         run: |
-          pyodide xbuildenv install --url ${{ env.PYODIDE_VERSION }}
+          pyodide xbuildenv install ${{ env.PYODIDE_VERSION }}
           pyodide build
 
       ### (Temporarily) build numcodecs as well, as we have an older version in the Pyodide distribution (v0.13.1)
