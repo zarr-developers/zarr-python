@@ -9,14 +9,14 @@ on:
 
 env:
   FORCE_COLOR: 3
-  PYODIDE_VERSION: 0.26.0
+  PYODIDE_VERSION: "https://github.com/pyodide/pyodide-build-environment-nightly/releases/download/20250523-emscripten_4.0.9/xbuildenv.tar.bz2"
   # PYTHON_VERSION and EMSCRIPTEN_VERSION are determined by PYODIDE_VERSION.
   # The appropriate versions can be found in the Pyodide repodata.json
   # "info" field, or in Makefile.envs:
   # https://github.com/pyodide/pyodide/blob/main/Makefile.envs#L2
-  PYTHON_VERSION: 3.12.1
-  EMSCRIPTEN_VERSION: 3.1.58
-  NODE_VERSION: 18
+  PYTHON_VERSION: 3.13 # any 3.13.x version works
+  EMSCRIPTEN_VERSION: 4.0.9
+  NODE_VERSION: 22
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
