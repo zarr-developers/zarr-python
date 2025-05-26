@@ -25,7 +25,12 @@ def runner_installed() -> bool:
 def array_metadata_equals(a: ArrayV2Metadata, b: ArrayV2Metadata) -> bool:
     dict_a, dict_b = asdict(a), asdict(b)
     fill_value_a, fill_value_b = dict_a.pop("fill_value"), dict_b.pop("fill_value")
-    if np.isnan(fill_value_a) and np.isnan(fill_value_b):
+    if (
+        isinstance(fill_value_a, float)
+        and isinstance(fill_value_b, float)
+        and np.isnan(fill_value_a)
+        and np.isnan(fill_value_b)
+    ):
         return dict_a == dict_b
     else:
         return fill_value_a == fill_value_b and dict_a == dict_b
