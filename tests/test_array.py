@@ -1683,7 +1683,7 @@ def _index_array(arr: Array, index: Any) -> Any:
         pytest.param(
             "fork",
             marks=pytest.mark.skipif(
-                sys.platform in ("win32", "darwin"), reason="fork not supported on Windows or OSX"
+                sys.platform in {"win32", "darwin"}, reason="fork not supported on Windows or OSX"
             ),
         ),
         "spawn",
