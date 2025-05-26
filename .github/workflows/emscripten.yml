@@ -28,7 +28,7 @@ permissions:
 jobs:
   build_wasm_emscripten:
     name: Build and test Zarr for Pyodide
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     # To enable this workflow on a fork, comment out:
     # FIXME: uncomment after this is ready to merge
     # if: github.repository == 'zarr-developers/zarr-python'
