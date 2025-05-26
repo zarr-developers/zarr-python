@@ -88,7 +88,7 @@ __all__ = [
 
 _READ_MODES: tuple[AccessModeLiteral, ...] = ("r", "r+", "a")
 _CREATE_MODES: tuple[AccessModeLiteral, ...] = ("a", "w", "w-")
-_OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("a", "r+", "w")
+_OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("w",)
 
 
 def _infer_overwrite(mode: AccessModeLiteral) -> bool:
@@ -329,7 +329,7 @@ async def open(
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast(ArrayMetadataDict, metadata_dict)
+            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
             # for v2, the above would already have raised an exception if not an array
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
@@ -817,7 +817,6 @@ async def open_group(
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
-
     if attributes is None:
         attributes = {}
 

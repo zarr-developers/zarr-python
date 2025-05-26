@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from _pytest.compat import LEGACY_PATH
 
+import zarr
 from zarr import Group
 from zarr.core.common import AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
@@ -251,3 +252,10 @@ def test_relativize_path_invalid() -> None:
     msg = f"The first component of {path} does not start with {prefix}."
     with pytest.raises(ValueError, match=msg):
         _relativize_path(path="a/b/c", prefix="b")
+
+
+def test_invalid_open_mode() -> None:
+    store = MemoryStore()
+    zarr.create((100,), store=store, zarr_format=2, path="a")
+    with pytest.raises(ValueError, match="Store is not read-only but mode is 'r'"):
+        zarr.open_array(store=store, path="a", zarr_format=2, mode="r")
