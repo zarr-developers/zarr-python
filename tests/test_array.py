@@ -502,6 +502,7 @@ class TestInfo:
         expected = ArrayInfo(
             _zarr_format=2,
             _data_type=arr._async_array._zdtype,
+            _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=None,
@@ -519,6 +520,7 @@ class TestInfo:
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=arr._async_array._zdtype,
+            _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -544,6 +546,7 @@ class TestInfo:
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=arr._async_array._zdtype,
+            _fill_value=arr.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -579,6 +582,7 @@ class TestInfo:
         expected = ArrayInfo(
             _zarr_format=2,
             _data_type=Float64(),
+            _fill_value=arr.metadata.fill_value,
             _shape=(8, 8),
             _chunk_shape=(2, 2),
             _shard_shape=None,
@@ -604,6 +608,7 @@ class TestInfo:
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=arr._zdtype,
+            _fill_value=arr.metadata.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,
@@ -631,6 +636,7 @@ class TestInfo:
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=arr._zdtype,
+            _fill_value=arr.metadata.fill_value,
             _shape=(8, 8),
             _chunk_shape=chunks,
             _shard_shape=shards,

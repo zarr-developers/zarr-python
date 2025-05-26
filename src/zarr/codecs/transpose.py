@@ -24,7 +24,7 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     if not all(isinstance(a, int) for a in data):
         raise TypeError(f"Expected an iterable of integers. Got {data} instead.")
-    return tuple(cast(Iterable[int], data))
+    return tuple(cast("Iterable[int]", data))
 
 
 @dataclass(frozen=True)

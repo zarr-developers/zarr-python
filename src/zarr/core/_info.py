@@ -69,7 +69,7 @@ def byte_info(size: int) -> str:
         return f"{size} ({human_readable_size(size)})"
 
 
-@dataclasses.dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True, frozen=True, slots=True)
 class ArrayInfo:
     """
     Visual summary for an Array.
@@ -81,6 +81,7 @@ class ArrayInfo:
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
     _data_type: ZDType[TBaseDType, TBaseScalar]
+    _fill_value: object
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
     _chunk_shape: tuple[int, ...] | None = None
@@ -99,6 +100,7 @@ class ArrayInfo:
         Type               : {_type}
         Zarr format        : {_zarr_format}
         Data type          : {_data_type}
+        Fill value         : {_fill_value}
         Shape              : {_shape}""")
 
         if self._shard_shape is not None:

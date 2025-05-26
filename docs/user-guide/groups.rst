@@ -129,6 +129,7 @@ property. E.g.::
    Type               : Array
    Zarr format        : 3
    Data type          : Int64(endianness='little')
+   Fill value         : 0
    Shape              : (1000000,)
    Chunk shape        : (100000,)
    Order              : C
@@ -145,6 +146,7 @@ property. E.g.::
    Type               : Array
    Zarr format        : 3
    Data type          : Float32(endianness='little')
+   Fill value         : 0.0
    Shape              : (1000, 1000)
    Chunk shape        : (100, 100)
    Order              : C

@@ -117,7 +117,7 @@ class _ShardIndex(NamedTuple):
     def chunks_per_shard(self) -> ChunkCoords:
         result = tuple(self.offsets_and_lengths.shape[0:-1])
         # The cast is required until https://github.com/numpy/numpy/pull/27211 is merged
-        return cast(ChunkCoords, result)
+        return cast("ChunkCoords", result)
 
     def _localize_chunk(self, chunk_coords: ChunkCoords) -> ChunkCoords:
         return tuple(
