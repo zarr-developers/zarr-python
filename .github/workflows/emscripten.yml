@@ -63,12 +63,35 @@ jobs:
           pyodide xbuildenv install --url ${{ env.PYODIDE_VERSION }}
           pyodide build
 
+      ### (Temporarily) build numcodecs as well, as we have an older version in the Pyodide distribution (v0.13.1)
+
+      - name: Clone numcodecs repository
+        uses: actions/checkout@v4
+        with:
+          # See https://github.com/zarr-developers/numcodecs/pull/529
+          repository: agriyakhetarpal/numcodecs
+          ref: setup-emscripten-ci
+          path: numcodecs-wasm
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Build numcodecs for WASM
+        run: pyodide build
+        working-directory: numcodecs-wasm
+
+      ### Back to Zarr repository to run tests
+
       - name: Run Zarr tests for Pyodide
         run: |
-          # Avoid missing asyncio plugin error from pytest, unavailable in Pyodide
-          if grep -q 'asyncio_mode = "auto"' "pyproject.toml"; then sed '/asyncio_mode = "auto"/d' "pyproject.toml" > temp && mv temp "pyproject.toml"; fi
+          # Set up Pyodide virtual environment and activate it
           pyodide venv .venv-pyodide
           source .venv-pyodide/bin/activate
+
+          # Avoid missing asyncio plugin error from pytest, unavailable in Pyodide
+          if grep -q 'asyncio_mode = "auto"' "pyproject.toml"; then sed '/asyncio_mode = "auto"/d' "pyproject.toml" > temp && mv temp "pyproject.toml"; fi
+
+          # Install numcodecs
+          python -m pip install numcodecs-wasm/dist/*.whl
           python -m pip install dist/*.whl
           python -m pip install pytest pytest-cov
           python -m pytest -v --cov=zarr --cov-config=pyproject.toml
