@@ -1141,7 +1141,7 @@ async def test_open_falls_back_to_open_group_async(zarr_format: ZarrFormat) -> N
 def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2490
     zarr_dir = tmp_path / f"mode-{mode}-test.zarr"
-    if mode in ["r", "r+"]:
+    if mode in {"r", "r+"}:
         # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
         with pytest.raises(FileNotFoundError):
             zarr.open(store=zarr_dir, mode=mode)

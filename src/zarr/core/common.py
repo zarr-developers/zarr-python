@@ -157,7 +157,7 @@ def parse_fill_value(data: Any) -> Any:
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
+    if data in {"C", "F"}:
         return cast("Literal['C', 'F']", data)
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
 

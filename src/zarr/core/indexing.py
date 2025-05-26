@@ -77,7 +77,7 @@ def err_too_many_indices(selection: Any, shape: ChunkCoords) -> None:
 
 
 def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
-    if arr.dtype.kind in ("i", "b"):
+    if arr.dtype.kind in {"i", "b"}:
         return np.asarray(arr)
     else:
         raise IndexError(
@@ -184,7 +184,7 @@ def is_integer(x: Any) -> TypeGuard[int]:
 
 def is_bool(x: Any) -> TypeGuard[bool | np.bool_]:
     """True if x is a boolean (both pure Python or NumPy)."""
-    return type(x) in [bool, np.bool_]
+    return type(x) in {bool, np.bool_}
 
 
 def is_integer_list(x: Any) -> TypeGuard[list[int]]:
@@ -422,7 +422,7 @@ class SliceDimIndexer:
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
             is_complete_chunk = (
-                dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
+                dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in {1, None}
             )
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 

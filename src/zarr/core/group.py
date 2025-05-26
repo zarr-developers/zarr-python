@@ -81,7 +81,7 @@ DefaultT = TypeVar("DefaultT")
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
-    if data in (2, 3):
+    if data in {2, 3}:
         return cast("ZarrFormat", data)
     msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
     raise ValueError(msg)
@@ -89,7 +89,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
-    if data in ("array", "group"):
+    if data in {"array", "group"}:
         return cast("Literal['array', 'group']", data)
     raise MetadataValidationError("node_type", "array or group", data)
 
@@ -402,7 +402,7 @@ class GroupMetadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
         data = dict(data)
-        assert data.pop("node_type", None) in ("group", None)
+        assert data.pop("node_type", None) in {"group", None}
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
             data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
