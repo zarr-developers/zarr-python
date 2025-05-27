@@ -54,6 +54,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
     info = ArrayInfo(
         _zarr_format=zarr_format,
         _data_type=np.dtype("int32"),
+        _fill_value=0,
         _shape=(100, 100),
         _chunk_shape=(10, 100),
         _order="C",
@@ -66,6 +67,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         Type               : Array
         Zarr format        : {zarr_format}
         Data type          : int32
+        Fill value         : 0
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
@@ -92,6 +94,7 @@ def test_array_info_complete(
     info = ArrayInfo(
         _zarr_format=zarr_format,
         _data_type=np.dtype("int32"),
+        _fill_value=0,
         _shape=(100, 100),
         _chunk_shape=(10, 100),
         _order="C",
@@ -107,6 +110,7 @@ def test_array_info_complete(
         Type               : Array
         Zarr format        : {zarr_format}
         Data type          : int32
+        Fill value         : 0
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
