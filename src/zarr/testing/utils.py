@@ -50,10 +50,3 @@ def gpu_test(func: T) -> T:
             )
         ),
     )
-
-
-def is_wasm() -> bool:
-    import platform
-    import sys
-
-    return sys.platform == "emscripten" or platform.machine() in ["wasm32", "wasm64"]

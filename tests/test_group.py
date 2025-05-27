@@ -19,6 +19,7 @@ import zarr.api.synchronous
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
+from zarr.constants import IS_WASM
 from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
@@ -42,7 +43,6 @@ from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, normalize_path
 from zarr.testing.store import LatencyStore
-from zarr.testing.utils import is_wasm
 
 from .conftest import meta_from_array, parse_store
 
@@ -1973,7 +1973,12 @@ async def test_create_rooted_hierarchy_invalid(impl: Literal["async", "sync"]) -
 @pytest.mark.parametrize(
     "store",
     [
-        pytest.param("memory", marks=pytest.mark.skipif(is_wasm(), reason="performance is marginally worse for Pyodide/WASM")),
+        pytest.param(
+            "memory",
+            marks=pytest.mark.skipif(
+                IS_WASM, reason="performance is marginally worse for Pyodide/WASM"
+            ),
+        ),
     ],
     indirect=True,
 )

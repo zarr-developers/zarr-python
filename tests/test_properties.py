@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
+from zarr.constants import IS_WASM
 from zarr.core.buffer import default_buffer_prototype
-from zarr.testing.utils import is_wasm
 
 pytest.importorskip("hypothesis")
 
@@ -77,7 +77,7 @@ def deep_equal(a: Any, b: Any) -> bool:
     return a == b
 
 
-@pytest.mark.xfail(is_wasm(), reason="Hypothesis deadline being exceeded in Pyodide/WASM")
+@pytest.mark.xfail(IS_WASM, reason="Hypothesis deadline being exceeded in Pyodide/WASM")
 @given(data=st.data(), zarr_format=zarr_formats)
 def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))

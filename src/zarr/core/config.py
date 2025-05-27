@@ -32,7 +32,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from donfig import Config as DConfig
-from zarr.testing.utils import is_wasm
+
+from zarr.constants import IS_WASM
 
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
@@ -107,8 +108,8 @@ config = Config(
                     ],
                 },
             },
-            "async": {"concurrency": 1 if is_wasm() else 10, "timeout": None},
-            "threading": {"max_workers": None if is_wasm() else 1},
+            "async": {"concurrency": 1 if IS_WASM else 10, "timeout": None},
+            "threading": {"max_workers": None if IS_WASM else 1},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",

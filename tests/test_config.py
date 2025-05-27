@@ -19,6 +19,7 @@ from zarr.codecs import (
     GzipCodec,
     ShardingCodec,
 )
+from zarr.constants import IS_WASM
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
@@ -43,7 +44,6 @@ from zarr.testing.buffer import (
     TestBuffer,
     TestNDArrayLike,
 )
-from zarr.testing.utils import is_wasm
 
 
 def test_config_defaults_set() -> None:
@@ -83,8 +83,8 @@ def test_config_defaults_set() -> None:
                     ],
                 },
             },
-            "async": {"concurrency": 1 if is_wasm() else 10, "timeout": None},
-            "threading": {"max_workers": 1 if is_wasm() else None},
+            "async": {"concurrency": 1 if IS_WASM else 10, "timeout": None},
+            "threading": {"max_workers": 1 if IS_WASM else None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",

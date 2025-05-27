@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from typing_extensions import ParamSpec
 
+from zarr.constants import IS_WASM
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -34,6 +35,38 @@ _executor: ThreadPoolExecutor | None = None  # global executor placeholder
 
 class SyncError(Exception):
     pass
+
+# TODO: not sure if there is a better place to put this function, so I've kept it here for now.
+def _make_shutdown_asyncgens_noop_for_pyodide() -> None:
+    """
+    Patch Pyodide's WebLoop to fix interoperability with pytest-asyncio.
+
+    WebLoop.shutdown_asyncgens() raises NotImplementedError, which causes
+    pytest-asyncio to issue warnings during test cleanup and potentially
+    cause resource leaks and this makes tests hang. This is a bit of a
+    hack, but it allows us to run tests that use pytest-asyncio.
+    """
+    try:
+        if not IS_WASM and "pyodide" not in sys.modules:
+            return
+
+        import pyodide.webloop
+
+        if hasattr(pyodide.webloop.WebLoop, 'shutdown_asyncgens'):
+            async def no_op_shutdown_asyncgens(self) -> None:  # noqa: ANN001
+                return
+
+            pyodide.webloop.WebLoop.shutdown_asyncgens = no_op_shutdown_asyncgens
+            logger.debug("Patched WebLoop.shutdown_asyncgens for pytest-asyncio compatibility")
+
+    # If patching fails for any reason, we log it, but we won't want to crash Zarr
+    except Exception as e:
+        msg = f"Could not patch WebLoop for pytest compatibility: {e}"
+        logger.debug(msg)
+
+
+if IS_WASM:
+    _make_shutdown_asyncgens_noop_for_pyodide()
 
 
 def _get_lock() -> threading.Lock:
@@ -170,6 +203,13 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 
     The loop will be running on a separate thread.
     """
+    # In WASM environments, we can't create threads, so raise an error
+    if IS_WASM:
+        raise RuntimeError(
+            "Thread-based event loop not available in WASM environment. "
+            "Use zarr.api.asynchronous or ensure sync() handles WASM case."
+        )
+
     if loop[0] is None:
         with _get_lock():
             # repeat the check just in case the loop got filled between the
