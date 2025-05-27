@@ -36,6 +36,7 @@ jobs:
       - name: Checkout Zarr repository
         uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
@@ -74,6 +75,7 @@ jobs:
           path: numcodecs-wasm
           submodules: recursive
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Build numcodecs for WASM
         run: pyodide build
