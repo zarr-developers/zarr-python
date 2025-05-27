@@ -16,7 +16,12 @@ from zarr.core.sync import (
     sync,
 )
 from zarr.storage import MemoryStore
+from zarr.testing.utils import is_wasm
 
+pytestmark = pytest.mark.skipif(
+    is_wasm(),
+    reason = "can't start new threads in Pyodide/WASM, so the synchronous API doesn't work",
+)
 
 @pytest.fixture(params=[True, False])
 def sync_loop(request: pytest.FixtureRequest) -> asyncio.AbstractEventLoop | None:
