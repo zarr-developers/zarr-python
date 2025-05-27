@@ -404,7 +404,7 @@ def _serialize_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> JSON:
         # There's a relationship between dtype and fill_value
         # that mypy isn't aware of. The fact that we have S or V dtype here
         # means we should have a bytes-type fill_value.
-        serialized = base64.standard_b64encode(cast(bytes, fill_value)).decode("ascii")
+        serialized = base64.standard_b64encode(cast("bytes", fill_value)).decode("ascii")
     elif isinstance(fill_value, np.datetime64):
         serialized = np.datetime_as_string(fill_value)
     elif isinstance(fill_value, numbers.Integral):
@@ -474,7 +474,7 @@ def _default_compressor(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return cast(dict[str, JSON] | None, default_compressor.get(dtype_key, None))
+    return cast("dict[str, JSON] | None", default_compressor.get(dtype_key, None))
 
 
 def _default_filters(
@@ -496,4 +496,4 @@ def _default_filters(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return cast(list[dict[str, JSON]] | None, default_filters.get(dtype_key, None))
+    return cast("list[dict[str, JSON]] | None", default_filters.get(dtype_key, None))

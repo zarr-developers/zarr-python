@@ -1,0 +1,1 @@
+Trying to open an array with ``mode='r'`` when the store is not read-only now raises an error.
