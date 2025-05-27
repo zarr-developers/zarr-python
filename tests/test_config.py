@@ -115,7 +115,14 @@ def test_config_defaults_set() -> None:
 
 @pytest.mark.parametrize(
     ("key", "old_val", "new_val"),
-    [("array.order", "C", "F"), ("async.concurrency", 10, 20), ("json_indent", 2, 0)],
+    [
+        ("array.order", "C", "F"),
+        pytest.param(
+            "async.concurrency", 10, 20,
+            marks=pytest.mark.skipif(IS_WASM, reason="Concurrency is fixed to 1 in WASM")
+        ),
+        ("json_indent", 2, 0),
+    ]
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
     assert config.get(key) == old_val
