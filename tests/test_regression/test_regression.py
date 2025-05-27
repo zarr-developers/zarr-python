@@ -1,5 +1,5 @@
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
 
@@ -11,36 +11,24 @@ from numcodecs import LZ4, LZMA, Blosc, GZip, VLenUTF8, Zstd
 import zarr
 from zarr.core.array import Array
 from zarr.core.dtype.npy.string import VariableLengthString
-from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.storage import LocalStore
 
 
 def runner_installed() -> bool:
+    """
+    Check if a PEP-723 compliant python script runner is installed.
+    """
     try:
         subprocess.check_output(["uv", "--version"])
-        return True
+        return True  # noqa: TRY300
     except FileNotFoundError:
         return False
-
-
-def array_metadata_equals(a: ArrayV2Metadata, b: ArrayV2Metadata) -> bool:
-    dict_a, dict_b = asdict(a), asdict(b)
-    fill_value_a, fill_value_b = dict_a.pop("fill_value"), dict_b.pop("fill_value")
-    if (
-        isinstance(fill_value_a, float)
-        and isinstance(fill_value_b, float)
-        and np.isnan(fill_value_a)
-        and np.isnan(fill_value_b)
-    ):
-        return dict_a == dict_b
-    else:
-        return fill_value_a == fill_value_b and dict_a == dict_b
 
 
 @dataclass(kw_only=True)
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
-    fill_value: np.generic | str
+    fill_value: np.generic | str | int
     compressor: numcodecs.abc.Codec
 
 
@@ -121,5 +109,5 @@ def test_roundtrip(source_array: Array, tmp_path: Path) -> None:
     )
     assert copy_op.returncode == 0
     out_array = zarr.open_array(store=out_path, mode="r", zarr_format=2)
-    assert array_metadata_equals(source_array.metadata, out_array.metadata)
+    assert source_array.metadata.to_dict() == out_array.metadata.to_dict()
     assert np.array_equal(source_array[:], out_array[:])
