@@ -109,7 +109,7 @@ config = Config(
                 },
             },
             "async": {"concurrency": 1 if IS_WASM else 10, "timeout": None},
-            "threading": {"max_workers": None if IS_WASM else 1},
+            "threading": {"max_workers": 1 if IS_WASM else None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
