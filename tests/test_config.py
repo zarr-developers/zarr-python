@@ -10,6 +10,7 @@ import pytest
 import zarr
 import zarr.api
 from zarr import zeros
+from zarr._constants import IS_WASM
 from zarr.abc.codec import CodecPipeline
 from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import (
@@ -19,7 +20,6 @@ from zarr.codecs import (
     GzipCodec,
     ShardingCodec,
 )
-from zarr.constants import IS_WASM
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
@@ -118,11 +118,13 @@ def test_config_defaults_set() -> None:
     [
         ("array.order", "C", "F"),
         pytest.param(
-            "async.concurrency", 10, 20,
-            marks=pytest.mark.skipif(IS_WASM, reason="Concurrency is fixed to 1 in WASM")
+            "async.concurrency",
+            10,
+            20,
+            marks=pytest.mark.skipif(IS_WASM, reason="Concurrency is fixed to 1 in WASM"),
         ),
         ("json_indent", 2, 0),
-    ]
+    ],
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
     assert config.get(key) == old_val

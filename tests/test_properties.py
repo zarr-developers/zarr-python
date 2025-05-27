@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
-from zarr.constants import IS_WASM
+from zarr._constants import IS_WASM
 from zarr.core.buffer import default_buffer_prototype
 
 pytest.importorskip("hypothesis")

@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from donfig import Config as DConfig
 
-from zarr.constants import IS_WASM
+from zarr._constants import IS_WASM
 
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet

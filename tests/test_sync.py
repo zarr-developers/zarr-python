@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import zarr
-from zarr.constants import IS_WASM
+from zarr._constants import IS_WASM
 from zarr.core.sync import (
     SyncError,
     SyncMixin,

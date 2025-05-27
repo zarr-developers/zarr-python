@@ -6,9 +6,9 @@ import pytest
 from packaging.version import Version
 
 import zarr
+from zarr._constants import IS_WASM
 from zarr.abc.store import Store
 from zarr.codecs import BloscCodec
-from zarr.constants import IS_WASM
 from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import StorePath
 

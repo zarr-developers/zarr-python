@@ -18,6 +18,7 @@ from packaging.version import Version
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
 from zarr import Array, AsyncArray, Group
+from zarr._constants import IS_WASM
 from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
@@ -27,7 +28,6 @@ from zarr.codecs import (
     VLenUTF8Codec,
     ZstdCodec,
 )
-from zarr.constants import IS_WASM
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsLike,
