@@ -104,6 +104,7 @@ def test_array_creates_implicit_groups(array):
 
 
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
+@pytest.mark.skipif(IS_WASM, reason="Unreliable test on Pyodide/WASM due to Hypothesis")
 @settings(deadline=None)
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
@@ -119,6 +120,7 @@ def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.skipif(IS_WASM, reason="Unreliable test on Pyodide/WASM due to Hypothesis")
 @given(data=st.data())
 def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
@@ -140,6 +142,7 @@ def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.skipif(IS_WASM, reason="Unreliable test on Pyodide/WASM due to Hypothesis")
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
