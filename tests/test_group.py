@@ -42,6 +42,7 @@ from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, normalize_path
 from zarr.testing.store import LatencyStore
+from zarr.testing.utils import is_wasm
 
 from .conftest import meta_from_array, parse_store
 
@@ -1969,7 +1970,13 @@ async def test_create_rooted_hierarchy_invalid(impl: Literal["async", "sync"]) -
         raise ValueError(f"Invalid impl: {impl}")
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    [
+        pytest.param("memory", marks=pytest.mark.skipif(is_wasm(), reason="performance is marginally worse for Pyodide/WASM")),
+    ],
+    indirect=True,
+)
 def test_group_members_performance(store: Store) -> None:
     """
     Test that the execution time of Group.members is less than the number of members times the
