@@ -43,6 +43,7 @@ from zarr.testing.buffer import (
     TestBuffer,
     TestNDArrayLike,
 )
+from zarr.testing.utils import is_wasm
 
 
 def test_config_defaults_set() -> None:
@@ -82,8 +83,8 @@ def test_config_defaults_set() -> None:
                     ],
                 },
             },
-            "async": {"concurrency": 10, "timeout": None},
-            "threading": {"max_workers": None},
+            "async": {"concurrency": 1 if is_wasm() else 10, "timeout": None},
+            "threading": {"max_workers": 1 if is_wasm() else None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
