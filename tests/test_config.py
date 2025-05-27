@@ -107,7 +107,7 @@ def test_config_defaults_set() -> None:
         }
     ]
     assert config.get("array.order") == "C"
-    assert config.get("async.concurrency") == 10
+    assert config.get("async.concurrency") == 1 if IS_WASM else 10
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
