@@ -8,6 +8,7 @@ from packaging.version import Version
 import zarr
 from zarr.abc.store import Store
 from zarr.codecs import BloscCodec
+from zarr.constants import IS_WASM
 from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import StorePath
 
@@ -58,6 +59,7 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
         assert blosc_configuration_json["shuffle"] == "shuffle"
 
 
+@pytest.mark.xfail(IS_WASM, reason="Blosc size mismatch, known failure case for Pyodide/WASM")
 async def test_typesize() -> None:
     a = np.arange(1000000, dtype=np.uint64)
     codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
