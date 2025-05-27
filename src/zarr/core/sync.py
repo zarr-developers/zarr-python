@@ -50,7 +50,7 @@ def _make_shutdown_asyncgens_noop_for_pyodide() -> None:
 
     This is necessary because pytest-asyncio tries to clean up async generators
     when tearing down test event loops, but Pyodide's WebLoop doesn't support
-    this as it integrates with the browser's event loo rather than managing
+    this as it integrates with the browser's event loop rather than managing
     its own lifecycle.
     """
     try:
