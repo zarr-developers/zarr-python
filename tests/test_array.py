@@ -49,6 +49,7 @@ from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
+from zarr.testing.utils import is_wasm
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
@@ -1677,6 +1678,10 @@ def _index_array(arr: Array, index: Any) -> Any:
     return arr[index]
 
 
+@pytest.mark.skipif(
+    is_wasm(),
+    reason = "can't start new processes in Pyodide",
+)
 @pytest.mark.parametrize(
     "method",
     [
