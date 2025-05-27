@@ -91,7 +91,7 @@ class _TestZDType:
         # but some classes may need to override this for special cases
         return scalar1 == scalar2
 
-    def test_check_dtype_valid(self, valid_dtype: object) -> None:
+    def test_check_dtype_valid(self, valid_dtype: TBaseDType) -> None:
         assert self.test_cls.check_dtype(valid_dtype)
 
     def test_check_dtype_invalid(self, invalid_dtype: object) -> None:

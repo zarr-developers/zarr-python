@@ -39,6 +39,7 @@ TBaseScalar = np.generic | str
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
 TBaseDType = np.dtype[np.generic]
+
 # These two type parameters are covariant because we want
 # x : ZDType[BaseDType, BaseScalar] = ZDType[SubDType, SubScalar]
 # to type check

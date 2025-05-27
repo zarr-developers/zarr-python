@@ -2,6 +2,7 @@ import subprocess
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numcodecs
 import numpy as np
@@ -10,8 +11,12 @@ from numcodecs import LZ4, LZMA, Blosc, GZip, VLenUTF8, Zstd
 
 import zarr
 from zarr.core.array import Array
+from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.string import VariableLengthString
 from zarr.storage import LocalStore
+
+if TYPE_CHECKING:
+    from zarr.core.dtype import ZDTypeLike
 
 
 def runner_installed() -> bool:
@@ -69,8 +74,10 @@ def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
     store = LocalStore(dest)
     array_params: ArrayParams = request.param
     compressor = array_params.compressor
+    chunk_key_encoding = V2ChunkKeyEncoding(separator="/")
+    dtype: ZDTypeLike
     if array_params.values.dtype == np.dtype("|O"):
-        dtype = VariableLengthString()
+        dtype = VariableLengthString()  # type: ignore[assignment]
     else:
         dtype = array_params.values.dtype
     z = zarr.create_array(
@@ -82,7 +89,7 @@ def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         fill_value=array_params.fill_value,
         order="C",
         filters=None,
-        chunk_key_encoding={"name": "v2", "configuration": {"separator": "/"}},
+        chunk_key_encoding=chunk_key_encoding,
         write_data=True,
         zarr_format=2,
     )
@@ -90,17 +97,22 @@ def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
     return z
 
 
+# TODO: make this dynamic based on the installed scripts
+script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
+
+
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
 @pytest.mark.parametrize(
     "source_array", array_cases, indirect=True, ids=tuple(map(str, array_cases))
 )
-def test_roundtrip(source_array: Array, tmp_path: Path) -> None:
+@pytest.mark.parametrize("script_path", script_paths)
+def test_roundtrip(source_array: Array, tmp_path: Path, script_path: Path) -> None:
     out_path = tmp_path / "out"
     copy_op = subprocess.run(
         [
             "uv",
             "run",
-            Path(__file__).resolve().parent / "v2.18.py",
+            script_path,
             str(source_array.store).removeprefix("file://"),
             str(out_path),
         ],
