@@ -86,8 +86,15 @@ class FixedLengthASCII(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength, 
         # this is generous for backwards compatibility
         return isinstance(data, np.bytes_ | str | bytes | int)
 
-    def _cast_value_unsafe(self, value: object) -> np.bytes_:
-        return self.to_dtype().type(value)
+    def _cast_value_unsafe(self, data: object) -> np.bytes_:
+        # We explicitly truncate the result because of the following numpy behavior:
+        # >>> x = np.dtype('S3').type('hello world')
+        # >>> x
+        # np.bytes_(b'hello world')
+        # >>> x.dtype
+        # dtype('S11')
+
+        return self.to_dtype().type(data[: self.length])  # type: ignore[index]
 
     @property
     def item_size(self) -> int:
@@ -168,7 +175,14 @@ class FixedLengthUTF32(
         return isinstance(data, str | np.str_ | bytes | int)
 
     def _cast_value_unsafe(self, data: object) -> np.str_:
-        return self.to_dtype().type(data)
+        # We explicitly truncate the result because of the following numpy behavior:
+        # >>> x = np.dtype('U3').type('hello world')
+        # >>> x
+        # np.str_('hello world')
+        # >>> x.dtype
+        # dtype('U11')
+
+        return self.to_dtype().type(data[: self.length])  # type: ignore[index]
 
     @property
     def item_size(self) -> int:
