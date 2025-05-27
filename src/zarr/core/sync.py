@@ -4,13 +4,14 @@ import asyncio
 import atexit
 import logging
 import os
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from typing_extensions import ParamSpec
 
-from zarr.constants import IS_WASM
+from zarr._constants import IS_WASM
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ _executor: ThreadPoolExecutor | None = None  # global executor placeholder
 class SyncError(Exception):
     pass
 
+
 # TODO: not sure if there is a better place to put this function, so I've kept it here for now.
 def _make_shutdown_asyncgens_noop_for_pyodide() -> None:
     """
@@ -43,8 +45,13 @@ def _make_shutdown_asyncgens_noop_for_pyodide() -> None:
 
     WebLoop.shutdown_asyncgens() raises NotImplementedError, which causes
     pytest-asyncio to issue warnings during test cleanup and potentially
-    cause resource leaks and this makes tests hang. This is a bit of a
+    cause resource leaks that make tests hang. This is a bit of a
     hack, but it allows us to run tests that use pytest-asyncio.
+
+    This is necessary because pytest-asyncio tries to clean up async generators
+    when tearing down test event loops, but Pyodide's WebLoop doesn't support
+    this as it integrates with the browser's event loo rather than managing
+    its own lifecycle.
     """
     try:
         if not IS_WASM and "pyodide" not in sys.modules:
@@ -52,8 +59,9 @@ def _make_shutdown_asyncgens_noop_for_pyodide() -> None:
 
         import pyodide.webloop
 
-        if hasattr(pyodide.webloop.WebLoop, 'shutdown_asyncgens'):
-            async def no_op_shutdown_asyncgens(self) -> None:  # noqa: ANN001
+        if hasattr(pyodide.webloop.WebLoop, "shutdown_asyncgens"):
+
+            async def no_op_shutdown_asyncgens(self) -> None:  # type: ignore[no-untyped-def]  # noqa: ANN001
                 return
 
             pyodide.webloop.WebLoop.shutdown_asyncgens = no_op_shutdown_asyncgens
@@ -166,6 +174,17 @@ def sync(
     --------
     >>> sync(async_function(), existing_loop)
     """
+    # WASM environments (like Pyodide) cannot start new threads, so we need to handle
+    # coroutines differently. We integrate with the existing Pyodide WebLoop which
+    # schedules tasks on the browser's event loop using setTimeout():
+    # https://developer.mozilla.org/en-US/docs/Web/API/setTimeout
+    if IS_WASM:
+        current_loop = asyncio.get_running_loop()
+        return current_loop.run_until_complete(coro)
+
+    # This code path is the original thread-based implementation
+    # for non-WASM environments; it creates a dedicated I/O thread
+    # with its own event loop.
     if loop is None:
         # NB: if the loop is not running *yet*, it is OK to submit work
         # and we will wait for it
@@ -203,7 +222,6 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 
     The loop will be running on a separate thread.
     """
-    # In WASM environments, we can't create threads, so raise an error
     if IS_WASM:
         raise RuntimeError(
             "Thread-based event loop not available in WASM environment. "
