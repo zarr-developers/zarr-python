@@ -98,11 +98,11 @@ jobs:
           source .venv-pyodide/bin/activate
 
           # Install numcodecs
-          python -m pip install numcodecs-wasm/dist/*.whl"[crc32c]"
+          pip install $(ls numcodecs-wasm/dist/*.whl)"[crc32c]"
 
           # Install Zarr without dependencies until we can figure out the
           # numcodecs wheel versioning issue
-          python -m pip install dist/*.whl --no-deps
+          pip install dist/*.whl --no-deps
           pip install "packaging>=22.0" "numpy>=1.25" "typing_extensions>=4.9" "donfig>=0.8"
 
           # Install test dependencies
