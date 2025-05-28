@@ -77,6 +77,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
+      # For some reason fetch-depth: 0 and fetch-tags: true aren't working...
+      - name: Manually fetch tags for numcodecs
+        working-directory: numcodecs-wasm
+        run: git fetch --tags
+
       - name: Build numcodecs for WASM
         run: pyodide build
         working-directory: numcodecs-wasm
