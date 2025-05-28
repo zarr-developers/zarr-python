@@ -38,7 +38,6 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          persist-credentials: false
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         id: setup-python
@@ -75,7 +74,6 @@ jobs:
           ref: setup-emscripten-ci
           path: numcodecs-wasm
           submodules: recursive
-          persist-credentials: false
           fetch-depth: 0
           fetch-tags: true
 
