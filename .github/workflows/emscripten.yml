@@ -76,13 +76,13 @@ jobs:
           submodules: recursive
           persist-credentials: false
           fetch-depth: 0
-        env:
-          DISABLE_NUMCODECS_AVX2: 1
-          DISABLE_NUMCODECS_SSE2: 1
 
       - name: Build numcodecs for WASM
         run: pyodide build
         working-directory: numcodecs-wasm
+        env:
+          DISABLE_NUMCODECS_AVX2: 1
+          DISABLE_NUMCODECS_SSE2: 1
 
       ### Back to Zarr repository to run tests
 
