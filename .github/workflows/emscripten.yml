@@ -99,13 +99,12 @@ jobs:
 
           # Install numcodecs
           python -m pip install numcodecs-wasm/dist/*.whl
-          python -m pip install dist/*.whl
-          python -m pip install pytest pytest-cov
-          python -m pytest -v --cov=zarr --cov-config=pyproject.toml
 
-      - name: Upload Pyodide wheel artifact for debugging
-        # FIXME: Remove after this is ready to merge
-        uses: actions/upload-artifact@v4
-        with:
-          name: zarr-pyodide-wheel
-          path: dist/*.whl
+          # Install Zarr without dependencies until we can figure out the
+          # numcodecs wheel versioning issue
+          python -m pip install dist/*.whl --no-deps
+          # pip install $(ls dist/*.whl)"[test]"
+          pip install coverage pytest pytest-asyncio pytest-cov pytest-accept rich mypy hypothesis
+
+          python -m pytest tests -v --cov=zarr --cov-config=pyproject.toml
+
