@@ -89,9 +89,6 @@ jobs:
           pyodide venv .venv-pyodide
           source .venv-pyodide/bin/activate
 
-          # Avoid missing asyncio plugin error from pytest, unavailable in Pyodide
-          if grep -q 'asyncio_mode = "auto"' "pyproject.toml"; then sed '/asyncio_mode = "auto"/d' "pyproject.toml" > temp && mv temp "pyproject.toml"; fi
-
           # Install numcodecs
           python -m pip install numcodecs-wasm/dist/*.whl
           python -m pip install dist/*.whl
