@@ -20,7 +20,7 @@ SeparatorLiteral = Literal[".", "/"]
 def parse_separator(data: JSON) -> SeparatorLiteral:
     if data not in (".", "/"):
         raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.")
-    return cast(SeparatorLiteral, data)
+    return cast("SeparatorLiteral", data)
 
 
 class ChunkKeyEncodingParams(TypedDict):
@@ -48,7 +48,7 @@ class ChunkKeyEncoding(Metadata):
             data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
 
         # TODO: remove this cast when we are statically typing the JSON metadata completely.
-        data = cast(dict[str, JSON], data)
+        data = cast("dict[str, JSON]", data)
 
         # configuration is optional for chunk key encodings
         name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
