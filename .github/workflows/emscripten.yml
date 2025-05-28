@@ -98,7 +98,7 @@ jobs:
           source .venv-pyodide/bin/activate
 
           # Install numcodecs
-          python -m pip install numcodecs-wasm/dist/*.whl
+          python -m pip install numcodecs-wasm/dist/*.whl"[crc32c]"
 
           # Install Zarr without dependencies until we can figure out the
           # numcodecs wheel versioning issue
