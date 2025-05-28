@@ -39,7 +39,7 @@ from zarr.core.group import (
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
-from zarr.errors import NodeTypeValidationError
+from zarr.errors import NodeTypeValidationError, ZarrDeprecationWarning
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -159,7 +159,7 @@ def _handle_zarr_version_or_format(
         )
     if zarr_version is not None:
         warnings.warn(
-            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+            "zarr_version is deprecated, use zarr_format", ZarrDeprecationWarning, stacklevel=2
         )
         return zarr_version
     return zarr_format
@@ -517,7 +517,7 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
-@deprecated("Use AsyncGroup.tree instead.")
+@deprecated("Use AsyncGroup.tree instead.", category=ZarrDeprecationWarning)
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 

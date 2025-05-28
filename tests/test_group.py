@@ -37,7 +37,13 @@ from zarr.core.group import (
 )
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
-from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    MetadataValidationError,
+    ZarrDeprecationWarning,
+    ZarrFutureWarning,
+)
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, normalize_path
@@ -646,7 +652,7 @@ def test_group_create_array(
         array = group.create_array(name=name, shape=shape, dtype=dtype)
         array[:] = data
     elif method == "array":
-        with pytest.warns(DeprecationWarning):
+        with pytest.warns(ZarrDeprecationWarning):
             array = group.array(name=name, data=data, shape=shape, dtype=dtype)
     else:
         raise AssertionError
@@ -657,7 +663,7 @@ def test_group_create_array(
                 a = group.create_array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
         elif method == "array":
-            with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
+            with pytest.raises(ContainsArrayError), pytest.warns(ZarrDeprecationWarning):
                 a = group.array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
 
@@ -1181,22 +1187,22 @@ def test_create_dataset_with_data(store: Store, zarr_format: ZarrFormat) -> None
     """
     root = Group.from_store(store=store, zarr_format=zarr_format)
     arr = np.random.random((5, 5))
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(ZarrDeprecationWarning):
         data = root.create_dataset("random", data=arr, shape=arr.shape)
     np.testing.assert_array_equal(np.asarray(data), arr)
 
 
 async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(ZarrDeprecationWarning):
         foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
     assert foo.shape == (10,)
 
-    with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
+    with pytest.raises(ContainsArrayError), pytest.warns(ZarrDeprecationWarning):
         await root.create_dataset("foo", shape=(100,), dtype="int8")
 
     _ = await root.create_group("bar")
-    with pytest.raises(ContainsGroupError), pytest.warns(DeprecationWarning):
+    with pytest.raises(ContainsGroupError), pytest.warns(ZarrDeprecationWarning):
         await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
@@ -1452,14 +1458,14 @@ def test_group_deprecated_positional_args(method: str) -> None:
         kwargs = {}
 
     root = zarr.group()
-    with pytest.warns(FutureWarning, match=r"Pass name=.* as keyword args."):
+    with pytest.warns(ZarrFutureWarning, match=r"Pass name=.* as keyword args."):
         arr = getattr(root, method)("foo", shape=1, **kwargs)
         assert arr.shape == (1,)
 
     method += "_like"
     data = np.ones(1)
 
-    with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
+    with pytest.warns(ZarrFutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
         arr = getattr(root, method)("foo_like", data, **kwargs)
         assert arr.shape == data.shape
 

@@ -11,6 +11,7 @@ from zarr.core.array import Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
+from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -335,7 +336,7 @@ def save_group(
     )
 
 
-@deprecated("Use Group.tree instead.")
+@deprecated("Use Group.tree instead.", category=ZarrDeprecationWarning)
 def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
