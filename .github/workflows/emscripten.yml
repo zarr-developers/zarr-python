@@ -106,7 +106,7 @@ jobs:
           pip install "packaging>=22.0" "numpy>=1.25" "typing_extensions>=4.9" "donfig>=0.8"
 
           # Install test dependencies
-          pip install "coverage" "pytest" "pytest-asyncio" 'pytest-cov" "pytest-accept" "rich" "mypy" "hypothesis"
+          pip install "coverage" "pytest" "pytest-asyncio" "pytest-cov" "pytest-accept" "rich" "mypy" "hypothesis"
 
           python -m pytest tests -v --cov=zarr --cov-config=pyproject.toml
 
