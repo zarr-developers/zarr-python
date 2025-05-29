@@ -246,7 +246,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         object_codec_id : str | None
             The object codec ID, if applicable. Object codecs are specific numcodecs codecs that
             zarr-python 2.x used to serialize numpy "Object" scalars. For example, a dtype field set
-            to "|O" with an object codec ID of "vlen-utf8" indicates that the data type is a
+            to ``"|O"`` with an object codec ID of "vlen-utf8" indicates that the data type is a
             variable-length string.
 
             Zarr V3 has no such logic, so this parameter is only used for Zarr V2 compatibility.
