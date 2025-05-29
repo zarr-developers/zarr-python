@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
+import zarr.core.buffer.cpu
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import buffer_prototype
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
 )
 class TestWrapperStore(StoreTests[WrapperStore[LocalStore], Buffer]):
     store_cls = WrapperStore
-    buffer_cls = Buffer
+    buffer_cls = zarr.core.buffer.cpu.Buffer
 
     async def get(self, store: WrapperStore[LocalStore], key: str) -> Buffer:
         return self.buffer_cls.from_bytes((store._store.root / key).read_bytes())
@@ -93,7 +94,7 @@ async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> 
             await super().set(key, value)
 
     key = "foo"
-    value = Buffer.from_bytes(b"bar")
+    value = zarr.core.buffer.cpu.Buffer.from_bytes(b"bar")
     store_wrapped = NoisySetter(store)
     await store_wrapped.set(key, value)
     captured = capsys.readouterr()
@@ -113,7 +114,7 @@ async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> 
             return await super().get(key, prototype=prototype)
 
     key = "foo"
-    value = Buffer.from_bytes(b"bar")
+    value = zarr.core.buffer.cpu.Buffer.from_bytes(b"bar")
     store_wrapped = NoisyGetter(store)
     await store_wrapped.set(key, value)
     assert await store_wrapped.get(key, buffer_prototype) == value
