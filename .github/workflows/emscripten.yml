@@ -71,16 +71,19 @@ jobs:
         with:
           # See https://github.com/zarr-developers/numcodecs/pull/529
           repository: agriyakhetarpal/numcodecs
-          ref: setup-emscripten-ci
+          # ref: setup-emscripten-ci
           path: numcodecs-wasm
           submodules: recursive
           fetch-depth: 0
           fetch-tags: true
 
       # For some reason fetch-depth: 0 and fetch-tags: true aren't working...
-      - name: Manually fetch tags for numcodecs
-        working-directory: numcodecs-wasm
-        run: git fetch --tags
+      - name: Manually switch branch for numcodecs
+        run: |
+          cd numcodecs-wasm
+          git checkout setup-emscripten-ci
+          git fetch --unshallow || git fetch --all
+          git fetch --tags
 
       - name: Build numcodecs for WASM
         run: pyodide build
@@ -100,13 +103,7 @@ jobs:
           # Install numcodecs
           pip install $(ls numcodecs-wasm/dist/*.whl)"[crc32c]"
 
-          # Install Zarr without dependencies until we can figure out the
-          # numcodecs wheel versioning issue
-          pip install dist/*.whl --no-deps
-          pip install "packaging>=22.0" "numpy>=1.25" "typing_extensions>=4.9" "donfig>=0.8"
-
-          # Install test dependencies
-          pip install "coverage" "pytest" "pytest-asyncio" "pytest-cov" "pytest-accept" "rich" "mypy" "hypothesis"
+          # Install Zarr and test dependencies
+          pip install $(ls dist/*.whl)"[test]"
 
           python -m pytest tests -v --cov=zarr --cov-config=pyproject.toml
-
