@@ -108,7 +108,7 @@ config = Config(
                     ],
                 },
             },
-            "async": {"concurrency": 1 if IS_WASM else 10, "timeout": None},
+            "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": 1 if IS_WASM else None},
             "json_indent": 2,
             "codec_pipeline": {

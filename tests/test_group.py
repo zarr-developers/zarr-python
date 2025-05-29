@@ -18,7 +18,6 @@ import zarr.api.asynchronous
 import zarr.api.synchronous
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
-from zarr._constants import IS_WASM
 from zarr.abc.store import Store
 from zarr.core import sync_group
 from zarr.core._info import GroupInfo
@@ -1970,18 +1969,7 @@ async def test_create_rooted_hierarchy_invalid(impl: Literal["async", "sync"]) -
         raise ValueError(f"Invalid impl: {impl}")
 
 
-@pytest.mark.parametrize(
-    "store",
-    [
-        pytest.param(
-            "memory",
-            marks=pytest.mark.skipif(
-                IS_WASM, reason="performance is marginally worse for Pyodide/WASM"
-            ),
-        ),
-    ],
-    indirect=True,
-)
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_group_members_performance(store: Store) -> None:
     """
     Test that the execution time of Group.members is less than the number of members times the

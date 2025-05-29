@@ -83,7 +83,7 @@ def test_config_defaults_set() -> None:
                     ],
                 },
             },
-            "async": {"concurrency": 1 if IS_WASM else 10, "timeout": None},
+            "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": 1 if IS_WASM else None},
             "json_indent": 2,
             "codec_pipeline": {
@@ -107,7 +107,7 @@ def test_config_defaults_set() -> None:
         }
     ]
     assert config.get("array.order") == "C"
-    assert config.get("async.concurrency") == 1 if IS_WASM else 10
+    assert config.get("async.concurrency") == 10
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
@@ -115,16 +115,7 @@ def test_config_defaults_set() -> None:
 
 @pytest.mark.parametrize(
     ("key", "old_val", "new_val"),
-    [
-        ("array.order", "C", "F"),
-        pytest.param(
-            "async.concurrency",
-            10,
-            20,
-            marks=pytest.mark.skipif(IS_WASM, reason="Concurrency is fixed to 1 in WASM"),
-        ),
-        ("json_indent", 2, 0),
-    ],
+    [("array.order", "C", "F"), ("async.concurrency", 10, 20), ("json_indent", 2, 0)],
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
     assert config.get(key) == old_val
