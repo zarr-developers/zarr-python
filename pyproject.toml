@@ -149,7 +149,7 @@ features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
+numpy = ["1.25", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -185,7 +185,7 @@ features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
+numpy = ["1.25", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]

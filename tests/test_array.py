@@ -1258,7 +1258,7 @@ class TestCreateArray:
             zarr.create(store=store, dtype="uint8", shape=(10,), zarr_format=3, **kwargs)
 
     @staticmethod
-    @pytest.mark.parametrize("dtype", ["uint8", "float32"])
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str", "U10", "S10", ">M8[10s]"])
     @pytest.mark.parametrize(
         "compressors",
         [

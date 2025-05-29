@@ -1,0 +1,3 @@
+For Zarr format 2, allow fixed-length string arrays to be created without automatically inserting a
+``Vlen-UT8`` codec in the array of filters. Fixed-length string arrays do not need this codec. This
+change fixes a regression where fixed-length string arrays created with Zarr Python 3 could not be read with Zarr Python 2.18.

@@ -20,7 +20,7 @@ from zarr.core.metadata.v3 import (
     parse_dimension_names,
     parse_zarr_format,
 )
-from zarr.errors import MetadataValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -73,7 +73,8 @@ dtypes = (
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
 def test_parse_zarr_format_invalid(data: Any) -> None:
     with pytest.raises(
-        ValueError, match=f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
+        MetadataValidationError,
+        match=f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'.",
     ):
         parse_zarr_format(data)
 
@@ -99,7 +100,8 @@ def test_parse_node_type_invalid(node_type: Any) -> None:
 @pytest.mark.parametrize("data", [None, "group"])
 def test_parse_node_type_array_invalid(data: Any) -> None:
     with pytest.raises(
-        ValueError, match=f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
+        NodeTypeValidationError,
+        match=f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'.",
     ):
         parse_node_type_array(data)
 
