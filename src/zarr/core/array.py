@@ -732,7 +732,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         if fill_value is None:
             # v3 spec will not allow a null fill value
-            fill_value_parsed = dtype.default_value()
+            fill_value_parsed = dtype.default_scalar()
         else:
             fill_value_parsed = fill_value
 
@@ -814,7 +814,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if dimension_separator is None:
             dimension_separator = "."
         if fill_value is None:
-            fill_value = dtype.default_value()  # type: ignore[assignment]
+            fill_value = dtype.default_scalar()  # type: ignore[assignment]
         return ArrayV2Metadata(
             shape=shape,
             dtype=dtype,
@@ -1091,7 +1091,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         np.dtype
             Data type of the array
         """
-        return self._zdtype.to_dtype()
+        return self._zdtype.to_native_dtype()
 
     @property
     def order(self) -> MemoryOrder:

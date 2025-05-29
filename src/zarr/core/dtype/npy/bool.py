@@ -1,12 +1,12 @@
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Self, TypeGuard
+from typing import ClassVar, Literal, Self, TypeGuard, overload
 
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype.common import HasItemSize
 from zarr.core.dtype.npy.common import check_json_bool
-from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, ZDType
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -22,40 +22,50 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         The numpy dtype class.
     """
 
-    _zarr_v3_name = "bool"
+    _zarr_v3_name: ClassVar[Literal["bool"]] = "bool"
     _zarr_v2_names: ClassVar[tuple[str, ...]] = ("|b1",)
     dtype_cls = np.dtypes.BoolDType
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         return cls()
 
-    def to_dtype(self: Self) -> np.dtypes.BoolDType:
+    def to_native_dtype(self: Self) -> np.dtypes.BoolDType:
         return self.dtype_cls()
 
     @classmethod
-    def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[Literal["bool", "|b1"]]:
+    def check_json_v2(
+        cls, data: JSON, *, object_codec_id: str | None = None
+    ) -> TypeGuard[Literal["|b1"]]:
         """
         Check that the input is a valid JSON representation of a bool.
         """
-        if zarr_format == 2:
-            return data in cls._zarr_v2_names
-        elif zarr_format == 3:
-            return data == cls._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+        return data in cls._zarr_v2_names
 
-    def to_json(self, zarr_format: ZarrFormat) -> str:
+    @classmethod
+    def check_json_v3(cls, data: JSON) -> TypeGuard[Literal["bool"]]:
+        return data == cls._zarr_v3_name
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> Literal["|b1"]: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> Literal["bool"]: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> Literal["|b1", "bool"]:
         if zarr_format == 2:
-            return self.to_dtype().str
+            return self.to_native_dtype().str
         elif zarr_format == 3:
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
+    def _from_json_unchecked(
+        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
+    ) -> Self:
         return cls()
 
-    def default_value(self) -> np.bool_:
+    def default_scalar(self) -> np.bool_:
         """
         Get the default value for the boolean dtype.
 
@@ -66,7 +76,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         """
         return np.False_
 
-    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> bool:
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> bool:
         """
         Convert a scalar to a python bool.
 
@@ -84,7 +94,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         """
         return bool(data)
 
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bool_:
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bool_:
         """
         Read a JSON-serializable value as a numpy boolean scalar.
 
@@ -101,14 +111,14 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
             The numpy boolean scalar.
         """
         if check_json_bool(data):
-            return self._cast_value_unsafe(data)
+            return self._cast_scalar_unchecked(data)
         raise TypeError(f"Invalid type: {data}. Expected a boolean.")  # pragma: no cover
 
-    def check_value(self, data: object) -> bool:
+    def check_scalar(self, data: object) -> bool:
         # Anything can become a bool
         return True
 
-    def _cast_value_unsafe(self, data: object) -> np.bool_:
+    def _cast_scalar_unchecked(self, data: object) -> np.bool_:
         return np.bool_(data)
 
     @property

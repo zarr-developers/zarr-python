@@ -325,7 +325,7 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["zarr_format"] == 3
 
     # version-agnostic validations
-    dtype_native = meta.dtype.to_dtype()
+    dtype_native = meta.dtype.to_native_dtype()
     if dtype_native.kind == "f":
         assert serialized_float_is_valid(asdict_dict["fill_value"])
     elif dtype_native.kind == "c":

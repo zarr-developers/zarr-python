@@ -10,7 +10,6 @@ from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
-    Final,
     Generic,
     Literal,
     TypedDict,
@@ -48,19 +47,8 @@ TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 
 
 class NamedConfig(TypedDict, Generic[TName, TConfig]):
-    """
-    A typed dictionary representing an object with a name and configuration, where the configuration
-    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
-
-    This class is generic with two type parameters: the type of the name (``TName``) and the type of
-    the configuration (``TConfig``).
-    """
-
-    name: ReadOnly[TName]
-    """The name of the object."""
-
-    configuration: ReadOnly[TConfig]
-    """The configuration of the object."""
+    name: TName
+    configuration: TConfig
 
 
 def product(tup: ChunkCoords) -> int:

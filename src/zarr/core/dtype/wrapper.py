@@ -23,8 +23,18 @@ to support your native data type. The wrapper class must be added to a data type
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Generic, Self, TypeGuard, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Generic,
+    Literal,
+    Self,
+    TypeGuard,
+    TypeVar,
+    overload,
+)
 
 import numpy as np
 
@@ -45,6 +55,10 @@ TBaseDType = np.dtype[np.generic]
 # to type check
 TScalar_co = TypeVar("TScalar_co", bound=TBaseScalar, covariant=True)
 TDType_co = TypeVar("TDType_co", bound=TBaseDType, covariant=True)
+
+# These types should include all JSON-serializable types that can be used to represent a data type.
+DTypeJSON_V2 = str | Sequence[object]
+DTypeJSON_V3 = str | Mapping[str, object]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -70,7 +84,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
-    def check_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
+    def check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
         """
         Check that a data type matches the dtype_cls class attribute. Used as a type guard.
 
@@ -87,7 +101,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         return type(dtype) is cls.dtype_cls
 
     @classmethod
-    def from_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
+    def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
         Wrap a dtype object.
 
@@ -106,15 +120,15 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         TypeError
             If the dtype does not match the dtype_cls class attribute.
         """
-        if cls.check_dtype(dtype):
-            return cls._from_dtype_unsafe(dtype)
+        if cls.check_native_dtype(dtype):
+            return cls._from_native_dtype_unsafe(dtype)
         raise DataTypeValidationError(
             f"Invalid dtype: {dtype}. Expected an instance of {cls.dtype_cls}."
         )
 
     @classmethod
     @abstractmethod
-    def _from_dtype_unsafe(cls: type[Self], dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unsafe(cls: type[Self], dtype: TBaseDType) -> Self:
         """
         Wrap a native dtype without checking.
 
@@ -131,7 +145,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         ...
 
     @abstractmethod
-    def to_dtype(self: Self) -> TDType_co:
+    def to_native_dtype(self: Self) -> TDType_co:
         """
         Return an instance of the wrapped dtype.
 
@@ -142,10 +156,10 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         """
         ...
 
-    def cast_value(self, data: object) -> TScalar_co:
+    def cast_scalar(self, data: object) -> TScalar_co:
         """
-        Cast a value to the wrapped scalar type. The type is first checked for compatibility. If it's
-        incompatible with the associated scalar type, a ``TypeError`` will be raised.
+        Cast a scalar to the wrapped scalar type. The type is first checked for compatibility. If
+        it's incompatible with the associated scalar type, a ``TypeError`` will be raised.
 
         Parameters
         ----------
@@ -157,8 +171,8 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         TScalar
             The cast value.
         """
-        if self.check_value(data):
-            return self._cast_value_unsafe(data)
+        if self.check_scalar(data):
+            return self._cast_scalar_unchecked(data)
         msg = (
             f"The value {data} failed a type check. "
             f"It cannot be safely cast to a scalar compatible with {self.dtype_cls}. "
@@ -168,9 +182,9 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         raise TypeError(msg)
 
     @abstractmethod
-    def check_value(self, data: object) -> bool:
+    def check_scalar(self, data: object) -> bool:
         """
-        Check that a value is a valid value for the wrapped data type.
+        Check that a scalar is a valid value for the wrapped data type.
 
         Parameters
         ----------
@@ -185,9 +199,9 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         ...
 
     @abstractmethod
-    def _cast_value_unsafe(self, data: object) -> TScalar_co:
+    def _cast_scalar_unchecked(self, data: object) -> TScalar_co:
         """
-        Cast a value to the wrapped data type. This method should not perform any input validation.
+        Cast a scalar to the wrapped data type. This method should not perform any input validation.
 
         Parameters
         ----------
@@ -202,11 +216,12 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         ...
 
     @abstractmethod
-    def default_value(self) -> TScalar_co:
+    def default_scalar(self) -> TScalar_co:
         """
-        Get the default value for the wrapped data type. This is a method, rather than an attribute,
+        Get the default scalar value for the wrapped data type. This is a method, rather than an attribute,
         because the default value for some data types may depend on parameters that are not known
-        until a concrete data type is wrapped.
+        until a concrete data type is wrapped. For example, data types parametrized by a length like
+        fixed-length strings or bytes will generate scalars consistent with that length.
 
         Returns
         -------
@@ -217,7 +232,35 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
 
     @classmethod
     @abstractmethod
-    def check_json(cls: type[Self], data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
+    def check_json_v2(
+        cls: type[Self], data: JSON, *, object_codec_id: str | None = None
+    ) -> TypeGuard[DTypeJSON_V2]:
+        """
+        Check that a JSON representation of a data type is consistent with the ZDType class.
+
+        Parameters
+        ----------
+        data : JSON
+            The JSON representation of the data type.
+
+        object_codec_id : str | None
+            The object codec ID, if applicable. Object codecs are specific numcodecs codecs that
+            zarr-python 2.x used to serialize numpy "Object" scalars. For example, a dtype field set
+            to "|O" with an object codec ID of "vlen-utf8" indicates that the data type is a
+            variable-length string.
+
+            Zarr V3 has no such logic, so this parameter is only used for Zarr V2 compatibility.
+
+        Returns
+        -------
+        Bool
+            True if the JSON representation matches, False otherwise.
+        """
+        ...
+
+    @classmethod
+    @abstractmethod
+    def check_json_v3(cls: type[Self], data: JSON) -> TypeGuard[DTypeJSON_V3]:
         """
         Check that a JSON representation of a data type matches the dtype_cls class attribute. Used
         as a type guard. This base implementation checks that the input is a dictionary,
@@ -229,9 +272,6 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         data : JSON
             The JSON representation of the data type.
 
-        zarr_format : ZarrFormat
-            The zarr format version.
-
         Returns
         -------
         Bool
@@ -239,8 +279,14 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         """
         ...
 
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> DTypeJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> DTypeJSON_V3: ...
+
     @abstractmethod
-    def to_json(self, zarr_format: ZarrFormat) -> JSON:
+    def to_json(self, zarr_format: ZarrFormat) -> DTypeJSON_V2 | DTypeJSON_V3:
         """
         Convert the wrapped data type to a JSON-serializable form.
 
@@ -251,46 +297,73 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
 
         Returns
         -------
-        JSON
+        DTypeJSON_V2 | DTypeJSON_V3
             The JSON-serializable representation of the wrapped data type
         """
         ...
 
     @classmethod
-    def from_json(cls: type[Self], data: JSON, zarr_format: ZarrFormat) -> Self:
+    def from_json_v3(cls: type[Self], data: JSON) -> Self:
         """
-        Wrap a JSON representation of a data type.
+        Wrap a Zarr V3 JSON representation of a data type.
 
         Parameters
         ----------
         data : JSON
             The JSON representation of the data type.
-
-        zarr_format : ZarrFormat
-            The zarr format version.
 
         Returns
         -------
         Self
             The wrapped data type.
         """
-        if cls.check_json(data, zarr_format=zarr_format):
-            return cls._from_json_unsafe(data, zarr_format=zarr_format)
+        if cls.check_json_v3(data):
+            return cls._from_json_unchecked(data, zarr_format=3)
         raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}: {data}")
 
     @classmethod
-    @abstractmethod
-    def _from_json_unsafe(cls: type[Self], data: JSON, zarr_format: ZarrFormat) -> Self:
+    def from_json_v2(cls: type[Self], data: JSON, *, object_codec_id: str | None) -> Self:
         """
-        Wrap a JSON representation of a data type.
+        Wrap a Zarr V2 JSON representation of a data type.
 
         Parameters
         ----------
         data : JSON
             The JSON representation of the data type.
 
-        zarr_format : ZarrFormat
-            The zarr format version.
+        Returns
+        -------
+        Self
+            The wrapped data type.
+        """
+        if cls.check_json_v2(data, object_codec_id=object_codec_id):
+            return cls._from_json_unchecked(data, zarr_format=2)
+        raise DataTypeValidationError(
+            f"Invalid JSON representation of data type {cls}: {data!r}, object_codec_id={object_codec_id!r}"
+        )
+
+    @classmethod
+    @overload
+    def _from_json_unchecked(cls, data: DTypeJSON_V2, *, zarr_format: Literal[2]) -> Self: ...
+    @classmethod
+    @overload
+    def _from_json_unchecked(cls, data: DTypeJSON_V3, *, zarr_format: Literal[3]) -> Self: ...
+
+    @classmethod
+    @abstractmethod
+    def _from_json_unchecked(
+        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
+    ) -> Self:
+        """
+        Create a ZDType instance from a JSON representation of a data type.
+
+        This method should be called after input has been type checked, and so it should not perform
+        any input validation.
+
+        Parameters
+        ----------
+        data : JSON
+            The JSON representation of the data type.
 
         Returns
         -------
@@ -300,7 +373,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         ...
 
     @abstractmethod
-    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> JSON:
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> JSON:
         """
         Convert a single value to JSON-serializable format.
 
@@ -319,7 +392,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         ...
 
     @abstractmethod
-    def from_json_value(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar_co:
+    def from_json_scalar(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar_co:
         """
         Read a JSON-serializable value as a scalar.
 

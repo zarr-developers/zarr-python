@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import _TestZDType
+from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
 from zarr.core.dtype.npy.bool import Bool
 
 
-class TestBool(_TestZDType):
+class TestBool(BaseTestZDType):
     test_cls = Bool
 
     valid_dtype = (np.dtype(np.bool_),)
@@ -15,7 +15,7 @@ class TestBool(_TestZDType):
         np.dtype(np.float64),
         np.dtype(np.uint16),
     )
-    valid_json_v2 = ("|b1",)
+    valid_json_v2 = (V2JsonTestParams(dtype="|b1"),)
     valid_json_v3 = ("bool",)
     invalid_json_v2 = (
         "|b1",

@@ -638,7 +638,7 @@ async def test_consolidated_metadata_encodes_special_chars(
             "consolidated_metadata"
         ]["metadata"]
 
-    expected_fill_value = _time._zdtype.to_json_value(fill_value, zarr_format=2)
+    expected_fill_value = _time._zdtype.to_json_scalar(fill_value, zarr_format=2)
 
     if zarr_format == 2:
         assert root_metadata["time/.zarray"]["fill_value"] == expected_fill_value

@@ -214,7 +214,7 @@ def test_array_fill_value_default(
         )
     else:
         arr = zarr.create_array(store=store, shape=shape, dtype=zdtype, zarr_format=3, chunks=shape)
-    expected_fill_value = zdtype.default_value()
+    expected_fill_value = zdtype.default_scalar()
     if isinstance(expected_fill_value, np.datetime64 | np.timedelta64):
         if np.isnat(expected_fill_value):
             assert np.isnat(arr.fill_value)
@@ -995,9 +995,9 @@ class TestCreateArray:
         """
         a = zarr.create_array(store, shape=(5,), chunks=(5,), dtype=dtype)
         if isinstance(dtype, DateTime64 | TimeDelta64) and np.isnat(a.fill_value):
-            assert np.isnat(dtype.default_value())
+            assert np.isnat(dtype.default_scalar())
         else:
-            assert a.fill_value == dtype.default_value()
+            assert a.fill_value == dtype.default_scalar()
 
     @staticmethod
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -1016,7 +1016,7 @@ class TestCreateArray:
             name="b",
             shape=(5,),
             chunks=(5,),
-            dtype=dtype.to_dtype(),
+            dtype=dtype.to_native_dtype(),
             zarr_format=zarr_format,
         )
         assert a.dtype == b.dtype
@@ -1031,7 +1031,7 @@ class TestCreateArray:
                     name="c",
                     shape=(5,),
                     chunks=(5,),
-                    dtype=dtype.to_dtype().char,
+                    dtype=dtype.to_native_dtype().char,
                     zarr_format=zarr_format,
                 )
             else:
@@ -1040,7 +1040,7 @@ class TestCreateArray:
                     name="c",
                     shape=(5,),
                     chunks=(5,),
-                    dtype=dtype.to_dtype().str,
+                    dtype=dtype.to_native_dtype().str,
                     zarr_format=zarr_format,
                 )
             assert a.dtype == c.dtype
@@ -1297,7 +1297,7 @@ class TestCreateArray:
 
         arr = await create_array(
             store=store,
-            dtype=dtype,
+            dtype=dtype,  # type: ignore[arg-type]
             shape=(10,),
             zarr_format=zarr_format,
         )
@@ -1309,14 +1309,14 @@ class TestCreateArray:
                 compressors=sig.parameters["compressors"].default,
                 filters=sig.parameters["filters"].default,
                 serializer=sig.parameters["serializer"].default,
-                dtype=dtype,
+                dtype=dtype,  # type: ignore[arg-type]
             )
 
         elif zarr_format == 2:
             default_filters, default_compressors = _parse_chunk_encoding_v2(
                 compressor=sig.parameters["compressors"].default,
                 filters=sig.parameters["filters"].default,
-                dtype=dtype,
+                dtype=dtype,  # type: ignore[arg-type]
             )
             if default_filters is None:
                 expected_filters = ()

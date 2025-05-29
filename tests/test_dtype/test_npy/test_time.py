@@ -6,12 +6,12 @@ from typing import get_args
 import numpy as np
 import pytest
 
-from tests.test_dtype.test_wrapper import _TestZDType
+from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
 from zarr.core.dtype.npy.common import DateTimeUnit
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64, datetime_from_int
 
 
-class _TestTimeBase(_TestZDType):
+class _TestTimeBase(BaseTestZDType):
     def json_scalar_equals(self, scalar1: object, scalar2: object) -> bool:
         # This method gets overridden here to support the equivalency between NaT and
         # -9223372036854775808 fill values
@@ -34,7 +34,12 @@ class TestDateTime64(_TestTimeBase):
         np.dtype(np.float64),
         np.dtype("timedelta64[ns]"),
     )
-    valid_json_v2 = (">M8", ">M8[s]", "<M8[10s]", "<M8[10us]")
+    valid_json_v2 = (
+        V2JsonTestParams(dtype=">M8"),
+        V2JsonTestParams(dtype=">M8[s]"),
+        V2JsonTestParams(dtype="<M8[10s]"),
+        V2JsonTestParams(dtype="<M8[10us]"),
+    )
     valid_json_v3 = (
         {"name": "numpy.datetime64", "configuration": {"unit": "ns", "scale_factor": 10}},
         {"name": "numpy.datetime64", "configuration": {"unit": "us", "scale_factor": 1}},
@@ -75,7 +80,12 @@ class TestTimeDelta64(_TestTimeBase):
         np.dtype("datetime64[ns]"),
     )
 
-    valid_json_v2 = TimeDelta64._zarr_v2_names
+    valid_json_v2 = (
+        V2JsonTestParams(dtype=">m8"),
+        V2JsonTestParams(dtype=">m8[s]"),
+        V2JsonTestParams(dtype="<m8[10s]"),
+        V2JsonTestParams(dtype="<m8[10us]"),
+    )
     valid_json_v3 = (
         {"name": "numpy.timedelta64", "configuration": {"unit": "ns", "scale_factor": 10}},
         {"name": "numpy.timedelta64", "configuration": {"unit": "us", "scale_factor": 1}},

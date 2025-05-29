@@ -79,7 +79,7 @@ class BytesCodec(ArrayBytesCodec):
             "Endianness | None", self.endian.value if self.endian is not None else None
         )
         new_byte_order = endianness_to_numpy_str(endian_str)
-        dtype = chunk_spec.dtype.to_dtype().newbyteorder(new_byte_order)
+        dtype = chunk_spec.dtype.to_native_dtype().newbyteorder(new_byte_order)
 
         as_array_like = chunk_bytes.as_array_like()
         if isinstance(as_array_like, NDArrayLike):

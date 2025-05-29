@@ -48,7 +48,7 @@ class V2Codec(ArrayBytesCodec):
         # segfaults and other bad things happening
         if chunk_spec.dtype.dtype_cls is not np.dtypes.ObjectDType:
             try:
-                chunk = chunk.view(chunk_spec.dtype.to_dtype())
+                chunk = chunk.view(chunk_spec.dtype.to_native_dtype())
             except TypeError:
                 # this will happen if the dtype of the chunk
                 # does not match the dtype of the array spec i.g. if
@@ -56,7 +56,7 @@ class V2Codec(ArrayBytesCodec):
                 # is an object array. In this case, we need to convert the object
                 # array to the correct dtype.
 
-                chunk = np.array(chunk).astype(chunk_spec.dtype.to_dtype())
+                chunk = np.array(chunk).astype(chunk_spec.dtype.to_native_dtype())
 
         elif chunk.dtype != object:
             # If we end up here, someone must have hacked around with the filters.
@@ -80,7 +80,7 @@ class V2Codec(ArrayBytesCodec):
         chunk = chunk_array.as_ndarray_like()
 
         # ensure contiguous and correct order
-        chunk = chunk.astype(chunk_spec.dtype.to_dtype(), order=chunk_spec.order, copy=False)
+        chunk = chunk.astype(chunk_spec.dtype.to_native_dtype(), order=chunk_spec.order, copy=False)
 
         # apply filters
         if self.filters:

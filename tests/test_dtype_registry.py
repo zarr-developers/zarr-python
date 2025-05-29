@@ -23,9 +23,10 @@ from zarr.core.dtype import (
     TBaseScalar,
     ZDType,
     data_type_registry,
-    get_data_type_from_json,
+    get_data_type_from_json_v3,
     parse_data_type,
 )
+from zarr.core.dtype.common import HasObjectCodec
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -58,7 +59,7 @@ class TestRegistry:
         data_type_registry_fixture.register(Bool._zarr_v3_name, Bool)
 
         class NewBool(Bool):
-            def default_value(self) -> np.bool_:
+            def default_scalar(self) -> np.bool_:
                 return np.True_
 
         data_type_registry_fixture.register(NewBool._zarr_v3_name, NewBool)
@@ -96,20 +97,36 @@ class TestRegistry:
     @staticmethod
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("zdtype", zdtype_examples)
-    def test_registered_dtypes(
-        zdtype: ZDType[TBaseDType, TBaseScalar], zarr_format: ZarrFormat
-    ) -> None:
+    def test_registered_dtypes_match_dtype(zdtype: ZDType[TBaseDType, TBaseScalar]) -> None:
         """
         Test that the registered dtypes can be retrieved from the registry.
         """
         skip_object_dtype(zdtype)
-        assert data_type_registry.match_dtype(zdtype.to_dtype()) == zdtype
-        assert (
-            data_type_registry.match_json(
-                zdtype.to_json(zarr_format=zarr_format), zarr_format=zarr_format
+        assert data_type_registry.match_dtype(zdtype.to_native_dtype()) == zdtype
+
+    @staticmethod
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+    @pytest.mark.parametrize("zdtype", zdtype_examples)
+    def test_registered_dtypes_match_json(
+        zdtype: ZDType[TBaseDType, TBaseScalar], zarr_format: ZarrFormat
+    ) -> None:
+        if zarr_format == 2:
+            if isinstance(zdtype, HasObjectCodec):
+                object_codec_id = zdtype.object_codec_id
+            else:
+                object_codec_id = None
+            assert (
+                data_type_registry.match_json_v2(
+                    zdtype.to_json(zarr_format=zarr_format),  # type: ignore[arg-type]
+                    object_codec_id=object_codec_id,
+                )
+                == zdtype
             )
-            == zdtype
-        )
+        else:
+            skip_object_dtype(zdtype)
+            assert (
+                data_type_registry.match_json_v3(zdtype.to_json(zarr_format=zarr_format)) == zdtype  # type: ignore[arg-type]
+            )
 
     @staticmethod
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -129,7 +146,7 @@ class TestRegistry:
             if _cls is not type(zdtype):
                 data_type_registry_fixture.register(_cls._zarr_v3_name, _cls)
 
-        dtype_instance = zdtype.to_dtype()
+        dtype_instance = zdtype.to_native_dtype()
 
         msg = f"No data type wrapper found that matches dtype '{dtype_instance}'"
         with pytest.raises(ValueError, match=re.escape(msg)):
@@ -138,7 +155,7 @@ class TestRegistry:
         instance_dict = zdtype.to_json(zarr_format=zarr_format)
         msg = f"No data type wrapper found that matches {instance_dict}"
         with pytest.raises(ValueError, match=re.escape(msg)):
-            data_type_registry_fixture.match_json(instance_dict, zarr_format=zarr_format)
+            data_type_registry_fixture.match_json_v3(instance_dict)  # type: ignore[arg-type]
 
 
 # this is copied from the registry tests -- we should deduplicate
@@ -161,9 +178,11 @@ def set_path() -> Generator[None, None, None]:
 def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
     from package_with_entrypoint import TestDataType
 
+    data_type_registry.lazy_load()
     instance = TestDataType()
     dtype_json = instance.to_json(zarr_format=zarr_format)
-    assert get_data_type_from_json(dtype_json, zarr_format=zarr_format) == instance
+    assert get_data_type_from_json_v3(dtype_json) == instance
+    data_type_registry.unregister(TestDataType._zarr_v3_name)
 
 
 @pytest.mark.parametrize(

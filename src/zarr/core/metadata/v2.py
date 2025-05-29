@@ -9,7 +9,7 @@ import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
 from zarr.core.chunk_grids import RegularChunkGrid
-from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype import get_data_type_from_json_v2
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, TDType_co, TScalar_co, ZDType
 
 if TYPE_CHECKING:
@@ -58,6 +58,9 @@ class ArrayV2MetadataDict(TypedDict):
 # Union of acceptable types for v2 compressors
 CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
 
+# These are the ids of the known object codecs for zarr v2.
+ObjectCodecIds = ("vlen-utf8", "vlen-bytes", "vlen-array", "pickle", "json2", "msgpack2")
+
 
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
@@ -99,7 +102,7 @@ class ArrayV2Metadata(Metadata):
         filters_parsed = parse_filters(filters)
         fill_value_parsed: TBaseScalar | None
         if fill_value is not None:
-            fill_value_parsed = dtype.cast_value(fill_value)
+            fill_value_parsed = dtype.cast_scalar(fill_value)
         else:
             fill_value_parsed = fill_value
         attributes_parsed = parse_attributes(attributes)
@@ -148,11 +151,29 @@ class ArrayV2Metadata(Metadata):
         _data = data.copy()
         # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
-        dtype = get_data_type_from_native_dtype(_data["dtype"])
+
+        # To resolve a numpy object dtype array, we need to search for an object codec,
+        # which could be in filters or as a compressor.
+        # we will use a hard-coded list of object codecs for this search.
+        object_codec_id: str | None = None
+        maybe_object_codecs = (data.get("filters"), data.get("compressor"))
+        for maybe_object_codec in maybe_object_codecs:
+            if isinstance(maybe_object_codec, Sequence):
+                for codec in maybe_object_codec:
+                    if isinstance(codec, dict) and codec.get("id") in ObjectCodecIds:
+                        object_codec_id = codec["id"]
+                        break
+            elif (
+                isinstance(maybe_object_codec, dict)
+                and maybe_object_codec.get("id") in ObjectCodecIds
+            ):
+                object_codec_id = maybe_object_codec["id"]
+                break
+        dtype = get_data_type_from_json_v2(data["dtype"], object_codec_id=object_codec_id)
         _data["dtype"] = dtype
         fill_value_encoded = _data.get("fill_value")
         if fill_value_encoded is not None:
-            fill_value = dtype.from_json_value(fill_value_encoded, zarr_format=2)
+            fill_value = dtype.from_json_scalar(fill_value_encoded, zarr_format=2)
             _data["fill_value"] = fill_value
 
         # zarr v2 allowed arbitrary keys here.
@@ -205,11 +226,11 @@ class ArrayV2Metadata(Metadata):
 
         # serialize the fill value after dtype-specific JSON encoding
         if self.fill_value is not None:
-            fill_value = self.dtype.to_json_value(self.fill_value, zarr_format=2)
+            fill_value = self.dtype.to_json_scalar(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
         # serialize the dtype after fill value-specific JSON encoding
-        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)
+        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)  # type: ignore[assignment]
 
         return zarray_dict
 

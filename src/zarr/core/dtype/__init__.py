@@ -16,12 +16,13 @@ from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
 
+from collections.abc import Mapping
+
 import numpy as np
 import numpy.typing as npt
 
 from zarr.core.common import JSON
 from zarr.core.dtype.npy.string import (
-    _NUMPY_SUPPORTS_VLEN_STRING,
     FixedLengthASCII,
     FixedLengthUTF32,
     VariableLengthString,
@@ -102,7 +103,7 @@ ANY_DTYPE: Final = (
 )
 
 # This type models inputs that can be coerced to a ZDType
-ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | dict[str, JSON] | str
+ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
 
 for dtype in ANY_DTYPE:
     # mypy does not know that all the elements of ANY_DTYPE are subclasses of ZDType
@@ -114,42 +115,41 @@ def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[TBaseDType, 
     """
     Get a data type wrapper (an instance of ``ZDType``) from a native data type, e.g. a numpy dtype.
     """
-    data_type_registry.lazy_load()
     if not isinstance(dtype, np.dtype):
-        # TODO: This check has a lot of assumptions in it! Chiefly, we assume that the
-        # numpy object dtype contains variable length strings, which is not in general true
-        # When / if zarr python supports ragged arrays, for example, this check will fail!
-        if dtype in (str, "str", "|T16", "O", "|O", np.dtypes.ObjectDType()):
-            if _NUMPY_SUPPORTS_VLEN_STRING:
-                na_dtype = np.dtype("T")
-            else:
-                na_dtype = np.dtype("O")
-        elif isinstance(dtype, list):
+        na_dtype: np.dtype[np.generic]
+        if isinstance(dtype, list):
             # this is a valid _VoidDTypeLike check
             na_dtype = np.dtype([tuple(d) for d in dtype])
         else:
             na_dtype = np.dtype(dtype)
     else:
         na_dtype = dtype
-    return data_type_registry.match_dtype(na_dtype)
+    return data_type_registry.match_dtype(dtype=na_dtype)
 
 
-def get_data_type_from_json(
-    dtype: JSON, zarr_format: ZarrFormat
+def get_data_type_from_json_v3(
+    dtype_spec: JSON,
 ) -> ZDType[TBaseDType, TBaseScalar]:
-    return data_type_registry.match_json(dtype, zarr_format=zarr_format)
+    return data_type_registry.match_json_v3(dtype_spec)
 
 
-def parse_data_type(dtype: ZDTypeLike, zarr_format: ZarrFormat) -> ZDType[TBaseDType, TBaseScalar]:
+def get_data_type_from_json_v2(
+    dtype_spec: JSON, *, object_codec_id: str | None = None
+) -> ZDType[TBaseDType, TBaseScalar]:
+    return data_type_registry.match_json_v2(dtype_spec, object_codec_id=object_codec_id)
+
+
+def parse_data_type(
+    dtype_spec: ZDTypeLike, *, zarr_format: ZarrFormat, object_codec_id: str | None = None
+) -> ZDType[TBaseDType, TBaseScalar]:
     """
     Interpret the input as a ZDType instance.
     """
-    if isinstance(dtype, ZDType):
-        return dtype
-    elif isinstance(dtype, dict):
-        # This branch assumes that the data type has been specified in the JSON form
-        # but it's also possible for numpy data types to be specified as dictionaries, which will
-        # cause an error in the `get_data_type_from_json`, but that's ok for now
-        return get_data_type_from_json(dtype, zarr_format=zarr_format)  # type: ignore[arg-type]
-    else:
-        return get_data_type_from_native_dtype(dtype)
+    if isinstance(dtype_spec, ZDType):
+        return dtype_spec
+    # dict and zarr_format 3 means that we have a JSON object representation of the dtype
+    if zarr_format == 3 and isinstance(dtype_spec, Mapping):
+        return get_data_type_from_json_v3(dtype_spec)  # type: ignore[arg-type]
+    # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
+    # we can create a numpy dtype from it, and do the dtype inference from that
+    return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]

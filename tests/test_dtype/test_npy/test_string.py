@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import _TestZDType
+from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
 from zarr.core.dtype import FixedLengthASCII, FixedLengthUTF32
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING, VariableLengthString
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
-    class TestVariableLengthString(_TestZDType):
+    class TestVariableLengthString(BaseTestZDType):
         test_cls = VariableLengthString  # type: ignore[assignment]
         valid_dtype = (np.dtypes.StringDType(),)  # type: ignore[assignment]
         invalid_dtype = (
@@ -16,15 +16,15 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             np.dtype(np.float64),
             np.dtype("|S10"),
         )
-        valid_json_v2 = ("|O",)
-        valid_json_v3 = ("numpy.variable_length_utf8",)
+        valid_json_v2 = (V2JsonTestParams(dtype="|O", object_codec_id="vlen-utf8"),)
+        valid_json_v3 = ("variable_length_utf8",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
             "invalid",
         )
         invalid_json_v3 = (
-            {"name": "numpy.variable_length_utf8", "configuration": {"invalid_key": "value"}},
+            {"name": "variable_length_utf8", "configuration": {"invalid_key": "value"}},
             {"name": "invalid_name"},
         )
 
@@ -42,7 +42,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 
 else:
 
-    class TestVariableLengthString(_TestZDType):  # type: ignore[no-redef]
+    class TestVariableLengthString(BaseTestZDType):  # type: ignore[no-redef]
         test_cls = VariableLengthString  # type: ignore[assignment]
         valid_dtype = (np.dtype("O"),)
         invalid_dtype = (
@@ -50,8 +50,8 @@ else:
             np.dtype(np.float64),
             np.dtype("|S10"),
         )
-        valid_json_v2 = ("|O",)
-        valid_json_v3 = ("numpy.variable_length_utf8",)
+        valid_json_v2 = (V2JsonTestParams(dtype="|O", object_codec_id="vlen-utf8"),)
+        valid_json_v3 = ("variable_length_utf8",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
@@ -76,7 +76,7 @@ else:
         item_size_params = (VariableLengthString(),)
 
 
-class TestFixedLengthAscii(_TestZDType):
+class TestFixedLengthAscii(BaseTestZDType):
     test_cls = FixedLengthASCII
     valid_dtype = (np.dtype("|S10"), np.dtype("|S4"))
     invalid_dtype = (
@@ -84,15 +84,19 @@ class TestFixedLengthAscii(_TestZDType):
         np.dtype(np.float64),
         np.dtype("|U10"),
     )
-    valid_json_v2 = ("|S0", "|S2", "|S4")
-    valid_json_v3 = ({"name": "numpy.fixed_length_ascii", "configuration": {"length_bytes": 10}},)
+    valid_json_v2 = (
+        V2JsonTestParams(dtype="|S0"),
+        V2JsonTestParams(dtype="|S2"),
+        V2JsonTestParams(dtype="|S4"),
+    )
+    valid_json_v3 = ({"name": "fixed_length_ascii", "configuration": {"length_bytes": 10}},)
     invalid_json_v2 = (
         "|S",
         "|U10",
         "|f8",
     )
     invalid_json_v3 = (
-        {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": 0}},
+        {"name": "fixed_length_ascii", "configuration": {"length_bits": 0}},
         {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": "invalid"}},
     )
 
@@ -118,7 +122,7 @@ class TestFixedLengthAscii(_TestZDType):
     )
 
 
-class TestFixedLengthUTF32(_TestZDType):
+class TestFixedLengthUTF32(BaseTestZDType):
     test_cls = FixedLengthUTF32
     valid_dtype = (np.dtype(">U10"), np.dtype("<U10"))
     invalid_dtype = (
@@ -126,15 +130,15 @@ class TestFixedLengthUTF32(_TestZDType):
         np.dtype(np.float64),
         np.dtype("|S10"),
     )
-    valid_json_v2 = (">U10", "<U10")
-    valid_json_v3 = ({"name": "numpy.fixed_length_utf32", "configuration": {"length_bytes": 320}},)
+    valid_json_v2 = (V2JsonTestParams(dtype=">U10"), V2JsonTestParams(dtype="<U10"))
+    valid_json_v3 = ({"name": "fixed_length_utf32", "configuration": {"length_bytes": 320}},)
     invalid_json_v2 = (
         "|U",
         "|S10",
         "|f8",
     )
     invalid_json_v3 = (
-        {"name": "numpy.fixed_length_utf32", "configuration": {"length_bits": 0}},
+        {"name": "fixed_length_utf32", "configuration": {"length_bits": 0}},
         {"name": "numpy.fixed_length_utf32", "configuration": {"length_bits": "invalid"}},
     )
 

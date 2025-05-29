@@ -114,7 +114,7 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_js
     ],
 )
 def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str):
-    expected = np.full((3,), value, dtype=dtype.to_dtype())
+    expected = np.full((3,), value, dtype=dtype.to_native_dtype())
     a = zarr.create(
         shape=(3,),
         zarr_format=2,
@@ -286,8 +286,8 @@ def test_structured_dtype_roundtrip(fill_value: float | bytes, tmp_path: Path) -
 def test_parse_structured_fill_value_valid(
     fill_value: Any, dtype: np.dtype[Any], expected_result: Any
 ) -> None:
-    zdtype = Structured.from_dtype(dtype)
-    result = zdtype.cast_value(fill_value)
+    zdtype = Structured.from_native_dtype(dtype)
+    result = zdtype.cast_scalar(fill_value)
     assert result.dtype == expected_result.dtype
     assert result == expected_result
     if isinstance(expected_result, np.void):

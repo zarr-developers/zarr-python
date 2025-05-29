@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
@@ -26,7 +27,13 @@ class _TestZDTypeSchema:
 """
 
 
-class _TestZDType:
+@dataclass(frozen=True, kw_only=True, slots=True)
+class V2JsonTestParams:
+    dtype: str | dict[str, object] | list[object]
+    object_codec_id: str | None = None
+
+
+class BaseTestZDType:
     """
     A base class for testing ZDType subclasses. This class works in conjunction with the custom
     pytest collection function ``pytest_generate_tests`` defined in conftest.py, which applies the
@@ -66,7 +73,7 @@ class _TestZDType:
     valid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
     invalid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
 
-    valid_json_v2: ClassVar[tuple[str | dict[str, object] | list[object], ...]] = ()
+    valid_json_v2: ClassVar[tuple[V2JsonTestParams, ...]] = ()
     invalid_json_v2: ClassVar[tuple[str | dict[str, object] | list[object], ...]] = ()
 
     valid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
@@ -92,37 +99,40 @@ class _TestZDType:
         return scalar1 == scalar2
 
     def test_check_dtype_valid(self, valid_dtype: TBaseDType) -> None:
-        assert self.test_cls.check_dtype(valid_dtype)
+        assert self.test_cls.check_native_dtype(valid_dtype)
 
     def test_check_dtype_invalid(self, invalid_dtype: object) -> None:
-        assert not self.test_cls.check_dtype(invalid_dtype)  # type: ignore[arg-type]
+        assert not self.test_cls.check_native_dtype(invalid_dtype)  # type: ignore[arg-type]
 
     def test_from_dtype_roundtrip(self, valid_dtype: Any) -> None:
-        zdtype = self.test_cls.from_dtype(valid_dtype)
-        assert zdtype.to_dtype() == valid_dtype
+        zdtype = self.test_cls.from_native_dtype(valid_dtype)
+        assert zdtype.to_native_dtype() == valid_dtype
 
-    def test_from_json_roundtrip_v2(self, valid_json_v2: Any) -> None:
-        zdtype = self.test_cls.from_json(valid_json_v2, zarr_format=2)
-        assert zdtype.to_json(zarr_format=2) == valid_json_v2
+    def test_from_json_roundtrip_v2(self, valid_json_v2: V2JsonTestParams) -> None:
+        zdtype = self.test_cls.from_json_v2(
+            valid_json_v2.dtype,  # type: ignore[arg-type]
+            object_codec_id=valid_json_v2.object_codec_id,
+        )
+        assert zdtype.to_json(zarr_format=2) == valid_json_v2.dtype
 
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     def test_from_json_roundtrip_v3(self, valid_json_v3: Any) -> None:
-        zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
+        zdtype = self.test_cls.from_json_v3(valid_json_v3)
         assert zdtype.to_json(zarr_format=3) == valid_json_v3
 
-    def test_scalar_roundtrip_v2(self, scalar_v2_params: tuple[Any, Any]) -> None:
+    def test_scalar_roundtrip_v2(self, scalar_v2_params: tuple[ZDType[Any, Any], Any]) -> None:
         zdtype, scalar_json = scalar_v2_params
-        scalar = zdtype.from_json_value(scalar_json, zarr_format=2)
-        assert self.json_scalar_equals(scalar_json, zdtype.to_json_value(scalar, zarr_format=2))
+        scalar = zdtype.from_json_scalar(scalar_json, zarr_format=2)
+        assert self.json_scalar_equals(scalar_json, zdtype.to_json_scalar(scalar, zarr_format=2))
 
-    def test_scalar_roundtrip_v3(self, scalar_v3_params: tuple[Any, Any]) -> None:
+    def test_scalar_roundtrip_v3(self, scalar_v3_params: tuple[ZDType[Any, Any], Any]) -> None:
         zdtype, scalar_json = scalar_v3_params
-        scalar = zdtype.from_json_value(scalar_json, zarr_format=3)
-        assert self.json_scalar_equals(scalar_json, zdtype.to_json_value(scalar, zarr_format=3))
+        scalar = zdtype.from_json_scalar(scalar_json, zarr_format=3)
+        assert self.json_scalar_equals(scalar_json, zdtype.to_json_scalar(scalar, zarr_format=3))
 
-    def test_cast_value(self, cast_value_params: tuple[Any, Any, Any]) -> None:
+    def test_cast_value(self, cast_value_params: tuple[ZDType[Any, Any], Any, Any]) -> None:
         zdtype, value, expected = cast_value_params
-        observed = zdtype.cast_value(value)
+        observed = zdtype.cast_scalar(value)
         assert self.scalar_equals(expected, observed)
 
     def test_item_size(self, item_size_params: ZDType[Any, Any]) -> None:
@@ -131,6 +141,6 @@ class _TestZDType:
         with a fixed scalar size.
         """
         if isinstance(item_size_params, HasItemSize):
-            assert item_size_params.item_size == item_size_params.to_dtype().itemsize
+            assert item_size_params.item_size == item_size_params.to_native_dtype().itemsize
         else:
             pytest.skip(f"Dtype {item_size_params} does not implement HasItemSize")

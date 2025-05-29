@@ -128,20 +128,20 @@ Create a ``ZDType`` from a native data type:
 
   >>> from zarr.core.dtype import Int8
   >>> import numpy as np
-  >>> int8 = Int8.from_dtype(np.dtype('int8'))
+  >>> int8 = Int8.from_native_dtype(np.dtype('int8'))
 
 Convert back to native data type:
 
 .. code-block:: python
 
-  >>> native_dtype = int8.to_dtype()
+  >>> native_dtype = int8.to_native_dtype()
   >>> assert native_dtype == np.dtype('int8')
 
 Get the default scalar value for the data type:
 
 .. code-block:: python
 
-  >>> default_value = int8.default_value()
+  >>> default_value = int8.default_scalar()
   >>> assert default_value == np.int8(0)
 
 
@@ -160,7 +160,7 @@ Serialize a scalar value to JSON:
 
 .. code-block:: python
 
-  >>> json_value = int8.to_json_value(42, zarr_format=3)
+  >>> json_value = int8.to_json_scalar(42, zarr_format=3)
   >>> json_value
   42
 
@@ -168,5 +168,5 @@ Deserialize a scalar value from JSON:
 
 .. code-block:: python
 
-  >>> scalar_value = int8.from_json_value(42, zarr_format=3)
+  >>> scalar_value = int8.from_json_scalar(42, zarr_format=3)
   >>> assert scalar_value == np.int8(42)

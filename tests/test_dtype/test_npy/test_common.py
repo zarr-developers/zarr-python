@@ -45,7 +45,7 @@ def nan_equal(a: object, b: object) -> bool:
     return a == b
 
 
-json_float_v2_cases: list[tuple[JSONFloatV2, float | np.floating[Any]]] = [
+json_float_v2_roundtrip_cases: tuple[tuple[JSONFloatV2, float | np.floating[Any]], ...] = (
     ("Infinity", float("inf")),
     ("Infinity", np.inf),
     ("-Infinity", float("-inf")),
@@ -53,11 +53,9 @@ json_float_v2_cases: list[tuple[JSONFloatV2, float | np.floating[Any]]] = [
     ("NaN", float("nan")),
     ("NaN", np.nan),
     (1.0, 1.0),
-]
+)
 
-# exactly the same as v2, for now, until we get support for the special NaN encoding defined in the
-# v3 spec
-json_float_v3_cases = json_float_v2_cases
+json_float_v3_cases = json_float_v2_roundtrip_cases
 
 
 @pytest.mark.parametrize(
@@ -94,13 +92,15 @@ def test_endianness_to_numpy_str(data: str | None, expected: str) -> None:
             endianness_to_numpy_str(data)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize(("data", "expected"), json_float_v2_cases + [("SHOULD_ERR", "")])
+@pytest.mark.parametrize(
+    ("data", "expected"), json_float_v2_roundtrip_cases + (("SHOULD_ERR", ""),)
+)
 def test_float_from_json_v2(data: JSONFloatV2 | str, expected: float | str) -> None:
     """
     Test that float_from_json_v2 correctly converts a JSON string representation of a float to a float.
     This test also checks that an invalid string input raises a ``ValueError``
     """
-    if data in get_args(SpecialFloatStrings) or isinstance(data, float):
+    if data != "SHOULD_ERR":
         assert nan_equal(float_from_json_v2(data), expected)  # type: ignore[arg-type]
     else:
         msg = f"could not convert string to float: {data!r}"
@@ -108,25 +108,35 @@ def test_float_from_json_v2(data: JSONFloatV2 | str, expected: float | str) -> N
             float_from_json_v2(data)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize(("data", "expected"), json_float_v3_cases + [("SHOULD_ERR", "")])
+@pytest.mark.parametrize(
+    ("data", "expected"), json_float_v3_cases + (("SHOULD_ERR", ""), ("0x", ""))
+)
 def test_float_from_json_v3(data: JSONFloatV2 | str, expected: float | str) -> None:
     """
     Test that float_from_json_v3 correctly converts a JSON string representation of a float to a float.
     This test also checks that an invalid string input raises a ``ValueError``
     """
-    if data in get_args(SpecialFloatStrings) or isinstance(data, float):
-        assert nan_equal(float_from_json_v3(data), expected)
-    else:
+    if data == "SHOULD_ERR":
         msg = (
             f"Invalid float value: {data!r}. Expected a string starting with the hex prefix"
             " '0x', or one of 'NaN', 'Infinity', or '-Infinity'."
         )
         with pytest.raises(ValueError, match=msg):
             float_from_json_v3(data)
+    elif data == "0x":
+        msg = (
+            f"Invalid hexadecimal float value: {data!r}. "
+            "Expected the '0x' prefix to be followed by 4, 8, or 16 numeral characters"
+        )
+
+        with pytest.raises(ValueError, match=msg):
+            float_from_json_v3(data)
+    else:
+        assert nan_equal(float_from_json_v3(data), expected)
 
 
 # note the order of parameters relative to the order of the parametrized variable.
-@pytest.mark.parametrize(("expected", "data"), json_float_v2_cases)
+@pytest.mark.parametrize(("expected", "data"), json_float_v2_roundtrip_cases)
 def test_float_to_json_v2(data: float | np.floating[Any], expected: JSONFloatV2) -> None:
     """
     Test that floats are JSON-encoded properly for zarr v2
@@ -170,7 +180,7 @@ def test_bytes_to_json(zarr_format: ZarrFormat) -> None:
 
 
 # note the order of parameters relative to the order of the parametrized variable.
-@pytest.mark.parametrize(("json_expected", "float_data"), json_float_v2_cases)
+@pytest.mark.parametrize(("json_expected", "float_data"), json_float_v2_roundtrip_cases)
 def test_complex_to_json_v2(
     float_data: float | np.floating[Any], json_expected: JSONFloatV2
 ) -> None:
