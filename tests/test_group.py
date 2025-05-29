@@ -1970,19 +1970,24 @@ async def test_create_rooted_hierarchy_invalid(impl: Literal["async", "sync"]) -
         raise ValueError(f"Invalid impl: {impl}")
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    [
+        pytest.param(
+            "memory",
+            marks=pytest.mark.skipif(
+                IS_WASM, reason="performance is marginally worse for Pyodide/WASM"
+            ),
+        ),
+    ],
+    indirect=True,
+)
 def test_group_members_performance(store: Store) -> None:
     """
     Test that the execution time of Group.members is less than the number of members times the
     latency for accessing each member.
     """
     get_latency = 0.1
-
-    # Performance for Pyodide is only marginally worse than for Python,
-    # usually in the 1.012~1.018 range for a latency of 0.1). So we add
-    # some lenience for the WASM case that should be sufficient for
-    # unpredictable ephemeral environments like CI.
-    lenience = 1.10 if IS_WASM else 1.00
 
     # use the input store to create some groups
     group_create = zarr.group(store=store)
@@ -2004,7 +2009,7 @@ def test_group_members_performance(store: Store) -> None:
     _ = group_read.members()
     elapsed = time.time() - start
 
-    assert elapsed < (num_groups * get_latency) * lenience
+    assert elapsed < (num_groups * get_latency)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
