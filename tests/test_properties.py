@@ -77,7 +77,7 @@ def deep_equal(a: Any, b: Any) -> bool:
     return a == b
 
 
-@pytest.mark.xfail(IS_WASM, reason="Hypothesis deadline being exceeded in Pyodide/WASM")
+@pytest.mark.slow_wasm
 @given(data=st.data(), zarr_format=zarr_formats)
 def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
@@ -85,6 +85,7 @@ def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.slow_wasm
 @given(array=arrays())
 def test_array_creates_implicit_groups(array):
     path = array.path
@@ -166,6 +167,7 @@ def test_vindex(data: st.DataObject) -> None:
     # assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.slow_wasm
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
 async def test_roundtrip_array_metadata_from_store(
     store: Store, meta: ArrayV2Metadata | ArrayV3Metadata
