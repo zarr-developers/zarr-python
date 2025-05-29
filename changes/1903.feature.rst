@@ -1,0 +1,2 @@
+Added official support for the Pyodide/WebAssembly platform for using Zarr within browser-based environments. The
+`threading.max_workers` parameter takes a default value of 1, and the `zarr.sync` interface is not supported.
