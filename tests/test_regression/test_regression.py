@@ -34,6 +34,7 @@ def runner_installed() -> bool:
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
     fill_value: np.generic | str | int
+    filters: tuple[numcodecs.abc.Codec, ...] = ()
     compressor: numcodecs.abc.Codec
 
 
@@ -62,7 +63,8 @@ vlen_string_cases = [
     ArrayParams(
         values=np.array(["a", "bb", "ccc", "dddd"], dtype="O"),
         fill_value="1",
-        compressor=VLenUTF8(),
+        filters=(VLenUTF8(),),
+        compressor=GZip(),
     )
 ]
 array_cases = basic_array_cases + datetime_array_cases + string_array_cases + vlen_string_cases
@@ -86,9 +88,9 @@ def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         dtype=dtype,
         chunks=array_params.values.shape,
         compressors=compressor,
+        filters=array_params.filters,
         fill_value=array_params.fill_value,
         order="C",
-        filters=None,
         chunk_key_encoding=chunk_key_encoding,
         write_data=True,
         zarr_format=2,

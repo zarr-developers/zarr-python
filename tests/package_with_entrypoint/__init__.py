@@ -9,7 +9,7 @@ from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
 from zarr.codecs import BytesCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import ZarrFormat
+from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype.npy.bool import Bool
 
 
@@ -74,13 +74,13 @@ class TestDataType(Bool):
     This is a "data type" that serializes to "test"
     """
 
-    _zarr_v3_name = "test"
+    _zarr_v3_name = "test"  # type: ignore[assignment]
 
     @classmethod
-    def from_json(cls, data: Any, zarr_format: Literal[2, 3]) -> Self:
-        if data == cls._zarr_v3_name:
+    def from_json(cls, data: JSON, zarr_format: Literal[2, 3]) -> Self:
+        if data == cls._zarr_v3_name:  # type: ignore[has-type]
             return cls()
         raise ValueError
 
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        return self._zarr_v3_name
+    def to_json(self, zarr_format: ZarrFormat) -> str:  # type: ignore[override]
+        return self._zarr_v3_name  # type: ignore[no-any-return, has-type]

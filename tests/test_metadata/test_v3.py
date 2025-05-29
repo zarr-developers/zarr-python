@@ -128,10 +128,10 @@ def test_jsonify_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     """
     zarr_format = 3
     dtype = get_data_type_from_native_dtype(dtype_str)
-    expected = dtype.to_dtype().type(complex(*fill_value))
-    observed = dtype.from_json_value(fill_value, zarr_format=zarr_format)
+    expected = dtype.to_native_dtype().type(complex(*fill_value))
+    observed = dtype.from_json_scalar(fill_value, zarr_format=zarr_format)
     assert observed == expected
-    assert dtype.to_json_value(observed, zarr_format=zarr_format) == tuple(fill_value)
+    assert dtype.to_json_scalar(observed, zarr_format=zarr_format) == tuple(fill_value)
 
 
 @pytest.mark.parametrize("fill_value", [{"foo": 10}])
@@ -143,7 +143,7 @@ def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
     """
     dtype_instance = get_data_type_from_native_dtype(dtype_str)
     with pytest.raises(TypeError, match=f"Invalid type: {fill_value}"):
-        dtype_instance.from_json_value(fill_value, zarr_format=3)
+        dtype_instance.from_json_scalar(fill_value, zarr_format=3)
 
 
 @pytest.mark.parametrize(
@@ -164,7 +164,7 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
     """
     dtype_instance = get_data_type_from_native_dtype(dtype_str)
     with pytest.raises(TypeError, match=re.escape(f"Invalid type: {fill_value}")):
-        dtype_instance.from_json_value(fill_value, zarr_format=3)
+        dtype_instance.from_json_scalar(fill_value, zarr_format=3)
 
 
 @pytest.mark.parametrize("chunk_grid", ["regular"])
@@ -266,8 +266,8 @@ async def test_datetime_metadata(fill_value: int, precision: str) -> None:
         "data_type": dtype.to_json(zarr_format=3),
         "chunk_key_encoding": {"name": "default", "separator": "."},
         "codecs": (BytesCodec(),),
-        "fill_value": dtype.to_json_value(
-            dtype.to_dtype().type(fill_value, dtype.unit), zarr_format=3
+        "fill_value": dtype.to_json_scalar(
+            dtype.to_native_dtype().type(fill_value, dtype.unit), zarr_format=3
         ),
     }
     metadata = ArrayV3Metadata.from_dict(metadata_dict)

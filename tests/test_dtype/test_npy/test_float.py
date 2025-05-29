@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import _TestZDType
+from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 
 
-class _BaseTestFloat(_TestZDType):
+class _BaseTestFloat(BaseTestZDType):
     def scalar_equals(self, scalar1: object, scalar2: object) -> bool:
         if np.isnan(scalar1) and np.isnan(scalar2):  # type: ignore[call-overload]
             return True
@@ -20,7 +20,7 @@ class _BaseTestFloat(_TestZDType):
         """
         hex_string, expected = hex_string_params
         zdtype = self.test_cls()
-        observed = zdtype.from_json_value(hex_string, zarr_format=3)
+        observed = zdtype.from_json_scalar(hex_string, zarr_format=3)
         assert self.scalar_equals(observed, expected)
 
 
@@ -32,8 +32,8 @@ class TestFloat16(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float32),
     )
-    valid_json_v2 = Float16._zarr_v2_names
-    valid_json_v3 = (Float16._zarr_v3_name,)
+    valid_json_v2 = (V2JsonTestParams(dtype=">f2"), V2JsonTestParams(dtype="<f2"))
+    valid_json_v3 = ("float16",)
     invalid_json_v2 = (
         "|f2",
         "float16",
@@ -76,8 +76,8 @@ class TestFloat32(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = Float32._zarr_v2_names
-    valid_json_v3 = (Float32._zarr_v3_name,)
+    valid_json_v2 = (V2JsonTestParams(dtype=">f4"), V2JsonTestParams(dtype="<f4"))
+    valid_json_v3 = ("float32",)
     invalid_json_v2 = (
         "|f4",
         "float32",
@@ -120,8 +120,8 @@ class TestFloat64(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float32),
     )
-    valid_json_v2 = Float64._zarr_v2_names
-    valid_json_v3 = (Float64._zarr_v3_name,)
+    valid_json_v2 = (V2JsonTestParams(dtype=">f8"), V2JsonTestParams(dtype="<f8"))
+    valid_json_v3 = ("float64",)
     invalid_json_v2 = (
         "|f8",
         "float64",

@@ -2,11 +2,11 @@ import base64
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Self, TypeGuard, cast
+from typing import Any, ClassVar, Literal, Self, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
 
-from zarr.core.common import JSON, ZarrFormat
+from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     HasItemSize,
@@ -18,7 +18,14 @@ from zarr.core.dtype.npy.common import (
     bytes_to_json,
     check_json_str,
 )
-from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, TBaseScalar, ZDType
+
+
+class FixedLengthBytesConfig(TypedDict):
+    length_bytes: int
+
+
+FixedLengthBytesJSONV3 = NamedConfig[Literal["fixed_length_bytes"], FixedLengthBytesConfig]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -27,49 +34,59 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, Has
     # it cannot be used to create instances of the dtype
     # so we have to tell mypy to ignore this here
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
-    _zarr_v3_name = "numpy.fixed_length_bytes"
+    _zarr_v3_name: ClassVar[Literal["fixed_length_bytes"]] = "fixed_length_bytes"
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         return cls(length=dtype.itemsize)
 
-    def to_dtype(self) -> np.dtypes.VoidDType[int]:
+    def to_native_dtype(self) -> np.dtypes.VoidDType[int]:
         # Numpy does not allow creating a void type
         # by invoking np.dtypes.VoidDType directly
         return cast("np.dtypes.VoidDType[int]", np.dtype(f"V{self.length}"))
 
     @classmethod
-    def check_json(cls, data: JSON, zarr_format: ZarrFormat) -> TypeGuard[JSON]:
-        if zarr_format == 2:
-            # Check that the dtype is |V1, |V2, ...
-            return isinstance(data, str) and re.match(r"^\|V\d+$", data) is not None
-        elif zarr_format == 3:
-            return (
-                isinstance(data, dict)
-                and set(data.keys()) == {"name", "configuration"}
-                and data["name"] == cls._zarr_v3_name
-                and isinstance(data["configuration"], dict)
-                and set(data["configuration"].keys()) == {"length_bytes"}
-            )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+    def check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+        # Check that the dtype is |V1, |V2, ...
+        return isinstance(data, str) and re.match(r"^\|V\d+$", data) is not None
 
-    def to_json(self, zarr_format: ZarrFormat) -> JSON:
+    @classmethod
+    def check_json_v3(cls, data: JSON) -> TypeGuard[FixedLengthBytesJSONV3]:
+        return (
+            isinstance(data, dict)
+            and set(data.keys()) == {"name", "configuration"}
+            and data["name"] == cls._zarr_v3_name
+            and isinstance(data["configuration"], dict)
+            and set(data["configuration"].keys()) == {"length_bytes"}
+        )
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> str: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> FixedLengthBytesJSONV3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> str | FixedLengthBytesJSONV3:
         if zarr_format == 2:
-            return self.to_dtype().str
+            return self.to_native_dtype().str
         elif zarr_format == 3:
             return {"name": self._zarr_v3_name, "configuration": {"length_bytes": self.length}}
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
+    def _from_json_unchecked(
+        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
+    ) -> Self:
         if zarr_format == 2:
-            return cls.from_dtype(np.dtype(data))  # type: ignore[arg-type]
+            return cls.from_native_dtype(np.dtype(data))  # type: ignore[arg-type]
         elif zarr_format == 3:
-            return cls(length=data["configuration"]["length_bytes"])  # type: ignore[arg-type, index, call-overload]
+            return cls(length=data["configuration"]["length_bytes"])  # type: ignore[index, call-overload]
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def check_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[Any]]:
+    def check_native_dtype(
+        cls: type[Self], dtype: TBaseDType
+    ) -> TypeGuard[np.dtypes.VoidDType[Any]]:
         """
         Numpy void dtype comes in two forms:
         * If the ``fields`` attribute is ``None``, then the dtype represents N raw bytes.
@@ -89,22 +106,22 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, Has
         """
         return cls.dtype_cls is type(dtype) and dtype.fields is None  # type: ignore[has-type]
 
-    def default_value(self) -> np.void:
-        return self.to_dtype().type(("\x00" * self.length).encode("ascii"))
+    def default_scalar(self) -> np.void:
+        return self.to_native_dtype().type(("\x00" * self.length).encode("ascii"))
 
-    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> str:
-        return base64.standard_b64encode(self.cast_value(data).tobytes()).decode("ascii")
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        return base64.standard_b64encode(self.cast_scalar(data).tobytes()).decode("ascii")
 
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         if check_json_str(data):
-            return self.to_dtype().type(base64.standard_b64decode(data))
+            return self.to_native_dtype().type(base64.standard_b64decode(data))
         raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
-    def check_value(self, data: object) -> bool:
+    def check_scalar(self, data: object) -> bool:
         return isinstance(data, np.bytes_ | str | bytes | np.void)
 
-    def _cast_value_unsafe(self, data: object) -> np.void:
-        native_dtype = self.to_dtype()
+    def _cast_scalar_unchecked(self, data: object) -> np.void:
+        native_dtype = self.to_native_dtype()
         # Without the second argument, numpy will return a void scalar for dtype V1.
         # The second argument ensures that, if native_dtype is something like V10,
         # the result will actually be a V10 scalar.
@@ -115,17 +132,18 @@ class FixedLengthBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, Has
         return self.length
 
 
+# TODO: tighten this up, get a v3 spec in place, handle endianness, etc.
 @dataclass(frozen=True, kw_only=True)
 class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
     _zarr_v3_name = "structured"
     fields: tuple[tuple[str, ZDType[TBaseDType, TBaseScalar]], ...]
 
-    def default_value(self) -> np.void:
-        return self._cast_value_unsafe(0)
+    def default_scalar(self) -> np.void:
+        return self._cast_scalar_unchecked(0)
 
-    def _cast_value_unsafe(self, data: object) -> np.void:
-        na_dtype = self.to_dtype()
+    def _cast_scalar_unchecked(self, data: object) -> np.void:
+        na_dtype = self.to_native_dtype()
         if isinstance(data, bytes):
             res = np.frombuffer(data, dtype=na_dtype)[0]
         elif isinstance(data, list | tuple):
@@ -135,7 +153,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         return cast("np.void", res)
 
     @classmethod
-    def check_dtype(cls, dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[int]]:
+    def check_native_dtype(cls, dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[int]]:
         """
         Check that this dtype is a numpy structured dtype
 
@@ -149,10 +167,10 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         TypeGuard[np.dtypes.VoidDType]
             True if the dtype matches, False otherwise.
         """
-        return super().check_dtype(dtype) and dtype.fields is not None
+        return super().check_native_dtype(dtype) and dtype.fields is not None
 
     @classmethod
-    def _from_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
         from zarr.core.dtype import get_data_type_from_native_dtype
 
         fields: list[tuple[str, ZDType[TBaseDType, TBaseScalar]]] = []
@@ -168,7 +186,13 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         return cls(fields=tuple(fields))
 
-    def to_json(self, zarr_format: ZarrFormat) -> JSON:
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> DTypeJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> DTypeJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> DTypeJSON_V3 | DTypeJSON_V2:
         fields = [
             (f_name, f_dtype.to_json(zarr_format=zarr_format)) for f_name, f_dtype in self.fields
         ]
@@ -178,90 +202,94 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             v3_unstable_dtype_warning(self)
             base_dict = {"name": self._zarr_v3_name}
             base_dict["configuration"] = {"fields": fields}  # type: ignore[assignment]
-            return cast("JSON", base_dict)
+            return cast("DTypeJSON_V3", base_dict)
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def check_json(
-        cls, data: JSON, zarr_format: ZarrFormat
-    ) -> TypeGuard[dict[str, JSON] | list[Any]]:
+    def check_json_v2(
+        cls, data: JSON, *, object_codec_id: str | None = None
+    ) -> TypeGuard[list[object]]:
         # the actual JSON form is recursive and hard to annotate, so we give up and do
-        # list[Any] for now
-        if zarr_format == 2:
-            return (
-                not isinstance(data, str)
-                and isinstance(data, Sequence)
-                and all(
-                    not isinstance(field, str) and isinstance(field, Sequence) and len(field) == 2
-                    for field in data
-                )
+        # list[object] for now
+
+        return (
+            not isinstance(data, str)
+            and isinstance(data, Sequence)
+            and all(
+                not isinstance(field, str) and isinstance(field, Sequence) and len(field) == 2
+                for field in data
             )
-        elif zarr_format == 3:
-            return (
-                isinstance(data, dict)
-                and "name" in data
-                and "configuration" in data
-                and isinstance(data["configuration"], dict)
-                and "fields" in data["configuration"]
-            )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+        )
 
     @classmethod
-    def _from_json_unsafe(cls, data: JSON, zarr_format: ZarrFormat) -> Self:
-        from zarr.core.dtype import get_data_type_from_json
+    def check_json_v3(
+        cls, data: JSON
+    ) -> TypeGuard[NamedConfig[Literal["structured"], dict[str, Sequence[tuple[str, JSON]]]]]:
+        return (
+            isinstance(data, dict)
+            and "name" in data
+            and data["name"] == cls._zarr_v3_name
+            and "configuration" in data
+            and isinstance(data["configuration"], dict)
+            and "fields" in data["configuration"]
+        )
+
+    @classmethod
+    def _from_json_unchecked(
+        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
+    ) -> Self:
+        # avoid circular import issues by importing these functions here
+        from zarr.core.dtype import get_data_type_from_json_v2, get_data_type_from_json_v3
 
         # This is a horrible mess, because this data type is recursive
-        if cls.check_json(data, zarr_format=zarr_format):
-            if zarr_format == 2:
+        if zarr_format == 2:
+            if cls.check_json_v2(data):  # type: ignore[arg-type]
                 # structured dtypes are constructed directly from a list of lists
+                # note that we do not handle the object codec here! this will prevent structured
+                # dtypes from containing object dtypes.
                 return cls(
                     fields=tuple(  # type: ignore[misc]
-                        (f_name, get_data_type_from_json(f_dtype, zarr_format=zarr_format))
+                        (f_name, get_data_type_from_json_v2(f_dtype, object_codec_id=None))  # type: ignore[has-type]
                         for f_name, f_dtype in data
                     )
                 )
-            elif zarr_format == 3:
-                if isinstance(data, dict) and "configuration" in data:
-                    config = data["configuration"]
-                    if isinstance(config, dict) and "fields" in config:
-                        meta_fields = config["fields"]
-                        fields = tuple(
-                            (f_name, get_data_type_from_json(f_dtype, zarr_format=zarr_format))
-                            for f_name, f_dtype in meta_fields
-                        )
-                        return cls(fields=fields)
-                    else:
-                        raise TypeError(
-                            f"Invalid type: {data}. Expected a dictionary."
-                        )  # pragma: no cover
-                else:
-                    raise TypeError(
-                        f"Invalid type: {data}. Expected a dictionary."
-                    )  # pragma: no cover
+            else:
+                raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
+        elif zarr_format == 3:
+            if cls.check_json_v3(data):  # type: ignore[arg-type]
+                config = data["configuration"]
+                meta_fields = config["fields"]
+                fields = tuple(
+                    (f_name, get_data_type_from_json_v3(f_dtype)) for f_name, f_dtype in meta_fields
+                )
+            else:
+                raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
+        else:
             raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-        raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}.")
 
-    def to_dtype(self) -> np.dtypes.VoidDType[int]:
+        return cls(fields=fields)
+
+    def to_native_dtype(self) -> np.dtypes.VoidDType[int]:
         return cast(
             "np.dtypes.VoidDType[int]",
-            np.dtype([(key, dtype.to_dtype()) for (key, dtype) in self.fields]),
+            np.dtype([(key, dtype.to_native_dtype()) for (key, dtype) in self.fields]),
         )
 
-    def to_json_value(self, data: object, *, zarr_format: ZarrFormat) -> str:
-        return bytes_to_json(self.cast_value(data).tobytes(), zarr_format)
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        return bytes_to_json(self.cast_scalar(data).tobytes(), zarr_format)
 
-    def check_value(self, data: object) -> bool:
+    def check_scalar(self, data: object) -> bool:
         # TODO: implement something here!
         return True
 
-    def from_json_value(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         if check_json_str(data):
             as_bytes = bytes_from_json(data, zarr_format=zarr_format)
-            dtype = self.to_dtype()
+            dtype = self.to_native_dtype()
             return cast("np.void", np.array([as_bytes]).view(dtype)[0])
         raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
     @property
     def item_size(self) -> int:
         # Lets have numpy do the arithmetic here
-        return self.to_dtype().itemsize
+        return self.to_native_dtype().itemsize

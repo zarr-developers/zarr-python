@@ -452,7 +452,7 @@ class ShardingCodec(
         # setup output array
         out = chunk_spec.prototype.nd_buffer.create(
             shape=shard_shape,
-            dtype=shard_spec.dtype.to_dtype(),
+            dtype=shard_spec.dtype.to_native_dtype(),
             order=shard_spec.order,
             fill_value=0,
         )
@@ -499,7 +499,7 @@ class ShardingCodec(
         # setup output array
         out = shard_spec.prototype.nd_buffer.create(
             shape=indexer.shape,
-            dtype=shard_spec.dtype.to_dtype(),
+            dtype=shard_spec.dtype.to_native_dtype(),
             order=shard_spec.order,
             fill_value=0,
         )

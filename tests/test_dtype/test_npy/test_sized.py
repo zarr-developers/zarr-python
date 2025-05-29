@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import _TestZDType
+from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
 from zarr.core.dtype import (
     FixedLengthBytes,
     Float16,
@@ -15,7 +15,7 @@ from zarr.core.dtype import (
 )
 
 
-class TestFixedLengthBytes(_TestZDType):
+class TestFixedLengthBytes(BaseTestZDType):
     test_cls = FixedLengthBytes
     valid_dtype = (np.dtype("|V10"),)
     invalid_dtype = (
@@ -23,10 +23,10 @@ class TestFixedLengthBytes(_TestZDType):
         np.dtype(np.float64),
         np.dtype("|S10"),
     )
-    valid_json_v2 = ("|V10",)
+    valid_json_v2 = (V2JsonTestParams(dtype="|V10"),)
     valid_json_v3 = (
-        {"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 0}},
-        {"name": "numpy.fixed_length_bytes", "configuration": {"length_bytes": 8}},
+        {"name": "fixed_length_bytes", "configuration": {"length_bytes": 0}},
+        {"name": "fixed_length_bytes", "configuration": {"length_bytes": 8}},
     )
 
     invalid_json_v2 = (
@@ -61,7 +61,7 @@ class TestFixedLengthBytes(_TestZDType):
     )
 
 
-class TestStructured(_TestZDType):
+class TestStructured(BaseTestZDType):
     test_cls = Structured
     valid_dtype = (
         np.dtype([("field1", np.int32), ("field2", np.float64)]),
@@ -73,8 +73,8 @@ class TestStructured(_TestZDType):
         np.dtype("|S10"),
     )
     valid_json_v2 = (
-        [("field1", ">i4"), ("field2", ">f8")],
-        [("field1", ">i8"), ("field2", ">i4")],
+        V2JsonTestParams(dtype=[("field1", ">i4"), ("field2", ">f8")]),
+        V2JsonTestParams(dtype=[("field1", ">i8"), ("field2", ">i4")]),
     )
     valid_json_v3 = (
         {
@@ -99,7 +99,7 @@ class TestStructured(_TestZDType):
                     ),
                     (
                         "field2",
-                        {"name": "numpy.fixed_length_utf32", "configuration": {"length_bytes": 32}},
+                        {"name": "fixed_length_utf32", "configuration": {"length_bytes": 32}},
                     ),
                 ]
             },

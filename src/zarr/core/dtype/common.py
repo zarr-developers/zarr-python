@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import warnings
 from dataclasses import dataclass
-from typing import Final, Literal
+from typing import ClassVar, Final, Literal
 
 Endianness = Literal["little", "big"]
 SpecialFloatStrings = Literal["NaN", "Infinity", "-Infinity"]
@@ -44,6 +44,28 @@ class HasItemSize:
     @property
     def item_size(self) -> int:
         raise NotImplementedError
+
+
+@dataclass(frozen=True)
+class HasObjectCodec:
+    """
+    A mix-in class for data types that require an object codec id.
+    This class bears the property ``object_codec_id``, which is the string name of an object
+    codec that is required to encode and decode the data type.
+
+    In zarr-python 2.x certain data types like variable-length strings or variable-length arrays
+    used the catch-all numpy "object" data type for their in-memory representation. But these data
+    types cannot be stored as numpy object data types, because the object data type does not define
+    a fixed memory layout. So these data types required a special codec, called an "object codec",
+    that effectively defined a compact representation for the data type, which was used to encode
+    and decode the data type.
+
+    Zarr-python 2.x would not allow the creation of arrays with the "object" data type if an object
+    codec was not specified, and thus the name of the object codec is effectively part of the data
+    type model.
+    """
+
+    object_codec_id: ClassVar[str]
 
 
 class UnstableSpecificationWarning(FutureWarning): ...

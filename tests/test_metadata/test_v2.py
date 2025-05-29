@@ -86,7 +86,7 @@ def test_filters_empty_tuple_warns() -> None:
         "zarr_format": 2,
         "shape": (1,),
         "chunks": (1,),
-        "dtype": "uint8",
+        "dtype": "|u1",
         "order": "C",
         "compressor": None,
         "filters": (),

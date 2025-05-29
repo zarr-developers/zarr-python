@@ -176,7 +176,10 @@ def float_from_json_v3(data: JSONFloatV3) -> float:
         elif len(data[2:]) == 16:
             dtype_code = ">d"
         else:
-            msg = f"Invalid float value: {data!r}. Expected a string of length 4, 8, or 16."
+            msg = (
+                f"Invalid hexadecimal float value: {data!r}. "
+                "Expected the '0x' prefix to be followed by 4, 8, or 16 numeral characters"
+            )
             raise ValueError(msg)
         return float(struct.unpack(dtype_code, bytes.fromhex(data[2:]))[0])
     return float_from_json_v2(data)

@@ -4,11 +4,11 @@ import math
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import _TestZDType
+from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 
 
-class _BaseTestFloat(_TestZDType):
+class _BaseTestFloat(BaseTestZDType):
     def scalar_equals(self, scalar1: object, scalar2: object) -> bool:
         if np.isnan(scalar1) and np.isnan(scalar2):  # type: ignore[call-overload]
             return True
@@ -23,7 +23,7 @@ class TestComplex64(_BaseTestFloat):
         np.dtype(np.float64),
         np.dtype(np.complex128),
     )
-    valid_json_v2 = (">c8", "<c8")
+    valid_json_v2 = (V2JsonTestParams(dtype=">c8"), V2JsonTestParams(dtype="<c8"))
     valid_json_v3 = ("complex64",)
     invalid_json_v2 = (
         "|c8",
@@ -63,7 +63,7 @@ class TestComplex128(_BaseTestFloat):
         np.dtype(np.float64),
         np.dtype(np.complex64),
     )
-    valid_json_v2 = (">c16", "<c16")
+    valid_json_v2 = (V2JsonTestParams(dtype=">c16"), V2JsonTestParams(dtype="<c16"))
     valid_json_v3 = ("complex128",)
     invalid_json_v2 = (
         "|c16",

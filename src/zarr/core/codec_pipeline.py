@@ -62,7 +62,7 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
         # validated when decoding the metadata, but we support reading
         # Zarr V2 data and need to support the case where fill_value
         # is None.
-        return chunk_spec.dtype.default_value()
+        return chunk_spec.dtype.default_scalar()
     else:
         return fill_value
 
@@ -296,7 +296,9 @@ class BatchedCodecPipeline(CodecPipeline):
         is_complete_chunk: bool,
         drop_axes: tuple[int, ...],
     ) -> NDBuffer:
-        if chunk_selection == () or is_scalar(value.as_ndarray_like(), chunk_spec.dtype.to_dtype()):
+        if chunk_selection == () or is_scalar(
+            value.as_ndarray_like(), chunk_spec.dtype.to_native_dtype()
+        ):
             chunk_value = value
         else:
             chunk_value = value[out_selection]
@@ -317,7 +319,7 @@ class BatchedCodecPipeline(CodecPipeline):
         if existing_chunk_array is None:
             chunk_array = chunk_spec.prototype.nd_buffer.create(
                 shape=chunk_spec.shape,
-                dtype=chunk_spec.dtype.to_dtype(),
+                dtype=chunk_spec.dtype.to_native_dtype(),
                 order=chunk_spec.order,
                 fill_value=fill_value_or_default(chunk_spec),
             )

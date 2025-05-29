@@ -10,7 +10,9 @@ from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
+    Generic,
     Literal,
+    TypedDict,
     TypeVar,
     cast,
     overload,
@@ -38,6 +40,14 @@ JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 DimensionNames = Iterable[str | None] | None
+
+TName = TypeVar("TName", bound=str)
+TConfig = TypeVar("TConfig", bound=Mapping[str, object])
+
+
+class NamedConfig(TypedDict, Generic[TName, TConfig]):
+    name: TName
+    configuration: TConfig
 
 
 def product(tup: ChunkCoords) -> int:
