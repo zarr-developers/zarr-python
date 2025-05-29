@@ -1,15 +1,17 @@
+import base64
 from dataclasses import dataclass
 from typing import ClassVar, Literal, Self, TypeGuard, overload
 
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import HasObjectCodec
-from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.core.dtype.common import HasObjectCodec, v3_unstable_dtype_warning
+from zarr.core.dtype.npy.common import check_json_str
+from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, ZDType
 
 
 @dataclass(frozen=True, kw_only=True)
-class VariableLengthString(ZDType[np.dtypes.ObjectDType, str], HasObjectCodec):  # type: ignore[no-redef]
+class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
     dtype_cls = np.dtypes.ObjectDType
     _zarr_v3_name: ClassVar[Literal["variable_length_bytes"]] = "variable_length_bytes"
     object_codec_id = "vlen-bytes"
@@ -39,12 +41,13 @@ class VariableLengthString(ZDType[np.dtypes.ObjectDType, str], HasObjectCodec): 
     def to_json(self, zarr_format: Literal[2]) -> Literal["|O"]: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> Literal["variable_length_utf8"]: ...
+    def to_json(self, zarr_format: Literal[3]) -> Literal["variable_length_bytes"]: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> Literal["|O", "variable_length_utf8"]:
+    def to_json(self, zarr_format: ZarrFormat) -> Literal["|O", "variable_length_bytes"]:
         if zarr_format == 2:
             return "|O"
         elif zarr_format == 3:
+            v3_unstable_dtype_warning(self)
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -54,22 +57,19 @@ class VariableLengthString(ZDType[np.dtypes.ObjectDType, str], HasObjectCodec): 
     ) -> Self:
         return cls()
 
-    def default_scalar(self) -> str:
-        return ""
+    def default_scalar(self) -> bytes:
+        return b""
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
-        return data  # type: ignore[return-value]
+        return base64.standard_b64encode(data).decode("ascii")  # type: ignore[arg-type]
 
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> str:
-        """
-        Strings pass through
-        """
-        if not check_json_str(data):
-            raise TypeError(f"Invalid type: {data}. Expected a string.")
-        return data
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> bytes:
+        if check_json_str(data):
+            return base64.standard_b64decode(data.encode("ascii"))
+        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
     def check_scalar(self, data: object) -> bool:
-        return isinstance(data, str)
+        return isinstance(data, bytes | str)
 
-    def _cast_scalar_unchecked(self, data: object) -> str:
-        return str(data)
+    def _cast_scalar_unchecked(self, data: object) -> bytes:
+        return bytes(data)  # type: ignore[no-any-return, call-overload]
