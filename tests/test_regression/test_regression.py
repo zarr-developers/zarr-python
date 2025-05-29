@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numcodecs
 import numpy as np
 import pytest
-from numcodecs import LZ4, LZMA, Blosc, GZip, VLenUTF8, Zstd
+from numcodecs import LZ4, LZMA, Blosc, GZip, VLenBytes, VLenUTF8, Zstd
 
 import zarr
 from zarr.core.array import Array
@@ -67,7 +67,21 @@ vlen_string_cases = [
         compressor=GZip(),
     )
 ]
-array_cases = basic_array_cases + datetime_array_cases + string_array_cases + vlen_string_cases
+vlen_bytes_cases = [
+    ArrayParams(
+        values=np.array([b"a", b"bb", b"ccc", b"dddd"], dtype="O"),
+        fill_value=b"1",
+        filters=(VLenBytes(),),
+        compressor=GZip(),
+    )
+]
+array_cases = (
+    basic_array_cases
+    + datetime_array_cases
+    + string_array_cases
+    + vlen_string_cases
+    + vlen_bytes_cases
+)
 
 
 @pytest.fixture
