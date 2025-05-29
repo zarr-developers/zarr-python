@@ -138,7 +138,8 @@ def sync(
     # coroutines differently. We integrate with the existing Pyodide WebLoop which
     # schedules tasks on the browser's event loop using setTimeout():
     # https://developer.mozilla.org/en-US/docs/Web/API/setTimeout
-    if IS_WASM:
+    if IS_WASM:  # pragma: no cover
+        # This code path is covered in the Pyodide/WASM CI job.
         current_loop = asyncio.get_running_loop()
         return current_loop.run_until_complete(coro)
 
@@ -182,7 +183,8 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 
     The loop will be running on a separate thread.
     """
-    if IS_WASM:
+    if IS_WASM:  # pragma: no cover
+        # This case is covered in the Pyodide/WASM CI job.
         raise RuntimeError(
             "Thread-based event loop not available in WASM environment. "
             "Use zarr.api.asynchronous or ensure sync() handles WASM case."
