@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 
 # This the upper bound for the scalar types we support. It's numpy scalars + str,
 # because the new variable-length string dtype in numpy does not have a corresponding scalar type
-TBaseScalar = np.generic | str
+TBaseScalar = np.generic | str | bytes
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
 TBaseDType = np.dtype[np.generic]
@@ -174,8 +174,8 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         if self.check_scalar(data):
             return self._cast_scalar_unchecked(data)
         msg = (
-            f"The value {data} failed a type check. "
-            f"It cannot be safely cast to a scalar compatible with {self.dtype_cls}. "
+            f"The value {data!r} failed a type check. "
+            f"It cannot be safely cast to a scalar compatible with {self}. "
             f"Consult the documentation for {self} to determine the possible values that can "
             "be cast to scalars of the wrapped data type."
         )

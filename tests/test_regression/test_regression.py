@@ -13,6 +13,7 @@ import zarr
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.string import VariableLengthString
+from zarr.core.dtype.npy.vlen_bytes import VariableLengthBytes
 from zarr.storage import LocalStore
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ def runner_installed() -> bool:
 @dataclass(kw_only=True)
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
-    fill_value: np.generic | str | int
+    fill_value: np.generic | str | int | bytes
     filters: tuple[numcodecs.abc.Codec, ...] = ()
     compressor: numcodecs.abc.Codec
 
@@ -92,8 +93,10 @@ def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
     compressor = array_params.compressor
     chunk_key_encoding = V2ChunkKeyEncoding(separator="/")
     dtype: ZDTypeLike
-    if array_params.values.dtype == np.dtype("|O"):
+    if array_params.values.dtype == np.dtype("|O") and array_params.filters == (VLenUTF8(),):
         dtype = VariableLengthString()  # type: ignore[assignment]
+    elif array_params.values.dtype == np.dtype("|O") and array_params.filters == (VLenBytes(),):
+        dtype = VariableLengthBytes()
     else:
         dtype = array_params.values.dtype
     z = zarr.create_array(

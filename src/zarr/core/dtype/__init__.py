@@ -12,6 +12,7 @@ from zarr.core.dtype.npy.sized import (
     Structured,
 )
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
+from zarr.core.dtype.npy.vlen_bytes import VariableLengthBytes
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -88,6 +89,7 @@ AnyDType = (
     | FixedLengthBytes
     | Structured
     | TimeDType
+    | VariableLengthBytes
 )
 # mypy has trouble inferring the type of variablelengthstring dtype, because its class definition
 # depends on the installed numpy version. That's why the type: ignore statement is needed here.
@@ -100,6 +102,7 @@ ANY_DTYPE: Final = (
     FixedLengthBytes,
     Structured,
     *TIME_DTYPE,
+    VariableLengthBytes,
 )
 
 # This type models inputs that can be coerced to a ZDType
