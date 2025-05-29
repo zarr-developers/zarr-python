@@ -866,6 +866,7 @@ def _test_set_orthogonal_selection_2d(
         _test_set_orthogonal_selection(v, a, z, selection)
 
 
+@pytest.mark.slow_wasm
 def test_set_orthogonal_selection_2d(store: StorePath) -> None:
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
@@ -928,6 +929,7 @@ def _test_set_orthogonal_selection_3d(
         _test_set_orthogonal_selection(v, a, z, selection)
 
 
+@pytest.mark.slow_wasm
 def test_set_orthogonal_selection_3d(store: StorePath) -> None:
     # setup
     v = np.arange(100000, dtype=int).reshape(200, 50, 10)
