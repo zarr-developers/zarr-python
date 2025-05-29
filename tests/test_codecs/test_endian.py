@@ -11,6 +11,7 @@ from zarr.storage import StorePath
 from .test_codecs import _AsyncArrayProxy
 
 
+@pytest.mark.filterwarnings("ignore:The endianness of the requested serializer")
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("endian", ["big", "little"])
 async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
@@ -32,6 +33,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     assert np.array_equal(data, readback_data)
 
 
+@pytest.mark.filterwarnings("ignore:The endianness of the requested serializer")
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])
 @pytest.mark.parametrize("dtype_store_endian", ["big", "little"])
