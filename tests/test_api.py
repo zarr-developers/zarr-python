@@ -1301,3 +1301,9 @@ def test_no_overwrite_load(tmp_path: Path) -> None:
     with contextlib.suppress(NotImplementedError):
         zarr.load(store)
     assert existing_fpath.exists()
+
+
+def test_auto_chunks() -> None:
+    # Check chunks are automatically set to a sensible default
+    a = zarr.ones(shape=(1000, 1000), dtype=np.uint8)
+    assert a.chunks == (500, 500)
