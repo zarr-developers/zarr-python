@@ -211,8 +211,8 @@ prints additional diagnostics, e.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 9696520
-   Storage ratio      : 41.3
+   No. bytes stored   : 3558573
+   Storage ratio      : 112.4
    Chunks Initialized : 100
 
 .. note::
