@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import sys
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -104,6 +105,45 @@ def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
     if not isinstance(result, Store):
         raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
     return result
+
+
+@pytest.fixture(autouse=(IS_WASM and "pyodide" in sys.modules), scope="session")
+def patch_pyodide_webloop_for_pytest() -> Generator[None, None, None]:
+    """
+    Patch Pyodide's WebLoop to fix interoperability with pytest-asyncio.
+
+    WebLoop.shutdown_asyncgens() raises NotImplementedError, which causes
+    pytest-asyncio to issue warnings during test cleanup and potentially
+    cause resource leaks that make tests hang. This is a bit of a
+    hack, but it allows us to run tests that use pytest-asyncio.
+
+    This is necessary because pytest-asyncio tries to clean up async generators
+    when tearing down test event loops, but Pyodide's WebLoop doesn't support
+    this as it integrates with the browser's event loop rather than managing
+    its own lifecycle.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        import pyodide.webloop
+
+        if hasattr(pyodide.webloop.WebLoop, "shutdown_asyncgens"):
+
+            async def no_op_shutdown_asyncgens(self) -> None:  # type: ignore[no-untyped-def]
+                return
+
+            pyodide.webloop.WebLoop.shutdown_asyncgens = no_op_shutdown_asyncgens
+            logger.debug("Patched WebLoop.shutdown_asyncgens for pytest-asyncio compatibility")
+
+        yield
+
+    # If patching fails for any reason, we log it, but we won't want to crash the tests
+    except Exception as e:
+        msg = f"Could not patch WebLoop for pytest compatibility: {e}"
+        logger.debug(msg)
+        yield
 
 
 @dataclass
