@@ -239,7 +239,7 @@ def pytest_collection_modifyitems(config: Any, items: Any) -> None:
     for item in items:
         if "slow_hypothesis" in item.keywords:
             item.add_marker(skip_slow_hyp)
-        if "slow_wasm" in item.keywords and not IS_WASM:
+        if "slow_wasm" in item.keywords and IS_WASM:
             item.add_marker(skip_slow_wasm)
 
 
