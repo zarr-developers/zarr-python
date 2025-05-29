@@ -1321,6 +1321,7 @@ def test_no_overwrite_load(tmp_path: Path) -> None:
 )
 def test_auto_chunks(f: Callable[..., Array]) -> None:
     # Make sure chunks are set automatically across the public API
+    # TODO: test shards with this test too
     shape = (1000, 1000)
     dtype = np.uint8
     kwargs = {"shape": shape, "dtype": dtype}
