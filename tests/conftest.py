@@ -233,7 +233,7 @@ def pytest_collection_modifyitems(config: Any, items: Any) -> None:
 
     skip_slow_hyp = pytest.mark.skip(reason="need --run-slow-hypothesis option to run")
     skip_slow_wasm = pytest.mark.skip(
-        reason="need --run-slow-wasm option to run, or not running in WASM"
+        reason="need --run-slow-wasm option to run in WASM, or not running in WASM"
     )
 
     for item in items:
