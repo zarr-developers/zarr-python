@@ -26,7 +26,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11']
-        numpy-version: ['2.1']
+        numpy-version: ['2.2']
         dependency-set: ["optional"]
 
     steps:
