@@ -768,14 +768,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         dtype = parse_dtype(dtype, zarr_format=2)
 
-        # inject VLenUTF8 for str dtype if not already present
-        if np.issubdtype(dtype, np.str_):
-            filters = filters or []
-            from numcodecs.vlen import VLenUTF8
-
-            if not any(isinstance(x, VLenUTF8) or x["id"] == "vlen-utf8" for x in filters):
-                filters = list(filters) + [VLenUTF8()]
-
         return ArrayV2Metadata(
             shape=shape,
             dtype=np.dtype(dtype),
