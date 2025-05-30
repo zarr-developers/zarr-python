@@ -39,7 +39,7 @@ from zarr.core.group import (
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
-from zarr.errors import NodeTypeValidationError
+from zarr.errors import GroupNotFoundError, NodeTypeValidationError
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -836,7 +836,7 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    raise FileNotFoundError(f"Unable to find group: {store_path}")
+    raise GroupNotFoundError(store, store_path.path)
 
 
 async def create(
@@ -992,19 +992,11 @@ async def create(
     )
 
     if zarr_format == 2:
-        if chunks is None:
-            chunks = shape
         dtype = parse_dtype(dtype, zarr_format)
         if not filters:
             filters = _default_filters(dtype)
         if compressor == "auto":
             compressor = _default_compressor(dtype)
-    elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
-        if chunks is not None:
-            chunk_shape = chunks
-            chunks = None
-        else:
-            chunk_shape = shape
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)

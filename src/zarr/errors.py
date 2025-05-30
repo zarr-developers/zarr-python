@@ -21,6 +21,14 @@ class BaseZarrError(ValueError):
         super().__init__(self._msg.format(*args))
 
 
+class GroupNotFoundError(BaseZarrError, FileNotFoundError):
+    """
+    Raised when a group isn't found at a certain path.
+    """
+
+    _msg = "No group found in store {!r} at path {!r}"
+
+
 class ContainsGroupError(BaseZarrError):
     """Raised when a group already exists at a certain path."""
 
