@@ -47,6 +47,8 @@ from zarr.storage._common import make_store_path
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    import numcodecs.abc
+
     from zarr.abc.codec import Codec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
@@ -870,7 +872,7 @@ async def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -1008,11 +1010,6 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
-    if zarr_format == 2:
-        default_filters, default_compressor = _get_default_chunk_encoding_v2(zdtype)
-        if not filters:
-            filters = default_filters  # type: ignore[assignment]
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -1064,7 +1061,7 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=zdtype,
+        dtype=dtype,
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,

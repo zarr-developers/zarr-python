@@ -591,7 +591,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
-        filters: list[dict[str, JSON]] | None = None,
+        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
         compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
@@ -860,6 +860,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             )
         else:
             compressor_parsed = compressor
+
+        if filters is None:
+            filters = _default_filters(dtype)
 
         metadata = cls._create_metadata_v2(
             shape=shape,
