@@ -320,7 +320,7 @@ async def make_store_path(
             # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
             # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
             store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
-        elif _has_fsspec:
+        elif _has_fsspec and isinstance(store_like, FSMap):
             if not isinstance(store_like, FSMap):
                 raise (TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'"))
             if path:
