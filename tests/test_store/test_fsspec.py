@@ -195,7 +195,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value"}
 
-        meta["attributes"]["key"] = "value-2"  # type: ignore[index]
+        meta["attributes"]["key"] = "value-2"
         await store.set(
             "directory-2/zarr.json",
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
@@ -205,7 +205,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value-2"}
 
-        meta["attributes"]["key"] = "value-3"  # type: ignore[index]
+        meta["attributes"]["key"] = "value-3"
         await store.set(
             "directory-3/zarr.json",
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
@@ -268,32 +268,31 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             await store.delete_dir("test_prefix")
 
 
-def array_roundtrip(store):
+def array_roundtrip(store: FsspecStore) -> None:
     """
     Round trip an array using a Zarr store
 
     Args:
-        store: Store-Like object (e.g., FSMap)
+        store: FsspecStore
     """
-    arr = zarr.open(store=store, mode="w", shape=(3, 3))
+    data = np.ones((3, 3))
+    arr = zarr.create_array(store=store, overwrite=True, data=data)
     assert isinstance(arr, Array)
-    # Set values
-    arr[:] = 1
     # Read set values
-    arr = zarr.open(store=store, mode="r", shape=(3, 3))
-    assert isinstance(arr, Array)
-    np.testing.assert_array_equal(np.ones((3, 3)), arr[:])
+    arr2 = zarr.open_array(store=store)
+    assert isinstance(arr2, Array)
+    np.testing.assert_array_equal(arr[:], data)
 
 
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
 )
-def test_wrap_sync_filesystem(tmp_path) -> None:
+def test_wrap_sync_filesystem(tmp_path: pathlib.Path) -> None:
     """The local fs is not async so we should expect it to be wrapped automatically"""
     from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-    store = FsspecStore.from_url(f"local://{tmp_path}", storage_options={"auto_mkdir": True})
+    store = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": True})
     assert isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.async_impl
     array_roundtrip(store)
@@ -303,23 +302,24 @@ def test_wrap_sync_filesystem(tmp_path) -> None:
     parse_version(fsspec.__version__) >= parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
 )
-def test_wrap_sync_filesystem_raises(tmp_path):
+def test_wrap_sync_filesystem_raises(tmp_path: pathlib.Path) -> None:
     """The local fs is not async so we should expect it to be wrapped automatically"""
     with pytest.raises(ImportError, match="The filesystem .*"):
-        FsspecStore.from_url(f"local://{tmp_path}", storage_options={"auto_mkdir": True})
+        FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": True})
 
 
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
 )
-def test_no_wrap_async_filesystem():
+def test_no_wrap_async_filesystem() -> None:
     """An async fs should not be wrapped automatically; fsspec's s3 filesystem is such an fs"""
     from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
     store = FsspecStore.from_url(
         f"s3://{test_bucket_name}/foo/spam/",
-        storage_options={"endpoint_url": endpoint_url, "anon": False},
+        storage_options={"endpoint_url": endpoint_url, "anon": False, "asynchronous": True},
+        read_only=False,
     )
     assert not isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.async_impl
