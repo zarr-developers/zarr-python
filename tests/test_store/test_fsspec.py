@@ -195,7 +195,11 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value"}
 
-        meta["attributes"]["key"] = "value-2"
+        meta = {
+            "attributes": {"key": "value-2"},
+            "zarr_format": 3,
+            "node_type": "group",
+        }
         await store.set(
             "directory-2/zarr.json",
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
@@ -205,7 +209,11 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value-2"}
 
-        meta["attributes"]["key"] = "value-3"
+        meta = {
+            "attributes": {"key": "value-3"},
+            "zarr_format": 3,
+            "node_type": "group",
+        }
         await store.set(
             "directory-3/zarr.json",
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
