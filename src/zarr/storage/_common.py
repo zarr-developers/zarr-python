@@ -321,8 +321,6 @@ async def make_store_path(
             # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
             store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
         elif _has_fsspec and isinstance(store_like, FSMap):
-            if not isinstance(store_like, FSMap):
-                raise (TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'"))
             if path:
                 raise ValueError("'path' was provided but is not used for FSMap store_like objects")
             if storage_options:
@@ -331,7 +329,7 @@ async def make_store_path(
                 )
             store = FsspecStore.from_mapper(store_like, read_only=_read_only)
         else:
-            raise (TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'"))
+            raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
 
         result = await StorePath.open(store, path=path_normalized, mode=mode)
 
