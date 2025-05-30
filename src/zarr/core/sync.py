@@ -141,7 +141,25 @@ def sync(
     if IS_WASM:  # pragma: no cover
         # This code path is covered in the Pyodide/WASM CI job.
         current_loop = asyncio.get_running_loop()
-        return current_loop.run_until_complete(coro)
+        result = current_loop.run_until_complete(coro)
+        # Check if run_until_complete actually executed the coroutine or just returned a task
+        # In browsers without JSPI, run_until_complete is a no-op that will return the task/future.
+        if isinstance(result, (asyncio.Task, asyncio.Future)):
+            raise RuntimeError(
+                "Cannot use synchronous zarr API in browser environments without JSPI. "
+                "Zarr requires JavaScript Promise Integration (JSPI) to work in browsers "
+                "but JSPI is not enabled in your environment.\n"
+                "Solutions:\n"
+                "1. Use the async API instead, with zarr.api.asynchronous"
+                "2. Enable JSPI in your Pyodide setup with "
+                "`loadPyodide({ enableRunUntilComplete: true })`"
+                "3. Use a JSPI-enabled website or browser configuration"
+                "4. If you are using Node.js, pass the --experimental-wasm-jspi flag (v20+)"
+                "\n"
+                "Note: JSPI is experimental and not yet standardised across all browsers. See "
+                "https://webassembly.org/features/ for more information and status."
+            )
+        return result
 
     # This code path is the original thread-based implementation
     # for non-WASM environments; it creates a dedicated I/O thread
