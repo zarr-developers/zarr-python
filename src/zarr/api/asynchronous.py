@@ -1013,8 +1013,6 @@ async def create(
         default_filters, default_compressor = _get_default_chunk_encoding_v2(zdtype)
         if not filters:
             filters = default_filters  # type: ignore[assignment]
-        if compressor == "auto":
-            compressor = default_compressor
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
