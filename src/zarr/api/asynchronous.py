@@ -1023,13 +1023,13 @@ async def create(
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
     if read_only is not None:
         warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
+    if meta_array is not None:
+        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+
     if order is not None:
         _warn_order_kwarg()
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
-
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     mode = kwargs.pop("mode", None)
     if mode is None:
