@@ -29,7 +29,6 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
-    parse_dtype,
 )
 from zarr.core.group import (
     AsyncGroup,
@@ -38,12 +37,13 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import GroupNotFoundError, NodeTypeValidationError
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    import numcodecs.abc
 
     from zarr.abc.codec import Codec
     from zarr.core.buffer import NDArrayLikeOrScalar
@@ -852,7 +852,7 @@ async def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -990,11 +990,6 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-
-    if zarr_format == 2:
-        dtype = parse_dtype(dtype, zarr_format)
-        if not filters:
-            filters = _default_filters(dtype)
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
