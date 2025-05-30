@@ -1,13 +1,14 @@
 from collections.abc import Iterable
+from typing import Any
 
-from numpy import ndarray
+import numpy as np
+import numpy.typing as npt
 
 import zarr.core.buffer
-from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecOutput, CodecPipeline
+from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
 from zarr.codecs import BytesCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import BytesLike
 
 
 class TestEntrypointCodec(ArrayBytesCodec):
@@ -16,14 +17,14 @@ class TestEntrypointCodec(ArrayBytesCodec):
     async def encode(
         self,
         chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]],
-    ) -> Iterable[CodecOutput | None]:
-        pass
+    ) -> Iterable[Buffer | None]:
+        return [None]
 
     async def decode(
         self,
         chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]],
-    ) -> ndarray:
-        pass
+    ) -> npt.NDArray[Any]:
+        return np.array(1)
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         return input_byte_length
@@ -35,13 +36,13 @@ class TestEntrypointCodecPipeline(CodecPipeline):
 
     async def encode(
         self, chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]]
-    ) -> BytesLike:
-        pass
+    ) -> Iterable[Buffer | None]:
+        return [None]
 
     async def decode(
         self, chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]]
-    ) -> ndarray:
-        pass
+    ) -> Iterable[NDBuffer | None]:
+        return np.array(1)
 
 
 class TestEntrypointBuffer(Buffer):

@@ -4,7 +4,7 @@ import importlib
 import importlib.util
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
@@ -47,16 +47,14 @@ class StorePath:
 
     def __init__(self, store: Store, path: str = "") -> None:
         self.store = store
-        self.path = path
+        self.path = normalize_path(path)
 
     @property
     def read_only(self) -> bool:
         return self.store.read_only
 
     @classmethod
-    async def open(
-        cls, store: Store, path: str, mode: AccessModeLiteral | None = None
-    ) -> StorePath:
+    async def open(cls, store: Store, path: str, mode: AccessModeLiteral | None = None) -> Self:
         """
         Open StorePath based on the provided mode.
 
@@ -73,6 +71,9 @@ class StorePath:
         ------
         FileExistsError
             If the mode is 'w-' and the store path already exists.
+        ValueError
+            If the mode is not "r" and the store is read-only, or
+            if the mode is "r" and the store is not read-only.
         """
 
         await store._ensure_open()
@@ -84,6 +85,8 @@ class StorePath:
 
         if store.read_only and mode != "r":
             raise ValueError(f"Store is read-only but mode is '{mode}'")
+        if not store.read_only and mode == "r":
+            raise ValueError(f"Store is not read-only but mode is '{mode}'")
 
         match mode:
             case "w-":

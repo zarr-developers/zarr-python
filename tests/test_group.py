@@ -130,24 +130,27 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
             assert g.attrs == {}
 
 
-def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("root_name", ["", "/", "a", "/a"])
+@pytest.mark.parametrize("branch_name", ["foo", "/foo", "foo/bar", "/foo/bar"])
+def test_group_name_properties(
+    store: Store, zarr_format: ZarrFormat, root_name: str, branch_name: str
+) -> None:
     """
-    Test basic properties of groups
+    Test that the path, name, and basename attributes of a group and its subgroups are consistent
     """
-    root = Group.from_store(store=store, zarr_format=zarr_format)
-    assert root.path == ""
-    assert root.name == "/"
-    assert root.basename == ""
+    root = Group.from_store(store=StorePath(store=store, path=root_name), zarr_format=zarr_format)
+    assert root.path == normalize_path(root_name)
+    assert root.name == "/" + root.path
+    assert root.basename == root.path
 
-    foo = root.create_group("foo")
-    assert foo.path == "foo"
-    assert foo.name == "/foo"
-    assert foo.basename == "foo"
-
-    bar = root.create_group("foo/bar")
-    assert bar.path == "foo/bar"
-    assert bar.name == "/foo/bar"
-    assert bar.basename == "bar"
+    branch = root.create_group(branch_name)
+    if root.path == "":
+        assert branch.path == normalize_path(branch_name)
+    else:
+        assert branch.path == "/".join([root.path, normalize_path(branch_name)])
+    assert branch.name == "/" + branch.path
+    assert branch.basename == branch_name.split("/")[-1]
 
 
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
@@ -604,7 +607,10 @@ def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     assert group.attrs == attrs
     new_attrs = {"bar": 100}
     new_group = group.update_attributes(new_attrs)
-    assert new_group.attrs == new_attrs
+
+    updated_attrs = attrs.copy()
+    updated_attrs.update(new_attrs)
+    assert new_group.attrs == updated_attrs
 
 
 async def test_group_update_attributes_async(store: Store, zarr_format: ZarrFormat) -> None:
@@ -620,11 +626,13 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
 
 
 @pytest.mark.parametrize("method", ["create_array", "array"])
+@pytest.mark.parametrize("name", ["a", "/a"])
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
     overwrite: bool,
     method: Literal["create_array", "array"],
+    name: str,
 ) -> None:
     """
     Test `Group.from_store`
@@ -635,23 +643,26 @@ def test_group_create_array(
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
     if method == "create_array":
-        array = group.create_array(name="array", shape=shape, dtype=dtype)
+        array = group.create_array(name=name, shape=shape, dtype=dtype)
         array[:] = data
     elif method == "array":
         with pytest.warns(DeprecationWarning):
-            array = group.array(name="array", data=data, shape=shape, dtype=dtype)
+            array = group.array(name=name, data=data, shape=shape, dtype=dtype)
     else:
         raise AssertionError
 
     if not overwrite:
         if method == "create_array":
             with pytest.raises(ContainsArrayError):
-                a = group.create_array(name="array", shape=shape, dtype=dtype)
+                a = group.create_array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
         elif method == "array":
             with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
-                a = group.array(name="array", shape=shape, dtype=dtype)
+                a = group.array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
+
+    assert array.path == normalize_path(name)
+    assert array.name == "/" + array.path
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
@@ -942,20 +953,23 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
         raise AssertionError
 
 
+@pytest.mark.parametrize("name", ["a", "/a"])
 async def test_asyncgroup_create_group(
     store: Store,
+    name: str,
     zarr_format: ZarrFormat,
 ) -> None:
     agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    sub_node_path = "sub_group"
     attributes = {"foo": 999}
-    subnode = await agroup.create_group(name=sub_node_path, attributes=attributes)
+    subgroup = await agroup.create_group(name=name, attributes=attributes)
 
-    assert isinstance(subnode, AsyncGroup)
-    assert subnode.attrs == attributes
-    assert subnode.store_path.path == sub_node_path
-    assert subnode.store_path.store == store
-    assert subnode.metadata.zarr_format == zarr_format
+    assert isinstance(subgroup, AsyncGroup)
+    assert subgroup.path == normalize_path(name)
+    assert subgroup.name == "/" + subgroup.path
+    assert subgroup.attrs == attributes
+    assert subgroup.store_path.path == subgroup.path
+    assert subgroup.store_path.store == store
+    assert subgroup.metadata.zarr_format == zarr_format
 
 
 async def test_asyncgroup_create_array(
@@ -1008,7 +1022,9 @@ async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrForma
     )
 
     agroup_new_attributes = await agroup.update_attributes(attributes_new)
-    assert agroup_new_attributes.attrs == attributes_new
+    attributes_updated = attributes_old.copy()
+    attributes_updated.update(attributes_new)
+    assert agroup_new_attributes.attrs == attributes_updated
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])
@@ -1567,14 +1583,12 @@ async def test_create_hierarchy(
             sync_group.create_hierarchy(store=store, nodes=hierarchy_spec, overwrite=overwrite)
         )
     elif impl == "async":
-        created = dict(
-            [
-                a
-                async for a in create_hierarchy(
-                    store=store, nodes=hierarchy_spec, overwrite=overwrite
-                )
-            ]
-        )
+        created = {
+            k: v
+            async for k, v in create_hierarchy(
+                store=store, nodes=hierarchy_spec, overwrite=overwrite
+            )
+        }
     else:
         raise ValueError(f"Invalid impl: {impl}")
     if not overwrite:

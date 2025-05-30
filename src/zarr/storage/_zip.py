@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import time
 import zipfile
@@ -24,7 +25,7 @@ ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
 class ZipStore(Store):
     """
-    Storage class using a ZIP file.
+    Store using a ZIP file.
 
     Parameters
     ----------
@@ -288,3 +289,15 @@ class ZipStore(Store):
                     if k not in seen:
                         seen.add(k)
                         yield k
+
+    async def move(self, path: Path | str) -> None:
+        """
+        Move the store to another path.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+        self.close()
+        os.makedirs(path.parent, exist_ok=True)
+        shutil.move(self.path, path)
+        self.path = path
+        await self._open()

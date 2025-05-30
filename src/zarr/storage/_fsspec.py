@@ -73,7 +73,7 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
 
 class FsspecStore(Store):
     """
-    A remote Store based on FSSpec
+    Store for remote data based on FSSpec.
 
     Parameters
     ----------

@@ -1,11 +1,13 @@
 import math
 import sys
+from collections.abc import Callable, Mapping
 from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
-from hypothesis import event, given, settings  # noqa: F401
+import numpy.typing as npt
+from hypothesis import event
 from hypothesis.strategies import SearchStrategy
 
 import zarr
@@ -14,11 +16,12 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import Array
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
-from zarr.core.common import ZarrFormat
+from zarr.core.common import JSON, ZarrFormat
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
+from zarr.storage._utils import normalize_path
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
@@ -29,17 +32,17 @@ _attr_values = st.recursive(
 )
 
 
-@st.composite  # type: ignore[misc]
-def keys(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> Any:
+@st.composite
+def keys(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> str:
     return draw(st.lists(node_names, min_size=1, max_size=max_num_nodes).map("/".join))
 
 
-@st.composite  # type: ignore[misc]
-def paths(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> Any:
+@st.composite
+def paths(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> str:
     return draw(st.just("/") | keys(max_num_nodes=max_num_nodes))
 
 
-def v3_dtypes() -> st.SearchStrategy[np.dtype]:
+def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
     return (
         npst.boolean_dtypes()
         | npst.integer_dtypes(endianness="=")
@@ -53,7 +56,7 @@ def v3_dtypes() -> st.SearchStrategy[np.dtype]:
     )
 
 
-def v2_dtypes() -> st.SearchStrategy[np.dtype]:
+def v2_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
     return (
         npst.boolean_dtypes()
         | npst.integer_dtypes(endianness="=")
@@ -95,14 +98,20 @@ def clear_store(x: Store) -> Store:
 zarr_key_chars = st.sampled_from(
     ".-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 )
-node_names = st.text(zarr_key_chars, min_size=1).filter(
-    lambda t: t not in (".", "..") and not t.startswith("__")
+node_names = (
+    st.text(zarr_key_chars, min_size=1)
+    .filter(lambda t: t not in (".", "..") and not t.startswith("__"))
+    .filter(lambda name: name.lower() != "zarr.json")
 )
-short_node_names = st.text(zarr_key_chars, max_size=3, min_size=1).filter(
-    lambda t: t not in (".", "..") and not t.startswith("__")
+short_node_names = (
+    st.text(zarr_key_chars, max_size=3, min_size=1)
+    .filter(lambda t: t not in (".", "..") and not t.startswith("__"))
+    .filter(lambda name: name.lower() != "zarr.json")
 )
 array_names = node_names
-attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
+attrs: st.SearchStrategy[Mapping[str, JSON] | None] = st.none() | st.dictionaries(
+    _attr_keys, _attr_values
+)
 # st.builds will only call a new store constructor for different keyword arguments
 # i.e. stores.examples() will always return the same object per Store class.
 # So we map a clear to reset the store.
@@ -113,19 +122,19 @@ zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([3, 2])
 array_shapes = npst.array_shapes(max_dims=4, min_side=3) | npst.array_shapes(max_dims=4, min_side=0)
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | str] | None:
     simple_text = st.text(zarr_key_chars, min_size=0)
-    return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[no-any-return]
+    return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[arg-type]
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def array_metadata(
     draw: st.DrawFn,
     *,
-    array_shapes: st.SearchStrategy[tuple[int, ...]] = npst.array_shapes,
+    array_shapes: Callable[..., st.SearchStrategy[tuple[int, ...]]] = npst.array_shapes,
     zarr_formats: st.SearchStrategy[Literal[2, 3]] = zarr_formats,
-    attributes: st.SearchStrategy[dict[str, Any]] = attrs,
+    attributes: SearchStrategy[Mapping[str, JSON] | None] = attrs,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
     zarr_format = draw(zarr_formats)
     # separator = draw(st.sampled_from(['/', '\\']))
@@ -141,7 +150,7 @@ def array_metadata(
             dtype=dtype,
             fill_value=fill_value,
             order=draw(st.sampled_from(["C", "F"])),
-            attributes=draw(attributes),
+            attributes=draw(attributes),  # type: ignore[arg-type]
             dimension_separator=draw(st.sampled_from([".", "/"])),
             filters=None,
             compressor=None,
@@ -152,7 +161,7 @@ def array_metadata(
             data_type=dtype,
             chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             fill_value=fill_value,
-            attributes=draw(attributes),
+            attributes=draw(attributes),  # type: ignore[arg-type]
             dimension_names=draw(dimension_names(ndim=ndim)),
             chunk_key_encoding=DefaultChunkKeyEncoding(separator="/"),  # FIXME
             codecs=[BytesCodec()],
@@ -160,14 +169,14 @@ def array_metadata(
         )
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def numpy_arrays(
     draw: st.DrawFn,
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
     dtype: np.dtype[Any] | None = None,
-    zarr_formats: st.SearchStrategy[ZarrFormat] | None = zarr_formats,
-) -> Any:
+    zarr_formats: st.SearchStrategy[ZarrFormat] = zarr_formats,
+) -> npt.NDArray[Any]:
     """
     Generate numpy arrays that can be saved in the provided Zarr format.
     """
@@ -181,7 +190,7 @@ def numpy_arrays(
     return draw(npst.arrays(dtype=dtype, shape=shapes))
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def chunk_shapes(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[int, ...]:
     # We want this strategy to shrink towards arrays with smaller number of chunks
     # 1. st.integers() shrinks towards smaller values. So we use that to generate number of chunks
@@ -203,7 +212,7 @@ def chunk_shapes(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[int, ...]:
     return chunks
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def shard_shapes(
     draw: st.DrawFn, *, shape: tuple[int, ...], chunk_shape: tuple[int, ...]
 ) -> tuple[int, ...]:
@@ -215,9 +224,11 @@ def shard_shapes(
     return tuple(m * c for m, c in zip(multiples, chunk_shape, strict=True))
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def np_array_and_chunks(
-    draw: st.DrawFn, *, arrays: st.SearchStrategy[np.ndarray] = numpy_arrays
+    draw: st.DrawFn,
+    *,
+    arrays: st.SearchStrategy[npt.NDArray[Any]] = numpy_arrays(),  # noqa: B008
 ) -> tuple[np.ndarray, tuple[int, ...]]:  # type: ignore[type-arg]
     """A hypothesis strategy to generate small sized random arrays.
 
@@ -227,14 +238,14 @@ def np_array_and_chunks(
     return (array, draw(chunk_shapes(shape=array.shape)))
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def arrays(
     draw: st.DrawFn,
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
     compressors: st.SearchStrategy = compressors,
     stores: st.SearchStrategy[StoreLike] = stores,
-    paths: st.SearchStrategy[str | None] = paths(),  # noqa: B008
+    paths: st.SearchStrategy[str] = paths(),  # noqa: B008
     array_names: st.SearchStrategy = array_names,
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
@@ -277,11 +288,12 @@ def arrays(
     if a.metadata.zarr_format == 3:
         assert a.fill_value is not None
     assert a.name is not None
+    assert a.path == normalize_path(array_path)
+    assert a.name == "/" + a.path
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunk_shape == a.chunks
     assert shard_shape == a.shards
-    assert array_path == a.path, (path, name, array_path, a.name, a.path)
     assert a.basename == name, (a.basename, name)
     assert dict(a.attrs) == expected_attrs
 
@@ -290,7 +302,7 @@ def arrays(
     return a
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def simple_arrays(
     draw: st.DrawFn,
     *,
@@ -311,7 +323,7 @@ def is_negative_slice(idx: Any) -> bool:
     return isinstance(idx, slice) and idx.step is not None and idx.step < 0
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def end_slices(draw: st.DrawFn, *, shape: tuple[int]) -> Any:
     """
     A strategy that slices ranges that include the last chunk.
@@ -326,14 +338,28 @@ def end_slices(draw: st.DrawFn, *, shape: tuple[int]) -> Any:
     return tuple(slicers)
 
 
-@st.composite  # type: ignore[misc]
-def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs: Any) -> Any:
+@st.composite
+def basic_indices(
+    draw: st.DrawFn,
+    *,
+    shape: tuple[int],
+    min_dims: int = 0,
+    max_dims: int | None = None,
+    allow_newaxis: bool = False,
+    allow_ellipsis: bool = True,
+) -> Any:
     """Basic indices without unsupported negative slices."""
-    strategy = npst.basic_indices(shape=shape, **kwargs).filter(
+    strategy = npst.basic_indices(
+        shape=shape,
+        min_dims=min_dims,
+        max_dims=max_dims,
+        allow_newaxis=allow_newaxis,
+        allow_ellipsis=allow_ellipsis,
+    ).filter(
         lambda idxr: (
             not (
                 is_negative_slice(idxr)
-                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
+                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))  # type: ignore[redundant-expr]
             )
         )
     )
@@ -342,7 +368,7 @@ def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs: Any) -> Any:
     return draw(strategy)
 
 
-@st.composite  # type: ignore[misc]
+@st.composite
 def orthogonal_indices(
     draw: st.DrawFn, *, shape: tuple[int]
 ) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
@@ -380,8 +406,8 @@ def orthogonal_indices(
 
 
 def key_ranges(
-    keys: SearchStrategy = node_names, max_size: int = sys.maxsize
-) -> SearchStrategy[list[int]]:
+    keys: SearchStrategy[str] = node_names, max_size: int = sys.maxsize
+) -> SearchStrategy[list[tuple[str, RangeByteRequest]]]:
     """
     Function to generate key_ranges strategy for get_partial_values()
     returns list strategy w/ form::

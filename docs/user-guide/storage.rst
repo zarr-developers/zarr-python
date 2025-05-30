@@ -47,7 +47,7 @@ Explicit Store Creation
 
 In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
 built-in store: :class:`zarr.storage.LocalStore`, :class:`zarr.storage.FsspecStore`,
-:class:`zarr.storage.ZipStore`, and :class:`zarr.storage.MemoryStore`.
+:class:`zarr.storage.ZipStore`, :class:`zarr.storage.MemoryStore`, and :class:`zarr.storage.ObjectStore`.
 
 Local Store
 ~~~~~~~~~~~
@@ -98,6 +98,42 @@ Zarr data (metadata and chunks) to a dictionary.:
    >>> # TODO: replace with create_array after #2463
    >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
    <Array memory://... shape=(2,) dtype=float64>
+
+Object Store
+~~~~~~~~~~~~
+
+:class:`zarr.storage.ObjectStore` stores the contents of the Zarr hierarchy using any ObjectStore
+`storage implementation <https://developmentseed.org/obstore/latest/api/store/>`_, including AWS S3 (:class:`obstore.store.S3Store`), Google Cloud Storage (:class:`obstore.store.GCSStore`), and Azure Blob Storage (:class:`obstore.store.AzureStore`). This store is backed by `obstore <https://developmentseed.org/obstore/latest/>`_, which
+builds on the production quality Rust library `object_store <https://docs.rs/object_store/latest/object_store/>`_.
+
+
+   >>> from zarr.storage import ObjectStore
+   >>> from obstore.store import MemoryStore
+   >>>
+   >>> store = ObjectStore(MemoryStore())
+   >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
+   <Array object_store://... shape=(2,) dtype=float64>
+
+Here's an example of using ObjectStore for accessing remote data:
+
+   >>> from zarr.storage import ObjectStore
+   >>> from obstore.store import S3Store
+   >>>
+   >>> s3_store = S3Store('noaa-nwm-retro-v2-zarr-pds', skip_signature=True, region="us-west-2")
+   >>> store = zarr.storage.ObjectStore(store=s3_store, read_only=True)
+   >>> group = zarr.open_group(store=store, mode='r')
+   >>> group.info
+   Name        :
+   Type        : Group
+   Zarr format : 2
+   Read-only   : True
+   Store type  : ObjectStore
+   No. members : 12
+   No. arrays  : 12
+   No. groups  : 0
+
+.. warning::
+   The :class:`zarr.storage.ObjectStore` class is experimental.
 
 .. _user-guide-custom-stores:
 

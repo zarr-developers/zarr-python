@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 import numcodecs
 from numcodecs.blosc import Blosc
+from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
@@ -55,7 +56,7 @@ class BloscCname(Enum):
     zlib = "zlib"
 
 
-# See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
+# See https://zarr.readthedocs.io/en/stable/user-guide/performance.html#configuring-blosc
 numcodecs.blosc.use_threads = False
 
 
@@ -163,6 +164,9 @@ class BloscCodec(BytesBytesCodec):
             "shuffle": map_shuffle_str_to_int[self.shuffle],
             "blocksize": self.blocksize,
         }
+        # See https://github.com/zarr-developers/numcodecs/pull/713
+        if Version(numcodecs.__version__) >= Version("0.16.0"):
+            config_dict["typesize"] = self.typesize
         return Blosc.from_config(config_dict)
 
     async def _decode_single(
