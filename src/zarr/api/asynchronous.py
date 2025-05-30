@@ -995,8 +995,6 @@ async def create(
         dtype = parse_dtype(dtype, zarr_format)
         if not filters:
             filters = _default_filters(dtype)
-        if compressor == "auto":
-            compressor = _default_compressor(dtype)
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
