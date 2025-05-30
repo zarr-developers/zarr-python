@@ -291,7 +291,7 @@ async def make_store_path(
     if isinstance(store_like, StorePath):
         result = store_like / path_normalized
     else:
-        assert mode in (None, "r", "r+", "a", "w", "w-")
+        assert mode in {None, "r", "r+", "a", "w", "w-"}
         # if mode 'r' was provided, we'll open any new stores as read-only
         _read_only = mode == "r"
         if isinstance(store_like, Store):

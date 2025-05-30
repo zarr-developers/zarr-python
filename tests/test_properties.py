@@ -255,7 +255,7 @@ def serialized_float_is_valid(serialized: numbers.Real | str) -> bool:
     """
     if isinstance(serialized, numbers.Real):
         return True
-    return serialized in ("NaN", "Infinity", "-Infinity")
+    return serialized in {"NaN", "Infinity", "-Infinity"}
 
 
 @given(meta=array_metadata())  # type: ignore[misc]

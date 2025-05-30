@@ -527,7 +527,7 @@ def parse_fill_value(
     np_dtype = cast("np.dtype[Any]", data_type.to_numpy())
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
-        if data_type in (DataType.complex64, DataType.complex128):
+        if data_type in {DataType.complex64, DataType.complex128}:
             if len(fill_value) == 2:
                 decoded_fill_value = tuple(
                     SPECIAL_FLOATS_ENCODED.get(value, value) for value in fill_value
@@ -557,7 +557,7 @@ def parse_fill_value(
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}") from e
     # Check if the value is still representable by the dtype
     if (fill_value == "NaN" and np.isnan(casted_value)) or (
-        fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value)
+        fill_value in {"Infinity", "-Infinity"} and not np.isfinite(casted_value)
     ):
         pass
     elif np_dtype.kind == "f":
@@ -574,9 +574,8 @@ def parse_fill_value(
             and np.isclose(np.imag(fill_value), np.imag(casted_value), equal_nan=True)
         ):
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
-    else:
-        if fill_value != casted_value:
-            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
+    elif fill_value != casted_value:
+        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
 
     return casted_value
 
