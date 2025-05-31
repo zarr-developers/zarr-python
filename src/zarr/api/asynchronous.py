@@ -17,7 +17,6 @@ from zarr.core.array import (
     from_array,
     get_array_metadata,
 )
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
@@ -45,6 +44,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
+    from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
@@ -1020,27 +1020,6 @@ async def create(
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
-    config_dict: ArrayConfigParams = {}
-
-    if write_empty_chunks is not None:
-        if config is not None:
-            msg = (
-                "Both write_empty_chunks and config keyword arguments are set. "
-                "This is redundant. When both are set, write_empty_chunks will be ignored and "
-                "config will be used."
-            )
-            warnings.warn(UserWarning(msg), stacklevel=1)
-        config_dict["write_empty_chunks"] = write_empty_chunks
-    if order is not None and config is not None:
-        msg = (
-            "Both order and config keyword arguments are set. "
-            "This is redundant. When both are set, order will be ignored and "
-            "config will be used."
-        )
-        warnings.warn(UserWarning(msg), stacklevel=1)
-
-    config_parsed = ArrayConfig.from_dict(config_dict)
-
     return await AsyncArray._create(
         store_path,
         shape=shape,
@@ -1057,8 +1036,9 @@ async def create(
         chunk_key_encoding=chunk_key_encoding,
         codecs=codecs,
         dimension_names=dimension_names,
+        write_empty_chunks=write_empty_chunks,
         attributes=attributes,
-        config=config_parsed,
+        config=config,
         **kwargs,
     )
 

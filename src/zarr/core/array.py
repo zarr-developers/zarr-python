@@ -31,7 +31,7 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Co
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_config
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams, parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -62,7 +62,6 @@ from zarr.core.common import (
     _warn_order_kwarg,
     concurrent_map,
     parse_dtype,
-    parse_order,
     parse_shapelike,
     product,
 )
@@ -564,6 +563,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         filters: list[dict[str, JSON]] | None = None,
         compressor: CompressorLike = "auto",
         # runtime
+        write_empty_chunks: bool | None = None,
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
@@ -584,7 +584,34 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _chunks = normalize_chunks(chunks, shape, dtype_parsed.itemsize)
         else:
             _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.itemsize)
-        config_parsed = parse_array_config(config)
+
+        if config is not None:
+            config_parsed = parse_array_config(config)
+            if write_empty_chunks is not None:
+                msg = (
+                    "Both write_empty_chunks and config keyword arguments are set. "
+                    "This is redundant. When both are set, write_empty_chunks will be ignored and "
+                    "config will be used."
+                )
+                warnings.warn(UserWarning(msg), stacklevel=1)
+            if order is not None:
+                msg = (
+                    "Both order and config keyword arguments are set. "
+                    "This is redundant. When both are set, order will be ignored and "
+                    "config will be used."
+                )
+                warnings.warn(UserWarning(msg), stacklevel=1)
+        else:
+            config_dict: ArrayConfigParams = {}
+            if write_empty_chunks is not None:
+                config_dict["write_empty_chunks"] = write_empty_chunks
+            if order is not None:
+                if zarr_format == 3:
+                    _warn_order_kwarg()
+                else:
+                    config_dict["order"] = order
+
+            config_parsed = ArrayConfig.from_dict(config_dict)
 
         result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
         if zarr_format == 3:
@@ -600,10 +627,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(
                     "compressor cannot be used for arrays with zarr_format 3. Use bytes-to-bytes codecs instead."
                 )
-
-            if order is not None:
-                _warn_order_kwarg()
-                config_parsed = replace(config_parsed, order=order)
 
             result = await cls._create_v3(
                 store_path,
@@ -630,11 +653,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
 
-            if order is None:
-                order_parsed = parse_order(zarr_config.get("array.order"))
-            else:
-                order_parsed = order
-
             result = await cls._create_v2(
                 store_path,
                 shape=shape,
@@ -642,7 +660,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 chunks=_chunks,
                 dimension_separator=dimension_separator,
                 fill_value=fill_value,
-                order=order_parsed,
                 config=config_parsed,
                 filters=filters,
                 compressor=compressor,
@@ -788,7 +805,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ChunkCoords,
         dtype: np.dtype[Any],
         chunks: ChunkCoords,
-        order: MemoryOrder,
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: float | None = None,
@@ -820,7 +836,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             shape=shape,
             dtype=dtype,
             chunks=chunks,
-            order=order,
+            order=config.order,
             dimension_separator=dimension_separator,
             fill_value=fill_value,
             filters=filters,
