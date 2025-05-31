@@ -353,19 +353,28 @@ def test_array_order(zarr_format: ZarrFormat) -> None:
         raise AssertionError
 
 
+@pytest.mark.parametrize("config_order", ["C", "F"])
 @pytest.mark.parametrize("order", ["C", "F"])
-def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
-    with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
-        arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
-    assert arr.order == order
+def test_array_order_warns(
+    order: MemoryOrder, config_order: MemoryOrder, zarr_format: ZarrFormat
+) -> None:
+    with zarr.config.set({"array.order": config_order}):
+        if zarr_format == 3:
+            with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
+                arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+            # For zarr v3, order should be ignored and taken from config
+            assert arr.order == config_order
+        else:
+            arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+            assert arr.order == order
 
-    vals = np.asarray(arr)
-    if order == "C":
-        assert vals.flags.c_contiguous
-    elif order == "F":
-        assert vals.flags.f_contiguous
-    else:
-        raise AssertionError
+        vals = np.asarray(arr)
+        if arr.order == "C":
+            assert vals.flags.c_contiguous
+        elif arr.order == "F":
+            assert vals.flags.f_contiguous
+        else:
+            raise AssertionError
 
 
 # def test_lazy_loader():
@@ -1339,3 +1348,23 @@ def test_auto_chunks(f: Callable[..., Array]) -> None:
 
     a = f(**kwargs)
     assert a.chunks == (500, 500)
+
+
+def test_order_warning() -> None:
+    # Passing order shouldn't warn for v2
+    zarr.create(
+        (1,),
+        store={},
+        order="F",
+        zarr_format=2,
+    )
+    # Passing order should warn for v3
+    with pytest.warns(
+        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+    ):
+        zarr.create(
+            (1,),
+            store={},
+            order="F",
+            zarr_format=3,
+        )

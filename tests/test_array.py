@@ -5,6 +5,7 @@ import multiprocessing as mp
 import pickle
 import re
 import sys
+from contextlib import nullcontext
 from itertools import accumulate
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
@@ -1425,14 +1426,23 @@ class TestCreateArray:
             # Test without passing config parameter
             config = None
 
-        arr = zarr.create_array(
-            store=store,
-            shape=(2, 2),
-            zarr_format=zarr_format,
-            dtype="i4",
-            order=order,
-            config=config,
-        )
+        if zarr_format == 3 and order is not None:
+            ctx = pytest.warns(
+                RuntimeWarning,
+                match="The `order` keyword argument has no effect for Zarr format 3 arrays",
+            )
+        else:
+            ctx = nullcontext()
+
+        with ctx:
+            arr = zarr.create_array(
+                store=store,
+                shape=(2, 2),
+                zarr_format=zarr_format,
+                dtype="i4",
+                order=order,
+                config=config,
+            )
         assert arr.order == expected
         if zarr_format == 2:
             assert arr.metadata.zarr_format == 2
