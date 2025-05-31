@@ -4263,6 +4263,7 @@ async def init_array(
             attributes=attributes,
         )
     else:
+        # zarr_format == 3
         array_array, array_bytes, bytes_bytes = _parse_chunk_encoding_v3(
             compressors=compressors,
             filters=filters,
@@ -4295,8 +4296,6 @@ async def init_array(
             config = {}
         if order is not None:
             _warn_order_kwarg()
-            if isinstance(config, dict):
-                config["order"] = config.get("order", order)
 
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
