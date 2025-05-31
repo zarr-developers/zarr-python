@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 
 from typing_extensions import ParamSpec
 
+from zarr._constants import IS_WASM
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -133,6 +134,36 @@ def sync(
     --------
     >>> sync(async_function(), existing_loop)
     """
+    # WASM environments (like Pyodide) cannot start new threads, so we need to handle
+    # coroutines differently. We integrate with the existing Pyodide WebLoop which
+    # schedules tasks on the browser's event loop using setTimeout():
+    # https://developer.mozilla.org/en-US/docs/Web/API/setTimeout
+    if IS_WASM:  # pragma: no cover
+        # This code path is covered in the Pyodide/WASM CI job.
+        current_loop = asyncio.get_running_loop()
+        result = current_loop.run_until_complete(coro)
+        # Check if run_until_complete actually executed the coroutine or just returned a task
+        # In browsers without JSPI, run_until_complete is a no-op that will return the task/future.
+        if isinstance(result, (asyncio.Task, asyncio.Future)):
+            raise RuntimeError(
+                "Cannot use synchronous zarr API in browser environments without JSPI. "
+                "Zarr requires JavaScript Promise Integration (JSPI) to work in browsers "
+                "but JSPI is not enabled in your environment.\n"
+                "Solutions:\n"
+                "1. Use the async API instead, with zarr.api.asynchronous"
+                "2. Enable JSPI in your Pyodide setup with "
+                "`loadPyodide({ enableRunUntilComplete: true })`"
+                "3. Use a JSPI-enabled website or browser configuration"
+                "4. If you are using Node.js, pass the --experimental-wasm-jspi flag (v20+)"
+                "\n"
+                "Note: JSPI is experimental and not yet standardised across all browsers. See "
+                "https://webassembly.org/features/ for more information and status."
+            )
+        return result
+
+    # This code path is the original thread-based implementation
+    # for non-WASM environments; it creates a dedicated I/O thread
+    # with its own event loop.
     if loop is None:
         # NB: if the loop is not running *yet*, it is OK to submit work
         # and we will wait for it
@@ -170,6 +201,13 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 
     The loop will be running on a separate thread.
     """
+    if IS_WASM:  # pragma: no cover
+        # This case is covered in the Pyodide/WASM CI job.
+        raise RuntimeError(
+            "Thread-based event loop not available in WASM environment. "
+            "Use zarr.api.asynchronous or ensure sync() handles WASM case."
+        )
+
     if loop[0] is None:
         with _get_lock():
             # repeat the check just in case the loop got filled between the

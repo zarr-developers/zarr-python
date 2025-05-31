@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
+from zarr._constants import IS_WASM
 from zarr.core.buffer import default_buffer_prototype
 
 pytest.importorskip("hypothesis")
@@ -76,6 +77,7 @@ def deep_equal(a: Any, b: Any) -> bool:
     return a == b
 
 
+@pytest.mark.slow_wasm
 @given(data=st.data(), zarr_format=zarr_formats)
 def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
@@ -83,6 +85,7 @@ def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.slow_wasm
 @given(array=arrays())
 def test_array_creates_implicit_groups(array):
     path = array.path
@@ -102,6 +105,7 @@ def test_array_creates_implicit_groups(array):
 
 
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
+@pytest.mark.skipif(IS_WASM, reason="Unreliable test on Pyodide/WASM due to Hypothesis")
 @settings(deadline=None)
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
@@ -117,6 +121,7 @@ def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.skipif(IS_WASM, reason="Unreliable test on Pyodide/WASM due to Hypothesis")
 @given(data=st.data())
 def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
@@ -138,6 +143,7 @@ def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.skipif(IS_WASM, reason="Unreliable test on Pyodide/WASM due to Hypothesis")
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
@@ -161,6 +167,7 @@ def test_vindex(data: st.DataObject) -> None:
     # assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.slow_wasm
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
 async def test_roundtrip_array_metadata_from_store(
     store: Store, meta: ArrayV2Metadata | ArrayV3Metadata

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pathlib
+import sys
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -10,6 +11,7 @@ import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr import AsyncGroup, config
+from zarr._constants import IS_WASM
 from zarr.abc.store import Store
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 from zarr.core.array import (
@@ -105,6 +107,45 @@ def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
     return result
 
 
+@pytest.fixture(autouse=(IS_WASM and "pyodide" in sys.modules), scope="session")
+def patch_pyodide_webloop_for_pytest() -> Generator[None, None, None]:
+    """
+    Patch Pyodide's WebLoop to fix interoperability with pytest-asyncio.
+
+    WebLoop.shutdown_asyncgens() raises NotImplementedError, which causes
+    pytest-asyncio to issue warnings during test cleanup and potentially
+    cause resource leaks that make tests hang. This is a bit of a
+    hack, but it allows us to run tests that use pytest-asyncio.
+
+    This is necessary because pytest-asyncio tries to clean up async generators
+    when tearing down test event loops, but Pyodide's WebLoop doesn't support
+    this as it integrates with the browser's event loop rather than managing
+    its own lifecycle.
+    """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        import pyodide.webloop
+
+        if hasattr(pyodide.webloop.WebLoop, "shutdown_asyncgens"):
+
+            async def no_op_shutdown_asyncgens(self) -> None:  # type: ignore[no-untyped-def]
+                return
+
+            pyodide.webloop.WebLoop.shutdown_asyncgens = no_op_shutdown_asyncgens
+            logger.debug("Patched WebLoop.shutdown_asyncgens for pytest-asyncio compatibility")
+
+        yield
+
+    # If patching fails for any reason, we log it, but we won't want to crash the tests
+    except Exception as e:
+        msg = f"Could not patch WebLoop for pytest compatibility: {e}"
+        logger.debug(msg)
+        yield
+
+
 @dataclass
 class AsyncGroupRequest:
     zarr_format: ZarrFormat
@@ -176,15 +217,30 @@ def pytest_addoption(parser: Any) -> None:
         default=False,
         help="run slow hypothesis tests",
     )
+    parser.addoption(
+        "--run-slow-wasm",
+        action="store_true",
+        default=False,
+        help="run slow tests only applicable to WASM",
+    )
 
 
 def pytest_collection_modifyitems(config: Any, items: Any) -> None:
     if config.getoption("--run-slow-hypothesis"):
         return
+    if config.getoption("--run-slow-wasm") and IS_WASM:
+        return
+
     skip_slow_hyp = pytest.mark.skip(reason="need --run-slow-hypothesis option to run")
+    skip_slow_wasm = pytest.mark.skip(
+        reason="need --run-slow-wasm option to run in WASM, or not running in WASM"
+    )
+
     for item in items:
         if "slow_hypothesis" in item.keywords:
             item.add_marker(skip_slow_hyp)
+        if "slow_wasm" in item.keywords and IS_WASM:
+            item.add_marker(skip_slow_wasm)
 
 
 settings.register_profile(

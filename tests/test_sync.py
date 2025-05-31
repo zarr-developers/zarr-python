@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import zarr
+from zarr._constants import IS_WASM
 from zarr.core.sync import (
     SyncError,
     SyncMixin,
@@ -16,6 +17,11 @@ from zarr.core.sync import (
     sync,
 )
 from zarr.storage import MemoryStore
+
+pytestmark = pytest.mark.skipif(
+    IS_WASM,
+    reason="can't start new threads in Pyodide/WASM, so the synchronous API doesn't work",
+)
 
 
 @pytest.fixture(params=[True, False])
