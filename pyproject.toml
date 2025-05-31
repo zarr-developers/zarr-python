@@ -111,7 +111,7 @@ docs = [
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
-Changelog = "https://zarr.readthedocs.io/en/stable/release.html"
+Changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
 Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
