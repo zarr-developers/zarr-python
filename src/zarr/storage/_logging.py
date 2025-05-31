@@ -24,7 +24,7 @@ T_Store = TypeVar("T_Store", bound=Store)
 
 class LoggingStore(WrapperStore[T_Store]):
     """
-    Store wrapper that logs all calls to the wrapped store.
+    Store that logs all calls to another wrapped store.
 
     Parameters
     ----------

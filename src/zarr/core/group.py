@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import itertools
 import json
 import logging
 import warnings
 from collections import defaultdict
-from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
@@ -42,6 +42,7 @@ from zarr.core.common import (
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
     ChunkCoords,
+    DimensionNames,
     NodeType,
     ShapeLike,
     ZarrFormat,
@@ -49,7 +50,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import V3JsonEncoder
+from zarr.core.metadata.v3 import V3JsonEncoder, _replace_special_floats
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import StoreLike, StorePath
@@ -63,6 +64,8 @@ if TYPE_CHECKING:
         Coroutine,
         Generator,
         Iterable,
+        Iterator,
+        Mapping,
     )
     from typing import Any
 
@@ -79,7 +82,7 @@ DefaultT = TypeVar("DefaultT")
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
     if data in (2, 3):
-        return cast(ZarrFormat, data)
+        return cast("ZarrFormat", data)
     msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
     raise ValueError(msg)
 
@@ -87,7 +90,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
     if data in ("array", "group"):
-        return cast(Literal["array", "group"], data)
+        return cast("Literal['array', 'group']", data)
     raise MetadataValidationError("node_type", "array or group", data)
 
 
@@ -334,7 +337,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), cls=V3JsonEncoder).encode()
+                    json.dumps(_replace_special_floats(self.to_dict()), cls=V3JsonEncoder).encode()
                 )
             }
         else:
@@ -355,9 +358,15 @@ class GroupMetadata(Metadata):
                 assert isinstance(consolidated_metadata, dict)
                 for k, v in consolidated_metadata.items():
                     attrs = v.pop("attributes", None)
-                    d[f"{k}/{ZATTRS_JSON}"] = attrs
+                    d[f"{k}/{ZATTRS_JSON}"] = _replace_special_floats(attrs)
                     if "shape" in v:
                         # it's an array
+                        if isinstance(v.get("fill_value", None), np.void):
+                            v["fill_value"] = base64.standard_b64encode(
+                                cast("bytes", v["fill_value"])
+                            ).decode("ascii")
+                        else:
+                            v = _replace_special_floats(v)
                         d[f"{k}/{ZARRAY_JSON}"] = v
                     else:
                         d[f"{k}/{ZGROUP_JSON}"] = {
@@ -999,7 +1008,7 @@ class AsyncGroup:
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
@@ -1757,6 +1766,10 @@ class AsyncGroup:
 
 @dataclass(frozen=True)
 class Group(SyncMixin):
+    """
+    A Zarr group.
+    """
+
     _async_group: AsyncGroup
 
     @classmethod
@@ -2407,7 +2420,7 @@ class Group(SyncMixin):
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
@@ -2801,7 +2814,7 @@ class Group(SyncMixin):
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
@@ -3271,8 +3284,7 @@ def _ensure_consistent_zarr_format(
         raise ValueError(msg)
 
     return cast(
-        Mapping[str, GroupMetadata | ArrayV2Metadata]
-        | Mapping[str, GroupMetadata | ArrayV3Metadata],
+        "Mapping[str, GroupMetadata | ArrayV2Metadata] | Mapping[str, GroupMetadata | ArrayV3Metadata]",
         data,
     )
 
