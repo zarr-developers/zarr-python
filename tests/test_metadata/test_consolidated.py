@@ -618,6 +618,7 @@ class TestConsolidated:
         expected = ["b", "b/c"]
         assert result == expected
 
+
 @pytest.mark.parametrize("fill_value", [np.nan, np.inf, -np.inf])
 async def test_consolidated_metadata_encodes_special_chars(
     memory_store: Store, zarr_format: ZarrFormat, fill_value: float
