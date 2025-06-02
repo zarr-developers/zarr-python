@@ -201,7 +201,10 @@ async def consolidate_metadata(
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
 
-    members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
+    members_metadata = {
+        k: v.metadata
+        async for k, v in group.members(max_depth=None, use_consolidated_for_children=False)
+    }
     # While consolidating, we want to be explicit about when child groups
     # are empty by inserting an empty dict for consolidated_metadata.metadata
     for k, v in members_metadata.items():
@@ -992,19 +995,11 @@ async def create(
     )
     zdtype = parse_data_type(dtype, zarr_format=zarr_format)
     if zarr_format == 2:
-        if chunks is None:
-            chunks = shape
         default_filters, default_compressor = _get_default_chunk_encoding_v2(zdtype)
         if not filters:
             filters = default_filters  # type: ignore[assignment]
         if compressor == "auto":
             compressor = default_compressor
-    elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
-        if chunks is not None:
-            chunk_shape = chunks
-            chunks = None
-        else:
-            chunk_shape = shape
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
