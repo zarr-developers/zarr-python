@@ -198,7 +198,9 @@ class _ShardReader(ShardMapping):
 
     @classmethod
     def create_empty(
-        cls, chunks_per_shard: ChunkCoords, buffer_prototype: BufferPrototype | None = None
+        cls,
+        chunks_per_shard: ChunkCoords,
+        buffer_prototype: BufferPrototype | None = None,
     ) -> _ShardReader:
         if buffer_prototype is None:
             buffer_prototype = default_buffer_prototype()
@@ -248,7 +250,9 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
 
     @classmethod
     def create_empty(
-        cls, chunks_per_shard: ChunkCoords, buffer_prototype: BufferPrototype | None = None
+        cls,
+        chunks_per_shard: ChunkCoords,
+        buffer_prototype: BufferPrototype | None = None,
     ) -> _ShardBuilder:
         if buffer_prototype is None:
             buffer_prototype = default_buffer_prototype()
@@ -330,13 +334,17 @@ class _MergingShardBuilder(ShardMutableMapping):
 
 
 class _ChunkCoordsByteSlice(NamedTuple):
+    """Holds a chunk's coordinates and it's byte range in a serialized shard."""
+
     coords: ChunkCoords
     byte_slice: slice
 
 
 @dataclass(frozen=True)
 class ShardingCodec(
-    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
+    ArrayBytesCodec,
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
 ):
     chunk_shape: ChunkCoords
     codecs: tuple[Codec, ...]
@@ -446,7 +454,10 @@ class ShardingCodec(
 
         # setup output array
         out = chunk_spec.prototype.nd_buffer.create(
-            shape=shard_shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
+            shape=shard_shape,
+            dtype=shard_spec.dtype,
+            order=shard_spec.order,
+            fill_value=0,
         )
         shard_dict = await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
 
@@ -490,7 +501,10 @@ class ShardingCodec(
 
         # setup output array
         out = shard_spec.prototype.nd_buffer.create(
-            shape=indexer.shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
+            shape=indexer.shape,
+            dtype=shard_spec.dtype,
+            order=shard_spec.order,
+            fill_value=0,
         )
 
         indexed_chunks = list(indexer)
@@ -532,101 +546,6 @@ class ShardingCodec(
             return out.reshape(indexer.sel_shape)
         else:
             return out
-
-    async def _load_partial_shard_maybe(
-        self,
-        byte_getter: ByteGetter,
-        prototype: BufferPrototype,
-        chunks_per_shard: ChunkCoords,
-        all_chunk_coords: set[ChunkCoords],
-    ) -> ShardMapping | None:
-        shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
-        if shard_index is None:
-            return None
-
-        chunks = [
-            _ChunkCoordsByteSlice(chunk_coords, slice(*chunk_byte_slice))
-            for chunk_coords in all_chunk_coords
-            if (chunk_byte_slice := shard_index.get_chunk_slice(chunk_coords))
-        ]
-        if len(chunks) == 0:
-            return {}
-
-        groups = self._coalesce_chunks(chunks)
-
-        shard_dicts = await concurrent_map(
-            [(group, byte_getter, prototype) for group in groups],
-            self._get_group_bytes,
-            config.get("async.concurrency"),
-        )
-
-        shard_dict: ShardMutableMapping = {}
-        for d in shard_dicts:
-            shard_dict.update(d)
-
-        return shard_dict
-
-    def _coalesce_chunks(
-        self,
-        chunks: list[_ChunkCoordsByteSlice],
-    ) -> list[list[_ChunkCoordsByteSlice]]:
-        """
-        Combine chunks from a single shard into groups that should be read together
-        in a single request.
-
-        Respects the following configuration options:
-        - `sharding.read.coalesce_max_gap_bytes`: The maximum gap between
-          chunks to coalesce into a single group.
-        - `sharding.read.coalesce_max_bytes`: The maximum number of bytes in a group.
-        """
-        max_gap_bytes = config.get("sharding.read.coalesce_max_gap_bytes")
-        coalesce_max_bytes = config.get("sharding.read.coalesce_max_bytes")
-
-        sorted_chunks = sorted(chunks, key=lambda c: c.byte_slice.start)
-
-        groups = []
-        current_group = [sorted_chunks[0]]
-
-        for chunk in sorted_chunks[1:]:
-            gap_to_chunk = chunk.byte_slice.start - current_group[-1].byte_slice.stop
-            size_if_coalesced = chunk.byte_slice.stop - current_group[0].byte_slice.start
-            if gap_to_chunk < max_gap_bytes and size_if_coalesced < coalesce_max_bytes:
-                current_group.append(chunk)
-            else:
-                groups.append(current_group)
-                current_group = [chunk]
-
-        groups.append(current_group)
-
-        return groups
-
-    async def _get_group_bytes(
-        self,
-        group: list[_ChunkCoordsByteSlice],
-        byte_getter: ByteGetter,
-        prototype: BufferPrototype,
-    ) -> ShardMapping:
-        group_start = group[0].byte_slice.start
-        group_end = group[-1].byte_slice.stop
-
-        # A single call to retrieve the bytes for the entire group.
-        group_bytes = await byte_getter.get(
-            prototype=prototype,
-            byte_range=RangeByteRequest(group_start, group_end),
-        )
-        if group_bytes is None:
-            return {}
-
-        # Extract the bytes corresponding to each chunk in group from group_bytes.
-        shard_dict = {}
-        for chunk in group:
-            chunk_slice = slice(
-                chunk.byte_slice.start - group_start,
-                chunk.byte_slice.stop - group_start,
-            )
-            shard_dict[chunk.coords] = group_bytes[chunk_slice]
-
-        return shard_dict
 
     async def _encode_single(
         self,
@@ -688,7 +607,9 @@ class ShardingCodec(
 
         indexer = list(
             get_indexer(
-                selection, shape=shard_shape, chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape)
+                selection,
+                shape=shard_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             )
         )
 
@@ -762,7 +683,8 @@ class ShardingCodec(
             get_pipeline_class()
             .from_codecs(self.index_codecs)
             .compute_encoded_size(
-                16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
+                16 * product(chunks_per_shard),
+                self._get_index_chunk_spec(chunks_per_shard),
             )
         )
 
@@ -807,7 +729,8 @@ class ShardingCodec(
             )
         else:
             index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(), byte_range=SuffixByteRequest(shard_index_size)
+                prototype=numpy_buffer_prototype(),
+                byte_range=SuffixByteRequest(shard_index_size),
             )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)
@@ -821,7 +744,10 @@ class ShardingCodec(
         ) or _ShardIndex.create_empty(chunks_per_shard)
 
     async def _load_full_shard_maybe(
-        self, byte_getter: ByteGetter, prototype: BufferPrototype, chunks_per_shard: ChunkCoords
+        self,
+        byte_getter: ByteGetter,
+        prototype: BufferPrototype,
+        chunks_per_shard: ChunkCoords,
     ) -> _ShardReader | None:
         shard_bytes = await byte_getter.get(prototype=prototype)
 
@@ -830,6 +756,110 @@ class ShardingCodec(
             if shard_bytes
             else None
         )
+
+    async def _load_partial_shard_maybe(
+        self,
+        byte_getter: ByteGetter,
+        prototype: BufferPrototype,
+        chunks_per_shard: ChunkCoords,
+        all_chunk_coords: set[ChunkCoords],
+    ) -> ShardMapping | None:
+        """
+        Read bytes from `byte_getter` for the case where the read is less than a full shard.
+        Returns a mapping of chunk coordinates to bytes.
+        """
+        shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
+        if shard_index is None:
+            return None
+
+        chunks = [
+            _ChunkCoordsByteSlice(chunk_coords, slice(*chunk_byte_slice))
+            for chunk_coords in all_chunk_coords
+            # Drop chunks where index lookup fails
+            if (chunk_byte_slice := shard_index.get_chunk_slice(chunk_coords))
+        ]
+        if len(chunks) == 0:
+            return {}
+
+        groups = self._coalesce_chunks(chunks)
+
+        shard_dicts = await concurrent_map(
+            [(group, byte_getter, prototype) for group in groups],
+            self._get_group_bytes,
+            config.get("async.concurrency"),
+        )
+
+        shard_dict: ShardMutableMapping = {}
+        for d in shard_dicts:
+            shard_dict.update(d)
+
+        return shard_dict
+
+    def _coalesce_chunks(
+        self,
+        chunks: list[_ChunkCoordsByteSlice],
+    ) -> list[list[_ChunkCoordsByteSlice]]:
+        """
+        Combine chunks from a single shard into groups that should be read together
+        in a single request.
+
+        Respects the following configuration options:
+        - `sharding.read.coalesce_max_gap_bytes`: The maximum gap between
+          chunks to coalesce into a single group.
+        - `sharding.read.coalesce_max_bytes`: The maximum number of bytes in a group.
+        """
+        max_gap_bytes = config.get("sharding.read.coalesce_max_gap_bytes")
+        coalesce_max_bytes = config.get("sharding.read.coalesce_max_bytes")
+
+        sorted_chunks = sorted(chunks, key=lambda c: c.byte_slice.start)
+
+        groups = []
+        current_group = [sorted_chunks[0]]
+
+        for chunk in sorted_chunks[1:]:
+            gap_to_chunk = chunk.byte_slice.start - current_group[-1].byte_slice.stop
+            size_if_coalesced = chunk.byte_slice.stop - current_group[0].byte_slice.start
+            if gap_to_chunk < max_gap_bytes and size_if_coalesced < coalesce_max_bytes:
+                current_group.append(chunk)
+            else:
+                groups.append(current_group)
+                current_group = [chunk]
+
+        groups.append(current_group)
+
+        return groups
+
+    async def _get_group_bytes(
+        self,
+        group: list[_ChunkCoordsByteSlice],
+        byte_getter: ByteGetter,
+        prototype: BufferPrototype,
+    ) -> ShardMapping:
+        """
+        Reads a possibly coalesced group of one or more chunks from a shard.
+        Returns a mapping of chunk coordinates to bytes.
+        """
+        group_start = group[0].byte_slice.start
+        group_end = group[-1].byte_slice.stop
+
+        # A single call to retrieve the bytes for the entire group.
+        group_bytes = await byte_getter.get(
+            prototype=prototype,
+            byte_range=RangeByteRequest(group_start, group_end),
+        )
+        if group_bytes is None:
+            return {}
+
+        # Extract the bytes corresponding to each chunk in group from group_bytes.
+        shard_dict = {}
+        for chunk in group:
+            chunk_slice = slice(
+                chunk.byte_slice.start - group_start,
+                chunk.byte_slice.stop - group_start,
+            )
+            shard_dict[chunk.coords] = group_bytes[chunk_slice]
+
+        return shard_dict
 
     def compute_encoded_size(self, input_byte_length: int, shard_spec: ArraySpec) -> int:
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
