@@ -1,4 +1,3 @@
-# NOOP change
 """
 The config module is responsible for managing the configuration of zarr and is based on the Donfig python library.
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers, first register the implementations
