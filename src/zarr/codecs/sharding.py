@@ -589,10 +589,8 @@ class ShardingCodec(
 
         for chunk in sorted_chunks[1:]:
             gap_to_chunk = chunk.byte_slice.start - current_group[-1].byte_slice.stop
-            current_group_size = (
-                current_group[-1].byte_slice.stop - current_group[0].byte_slice.start
-            )
-            if gap_to_chunk < max_gap_bytes and current_group_size < coalesce_max_bytes:
+            size_if_coalesced = chunk.byte_slice.stop - current_group[0].byte_slice.start
+            if gap_to_chunk < max_gap_bytes and size_if_coalesced < coalesce_max_bytes:
                 current_group.append(chunk)
             else:
                 groups.append(current_group)
