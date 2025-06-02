@@ -334,7 +334,7 @@ class _MergingShardBuilder(ShardMutableMapping):
 
 
 class _ChunkCoordsByteSlice(NamedTuple):
-    """Holds a chunk's coordinates and it's byte range in a serialized shard."""
+    """Holds a chunk's coordinates and its byte range in a serialized shard."""
 
     coords: ChunkCoords
     byte_slice: slice
@@ -765,7 +765,7 @@ class ShardingCodec(
         all_chunk_coords: set[ChunkCoords],
     ) -> ShardMapping | None:
         """
-        Read bytes from `byte_getter` for the case where the read is less than a full shard.
+        Read chunks from `byte_getter` for the case where the read is less than a full shard.
         Returns a mapping of chunk coordinates to bytes.
         """
         shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
