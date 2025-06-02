@@ -103,6 +103,12 @@ def test_config_defaults_set() -> None:
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                 "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
             },
+            "sharding": {
+                "read": {
+                    "coalesce_max_bytes": 104857600,  # 100 MiB
+                    "coalesce_max_gap_bytes": 1048576,  # 1 MiB
+                },
+            },
         }
     ]
     assert config.get("array.order") == "C"
@@ -110,6 +116,8 @@ def test_config_defaults_set() -> None:
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
+    assert config.get("sharding.read.coalesce_max_bytes") == 100 * 2**20  # 100 MiB
+    assert config.get("sharding.read.coalesce_max_gap_bytes") == 2**20  # 1 MiB
 
 
 @pytest.mark.parametrize(

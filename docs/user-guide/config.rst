@@ -88,4 +88,6 @@ This is the current default configuration::
     'default_zarr_format': 3,
     'json_indent': 2,
     'ndbuffer': 'zarr.core.buffer.cpu.NDBuffer',
+    'sharding': {'read': {'coalesce_max_bytes': 104857600,
+                          'coalesce_max_gap_bytes': 1048576}},
     'threading': {'max_workers': None}}
