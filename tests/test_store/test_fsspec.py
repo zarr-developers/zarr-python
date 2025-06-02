@@ -339,10 +339,22 @@ def test_no_wrap_async_filesystem() -> None:
     reason="No AsyncFileSystemWrapper",
 )
 def test_open_fsmap_file(tmp_path: pathlib.Path) -> None:
-    fsspec = pytest.importorskip("fsspec")
+    min_fsspec_with_async_wrapper = parse_version("2024.12.0")
+    current_version = parse_version(fsspec.__version__)
+
     fs = fsspec.filesystem("file", auto_mkdir=True)
     mapper = fs.get_mapper(tmp_path)
-    array_roundtrip(mapper)
+
+    if current_version < min_fsspec_with_async_wrapper:
+        # Expect ImportError for older versions
+        with pytest.raises(
+            ImportError,
+            match=r"The filesystem .* is synchronous, and the required AsyncFileSystemWrapper is not available.*",
+        ):
+            array_roundtrip(mapper)
+    else:
+        # Newer versions should work
+        array_roundtrip(mapper)
 
 
 @pytest.mark.skipif(
