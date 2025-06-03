@@ -16,6 +16,8 @@ from zarr.storage._utils import normalize_path
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
     from fsspec.mapping import FSMap
+else:
+    FSMap = None
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
