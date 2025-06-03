@@ -778,8 +778,8 @@ class ShardingCodec(
             # Drop chunks where index lookup fails
             if (chunk_byte_slice := shard_index.get_chunk_slice(chunk_coords))
         ]
-        if len(chunks) == 0:
-            return {}
+        if len(chunks) < len(all_chunk_coords):
+            return None
 
         groups = self._coalesce_chunks(chunks)
 
@@ -791,6 +791,8 @@ class ShardingCodec(
 
         shard_dict: ShardMutableMapping = {}
         for d in shard_dicts:
+            if d is None:
+                return None
             shard_dict.update(d)
 
         return shard_dict
@@ -834,7 +836,7 @@ class ShardingCodec(
         group: list[_ChunkCoordsByteSlice],
         byte_getter: ByteGetter,
         prototype: BufferPrototype,
-    ) -> ShardMapping:
+    ) -> ShardMapping | None:
         """
         Reads a possibly coalesced group of one or more chunks from a shard.
         Returns a mapping of chunk coordinates to bytes.
@@ -848,7 +850,7 @@ class ShardingCodec(
             byte_range=RangeByteRequest(group_start, group_end),
         )
         if group_bytes is None:
-            return {}
+            return None
 
         # Extract the bytes corresponding to each chunk in group from group_bytes.
         shard_dict = {}
