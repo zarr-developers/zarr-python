@@ -321,10 +321,12 @@ async def make_store_path(
             store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
         elif _has_fsspec and isinstance(store_like, FSMap):
             if path:
-                raise ValueError("'path' was provided but is not used for FSMap store_like objects")
+                raise ValueError(
+                    "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
+                )
             if storage_options:
                 raise ValueError(
-                    "'storage_options was provided but is not used for FSMap store_like objects"
+                    "'storage_options was provided but is not used for FSMap store_like objects. Specify the storage options when creating the FSMap instance instead."
                 )
             store = FsspecStore.from_mapper(store_like, read_only=_read_only)
         else:
