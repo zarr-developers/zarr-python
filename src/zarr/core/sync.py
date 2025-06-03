@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
+from textwrap import dedent
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from typing_extensions import ParamSpec
@@ -146,18 +147,28 @@ def sync(
         # In browsers without JSPI, run_until_complete is a no-op that will return the task/future.
         if isinstance(result, (asyncio.Task, asyncio.Future)):
             raise RuntimeError(
-                "Cannot use synchronous zarr API in browser environments without JSPI. "
-                "Zarr requires JavaScript Promise Integration (JSPI) to work in browsers "
-                "but JSPI is not enabled in your environment.\n"
-                "Solutions:\n"
-                "1. Use the async API instead, with zarr.api.asynchronous"
-                "2. Enable JSPI in your Pyodide setup with "
-                "`loadPyodide({ enableRunUntilComplete: true })`"
-                "3. Use a JSPI-enabled website or browser configuration"
-                "4. If you are using Node.js, pass the --experimental-wasm-jspi flag (v20+)"
-                "\n"
-                "Note: JSPI is experimental and not yet standardised across all browsers. See "
-                "https://webassembly.org/features/ for more information and status."
+                dedent("""
+                Cannot use synchronous zarr API in browser-based environments without JSPI.
+                Zarr requires JavaScript Promise Integration (JSPI) to work in browsers,
+                but JSPI is not enabled in your environment.
+
+                The available solutions are to either use Zarr's async API instead with
+                zarr.api.asynchronous, or if you want to use your existing code, follow
+                these steps (all required):
+                1. Enable JSPI in your Pyodide setup with
+                `loadPyodide({ enableRunUntilComplete: true })` AND
+                2. Use a JSPI-enabled website or browser configuration (for example, with
+                --enable-features=WebAssemblyExperimentalJSPI for Google Chrome). If you
+                are the owner of a website, you may sign up for an origin trial for JSPI.
+
+                If you are using Node.js, pass the --experimental-wasm-jspi flag
+                (available for v20+).
+
+                Note: JSPI is experimental and not yet standardised across all browsers.
+                See https://webassembly.org/features/ for more information and status,
+                https://v8.dev/blog/jspi#how-can-i-use-jspi-today%3F for usage, and
+                https://v8.dev/blog/jspi-ot for more information on origin trials.
+            """)
             )
         return result
 
