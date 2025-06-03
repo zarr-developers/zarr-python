@@ -1193,7 +1193,7 @@ class CoordinateIndexer(Indexer):
             stop = self.chunk_nitems_cumsum[chunk_rix]
             out_selection: slice | npt.NDArray[np.intp]
             if self.sel_sort is None:
-                out_selection = slice(start, stop)
+                out_selection = np.arange(start, stop)
             else:
                 out_selection = self.sel_sort[start:stop]
 

@@ -79,8 +79,14 @@ def deep_equal(a: Any, b: Any) -> bool:
 @given(data=st.data(), zarr_format=zarr_formats)
 def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
-    zarray = data.draw(arrays(arrays=st.just(nparray), zarr_formats=st.just(zarr_format)))
-    assert_array_equal(nparray, zarray[:])
+    zarray = data.draw(
+        arrays(arrays=st.just(nparray), zarr_formats=st.just(zarr_format))
+    )
+    try:
+        assert_array_equal(nparray, zarray[:])
+    except Exception as e:
+        breakpoint()
+        raise e
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -92,12 +98,20 @@ def test_array_creates_implicit_groups(array):
         parent = "/".join(ancestry[: i + 1])
         if array.metadata.zarr_format == 2:
             assert (
-                sync(array.store.get(f"{parent}/.zgroup", prototype=default_buffer_prototype()))
+                sync(
+                    array.store.get(
+                        f"{parent}/.zgroup", prototype=default_buffer_prototype()
+                    )
+                )
                 is not None
             )
         elif array.metadata.zarr_format == 3:
             assert (
-                sync(array.store.get(f"{parent}/zarr.json", prototype=default_buffer_prototype()))
+                sync(
+                    array.store.get(
+                        f"{parent}/zarr.json", prototype=default_buffer_prototype()
+                    )
+                )
                 is not None
             )
 
@@ -115,7 +129,9 @@ def test_basic_indexing(data: st.DataObject) -> None:
     actual = zarray[indexer]
     assert_array_equal(nparray[indexer], actual)
 
-    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
+    new_data = data.draw(
+        numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype)
+    )
     zarray[indexer] = new_data
     nparray[indexer] = new_data
     assert_array_equal(nparray, zarray[:])
@@ -137,7 +153,9 @@ def test_oindex(data: st.DataObject) -> None:
         if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
             # behaviour of setitem with repeated indices is not guaranteed in practice
             assume(False)
-    new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
+    new_data = data.draw(
+        numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype)
+    )
     nparray[npindexer] = new_data
     zarray.oindex[zindexer] = new_data
     assert_array_equal(nparray, zarray[:])
@@ -152,19 +170,12 @@ def test_vindex(data: st.DataObject) -> None:
 
     indexer = data.draw(
         npst.integer_array_indices(
-            shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
+            shape=nparray.shape,
+            result_shape=npst.array_shapes(min_side=1, max_dims=None),
         )
     )
     actual = zarray.vindex[indexer]
     assert_array_equal(nparray[indexer], actual)
-
-    # FIXME!
-    # when the indexer is such that a value gets overwritten multiple times,
-    # I think the output depends on chunking.
-    # new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
-    # nparray[indexer] = new_data
-    # zarray.vindex[indexer] = new_data
-    # assert_array_equal(nparray, zarray[:])
 
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
@@ -220,7 +231,9 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
     orig = metadata.to_dict()
     rt = metadata_roundtripped.to_dict()
 
-    assert deep_equal(orig, rt), f"Roundtrip mismatch:\nOriginal: {orig}\nRoundtripped: {rt}"
+    assert deep_equal(
+        orig, rt
+    ), f"Roundtrip mismatch:\nOriginal: {orig}\nRoundtripped: {rt}"
 
 
 # @st.composite
@@ -320,7 +333,9 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
     # version-specific validations
     if isinstance(meta, ArrayV2Metadata):
         assert asdict_dict["filters"] != ()
-        assert asdict_dict["filters"] is None or isinstance(asdict_dict["filters"], tuple)
+        assert asdict_dict["filters"] is None or isinstance(
+            asdict_dict["filters"], tuple
+        )
         assert asdict_dict["zarr_format"] == 2
     else:
         assert asdict_dict["zarr_format"] == 3
