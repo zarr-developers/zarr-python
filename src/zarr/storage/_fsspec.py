@@ -63,7 +63,7 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
         )
     if fsspec_version < parse_version("2024.12.0"):
         raise ImportError(
-            "The filesystem '{fs}' is synchronous, and the required "
+            f"The filesystem '{fs}' is synchronous, and the required "
             "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
             "2024.12.0 or later to enable this functionality."
         )
