@@ -210,7 +210,6 @@ dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
-    'fsspec @ git+https://github.com/fsspec/filesystem_spec',
     's3fs @ git+https://github.com/fsspec/s3fs',
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
