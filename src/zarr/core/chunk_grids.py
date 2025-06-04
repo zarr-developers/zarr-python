@@ -64,6 +64,9 @@ def _guess_chunks(
     if isinstance(shape, int):
         shape = (shape,)
 
+    if typesize == 0:
+        return shape
+
     ndims = len(shape)
     # require chunks to have non-zero length for all dimensions
     chunks = np.maximum(np.array(shape, dtype="=f8"), 1)

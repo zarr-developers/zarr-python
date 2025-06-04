@@ -39,7 +39,7 @@ from zarr.core.group import (
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
-from zarr.errors import NodeTypeValidationError
+from zarr.errors import GroupNotFoundError, NodeTypeValidationError
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -201,7 +201,10 @@ async def consolidate_metadata(
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
 
-    members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
+    members_metadata = {
+        k: v.metadata
+        async for k, v in group.members(max_depth=None, use_consolidated_for_children=False)
+    }
     # While consolidating, we want to be explicit about when child groups
     # are empty by inserting an empty dict for consolidated_metadata.metadata
     for k, v in members_metadata.items():
@@ -329,7 +332,7 @@ async def open(
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast(ArrayMetadataDict, metadata_dict)
+            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
             # for v2, the above would already have raised an exception if not an array
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
@@ -836,7 +839,7 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    raise FileNotFoundError(f"Unable to find group: {store_path}")
+    raise GroupNotFoundError(store, store_path.path)
 
 
 async def create(
@@ -992,19 +995,11 @@ async def create(
     )
 
     if zarr_format == 2:
-        if chunks is None:
-            chunks = shape
         dtype = parse_dtype(dtype, zarr_format)
         if not filters:
             filters = _default_filters(dtype)
         if compressor == "auto":
             compressor = _default_compressor(dtype)
-    elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
-        if chunks is not None:
-            chunk_shape = chunks
-            chunks = None
-        else:
-            chunk_shape = shape
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
