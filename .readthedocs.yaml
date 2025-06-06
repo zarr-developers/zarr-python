@@ -11,8 +11,9 @@ build:
         if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ]; then
           hatch env run --env docs -- towncrier build --version Unreleased --yes
         fi
-    post_build:
+    build:
       - hatch env run --env docs build
+    post_build:
       - hatch env run --env docs readthedocs
 
 mkdocs:
