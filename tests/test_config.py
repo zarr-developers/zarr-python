@@ -10,6 +10,7 @@ import pytest
 import zarr
 import zarr.api
 from zarr import zeros
+from zarr._constants import IS_WASM
 from zarr.abc.codec import CodecPipeline
 from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import (
@@ -83,7 +84,7 @@ def test_config_defaults_set() -> None:
                 },
             },
             "async": {"concurrency": 10, "timeout": None},
-            "threading": {"max_workers": None},
+            "threading": {"max_workers": 1 if IS_WASM else None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",

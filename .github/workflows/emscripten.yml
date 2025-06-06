@@ -1,0 +1,112 @@
+# Attributed to NumPy https://github.com/numpy/numpy/pull/25894
+# https://github.com/numpy/numpy/blob/d2d2c25fa81b47810f5cbd85ea6485eb3a3ffec3/.github/workflows/emscripten.yml
+
+name: Pyodide wheel
+
+on:
+  # TODO: refine after this is ready to merge
+  [push, pull_request, workflow_dispatch]
+
+env:
+  FORCE_COLOR: 3
+  PYODIDE_VERSION: 0.28.0a3
+  # PYTHON_VERSION and EMSCRIPTEN_VERSION are determined by PYODIDE_VERSION.
+  # The appropriate versions can be found in the Pyodide repodata.json
+  # "info" field, or in Makefile.envs:
+  # https://github.com/pyodide/pyodide/blob/main/Makefile.envs#L2
+  PYTHON_VERSION: 3.13 # any 3.13.x version works
+  EMSCRIPTEN_VERSION: 4.0.9
+  NODE_VERSION: 22
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build_wasm_emscripten:
+    name: Build and test Zarr for Pyodide
+    runs-on: ubuntu-latest
+    # To enable this workflow on a fork, comment out:
+    # FIXME: uncomment after this is ready to merge
+    # if: github.repository == 'zarr-developers/zarr-python'
+    steps:
+      - name: Checkout Zarr repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        id: setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Emscripten toolchain
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSCRIPTEN_VERSION }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pyodide-build
+        run: python -m pip install pyodide-build
+
+      - name: Build Zarr for Pyodide
+        run: |
+          pyodide xbuildenv install ${{ env.PYODIDE_VERSION }}
+          pyodide build
+
+      ### (Temporarily) build numcodecs as well, as we have an older version in the Pyodide distribution (v0.13.1)
+
+      - name: Clone numcodecs repository
+        uses: actions/checkout@v4
+        with:
+          # See https://github.com/zarr-developers/numcodecs/pull/529
+          repository: agriyakhetarpal/numcodecs
+          ref: setup-emscripten-ci
+          path: numcodecs-wasm
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      # For some reason fetch-depth: 0 and fetch-tags: true aren't working...
+      - name: Manually fetch tags for numcodecs
+        working-directory: numcodecs-wasm
+        run: git fetch --tags
+
+      - name: Build numcodecs for WASM
+        run: pyodide build
+        working-directory: numcodecs-wasm
+        env:
+          DISABLE_NUMCODECS_AVX2: 1
+          DISABLE_NUMCODECS_SSE2: 1
+
+      ### Back to Zarr repository to run tests
+
+      - name: Run Zarr tests for Pyodide
+        run: |
+          # Set up Pyodide virtual environment and activate it
+          pyodide venv .venv-pyodide
+          source .venv-pyodide/bin/activate
+
+          # Install numcodecs
+          pip install $(ls numcodecs-wasm/dist/*.whl)"[crc32c]"
+
+          # Install Zarr without dependencies until we can figure out the
+          # numcodecs wheel versioning issue
+          pip install dist/*.whl --no-deps
+          pip install "packaging>=22.0" "numpy>=1.25" "typing_extensions>=4.9" "donfig>=0.8"
+
+          # Install test dependencies
+          pip install "coverage" "pytest" "pytest-asyncio" "pytest-cov" "pytest-accept" "rich" "mypy" "hypothesis"
+
+          python -m pytest tests -v --cov=zarr --cov-config=pyproject.toml
+

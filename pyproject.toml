@@ -410,6 +410,7 @@ filterwarnings = [
     "ignore:The dtype .* is currently not part in the Zarr format 3 specification.*:UserWarning",
     "ignore:Use zarr.create_array instead.:DeprecationWarning",
     "ignore:Duplicate name.*:UserWarning",
+    "ignore:Error cleaning up asyncio loop.*:RuntimeWarning", # appears in Pyodide/WASM as it uses its own browser-based event loop
     "ignore:The `compressor` argument is deprecated. Use `compressors` instead.:UserWarning",
     "ignore:Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations.:UserWarning",
     "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
@@ -417,6 +418,7 @@ filterwarnings = [
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",
     "slow_hypothesis: slow hypothesis tests",
+    "slow_wasm: slow tests in Pyodide/WASM",
 ]
 
 [tool.repo-review]

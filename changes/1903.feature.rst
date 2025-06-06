@@ -1,0 +1,6 @@
+Added official support for the Pyodide/WebAssembly platform for using Zarr within browser-based environments.
+The ``threading.max_workers`` parameter takes a default value of 1, and the ``zarr.sync`` interface is not
+supported. At the moment, using Zarr requires the JavaScript Promise Integration (JSPI) WebAssembly feature
+to be enabled with Pyodide and is hidden behind flags in web browsers to enable experimental support. See the
+`JavaScript Promise Integration reference <https://github.com/WebAssembly/js-promise-integration>`_ and
+`WebAssembly feature status <https://webassembly.org/features/>`_ pages for more details.
