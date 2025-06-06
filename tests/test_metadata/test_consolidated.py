@@ -17,14 +17,14 @@ from zarr.api.asynchronous import (
     open,
     open_consolidated,
 )
-from zarr.core.buffer import cpu, default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
-    from zarr.abc.store import Store
+    from zarr.abc.store import ByteRequest, Store
     from zarr.core.common import ZarrFormat
 
 
@@ -651,3 +651,27 @@ async def test_consolidated_metadata_encodes_special_chars(
     elif zarr_format == 3:
         assert root_metadata["child"]["attributes"]["test"] == expected_fill_value
         assert root_metadata["time"]["fill_value"] == expected_fill_value
+
+
+async def test_consolidate_metadata_is_noop_for_self_consolidating_stores():
+    """Verify calling consolidate_metadata on a non supporting stores does nothing"""
+
+    # We create a store that doesn't support consolidated metadata
+    class Store(zarr.storage.MemoryStore):
+        @property
+        def supports_consolidated_metadata(self) -> bool:
+            return False
+
+    memory_store = Store()
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    await root.create_group("a/b")
+
+    # now we monkey patch the store so it raises if `Store.set` is called
+    async def set_raises(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
+        raise ValueError("consolidated metadata called")
+
+    memory_store.set = set_raises
+
+    # consolidate_metadata would call `set` if the store supported consolidated metadata
+    # if this doesn't raise, it means consolidate_metadata is NOOP
+    await zarr.api.asynchronous.consolidate_metadata(memory_store)
