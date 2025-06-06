@@ -306,6 +306,7 @@ def test_warning_on_missing_codec_config() -> None:
 
 
 @pytest.mark.parametrize("dtype_category", ["variable-length-string", "default"])
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_default_codecs(dtype_category: str) -> None:
     """
     Test that the default compressors are sensitive to the current setting of the config.

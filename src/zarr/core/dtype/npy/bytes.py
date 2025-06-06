@@ -154,6 +154,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         if zarr_format == 2:
             return self.to_native_dtype().str
         elif zarr_format == 3:
+            v3_unstable_dtype_warning(self)
             return {"name": self._zarr_v3_name, "configuration": {"length_bytes": self.length}}
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 

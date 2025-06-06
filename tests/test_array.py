@@ -1300,6 +1300,7 @@ class TestCreateArray:
 
     @staticmethod
     @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthUTF8()])
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     async def test_default_filters_compressors(
         store: MemoryStore, dtype: UInt8 | Float32 | VariableLengthUTF8, zarr_format: ZarrFormat
     ) -> None:

@@ -1,6 +1,8 @@
 import numpy as np
+import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from zarr.core.dtype.common import UnstableSpecificationWarning
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
 
 
@@ -136,3 +138,17 @@ class TestVariableLengthBytes(BaseTestZDType):
         VariableLengthBytes(),
         VariableLengthBytes(),
     )
+
+
+@pytest.mark.parametrize(
+    "zdtype", [NullTerminatedBytes(length=10), RawBytes(length=10), VariableLengthBytes()]
+)
+def test_unstable_dtype_warning(
+    zdtype: NullTerminatedBytes | RawBytes | VariableLengthBytes,
+) -> None:
+    """
+    Test that we get a warning when serializing a dtype without a zarr v3 spec to json
+    when zarr_format is 3
+    """
+    with pytest.raises(UnstableSpecificationWarning):
+        zdtype.to_json(zarr_format=3)

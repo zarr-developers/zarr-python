@@ -15,6 +15,7 @@ pytestmark = [
 ]
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_zarr_hierarchy(sync_store: Store):
     def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
         return ZarrHierarchyStateMachine(sync_store)
