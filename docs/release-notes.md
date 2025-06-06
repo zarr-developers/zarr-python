@@ -1,11 +1,13 @@
 # Release notes
 
+<!-- towncrier release notes start -->
+
+
 ## 3.0.8 (2025-05-19)
 
-> **Warning**
-> In versions 3.0.0 to 3.0.7 opening arrays or groups with `mode='a'` (the default for many builtin functions)
-> would cause any existing paths in the store to be deleted. This is fixed in 3.0.8, and
-> we recommend all users upgrade to avoid this bug that could cause unintentional data loss.
+!!! warning
+
+    In versions 3.0.0 to 3.0.7 opening arrays or groups with `mode='a'` (the default for many builtin functions) would cause any existing paths in the store to be deleted. This is fixed in 3.0.8, and we recommend all users upgrade to avoid this bug that could cause unintentional data loss.
 
 ### Features
 
