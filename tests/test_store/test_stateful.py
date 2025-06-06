@@ -15,18 +15,18 @@ pytestmark = [
 ]
 
 
-def test_zarr_hierarchy(sync_store: Store):
+def test_zarr_hierarchy(sync_store: Store) -> None:
     def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
         return ZarrHierarchyStateMachine(sync_store)
 
     if isinstance(sync_store, ZipStore):
         pytest.skip(reason="ZipStore does not support delete")
 
-    run_state_machine_as_test(mk_test_instance_sync)
+    run_state_machine_as_test(mk_test_instance_sync)  # type ignore[no-untyped-call]
 
 
 def test_zarr_store(sync_store: Store) -> None:
-    def mk_test_instance_sync() -> None:
+    def mk_test_instance_sync() -> ZarrStoreStateMachine:
         return ZarrStoreStateMachine(sync_store)
 
     if isinstance(sync_store, ZipStore):
@@ -37,4 +37,4 @@ def test_zarr_store(sync_store: Store) -> None:
         # It assumes that `set` and `delete` are the only two operations that modify state.
         # But LocalStore, directories can hang around even after a key is delete-d.
         pytest.skip(reason="Test isn't suitable for LocalStore.")
-    run_state_machine_as_test(mk_test_instance_sync)
+    run_state_machine_as_test(mk_test_instance_sync)  # type ignore[no-untyped-call]

@@ -1,4 +1,5 @@
 import tempfile
+from collections.abc import Callable, Coroutine
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,7 @@ from zarr.storage._utils import (
 @pytest.mark.parametrize("write_group", [True, False])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_contains_group(
-    local_store, path: str, write_group: bool, zarr_format: ZarrFormat
+    local_store: LocalStore, path: str, write_group: bool, zarr_format: ZarrFormat
 ) -> None:
     """
     Test that the contains_group method correctly reports the existence of a group.
@@ -38,7 +39,7 @@ async def test_contains_group(
 @pytest.mark.parametrize("write_array", [True, False])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_contains_array(
-    local_store, path: str, write_array: bool, zarr_format: ZarrFormat
+    local_store: LocalStore, path: str, write_array: bool, zarr_format: ZarrFormat
 ) -> None:
     """
     Test that the contains array method correctly reports the existence of an array.
@@ -51,13 +52,15 @@ async def test_contains_array(
 
 
 @pytest.mark.parametrize("func", [contains_array, contains_group])
-async def test_contains_invalid_format_raises(local_store, func: callable) -> None:
+async def test_contains_invalid_format_raises(
+    local_store: LocalStore, func: Callable[[StorePath, ZarrFormat], Coroutine[None, None, bool]]
+) -> None:
     """
     Test contains_group and contains_array raise errors for invalid zarr_formats
     """
     store_path = StorePath(local_store)
     with pytest.raises(ValueError):
-        assert await func(store_path, zarr_format="3.0")
+        assert await func(store_path, "3.0")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -110,12 +113,12 @@ async def test_make_store_path_store_path(
 
 
 @pytest.mark.parametrize("modes", [(True, "w"), (False, "x")])
-async def test_store_path_invalid_mode_raises(tmpdir: LEGACY_PATH, modes: tuple) -> None:
+async def test_store_path_invalid_mode_raises(tmpdir: LEGACY_PATH, modes: tuple[bool, str]) -> None:
     """
     Test that ValueErrors are raise for invalid mode.
     """
     with pytest.raises(ValueError):
-        await StorePath.open(LocalStore(str(tmpdir), read_only=modes[0]), path=None, mode=modes[1])
+        await StorePath.open(LocalStore(str(tmpdir), read_only=modes[0]), path="", mode=modes[1])  # type: ignore[arg-type]
 
 
 async def test_make_store_path_invalid() -> None:
@@ -126,7 +129,7 @@ async def test_make_store_path_invalid() -> None:
         await make_store_path(1)  # type: ignore[arg-type]
 
 
-async def test_make_store_path_fsspec(monkeypatch) -> None:
+async def test_make_store_path_fsspec() -> None:
     pytest.importorskip("fsspec")
     pytest.importorskip("requests")
     pytest.importorskip("aiohttp")
@@ -175,12 +178,12 @@ def test_normalize_path_upath() -> None:
     assert normalize_path(upath.UPath("foo/bar")) == "foo/bar"
 
 
-def test_normalize_path_none():
+def test_normalize_path_none() -> None:
     assert normalize_path(None) == ""
 
 
 @pytest.mark.parametrize("path", [".", ".."])
-def test_normalize_path_invalid(path: str):
+def test_normalize_path_invalid(path: str) -> None:
     with pytest.raises(ValueError):
         normalize_path(path)
 
@@ -221,7 +224,7 @@ class TestNormalizePaths:
             _normalize_paths(paths)
 
 
-def test_normalize_path_keys():
+def test_normalize_path_keys() -> None:
     """
     Test that ``_normalize_path_keys`` just applies the normalize_path function to each key of its
     input
