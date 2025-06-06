@@ -14,12 +14,5 @@ build:
       - hatch env run --env docs build
       - hatch env run --env docs readthedocs
 
-
-conda:
-  channels:
-    - conda-forge
-  dependencies:
-    - hatch
-
 mkdocs:
   configuration: mkdocs.yml
