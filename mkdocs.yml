@@ -103,6 +103,20 @@ extra_css:
 
 plugins:
   - search
+  - redirects:
+      redirect_maps:
+        spec: https://zarr-specs.readthedocs.io
+        spec/v1: https://zarr-specs.readthedocs.io/en/latest/v1/v1.0.html
+        spec/v2: https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html
+        spec/v3: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html
+        license: https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt
+        tutorial: user-guide
+        getting-started: quickstart
+        roadmap: developers/roadmap.html
+        installation: user-guide/installation.html
+        api: api/zarr/index
+        release: release-notes.html
+        release-notes: release-notes.html
   - mkdocstrings:
       enable_inventory: true
       handlers:
