@@ -56,7 +56,7 @@ class DataTypeRegistry:
                 "data type. "
                 "In this case you should construct your array by providing a specific Zarr data "
                 'type. For a list of Zarr data types that are compatible with the numpy "Object"'
-                "data type, see xxxxxxxxxxx"
+                "data type, see https://github.com/zarr-developers/zarr-python/issues/3117"
             )
             raise ValueError(msg)
         matched: list[ZDType[TBaseDType, TBaseScalar]] = []
@@ -71,7 +71,7 @@ class DataTypeRegistry:
                 f"Multiple data type wrappers found that match dtype '{dtype}': {matched}. "
                 "You should unregister one of these data types, or avoid Zarr data type inference "
                 "entirely by providing a specific Zarr data type when creating your array."
-                "For more information, see xxxxxxxxxxxxxxxxxx"
+                "For more information, see https://github.com/zarr-developers/zarr-python/issues/3117"
             )
             raise ValueError(msg)
         raise ValueError(f"No data type wrapper found that matches dtype '{dtype}'")
