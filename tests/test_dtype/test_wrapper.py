@@ -99,10 +99,10 @@ class BaseTestZDType:
         return scalar1 == scalar2
 
     def test_check_dtype_valid(self, valid_dtype: TBaseDType) -> None:
-        assert self.test_cls.check_native_dtype(valid_dtype)
+        assert self.test_cls._check_native_dtype(valid_dtype)
 
     def test_check_dtype_invalid(self, invalid_dtype: object) -> None:
-        assert not self.test_cls.check_native_dtype(invalid_dtype)  # type: ignore[arg-type]
+        assert not self.test_cls._check_native_dtype(invalid_dtype)  # type: ignore[arg-type]
 
     def test_from_dtype_roundtrip(self, valid_dtype: Any) -> None:
         zdtype = self.test_cls.from_native_dtype(valid_dtype)

@@ -84,7 +84,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
-    def check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
+    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
         """
         Check that a data type matches the dtype_cls class attribute. Used as a type guard.
 
@@ -120,15 +120,15 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         TypeError
             If the dtype does not match the dtype_cls class attribute.
         """
-        if cls.check_native_dtype(dtype):
-            return cls._from_native_dtype_unsafe(dtype)
+        if cls._check_native_dtype(dtype):
+            return cls._from_native_dtype_unchecked(dtype)
         raise DataTypeValidationError(
             f"Invalid dtype: {dtype}. Expected an instance of {cls.dtype_cls}."
         )
 
     @classmethod
     @abstractmethod
-    def _from_native_dtype_unsafe(cls: type[Self], dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls: type[Self], dtype: TBaseDType) -> Self:
         """
         Wrap a native dtype without checking.
 
@@ -158,20 +158,21 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
 
     def cast_scalar(self, data: object) -> TScalar_co:
         """
-        Cast a scalar to the wrapped scalar type. The type is first checked for compatibility. If
-        it's incompatible with the associated scalar type, a ``TypeError`` will be raised.
+        Cast a python object to the wrapped scalar type.
+        The type of the provided scalar is first checked for compatibility.
+        If it's incompatible with the associated scalar type, a ``TypeError`` will be raised.
 
         Parameters
         ----------
-        data : TScalar
-            The scalar value to cast.
+        data : object
+            The python object to cast.
 
         Returns
         -------
         TScalar
             The cast value.
         """
-        if self.check_scalar(data):
+        if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
         msg = (
             f"The value {data!r} failed a type check. "
@@ -182,9 +183,9 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         raise TypeError(msg)
 
     @abstractmethod
-    def check_scalar(self, data: object) -> bool:
+    def _check_scalar(self, data: object) -> bool:
         """
-        Check that a scalar is a valid value for the wrapped data type.
+        Check that an python object is a valid scalar value for the wrapped data type.
 
         Parameters
         ----------
@@ -194,19 +195,20 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         Returns
         -------
         Bool
-            True if the value is valid, False otherwise.
+            True if the object is valid, False otherwise.
         """
         ...
 
     @abstractmethod
     def _cast_scalar_unchecked(self, data: object) -> TScalar_co:
         """
-        Cast a scalar to the wrapped data type. This method should not perform any input validation.
+        Cast a python object to the wrapped data type.
+        This method should not perform any type checking.
 
         Parameters
         ----------
-        data : TScalar
-            The scalar value to cast.
+        data : object
+            The python object to cast.
 
         Returns
         -------
@@ -232,7 +234,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
 
     @classmethod
     @abstractmethod
-    def check_json_v2(
+    def _check_json_v2(
         cls: type[Self], data: JSON, *, object_codec_id: str | None = None
     ) -> TypeGuard[DTypeJSON_V2]:
         """
@@ -260,7 +262,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
 
     @classmethod
     @abstractmethod
-    def check_json_v3(cls: type[Self], data: JSON) -> TypeGuard[DTypeJSON_V3]:
+    def _check_json_v3(cls: type[Self], data: JSON) -> TypeGuard[DTypeJSON_V3]:
         """
         Check that a JSON representation of a data type matches the dtype_cls class attribute. Used
         as a type guard. This base implementation checks that the input is a dictionary,
@@ -317,7 +319,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         Self
             The wrapped data type.
         """
-        if cls.check_json_v3(data):
+        if cls._check_json_v3(data):
             return cls._from_json_unchecked(data, zarr_format=3)
         raise DataTypeValidationError(f"Invalid JSON representation of data type {cls}: {data}")
 
@@ -336,7 +338,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         Self
             The wrapped data type.
         """
-        if cls.check_json_v2(data, object_codec_id=object_codec_id):
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
             return cls._from_json_unchecked(data, zarr_format=2)
         raise DataTypeValidationError(
             f"Invalid JSON representation of data type {cls}: {data!r}, object_codec_id={object_codec_id!r}"

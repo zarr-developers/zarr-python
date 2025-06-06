@@ -22,6 +22,7 @@ else:
     expected_array_string_dtype = np.dtype("O")
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 @pytest.mark.parametrize("dtype", numpy_str_dtypes)
 @pytest.mark.parametrize("as_object_array", [False, True])

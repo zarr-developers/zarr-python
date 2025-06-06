@@ -28,7 +28,7 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -67,17 +67,17 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
         """
         Check that the input is a valid JSON representation of this data type.
         """
         return data in cls._zarr_v2_names
 
     @classmethod
-    def check_json_v3(cls, data: JSON) -> TypeGuard[str]:
+    def _check_json_v3(cls, data: JSON) -> TypeGuard[str]:
         return data == cls._zarr_v3_name
 
-    def check_scalar(self, data: object) -> TypeGuard[FloatLike]:
+    def _check_scalar(self, data: object) -> TypeGuard[FloatLike]:
         return isinstance(data, FloatLike)
 
     def _cast_scalar_unchecked(self, data: object) -> TFloatScalar_co:

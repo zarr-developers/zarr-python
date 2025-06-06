@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, TypedDict
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import (
-    VariableLengthString,
+    VariableLengthUTF8,
     ZDType,
     get_data_type_from_json_v3,
 )
@@ -97,7 +97,7 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     # TODO: use codec ID instead of class name
     codec_class_name = abc.__class__.__name__
     # TODO: Fix typing here
-    if isinstance(dtype, VariableLengthString) and not codec_class_name == "VLenUTF8Codec":  # type: ignore[unreachable]
+    if isinstance(dtype, VariableLengthUTF8) and not codec_class_name == "VLenUTF8Codec":  # type: ignore[unreachable]
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )

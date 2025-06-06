@@ -4,15 +4,14 @@ from typing import TYPE_CHECKING, Final, TypeAlias
 
 from zarr.core.dtype.common import DataTypeValidationError
 from zarr.core.dtype.npy.bool import Bool
+from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
-from zarr.core.dtype.npy.sized import (
-    FixedLengthBytes,
+from zarr.core.dtype.npy.structured import (
     Structured,
 )
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
-from zarr.core.dtype.npy.vlen_bytes import VariableLengthBytes
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -24,9 +23,8 @@ import numpy.typing as npt
 
 from zarr.core.common import JSON
 from zarr.core.dtype.npy.string import (
-    FixedLengthASCII,
     FixedLengthUTF32,
-    VariableLengthString,
+    VariableLengthUTF8,
 )
 from zarr.core.dtype.registry import DataTypeRegistry
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -38,8 +36,6 @@ __all__ = [
     "DataTypeRegistry",
     "DataTypeValidationError",
     "DateTime64",
-    "FixedLengthASCII",
-    "FixedLengthBytes",
     "FixedLengthUTF32",
     "Float16",
     "Float32",
@@ -48,6 +44,8 @@ __all__ = [
     "Int16",
     "Int32",
     "Int64",
+    "NullTerminatedBytes",
+    "RawBytes",
     "Structured",
     "TBaseDType",
     "TBaseScalar",
@@ -57,7 +55,7 @@ __all__ = [
     "UInt16",
     "UInt32",
     "UInt64",
-    "VariableLengthString",
+    "VariableLengthUTF8",
     "ZDType",
     "data_type_registry",
     "parse_data_type",
@@ -74,11 +72,14 @@ FLOAT_DTYPE: Final = Float16, Float32, Float64
 ComplexFloatDType = Complex64 | Complex128
 COMPLEX_FLOAT_DTYPE: Final = Complex64, Complex128
 
-StringDType = FixedLengthUTF32 | VariableLengthString | FixedLengthASCII
-STRING_DTYPE: Final = FixedLengthUTF32, VariableLengthString, FixedLengthASCII
+StringDType = FixedLengthUTF32 | VariableLengthUTF8
+STRING_DTYPE: Final = FixedLengthUTF32, VariableLengthUTF8
 
 TimeDType = DateTime64 | TimeDelta64
 TIME_DTYPE: Final = DateTime64, TimeDelta64
+
+BytesDType = RawBytes | NullTerminatedBytes | VariableLengthBytes
+BYTES_DTYPE: Final = RawBytes, NullTerminatedBytes, VariableLengthBytes
 
 AnyDType = (
     Bool
@@ -86,7 +87,7 @@ AnyDType = (
     | FloatDType
     | ComplexFloatDType
     | StringDType
-    | FixedLengthBytes
+    | BytesDType
     | Structured
     | TimeDType
     | VariableLengthBytes
@@ -99,7 +100,7 @@ ANY_DTYPE: Final = (
     *FLOAT_DTYPE,
     *COMPLEX_FLOAT_DTYPE,
     *STRING_DTYPE,
-    FixedLengthBytes,
+    *BYTES_DTYPE,
     Structured,
     *TIME_DTYPE,
     VariableLengthBytes,

@@ -6,59 +6,12 @@ import numpy as np
 
 from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
 from zarr.core.dtype import (
-    FixedLengthBytes,
     Float16,
     Float64,
     Int32,
     Int64,
     Structured,
 )
-
-
-class TestFixedLengthBytes(BaseTestZDType):
-    test_cls = FixedLengthBytes
-    valid_dtype = (np.dtype("|V10"),)
-    invalid_dtype = (
-        np.dtype(np.int8),
-        np.dtype(np.float64),
-        np.dtype("|S10"),
-    )
-    valid_json_v2 = (V2JsonTestParams(dtype="|V10"),)
-    valid_json_v3 = (
-        {"name": "fixed_length_bytes", "configuration": {"length_bytes": 0}},
-        {"name": "fixed_length_bytes", "configuration": {"length_bytes": 8}},
-    )
-
-    invalid_json_v2 = (
-        "|V",
-        "|S10",
-        "|f8",
-    )
-    invalid_json_v3 = (
-        {"name": "r10"},
-        {"name": "r-80"},
-    )
-
-    scalar_v2_params = (
-        (FixedLengthBytes(length=0), ""),
-        (FixedLengthBytes(length=2), "YWI="),
-        (FixedLengthBytes(length=4), "YWJjZA=="),
-    )
-    scalar_v3_params = (
-        (FixedLengthBytes(length=0), ""),
-        (FixedLengthBytes(length=2), "YWI="),
-        (FixedLengthBytes(length=4), "YWJjZA=="),
-    )
-    cast_value_params = (
-        (FixedLengthBytes(length=0), b"", np.void(b"")),
-        (FixedLengthBytes(length=2), b"ab", np.void(b"ab")),
-        (FixedLengthBytes(length=4), b"abcd", np.void(b"abcd")),
-    )
-    item_size_params = (
-        FixedLengthBytes(length=0),
-        FixedLengthBytes(length=4),
-        FixedLengthBytes(length=10),
-    )
 
 
 class TestStructured(BaseTestZDType):

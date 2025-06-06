@@ -149,8 +149,8 @@ def categorize_data_type(dtype: ZDType[Any, Any]) -> DTypeCategory:
     This is used by the config system to determine how to encode arrays with the associated data type
     when the user has not specified a particular serialization scheme.
     """
-    from zarr.core.dtype import VariableLengthString
+    from zarr.core.dtype import VariableLengthUTF8
 
-    if isinstance(dtype, VariableLengthString):
+    if isinstance(dtype, VariableLengthUTF8):
         return "variable-length-string"
     return "default"

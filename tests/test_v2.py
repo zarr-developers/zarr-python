@@ -15,7 +15,8 @@ import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype import FixedLengthASCII, FixedLengthUTF32, Structured, VariableLengthString
+from zarr.core.dtype import FixedLengthUTF32, Structured, VariableLengthUTF8
+from zarr.core.dtype.npy.bytes import NullTerminatedBytes
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
@@ -105,9 +106,9 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_js
 @pytest.mark.parametrize(
     ("dtype", "value"),
     [
-        (FixedLengthASCII(length=1), b"Y"),
+        (NullTerminatedBytes(length=1), b"Y"),
         (FixedLengthUTF32(length=1), "Y"),
-        (VariableLengthString(), "Y"),
+        (VariableLengthUTF8(), "Y"),
     ],
 )
 def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str):

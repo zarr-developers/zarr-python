@@ -46,10 +46,10 @@ from zarr.core.dtype.common import Endianness
 from zarr.core.dtype.npy.common import endianness_from_numpy_str
 from zarr.core.dtype.npy.float import Float32, Float64
 from zarr.core.dtype.npy.int import Int16, UInt8
-from zarr.core.dtype.npy.sized import (
+from zarr.core.dtype.npy.string import VariableLengthUTF8
+from zarr.core.dtype.npy.structured import (
     Structured,
 )
-from zarr.core.dtype.npy.string import VariableLengthString
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import AsyncGroup
@@ -1036,7 +1036,7 @@ class TestCreateArray:
 
         # Structured dtypes do not have a numpy string representation that uniquely identifies them
         if not isinstance(dtype, Structured):
-            if isinstance(dtype, VariableLengthString):
+            if isinstance(dtype, VariableLengthUTF8):
                 # in numpy 2.3, StringDType().str becomes the string 'StringDType()' which numpy
                 # does not accept as a string representation of the dtype.
                 c = zarr.create_array(
@@ -1073,6 +1073,7 @@ class TestCreateArray:
         assert a.dtype == b.dtype
 
     @staticmethod
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "U3", "S4", "V1"])
     @pytest.mark.parametrize(
         "compressors",
@@ -1298,9 +1299,9 @@ class TestCreateArray:
         assert arr.filters == filters_expected
 
     @staticmethod
-    @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthString()])
+    @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthUTF8()])
     async def test_default_filters_compressors(
-        store: MemoryStore, dtype: UInt8 | Float32 | VariableLengthString, zarr_format: ZarrFormat
+        store: MemoryStore, dtype: UInt8 | Float32 | VariableLengthUTF8, zarr_format: ZarrFormat
     ) -> None:
         """
         Test that the default ``filters`` and ``compressors`` are used when ``create_array`` is invoked with ``filters`` and ``compressors`` unspecified.
@@ -1519,6 +1520,7 @@ class TestCreateArray:
 
 @pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
 @pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
     arr = zarr.array(value, zarr_format=zarr_format)
     assert arr[...] == value

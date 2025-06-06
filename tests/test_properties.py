@@ -75,6 +75,7 @@ def deep_equal(a: Any, b: Any) -> bool:
     return a == b
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data(), zarr_format=zarr_formats)
 def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
@@ -82,6 +83,7 @@ def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(array=arrays())
 def test_array_creates_implicit_groups(array):
     path = array.path
@@ -101,7 +103,10 @@ def test_array_creates_implicit_groups(array):
 
 
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
+
+
 @settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(simple_arrays())
@@ -117,6 +122,7 @@ def test_basic_indexing(data: st.DataObject) -> None:
 
 
 @given(data=st.data())
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
@@ -138,6 +144,7 @@ def test_oindex(data: st.DataObject) -> None:
 
 
 @given(data=st.data())
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
@@ -161,6 +168,7 @@ def test_vindex(data: st.DataObject) -> None:
 
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_roundtrip_array_metadata_from_store(
     store: Store, meta: ArrayV2Metadata | ArrayV3Metadata
 ) -> None:
@@ -180,6 +188,7 @@ async def test_roundtrip_array_metadata_from_store(
 
 
 @given(data=st.data(), zarr_format=zarr_formats)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: int) -> None:
     """
     Verify that JSON serialization and deserialization of metadata is lossless.
@@ -281,6 +290,7 @@ def serialized_float_is_valid(serialized: numbers.Real | str) -> bool:
 
 
 @given(meta=array_metadata())  # type: ignore[misc]
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> None:
     """
     Validate that the array metadata produced by the library conforms to the relevant spec (V2 vs V3).

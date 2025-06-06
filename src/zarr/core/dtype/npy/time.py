@@ -108,7 +108,7 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness, H
             raise ValueError(f"unit must be one of {get_args(DateTimeUnit)}, got {self.unit!r}.")
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         unit, scale_factor = np.datetime_data(dtype.name)
         unit = cast("DateTimeUnit", unit)
         byteorder = cast("EndiannessNumpy", dtype.byteorder)
@@ -156,7 +156,7 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness, H
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> int:
         return datetimelike_to_int(data)  # type: ignore[arg-type]
 
-    def check_scalar(self, data: object) -> bool:
+    def _check_scalar(self, data: object) -> bool:
         # TODO: decide which values we should accept for datetimes.
         try:
             np.array([data], dtype=self.to_native_dtype())
@@ -197,7 +197,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         return self.to_native_dtype().type(data)  # type: ignore[arg-type]
 
     @classmethod
-    def check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
         # match <m[ns], >m[M], etc
         # consider making this a standalone function
         if not isinstance(data, str):
@@ -212,7 +212,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             return data[4:-1].endswith(get_args(DateTimeUnit)) and data[-1] == "]"
 
     @classmethod
-    def check_json_v3(cls, data: JSON) -> TypeGuard[DateTime64JSONV3]:
+    def _check_json_v3(cls, data: JSON) -> TypeGuard[DateTime64JSONV3]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
@@ -243,7 +243,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[no-any-return, call-overload]
 
     @classmethod
-    def check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
         # match <M[ns], >M[M], etc
         # consider making this a standalone function
         if not isinstance(data, str):
@@ -258,7 +258,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             return data[4:-1].endswith(get_args(DateTimeUnit)) and data[-1] == "]"
 
     @classmethod
-    def check_json_v3(cls, data: JSON) -> TypeGuard[DateTime64JSONV3]:
+    def _check_json_v3(cls, data: JSON) -> TypeGuard[DateTime64JSONV3]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}

@@ -12,8 +12,8 @@ from numcodecs import LZ4, LZMA, Blosc, GZip, VLenBytes, VLenUTF8, Zstd
 import zarr
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
-from zarr.core.dtype.npy.string import VariableLengthString
-from zarr.core.dtype.npy.vlen_bytes import VariableLengthBytes
+from zarr.core.dtype.npy.bytes import VariableLengthBytes
+from zarr.core.dtype.npy.string import VariableLengthUTF8
 from zarr.storage import LocalStore
 
 if TYPE_CHECKING:
@@ -42,7 +42,8 @@ class ArrayParams:
 basic_codecs = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
 basic_dtypes = "|b", ">i2", ">i4", ">f4", ">f8", "<f4", "<f8", ">c8", "<c8", ">c16", "<c16"
 datetime_dtypes = "<M8[10ns]", ">M8[10us]", "<m8[2ms]", ">m8[4ps]"
-string_dtypes = ">S1", "<S4", "<U1", ">U4"
+string_dtypes = "<U1", ">U4"
+bytes_dtypes = ">S1", "<S4", ">V10", "<V4"
 
 basic_array_cases = [
     ArrayParams(values=np.arange(4, dtype=dtype), fill_value=1, compressor=codec)
@@ -60,6 +61,16 @@ string_array_cases = [
     )
     for codec, dtype in product(basic_codecs, string_dtypes)
 ]
+
+bytes_array_cases = [
+    ArrayParams(
+        values=np.array([b"aaaa", b"bbbb", b"ccccc", b"dddd"], dtype=dtype),
+        fill_value=b"foo",
+        compressor=codec,
+    )
+    for codec, dtype in product(basic_codecs, bytes_dtypes)
+]
+
 vlen_string_cases = [
     ArrayParams(
         values=np.array(["a", "bb", "ccc", "dddd"], dtype="O"),
@@ -78,6 +89,7 @@ vlen_bytes_cases = [
 ]
 array_cases = (
     basic_array_cases
+    + bytes_array_cases
     + datetime_array_cases
     + string_array_cases
     + vlen_string_cases
@@ -94,7 +106,7 @@ def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
     chunk_key_encoding = V2ChunkKeyEncoding(separator="/")
     dtype: ZDTypeLike
     if array_params.values.dtype == np.dtype("|O") and array_params.filters == (VLenUTF8(),):
-        dtype = VariableLengthString()  # type: ignore[assignment]
+        dtype = VariableLengthUTF8()  # type: ignore[assignment]
     elif array_params.values.dtype == np.dtype("|O") and array_params.filters == (VLenBytes(),):
         dtype = VariableLengthBytes()
     else:

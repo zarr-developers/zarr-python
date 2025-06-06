@@ -27,14 +27,14 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     dtype_cls = np.dtypes.BoolDType
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         return cls()
 
     def to_native_dtype(self: Self) -> np.dtypes.BoolDType:
         return self.dtype_cls()
 
     @classmethod
-    def check_json_v2(
+    def _check_json_v2(
         cls, data: JSON, *, object_codec_id: str | None = None
     ) -> TypeGuard[Literal["|b1"]]:
         """
@@ -43,7 +43,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         return data in cls._zarr_v2_names
 
     @classmethod
-    def check_json_v3(cls, data: JSON) -> TypeGuard[Literal["bool"]]:
+    def _check_json_v3(cls, data: JSON) -> TypeGuard[Literal["bool"]]:
         return data == cls._zarr_v3_name
 
     @overload
@@ -114,7 +114,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
             return self._cast_scalar_unchecked(data)
         raise TypeError(f"Invalid type: {data}. Expected a boolean.")  # pragma: no cover
 
-    def check_scalar(self, data: object) -> bool:
+    def _check_scalar(self, data: object) -> bool:
         # Anything can become a bool
         return True
 

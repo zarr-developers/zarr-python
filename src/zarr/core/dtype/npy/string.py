@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypedDict, TypeGuard, cast, overload
@@ -8,7 +7,13 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypedDict, TypeGuard,
 import numpy as np
 
 from zarr.core.common import NamedConfig
-from zarr.core.dtype.common import HasEndianness, HasItemSize, HasLength, HasObjectCodec
+from zarr.core.dtype.common import (
+    HasEndianness,
+    HasItemSize,
+    HasLength,
+    HasObjectCodec,
+    v3_unstable_dtype_warning,
+)
 from zarr.core.dtype.npy.common import (
     EndiannessNumpy,
     check_json_str,
@@ -29,96 +34,7 @@ class LengthBytesConfig(TypedDict):
 
 
 # TDO: Fix this terrible name
-FixedLengthASCIIJSONV3 = NamedConfig[Literal["fixed_length_ascii"], LengthBytesConfig]
-
-
-@dataclass(frozen=True, kw_only=True)
-class FixedLengthASCII(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength, HasItemSize):
-    dtype_cls = np.dtypes.BytesDType
-    _zarr_v3_name: ClassVar[Literal["fixed_length_ascii"]] = "fixed_length_ascii"
-
-    @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
-        return cls(length=dtype.itemsize)
-
-    def to_native_dtype(self) -> np.dtypes.BytesDType[int]:
-        return self.dtype_cls(self.length)
-
-    @classmethod
-    def check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
-        """
-        Check that the input is a valid JSON representation of a numpy S dtype.
-        """
-        # match |S1, |S2, etc
-        return isinstance(data, str) and re.match(r"^\|S\d+$", data) is not None
-
-    @classmethod
-    def check_json_v3(cls, data: JSON) -> TypeGuard[FixedLengthASCIIJSONV3]:
-        return (
-            isinstance(data, dict)
-            and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == cls._zarr_v3_name
-            and isinstance(data["configuration"], dict)
-            and "length_bytes" in data["configuration"]
-        )
-
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> str: ...
-
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> FixedLengthASCIIJSONV3: ...
-
-    def to_json(self, zarr_format: ZarrFormat) -> str | FixedLengthASCIIJSONV3:
-        if zarr_format == 2:
-            return self.to_native_dtype().str
-        elif zarr_format == 3:
-            return {
-                "name": self._zarr_v3_name,
-                "configuration": {"length_bytes": self.length},
-            }
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
-    def _from_json_unchecked(
-        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
-    ) -> Self:
-        if zarr_format == 2:
-            return cls.from_native_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            return cls(length=data["configuration"]["length_bytes"])  # type: ignore[index, call-overload]
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def default_scalar(self) -> np.bytes_:
-        return np.bytes_(b"")
-
-    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
-        return base64.standard_b64encode(data).decode("ascii")  # type: ignore[arg-type]
-
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bytes_:
-        if check_json_str(data):
-            return self.to_native_dtype().type(base64.standard_b64decode(data.encode("ascii")))
-        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
-
-    def check_scalar(self, data: object) -> bool:
-        # this is generous for backwards compatibility
-        return isinstance(data, np.bytes_ | str | bytes | int)
-
-    def _cast_scalar_unchecked(self, data: object) -> np.bytes_:
-        # We explicitly truncate the result because of the following numpy behavior:
-        # >>> x = np.dtype('S3').type('hello world')
-        # >>> x
-        # np.bytes_(b'hello world')
-        # >>> x.dtype
-        # dtype('S11')
-
-        if isinstance(data, int):
-            return self.to_native_dtype().type(str(data)[: self.length])
-        else:
-            return self.to_native_dtype().type(data[: self.length])  # type: ignore[index]
-
-    @property
-    def item_size(self) -> int:
-        return self.length
+FixedLengthBytesJSONV3 = NamedConfig[Literal["fixed_length_bytes"], LengthBytesConfig]
 
 
 # TODO: Fix this terrible name
@@ -134,7 +50,7 @@ class FixedLengthUTF32(
     code_point_bytes: ClassVar[int] = 4  # utf32 is 4 bytes per code point
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(
             length=dtype.itemsize // (cls.code_point_bytes),
@@ -146,14 +62,14 @@ class FixedLengthUTF32(
         return self.dtype_cls(self.length).newbyteorder(byte_order)
 
     @classmethod
-    def check_json_v2(cls, data: JSON, object_codec_id: str | None = None) -> TypeGuard[str]:
+    def _check_json_v2(cls, data: JSON, object_codec_id: str | None = None) -> TypeGuard[str]:
         """
         Check that the input is a valid JSON representation of a numpy S dtype.
         """
         return isinstance(data, str) and re.match(r"^[><]U\d+$", data) is not None
 
     @classmethod
-    def check_json_v3(cls, data: JSON) -> TypeGuard[FixedLengthUTF32JSONV3]:
+    def _check_json_v3(cls, data: JSON) -> TypeGuard[FixedLengthUTF32JSONV3]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
@@ -174,6 +90,7 @@ class FixedLengthUTF32(
         if zarr_format == 2:
             return self.to_native_dtype().str
         elif zarr_format == 3:
+            v3_unstable_dtype_warning(self)
             return {
                 "name": self._zarr_v3_name,
                 "configuration": {"length_bytes": self.length * self.code_point_bytes},
@@ -201,7 +118,7 @@ class FixedLengthUTF32(
             return self.to_native_dtype().type(data)
         raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
-    def check_scalar(self, data: object) -> bool:
+    def _check_scalar(self, data: object) -> TypeGuard[str | np.str_ | bytes | int]:
         # this is generous for backwards compatibility
         return isinstance(data, str | np.str_ | bytes | int)
 
@@ -223,23 +140,32 @@ class FixedLengthUTF32(
         return self.length * self.code_point_bytes
 
 
+def check_vlen_string_json_scalar(data: object) -> TypeGuard[int | str | float]:
+    """
+    This function checks the type of JSON-encoded variable length strings. It is generous for
+    backwards compatibility, as zarr-python v2 would use ints for variable length strings
+    fill values
+    """
+    return isinstance(data, int | str | float)
+
+
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
     @dataclass(frozen=True, kw_only=True)
-    class VariableLengthString(ZDType[np.dtypes.StringDType, str], HasObjectCodec):  # type: ignore[type-var]
+    class VariableLengthUTF8(ZDType[np.dtypes.StringDType, str], HasObjectCodec):  # type: ignore[type-var]
         dtype_cls = np.dtypes.StringDType
         _zarr_v3_name: ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
         object_codec_id = "vlen-utf8"
 
         @classmethod
-        def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+        def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
             return cls()
 
         def to_native_dtype(self) -> np.dtypes.StringDType:
             return self.dtype_cls()
 
         @classmethod
-        def check_json_v2(
+        def _check_json_v2(
             cls, data: JSON, *, object_codec_id: str | None = None
         ) -> TypeGuard[Literal["|O"]]:
             """
@@ -249,7 +175,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             return data == "|O" and object_codec_id == cls.object_codec_id
 
         @classmethod
-        def check_json_v3(cls, data: JSON) -> TypeGuard[Literal["variable_length_utf8"]]:
+        def _check_json_v3(cls, data: JSON) -> TypeGuard[Literal["variable_length_utf8"]]:
             return data == cls._zarr_v3_name
 
         @overload
@@ -265,6 +191,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
                 # that practice
                 return "|O"
             elif zarr_format == 3:
+                v3_unstable_dtype_warning(self)
                 return self._zarr_v3_name
             raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
@@ -278,14 +205,16 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             return ""
 
         def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
-            return str(data)
+            if self._check_scalar(data):
+                return data
+            raise TypeError(f"Invalid type: {data}. Expected a string.")
 
         def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> str:
-            if not check_json_str(data):
-                raise TypeError(f"Invalid type: {data}. Expected a string.")
-            return data
+            if not check_vlen_string_json_scalar(data):
+                raise TypeError(f"Invalid type: {data}. Expected a string or number.")
+            return str(data)
 
-        def check_scalar(self, data: object) -> bool:
+        def _check_scalar(self, data: object) -> TypeGuard[str]:
             return isinstance(data, str)
 
         def _cast_scalar_unchecked(self, data: object) -> str:
@@ -294,20 +223,20 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 else:
     # Numpy pre-2 does not have a variable length string dtype, so we use the Object dtype instead.
     @dataclass(frozen=True, kw_only=True)
-    class VariableLengthString(ZDType[np.dtypes.ObjectDType, str], HasObjectCodec):  # type: ignore[no-redef]
+    class VariableLengthUTF8(ZDType[np.dtypes.ObjectDType, str], HasObjectCodec):  # type: ignore[no-redef]
         dtype_cls = np.dtypes.ObjectDType
         _zarr_v3_name: ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
         object_codec_id = "vlen-utf8"
 
         @classmethod
-        def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+        def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
             return cls()
 
         def to_native_dtype(self) -> np.dtypes.ObjectDType:
             return self.dtype_cls()
 
         @classmethod
-        def check_json_v2(
+        def _check_json_v2(
             cls, data: JSON, *, object_codec_id: str | None = None
         ) -> TypeGuard[Literal["|O"]]:
             """
@@ -317,7 +246,7 @@ else:
             return data == "|O" and object_codec_id == cls.object_codec_id
 
         @classmethod
-        def check_json_v3(cls, data: JSON) -> TypeGuard[Literal["variable_length_utf8"]]:
+        def _check_json_v3(cls, data: JSON) -> TypeGuard[Literal["variable_length_utf8"]]:
             return data == cls._zarr_v3_name
 
         @overload
@@ -343,7 +272,9 @@ else:
             return ""
 
         def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
-            return data  # type: ignore[return-value]
+            if self._check_scalar(data):
+                return data
+            raise TypeError(f"Invalid type: {data}. Expected a string.")
 
         def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> str:
             """
@@ -353,7 +284,7 @@ else:
                 raise TypeError(f"Invalid type: {data}. Expected a string.")
             return data
 
-        def check_scalar(self, data: object) -> bool:
+        def _check_scalar(self, data: object) -> TypeGuard[str]:
             return isinstance(data, str)
 
         def _cast_scalar_unchecked(self, data: object) -> str:

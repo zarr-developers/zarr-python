@@ -47,17 +47,17 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
     @classmethod
-    def check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
         """
         Check that the input is a valid JSON representation of this data type.
         """
         return data in cls._zarr_v2_names
 
     @classmethod
-    def check_json_v3(cls, data: JSON) -> TypeGuard[str]:
+    def _check_json_v3(cls, data: JSON) -> TypeGuard[str]:
         return data == cls._zarr_v3_name
 
-    def check_scalar(self, data: object) -> TypeGuard[IntLike]:
+    def _check_scalar(self, data: object) -> TypeGuard[IntLike]:
         return isinstance(data, IntLike)
 
     def _cast_scalar_unchecked(self, data: object) -> TIntScalar_co:
@@ -146,7 +146,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         return cls()
 
     def to_native_dtype(self: Self) -> np.dtypes.Int8DType:
@@ -196,7 +196,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         return cls()
 
     def to_native_dtype(self: Self) -> np.dtypes.UInt8DType:
@@ -246,7 +246,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -303,7 +303,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -366,14 +366,14 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         # despite the two classes being different. Thus we will create an instance of `cls` with the
         # latter dtype, after pulling in the byte order of the input
         if dtype == np.dtypes.Int32DType():
-            return cls._from_native_dtype_unsafe(
+            return cls._from_native_dtype_unchecked(
                 np.dtypes.Int32DType().newbyteorder(dtype.byteorder)
             )
         else:
             return super().from_native_dtype(dtype)
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -427,7 +427,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -481,7 +481,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 
@@ -537,7 +537,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def _from_native_dtype_unsafe(cls, dtype: TBaseDType) -> Self:
+    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
         byte_order = cast("EndiannessNumpy", dtype.byteorder)
         return cls(endianness=endianness_from_numpy_str(byte_order))
 

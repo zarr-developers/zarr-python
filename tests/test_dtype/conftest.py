@@ -6,7 +6,7 @@ import numpy as np
 
 from zarr.core.dtype import data_type_registry
 from zarr.core.dtype.common import HasLength
-from zarr.core.dtype.npy.sized import Structured
+from zarr.core.dtype.npy.structured import Structured
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 

@@ -25,7 +25,7 @@ from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
-from zarr.core.dtype import Int8, VariableLengthString
+from zarr.core.dtype import Int8, VariableLengthUTF8
 from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
     fully_qualified_name,
@@ -312,7 +312,7 @@ async def test_default_codecs(dtype_category: str) -> None:
     """
     zdtype: ZDType[Any, Any]
     if dtype_category == "variable-length-string":
-        zdtype = VariableLengthString()
+        zdtype = VariableLengthUTF8()
     else:
         zdtype = Int8()
     expected_compressors = (GzipCodec(),)
