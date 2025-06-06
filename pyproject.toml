@@ -98,13 +98,14 @@ docs = [
     "mike>=2.1.3",
     "mkdocs-redirects>=1.2.0",
     "markdown-exec[ansi]",
+    "ruff",
     # Changelog generation
     'towncrier',
     # Optional dependencies to run examples
     'numcodecs[msgpack]',
     'rich',
     's3fs>=2023.10.0',
-    'astroid<4'
+    'astroid<4',
 ]
 
 
