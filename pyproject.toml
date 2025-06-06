@@ -90,15 +90,12 @@ remote_tests = [
 optional = ["rich", "universal-pathlib"]
 docs = [
     # Doc building
-    'sphinx==8.1.3',
-    'sphinx-autobuild>=2021.3.14',
-    'sphinx-autoapi==3.4.0',
-    'sphinx_design',
-    'sphinx-issues',
-    'sphinx-copybutton',
-    'sphinx-reredirects',
-    'pydata-sphinx-theme',
-    'numpydoc',
+    "mkdocs-material[imaging]>=9.6.14",
+    "mkdocs>=1.6.1",
+    "mkdocstrings>=0.29.1",
+    "mkdocstrings-python>=1.16.10",
+    "mike>=2.1.3",
+    "markdown-exec[ansi]",
     # Changelog generation
     'towncrier',
     # Optional dependencies to run examples
@@ -200,8 +197,9 @@ list-env = "pip list"
 features = ['docs']
 
 [tool.hatch.envs.docs.scripts]
-build = "cd docs && make html"
-serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
+serve = "mkdocs serve"
+build = "mkdocs build"
+readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
 
 [tool.hatch.envs.upstream]
 python = "3.13"
@@ -443,9 +441,9 @@ checks = [
 
 [tool.towncrier]
 directory = 'changes'
-filename = "docs/release-notes.rst"
-underlines = ["-", "~", "^"]
-issue_format = ":issue:`{issue}`"
+filename = "docs/release-notes.md"
+underlines = ["", "", ""]
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues{issue})"
 
 [tool.codespell]
 ignore-words-list = "astroid"

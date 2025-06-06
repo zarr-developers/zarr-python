@@ -51,7 +51,6 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
-docs/api
 docs/data
 data
 data.zip

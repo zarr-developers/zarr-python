@@ -1,0 +1,230 @@
+# Zarr-Python
+
+**Useful links**:
+[Source Repository](https://github.com/zarr-developers/zarr-python) |
+[Issue Tracker](https://github.com/zarr-developers/zarr-python/issues) |
+[Developer Chat](https://ossci.zulipchat.com/) |
+[Zarr specifications](https://zarr-specs.readthedocs.io)
+
+
+Zarr is a powerful library for storage of n-dimensional arrays, supporting chunking,
+compression, and various backends, making it a versatile choice for scientific and
+large-scale data.
+
+Zarr-Python is a Python library for reading and writing Zarr groups and arrays. Highlights include:
+
+* Specification support for both Zarr format 2 and 3.
+* Create and read from N-dimensional arrays using NumPy-like semantics.
+* Flexible storage enables reading and writing from local, cloud and in-memory stores.
+* High performance: Enables fast I/O with support for asynchronous I/O and multi-threading.
+* Extensible: Customizable with user-defined codecs and stores.
+
+## Installation
+
+Zarr requires Python 3.11 or higher. You can install it via `pip`:
+
+```bash
+pip install zarr
+```
+
+or `conda`:
+
+```bash
+conda install --channel conda-forge zarr
+```
+
+## Quick Start 🚀
+
+This section  will help you get up and running with
+the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
+
+### Creating an Array
+
+To get started, you can create a simple Zarr array:
+
+```python
+import zarr
+import numpy as np
+
+# Create a 2D Zarr array
+z = zarr.create_array(
+   store="data/example-1.zarr",
+   shape=(100, 100),
+   chunks=(10, 10),
+   dtype="f4"
+)
+
+# Assign data to the array
+z[:, :] = np.random.random((100, 100))
+z.info
+
+# Type               : Array
+# Zarr format        : 3
+# Data type          : DataType.float32
+# Shape              : (100, 100)
+# Chunk shape        : (10, 10)
+# Order              : C
+# Read-only          : False
+# Store type         : LocalStore
+# Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+# No. bytes          : 40000 (39.1K)
+```
+
+Here, we created a 2D array of shape `(100, 100)`, chunked into blocks of
+`(10, 10)`, and filled it with random floating-point data. This array was
+written to a `LocalStore` in the `data/example-1.zarr` directory.
+
+#### Compression and Filters
+
+Zarr supports data compression and filters. For example, to use Blosc compression:
+
+```python
+z = zarr.create_array(
+   "data/example-3.zarr",
+   mode="w", shape=(100, 100),
+   chunks=(10, 10), dtype="f4",
+   compressors=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.shuffle)
+)
+z[:, :] = np.random.random((100, 100))
+z.info
+# Type               : Array
+# Zarr format        : 3
+# Data type          : DataType.float32
+# Shape              : (100, 100)
+# Chunk shape        : (10, 10)
+# Order              : C
+# Read-only          : False
+# Store type         : LocalStore
+# Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+# No. bytes          : 40000 (39.1K)
+```
+
+This compresses the data using the Zstandard codec with shuffle enabled for better compression.
+
+### Hierarchical Groups
+
+Zarr allows you to create hierarchical groups, similar to directories:
+
+```python
+# Create nested groups and add arrays
+root = zarr.group("data/example-2.zarr")
+foo = root.create_group(name="foo")
+bar = root.create_array(
+    name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
+)
+spam = foo.create_array(name="spam", shape=(10,), dtype="i4")
+
+# Assign values
+bar[:, :] = np.random.random((100, 10))
+spam[:] = np.arange(10)
+
+# print the hierarchy
+root.tree()
+# /
+# ├── bar (100, 10) float32
+# └── foo
+#     └── spam (10,) int32
+```
+
+This creates a group with two datasets: `foo` and `bar`.
+
+#### Batch Hierarchy Creation
+
+Zarr provides tools for creating a collection of arrays and groups with a single function call.
+Suppose we want to copy existing groups and arrays into a new storage backend:
+
+```python
+# Create nested groups and add arrays
+root = zarr.group("data/example-3.zarr", attributes={'name': 'root'})
+foo = root.create_group(name="foo")
+bar = root.create_array(
+    name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
+)
+nodes = {'': root.metadata} | {k: v.metadata for k,v in root.members()}
+print(nodes)
+from zarr.storage import MemoryStore
+new_nodes = dict(zarr.create_hierarchy(store=MemoryStore(), nodes=nodes))
+new_root = new_nodes['']
+assert new_root.attrs == root.attrs
+```
+
+Note that `zarr.create_hierarchy` will only initialize arrays and groups -- copying array data must
+be done in a separate step.
+
+### Persistent Storage
+
+Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
+utilized a `zarr.storage.LocalStore`, a number of other storage options are available.
+
+Zarr integrates seamlessly with cloud object storage such as Amazon S3 and Google Cloud Storage
+using external libraries like [s3fs](https://s3fs.readthedocs.io) or
+[gcsfs](https://gcsfs.readthedocs.io):
+
+```python
+import s3fs
+
+z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10), dtype="f4")
+z[:, :] = np.random.random((100, 100))
+```
+
+A single-file store can also be created using the `zarr.storage.ZipStore`:
+
+```python
+# Store the array in a ZIP file
+store = zarr.storage.ZipStore("data/example-3.zip", mode='w')
+
+z = zarr.create_array(
+    store=store,
+    mode="w",
+    shape=(100, 100),
+    chunks=(10, 10),
+    dtype="f4"
+)
+
+# write to the array
+z[:, :] = np.random.random((100, 100))
+
+# the ZipStore must be explicitly closed
+store.close()
+```
+
+To open an existing array from a ZIP file:
+
+```python
+# Open the ZipStore in read-only mode
+store = zarr.storage.ZipStore("data/example-3.zip", read_only=True)
+
+z = zarr.open_array(store, mode='r')
+
+# read the data as a NumPy Array
+z[:]
+# array([[0.66734236, 0.15667458, 0.98720884, ..., 0.36229587, 0.67443246,
+#         0.34315267],
+#     [0.65787303, 0.9544212 , 0.4830079 , ..., 0.33097172, 0.60423803,
+#         0.45621237],
+#     [0.27632037, 0.9947008 , 0.42434934, ..., 0.94860053, 0.6226942 ,
+#         0.6386924 ],
+#     ...,
+#     [0.12854576, 0.934397  , 0.19524333, ..., 0.11838563, 0.4967675 ,
+#         0.43074256],
+#     [0.82029045, 0.4671437 , 0.8090906 , ..., 0.7814118 , 0.42650765,
+#         0.95929915],
+#     [0.4335856 , 0.7565437 , 0.7828931 , ..., 0.48119593, 0.66220033,
+#         0.6652362 ]], shape=(100, 100), dtype=float32)
+```
+
+Read more about Zarr's storage options in the [User Guide](user-guide/storage.md).
+
+## Project Status
+
+More information about the Zarr format can be found on the [main website](https://zarr.dev).
+
+If you are using Zarr-Python, we would [love to hear about it](https://github.com/zarr-developers/community/issues/19).
+
+### Funding and Support
+The project is fiscally sponsored by [NumFOCUS](https://numfocus.org/), a US
+501(c)(3) public charity, and development has been supported by the
+[MRC Centre for Genomics and Global Health](https://www.cggh.org)
+and the [Chan Zuckerberg Initiative](https://chanzuckerberg.com/).
+
+[Donate to Zarr](https://numfocus.org/donate-to-zarr) to support the project!

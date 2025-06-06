@@ -11,16 +11,8 @@ build:
         then
           towncrier build --version Unreleased --yes;
         fi
+  commands:
+    - mamba install -c conda-forge -c nodefaults hatch
+    - hatch env run --env docs build
+    - hatch env run --env docs readthedocs
 
-sphinx:
-  configuration: docs/conf.py
-  fail_on_warning: true
-
-formats: all
-
-python:
-   install:
-   - method: pip
-     path: .
-     extra_requirements:
-        - docs

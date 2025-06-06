@@ -1,0 +1,154 @@
+# Based on https://github.com/developmentseed/obspec/blob/main/mkdocs.yml
+site_name: zarr-python
+repo_name: zarr-developers/zarr-python
+repo_url: https://github.com/zarr-developers/zarr-python
+site_description: An implementation of chunked, compressed, N-dimensional arrays for Python.
+site_author: Alistair Miles
+site_url: https://zarr.readthedocs.io/
+docs_dir: docs
+
+extra:
+  version:
+    alias: true
+    provider: mike
+
+nav:
+  - "index.md"
+  - User Guide:
+      - user-guide/installation.md
+      - user-guide/arrays.md
+      - user-guide/groups.md
+      - user-guide/attributes.md
+      - user-guide/storage.md
+      - user-guide/config.md
+      - user-guide/v3_migration.md
+      - user-guide/performance.md
+      - user-guide/extending.md
+      - user-guide/gpu.md
+      - user-guide/consolidated_metadata.md
+  - API Reference:
+      - api/array.md
+      - api/group.md
+      - api/create.md
+      - api/open.md
+      - api/load.md
+      - api/save.md
+      - api/convenience.md
+      - api/config.md
+      - api/codecs.md
+      - api/errors.md
+      - api/registry.md
+      - api/storage.md
+      - api/testing.md
+      - API:
+        - api/api_async.md
+        - api/api_sync.md
+      - ABC:
+        - api/abc/codec.md
+        - api/abc/metadata.md
+        - api/abc/store.md
+      - deprecated:
+        - api/deprecated/convenience.md
+        - api/deprecated/creation.md
+  - release-notes.md
+  - contributing.md
+watch:
+  - src/zarr
+  - docs
+
+theme:
+  language: en
+  name: material
+  custom_dir: docs/overrides
+  logo: _static/logo_horizontal.svg
+  palette:
+    # Palette toggle for automatic mode
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+
+    # Palette toggle for light mode
+    - media: "(prefers-color-scheme: light)"
+      primary: blue grey
+      accent: pink
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Palette toggle for dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: grey
+      accent: pink
+      toggle:
+        icon: material/brightness-4
+        name: Switch to system preference
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - navigation.indexes
+    - navigation.instant
+    - navigation.tracking
+    - search.suggest
+    - search.share
+
+extra_css:
+  - overrides/stylesheets/extra.css
+
+plugins:
+  - search
+  - mkdocstrings:
+      enable_inventory: true
+      handlers:
+        python:
+          paths: [src/zarr]
+          options:
+            # We set allow_inspection: false to ensure that all docstrings come
+            # from the pyi files, not the Rust-facing doc comments.
+            allow_inspection: false
+            docstring_section_style: list
+            docstring_style: numpy
+            line_length: 60
+            separate_signature: true
+            show_root_heading: true
+            show_signature_annotations: true
+            show_source: false
+            show_symbol_type_toc: true
+            signature_crossrefs: true
+
+          inventories:
+            - https://docs.python.org/3/objects.inv
+
+# https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
+markdown_extensions:
+  - admonition
+  - attr_list
+  - codehilite:
+      guess_lang: false
+  - def_list
+  - footnotes
+  - md_in_html
+  - pymdownx.arithmatex
+  - pymdownx.betterem
+  - pymdownx.caret:
+      insert: false
+  - pymdownx.details
+  - pymdownx.escapeall:
+      hardbreak: true
+      nbsp: true
+  - pymdownx.magiclink:
+      hide_protocol: true
+      repo_url_shortener: true
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - toc:
+      permalink: true
