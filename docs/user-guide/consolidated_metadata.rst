@@ -129,4 +129,4 @@ may be for several reasons like:
 This type of store can declare it doesn't want consolidation by implementing
 `Store.supports_consolidated_metadata`. For stores that don't support
 consolidation, Zarr will silently ignore any `consolidate_metadata` calls,
-maintainting the store in its unconsolidated state.
+maintaining the store in its unconsolidated state.
