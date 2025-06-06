@@ -4,11 +4,20 @@ build:
   os: ubuntu-22.04
   tools:
     python: "3.12"
-  commands:
-    - |
-      python -m pip install hatch
-      if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ]; then
-        hatch env run --env docs -- towncrier build --version Unreleased --yes
-      fi
-      hatch env run --env docs build
-      hatch env run --env docs readthedocs
+  jobs:
+    pre_build:
+      - |
+        if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];
+        then
+          towncrier build --version Unreleased --yes;
+        fi
+
+mkdocs:
+  configuration: mkdocs.yml
+
+python:
+   install:
+   - method: pip
+     path: .
+     extra_requirements:
+        - docs
