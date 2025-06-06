@@ -8,13 +8,11 @@ build:
     pre_build:
       - |
         python -m pip install hatch
-        if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ]; then
-          hatch env run --env docs -- towncrier build --version Unreleased --yes
+        hatch shell docs
+        if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];
+        then
+          towncrier build --version Unreleased --yes;
         fi
-    build:
-      - hatch env run --env docs build
-    post_build:
-      - hatch env run --env docs readthedocs
 
 mkdocs:
   configuration: mkdocs.yml
