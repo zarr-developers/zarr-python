@@ -1520,7 +1520,6 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
     # if create_nodes is sensitive to IO latency,
     # this should take (num_groups * get_latency) seconds
     # otherwise, it should take only marginally more than get_latency seconds
-
     with zarr_config.set({"async.concurrency": 1}):
         start = time.time()
         _ = tuple(sync_group.create_nodes(store=latency_store, nodes=groups))
@@ -2025,9 +2024,7 @@ def test_group_members_concurrency_limit(store: MemoryStore) -> None:
     # if .members is sensitive to IO latency,
     # this should take (num_groups * get_latency) seconds
     # otherwise, it should take only marginally more than get_latency seconds
-    from zarr.core.config import config
-
-    with config.set({"async.concurrency": 1}):
+    with zarr_config.set({"async.concurrency": 1}):
         start = time.time()
         _ = group_read.members()
         elapsed = time.time() - start
