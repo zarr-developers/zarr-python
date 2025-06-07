@@ -1628,6 +1628,15 @@ async def test_from_array_arraylike(
         np.testing.assert_array_equal(result[...], np.full_like(src, fill_value))
 
 
+def test_from_array_F_order() -> None:
+    arr = zarr.create_array(store={}, data=np.array([1]), order="F", zarr_format=2)
+    with pytest.warns(
+        UserWarning,
+        match="The existing order='F' of the source Zarr format 2 array will be ignored.",
+    ):
+        zarr.from_array(store={}, data=arr, zarr_format=3)
+
+
 async def test_orthogonal_set_total_slice() -> None:
     """Ensure that a whole chunk overwrite does not read chunks"""
     store = MemoryStore()
