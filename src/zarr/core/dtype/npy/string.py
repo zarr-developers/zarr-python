@@ -33,10 +33,6 @@ class LengthBytesConfig(TypedDict):
     length_bytes: int
 
 
-# TDO: Fix this terrible name
-FixedLengthBytesJSONV3 = NamedConfig[Literal["fixed_length_bytes"], LengthBytesConfig]
-
-
 # TODO: Fix this terrible name
 FixedLengthUTF32JSONV3 = NamedConfig[Literal["fixed_length_utf32"], LengthBytesConfig]
 

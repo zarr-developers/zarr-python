@@ -15,7 +15,7 @@ class FixedLengthBytesConfig(TypedDict):
     length_bytes: int
 
 
-NTBytesJSONV3 = NamedConfig[Literal["null_terminated_bytes"], FixedLengthBytesConfig]
+NullTerminatedBytesJSONV3 = NamedConfig[Literal["null_terminated_bytes"], FixedLengthBytesConfig]
 RawBytesJSONV3 = NamedConfig[Literal["raw_bytes"], FixedLengthBytesConfig]
 
 
@@ -40,7 +40,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         return isinstance(data, str) and re.match(r"^\|S\d+$", data) is not None
 
     @classmethod
-    def _check_json_v3(cls, data: JSON) -> TypeGuard[NTBytesJSONV3]:
+    def _check_json_v3(cls, data: JSON) -> TypeGuard[NullTerminatedBytesJSONV3]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
@@ -53,9 +53,9 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     def to_json(self, zarr_format: Literal[2]) -> str: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> NTBytesJSONV3: ...
+    def to_json(self, zarr_format: Literal[3]) -> NullTerminatedBytesJSONV3: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> str | NTBytesJSONV3:
+    def to_json(self, zarr_format: ZarrFormat) -> str | NullTerminatedBytesJSONV3:
         if zarr_format == 2:
             return self.to_native_dtype().str
         elif zarr_format == 3:
