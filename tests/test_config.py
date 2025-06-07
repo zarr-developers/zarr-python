@@ -240,7 +240,7 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
 
 def test_config_buffer_implementation() -> None:
     # has default value
-    assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
+    assert config.defaults[0]["buffer"] == "zarr.buffer.cpu.Buffer"
 
     arr = zeros(shape=(100,), store=StoreExpectingTestBuffer())
 

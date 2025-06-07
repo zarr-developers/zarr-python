@@ -64,7 +64,7 @@ class Config(DConfig):  # type: ignore[misc]
         Configure Zarr to use GPUs where possible.
         """
         return self.set(
-            {"buffer": "zarr.core.buffer.gpu.Buffer", "ndbuffer": "zarr.core.buffer.gpu.NDBuffer"}
+            {"buffer": "zarr.buffer.gpu.Buffer", "ndbuffer": "zarr.buffer.gpu.NDBuffer"}
         )
 
 
