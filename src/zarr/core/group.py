@@ -507,6 +507,13 @@ class AsyncGroup:
         """
         store_path = await make_store_path(store)
         if not store_path.store.supports_consolidated_metadata:
+            if use_consolidated:
+                store_name = type(store_path.store).__name__
+                warnings.warn(
+                    f"The Zarr Store in use ({store_name}) doesn't support consolidated metadata "
+                    f"or has its own consolidation. Ignoring use_consolidated={use_consolidated}.",
+                    stacklevel=1,
+                )
             use_consolidated = False
 
         consolidated_key = ZMETADATA_V2_JSON

@@ -203,6 +203,11 @@ async def consolidate_metadata(
 
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     if not store_path.store.supports_consolidated_metadata:
+        store_name = type(store_path.store).__name__
+        warnings.warn(
+            f"The Zarr Store in use ({store_name}) doesn't support consolidated metadata. Ignoring.",
+            stacklevel=1,
+        )
         return group
 
     group.store_path.store._check_writable()

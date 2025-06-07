@@ -653,16 +653,18 @@ async def test_consolidated_metadata_encodes_special_chars(
         assert root_metadata["time"]["fill_value"] == expected_fill_value
 
 
+class NonConsolidatedStore(zarr.storage.MemoryStore):
+    """A store that doesn't support consolidated metadata"""
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        return False
+
+
 async def test_consolidate_metadata_is_noop_for_self_consolidating_stores():
     """Verify calling consolidate_metadata on a non supporting stores does nothing"""
 
-    # We create a store that doesn't support consolidated metadata
-    class Store(zarr.storage.MemoryStore):
-        @property
-        def supports_consolidated_metadata(self) -> bool:
-            return False
-
-    memory_store = Store()
+    memory_store = NonConsolidatedStore()
     root = await zarr.api.asynchronous.create_group(store=memory_store)
     await root.create_group("a/b")
 
@@ -672,6 +674,22 @@ async def test_consolidate_metadata_is_noop_for_self_consolidating_stores():
 
     memory_store.set = set_raises
 
-    # consolidate_metadata would call `set` if the store supported consolidated metadata
-    # if this doesn't raise, it means consolidate_metadata is NOOP
-    await zarr.api.asynchronous.consolidate_metadata(memory_store)
+    with pytest.warns(UserWarning, match="doesn't support consolidated metadata"):
+        # consolidate_metadata would call `set` if the store supported consolidated metadata
+        # if this doesn't raise, it means consolidate_metadata is NOOP
+        await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+
+async def test_open_group_in_non_consolidating_stores():
+    memory_store = NonConsolidatedStore()
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    await root.create_group("a/b")
+
+    # Opening a group without consolidatedion works as expected
+    await AsyncGroup.open(memory_store, use_consolidated=False)
+
+    # Opening a group with use_consolidated=True should warn
+    with pytest.warns(
+        UserWarning, match="doesn't support consolidated metadata.*Ignoring use_consolidated=True"
+    ):
+        await AsyncGroup.open(memory_store, use_consolidated=True)
