@@ -1,1 +1,8 @@
-Add public :mod:`zarr.buffer` API for controlling how data is stored in memory.
+Added public API for Buffer ABCs and implementations.
+
+Use :mod:`zarr.buffer` to access buffer implementations, and
+:mod:`zarr.abc.buffer` for the interface to implement new buffer types.
+
+Users previously importing buffer from ``zarr.core.buffer`` should update their
+imports to use :mod:`zarr.buffer`. As a reminder, all of ``zarr.core`` is
+considered a private API that's not covered by zarr-python's versioning policy.
