@@ -10,6 +10,8 @@ import zarr.api.asynchronous
 import zarr.storage
 from zarr.core.buffer import cpu
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.dtype.npy.float import Float32, Float64
+from zarr.core.dtype.npy.int import Int16
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
 from zarr.core.metadata.v2 import parse_zarr_format
@@ -18,8 +20,6 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
-
-import numcodecs
 
 
 def test_parse_zarr_format_valid() -> None:
@@ -33,8 +33,8 @@ def test_parse_zarr_format_invalid(data: Any) -> None:
 
 
 @pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
-@pytest.mark.parametrize("filters", [None, (numcodecs.GZip(),)])
-@pytest.mark.parametrize("compressor", [None, numcodecs.GZip()])
+@pytest.mark.parametrize("filters", [None, [{"id": "gzip", "level": 1}]])
+@pytest.mark.parametrize("compressor", [None, {"id": "gzip", "level": 1}])
 @pytest.mark.parametrize("fill_value", [None, 0, 1])
 @pytest.mark.parametrize("order", ["C", "F"])
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
@@ -86,7 +86,7 @@ def test_filters_empty_tuple_warns() -> None:
         "zarr_format": 2,
         "shape": (1,),
         "chunks": (1,),
-        "dtype": "uint8",
+        "dtype": "|u1",
         "order": "C",
         "compressor": None,
         "filters": (),
@@ -128,7 +128,7 @@ class TestConsolidated:
                     "chunks": [730],
                     "compressor": None,
                     "dtype": "<f4",
-                    "fill_value": "0.0",
+                    "fill_value": 0.0,
                     "filters": None,
                     "order": "C",
                     "shape": [730],
@@ -147,7 +147,7 @@ class TestConsolidated:
                     "chunks": [730],
                     "compressor": None,
                     "dtype": "<f4",
-                    "fill_value": "0.0",
+                    "fill_value": 0.0,
                     "filters": None,
                     "order": "C",
                     "shape": [730],
@@ -219,7 +219,7 @@ class TestConsolidated:
                     fill_value=0,
                     chunks=(730,),
                     attributes={"_ARRAY_DIMENSIONS": ["time"], "dataset": "NMC Reanalysis"},
-                    dtype=np.dtype("int16"),
+                    dtype=Int16(),
                     order="C",
                     filters=None,
                     dimension_separator=".",
@@ -236,7 +236,7 @@ class TestConsolidated:
                         "standard_name": "time",
                         "units": "hours since 1800-01-01",
                     },
-                    dtype=np.dtype("float32"),
+                    dtype=Float32(),
                     order="C",
                     filters=None,
                     dimension_separator=".",
@@ -254,7 +254,7 @@ class TestConsolidated:
                                 attributes={
                                     "calendar": "standard",
                                 },
-                                dtype=np.dtype("float32"),
+                                dtype=Float32(),
                                 order="C",
                                 filters=None,
                                 dimension_separator=".",
@@ -295,7 +295,7 @@ def test_from_dict_extra_fields() -> None:
     expected = ArrayV2Metadata(
         attributes={"key": "value"},
         shape=(8,),
-        dtype="float64",
+        dtype=Float64(),
         chunks=(8,),
         fill_value=0.0,
         order="C",
@@ -318,12 +318,11 @@ def test_zstd_checksum() -> None:
     assert "checksum" not in metadata["compressor"]
 
 
-@pytest.mark.parametrize(
-    "fill_value", [None, np.void((0, 0), np.dtype([("foo", "i4"), ("bar", "i4")]))]
-)
+@pytest.mark.parametrize("fill_value", [np.void((0, 0), np.dtype([("foo", "i4"), ("bar", "i4")]))])
 def test_structured_dtype_fill_value_serialization(tmp_path, fill_value):
+    zarr_format = 2
     group_path = tmp_path / "test.zarr"
-    root_group = zarr.open_group(group_path, mode="w", zarr_format=2)
+    root_group = zarr.open_group(group_path, mode="w", zarr_format=zarr_format)
     dtype = np.dtype([("foo", "i4"), ("bar", "i4")])
     root_group.create_array(
         name="structured_dtype",
@@ -333,11 +332,7 @@ def test_structured_dtype_fill_value_serialization(tmp_path, fill_value):
         fill_value=fill_value,
     )
 
-    zarr.consolidate_metadata(root_group.store, zarr_format=2)
+    zarr.consolidate_metadata(root_group.store, zarr_format=zarr_format)
     root_group = zarr.open_group(group_path, mode="r")
-    assert (
-        root_group.metadata.consolidated_metadata.to_dict()["metadata"]["structured_dtype"][
-            "fill_value"
-        ]
-        == fill_value
-    )
+    observed = root_group.metadata.consolidated_metadata.metadata["structured_dtype"].fill_value
+    assert observed == fill_value
