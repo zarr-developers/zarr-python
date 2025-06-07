@@ -226,3 +226,8 @@ def numpy_buffer_prototype() -> core.BufferPrototype:
 
 register_buffer(Buffer, qualname="zarr.buffer.cpu.Buffer")
 register_ndbuffer(NDBuffer, qualname="zarr.buffer.cpu.NDBuffer")
+
+
+# backwards compatibility
+register_buffer(Buffer, qualname="zarr.core.buffer.cpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.core.buffer.cpu.NDBuffer")

@@ -275,6 +275,27 @@ def test_config_buffer_implementation() -> None:
         assert np.array_equal(arr_Crc32c[:], data2d)
 
 
+def test_config_buffer_backwards_compatibility() -> None:
+    # This should warn once zarr.core is private
+    # https://github.com/zarr-developers/zarr-python/issues/2621
+    with zarr.config.set(
+        {"buffer": "zarr.core.buffer.cpu.Buffer", "ndbuffer": "zarr.core.buffer.cpu.NDBuffer"}
+    ):
+        get_buffer_class()
+        get_ndbuffer_class()
+
+
+@pytest.mark.gpu
+def test_config_buffer_backwards_compatibility_gpu() -> None:
+    # This should warn once zarr.core is private
+    # https://github.com/zarr-developers/zarr-python/issues/2621
+    with zarr.config.set(
+        {"buffer": "zarr.core.buffer.gpu.Buffer", "ndbuffer": "zarr.core.buffer.gpu.NDBuffer"}
+    ):
+        get_buffer_class()
+        get_ndbuffer_class()
+
+
 @pytest.mark.filterwarnings("error")
 def test_warning_on_missing_codec_config() -> None:
     class NewCodec(BytesCodec):
