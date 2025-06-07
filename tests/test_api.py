@@ -1301,3 +1301,41 @@ def test_no_overwrite_load(tmp_path: Path) -> None:
     with contextlib.suppress(NotImplementedError):
         zarr.load(store)
     assert existing_fpath.exists()
+
+
+@pytest.mark.parametrize(
+    "f",
+    [
+        zarr.array,
+        zarr.create,
+        zarr.create_array,
+        zarr.ones,
+        zarr.ones_like,
+        zarr.empty,
+        zarr.empty_like,
+        zarr.full,
+        zarr.full_like,
+        zarr.zeros,
+        zarr.zeros_like,
+    ],
+)
+def test_auto_chunks(f: Callable[..., Array]) -> None:
+    # Make sure chunks are set automatically across the public API
+    # TODO: test shards with this test too
+    shape = (1000, 1000)
+    dtype = np.uint8
+    kwargs = {"shape": shape, "dtype": dtype}
+    array = np.zeros(shape, dtype=dtype)
+    store = zarr.storage.MemoryStore()
+
+    if f in [zarr.full, zarr.full_like]:
+        kwargs["fill_value"] = 0
+    if f in [zarr.array]:
+        kwargs["data"] = array
+    if f in [zarr.empty_like, zarr.full_like, zarr.empty_like, zarr.ones_like, zarr.zeros_like]:
+        kwargs["a"] = array
+    if f in [zarr.create_array]:
+        kwargs["store"] = store
+
+    a = f(**kwargs)
+    assert a.chunks == (500, 500)
