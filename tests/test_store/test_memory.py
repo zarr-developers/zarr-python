@@ -8,7 +8,6 @@ import numpy.typing as npt
 import pytest
 
 import zarr
-import zarr.core
 import zarr.core.array
 from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.storage import GpuMemoryStore, MemoryStore

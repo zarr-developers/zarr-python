@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import typing_extensions
 from crc32c import crc32c
 
 from zarr.abc.codec import BytesBytesCodec
