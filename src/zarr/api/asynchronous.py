@@ -202,7 +202,7 @@ async def consolidate_metadata(
     store_path = await make_store_path(store, path=path)
 
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
-    if not group.store_path.store.supports_consolidated_metadata:
+    if not store_path.store.supports_consolidated_metadata:
         return group
 
     group.store_path.store._check_writable()

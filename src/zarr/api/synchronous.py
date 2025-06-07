@@ -103,7 +103,7 @@ def consolidate_metadata(
     group: Group
         The group, with the ``consolidated_metadata`` field set to include
         the metadata of each child node. If the Store doesn't prefer
-        consolidated metadata, this is function does nothing and returns
+        consolidated metadata, this function does nothing and returns
         the group without modifications. See ``Store.supports_consolidated_metadata``.
 
     """
