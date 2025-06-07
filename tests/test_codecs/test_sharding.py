@@ -1,5 +1,6 @@
 import pickle
 from typing import Any
+from unittest.mock import AsyncMock
 
 import numpy as np
 import numpy.typing as npt
@@ -9,7 +10,7 @@ import zarr
 import zarr.api
 import zarr.api.asynchronous
 from zarr import Array
-from zarr.abc.store import Store
+from zarr.abc.store import RangeByteRequest, Store, SuffixByteRequest
 from zarr.codecs import (
     BloscCodec,
     ShardingCodec,
@@ -110,7 +111,9 @@ def test_sharding_scalar(
     indirect=["array_fixture"],
 )
 def test_sharding_partial(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -146,7 +149,9 @@ def test_sharding_partial(
     indirect=["array_fixture"],
 )
 def test_sharding_partial_readwrite(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -178,7 +183,9 @@ def test_sharding_partial_readwrite(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_read(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -197,6 +204,254 @@ def test_sharding_partial_read(
     assert np.all(read_data == 1)
 
 
+@pytest.mark.skip("This is profiling rather than a test")
+@pytest.mark.slow_hypothesis
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+def test_partial_shard_read_performance(store: Store) -> None:
+    import asyncio
+    import json
+    from functools import partial
+    from itertools import product
+    from timeit import timeit
+    from unittest.mock import AsyncMock
+
+    # The whole test array is a single shard to keep runtime manageable while
+    # using a realistic shard size (256 MiB uncompressed, ~115 MiB compressed).
+    # In practice, the array is likely to be much larger with many shards of this
+    # rough order of magnitude. There are 512 chunks per shard in this example.
+    array_shape = (512, 512, 512)
+    shard_shape = (512, 512, 512)  # 256 MiB uncompressed unit16s
+    chunk_shape = (64, 64, 64)  # 512 KiB uncompressed unit16s
+    dtype = np.uint16
+
+    a = zarr.create_array(
+        StorePath(store),
+        shape=array_shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        compressors=BloscCodec(cname="zstd"),
+        dtype=dtype,
+        fill_value=np.iinfo(dtype).max,
+    )
+    # Narrow range of values lets zstd compress to about 1/2 of uncompressed size
+    a[:] = np.random.default_rng(123).integers(low=0, high=50, size=array_shape, dtype=dtype)
+
+    num_calls = 20
+    experiments = []
+    for concurrency, get_latency, coalesce_max_gap, statement in product(
+        [1, 10, 100],
+        [0.0, 0.01],
+        [-1, 2**20, 10 * 2**20],
+        ["a[0, :, :]", "a[:, 0, :]", "a[:, :, 0]"],
+    ):
+        zarr.config.set(
+            {
+                "async.concurrency": concurrency,
+                "sharding.read.coalesce_max_gap_bytes": coalesce_max_gap,
+            }
+        )
+
+        async def get_with_latency(*args: Any, get_latency: float, **kwargs: Any) -> Any:
+            await asyncio.sleep(get_latency)
+            return await store.get(*args, **kwargs)
+
+        store_mock = AsyncMock(wraps=store, spec=store.__class__)
+        store_mock.get.side_effect = partial(get_with_latency, get_latency=get_latency)
+
+        a = zarr.open_array(StorePath(store_mock))
+
+        store_mock.reset_mock()
+
+        # Each timeit call accesses a 512x512 slice covering 64 chunks
+        time = timeit(statement, number=num_calls, globals={"a": a}) / num_calls
+        experiments.append(
+            {
+                "concurrency": concurrency,
+                "coalesce_max_gap": coalesce_max_gap,
+                "get_latency": get_latency,
+                "statement": statement,
+                "time": time,
+                "store_get_calls": store_mock.get.call_count,
+            }
+        )
+
+    with open("zarr-python-partial-shard-read-performance-with-coalesce.json", "w") as f:
+        json.dump(experiments, f)
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("coalesce_reads", [True, False])
+def test_sharding_multiple_chunks_partial_shard_read(
+    store: Store, index_location: ShardingCodecIndexLocation, coalesce_reads: bool
+) -> None:
+    array_shape = (16, 64)
+    shard_shape = (8, 32)
+    chunk_shape = (2, 4)
+    data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
+
+    if coalesce_reads:
+        # 1MiB, enough to coalesce all chunks within a shard in this example
+        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": 2**20})
+    else:
+        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": -1})  # disable coalescing
+
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+    a = zarr.create_array(
+        StorePath(store_mock),
+        shape=data.shape,
+        chunks=chunk_shape,
+        shards={"shape": shard_shape, "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        dtype=data.dtype,
+        fill_value=1,
+    )
+    a[:] = data
+
+    store_mock.reset_mock()  # ignore store calls during array creation
+
+    # Reads 3 (2 full, 1 partial) chunks each from 2 shards (a subset of both shards)
+    # for a total of 6 chunks accessed
+    assert np.allclose(a[0, 22:42], np.arange(22, 42, dtype="float32"))
+
+    if coalesce_reads:
+        # 2 shard index requests + 2 coalesced chunk data byte ranges (one for each shard)
+        assert store_mock.get.call_count == 4
+    else:
+        # 2 shard index requests + 6 chunks
+        assert store_mock.get.call_count == 8
+
+    for method, args, kwargs in store_mock.method_calls:
+        assert method == "get"
+        assert args[0].startswith("c/")  # get from a chunk
+        assert isinstance(kwargs["byte_range"], (SuffixByteRequest, RangeByteRequest))
+
+    store_mock.reset_mock()
+
+    # Reads 4 chunks from both shards along dimension 0 for a total of 8 chunks accessed
+    assert np.allclose(a[:, 0], np.arange(0, data.size, array_shape[1], dtype="float32"))
+
+    if coalesce_reads:
+        # 2 shard index requests + 2 coalesced chunk data byte ranges (one for each shard)
+        assert store_mock.get.call_count == 4
+    else:
+        # 2 shard index requests + 8 chunks
+        assert store_mock.get.call_count == 10
+
+    for method, args, kwargs in store_mock.method_calls:
+        assert method == "get"
+        assert args[0].startswith("c/")  # get from a chunk
+        assert isinstance(kwargs["byte_range"], (SuffixByteRequest, RangeByteRequest))
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_sharding_partial_shard_read__index_load_fails(
+    store: Store, index_location: ShardingCodecIndexLocation
+) -> None:
+    """Test fill value is returned when the call to the store to load the bytes of the shard's chunk index fails."""
+    array_shape = (16,)
+    shard_shape = (16,)
+    chunk_shape = (8,)
+    data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
+    fill_value = -999
+
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+    # loading the index is the first call to .get() so returning None will simulate an index load failure
+    store_mock.get.return_value = None
+
+    a = zarr.create_array(
+        StorePath(store_mock),
+        shape=data.shape,
+        chunks=chunk_shape,
+        shards={"shape": shard_shape, "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        dtype=data.dtype,
+        fill_value=fill_value,
+    )
+    a[:] = data
+
+    # Read from one of two chunks in a shard to test the partial shard read path
+    assert a[0] == fill_value
+    assert a[0] != data[0]
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_sharding_partial_shard_read__index_chunk_slice_fails(
+    store: Store,
+    index_location: ShardingCodecIndexLocation,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test fill value is returned when looking up a chunk's byte slice within a shard fails."""
+    array_shape = (16,)
+    shard_shape = (16,)
+    chunk_shape = (8,)
+    data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
+    fill_value = -999
+
+    monkeypatch.setattr(
+        "zarr.codecs.sharding._ShardIndex.get_chunk_slice",
+        lambda self, chunk_coords: None,
+    )
+
+    a = zarr.create_array(
+        StorePath(store),
+        shape=data.shape,
+        chunks=chunk_shape,
+        shards={"shape": shard_shape, "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        dtype=data.dtype,
+        fill_value=fill_value,
+    )
+    a[:] = data
+
+    # Read from one of two chunks in a shard to test the partial shard read path
+    assert a[0] == fill_value
+    assert a[0] != data[0]
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_sharding_partial_shard_read__chunk_load_fails(
+    store: Store, index_location: ShardingCodecIndexLocation
+) -> None:
+    """Test fill value is returned when the call to the store to load a chunk's bytes fails."""
+    array_shape = (16,)
+    shard_shape = (16,)
+    chunk_shape = (8,)
+    data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
+    fill_value = -999
+
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+
+    a = zarr.create_array(
+        StorePath(store_mock),
+        shape=data.shape,
+        chunks=chunk_shape,
+        shards={"shape": shard_shape, "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        dtype=data.dtype,
+        fill_value=fill_value,
+    )
+    a[:] = data
+
+    # Set up store mock after array creation to only modify calls during array indexing
+    # Succeed on first call (index load), fail on subsequent calls (chunk loads)
+    async def first_success_then_fail(*args: Any, **kwargs: Any) -> Any:
+        if store_mock.get.call_count == 1:
+            return await store.get(*args, **kwargs)
+        else:
+            return None
+
+    store_mock.get.reset_mock()
+    store_mock.get.side_effect = first_success_then_fail
+
+    # Read from one of two chunks in a shard to test the partial shard read path
+    assert a[0] == fill_value
+    assert a[0] != data[0]
+
+
 @pytest.mark.parametrize(
     "array_fixture",
     [
@@ -207,7 +462,9 @@ def test_sharding_partial_read(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_overwrite(
-    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     data = array_fixture[:10, :10, :10]
     spath = StorePath(store)
@@ -437,7 +694,9 @@ async def test_sharding_with_empty_inner_chunk(
 )
 @pytest.mark.parametrize("chunks_per_shard", [(5, 2), (2, 5), (5, 5)])
 async def test_sharding_with_chunks_per_shard(
-    store: Store, index_location: ShardingCodecIndexLocation, chunks_per_shard: tuple[int]
+    store: Store,
+    index_location: ShardingCodecIndexLocation,
+    chunks_per_shard: tuple[int],
 ) -> None:
     chunk_shape = (2, 1)
     shape = tuple(x * y for x, y in zip(chunks_per_shard, chunk_shape, strict=False))

@@ -152,14 +152,6 @@ def test_vindex(data: st.DataObject) -> None:
     actual = zarray.vindex[indexer]
     assert_array_equal(nparray[indexer], actual)
 
-    # FIXME!
-    # when the indexer is such that a value gets overwritten multiple times,
-    # I think the output depends on chunking.
-    # new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
-    # nparray[indexer] = new_data
-    # zarray.vindex[indexer] = new_data
-    # assert_array_equal(nparray, zarray[:])
-
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
 async def test_roundtrip_array_metadata_from_store(
