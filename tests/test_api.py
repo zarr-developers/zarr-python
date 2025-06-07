@@ -1372,3 +1372,10 @@ def test_auto_chunks(f: Callable[..., Array]) -> None:
 
     a = f(**kwargs)
     assert a.chunks == (500, 500)
+
+
+@pytest.mark.parametrize("kwarg_name", ["synchronizer", "chunk_store", "cache_attrs", "meta_array"])
+def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
+    kwargs = {kwarg_name: 1}
+    with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
+        zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
