@@ -265,6 +265,18 @@ class Store(ABC):
         await gather(*starmap(self.set, values))
 
     @property
+    def supports_consolidated_metadata(self) -> bool:
+        """
+        Does the store support and benefit from consolidated metadata?.
+
+        If it doesn't Zarr will ignore requests to consolidate the metadata.
+        Stores that would return `True` are the ones that implement their own
+        consolidation mechanism, that allows fast querying of metadata keys.
+        """
+
+        return True
+
+    @property
     @abstractmethod
     def supports_deletes(self) -> bool:
         """Does the store support deletes?"""
