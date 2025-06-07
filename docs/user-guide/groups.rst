@@ -129,6 +129,7 @@ property. E.g.::
    Type               : Array
    Zarr format        : 3
    Data type          : DataType.int64
+   Fill value         : 0
    Shape              : (1000000,)
    Chunk shape        : (100000,)
    Order              : C
@@ -140,11 +141,12 @@ property. E.g.::
    No. bytes          : 8000000 (7.6M)
    No. bytes stored   : 1614
    Storage ratio      : 4956.6
-   Chunks Initialized : 0
+   Chunks Initialized : 10
    >>> baz.info
    Type               : Array
    Zarr format        : 3
    Data type          : DataType.float32
+   Fill value         : 0.0
    Shape              : (1000, 1000)
    Chunk shape        : (100, 100)
    Order              : C

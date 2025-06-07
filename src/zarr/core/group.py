@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import itertools
 import json
 import logging
 import warnings
 from collections import defaultdict
-from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
@@ -42,6 +42,7 @@ from zarr.core.common import (
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
     ChunkCoords,
+    DimensionNames,
     NodeType,
     ShapeLike,
     ZarrFormat,
@@ -49,7 +50,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import V3JsonEncoder
+from zarr.core.metadata.v3 import V3JsonEncoder, _replace_special_floats
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import StoreLike, StorePath
@@ -63,12 +64,14 @@ if TYPE_CHECKING:
         Coroutine,
         Generator,
         Iterable,
+        Iterator,
+        Mapping,
     )
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
+    from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
 
 logger = logging.getLogger("zarr.group")
@@ -79,7 +82,7 @@ DefaultT = TypeVar("DefaultT")
 def parse_zarr_format(data: Any) -> ZarrFormat:
     """Parse the zarr_format field from metadata."""
     if data in (2, 3):
-        return cast(ZarrFormat, data)
+        return cast("ZarrFormat", data)
     msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
     raise ValueError(msg)
 
@@ -87,7 +90,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
     if data in ("array", "group"):
-        return cast(Literal["array", "group"], data)
+        return cast("Literal['array', 'group']", data)
     raise MetadataValidationError("node_type", "array or group", data)
 
 
@@ -334,7 +337,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), cls=V3JsonEncoder).encode()
+                    json.dumps(_replace_special_floats(self.to_dict()), cls=V3JsonEncoder).encode()
                 )
             }
         else:
@@ -355,9 +358,15 @@ class GroupMetadata(Metadata):
                 assert isinstance(consolidated_metadata, dict)
                 for k, v in consolidated_metadata.items():
                     attrs = v.pop("attributes", None)
-                    d[f"{k}/{ZATTRS_JSON}"] = attrs
+                    d[f"{k}/{ZATTRS_JSON}"] = _replace_special_floats(attrs)
                     if "shape" in v:
                         # it's an array
+                        if isinstance(v.get("fill_value", None), np.void):
+                            v["fill_value"] = base64.standard_b64encode(
+                                cast("bytes", v["fill_value"])
+                            ).decode("ascii")
+                        else:
+                            v = _replace_special_floats(v)
                         d[f"{k}/{ZARRAY_JSON}"] = v
                     else:
                         d[f"{k}/{ZGROUP_JSON}"] = {
@@ -998,8 +1007,8 @@ class AsyncGroup:
         fill_value: Any | None = 0,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
@@ -1296,6 +1305,8 @@ class AsyncGroup:
     async def members(
         self,
         max_depth: int | None = 0,
+        *,
+        use_consolidated_for_children: bool = True,
     ) -> AsyncGenerator[
         tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
         None,
@@ -1313,6 +1324,11 @@ class AsyncGroup:
             default, (``max_depth=0``) only immediate children are included. Set
             ``max_depth=None`` to include all nodes, and some positive integer
             to consider children within that many levels of the root Group.
+        use_consolidated_for_children : bool, default True
+            Whether to use the consolidated metadata of child groups loaded
+            from the store. Note that this only affects groups loaded from the
+            store. If the current Group already has consolidated metadata, it
+            will always be used.
 
         Returns
         -------
@@ -1323,7 +1339,9 @@ class AsyncGroup:
         """
         if max_depth is not None and max_depth < 0:
             raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
-        async for item in self._members(max_depth=max_depth):
+        async for item in self._members(
+            max_depth=max_depth, use_consolidated_for_children=use_consolidated_for_children
+        ):
             yield item
 
     def _members_consolidated(
@@ -1353,7 +1371,7 @@ class AsyncGroup:
                     yield from obj._members_consolidated(new_depth, prefix=key)
 
     async def _members(
-        self, max_depth: int | None
+        self, max_depth: int | None, *, use_consolidated_for_children: bool = True
     ) -> AsyncGenerator[
         tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
     ]:
@@ -1383,7 +1401,11 @@ class AsyncGroup:
         # enforce a concurrency limit by passing a semaphore to all the recursive functions
         semaphore = asyncio.Semaphore(config.get("async.concurrency"))
         async for member in _iter_members_deep(
-            self, max_depth=max_depth, skip_keys=skip_keys, semaphore=semaphore
+            self,
+            max_depth=max_depth,
+            skip_keys=skip_keys,
+            semaphore=semaphore,
+            use_consolidated_for_children=use_consolidated_for_children,
         ):
             yield member
 
@@ -1744,6 +1766,10 @@ class AsyncGroup:
 
 @dataclass(frozen=True)
 class Group(SyncMixin):
+    """
+    A Zarr group.
+    """
+
     _async_group: AsyncGroup
 
     @classmethod
@@ -2079,10 +2105,34 @@ class Group(SyncMixin):
 
         return self._sync(self._async_group.nmembers(max_depth=max_depth))
 
-    def members(self, max_depth: int | None = 0) -> tuple[tuple[str, Array | Group], ...]:
+    def members(
+        self, max_depth: int | None = 0, *, use_consolidated_for_children: bool = True
+    ) -> tuple[tuple[str, Array | Group], ...]:
         """
-        Return the sub-arrays and sub-groups of this group as a tuple of (name, array | group)
-        pairs
+        Returns an AsyncGenerator over the arrays and groups contained in this group.
+        This method requires that `store_path.store` supports directory listing.
+
+        The results are not guaranteed to be ordered.
+
+        Parameters
+        ----------
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
+        use_consolidated_for_children : bool, default True
+            Whether to use the consolidated metadata of child groups loaded
+            from the store. Note that this only affects groups loaded from the
+            store. If the current Group already has consolidated metadata, it
+            will always be used.
+
+        Returns
+        -------
+        path:
+            A string giving the path to the target, relative to the Group ``self``.
+        value: AsyncArray or AsyncGroup
+            The AsyncArray or AsyncGroup that is a child of ``self``.
         """
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
@@ -2369,8 +2419,8 @@ class Group(SyncMixin):
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
@@ -2763,8 +2813,8 @@ class Group(SyncMixin):
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-        dimension_names: Iterable[str] | None = None,
+        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
+        dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
@@ -3234,8 +3284,7 @@ def _ensure_consistent_zarr_format(
         raise ValueError(msg)
 
     return cast(
-        Mapping[str, GroupMetadata | ArrayV2Metadata]
-        | Mapping[str, GroupMetadata | ArrayV3Metadata],
+        "Mapping[str, GroupMetadata | ArrayV2Metadata] | Mapping[str, GroupMetadata | ArrayV3Metadata]",
         data,
     )
 
@@ -3317,6 +3366,7 @@ async def _iter_members_deep(
     max_depth: int | None,
     skip_keys: tuple[str, ...],
     semaphore: asyncio.Semaphore | None = None,
+    use_consolidated_for_children: bool = True,
 ) -> AsyncGenerator[
     tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
 ]:
@@ -3334,6 +3384,11 @@ async def _iter_members_deep(
         A tuple of keys to skip when iterating over the possible members of the group.
     semaphore : asyncio.Semaphore | None
         An optional semaphore to use for concurrency control.
+    use_consolidated_for_children : bool, default True
+        Whether to use the consolidated metadata of child groups loaded
+        from the store. Note that this only affects groups loaded from the
+        store. If the current Group already has consolidated metadata, it
+        will always be used.
 
     Yields
     ------
@@ -3348,8 +3403,19 @@ async def _iter_members_deep(
     else:
         new_depth = max_depth - 1
     async for name, node in _iter_members(group, skip_keys=skip_keys, semaphore=semaphore):
+        is_group = isinstance(node, AsyncGroup)
+        if (
+            is_group
+            and not use_consolidated_for_children
+            and node.metadata.consolidated_metadata is not None  # type: ignore [union-attr]
+        ):
+            node = cast("AsyncGroup", node)
+            # We've decided not to trust consolidated metadata at this point, because we're
+            # reconsolidating the metadata, for example.
+            node = replace(node, metadata=replace(node.metadata, consolidated_metadata=None))
         yield name, node
-        if isinstance(node, AsyncGroup) and do_recursion:
+        if is_group and do_recursion:
+            node = cast("AsyncGroup", node)
             to_recurse[name] = _iter_members_deep(
                 node, max_depth=new_depth, skip_keys=skip_keys, semaphore=semaphore
             )
@@ -3456,7 +3522,7 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
 
 
 def _build_metadata_v2(
-    zarr_json: dict[str, object], attrs_json: dict[str, JSON]
+    zarr_json: dict[str, JSON], attrs_json: dict[str, JSON]
 ) -> ArrayV2Metadata | GroupMetadata:
     """
     Convert a dict representation of Zarr V2 metadata into the corresponding metadata class.

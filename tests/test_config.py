@@ -10,7 +10,7 @@ import pytest
 import zarr
 import zarr.api
 from zarr import zeros
-from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
+from zarr.abc.codec import CodecPipeline
 from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import (
     BloscCodec,
@@ -21,6 +21,7 @@ from zarr.codecs import (
 )
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
+from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
@@ -144,7 +145,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     class MockCodecPipeline(BatchedCodecPipeline):
         async def write(
             self,
-            batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
+            batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
             value: NDBuffer,
             drop_axes: tuple[int, ...] = (),
         ) -> None:
@@ -174,7 +175,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     class MockEnvCodecPipeline(CodecPipeline):
         pass
 
-    register_pipeline(MockEnvCodecPipeline)
+    register_pipeline(MockEnvCodecPipeline)  # type: ignore[type-abstract]
 
     with mock.patch.dict(
         os.environ, {"ZARR_CODEC_PIPELINE__PATH": fully_qualified_name(MockEnvCodecPipeline)}
@@ -191,10 +192,9 @@ def test_config_codec_implementation(store: Store) -> None:
     _mock = Mock()
 
     class MockBloscCodec(BloscCodec):
-        async def _encode_single(
-            self, chunk_data: CodecInput, chunk_spec: ArraySpec
-        ) -> CodecOutput | None:
+        async def _encode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
             _mock.call()
+            return None
 
     register_codec("blosc", MockBloscCodec)
     with config.set({"codecs.blosc": fully_qualified_name(MockBloscCodec)}):
@@ -239,7 +239,10 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
 
 
 def test_config_buffer_implementation() -> None:
-    arr = zeros(shape=(100), store=StoreExpectingTestBuffer())
+    # has default value
+    assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
+
+    arr = zeros(shape=(100,), store=StoreExpectingTestBuffer())
 
     # AssertionError of StoreExpectingTestBuffer when not using my buffer
     with pytest.raises(AssertionError):
