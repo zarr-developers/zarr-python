@@ -252,6 +252,7 @@ dependencies = [
     'obstore==0.5.*',
     # test deps
     'zarr[test]',
+    'zarr[remote_tests]',
 ]
 
 [tool.hatch.envs.min_deps.scripts]
