@@ -688,8 +688,9 @@ async def test_open_group_in_non_consolidating_stores():
     # Opening a group without consolidatedion works as expected
     await AsyncGroup.open(memory_store, use_consolidated=False)
 
-    # Opening a group with use_consolidated=True should warn
-    with pytest.warns(
-        UserWarning, match="doesn't support consolidated metadata.*Ignoring use_consolidated=True"
-    ):
+    # let the Store opt out of consolidation
+    await AsyncGroup.open(memory_store, use_consolidated=None)
+
+    # Opening a group with use_consolidated=True should fail
+    with pytest.raises(ValueError, match="doesn't support consolidated metadata"):
         await AsyncGroup.open(memory_store, use_consolidated=True)
