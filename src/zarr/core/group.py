@@ -505,7 +505,7 @@ class AsyncGroup:
         """
         store_path = await make_store_path(store)
         if not store_path.store.supports_consolidated_metadata:
-            # Fail if consolidated metadata was requseted but the Store doesn't support it
+            # Fail if consolidated metadata was requested but the Store doesn't support it
             if use_consolidated:
                 store_name = type(store_path.store).__name__
                 raise ValueError(
