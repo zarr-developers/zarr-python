@@ -202,10 +202,9 @@ class FsspecStore(Store):
         -------
         FsspecStore
         """
-        if not fs_map.fs.async_impl or not fs_map.fs.asynchronous:
-            fs_map.fs = _make_async(fs_map.fs)
+        fs = _make_async(fs_map.fs)
         return cls(
-            fs=fs_map.fs,
+            fs=fs,
             path=fs_map.root,
             read_only=read_only,
             allowed_exceptions=allowed_exceptions,
