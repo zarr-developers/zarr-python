@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 import warnings
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
+
+from packaging.version import parse as parse_version
 
 from zarr.abc.store import (
     ByteRequest,
@@ -42,7 +45,6 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
     is wrapped with AsyncFileSystemWrapper.
     """
     import fsspec
-    from packaging.version import parse as parse_version
 
     fsspec_version = parse_version(fsspec.__version__)
     if fs.async_impl and fs.asynchronous:
@@ -50,8 +52,6 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
         return fs
     if fs.async_impl:
         # Convert sync instance of an async fs to an async instance
-        import json
-
         fs_dict = json.loads(fs.to_json())
         fs_dict["asynchronous"] = True
         return fsspec.AbstractFileSystem.from_json(json.dumps(fs_dict))
