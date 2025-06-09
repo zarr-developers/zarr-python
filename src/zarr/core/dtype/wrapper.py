@@ -1,8 +1,8 @@
 """
 Wrapper for native array data types.
 
-The `ZDType` class is an abstract base class for wrapping native array data types, e.g. numpy dtypes.
-It provides a common interface for working with data types in a way that is independent of the
+The ``ZDType`` class is an abstract base class for wrapping native array data types, e.g. NumPy dtypes.
+``ZDType`` provides a common interface for working with data types in a way that is independent of the
 underlying data type system.
 
 The wrapper class encapsulates a native data type. Instances of the class can be created from a
@@ -10,14 +10,15 @@ native data type instance, and a native data type instance can be created from a
 wrapper class.
 
 The wrapper class is responsible for:
-- Reversibly serializing a native data type to Zarr V2 or Zarr V3 metadata.
+- Serializing and deserializing a native data type to Zarr V2 or Zarr V3 metadata.
   This ensures that the data type can be properly stored and retrieved from array metadata.
-- Reversibly serializing scalar values to Zarr V2 or Zarr V3 metadata. This is important for
+- Serializing and deserializing scalar values to Zarr V2 or Zarr V3 metadata. This is important for
   storing a fill value for an array in a manner that is valid for the data type.
 
-To add support for a new data type in Zarr, you should subclass the wrapper class and adapt its methods
+You can add support for a new data type in Zarr by subclassing ``ZDType`` wrapper class and adapt its methods
 to support your native data type. The wrapper class must be added to a data type registry
-(defined elsewhere) before ``create_array`` can properly handle the new data type.
+(defined elsewhere) before array creation routines or array reading routines can use your new data
+type.
 """
 
 from __future__ import annotations
@@ -69,11 +70,10 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     Attributes
     ----------
     dtype_cls : ClassVar[type[TDType]]
-        The wrapped dtype class. This is a class variable. Instances of this class cannot set it.
+        The wrapped dtype class. This is a class variable.
     _zarr_v3_name : ClassVar[str]
-        The name given to the wrapped data type by a zarr v3 data type specification. Note that this
-        is not necessarily the same name that will appear in metadata documents, as some data types
-        have names that depend on their configuration.
+        The name given to the data type by a Zarr v3 data type specification. This is a
+        class variable, and it should generally be unique across different data types.
     """
 
     # this class will create a native data type
@@ -86,7 +86,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @classmethod
     def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
         """
-        Check that a data type matches the dtype_cls class attribute. Used as a type guard.
+        Check that a native data type matches the dtype_cls class attribute. Used as a type guard.
 
         Parameters
         ----------
@@ -103,22 +103,28 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @classmethod
     def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
-        Wrap a dtype object.
+        Create a ZDType instance from a native data type. The default implementation first performs
+        a type check via ``cls._check_native_dtype``. If that type check succeeds, then
+        ``cls._from_native_dtype_unchecked`` is called, which assumes that the incoming object
+        as all the properties necessary for instantiating the ZDType.
+
+        This method is used when taking a user-provided native data type, like a NumPy data type,
+        and creating the corresponding ZDType instance from them.
 
         Parameters
         ----------
         dtype : TDType
-            The dtype object to wrap.
+            The native data type object to wrap.
 
         Returns
         -------
         Self
-            The wrapped dtype.
+            The ZDType that wraps the native data type.
 
         Raises
         ------
         TypeError
-            If the dtype does not match the dtype_cls class attribute.
+            If the native data type is not consistent with the wrapped data type.
         """
         if cls._check_native_dtype(dtype):
             return cls._from_native_dtype_unchecked(dtype)
@@ -130,7 +136,8 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @abstractmethod
     def _from_native_dtype_unchecked(cls: type[Self], dtype: TBaseDType) -> Self:
         """
-        Wrap a native dtype without checking.
+        Create a ZDType instance from a native data type without performing any type checking of
+        that data type.
 
         Parameters
         ----------
@@ -140,19 +147,19 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         Returns
         -------
         Self
-            The wrapped dtype.
+            A ZDType that wraps the native dtype.
         """
         ...
 
     @abstractmethod
     def to_native_dtype(self: Self) -> TDType_co:
         """
-        Return an instance of the wrapped dtype.
+        Return an instance of the wrapped data type. This operation inverts ``from_native_dtype``.
 
         Returns
         -------
         TDType
-            The unwrapped dtype.
+            The native data type wrapped by this ZDType.
         """
         ...
 
@@ -220,10 +227,10 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @abstractmethod
     def default_scalar(self) -> TScalar_co:
         """
-        Get the default scalar value for the wrapped data type. This is a method, rather than an attribute,
-        because the default value for some data types may depend on parameters that are not known
-        until a concrete data type is wrapped. For example, data types parametrized by a length like
-        fixed-length strings or bytes will generate scalars consistent with that length.
+        Get the default scalar value for the wrapped data type. This is a method, rather than an
+        attribute, because the default value for some data types depends on parameters that are
+        not known until a concrete data type is wrapped. For example, data types parametrized by a
+        length like fixed-length strings or bytes will generate scalars consistent with that length.
 
         Returns
         -------
@@ -238,7 +245,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         cls: type[Self], data: JSON, *, object_codec_id: str | None = None
     ) -> TypeGuard[DTypeJSON_V2]:
         """
-        Check that a JSON representation of a data type is consistent with the ZDType class.
+        Check that JSON data matches the Zarr V2 JSON serialization of this ZDType.
 
         Parameters
         ----------
@@ -246,17 +253,17 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
             The JSON representation of the data type.
 
         object_codec_id : str | None
-            The object codec ID, if applicable. Object codecs are specific numcodecs codecs that
-            zarr-python 2.x used to serialize numpy "Object" scalars. For example, a dtype field set
-            to ``"|O"`` with an object codec ID of "vlen-utf8" indicates that the data type is a
-            variable-length string.
+            The string identifier of an object codec, if applicable. Object codecs are specific
+            numcodecs codecs that zarr-python 2.x used to serialize numpy "Object" scalars.
+            For example, a dtype field set to ``"|O"`` with an object codec ID of "vlen-utf8"
+            indicates that the data type is a variable-length string.
 
             Zarr V3 has no such logic, so this parameter is only used for Zarr V2 compatibility.
 
         Returns
         -------
         Bool
-            True if the JSON representation matches, False otherwise.
+            True if the JSON representation matches this data type, False otherwise.
         """
         ...
 
@@ -264,10 +271,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @abstractmethod
     def _check_json_v3(cls: type[Self], data: JSON) -> TypeGuard[DTypeJSON_V3]:
         """
-        Check that a JSON representation of a data type matches the dtype_cls class attribute. Used
-        as a type guard. This base implementation checks that the input is a dictionary,
-        that the key "name" is in that dictionary, and that the value of "name"
-        matches the _zarr_v3_name class attribute.
+        Check that JSON data matches the Zarr V3 JSON serialization of this ZDType.
 
         Parameters
         ----------
@@ -290,7 +294,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @abstractmethod
     def to_json(self, zarr_format: ZarrFormat) -> DTypeJSON_V2 | DTypeJSON_V3:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Serialize this ZDType to JSON.
 
         Parameters
         ----------
@@ -307,7 +311,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @classmethod
     def from_json_v3(cls: type[Self], data: JSON) -> Self:
         """
-        Wrap a Zarr V3 JSON representation of a data type.
+        Create an instance of this ZDType from Zarr V3 JSON data.
 
         Parameters
         ----------
@@ -326,7 +330,7 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @classmethod
     def from_json_v2(cls: type[Self], data: JSON, *, object_codec_id: str | None) -> Self:
         """
-        Wrap a Zarr V2 JSON representation of a data type.
+        Create an instance of this ZDType from Zarr V2 JSON data.
 
         Parameters
         ----------
@@ -377,19 +381,21 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
     @abstractmethod
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> JSON:
         """
-        Convert a single value to JSON-serializable format.
+        Serialize a python object to the JSON representation of a scalar. The value will first be
+        cast to the scalar type associated with this ZDType, then serialized to JSON.
 
         Parameters
         ----------
         data : object
             The value to convert.
         zarr_format : ZarrFormat
-            The zarr format version.
+            The zarr format version. This is specified because the JSON serialization of scalars
+            differs between Zarr V2 and Zarr V3.
 
         Returns
         -------
         JSON
-            The JSON-serializable form of the scalar.
+            The JSON-serialized scalar.
         """
         ...
 
@@ -401,13 +407,14 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
         Parameters
         ----------
         data : JSON
-            The JSON-serializable value.
+            A JSON representation of a scalar value.
         zarr_format : ZarrFormat
-            The zarr format version.
+            The zarr format version. This is specified because the JSON serialization of scalars
+            differs between Zarr V2 and Zarr V3.
 
         Returns
         -------
         TScalar
-            The native scalar value.
+            The deserialized scalar value.
         """
         ...
