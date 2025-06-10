@@ -176,6 +176,7 @@ def open(
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
+        If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional
