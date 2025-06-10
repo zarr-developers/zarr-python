@@ -267,11 +267,11 @@ class Store(ABC):
     @property
     def supports_consolidated_metadata(self) -> bool:
         """
-        Does the store support and benefit from consolidated metadata?.
+        Does the store support consolidated metadata?.
 
-        If it doesn't Zarr will ignore requests to consolidate the metadata.
-        Stores that would return `True` are the ones that implement their own
-        consolidation mechanism, that allows fast querying of metadata keys.
+        If it doesn't an error will be raised on requests to consolidate the metadata.
+        Returning `False` can be useful for stores which implement their own
+        consolidation mechanism outside of the zarr-python implementation.
         """
 
         return True

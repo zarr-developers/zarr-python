@@ -81,8 +81,8 @@ def consolidate_metadata(
     Consolidate the metadata of all nodes in a hierarchy.
 
     Upon completion, the metadata of the root node in the Zarr hierarchy will be
-    updated to include all the metadata of child nodes. For Stores that prefer
-    not to use consolidated metadata, this operation does nothing.
+    updated to include all the metadata of child nodes. For Stores that do
+    not use consolidated metadata, this operation raises a `TypeError`.
 
     Parameters
     ----------

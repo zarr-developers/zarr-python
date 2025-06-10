@@ -662,7 +662,7 @@ class NonConsolidatedStore(zarr.storage.MemoryStore):
 
 
 async def test_consolidate_metadata_raises_for_self_consolidating_stores():
-    """Verify calling consolidate_metadata on a non supporting stores does nothing"""
+    """Verify calling consolidate_metadata on a non supporting stores raises an error."""
 
     memory_store = NonConsolidatedStore()
     root = await zarr.api.asynchronous.create_group(store=memory_store)
