@@ -158,7 +158,7 @@ def load(
 def open(
     store: StoreLike | None = None,
     *,
-    mode: AccessModeLiteral = "a",
+    mode: AccessModeLiteral | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
