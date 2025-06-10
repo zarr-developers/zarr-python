@@ -41,6 +41,7 @@ from zarr.core.group import (
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import GroupNotFoundError, NodeTypeValidationError
+from zarr.storage import StorePath
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -327,7 +328,7 @@ async def open(
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
     if mode is None:
-        if isinstance(store, Store) and store.read_only:
+        if isinstance(store, (Store, StorePath)) and store.read_only:
             mode = "r"
         else:
             mode = "a"
