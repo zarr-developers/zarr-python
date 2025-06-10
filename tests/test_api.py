@@ -39,7 +39,7 @@ from zarr.api.synchronous import (
 )
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import MetadataValidationError
-from zarr.storage import MemoryStore
+from zarr.storage import MemoryStore, ZipStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
 
@@ -230,7 +230,7 @@ async def test_open_group_unspecified_version(
 @pytest.mark.parametrize("n_args", [10, 1, 0])
 @pytest.mark.parametrize("n_kwargs", [10, 1, 0])
 @pytest.mark.parametrize("path", [None, "some_path"])
-def test_save(store: Store, n_args: int, n_kwargs: int, path) -> None:
+def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> None:
     data = np.arange(10)
     args = [np.arange(10) for _ in range(n_args)]
     kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
@@ -385,8 +385,8 @@ def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -
 #     assert "LazyLoader: " in repr(loader)
 
 
-def test_load_array(memory_store: Store) -> None:
-    store = memory_store
+def test_load_array(sync_store: Store) -> None:
+    store = sync_store
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
     save(store, foo=foo, bar=bar)
@@ -400,6 +400,17 @@ def test_load_array(memory_store: Store) -> None:
         else:
             assert_array_equal(bar, array)
 
+def test_load_zip(tmp_path: pathlib.Path) -> None:
+    file = tmp_path / "test.zip"
+    # Create a zip file with some data
+    with ZipStore(file, mode="w", read_only=False) as zs:
+        save(zs, np.arange(100).reshape(10, 10), path="data")
+    with ZipStore(file, mode="r", read_only=False) as zs:
+        data = zarr.load(store=zs, path="data")  # This works
+        print(data.shape)
+    with ZipStore(file, mode="r") as zs:
+        data = zarr.load(store=zs, path="data")  # This does not work
+        print(data.shape)
 
 def test_tree() -> None:
     pytest.importorskip("rich")
