@@ -128,5 +128,9 @@ may be for several reasons like:
 
 This type of store can declare it doesn't want consolidation by implementing
 `Store.supports_consolidated_metadata`. For stores that don't support
-consolidation, Zarr will silently ignore any `consolidate_metadata` calls,
-maintaining the store in its unconsolidated state.
+consolidation, Zarr will:
+
+* Raise an error on `consolidate_metadata` calls, maintaining the store in
+  its unconsolidated state.
+* Raise an error in `AsyncGroup.open(..., use_consolidated=True)`
+* Not use consolidated metadata in `AsyncGroup.open(..., use_consolidated=None)`

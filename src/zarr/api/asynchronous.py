@@ -196,7 +196,8 @@ async def consolidate_metadata(
     group: AsyncGroup
         The group, with the ``consolidated_metadata`` field set to include
         the metadata of each child node. If the Store doesn't support
-        consolidated metadata, this is function does raises a `TypeError`.
+        consolidated metadata, this function raises a `TypeError`.
+        See ``Store.supports_consolidated_metadata``.
     """
     store_path = await make_store_path(store, path=path)
 

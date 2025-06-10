@@ -102,9 +102,9 @@ def consolidate_metadata(
     -------
     group: Group
         The group, with the ``consolidated_metadata`` field set to include
-        the metadata of each child node. If the Store doesn't prefer
-        consolidated metadata, this function does nothing and returns
-        the group without modifications. See ``Store.supports_consolidated_metadata``.
+        the metadata of each child node. If the Store doesn't support
+        consolidated metadata, this function raises a `TypeError`.
+        See ``Store.supports_consolidated_metadata``.
 
     """
     return Group(sync(async_api.consolidate_metadata(store, path=path, zarr_format=zarr_format)))
