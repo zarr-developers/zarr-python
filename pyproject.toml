@@ -72,7 +72,8 @@ gpu = [
 # Development extras
 test = [
     "coverage",
-    "pytest",
+    # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
+    "pytest<8.4",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
@@ -111,7 +112,7 @@ docs = [
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
-Changelog = "https://zarr.readthedocs.io/en/stable/release.html"
+Changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
 Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
@@ -149,7 +150,7 @@ features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
+numpy = ["1.25", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -185,7 +186,7 @@ features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
+numpy = ["1.25", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
@@ -209,7 +210,6 @@ dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
-    'fsspec @ git+https://github.com/fsspec/filesystem_spec',
     's3fs @ git+https://github.com/fsspec/s3fs',
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
