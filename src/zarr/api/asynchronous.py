@@ -513,13 +513,12 @@ async def save_group(
         raise ValueError("at least one array must be provided")
     aws = []
     for i, arr in enumerate(args):
-        _path = f"{path}/arr_{i}" if path is not None else f"arr_{i}"
         aws.append(
             save_array(
                 store_path,
                 arr,
                 zarr_format=zarr_format,
-                path=_path,
+                path=f"arr_{i}",
                 storage_options=storage_options,
             )
         )
