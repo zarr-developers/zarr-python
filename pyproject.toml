@@ -72,7 +72,8 @@ gpu = [
 # Development extras
 test = [
     "coverage",
-    "pytest",
+    # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
+    "pytest<8.4",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
@@ -111,7 +112,7 @@ docs = [
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
-Changelog = "https://zarr.readthedocs.io/en/stable/release.html"
+Changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
 Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
@@ -209,7 +210,6 @@ dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
-    'fsspec @ git+https://github.com/fsspec/filesystem_spec',
     's3fs @ git+https://github.com/fsspec/s3fs',
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
