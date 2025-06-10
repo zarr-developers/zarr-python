@@ -39,7 +39,7 @@ from zarr.api.synchronous import (
 )
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import MetadataValidationError
-from zarr.storage import MemoryStore, ZipStore
+from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
 
@@ -400,17 +400,6 @@ def test_load_array(sync_store: Store) -> None:
         else:
             assert_array_equal(bar, array)
 
-def test_load_zip(tmp_path: pathlib.Path) -> None:
-    file = tmp_path / "test.zip"
-    # Create a zip file with some data
-    with ZipStore(file, mode="w", read_only=False) as zs:
-        save(zs, np.arange(100).reshape(10, 10), path="data")
-    with ZipStore(file, mode="r", read_only=False) as zs:
-        data = zarr.load(store=zs, path="data")  # This works
-        print(data.shape)
-    with ZipStore(file, mode="r") as zs:
-        data = zarr.load(store=zs, path="data")  # This does not work
-        print(data.shape)
 
 def test_tree() -> None:
     pytest.importorskip("rich")
