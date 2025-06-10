@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr.abc.store import Store
 from zarr.core.array import (
     Array,
     AsyncArray,
@@ -289,7 +290,7 @@ async def load(
 async def open(
     *,
     store: StoreLike | None = None,
-    mode: AccessModeLiteral = "a",
+    mode: AccessModeLiteral | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -324,7 +325,11 @@ async def open(
         Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-
+    if mode is None:
+        if isinstance(store, Store) and store.read_only:
+            mode = "r"
+        else:
+            mode = "a"
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
