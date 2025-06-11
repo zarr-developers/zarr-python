@@ -118,7 +118,7 @@ removed, or modified, consolidated metadata may not be desirable.
 Stores Without Support for Consolidated Metadata
 ------------------------------------------------
 
-Some stores may want to opt out of the conolidated metadata mechanism. This
+Some stores may want to opt out of the consolidated metadata mechanism. This
 may be for several reasons like:
 
 * They want to maintain read-write consistency, which is challenging with
@@ -127,7 +127,7 @@ may be for several reasons like:
 * They offer good enough performance without need for consolidation.
 
 This type of store can declare it doesn't want consolidation by implementing
-`Store.supports_consolidated_metadata`. For stores that don't support
+`Store.supports_consolidated_metadata` and returning `False`. For stores that don't support
 consolidation, Zarr will:
 
 * Raise an error on `consolidate_metadata` calls, maintaining the store in
