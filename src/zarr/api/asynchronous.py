@@ -174,7 +174,8 @@ async def consolidate_metadata(
     Consolidate the metadata of all nodes in a hierarchy.
 
     Upon completion, the metadata of the root node in the Zarr hierarchy will be
-    updated to include all the metadata of child nodes.
+    updated to include all the metadata of child nodes. For Stores that do
+    not support consolidated metadata, this operation raises a ``TypeError``.
 
     Parameters
     ----------
@@ -194,9 +195,17 @@ async def consolidate_metadata(
     -------
     group: AsyncGroup
         The group, with the ``consolidated_metadata`` field set to include
-        the metadata of each child node.
+        the metadata of each child node. If the Store doesn't support
+        consolidated metadata, this function raises a `TypeError`.
+        See ``Store.supports_consolidated_metadata``.
     """
     store_path = await make_store_path(store, path=path)
+
+    if not store_path.store.supports_consolidated_metadata:
+        store_name = type(store_path.store).__name__
+        raise TypeError(
+            f"The Zarr Store in use ({store_name}) doesn't support consolidated metadata",
+        )
 
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()

@@ -651,3 +651,38 @@ async def test_consolidated_metadata_encodes_special_chars(
     elif zarr_format == 3:
         assert root_metadata["child"]["attributes"]["test"] == expected_fill_value
         assert root_metadata["time"]["fill_value"] == expected_fill_value
+
+
+class NonConsolidatedStore(zarr.storage.MemoryStore):
+    """A store that doesn't support consolidated metadata"""
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        return False
+
+
+async def test_consolidate_metadata_raises_for_self_consolidating_stores():
+    """Verify calling consolidate_metadata on a non supporting stores raises an error."""
+
+    memory_store = NonConsolidatedStore()
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    await root.create_group("a/b")
+
+    with pytest.raises(TypeError, match="doesn't support consolidated metadata"):
+        await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+
+async def test_open_group_in_non_consolidating_stores():
+    memory_store = NonConsolidatedStore()
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    await root.create_group("a/b")
+
+    # Opening a group without consolidatedion works as expected
+    await AsyncGroup.open(memory_store, use_consolidated=False)
+
+    # let the Store opt out of consolidation
+    await AsyncGroup.open(memory_store, use_consolidated=None)
+
+    # Opening a group with use_consolidated=True should fail
+    with pytest.raises(ValueError, match="doesn't support consolidated metadata"):
+        await AsyncGroup.open(memory_store, use_consolidated=True)

@@ -490,10 +490,11 @@ class AsyncGroup:
 
             By default, consolidated metadata is used if it's present in the
             store (in the ``zarr.json`` for Zarr format 3 and in the ``.zmetadata`` file
-            for Zarr format 2).
+            for Zarr format 2) and the Store supports it.
 
-            To explicitly require consolidated metadata, set ``use_consolidated=True``,
-            which will raise an exception if consolidated metadata is not found.
+            To explicitly require consolidated metadata, set ``use_consolidated=True``.
+            In this case, if the Store doesn't support consolidation or consolidated metadata is
+            not found, a ``ValueError`` exception is raised.
 
             To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
             which will fall back to using the regular, non consolidated metadata.
@@ -503,6 +504,16 @@ class AsyncGroup:
             to load consolidated metadata from a non-default key.
         """
         store_path = await make_store_path(store)
+        if not store_path.store.supports_consolidated_metadata:
+            # Fail if consolidated metadata was requested but the Store doesn't support it
+            if use_consolidated:
+                store_name = type(store_path.store).__name__
+                raise ValueError(
+                    f"The Zarr store in use ({store_name}) doesn't support consolidated metadata."
+                )
+
+            # if use_consolidated was None (optional), the Store dictates it doesn't want consolidation
+            use_consolidated = False
 
         consolidated_key = ZMETADATA_V2_JSON
 
