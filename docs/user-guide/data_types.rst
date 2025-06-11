@@ -83,9 +83,9 @@ Zarr V3 brings several key changes to how data types are represented:
     {
       "name": "numpy.datetime64",
       "configuration": {
-          "unit": "s",
-          "scale_factor": 10
-        }
+        "unit": "s",
+        "scale_factor": 10
+      }
     }
 
 
