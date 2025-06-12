@@ -77,7 +77,7 @@ def safe_unicode_for_dtype(dtype: np.dtype[np.str_]) -> st.SearchStrategy[str]:
 
     return st.text(
         alphabet=st.characters(
-            blacklist_categories=["Cs"],  # Avoid *technically allowed* surrogates
+            exclude_categories=["Cs"],  # Avoid *technically allowed* surrogates
             min_codepoint=32,
         ),
         min_size=1,
