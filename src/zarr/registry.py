@@ -169,22 +169,16 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
 
 
 def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> Codec:
-    import numcodecs.zarr3
-
-    codec_name = codec.__class__.__name__
-    numcodecs_zarr3_module = numcodecs.zarr3
-
-    if not hasattr(numcodecs_zarr3_module, codec_name):
-        raise ValueError(f"No Zarr3 wrapper found for numcodec: {codec_name}")
-
-    numcodecs_zarr3_codec_class = getattr(numcodecs_zarr3_module, codec_name)
-
     codec_config = codec.get_config()
-    codec_config.pop("id", None)
-
-    codec = numcodecs_zarr3_codec_class(**codec_config)
-    assert isinstance(codec, Codec)
-    return codec
+    codec_name = codec_config.pop("id", None)
+    if codec_name is None:
+        raise ValueError(f"Codec configuration does not contain 'id': {codec_config}")
+    codec_cls = get_codec_class(f"numcodecs.{codec_name}")
+    if codec_cls is None:
+        raise ValueError(f"Codec class for 'numcodecs.{codec_name}' not found.")
+    codec_v3 = codec_cls.from_dict({"name": f"numcodecs.{codec_name}", "configuration": codec_config})
+    assert isinstance(codec_v3, Codec)
+    return codec_v3
 
 
 def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
