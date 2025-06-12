@@ -5,7 +5,7 @@ import warnings
 from collections.abc import Iterable, Sequence
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 import numcodecs.abc
 
@@ -43,6 +43,10 @@ class ArrayV2MetadataDict(TypedDict):
     attributes: dict[str, JSON]
 
 
+# Union of acceptable types for v2 compressors
+CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
+
+
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
@@ -52,7 +56,7 @@ class ArrayV2Metadata(Metadata):
     order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: numcodecs.abc.Codec | None = None
+    compressor: CompressorLikev2
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
@@ -65,7 +69,7 @@ class ArrayV2Metadata(Metadata):
         fill_value: Any,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
-        compressor: numcodecs.abc.Codec | dict[str, JSON] | None = None,
+        compressor: CompressorLikev2 = None,
         filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> None:
@@ -374,7 +378,7 @@ def _serialize_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> JSON:
         # There's a relationship between dtype and fill_value
         # that mypy isn't aware of. The fact that we have S or V dtype here
         # means we should have a bytes-type fill_value.
-        serialized = base64.standard_b64encode(cast(bytes, fill_value)).decode("ascii")
+        serialized = base64.standard_b64encode(cast("bytes", fill_value)).decode("ascii")
     elif isinstance(fill_value, np.datetime64):
         serialized = np.datetime_as_string(fill_value)
     elif isinstance(fill_value, numbers.Integral):
@@ -444,7 +448,7 @@ def _default_compressor(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return cast(dict[str, JSON] | None, default_compressor.get(dtype_key, None))
+    return cast("dict[str, JSON] | None", default_compressor.get(dtype_key, None))
 
 
 def _default_filters(
@@ -466,4 +470,4 @@ def _default_filters(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return cast(list[dict[str, JSON]] | None, default_filters.get(dtype_key, None))
+    return cast("list[dict[str, JSON]] | None", default_filters.get(dtype_key, None))

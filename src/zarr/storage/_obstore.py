@@ -4,8 +4,7 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.store import (
     ByteRequest,
@@ -14,7 +13,6 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer.core import BufferPrototype
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -161,7 +159,7 @@ class ObjectStore(Store):
 
         self._check_writable()
 
-        buf = value.to_bytes()
+        buf = value.as_buffer_like()
         await obs.put_async(self.store, key, buf)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
@@ -169,7 +167,7 @@ class ObjectStore(Store):
         import obstore as obs
 
         self._check_writable()
-        buf = value.to_bytes()
+        buf = value.as_buffer_like()
         with contextlib.suppress(obs.exceptions.AlreadyExistsError):
             await obs.put_async(self.store, key, buf, mode="create")
 

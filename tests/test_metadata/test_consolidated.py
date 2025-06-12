@@ -574,6 +574,50 @@ class TestConsolidated:
             assert good.metadata.consolidated_metadata
             assert sorted(good.metadata.consolidated_metadata.metadata) == ["a", "b"]
 
+    async def test_stale_child_metadata_ignored(self, memory_store: zarr.storage.MemoryStore):
+        # https://github.com/zarr-developers/zarr-python/issues/2921
+        # When consolidating metadata, we should ignore any (possibly stale) metadata
+        # from previous consolidations, *including at child nodes*.
+        root = await zarr.api.asynchronous.group(store=memory_store, zarr_format=3)
+        await root.create_group("foo")
+        await zarr.api.asynchronous.consolidate_metadata(memory_store, path="foo")
+        await root.create_group("foo/bar/spam")
+
+        await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+        reopened = await zarr.api.asynchronous.open_consolidated(store=memory_store, zarr_format=3)
+        result = [x[0] async for x in reopened.members(max_depth=None)]
+        expected = ["foo", "foo/bar", "foo/bar/spam"]
+        assert result == expected
+
+    async def test_use_consolidated_for_children_members(
+        self, memory_store: zarr.storage.MemoryStore
+    ):
+        # A test that has *unconsolidated* metadata at the root group, but discovers
+        # a child group with consolidated metadata.
+
+        root = await zarr.api.asynchronous.create_group(store=memory_store)
+        await root.create_group("a/b")
+        # Consolidate metadata at "a/b"
+        await zarr.api.asynchronous.consolidate_metadata(memory_store, path="a/b")
+
+        # Add a new group a/b/c, that's not present in the CM at "a/b"
+        await root.create_group("a/b/c")
+
+        # Now according to the consolidated metadata, "a" has children ["b"]
+        # but according to the unconsolidated metadata, "a" has children ["b", "c"]
+        group = await zarr.api.asynchronous.open_group(store=memory_store, path="a")
+        with pytest.warns(UserWarning, match="Object at 'c' not found"):
+            result = sorted([x[0] async for x in group.members(max_depth=None)])
+        expected = ["b"]
+        assert result == expected
+
+        result = sorted(
+            [x[0] async for x in group.members(max_depth=None, use_consolidated_for_children=False)]
+        )
+        expected = ["b", "b/c"]
+        assert result == expected
+
 
 @pytest.mark.parametrize("fill_value", [np.nan, np.inf, -np.inf])
 async def test_consolidated_metadata_encodes_special_chars(
@@ -607,3 +651,38 @@ async def test_consolidated_metadata_encodes_special_chars(
     elif zarr_format == 3:
         assert root_metadata["child"]["attributes"]["test"] == expected_fill_value
         assert root_metadata["time"]["fill_value"] == expected_fill_value
+
+
+class NonConsolidatedStore(zarr.storage.MemoryStore):
+    """A store that doesn't support consolidated metadata"""
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        return False
+
+
+async def test_consolidate_metadata_raises_for_self_consolidating_stores():
+    """Verify calling consolidate_metadata on a non supporting stores raises an error."""
+
+    memory_store = NonConsolidatedStore()
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    await root.create_group("a/b")
+
+    with pytest.raises(TypeError, match="doesn't support consolidated metadata"):
+        await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+
+async def test_open_group_in_non_consolidating_stores():
+    memory_store = NonConsolidatedStore()
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    await root.create_group("a/b")
+
+    # Opening a group without consolidatedion works as expected
+    await AsyncGroup.open(memory_store, use_consolidated=False)
+
+    # let the Store opt out of consolidation
+    await AsyncGroup.open(memory_store, use_consolidated=None)
+
+    # Opening a group with use_consolidated=True should fail
+    with pytest.raises(ValueError, match="doesn't support consolidated metadata"):
+        await AsyncGroup.open(memory_store, use_consolidated=True)

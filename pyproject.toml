@@ -72,7 +72,8 @@ gpu = [
 # Development extras
 test = [
     "coverage",
-    "pytest",
+    # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
+    "pytest<8.4",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
@@ -83,7 +84,7 @@ test = [
 remote_tests = [
     'zarr[remote]',
     "botocore",
-    "s3fs",
+    "s3fs>=2023.10.0",
     "moto[s3,server]",
     "requests",
 ]
@@ -104,14 +105,14 @@ docs = [
     # Optional dependencies to run examples
     'numcodecs[msgpack]',
     'rich',
-    's3fs',
+    's3fs>=2023.10.0',
     'astroid<4'
 ]
 
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
-Changelog = "https://zarr.readthedocs.io/en/stable/release.html"
+Changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
 Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
@@ -149,7 +150,7 @@ features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
+numpy = ["1.25", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -185,7 +186,7 @@ features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
+numpy = ["1.25", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
@@ -209,7 +210,6 @@ dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
-    'fsspec @ git+https://github.com/fsspec/filesystem_spec',
     's3fs @ git+https://github.com/fsspec/s3fs',
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
@@ -291,8 +291,8 @@ extend-exclude = [
 extend-select = [
     "ANN",  # flake8-annotations
     "B",    # flake8-bugbear
-    "EXE",  # flake8-executable
     "C4",   # flake8-comprehensions
+    "EXE",  # flake8-executable
     "FA",   # flake8-future-annotations
     "FLY",  # flynt
     "FURB", # refurb
@@ -310,7 +310,7 @@ extend-select = [
     "RUF",
     "SIM",  # flake8-simplify
     "SLOT", # flake8-slots
-    "TCH",  # flake8-type-checking
+    "TC",  # flake8-type-checking
     "TRY",  # tryceratops
     "UP",   # pyupgrade
     "W",    # pycodestyle warnings
@@ -338,6 +338,7 @@ ignore = [
     "Q003",
     "COM812",
     "COM819",
+    "TC006",
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
@@ -348,27 +349,35 @@ python_version = "3.11"
 ignore_missing_imports = true
 namespace_packages = false
 
-
 strict = true
 warn_unreachable = true
-
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
-[[tool.mypy.overrides]]
-module = [
-    "zarr.v2.*",
-]
-ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
-    "zarr.testing.stateful",  # lots of hypothesis decorator errors
     "tests.package_with_entrypoint.*",
-    "tests.test_codecs.test_codecs",
+    "zarr.testing.stateful",
     "tests.test_codecs.test_transpose",
-    "tests.test_metadata.*",
-    "tests.test_store.*",
     "tests.test_config",
+    "tests.test_store.test_zip",
+    "tests.test_store.test_local",
+    "tests.test_store.test_fsspec",
+    "tests.test_store.test_memory",
+    "tests.test_codecs.test_codecs",
+]
+strict = false
+
+# TODO: Move the next modules up to the strict = false section
+# and fix the errors
+[[tool.mypy.overrides]]
+module = [
+    "tests.test_metadata.*",
+    "tests.test_store.test_core",
+    "tests.test_store.test_logging",
+    "tests.test_store.test_object",
+    "tests.test_store.test_stateful",
+    "tests.test_store.test_wrapper",
     "tests.test_group",
     "tests.test_indexing",
     "tests.test_properties",
