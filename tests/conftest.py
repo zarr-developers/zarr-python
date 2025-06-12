@@ -193,6 +193,7 @@ settings.register_profile(
     parent=settings.get_profile("default"),
     max_examples=300,
     suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+    deadline=None,
     verbosity=Verbosity.verbose,
 )
 settings.register_profile(
