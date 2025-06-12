@@ -436,7 +436,7 @@ def replace_ellipsis(selection: Any, shape: ChunkCoords) -> SelectionNormalized:
     selection = ensure_tuple(selection)
 
     # count number of ellipsis present
-    n_ellipsis = sum(1 for i in selection if i is Ellipsis)
+    n_ellipsis = selection.count(Ellipsis)
 
     if n_ellipsis > 1:
         # more than 1 is an error

@@ -372,8 +372,8 @@ class StoreTests(Generic[S, B]):
         prefix = "foo"
         data = self.buffer_cls.from_bytes(b"")
         store_dict = {
-            prefix + "/zarr.json": data,
-            **{prefix + f"/c/{idx}": data for idx in range(10)},
+            f"{prefix}/zarr.json": data,
+            **{f"{prefix}/c/{idx}": data for idx in range(10)},
         }
         await store._set_many(store_dict.items())
         expected_sorted = sorted(store_dict.keys())
@@ -436,8 +436,8 @@ class StoreTests(Generic[S, B]):
     async def test_list_dir(self, store: S) -> None:
         root = "foo"
         store_dict = {
-            root + "/zarr.json": self.buffer_cls.from_bytes(b"bar"),
-            root + "/c/1": self.buffer_cls.from_bytes(b"\x01"),
+            f"{root}/zarr.json": self.buffer_cls.from_bytes(b"bar"),
+            f"{root}/c/1": self.buffer_cls.from_bytes(b"\x01"),
         }
 
         assert await _collect_aiterator(store.list_dir("")) == ()
@@ -446,7 +446,7 @@ class StoreTests(Generic[S, B]):
         await store._set_many(store_dict.items())
 
         keys_observed = await _collect_aiterator(store.list_dir(root))
-        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
+        keys_expected = {k.removeprefix(f"{root}/").split("/")[0] for k in store_dict}
 
         assert sorted(keys_observed) == sorted(keys_expected)
 

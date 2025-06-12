@@ -115,7 +115,7 @@ def check_item_key_is_1d_contiguous(key: Any) -> None:
         raise TypeError(
             f"Item key has incorrect type (expected slice, got {key.__class__.__name__})"
         )
-    if not (key.step is None or key.step == 1):
+    if key.step is not None and key.step != 1:
         raise ValueError("slice must be contiguous")
 
 

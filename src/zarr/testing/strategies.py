@@ -289,7 +289,7 @@ def arrays(
         assert a.fill_value is not None
     assert a.name is not None
     assert a.path == normalize_path(array_path)
-    assert a.name == "/" + a.path
+    assert a.name == f"/{a.path}"
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunk_shape == a.chunks

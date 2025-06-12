@@ -47,7 +47,7 @@ async def parse_store(
     if store == "fsspec":
         return await FsspecStore.open(url=path)
     if store == "zip":
-        return await ZipStore.open(path + "/zarr.zip", mode="w")
+        return await ZipStore.open(f"{path}/zarr.zip", mode="w")
     raise AssertionError
 
 
@@ -101,7 +101,7 @@ async def store2(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
 def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
     result = sync(parse_store(request.param, str(tmp_path)))
     if not isinstance(result, Store):
-        raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
+        raise TypeError(f"Wrong store class returned by test fixture! got {result} instead")
     return result
 
 

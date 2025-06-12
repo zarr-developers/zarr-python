@@ -28,8 +28,6 @@ class Metadata:
             value = getattr(self, key)
             if isinstance(value, Metadata):
                 out_dict[field.name] = getattr(self, field.name).to_dict()
-            elif isinstance(value, str):
-                out_dict[key] = value
             elif isinstance(value, Sequence):
                 out_dict[key] = tuple(v.to_dict() if isinstance(v, Metadata) else v for v in value)
             else:
