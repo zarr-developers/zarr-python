@@ -80,6 +80,7 @@ test = [
     "rich",
     "mypy",
     "hypothesis",
+    "pytest-xdist",
 ]
 remote_tests = [
     'zarr[remote]',
@@ -165,7 +166,7 @@ run = "run-coverage --no-cov"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = "run-coverage -nauto --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.doctest]
