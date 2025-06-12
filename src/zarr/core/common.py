@@ -154,7 +154,7 @@ def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
     if not all(isinstance(v, int) for v in data_tuple):
         msg = f"Expected an iterable of integers. Got {data} instead."
         raise TypeError(msg)
-    if not all(v > -1 for v in data_tuple):
+    if any(v < 0 for v in data_tuple):
         msg = f"Expected all values to be non-negative. Got {data} instead."
         raise ValueError(msg)
     return data_tuple
