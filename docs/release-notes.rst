@@ -3,6 +3,164 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.8 (2025-05-19)
+------------------
+
+.. warning::
+
+    In versions 3.0.0 to 3.0.7 opening arrays or groups with ``mode='a'`` (the default for many builtin functions)
+    would cause any existing paths in the store to be deleted. This is fixed in 3.0.8, and
+    we recommend all users upgrade to avoid this bug that could cause unintentional data loss.
+
+Features
+~~~~~~~~
+
+- Added a `print_debug_info` function for bug reports. (:issue:`2913`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Fix a bug that prevented the number of initialized chunks being counted properly. (:issue:`2862`)
+- Fixed sharding with GPU buffers. (:issue:`2978`)
+- Fix structured `dtype` fill value serialization for consolidated metadata (:issue:`2998`)
+- It is now possible to specify no compressor when creating a zarr format 2 array.
+  This can be done by passing ``compressor=None`` to the various array creation routines.
+
+  The default behaviour of automatically choosing a suitable default compressor remains if the compressor argument is not given.
+  To reproduce the behaviour in previous zarr-python versions when ``compressor=None`` was passed, pass ``compressor='auto'`` instead. (:issue:`3039`)
+- Fixed the typing of ``dimension_names`` arguments throughout so that it now accepts iterables that contain `None` alongside `str`. (:issue:`3045`)
+- Using various functions to open data with ``mode='a'`` no longer deletes existing data in the store. (:issue:`3062`)
+- Internally use `typesize` constructor parameter for :class:`numcodecs.blosc.Blosc` to improve compression ratios back to the v2-package levels. (:issue:`2962`)
+- Specifying the memory order of Zarr format 2 arrays using the ``order`` keyword argument has been fixed. (:issue:`2950`)
+
+
+Misc
+~~~~
+
+- :issue:`2972`, :issue:`3027`, :issue:`3049`
+
+
+3.0.7 (2025-04-22)
+------------------
+
+Features
+~~~~~~~~
+
+- Add experimental ObjectStore storage class based on obstore. (:issue:`1661`)
+- Add ``zarr.from_array`` using concurrent streaming of source data (:issue:`2622`)
+
+
+Bugfixes
+~~~~~~~~
+
+- 0-dimensional arrays are now returning a scalar. Therefore, the return type of ``__getitem__`` changed
+  to NDArrayLikeOrScalar. This change is to make the behavior of 0-dimensional arrays consistent with
+  ``numpy`` scalars. (:issue:`2718`)
+- Fix `fill_value` serialization for `NaN` in `ArrayV2Metadata` and add property-based testing of round-trip serialization (:issue:`2802`)
+- Fixes `ConsolidatedMetadata` serialization of `nan`, `inf`, and `-inf` to be
+  consistent with the behavior of `ArrayMetadata`. (:issue:`2996`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Updated the 3.0 migration guide to include the removal of "." syntax for getting group members. (:issue:`2991`, :issue:`2997`)
+
+
+Misc
+~~~~
+- Define a new versioning policy based on Effective Effort Versioning. This replaces the old Semantic
+  Versioning-based policy. (:issue:`2924`, :issue:`2910`)
+- Make warning filters in the tests more specific, so warnings emitted by tests added in the future
+  are more likely to be caught instead of ignored. (:issue:`2714`)
+- Avoid an unnecessary memory copy when writing Zarr to a local file (:issue:`2944`)
+
+
+3.0.6 (2025-03-20)
+------------------
+
+Bugfixes
+~~~~~~~~
+
+- Restore functionality of `del z.attrs['key']` to actually delete the key. (:issue:`2908`)
+
+
+3.0.5 (2025-03-07)
+------------------
+
+Bugfixes
+~~~~~~~~
+
+- Fixed a bug where ``StorePath`` creation would not apply standard path normalization to the ``path`` parameter,
+  which led to the creation of arrays and groups with invalid keys. (:issue:`2850`)
+- Prevent update_attributes calls from deleting old attributes (:issue:`2870`)
+
+
+Misc
+~~~~
+
+- :issue:`2796`
+
+3.0.4 (2025-02-23)
+------------------
+
+Features
+~~~~~~~~
+
+- Adds functions for concurrently creating multiple arrays and groups. (:issue:`2665`)
+
+Bugfixes
+~~~~~~~~
+
+- Fixed a bug where ``ArrayV2Metadata`` could save ``filters`` as an empty array. (:issue:`2847`)
+- Fix a bug when setting values of a smaller last chunk. (:issue:`2851`)
+
+Misc
+~~~~
+
+- :issue:`2828`
+
+
+3.0.3 (2025-02-14)
+------------------
+
+Features
+~~~~~~~~
+
+- Improves performance of FsspecStore.delete_dir for remote filesystems supporting concurrent/batched deletes, e.g., s3fs. (:issue:`2661`)
+- Added :meth:`zarr.config.enable_gpu` to update Zarr's configuration to use GPUs. (:issue:`2751`)
+- Avoid reading chunks during writes where possible. :issue:`757` (:issue:`2784`)
+- :py:class:`LocalStore` learned to ``delete_dir``. This makes array and group deletes more efficient. (:issue:`2804`)
+- Add `zarr.testing.strategies.array_metadata` to generate ArrayV2Metadata and ArrayV3Metadata instances. (:issue:`2813`)
+- Add arbitrary `shards` to Hypothesis strategy for generating arrays. (:issue:`2822`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Fixed bug with Zarr using device memory, instead of host memory, for storing metadata when using GPUs. (:issue:`2751`)
+- The array returned by ``zarr.empty`` and an empty ``zarr.core.buffer.cpu.NDBuffer`` will now be filled with the
+  specified fill value, or with zeros if no fill value is provided.
+  This fixes a bug where Zarr format 2 data with no fill value was written with un-predictable chunk sizes. (:issue:`2755`)
+- Fix zip-store path checking for stores with directories listed as files. (:issue:`2758`)
+- Use removeprefix rather than replace when removing filename prefixes in `FsspecStore.list` (:issue:`2778`)
+- Enable automatic removal of `needs release notes` with labeler action (:issue:`2781`)
+- Use the proper label config (:issue:`2785`)
+- Alters the behavior of ``create_array`` to ensure that any groups implied by the array's name are created if they do not already exist. Also simplifies the type signature for any function that takes an ArrayConfig-like object. (:issue:`2795`)
+- Enitialise empty chunks to the default fill value during writing and add default fill values for datetime, timedelta, structured, and other (void* fixed size) data types (:issue:`2799`)
+- Ensure utf8 compliant strings are used to construct numpy arrays in property-based tests (:issue:`2801`)
+- Fix pickling for ZipStore (:issue:`2807`)
+- Update numcodecs to not overwrite codec configuration ever. Closes :issue:`2800`. (:issue:`2811`)
+- Fix fancy indexing (e.g. arr[5, [0, 1]]) with the sharding codec (:issue:`2817`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Added new user guide on :ref:`user-guide-gpu`. (:issue:`2751`)
+
+
 3.0.2 (2025-01-31)
 ------------------
 
@@ -60,6 +218,8 @@ Other
 
 3.0.1 (Jan. 17, 2025)
 ---------------------
+
+* Implement ``zarr.from_array`` using concurrent streaming (:issue:`2622`).
 
 Bug fixes
 ~~~~~~~~~

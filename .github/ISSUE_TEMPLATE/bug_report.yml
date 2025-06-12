@@ -57,7 +57,22 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: Minimal, reproducible code sample, a copy-pastable example if possible.
+      description: Minimal, reproducible code sample. Must list dependencies in [inline script metadata](https://packaging.python.org/en/latest/specifications/inline-script-metadata/#example). When put in a file named `issue.py` calling `uv run issue.py` should show the issue.
+      value: |
+        ```python
+        # /// script
+        # requires-python = ">=3.11"
+        # dependencies = [
+        #   "zarr@git+https://github.com/zarr-developers/zarr-python.git@main",
+        # ]
+        # ///
+        #
+        # This script automatically imports the development branch of zarr to check for issues
+
+        import zarr
+        # your reproducer code
+        # zarr.print_debug_info()
+        ```
     validations:
       required: true
   - type: textarea

@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        numpy-version: ['1.25', '2.1']
+        numpy-version: ['1.25', '2.2']
         dependency-set: ["minimal", "optional"]
         os: ["ubuntu-latest"]
         include:
@@ -30,7 +30,7 @@ jobs:
             dependency-set: 'optional'
             os: 'macos-latest'
           - python-version: '3.13'
-            numpy-version: '2.1'
+            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'macos-latest'
           - python-version: '3.11'
@@ -38,13 +38,15 @@ jobs:
             dependency-set: 'optional'
             os: 'windows-latest'
           - python-version: '3.13'
-            numpy-version: '2.1'
+            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'windows-latest'
     runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # grab all branches and tags
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -62,6 +64,7 @@ jobs:
       run: |
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
+      if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -82,6 +85,8 @@ jobs:
             dependency-set: upstream
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -98,6 +103,11 @@ jobs:
     - name: Run Tests
       run: |
         hatch env run --env ${{ matrix.dependency-set }} run
+    - name: Upload coverage
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        verbose: true # optional (default = false)
 
   doctests:
     name: doctests

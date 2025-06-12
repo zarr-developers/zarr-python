@@ -24,7 +24,7 @@ T_Store = TypeVar("T_Store", bound=Store)
 
 class LoggingStore(WrapperStore[T_Store]):
     """
-    Store wrapper that logs all calls to the wrapped store.
+    Store that logs all calls to another wrapped store.
 
     Parameters
     ----------
@@ -88,7 +88,7 @@ class LoggingStore(WrapperStore[T_Store]):
         op = f"{type(self._store).__name__}.{method}"
         if hint:
             op = f"{op}({hint})"
-        self.logger.info("Calling %s", op)
+        self.logger.info(" Calling %s", op)
         start_time = time.time()
         try:
             self.counter[method] += 1

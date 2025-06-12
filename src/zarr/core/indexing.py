@@ -29,7 +29,7 @@ from zarr.core.common import product
 
 if TYPE_CHECKING:
     from zarr.core.array import Array
-    from zarr.core.buffer import NDArrayLike
+    from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
 
@@ -321,12 +321,12 @@ class ChunkDimProjection(NamedTuple):
         Selection of items from chunk array.
     dim_out_sel
         Selection of items in target (output) array.
-
     """
 
     dim_chunk_ix: int
     dim_chunk_sel: Selector
     dim_out_sel: Selector | None
+    is_complete_chunk: bool
 
 
 @dataclass(frozen=True)
@@ -346,7 +346,8 @@ class IntDimIndexer:
         dim_offset = dim_chunk_ix * self.dim_chunk_len
         dim_chunk_sel = self.dim_sel - dim_offset
         dim_out_sel = None
-        yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+        is_complete_chunk = self.dim_chunk_len == 1
+        yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 @dataclass(frozen=True)
@@ -420,7 +421,10 @@ class SliceDimIndexer:
 
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+            is_complete_chunk = (
+                dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
+            )
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 def check_selection_length(selection: SelectionNormalized, shape: ChunkCoords) -> None:
@@ -462,7 +466,7 @@ def replace_ellipsis(selection: Any, shape: ChunkCoords) -> SelectionNormalized:
     # check selection not too long
     check_selection_length(selection, shape)
 
-    return cast(SelectionNormalized, selection)
+    return cast("SelectionNormalized", selection)
 
 
 def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
@@ -477,7 +481,7 @@ T = TypeVar("T")
 def ensure_tuple(v: Any) -> SelectionNormalized:
     if not isinstance(v, tuple):
         v = (v,)
-    return cast(SelectionNormalized, v)
+    return cast("SelectionNormalized", v)
 
 
 class ChunkProjection(NamedTuple):
@@ -493,12 +497,14 @@ class ChunkProjection(NamedTuple):
         Selection of items from chunk array.
     out_selection
         Selection of items in target (output) array.
-
+    is_complete_chunk:
+        True if a complete chunk is indexed
     """
 
     chunk_coords: ChunkCoords
     chunk_selection: tuple[Selector, ...] | npt.NDArray[np.intp]
     out_selection: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
+    is_complete_chunk: bool
 
 
 def is_slice(s: Any) -> TypeGuard[slice]:
@@ -574,8 +580,8 @@ class BasicIndexer(Indexer):
             out_selection = tuple(
                 p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None
             )
-
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
 
 
 @dataclass(frozen=True)
@@ -643,8 +649,9 @@ class BoolArrayDimIndexer:
                 start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
             stop = self.chunk_nitems_cumsum[dim_chunk_ix]
             dim_out_sel = slice(start, stop)
+            is_complete_chunk = False  # TODO
 
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 class Order(Enum):
@@ -783,8 +790,8 @@ class IntArrayDimIndexer:
             # find region in chunk
             dim_offset = dim_chunk_ix * self.dim_chunk_len
             dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
-
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+            is_complete_chunk = False  # TODO
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 def slice_to_range(s: slice, length: int) -> range:
@@ -811,7 +818,7 @@ def ix_(selection: Any, shape: ChunkCoords) -> npt.NDArray[np.intp]:
     # now get numpy to convert to a coordinate selection
     selection = np.ix_(*selection)
 
-    return cast(npt.NDArray[np.intp], selection)
+    return cast("npt.NDArray[np.intp]", selection)
 
 
 def oindex(a: npt.NDArray[Any], selection: Selection) -> npt.NDArray[Any]:
@@ -921,7 +928,8 @@ class OrthogonalIndexer(Indexer):
                 if not is_basic_selection(out_selection):
                     out_selection = ix_(out_selection, self.shape)
 
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
 
 
 @dataclass(frozen=True)
@@ -929,7 +937,7 @@ class OIndex:
     array: Array
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
+    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -940,7 +948,7 @@ class OIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.get_orthogonal_selection(
-            cast(OrthogonalSelection, new_selection), fields=fields
+            cast("OrthogonalSelection", new_selection), fields=fields
         )
 
     def __setitem__(self, selection: OrthogonalSelection, value: npt.ArrayLike) -> None:
@@ -948,7 +956,7 @@ class OIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_orthogonal_selection(
-            cast(OrthogonalSelection, new_selection), value, fields=fields
+            cast("OrthogonalSelection", new_selection), value, fields=fields
         )
 
 
@@ -1030,26 +1038,26 @@ class BlockIndexer(Indexer):
             out_selection = tuple(
                 p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None
             )
-
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
 
 
 @dataclass(frozen=True)
 class BlockIndex:
     array: Array
 
-    def __getitem__(self, selection: BasicSelection) -> NDArrayLike:
+    def __getitem__(self, selection: BasicSelection) -> NDArrayLikeOrScalar:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
-        return self.array.get_block_selection(cast(BasicSelection, new_selection), fields=fields)
+        return self.array.get_block_selection(cast("BasicSelection", new_selection), fields=fields)
 
     def __setitem__(self, selection: BasicSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_block_selection(
-            cast(BasicSelection, new_selection), value, fields=fields
+            cast("BasicSelection", new_selection), value, fields=fields
         )
 
 
@@ -1097,12 +1105,12 @@ class CoordinateIndexer(Indexer):
         nchunks = reduce(operator.mul, cdata_shape, 1)
 
         # some initial normalization
-        selection_normalized = cast(CoordinateSelectionNormalized, ensure_tuple(selection))
+        selection_normalized = cast("CoordinateSelectionNormalized", ensure_tuple(selection))
         selection_normalized = tuple(
             np.asarray([i]) if is_integer(i) else i for i in selection_normalized
         )
         selection_normalized = cast(
-            CoordinateSelectionNormalized, replace_lists(selection_normalized)
+            "CoordinateSelectionNormalized", replace_lists(selection_normalized)
         )
 
         # validation
@@ -1198,15 +1206,16 @@ class CoordinateIndexer(Indexer):
                 for (dim_sel, dim_chunk_offset) in zip(self.selection, chunk_offsets, strict=True)
             )
 
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+            is_complete_chunk = False  # TODO
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
 
 
 @dataclass(frozen=True)
 class MaskIndexer(CoordinateIndexer):
     def __init__(self, selection: MaskSelection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
         # some initial normalization
-        selection_normalized = cast(tuple[MaskSelection], ensure_tuple(selection))
-        selection_normalized = cast(tuple[MaskSelection], replace_lists(selection_normalized))
+        selection_normalized = cast("tuple[MaskSelection]", ensure_tuple(selection))
+        selection_normalized = cast("tuple[MaskSelection]", replace_lists(selection_normalized))
 
         # validation
         if not is_mask_selection(selection_normalized, shape):
@@ -1227,7 +1236,9 @@ class VIndex:
     array: Array
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: CoordinateSelection | MaskSelection | Array) -> NDArrayLike:
+    def __getitem__(
+        self, selection: CoordinateSelection | MaskSelection | Array
+    ) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -1300,14 +1311,14 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
     elif not isinstance(selection, tuple):
         # single selection item, no fields
         # leave selection as-is
-        return None, cast(Selection, selection)
+        return None, cast("Selection", selection)
     else:
         # multiple items, split fields from selection items
         fields: Fields = [f for f in selection if isinstance(f, str)]
         fields = fields[0] if len(fields) == 1 else fields
         selection_tuple = tuple(s for s in selection if not isinstance(s, str))
         selection = cast(
-            Selection, selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
+            "Selection", selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
         )
         return fields, selection
 
@@ -1361,32 +1372,6 @@ def c_order_iter(chunks_per_shard: ChunkCoords) -> Iterator[ChunkCoords]:
     return itertools.product(*(range(x) for x in chunks_per_shard))
 
 
-def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
-    """Determine whether `item` specifies a complete slice of array with the
-    given `shape`. Used to optimize __setitem__ operations on the Chunk
-    class."""
-
-    # N.B., assume shape is normalized
-    if item == slice(None):
-        return True
-    if isinstance(item, slice):
-        item = (item,)
-    if isinstance(item, tuple):
-        return all(
-            (isinstance(dim_sel, int) and dim_len == 1)
-            or (
-                isinstance(dim_sel, slice)
-                and (
-                    (dim_sel == slice(None))
-                    or ((dim_sel.stop - dim_sel.start == dim_len) and (dim_sel.step in [1, None]))
-                )
-            )
-            for dim_sel, dim_len in zip(item, shape, strict=False)
-        )
-    else:
-        raise TypeError(f"expected slice or tuple of slices, found {item!r}")
-
-
 def get_indexer(
     selection: SelectionWithFields, shape: ChunkCoords, chunk_grid: ChunkGrid
 ) -> Indexer:
@@ -1395,12 +1380,12 @@ def get_indexer(
         new_selection = ensure_tuple(selection)
         new_selection = replace_lists(new_selection)
         if is_coordinate_selection(new_selection, shape):
-            return CoordinateIndexer(cast(CoordinateSelection, selection), shape, chunk_grid)
+            return CoordinateIndexer(cast("CoordinateSelection", selection), shape, chunk_grid)
         elif is_mask_selection(new_selection, shape):
-            return MaskIndexer(cast(MaskSelection, selection), shape, chunk_grid)
+            return MaskIndexer(cast("MaskSelection", selection), shape, chunk_grid)
         else:
             raise VindexInvalidSelectionError(new_selection)
     elif is_pure_orthogonal_indexing(pure_selection, len(shape)):
-        return OrthogonalIndexer(cast(OrthogonalSelection, selection), shape, chunk_grid)
+        return OrthogonalIndexer(cast("OrthogonalSelection", selection), shape, chunk_grid)
     else:
-        return BasicIndexer(cast(BasicSelection, selection), shape, chunk_grid)
+        return BasicIndexer(cast("BasicSelection", selection), shape, chunk_grid)

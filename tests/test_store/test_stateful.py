@@ -8,7 +8,11 @@ from zarr.abc.store import Store
 from zarr.storage import LocalStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachine
 
-pytestmark = pytest.mark.slow_hypothesis
+pytestmark = [
+    pytest.mark.slow_hypothesis,
+    # TODO: work out where this warning is coming from and fix
+    pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning"),
+]
 
 
 def test_zarr_hierarchy(sync_store: Store):

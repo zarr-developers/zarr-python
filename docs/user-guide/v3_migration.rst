@@ -117,12 +117,38 @@ The Group class
 
    - Use :func:`zarr.Group.create_array` in place of :func:`zarr.Group.create_dataset`
    - Use :func:`zarr.Group.require_array` in place of :func:`zarr.Group.require_dataset`
+3. Disallow "." syntax for getting group members. To get a member of a group named ``foo``,
+   use ``group["foo"]`` in place of ``group.foo``.
 
 The Store class
 ~~~~~~~~~~~~~~~
 
 The Store API has changed significant in Zarr-Python 3. The most notable changes to the
 Store API are:
+
+Store Import Paths
+^^^^^^^^^^^^^^^^^^
+Several store implementations have moved from the top-level module to ``zarr.storage``:
+
+.. code-block:: diff
+   :caption: Store import changes from v2 to v3
+
+   # Before (v2)
+   - from zarr import MemoryStore, DirectoryStore
+   + from zarr.storage import MemoryStore, LocalStore  # LocalStore replaces DirectoryStore
+
+Common replacements:
+
++-------------------------+------------------------------------+
+| v2 Import               | v3 Import                          |
++=========================+====================================+
+| ``zarr.MemoryStore``    | ``zarr.storage.MemoryStore``       |
++-------------------------+------------------------------------+
+| ``zarr.DirectoryStore`` | ``zarr.storage.LocalStore``        |
++-------------------------+------------------------------------+
+| ``zarr.TempStore``      | Use ``tempfile.TemporaryDirectory``|
+|                         | with ``LocalStore``                |
++-------------------------+------------------------------------+
 
 1. Replaced the ``MutableMapping`` base class in favor of a custom abstract base class
    (:class:`zarr.abc.store.Store`).

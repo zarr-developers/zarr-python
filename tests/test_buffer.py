@@ -30,6 +30,8 @@ except ImportError:
     cp = None
 
 
+import zarr.api.asynchronous
+
 if TYPE_CHECKING:
     import types
 
@@ -64,7 +66,7 @@ async def test_async_array_prototype() -> None:
     got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=my_prototype)
     # ignoring a mypy error here that TestNDArrayLike doesn't meet the NDArrayLike protocol
     # The test passes, so it clearly does.
-    assert isinstance(got, TestNDArrayLike)  # type: ignore[unreachable]
+    assert isinstance(got, TestNDArrayLike)
     assert np.array_equal(expect, got)  # type: ignore[unreachable]
 
 
@@ -117,7 +119,7 @@ async def test_codecs_use_of_prototype() -> None:
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
     # ignoring a mypy error here that TestNDArrayLike doesn't meet the NDArrayLike protocol
     # The test passes, so it clearly does.
-    assert isinstance(got, TestNDArrayLike)  # type: ignore[unreachable]
+    assert isinstance(got, TestNDArrayLike)
     assert np.array_equal(expect, got)  # type: ignore[unreachable]
 
 
@@ -146,8 +148,54 @@ async def test_codecs_use_of_gpu_prototype() -> None:
     assert cp.array_equal(expect, got)
 
 
+@gpu_test
+@pytest.mark.asyncio
+async def test_sharding_use_of_gpu_prototype() -> None:
+    with zarr.config.enable_gpu():
+        expect = cp.zeros((10, 10), dtype="uint16", order="F")
+
+        a = await zarr.api.asynchronous.create_array(
+            StorePath(MemoryStore()) / "test_codecs_use_of_gpu_prototype",
+            shape=expect.shape,
+            chunks=(5, 5),
+            shards=(10, 10),
+            dtype=expect.dtype,
+            fill_value=0,
+        )
+        expect[:] = cp.arange(100).reshape(10, 10)
+
+        await a.setitem(
+            selection=(slice(0, 10), slice(0, 10)),
+            value=expect[:],
+            prototype=gpu.buffer_prototype,
+        )
+        got = await a.getitem(
+            selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
+        )
+        assert isinstance(got, cp.ndarray)
+        assert cp.array_equal(expect, got)
+
+
 def test_numpy_buffer_prototype() -> None:
     buffer = cpu.buffer_prototype.buffer.create_zero_length()
     ndbuffer = cpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
     assert isinstance(buffer.as_array_like(), np.ndarray)
     assert isinstance(ndbuffer.as_ndarray_like(), np.ndarray)
+    with pytest.raises(ValueError, match="Buffer does not contain a single scalar value"):
+        ndbuffer.as_scalar()
+
+
+@gpu_test
+def test_gpu_buffer_prototype() -> None:
+    buffer = gpu.buffer_prototype.buffer.create_zero_length()
+    ndbuffer = gpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=cp.dtype("int64"))
+    assert isinstance(buffer.as_array_like(), cp.ndarray)
+    assert isinstance(ndbuffer.as_ndarray_like(), cp.ndarray)
+    with pytest.raises(ValueError, match="Buffer does not contain a single scalar value"):
+        ndbuffer.as_scalar()
+
+
+# TODO: the same test for other buffer classes
+def test_cpu_buffer_as_scalar() -> None:
+    buf = cpu.buffer_prototype.nd_buffer.create(shape=(), dtype="int64")
+    assert buf.as_scalar() == buf.as_ndarray_like()[()]  # type: ignore[index]

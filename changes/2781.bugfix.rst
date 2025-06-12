@@ -1,1 +1,0 @@
-Enable automatic removal of `needs release notes` with labeler action

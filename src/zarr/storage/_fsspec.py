@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import (
@@ -31,7 +32,7 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 
 class FsspecStore(Store):
     """
-    A remote Store based on FSSpec
+    Store for remote data based on FSSpec.
 
     Parameters
     ----------
@@ -177,7 +178,7 @@ class FsspecStore(Store):
             try:
                 from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-                fs = AsyncFileSystemWrapper(fs)
+                fs = AsyncFileSystemWrapper(fs, asynchronous=True)
             except ImportError as e:
                 raise ImportError(
                     f"The filesystem for URL '{url}' is synchronous, and the required "
@@ -285,6 +286,19 @@ class FsspecStore(Store):
             pass
         except self.allowed_exceptions:
             pass
+
+    async def delete_dir(self, prefix: str) -> None:
+        # docstring inherited
+        if not self.supports_deletes:
+            raise NotImplementedError(
+                "This method is only available for stores that support deletes."
+            )
+        self._check_writable()
+
+        path_to_delete = _dereference_path(self.path, prefix)
+
+        with suppress(*self.allowed_exceptions):
+            await self.fs._rm(path_to_delete, recursive=True)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited

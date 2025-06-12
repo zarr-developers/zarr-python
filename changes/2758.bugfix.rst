@@ -1,1 +1,0 @@
-Fix zip-store path checking for stores with directories listed as files.

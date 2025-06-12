@@ -19,7 +19,6 @@ from zarr.core.indexing import (
     OrthogonalSelection,
     Selection,
     _iter_grid,
-    is_total_slice,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -425,6 +424,18 @@ def test_orthogonal_indexing_fallback_on_getitem_2d(
     np.testing.assert_array_equal(z[index], expected_result)
 
 
+@pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
+def test_setitem_repeated_index():
+    array = zarr.array(data=np.zeros((4,)), chunks=(1,))
+    indexer = np.array([-1, -1, 0, 0])
+    array.oindex[(indexer,)] = [0, 1, 2, 3]
+    np.testing.assert_array_equal(array[:], np.array([3, 0, 0, 1]))
+
+    indexer = np.array([-1, 0, 0, -1])
+    array.oindex[(indexer,)] = [0, 1, 2, 3]
+    np.testing.assert_array_equal(array[:], np.array([2, 0, 0, 3]))
+
+
 Index = list[int] | tuple[slice | int | list[int], ...]
 
 
@@ -814,6 +825,25 @@ def test_set_orthogonal_selection_1d(store: StorePath) -> None:
     # basic selections
     for selection in basic_selections_1d:
         _test_set_orthogonal_selection(v, a, z, selection)
+
+
+def test_set_item_1d_last_two_chunks(store: StorePath):
+    # regression test for GH2849
+    g = zarr.open_group(store=store, zarr_format=3, mode="w")
+    a = g.create_array("bar", shape=(10,), chunks=(3,), dtype=int)
+    data = np.array([7, 8, 9])
+    a[slice(7, 10)] = data
+    np.testing.assert_array_equal(a[slice(7, 10)], data)
+
+    z = zarr.open_group(store=store, mode="w")
+    z.create_array("zoo", dtype=float, shape=())
+    z["zoo"][...] = np.array(1)  # why doesn't [:] work?
+    np.testing.assert_equal(z["zoo"][()], np.array(1))
+
+    z = zarr.open_group(store=store, mode="w")
+    z.create_array("zoo", dtype=float, shape=())
+    z["zoo"][...] = 1  # why doesn't [:] work?
+    np.testing.assert_equal(z["zoo"][()], np.array(1))
 
 
 def _test_set_orthogonal_selection_2d(
@@ -1872,7 +1902,7 @@ def test_iter_grid(
     """
     Test that iter_grid works as expected for 1, 2, and 3 dimensions.
     """
-    grid_shape = (5,) * ndim
+    grid_shape = (10, 5, 7)[:ndim]
 
     if origin_0d is not None:
         origin_kwarg = origin_0d * ndim
@@ -1956,6 +1986,11 @@ def test_vectorized_indexing_incompatible_shape(store) -> None:
         arr[np.array([1, 2]), np.array([1, 2])] = np.array([[-1, -2], [-3, -4]])
 
 
-def test_is_total_slice():
-    assert is_total_slice((0, slice(4, 6)), (1, 2))
-    assert is_total_slice((slice(0, 1, None), slice(4, 6)), (1, 2))
+def test_iter_chunk_regions():
+    chunks = (2, 3)
+    a = zarr.create((10, 10), chunks=chunks)
+    a[:] = 1
+    for region in a._iter_chunk_regions():
+        assert_array_equal(a[region], np.ones_like(a[region]))
+        a[region] = 0
+        assert_array_equal(a[region], np.zeros_like(a[region]))
