@@ -454,7 +454,7 @@ async def test_resize(store: Store) -> None:
     ],
 )
 def test_numcodecs_in_v3(
-    store: Store, codec_v2: numcodecs.abc.Codec, expected_v3_cls: Codec
+    store: Store, codec_v2: numcodecs.abc.Codec, expected_v3_cls: type[Codec]
 ) -> None:
     import zarr.registry
 
