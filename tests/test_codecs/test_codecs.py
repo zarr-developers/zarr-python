@@ -26,6 +26,7 @@ from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
+    from zarr.abc.codec import Codec
     from zarr.abc.store import Store
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike
     from zarr.core.buffer.core import NDArrayLikeOrScalar
@@ -452,7 +453,11 @@ async def test_resize(store: Store) -> None:
         (numcodecs.Zstd(), numcodecs.zarr3.Zstd),
     ],
 )
-def test_numcodecs_in_v3(store: Store, codec_v2, expected_v3_cls) -> None:
+def test_numcodecs_in_v3(
+    store: Store, codec_v2: numcodecs.abc.Codec, expected_v3_cls: Codec
+) -> None:
+    import zarr.registry
+
     result_v3 = zarr.registry.numcodec_to_zarr3_codec(codec_v2)
 
     assert result_v3.__class__ == expected_v3_cls

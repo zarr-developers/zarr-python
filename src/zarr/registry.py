@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import numcodecs
 
-from zarr.abc.codec import Codec
 from zarr.core.config import BadConfigError, config
 
 if TYPE_CHECKING:
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
         ArrayArrayCodec,
         ArrayBytesCodec,
         BytesBytesCodec,
+        Codec,
         CodecPipeline,
     )
     from zarr.core.buffer import Buffer, NDBuffer
@@ -168,7 +168,10 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
     return get_codec_class(data["name"]).from_dict(data)  # type: ignore[arg-type]
 
 
-def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> Codec:
+def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> numcodecs.zarr3._NumcodecsCodec & Codec:
+    """
+    Convert a numcodecs codec to a zarr v3 compatible numcodecs.zarr3 codec instance.
+    """
     codec_config = codec.get_config()
     codec_name = codec_config.pop("id", None)
     if codec_name is None:
@@ -176,9 +179,7 @@ def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> Codec:
     codec_cls = get_codec_class(f"numcodecs.{codec_name}")
     if codec_cls is None:
         raise ValueError(f"Codec class for 'numcodecs.{codec_name}' not found.")
-    codec_v3 = codec_cls.from_dict({"name": f"numcodecs.{codec_name}", "configuration": codec_config})
-    assert isinstance(codec_v3, Codec)
-    return codec_v3
+    return codec_cls.from_dict({"name": f"numcodecs.{codec_name}", "configuration": codec_config})
 
 
 def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
