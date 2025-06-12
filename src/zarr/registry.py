@@ -168,7 +168,7 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
     return get_codec_class(data["name"]).from_dict(data)  # type: ignore[arg-type]
 
 
-def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> numcodecs.zarr3._NumcodecsCodec & Codec:
+def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> Codec:
     """
     Convert a numcodecs codec to a zarr v3 compatible numcodecs.zarr3 codec instance.
     """

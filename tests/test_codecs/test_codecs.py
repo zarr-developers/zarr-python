@@ -461,7 +461,10 @@ def test_numcodecs_in_v3(
     result_v3 = zarr.registry.numcodec_to_zarr3_codec(codec_v2)
 
     assert result_v3.__class__ == expected_v3_cls
-    assert result_v3.codec_config == codec_v2.get_config()
+    assert result_v3.to_dict()["name"] == f"numcodecs.{codec_v2.codec_id}"
+    codec_v2_config = codec_v2.get_config()
+    codec_v2_config.pop("id")
+    assert result_v3.to_dict()["configuration"] == codec_v2_config
 
     filters: FiltersLike = "auto"
     serializer: SerializerLike = "auto"
