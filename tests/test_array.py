@@ -1470,7 +1470,7 @@ class TestCreateArray:
         else:
             expected_path = path
         assert arr.path == expected_path
-        assert arr.name == "/" + expected_path
+        assert arr.name == f"/{expected_path}"
 
         # test that implicit groups were created
         path_parts = expected_path.split("/")

@@ -113,7 +113,7 @@ class _ShardIndex(NamedTuple):
 
     @property
     def chunks_per_shard(self) -> ChunkCoords:
-        result = tuple(self.offsets_and_lengths.shape[0:-1])
+        result = tuple(self.offsets_and_lengths.shape[:-1])
         # The cast is required until https://github.com/numpy/numpy/pull/27211 is merged
         return cast("ChunkCoords", result)
 
@@ -409,8 +409,8 @@ class ShardingCodec(
             )
         if not isinstance(chunk_grid, RegularChunkGrid):
             raise TypeError("Sharding is only compatible with regular chunk grids.")
-        if not all(
-            s % c == 0
+        if any(
+            s % c != 0
             for s, c in zip(
                 chunk_grid.chunk_shape,
                 self.chunk_shape,

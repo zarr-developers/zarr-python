@@ -1598,7 +1598,7 @@ def test_get_selections_with_fields(store: StorePath) -> None:
             assert_array_equal(expect, actual)
 
         # basic selection with slice
-        expect = a[fields][0:2]
+        expect = a[fields][:2]
         actual = z.get_basic_selection(slice(0, 2), fields=fields)
         assert_array_equal(expect, actual)
         # alternative API
@@ -1724,8 +1724,8 @@ def test_set_selections_with_fields(store: StorePath) -> None:
             # basic selection with slice
             a[:] = ("", 0, 0)
             z[:] = ("", 0, 0)
-            a[key][0:2] = v[key][0:2]
-            z.set_basic_selection(slice(0, 2), v[key][0:2], fields=fields)
+            a[key][:2] = v[key][:2]
+            z.set_basic_selection(slice(0, 2), v[key][:2], fields=fields)
             assert_array_equal(a, z[:])
 
             # orthogonal selection

@@ -179,9 +179,9 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
         if not isinstance(result, BytesBytesCodec):
             msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
+    elif not isinstance(data, BytesBytesCodec):
+        raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")
     else:
-        if not isinstance(data, BytesBytesCodec):
-            raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")
         result = data
     return result
 
@@ -199,9 +199,9 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
         if not isinstance(result, ArrayBytesCodec):
             msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
+    elif not isinstance(data, ArrayBytesCodec):
+        raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
     else:
-        if not isinstance(data, ArrayBytesCodec):
-            raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
         result = data
     return result
 
@@ -219,9 +219,9 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
         if not isinstance(result, ArrayArrayCodec):
             msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
+    elif not isinstance(data, ArrayArrayCodec):
+        raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")
     else:
-        if not isinstance(data, ArrayArrayCodec):
-            raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")
         result = data
     return result
 

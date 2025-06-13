@@ -107,11 +107,11 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
     codec_class_name = abc.__class__.__name__
-    if dtype == DataType.string and not codec_class_name == "VLenUTF8Codec":
+    if dtype == DataType.string and codec_class_name != "VLenUTF8Codec":
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
-    if dtype == DataType.bytes and not codec_class_name == "VLenBytesCodec":
+    if dtype == DataType.bytes and codec_class_name != "VLenBytesCodec":
         raise ValueError(
             f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_class_name}`."
         )
@@ -574,9 +574,8 @@ def parse_fill_value(
             and np.isclose(np.imag(fill_value), np.imag(casted_value), equal_nan=True)
         ):
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
-    else:
-        if fill_value != casted_value:
-            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
+    elif fill_value != casted_value:
+        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
 
     return casted_value
 
