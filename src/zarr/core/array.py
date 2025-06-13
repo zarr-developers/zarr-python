@@ -68,6 +68,8 @@ from zarr.core.common import (
 )
 from zarr.core.config import config as zarr_config
 from zarr.core.indexing import (
+    AsyncOIndex,
+    AsyncVIndex,
     BasicIndexer,
     BasicSelection,
     BlockIndex,
@@ -1350,6 +1352,42 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
         return await self._get_selection(indexer, prototype=prototype)
 
+    async def get_orthogonal_selection(
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLike:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    @_deprecate_positional_args
+    async def get_coordinate_selection(
+        self,
+        selection: CoordinateSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
+        out_array = await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+        if hasattr(out_array, "shape"):
+            # restore shape
+            out_array = np.array(out_array).reshape(indexer.sel_shape)
+        return out_array
+
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
         Asynchronously save the array metadata.
@@ -1479,6 +1517,16 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             chunk_grid=self.metadata.chunk_grid,
         )
         return await self._set_selection(indexer, value, prototype=prototype)
+
+    @property
+    def oindex(self) -> AsyncOIndex:
+        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
+        :func:`set_orthogonal_selection` for documentation and examples."""
+        return AsyncOIndex(self)
+
+    @property
+    def vindex(self) -> AsyncVIndex:
+        return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
         """
