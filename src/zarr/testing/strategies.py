@@ -78,7 +78,7 @@ def safe_unicode_for_dtype(dtype: np.dtype[np.str_]) -> st.SearchStrategy[str]:
 
     return st.text(
         alphabet=st.characters(
-            blacklist_categories=["Cs"],  # Avoid *technically allowed* surrogates
+            exclude_categories=["Cs"],  # Avoid *technically allowed* surrogates
             min_codepoint=32,
         ),
         min_size=1,
@@ -328,7 +328,7 @@ def is_negative_slice(idx: Any) -> bool:
 
 
 @st.composite
-def end_slices(draw: st.DrawFn, *, shape: tuple[int]) -> Any:
+def end_slices(draw: st.DrawFn, *, shape: tuple[int, ...]) -> Any:
     """
     A strategy that slices ranges that include the last chunk.
     This is intended to stress-test handling of a possibly smaller last chunk.
@@ -346,7 +346,7 @@ def end_slices(draw: st.DrawFn, *, shape: tuple[int]) -> Any:
 def basic_indices(
     draw: st.DrawFn,
     *,
-    shape: tuple[int],
+    shape: tuple[int, ...],
     min_dims: int = 0,
     max_dims: int | None = None,
     allow_newaxis: bool = False,
@@ -374,7 +374,7 @@ def basic_indices(
 
 @st.composite
 def orthogonal_indices(
-    draw: st.DrawFn, *, shape: tuple[int]
+    draw: st.DrawFn, *, shape: tuple[int, ...]
 ) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
     """
     Strategy that returns
@@ -430,3 +430,12 @@ def key_ranges(
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)
+
+
+@st.composite
+def chunk_paths(draw: st.DrawFn, ndim: int, numblocks: tuple[int, ...], subset: bool = True) -> str:
+    blockidx = draw(
+        st.tuples(*tuple(st.integers(min_value=0, max_value=max(0, b - 1)) for b in numblocks))
+    )
+    subset_slicer = slice(draw(st.integers(min_value=0, max_value=ndim))) if subset else slice(None)
+    return "/".join(map(str, blockidx[subset_slicer]))

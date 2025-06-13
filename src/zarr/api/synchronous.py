@@ -82,7 +82,8 @@ def consolidate_metadata(
     Consolidate the metadata of all nodes in a hierarchy.
 
     Upon completion, the metadata of the root node in the Zarr hierarchy will be
-    updated to include all the metadata of child nodes.
+    updated to include all the metadata of child nodes. For Stores that do
+    not use consolidated metadata, this operation raises a `TypeError`.
 
     Parameters
     ----------
@@ -102,7 +103,10 @@ def consolidate_metadata(
     -------
     group: Group
         The group, with the ``consolidated_metadata`` field set to include
-        the metadata of each child node.
+        the metadata of each child node. If the Store doesn't support
+        consolidated metadata, this function raises a `TypeError`.
+        See ``Store.supports_consolidated_metadata``.
+
     """
     return Group(sync(async_api.consolidate_metadata(store, path=path, zarr_format=zarr_format)))
 
@@ -159,7 +163,7 @@ def load(
 def open(
     store: StoreLike | None = None,
     *,
-    mode: AccessModeLiteral = "a",
+    mode: AccessModeLiteral | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -177,6 +181,7 @@ def open(
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
+        If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional

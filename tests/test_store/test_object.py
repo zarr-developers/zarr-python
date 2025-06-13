@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 obstore = pytest.importorskip("obstore")
-import pytest
+
 from hypothesis.stateful import (
     run_state_machine_as_test,
 )

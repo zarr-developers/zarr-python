@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -193,17 +194,31 @@ def pytest_collection_modifyitems(config: Any, items: Any) -> None:
 
 
 settings.register_profile(
+    "default",
+    parent=settings.get_profile("default"),
+    max_examples=300,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+    deadline=None,
+    verbosity=Verbosity.verbose,
+)
+settings.register_profile(
     "ci",
-    max_examples=1000,
+    parent=settings.get_profile("ci"),
+    max_examples=300,
+    derandomize=True,  # more like regression testing
     deadline=None,
     suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
 )
 settings.register_profile(
-    "local",
-    max_examples=300,
-    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
-    verbosity=Verbosity.verbose,
+    "nightly",
+    max_examples=500,
+    parent=settings.get_profile("ci"),
+    derandomize=False,
+    stateful_step_count=100,
 )
+
+settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
+
 
 # TODO: uncomment these overrides when we can get mypy to accept them
 """

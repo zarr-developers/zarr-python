@@ -114,3 +114,23 @@ removed, or modified, consolidated metadata may not be desirable.
    metadata.
 
 .. _Consolidated Metadata: https://github.com/zarr-developers/zarr-specs/pull/309
+
+Stores Without Support for Consolidated Metadata
+------------------------------------------------
+
+Some stores may want to opt out of the consolidated metadata mechanism. This
+may be for several reasons like:
+
+* They want to maintain read-write consistency, which is challenging with
+  consolidated metadata.
+* They have their own consolidated metadata mechanism.
+* They offer good enough performance without need for consolidation.
+
+This type of store can declare it doesn't want consolidation by implementing
+`Store.supports_consolidated_metadata` and returning `False`. For stores that don't support
+consolidation, Zarr will:
+
+* Raise an error on `consolidate_metadata` calls, maintaining the store in
+  its unconsolidated state.
+* Raise an error in `AsyncGroup.open(..., use_consolidated=True)`
+* Not use consolidated metadata in `AsyncGroup.open(..., use_consolidated=None)`
