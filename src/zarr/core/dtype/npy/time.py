@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import (
     TYPE_CHECKING,
     ClassVar,
@@ -17,20 +18,21 @@ from typing import (
 import numpy as np
 
 from zarr.core.common import NamedConfig
-from zarr.core.dtype.common import HasEndianness, HasItemSize
+from zarr.core.dtype.common import DataTypeValidationError, HasEndianness, HasItemSize
 from zarr.core.dtype.npy.common import (
     DateTimeUnit,
-    EndiannessNumpy,
     check_json_int,
-    endianness_from_numpy_str,
     endianness_to_numpy_str,
+    get_endianness_from_numpy_dtype,
 )
-from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, ZDType
+from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 _DTypeName = Literal["datetime64", "timedelta64"]
+TimeDeltaLike = str | int | bytes | np.timedelta64 | timedelta | None
+DateTimeLike = str | int | bytes | np.datetime64 | datetime | None
 
 
 def datetime_from_int(data: int, *, unit: DateTimeUnit, scale_factor: int) -> np.datetime64:
@@ -72,17 +74,27 @@ def datetimelike_to_int(data: np.datetime64 | np.timedelta64) -> int:
     return data.view(np.int64).item()
 
 
-_BaseTimeDType_co = TypeVar(
-    "_BaseTimeDType_co",
+def check_json_time(data: JSON) -> TypeGuard[Literal["NaT"] | int]:
+    """
+    Type guard to check if the input JSON data is the literal string "NaT"
+    or an integer.
+    """
+    return check_json_int(data) or data == "NaT"
+
+
+BaseTimeDType_co = TypeVar(
+    "BaseTimeDType_co",
     bound=np.dtypes.TimeDelta64DType | np.dtypes.DateTime64DType,
     covariant=True,
 )
-_BaseTimeScalar = TypeVar("_BaseTimeScalar", bound=np.timedelta64 | np.datetime64)
+BaseTimeScalar_co = TypeVar(
+    "BaseTimeScalar_co", bound=np.timedelta64 | np.datetime64, covariant=True
+)
 
 
 class TimeConfig(TypedDict):
     unit: DateTimeUnit
-    interval: int
+    scale_factor: int
 
 
 DateTime64JSONV3 = NamedConfig[Literal["numpy.datetime64"], TimeConfig]
@@ -90,7 +102,7 @@ TimeDelta64JSONV3 = NamedConfig[Literal["numpy.timedelta64"], TimeConfig]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness, HasItemSize):
+class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, HasItemSize):
     _zarr_v2_names: ClassVar[tuple[str, ...]]
     # this attribute exists so that we can programmatically create a numpy dtype instance
     # because the particular numpy dtype we are wrapping does not allow direct construction via
@@ -108,32 +120,25 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness, H
             raise ValueError(f"unit must be one of {get_args(DateTimeUnit)}, got {self.unit!r}.")
 
     @classmethod
-    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
-        unit, scale_factor = np.datetime_data(dtype.name)
-        unit = cast("DateTimeUnit", unit)
-        byteorder = cast("EndiannessNumpy", dtype.byteorder)
-        return cls(
-            unit=unit, scale_factor=scale_factor, endianness=endianness_from_numpy_str(byteorder)
+    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        if cls._check_native_dtype(dtype):
+            unit, scale_factor = np.datetime_data(dtype.name)
+            unit = cast("DateTimeUnit", unit)
+            return cls(
+                unit=unit,
+                scale_factor=scale_factor,
+                endianness=get_endianness_from_numpy_dtype(dtype),
+            )
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
 
-    def to_native_dtype(self) -> _BaseTimeDType_co:
+    def to_native_dtype(self) -> BaseTimeDType_co:
         # Numpy does not allow creating datetime64 or timedelta64 via
         # np.dtypes.{dtype_name}()
         # so we use np.dtype with a formatted string.
         dtype_string = f"{self._numpy_name}[{self.scale_factor}{self.unit}]"
         return np.dtype(dtype_string).newbyteorder(endianness_to_numpy_str(self.endianness))  # type: ignore[return-value]
-
-    @classmethod
-    def _from_json_unchecked(
-        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
-    ) -> Self:
-        if zarr_format == 2:
-            return cls.from_native_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            unit = data["configuration"]["unit"]  # type: ignore[index, call-overload]
-            scale_factor = data["configuration"]["scale_factor"]  # type: ignore[index, call-overload]
-            return cls(unit=unit, scale_factor=scale_factor)
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> str: ...
@@ -156,14 +161,6 @@ class TimeDTypeBase(ZDType[_BaseTimeDType_co, _BaseTimeScalar], HasEndianness, H
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> int:
         return datetimelike_to_int(data)  # type: ignore[arg-type]
 
-    def _check_scalar(self, data: object) -> bool:
-        # TODO: decide which values we should accept for datetimes.
-        try:
-            np.array([data], dtype=self.to_native_dtype())
-            return True  # noqa: TRY300
-        except ValueError:
-            return False
-
     @property
     def item_size(self) -> int:
         return 8
@@ -178,6 +175,8 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     unit for ``TimeDelta64`` is optional.
     """
 
+    # mypy infers the type of np.dtypes.TimeDelta64DType to be
+    # "Callable[[Literal['Y', 'M', 'W', 'D'] | Literal['h', 'm', 's', 'ms', 'us', 'ns', 'ps', 'fs', 'as']], Never]"
     dtype_cls = np.dtypes.TimeDelta64DType  # type: ignore[assignment]
     _zarr_v3_name: ClassVar[Literal["numpy.timedelta64"]] = "numpy.timedelta64"
     _zarr_v2_names = (">m8", "<m8")
@@ -189,12 +188,23 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         return np.timedelta64("NaT")
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
-        if check_json_int(data) or data == "NaT":
-            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[arg-type]
+        if check_json_time(data):
+            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
-    def _cast_scalar_unchecked(self, data: object) -> np.timedelta64:
-        return self.to_native_dtype().type(data)  # type: ignore[arg-type]
+    def _check_scalar(self, data: object) -> TypeGuard[TimeDeltaLike]:
+        if data is None:
+            return True
+        return isinstance(data, str | int | bytes | np.timedelta64 | timedelta)
+
+    def _cast_scalar_unchecked(self, data: TimeDeltaLike) -> np.timedelta64:
+        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+
+    def cast_scalar(self, data: object) -> np.timedelta64:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy timedelta64 scalar."
+        raise TypeError(msg)
 
     @classmethod
     def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
@@ -221,6 +231,30 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             and set(data["configuration"].keys()) == {"unit", "scale_factor"}
         )
 
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data):
+            return cls.from_native_dtype(np.dtype(data))
+        msg = (
+            f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string "
+            f"representation of an instance of {cls.dtype_cls}"  # type: ignore[has-type]
+        )
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            unit = data["configuration"]["unit"]
+            scale_factor = data["configuration"]["scale_factor"]
+            return cls(unit=unit, scale_factor=scale_factor)
+        msg = (
+            f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a dict "
+            f"with a 'name' key with the value 'numpy.timedelta64', "
+            "and a 'configuration' key with a value of a dict with a 'unit' key and a "
+            "'scale_factor' key"
+        )
+        raise DataTypeValidationError(msg)
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEndianness):
@@ -235,12 +269,23 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         return np.datetime64("NaT")
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
-        if check_json_int(data) or data == "NaT":
-            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[arg-type]
+        if check_json_time(data):
+            return self._cast_scalar_unchecked(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
 
-    def _cast_scalar_unchecked(self, data: object) -> np.datetime64:
-        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")  # type: ignore[no-any-return, call-overload]
+    def _check_scalar(self, data: object) -> TypeGuard[DateTimeLike]:
+        if data is None:
+            return True
+        return isinstance(data, str | int | bytes | np.datetime64 | datetime)
+
+    def _cast_scalar_unchecked(self, data: DateTimeLike) -> np.datetime64:
+        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+
+    def cast_scalar(self, data: object) -> np.datetime64:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy datetime scalar."
+        raise TypeError(msg)
 
     @classmethod
     def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
@@ -266,3 +311,27 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             and isinstance(data["configuration"], dict)
             and set(data["configuration"].keys()) == {"unit", "scale_factor"}
         )
+
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data):
+            return cls.from_native_dtype(np.dtype(data))
+        msg = (
+            f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string "
+            f"representation of an instance of {cls.dtype_cls}"  # type: ignore[has-type]
+        )
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            unit = data["configuration"]["unit"]
+            scale_factor = data["configuration"]["scale_factor"]
+            return cls(unit=unit, scale_factor=scale_factor)
+        msg = (
+            f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a dict "
+            f"with a 'name' key with the value 'numpy.datetime64', "
+            "and a 'configuration' key with a value of a dict with a 'unit' key and a "
+            "'scale_factor' key"
+        )
+        raise DataTypeValidationError(msg)

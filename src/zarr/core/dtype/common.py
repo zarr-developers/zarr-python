@@ -4,7 +4,8 @@ import warnings
 from dataclasses import dataclass
 from typing import ClassVar, Final, Literal
 
-Endianness = Literal["little", "big"]
+EndiannessStr = Literal["little", "big"]
+ENDIANNESS_STR: Final = "little", "big"
 SpecialFloatStrings = Literal["NaN", "Infinity", "-Infinity"]
 SPECIAL_FLOAT_STRINGS: Final = ("NaN", "Infinity", "-Infinity")
 JSONFloatV2 = float | SpecialFloatStrings
@@ -12,6 +13,9 @@ JSONFloatV3 = float | SpecialFloatStrings | str
 
 
 class DataTypeValidationError(ValueError): ...
+
+
+class ScalarTypeValidationError(ValueError): ...
 
 
 @dataclass(frozen=True)
@@ -30,7 +34,7 @@ class HasEndianness:
     A mix-in class for data types with an endianness attribute
     """
 
-    endianness: Endianness | None = "little"
+    endianness: EndiannessStr = "little"
 
 
 @dataclass(frozen=True)

@@ -6,9 +6,17 @@ from typing import Any, ClassVar, Literal, Self, TypedDict, TypeGuard, cast, ove
 import numpy as np
 
 from zarr.core.common import JSON, NamedConfig, ZarrFormat
-from zarr.core.dtype.common import HasItemSize, HasLength, HasObjectCodec, v3_unstable_dtype_warning
+from zarr.core.dtype.common import (
+    DataTypeValidationError,
+    HasItemSize,
+    HasLength,
+    HasObjectCodec,
+    v3_unstable_dtype_warning,
+)
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, ZDType
+
+BytesLike = np.bytes_ | str | bytes | int
 
 
 class FixedLengthBytesConfig(TypedDict):
@@ -25,8 +33,12 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     _zarr_v3_name: ClassVar[Literal["null_terminated_bytes"]] = "null_terminated_bytes"
 
     @classmethod
-    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
-        return cls(length=dtype.itemsize)
+    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        if cls._check_native_dtype(dtype):
+            return cls(length=dtype.itemsize)
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+        )
 
     def to_native_dtype(self) -> np.dtypes.BytesDType[int]:
         return self.dtype_cls(self.length)
@@ -48,6 +60,20 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
             and isinstance(data["configuration"], dict)
             and "length_bytes" in data["configuration"]
         )
+
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data):
+            return cls(length=int(data[2:]))
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string like '|S1', '|S2', etc"
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls(length=data["configuration"]["length_bytes"])
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> str: ...
@@ -90,11 +116,11 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
             f"Invalid type: {data}. Expected a base64-encoded string."
         )  # pragma: no cover
 
-    def _check_scalar(self, data: object) -> bool:
+    def _check_scalar(self, data: object) -> TypeGuard[BytesLike]:
         # this is generous for backwards compatibility
-        return isinstance(data, np.bytes_ | str | bytes | int)
+        return isinstance(data, BytesLike)
 
-    def _cast_scalar_unchecked(self, data: object) -> np.bytes_:
+    def _cast_scalar_unchecked(self, data: BytesLike) -> np.bytes_:
         # We explicitly truncate the result because of the following numpy behavior:
         # >>> x = np.dtype('S3').type('hello world')
         # >>> x
@@ -105,7 +131,13 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         if isinstance(data, int):
             return self.to_native_dtype().type(str(data)[: self.length])
         else:
-            return self.to_native_dtype().type(data[: self.length])  # type: ignore[index]
+            return self.to_native_dtype().type(data[: self.length])
+
+    def cast_scalar(self, data: object) -> np.bytes_:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy bytes scalar."
+        raise TypeError(msg)
 
     @property
     def item_size(self) -> int:
@@ -121,8 +153,12 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
     _zarr_v3_name: ClassVar[Literal["raw_bytes"]] = "raw_bytes"
 
     @classmethod
-    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
-        return cls(length=dtype.itemsize)
+    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        if cls._check_native_dtype(dtype):
+            return cls(length=dtype.itemsize)
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"  # type: ignore[has-type]
+        )
 
     def to_native_dtype(self) -> np.dtypes.VoidDType[int]:
         # Numpy does not allow creating a void type
@@ -144,6 +180,20 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
             and set(data["configuration"].keys()) == {"length_bytes"}
         )
 
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data):
+            return cls(length=int(data[2:]))
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string like '|V1', '|V2', etc"
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls(length=data["configuration"]["length_bytes"])
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
+
     @overload
     def to_json(self, zarr_format: Literal[2]) -> str: ...
 
@@ -156,16 +206,6 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
             return {"name": self._zarr_v3_name, "configuration": {"length_bytes": self.length}}
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
-    def _from_json_unchecked(
-        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
-    ) -> Self:
-        if zarr_format == 2:
-            return cls.from_native_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            return cls(length=data["configuration"]["length_bytes"])  # type: ignore[index, call-overload]
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
@@ -212,6 +252,12 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         # the result will actually be a V10 scalar.
         return native_dtype.type(data, native_dtype)
 
+    def cast_scalar(self, data: object) -> np.void:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy void scalar."
+        raise TypeError(msg)
+
     @property
     def item_size(self) -> int:
         return self.length
@@ -224,8 +270,12 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
     object_codec_id = "vlen-bytes"
 
     @classmethod
-    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
-        return cls()
+    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        if cls._check_native_dtype(dtype):
+            return cls()
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+        )
 
     def to_native_dtype(self) -> np.dtypes.ObjectDType:
         return self.dtype_cls()
@@ -244,6 +294,20 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
     def _check_json_v3(cls, data: JSON) -> TypeGuard[Literal["variable_length_bytes"]]:
         return data == cls._zarr_v3_name
 
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+            return cls()
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string '|O' and an object_codec_id of {cls.object_codec_id}"
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
+
     @overload
     def to_json(self, zarr_format: Literal[2]) -> Literal["|O"]: ...
 
@@ -258,12 +322,6 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    @classmethod
-    def _from_json_unchecked(
-        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
-    ) -> Self:
-        return cls()
-
     def default_scalar(self) -> bytes:
         return b""
 
@@ -275,10 +333,16 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
             return base64.standard_b64decode(data.encode("ascii"))
         raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
-    def _check_scalar(self, data: object) -> bool:
-        return isinstance(data, bytes | str)
+    def _check_scalar(self, data: object) -> TypeGuard[BytesLike]:
+        return isinstance(data, BytesLike)
 
-    def _cast_scalar_unchecked(self, data: object) -> bytes:
+    def _cast_scalar_unchecked(self, data: BytesLike) -> bytes:
         if isinstance(data, str):
             return bytes(data, encoding="utf-8")
-        return bytes(data)  # type: ignore[no-any-return, call-overload]
+        return bytes(data)
+
+    def cast_scalar(self, data: object) -> bytes:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to bytes."
+        raise TypeError(msg)

@@ -1,23 +1,27 @@
 from dataclasses import dataclass
-from typing import ClassVar, Self, TypeGuard, cast
+from typing import ClassVar, Self, TypeGuard
 
 import numpy as np
 
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import HasEndianness, HasItemSize
+from zarr.core.dtype.common import (
+    DataTypeValidationError,
+    HasEndianness,
+    HasItemSize,
+    ScalarTypeValidationError,
+)
 from zarr.core.dtype.npy.common import (
-    EndiannessNumpy,
     FloatLike,
     TFloatDType_co,
     TFloatScalar_co,
     check_json_float_v2,
     check_json_float_v3,
-    endianness_from_numpy_str,
     endianness_to_numpy_str,
     float_from_json_v2,
     float_from_json_v3,
     float_to_json_v2,
     float_to_json_v3,
+    get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, ZDType
 
@@ -28,9 +32,12 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
     @classmethod
-    def _from_native_dtype_unchecked(cls, dtype: TBaseDType) -> Self:
-        byte_order = cast("EndiannessNumpy", dtype.byteorder)
-        return cls(endianness=endianness_from_numpy_str(byte_order))
+    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        if cls._check_native_dtype(dtype):
+            return cls(endianness=get_endianness_from_numpy_dtype(dtype))
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+        )
 
     def to_native_dtype(self) -> TFloatDType_co:
         byte_order = endianness_to_numpy_str(self.endianness)
@@ -77,11 +84,33 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
     def _check_json_v3(cls, data: JSON) -> TypeGuard[str]:
         return data == cls._zarr_v3_name
 
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+            # Going via numpy ensures that we get the endianness correct without
+            # annoying string parsing.
+            return cls.from_native_dtype(np.dtype(data))
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {cls._zarr_v3_name}."
+        raise DataTypeValidationError(msg)
+
     def _check_scalar(self, data: object) -> TypeGuard[FloatLike]:
         return isinstance(data, FloatLike)
 
-    def _cast_scalar_unchecked(self, data: object) -> TFloatScalar_co:
-        return self.to_native_dtype().type(data)  # type: ignore[return-value, arg-type]
+    def cast_scalar(self, data: object) -> TFloatScalar_co:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy float scalar."
+        raise ScalarTypeValidationError(msg)
+
+    def _cast_scalar_unchecked(self, data: FloatLike) -> TFloatScalar_co:
+        return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
     def default_scalar(self) -> TFloatScalar_co:
         """
@@ -145,9 +174,9 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
             See the zarr specifications for details on the JSON encoding for floats.
         """
         if zarr_format == 2:
-            return float_to_json_v2(self._cast_scalar_unchecked(data))
+            return float_to_json_v2(self.cast_scalar(data))
         elif zarr_format == 3:
-            return float_to_json_v3(self._cast_scalar_unchecked(data))
+            return float_to_json_v3(self.cast_scalar(data))
         else:
             raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
