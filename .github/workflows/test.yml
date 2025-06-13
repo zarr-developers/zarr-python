@@ -61,6 +61,8 @@ jobs:
         hatch env create test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
         hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
+      env:
+        HYPOTHESIS_PROFILE: ci
       run: |
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
