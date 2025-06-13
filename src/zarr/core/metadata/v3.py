@@ -272,9 +272,7 @@ class ArrayV3Metadata(Metadata):
         if fill_value is None:
             fill_value = default_fill_value(data_type_parsed)
         # we pass a string here rather than an enum to make mypy happy
-        fill_value_parsed = parse_fill_value(
-            fill_value, dtype=cast("ALL_DTYPES", data_type_parsed.value)
-        )
+        fill_value_parsed = parse_fill_value(fill_value, data_type_parsed.value)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
@@ -529,11 +527,12 @@ def parse_fill_value(
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
             if len(fill_value) == 2:
-                decoded_fill_value = tuple(
-                    SPECIAL_FLOATS_ENCODED.get(value, value) for value in fill_value
+                decoded_fill_value = (
+                    SPECIAL_FLOATS_ENCODED.get(fill_value[0], fill_value[0]),
+                    SPECIAL_FLOATS_ENCODED.get(fill_value[1], fill_value[1]),
                 )
                 # complex datatypes serialize to JSON arrays with two elements
-                return np_dtype.type(complex(*decoded_fill_value))
+                return np_dtype.type(complex(*decoded_fill_value))  # type: ignore[arg-type]
             else:
                 msg = (
                     f"Got an invalid fill value for complex data type {data_type.value}."
