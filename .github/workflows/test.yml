@@ -104,7 +104,7 @@ jobs:
         hatch env run -e ${{ matrix.dependency-set }} list-env
     - name: Run Tests
       run: |
-        hatch env run --env ${{ matrix.dependency-set }} run
+        hatch env run --env ${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
       uses: codecov/codecov-action@v5
       with:
