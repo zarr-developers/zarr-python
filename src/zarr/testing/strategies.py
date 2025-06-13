@@ -100,12 +100,12 @@ zarr_key_chars = st.sampled_from(
 )
 node_names = (
     st.text(zarr_key_chars, min_size=1)
-    .filter(lambda t: t not in (".", "..") and not t.startswith("__"))
+    .filter(lambda t: t not in {".", ".."} and not t.startswith("__"))
     .filter(lambda name: name.lower() != "zarr.json")
 )
 short_node_names = (
     st.text(zarr_key_chars, max_size=3, min_size=1)
-    .filter(lambda t: t not in (".", "..") and not t.startswith("__"))
+    .filter(lambda t: t not in {".", ".."} and not t.startswith("__"))
     .filter(lambda name: name.lower() != "zarr.json")
 )
 array_names = node_names
@@ -123,7 +123,7 @@ array_shapes = npst.array_shapes(max_dims=4, min_side=3) | npst.array_shapes(max
 
 
 @st.composite
-def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | str] | None:
+def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[str | None] | None:
     simple_text = st.text(zarr_key_chars, min_size=0)
     return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[arg-type]
 

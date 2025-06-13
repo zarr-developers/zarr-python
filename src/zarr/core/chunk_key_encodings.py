@@ -18,7 +18,7 @@ SeparatorLiteral = Literal[".", "/"]
 
 
 def parse_separator(data: JSON) -> SeparatorLiteral:
-    if data not in (".", "/"):
+    if data not in {".", "/"}:
         raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.")
     return cast("SeparatorLiteral", data)
 
