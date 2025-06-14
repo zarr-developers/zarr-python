@@ -23,7 +23,7 @@ from zarr.core.dtype.npy.common import (
     float_to_json_v3,
     get_endianness_from_numpy_dtype,
 )
-from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, ZDType
+from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 
 @dataclass(frozen=True)
@@ -42,36 +42,6 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
     def to_native_dtype(self) -> TFloatDType_co:
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
-
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        """
-        Convert the wrapped data type to a JSON-serializable form.
-
-        Parameters
-        ----------
-        zarr_format : ZarrFormat
-            The zarr format version.
-
-        Returns
-        -------
-        str
-            The JSON-serializable representation of the wrapped data type
-        """
-        if zarr_format == 2:
-            return self.to_native_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    @classmethod
-    def _from_json_unchecked(
-        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
-    ) -> Self:
-        if zarr_format == 2:
-            return cls.from_native_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            return cls()
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
@@ -100,17 +70,37 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {cls._zarr_v3_name}."
         raise DataTypeValidationError(msg)
 
+    def to_json(self, zarr_format: ZarrFormat) -> str:
+        """
+        Convert the wrapped data type to a JSON-serializable form.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        str
+            The JSON-serializable representation of the wrapped data type
+        """
+        if zarr_format == 2:
+            return self.to_native_dtype().str
+        elif zarr_format == 3:
+            return self._zarr_v3_name
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
     def _check_scalar(self, data: object) -> TypeGuard[FloatLike]:
         return isinstance(data, FloatLike)
+
+    def _cast_scalar_unchecked(self, data: FloatLike) -> TFloatScalar_co:
+        return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
     def cast_scalar(self, data: object) -> TFloatScalar_co:
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
         msg = f"Cannot convert object with type {type(data)} to a numpy float scalar."
         raise ScalarTypeValidationError(msg)
-
-    def _cast_scalar_unchecked(self, data: FloatLike) -> TFloatScalar_co:
-        return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
     def default_scalar(self) -> TFloatScalar_co:
         """

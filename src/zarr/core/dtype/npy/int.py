@@ -143,6 +143,23 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
 
+    def to_native_dtype(self: Self) -> np.dtypes.Int8DType:
+        return self.dtype_cls()
+
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+            return cls()
+        msg = f"Invalid JSON representation of Int8. Got {data!r}, expected the string {cls._zarr_v2_names[0]!r}"
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        msg = f"Invalid JSON representation of Int8. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
+
     @overload
     def to_json(self, zarr_format: Literal[2]) -> Literal["|i1"]: ...
 
@@ -169,23 +186,6 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def to_native_dtype(self: Self) -> np.dtypes.Int8DType:
-        return self.dtype_cls()
-
-    @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
-        if cls._check_json_v2(data, object_codec_id=object_codec_id):
-            return cls()
-        msg = f"Invalid JSON representation of Int8. Got {data!r}, expected the string {cls._zarr_v2_names[0]!r}"
-        raise DataTypeValidationError(msg)
-
-    @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
-        if cls._check_json_v3(data):
-            return cls()
-        msg = f"Invalid JSON representation of Int8. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
-        raise DataTypeValidationError(msg)
-
     @property
     def item_size(self) -> int:
         return 1
@@ -207,6 +207,23 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         raise DataTypeValidationError(
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
+
+    def to_native_dtype(self: Self) -> np.dtypes.UInt8DType:
+        return self.dtype_cls()
+
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+            return cls()
+        msg = f"Invalid JSON representation of UInt8. Got {data!r}, expected the string {cls._zarr_v2_names[0]!r}"
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        msg = f"Invalid JSON representation of UInt8. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> Literal["|u1"]: ...
@@ -234,23 +251,6 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    def to_native_dtype(self: Self) -> np.dtypes.UInt8DType:
-        return self.dtype_cls()
-
-    @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
-        if cls._check_json_v2(data, object_codec_id=object_codec_id):
-            return cls()
-        msg = f"Invalid JSON representation of UInt8. Got {data!r}, expected the string {cls._zarr_v2_names[0]!r}"
-        raise DataTypeValidationError(msg)
-
-    @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
-        if cls._check_json_v3(data):
-            return cls()
-        msg = f"Invalid JSON representation of UInt8. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
-        raise DataTypeValidationError(msg)
-
     @property
     def item_size(self) -> int:
         return 1
@@ -261,32 +261,6 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     dtype_cls = np.dtypes.Int16DType
     _zarr_v3_name: ClassVar[Literal["int16"]] = "int16"
     _zarr_v2_names: ClassVar[tuple[Literal[">i2"], Literal["<i2"]]] = (">i2", "<i2")
-
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> Literal[">i2", "<i2"]: ...
-
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> Literal["int16"]: ...
-
-    def to_json(self, zarr_format: ZarrFormat) -> Literal["int16", ">i2", "<i2"]:
-        """
-        Convert the wrapped data type to a JSON-serializable form.
-
-        Parameters
-        ----------
-        zarr_format : ZarrFormat
-            The zarr format version.
-
-        Returns
-        -------
-        str
-            The JSON-serializable representation of the wrapped data type
-        """
-        if zarr_format == 2:
-            return self.to_native_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
@@ -316,24 +290,13 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         msg = f"Invalid JSON representation of Int16. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @property
-    def item_size(self) -> int:
-        return 2
-
-
-@dataclass(frozen=True, kw_only=True)
-class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
-    dtype_cls = np.dtypes.UInt16DType
-    _zarr_v3_name: ClassVar[Literal["uint16"]] = "uint16"
-    _zarr_v2_names: ClassVar[tuple[Literal[">u2"], Literal["<u2"]]] = (">u2", "<u2")
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> Literal[">i2", "<i2"]: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[2]) -> Literal[">u2", "<u2"]: ...
+    def to_json(self, zarr_format: Literal[3]) -> Literal["int16"]: ...
 
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> Literal["uint16"]: ...
-
-    def to_json(self, zarr_format: ZarrFormat) -> Literal["uint16", ">u2", "<u2"]:
+    def to_json(self, zarr_format: ZarrFormat) -> Literal["int16", ">i2", "<i2"]:
         """
         Convert the wrapped data type to a JSON-serializable form.
 
@@ -352,6 +315,17 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         elif zarr_format == 3:
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
+    @property
+    def item_size(self) -> int:
+        return 2
+
+
+@dataclass(frozen=True, kw_only=True)
+class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
+    dtype_cls = np.dtypes.UInt16DType
+    _zarr_v3_name: ClassVar[Literal["uint16"]] = "uint16"
+    _zarr_v2_names: ClassVar[tuple[Literal[">u2"], Literal["<u2"]]] = (">u2", "<u2")
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
@@ -381,6 +355,32 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         msg = f"Invalid JSON representation of UInt16. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> Literal[">u2", "<u2"]: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> Literal["uint16"]: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> Literal["uint16", ">u2", "<u2"]:
+        """
+        Convert the wrapped data type to a JSON-serializable form.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        str
+            The JSON-serializable representation of the wrapped data type
+        """
+        if zarr_format == 2:
+            return self.to_native_dtype().str
+        elif zarr_format == 3:
+            return self._zarr_v3_name
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
     @property
     def item_size(self) -> int:
         return 2
@@ -391,6 +391,34 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     dtype_cls = np.dtypes.Int32DType
     _zarr_v3_name: ClassVar[Literal["int32"]] = "int32"
     _zarr_v2_names: ClassVar[tuple[Literal[">i4"], Literal["<i4"]]] = (">i4", "<i4")
+
+    @classmethod
+    def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
+        if cls._check_native_dtype(dtype):
+            return cls(endianness=get_endianness_from_numpy_dtype(dtype))
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+        )
+
+    def to_native_dtype(self) -> np.dtypes.Int32DType:
+        byte_order = endianness_to_numpy_str(self.endianness)
+        return self.dtype_cls().newbyteorder(byte_order)
+
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+            # Going via numpy ensures that we get the endianness correct without
+            # annoying string parsing.
+            return cls.from_native_dtype(np.dtype(data))
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> Literal[">i4", "<i4"]: ...
@@ -418,34 +446,6 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    @classmethod
-    def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
-        if cls._check_native_dtype(dtype):
-            return cls(endianness=get_endianness_from_numpy_dtype(dtype))
-        raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
-        )
-
-    def to_native_dtype(self) -> np.dtypes.Int32DType:
-        byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
-        if cls._check_json_v2(data, object_codec_id=object_codec_id):
-            # Going via numpy ensures that we get the endianness correct without
-            # annoying string parsing.
-            return cls.from_native_dtype(np.dtype(data))
-        msg = f"Invalid JSON representation of Int32. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
-        raise DataTypeValidationError(msg)
-
-    @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
-        if cls._check_json_v3(data):
-            return cls()
-        msg = f"Invalid JSON representation of Int32. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
-        raise DataTypeValidationError(msg)
-
     @property
     def item_size(self) -> int:
         return 4
@@ -456,6 +456,34 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     dtype_cls = np.dtypes.UInt32DType
     _zarr_v3_name: ClassVar[Literal["uint32"]] = "uint32"
     _zarr_v2_names: ClassVar[tuple[Literal[">u4"], Literal["<u4"]]] = (">u4", "<u4")
+
+    @classmethod
+    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        if cls._check_native_dtype(dtype):
+            return cls(endianness=get_endianness_from_numpy_dtype(dtype))
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+        )
+
+    def to_native_dtype(self) -> np.dtypes.UInt32DType:
+        byte_order = endianness_to_numpy_str(self.endianness)
+        return self.dtype_cls().newbyteorder(byte_order)
+
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+            # Going via numpy ensures that we get the endianness correct without
+            # annoying string parsing.
+            return cls.from_native_dtype(np.dtype(data))
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> Literal[">u4", "<u4"]: ...
@@ -481,34 +509,6 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
 
-    @classmethod
-    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
-        if cls._check_native_dtype(dtype):
-            return cls(endianness=get_endianness_from_numpy_dtype(dtype))
-        raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
-        )
-
-    def to_native_dtype(self) -> np.dtypes.UInt32DType:
-        byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
-        if cls._check_json_v2(data, object_codec_id=object_codec_id):
-            # Going via numpy ensures that we get the endianness correct without
-            # annoying string parsing.
-            return cls.from_native_dtype(np.dtype(data))
-        msg = f"Invalid JSON representation of UInt32. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
-        raise DataTypeValidationError(msg)
-
-    @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
-        if cls._check_json_v3(data):
-            return cls()
-        msg = f"Invalid JSON representation of UInt32. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
-        raise DataTypeValidationError(msg)
-
     @property
     def item_size(self) -> int:
         return 4
@@ -519,6 +519,34 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     dtype_cls = np.dtypes.Int64DType
     _zarr_v3_name: ClassVar[Literal["int64"]] = "int64"
     _zarr_v2_names: ClassVar[tuple[Literal[">i8"], Literal["<i8"]]] = (">i8", "<i8")
+
+    @classmethod
+    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        if cls._check_native_dtype(dtype):
+            return cls(endianness=get_endianness_from_numpy_dtype(dtype))
+        raise DataTypeValidationError(
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+        )
+
+    def to_native_dtype(self) -> np.dtypes.Int64DType:
+        byte_order = endianness_to_numpy_str(self.endianness)
+        return self.dtype_cls().newbyteorder(byte_order)
+
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+            # Going via numpy ensures that we get the endianness correct without
+            # annoying string parsing.
+            return cls.from_native_dtype(np.dtype(data))
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> Literal[">i8", "<i8"]: ...
@@ -544,34 +572,6 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")
 
-    @classmethod
-    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
-        if cls._check_native_dtype(dtype):
-            return cls(endianness=get_endianness_from_numpy_dtype(dtype))
-        raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
-        )
-
-    def to_native_dtype(self) -> np.dtypes.Int64DType:
-        byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
-        if cls._check_json_v2(data, object_codec_id=object_codec_id):
-            # Going via numpy ensures that we get the endianness correct without
-            # annoying string parsing.
-            return cls.from_native_dtype(np.dtype(data))
-        msg = f"Invalid JSON representation of Int64. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
-        raise DataTypeValidationError(msg)
-
-    @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
-        if cls._check_json_v3(data):
-            return cls()
-        msg = f"Invalid JSON representation of Int64. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
-        raise DataTypeValidationError(msg)
-
     @property
     def item_size(self) -> int:
         return 8
@@ -582,6 +582,26 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     dtype_cls = np.dtypes.UInt64DType
     _zarr_v3_name: ClassVar[Literal["uint64"]] = "uint64"
     _zarr_v2_names: ClassVar[tuple[Literal[">u8"], Literal["<u8"]]] = (">u8", "<u8")
+
+    def to_native_dtype(self) -> np.dtypes.UInt64DType:
+        byte_order = endianness_to_numpy_str(self.endianness)
+        return self.dtype_cls().newbyteorder(byte_order)
+
+    @classmethod
+    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+            # Going via numpy ensures that we get the endianness correct without
+            # annoying string parsing.
+            return cls.from_native_dtype(np.dtype(data))
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
+        raise DataTypeValidationError(msg)
+
+    @classmethod
+    def from_json_v3(cls, data: JSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        raise DataTypeValidationError(msg)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> Literal[">u8", "<u8"]: ...
@@ -616,26 +636,6 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         raise DataTypeValidationError(
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
-
-    def to_native_dtype(self) -> np.dtypes.UInt64DType:
-        byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)
-
-    @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
-        if cls._check_json_v2(data, object_codec_id=object_codec_id):
-            # Going via numpy ensures that we get the endianness correct without
-            # annoying string parsing.
-            return cls.from_native_dtype(np.dtype(data))
-        msg = f"Invalid JSON representation of UInt64. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
-        raise DataTypeValidationError(msg)
-
-    @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
-        if cls._check_json_v3(data):
-            return cls()
-        msg = f"Invalid JSON representation of UInt64. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
-        raise DataTypeValidationError(msg)
 
     @property
     def item_size(self) -> int:

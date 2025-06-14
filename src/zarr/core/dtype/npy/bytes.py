@@ -14,7 +14,7 @@ from zarr.core.dtype.common import (
     v3_unstable_dtype_warning,
 )
 from zarr.core.dtype.npy.common import check_json_str
-from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, ZDType
+from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 BytesLike = np.bytes_ | str | bytes | int
 
@@ -92,30 +92,6 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
             }
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    @classmethod
-    def _from_json_unchecked(
-        cls, data: DTypeJSON_V2 | DTypeJSON_V3, *, zarr_format: ZarrFormat
-    ) -> Self:
-        if zarr_format == 2:
-            return cls.from_native_dtype(np.dtype(data))  # type: ignore[arg-type]
-        elif zarr_format == 3:
-            return cls(length=data["configuration"]["length_bytes"])  # type: ignore[index, call-overload]
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
-    def default_scalar(self) -> np.bytes_:
-        return np.bytes_(b"")
-
-    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
-        as_bytes = self.cast_scalar(data)
-        return base64.standard_b64encode(as_bytes).decode("ascii")
-
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bytes_:
-        if check_json_str(data):
-            return self.to_native_dtype().type(base64.standard_b64decode(data.encode("ascii")))
-        raise TypeError(
-            f"Invalid type: {data}. Expected a base64-encoded string."
-        )  # pragma: no cover
-
     def _check_scalar(self, data: object) -> TypeGuard[BytesLike]:
         # this is generous for backwards compatibility
         return isinstance(data, BytesLike)
@@ -139,6 +115,20 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         msg = f"Cannot convert object with type {type(data)} to a numpy bytes scalar."
         raise TypeError(msg)
 
+    def default_scalar(self) -> np.bytes_:
+        return np.bytes_(b"")
+
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        as_bytes = self.cast_scalar(data)
+        return base64.standard_b64encode(as_bytes).decode("ascii")
+
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bytes_:
+        if check_json_str(data):
+            return self.to_native_dtype().type(base64.standard_b64decode(data.encode("ascii")))
+        raise TypeError(
+            f"Invalid type: {data}. Expected a base64-encoded string."
+        )  # pragma: no cover
+
     @property
     def item_size(self) -> int:
         return self.length
@@ -151,6 +141,29 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
     # so we have to tell mypy to ignore this here
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
     _zarr_v3_name: ClassVar[Literal["raw_bytes"]] = "raw_bytes"
+
+    @classmethod
+    def _check_native_dtype(
+        cls: type[Self], dtype: TBaseDType
+    ) -> TypeGuard[np.dtypes.VoidDType[Any]]:
+        """
+        Numpy void dtype comes in two forms:
+        * If the ``fields`` attribute is ``None``, then the dtype represents N raw bytes.
+        * If the ``fields`` attribute is not ``None``, then the dtype represents a structured dtype,
+
+        In this check we ensure that ``fields`` is ``None``.
+
+        Parameters
+        ----------
+        dtype : TDType
+            The dtype to check.
+
+        Returns
+        -------
+        Bool
+            True if the dtype matches, False otherwise.
+        """
+        return cls.dtype_cls is type(dtype) and dtype.fields is None  # type: ignore[has-type]
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
@@ -208,40 +221,6 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
             return {"name": self._zarr_v3_name, "configuration": {"length_bytes": self.length}}
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
-    @classmethod
-    def _check_native_dtype(
-        cls: type[Self], dtype: TBaseDType
-    ) -> TypeGuard[np.dtypes.VoidDType[Any]]:
-        """
-        Numpy void dtype comes in two forms:
-        * If the ``fields`` attribute is ``None``, then the dtype represents N raw bytes.
-        * If the ``fields`` attribute is not ``None``, then the dtype represents a structured dtype,
-
-        In this check we ensure that ``fields`` is ``None``.
-
-        Parameters
-        ----------
-        dtype : TDType
-            The dtype to check.
-
-        Returns
-        -------
-        Bool
-            True if the dtype matches, False otherwise.
-        """
-        return cls.dtype_cls is type(dtype) and dtype.fields is None  # type: ignore[has-type]
-
-    def default_scalar(self) -> np.void:
-        return self.to_native_dtype().type(("\x00" * self.length).encode("ascii"))
-
-    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
-        return base64.standard_b64encode(self.cast_scalar(data).tobytes()).decode("ascii")
-
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
-        if check_json_str(data):
-            return self.to_native_dtype().type(base64.standard_b64decode(data))
-        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
-
     def _check_scalar(self, data: object) -> bool:
         return isinstance(data, np.bytes_ | str | bytes | np.void)
 
@@ -257,6 +236,17 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
             return self._cast_scalar_unchecked(data)
         msg = f"Cannot convert object with type {type(data)} to a numpy void scalar."
         raise TypeError(msg)
+
+    def default_scalar(self) -> np.void:
+        return self.to_native_dtype().type(("\x00" * self.length).encode("ascii"))
+
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        return base64.standard_b64encode(self.cast_scalar(data).tobytes()).decode("ascii")
+
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
+        if check_json_str(data):
+            return self.to_native_dtype().type(base64.standard_b64decode(data))
+        raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
     @property
     def item_size(self) -> int:

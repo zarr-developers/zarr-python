@@ -43,26 +43,6 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
-    def to_json(self, zarr_format: ZarrFormat) -> str:
-        """
-        Convert the wrapped data type to a JSON-serializable form.
-
-        Parameters
-        ----------
-        zarr_format : ZarrFormat
-            The zarr format version.
-
-        Returns
-        -------
-        str
-            The JSON-serializable representation of the wrapped data type
-        """
-        if zarr_format == 2:
-            return self.to_native_dtype().str
-        elif zarr_format == 3:
-            return self._zarr_v3_name
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
     @classmethod
     def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
         """
@@ -90,17 +70,37 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {cls._zarr_v3_name}."
         raise DataTypeValidationError(msg)
 
+    def to_json(self, zarr_format: ZarrFormat) -> str:
+        """
+        Convert the wrapped data type to a JSON-serializable form.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The zarr format version.
+
+        Returns
+        -------
+        str
+            The JSON-serializable representation of the wrapped data type
+        """
+        if zarr_format == 2:
+            return self.to_native_dtype().str
+        elif zarr_format == 3:
+            return self._zarr_v3_name
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
     def _check_scalar(self, data: object) -> TypeGuard[ComplexLike]:
         return isinstance(data, ComplexLike)
+
+    def _cast_scalar_unchecked(self, data: ComplexLike) -> TComplexScalar_co:
+        return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
     def cast_scalar(self, data: object) -> TComplexScalar_co:
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
         msg = f"Cannot convert object with type {type(data)} to a numpy float scalar."
         raise TypeError(msg)
-
-    def _cast_scalar_unchecked(self, data: ComplexLike) -> TComplexScalar_co:
-        return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
     def default_scalar(self) -> TComplexScalar_co:
         """

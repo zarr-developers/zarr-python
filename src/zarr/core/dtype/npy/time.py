@@ -184,28 +184,6 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     scale_factor: int = 1
     unit: DateTimeUnit = "generic"
 
-    def default_scalar(self) -> np.timedelta64:
-        return np.timedelta64("NaT")
-
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
-        if check_json_time(data):
-            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
-
-    def _check_scalar(self, data: object) -> TypeGuard[TimeDeltaLike]:
-        if data is None:
-            return True
-        return isinstance(data, str | int | bytes | np.timedelta64 | timedelta)
-
-    def _cast_scalar_unchecked(self, data: TimeDeltaLike) -> np.timedelta64:
-        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
-
-    def cast_scalar(self, data: object) -> np.timedelta64:
-        if self._check_scalar(data):
-            return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy timedelta64 scalar."
-        raise TypeError(msg)
-
     @classmethod
     def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
         # match <m[ns], >m[M], etc
@@ -255,6 +233,28 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         )
         raise DataTypeValidationError(msg)
 
+    def _check_scalar(self, data: object) -> TypeGuard[TimeDeltaLike]:
+        if data is None:
+            return True
+        return isinstance(data, str | int | bytes | np.timedelta64 | timedelta)
+
+    def _cast_scalar_unchecked(self, data: TimeDeltaLike) -> np.timedelta64:
+        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+
+    def cast_scalar(self, data: object) -> np.timedelta64:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy timedelta64 scalar."
+        raise TypeError(msg)
+
+    def default_scalar(self) -> np.timedelta64:
+        return np.timedelta64("NaT")
+
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.timedelta64:
+        if check_json_time(data):
+            return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+        raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
+
 
 @dataclass(frozen=True, kw_only=True, slots=True)
 class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEndianness):
@@ -264,43 +264,6 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
     _numpy_name = "datetime64"
     unit: DateTimeUnit = "generic"
     scale_factor: int = 1
-
-    def default_scalar(self) -> np.datetime64:
-        return np.datetime64("NaT")
-
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
-        if check_json_time(data):
-            return self._cast_scalar_unchecked(data)
-        raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
-
-    def _check_scalar(self, data: object) -> TypeGuard[DateTimeLike]:
-        if data is None:
-            return True
-        return isinstance(data, str | int | bytes | np.datetime64 | datetime)
-
-    def _cast_scalar_unchecked(self, data: DateTimeLike) -> np.datetime64:
-        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
-
-    def cast_scalar(self, data: object) -> np.datetime64:
-        if self._check_scalar(data):
-            return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy datetime scalar."
-        raise TypeError(msg)
-
-    @classmethod
-    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
-        # match <M[ns], >M[M], etc
-        # consider making this a standalone function
-        if not isinstance(data, str):
-            return False
-        if not data.startswith(cls._zarr_v2_names):
-            return False
-        if len(data) == 3:
-            # no unit, and
-            # we already checked that this string is either <M8 or >M8
-            return True
-        else:
-            return data[4:-1].endswith(get_args(DateTimeUnit)) and data[-1] == "]"
 
     @classmethod
     def _check_json_v3(cls, data: JSON) -> TypeGuard[DateTime64JSONV3]:
@@ -335,3 +298,43 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             "'scale_factor' key"
         )
         raise DataTypeValidationError(msg)
+
+    def _check_scalar(self, data: object) -> TypeGuard[DateTimeLike]:
+        if data is None:
+            return True
+        return isinstance(data, str | int | bytes | np.datetime64 | datetime)
+
+    def _cast_scalar_unchecked(self, data: DateTimeLike) -> np.datetime64:
+        return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
+
+    def cast_scalar(self, data: object) -> np.datetime64:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy datetime scalar."
+        raise TypeError(msg)
+
+    def default_scalar(self) -> np.datetime64:
+        return np.datetime64("NaT")
+
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
+        if check_json_time(data):
+            return self._cast_scalar_unchecked(data)
+        raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
+
+    @classmethod
+    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+        """
+        Check that JSON input is a string representation of a NumPy datetime64 data type, like "<M8"
+        of ">M8[10s]". This function can be used as a type guard to narrow the type of unknown JSON
+        input.
+        """
+        if not isinstance(data, str):
+            return False
+        if not data.startswith(cls._zarr_v2_names):
+            return False
+        if len(data) == 3:
+            # no unit, and
+            # we already checked that this string is either <M8 or >M8
+            return True
+        else:
+            return data[4:-1].endswith(get_args(DateTimeUnit)) and data[-1] == "]"

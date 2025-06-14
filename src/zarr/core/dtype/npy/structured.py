@@ -67,25 +67,6 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             np.dtype([(key, dtype.to_native_dtype()) for (key, dtype) in self.fields]),
         )
 
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> DTypeJSON_V2: ...
-
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> DTypeJSON_V3: ...
-
-    def to_json(self, zarr_format: ZarrFormat) -> DTypeJSON_V3 | DTypeJSON_V2:
-        fields = [
-            (f_name, f_dtype.to_json(zarr_format=zarr_format)) for f_name, f_dtype in self.fields
-        ]
-        if zarr_format == 2:
-            return fields
-        elif zarr_format == 3:
-            v3_unstable_dtype_warning(self)
-            base_dict = {"name": self._zarr_v3_name}
-            base_dict["configuration"] = {"fields": fields}  # type: ignore[assignment]
-            return cast("DTypeJSON_V3", base_dict)
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
-
     @classmethod
     def _check_json_v2(
         cls, data: JSON, *, object_codec_id: str | None = None
@@ -148,21 +129,28 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
-        return bytes_to_json(self.cast_scalar(data).tobytes(), zarr_format)
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> DTypeJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> DTypeJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> DTypeJSON_V3 | DTypeJSON_V2:
+        fields = [
+            (f_name, f_dtype.to_json(zarr_format=zarr_format)) for f_name, f_dtype in self.fields
+        ]
+        if zarr_format == 2:
+            return fields
+        elif zarr_format == 3:
+            v3_unstable_dtype_warning(self)
+            base_dict = {"name": self._zarr_v3_name}
+            base_dict["configuration"] = {"fields": fields}  # type: ignore[assignment]
+            return cast("DTypeJSON_V3", base_dict)
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[StructuredScalarLike]:
-        # TODO: implement something here!
-        return True
-
-    def default_scalar(self) -> np.void:
-        return self._cast_scalar_unchecked(0)
-
-    def cast_scalar(self, data: object) -> np.void:
-        if self._check_scalar(data):
-            return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy structured scalar."
-        raise TypeError(msg)
+        # TODO: implement something more precise here!
+        return isinstance(data, (bytes, list, tuple, int))
 
     def _cast_scalar_unchecked(self, data: StructuredScalarLike) -> np.void:
         na_dtype = self.to_native_dtype()
@@ -174,12 +162,24 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             res = np.array([data], dtype=na_dtype)[0]
         return cast("np.void", res)
 
+    def cast_scalar(self, data: object) -> np.void:
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy structured scalar."
+        raise TypeError(msg)
+
+    def default_scalar(self) -> np.void:
+        return self._cast_scalar_unchecked(0)
+
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         if check_json_str(data):
             as_bytes = bytes_from_json(data, zarr_format=zarr_format)
             dtype = self.to_native_dtype()
             return cast("np.void", np.array([as_bytes]).view(dtype)[0])
         raise TypeError(f"Invalid type: {data}. Expected a string.")
+
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
+        return bytes_to_json(self.cast_scalar(data).tobytes(), zarr_format)
 
     @property
     def item_size(self) -> int:

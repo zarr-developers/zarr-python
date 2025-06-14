@@ -82,6 +82,16 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
+    def _check_scalar(self, data: object) -> bool:
+        # Anything can become a bool
+        return True
+
+    def cast_scalar(self, data: object) -> np.bool_:
+        if self._check_scalar(data):
+            return np.bool_(data)
+        msg = f"Cannot convert object with type {type(data)} to a numpy boolean."
+        raise TypeError(msg)
+
     def default_scalar(self) -> np.bool_:
         """
         Get the default value for the boolean dtype.
@@ -130,16 +140,6 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         if self._check_scalar(data):
             return np.bool_(data)
         raise TypeError(f"Invalid type: {data}. Expected a boolean.")  # pragma: no cover
-
-    def _check_scalar(self, data: object) -> bool:
-        # Anything can become a bool
-        return True
-
-    def cast_scalar(self, data: object) -> np.bool_:
-        if self._check_scalar(data):
-            return np.bool_(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy boolean."
-        raise TypeError(msg)
 
     @property
     def item_size(self) -> int:
