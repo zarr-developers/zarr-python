@@ -14,6 +14,7 @@ from zarr.core.array import (
     Array,
     AsyncArray,
     CompressorLike,
+    _get_default_chunk_encoding_v2,
     create_array,
     from_array,
     get_array_metadata,
@@ -30,8 +31,8 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
-    parse_dtype,
 )
+from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype, parse_data_type
 from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
@@ -39,7 +40,6 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import GroupNotFoundError, NodeTypeValidationError
 from zarr.storage import StorePath
 from zarr.storage._common import make_store_path
@@ -239,7 +239,6 @@ async def consolidate_metadata(
         group,
         metadata=metadata,
     )
-
     await group._save_metadata()
     return group
 
@@ -457,11 +456,12 @@ async def save_array(
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
+    zarr_dtype = get_data_type_from_native_dtype(arr.dtype)
     new = await AsyncArray._create(
         store_path,
         zarr_format=zarr_format,
         shape=shape,
-        dtype=arr.dtype,
+        dtype=zarr_dtype,
         chunks=chunks,
         overwrite=overwrite,
         **kwargs,
@@ -861,7 +861,7 @@ async def create(
     shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = 0,  # TODO: need type
     order: MemoryOrder | None = None,
@@ -1008,13 +1008,13 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-
+    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
     if zarr_format == 2:
-        dtype = parse_dtype(dtype, zarr_format)
+        default_filters, default_compressor = _get_default_chunk_encoding_v2(zdtype)
         if not filters:
-            filters = _default_filters(dtype)
+            filters = default_filters  # type: ignore[assignment]
         if compressor == "auto":
-            compressor = _default_compressor(dtype)
+            compressor = default_compressor
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -1066,7 +1066,7 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=dtype,
+        dtype=zdtype,
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,

@@ -12,10 +12,11 @@ from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing import Any, Self
+    from typing import Self
 
     from zarr.core.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
@@ -45,7 +46,12 @@ class TransposeCodec(ArrayArrayCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": tuple(self.order)}}
 
-    def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
+    ) -> None:
         if len(self.order) != len(shape):
             raise ValueError(
                 f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
