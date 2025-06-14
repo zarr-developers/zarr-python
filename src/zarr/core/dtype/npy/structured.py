@@ -150,7 +150,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
     def _check_scalar(self, data: object) -> TypeGuard[StructuredScalarLike]:
         # TODO: implement something more precise here!
-        return isinstance(data, (bytes, list, tuple, int))
+        return isinstance(data, (bytes, list, tuple, int, np.void))
 
     def _cast_scalar_unchecked(self, data: StructuredScalarLike) -> np.void:
         na_dtype = self.to_native_dtype()
