@@ -151,7 +151,7 @@ Serialize to JSON for Zarr V2 and V3
 
   >>> json_v2 = int8.to_json(zarr_format=2)
   >>> json_v2
-  '|i1'
+  {'name': '|i1', 'object_codec_id': None}
   >>> json_v3 = int8.to_json(zarr_format=3)
   >>> json_v3
   'int8'
