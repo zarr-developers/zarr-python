@@ -4,7 +4,7 @@ import math
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 
 
@@ -23,7 +23,10 @@ class TestComplex64(_BaseTestFloat):
         np.dtype(np.float64),
         np.dtype(np.complex128),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">c8"), V2JsonTestParams(dtype="<c8"))
+    valid_json_v2 = (
+        {"name": ">c8", "object_codec_id": None},
+        {"name": "<c8", "object_codec_id": None},
+    )
     valid_json_v3 = ("complex64",)
     invalid_json_v2 = (
         "|c8",
@@ -63,7 +66,10 @@ class TestComplex128(_BaseTestFloat):
         np.dtype(np.float64),
         np.dtype(np.complex64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">c16"), V2JsonTestParams(dtype="<c16"))
+    valid_json_v2 = (
+        {"name": ">c16", "object_codec_id": None},
+        {"name": "<c16", "object_codec_id": None},
+    )
     valid_json_v3 = ("complex128",)
     invalid_json_v2 = (
         "|c16",

@@ -1,13 +1,19 @@
-from collections.abc import Sequence
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import Literal, Self, TypeGuard, cast, overload
+from typing import TYPE_CHECKING, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
 
-from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import (
     DataTypeValidationError,
+    DTypeConfig_V2,
+    DTypeJSON,
+    DTypeSpec_V3,
     HasItemSize,
+    StructuredName_V2,
+    check_dtype_spec_v2,
+    check_structured_dtype_name_v2,
     v3_unstable_dtype_warning,
 )
 from zarr.core.dtype.npy.common import (
@@ -15,12 +21,16 @@ from zarr.core.dtype.npy.common import (
     bytes_to_json,
     check_json_str,
 )
-from zarr.core.dtype.wrapper import DTypeJSON_V2, DTypeJSON_V3, TBaseDType, TBaseScalar, ZDType
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from zarr.core.common import JSON, NamedConfig, ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
 
 
-# TODO: tighten this up, get a v3 spec in place, handle endianness, etc.
 @dataclass(frozen=True, kw_only=True)
 class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
@@ -69,24 +79,20 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
     @classmethod
     def _check_json_v2(
-        cls, data: JSON, *, object_codec_id: str | None = None
-    ) -> TypeGuard[list[object]]:
-        # the actual JSON form is recursive and hard to annotate, so we give up and do
-        # list[object] for now
-
+        cls,
+        data: DTypeJSON,
+    ) -> TypeGuard[DTypeConfig_V2[StructuredName_V2, None]]:
         return (
-            not isinstance(data, str)
-            and isinstance(data, Sequence)
-            and all(
-                not isinstance(field, str) and isinstance(field, Sequence) and len(field) == 2
-                for field in data
-            )
+            check_dtype_spec_v2(data)
+            and not isinstance(data["name"], str)
+            and check_structured_dtype_name_v2(data["name"])
+            and data["object_codec_id"] is None
         )
 
     @classmethod
     def _check_json_v3(
-        cls, data: JSON
-    ) -> TypeGuard[NamedConfig[Literal["structured"], dict[str, Sequence[tuple[str, JSON]]]]]:
+        cls, data: DTypeJSON
+    ) -> TypeGuard[NamedConfig[Literal["structured"], dict[str, Sequence[tuple[str, DTypeJSON]]]]]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
@@ -96,9 +102,9 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         )
 
     @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
         # avoid circular import
-        from zarr.core.dtype import get_data_type_from_json_v2
+        from zarr.core.dtype import get_data_type_from_json
 
         if cls._check_json_v2(data):
             # structured dtypes are constructed directly from a list of lists
@@ -106,46 +112,59 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             # dtypes from containing object dtypes.
             return cls(
                 fields=tuple(  # type: ignore[misc]
-                    (f_name, get_data_type_from_json_v2(f_dtype, object_codec_id=None))  # type: ignore[has-type]
-                    for f_name, f_dtype in data
+                    (  # type: ignore[misc]
+                        f_name,
+                        get_data_type_from_json(
+                            {"name": f_dtype, "object_codec_id": None}, zarr_format=2
+                        ),
+                    )
+                    for f_name, f_dtype in data["name"]
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON array of arrays"
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
         # avoid circular import
-        from zarr.core.dtype import get_data_type_from_json_v3
+        from zarr.core.dtype import get_data_type_from_json
 
         if cls._check_json_v3(data):
             config = data["configuration"]
             meta_fields = config["fields"]
             return cls(
                 fields=tuple(
-                    (f_name, get_data_type_from_json_v3(f_dtype)) for f_name, f_dtype in meta_fields
+                    (f_name, get_data_type_from_json(f_dtype, zarr_format=3))
+                    for f_name, f_dtype in meta_fields
                 )
             )
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON object with the key {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> DTypeJSON_V2: ...
+    @overload  # type: ignore[override]
+    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[StructuredName_V2, None]: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> DTypeJSON_V3: ...
+    def to_json(self, zarr_format: Literal[3]) -> DTypeSpec_V3: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> DTypeJSON_V3 | DTypeJSON_V2:
-        fields = [
-            (f_name, f_dtype.to_json(zarr_format=zarr_format)) for f_name, f_dtype in self.fields
-        ]
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> DTypeConfig_V2[StructuredName_V2, None] | DTypeSpec_V3:
         if zarr_format == 2:
-            return fields
+            fields = [
+                [f_name, f_dtype.to_json(zarr_format=zarr_format)["name"]]
+                for f_name, f_dtype in self.fields
+            ]
+            return {"name": fields, "object_codec_id": None}
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
+            fields = [
+                [f_name, f_dtype.to_json(zarr_format=zarr_format)]  # type: ignore[list-item]
+                for f_name, f_dtype in self.fields
+            ]
             base_dict = {"name": self._zarr_v3_name}
             base_dict["configuration"] = {"fields": fields}  # type: ignore[assignment]
-            return cast("DTypeJSON_V3", base_dict)
+            return cast("DTypeSpec_V3", base_dict)
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[StructuredScalarLike]:

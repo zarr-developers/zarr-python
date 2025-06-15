@@ -18,8 +18,16 @@ from typing import (
 import numpy as np
 
 from zarr.core.common import NamedConfig
-from zarr.core.dtype.common import DataTypeValidationError, HasEndianness, HasItemSize
+from zarr.core.dtype.common import (
+    DataTypeValidationError,
+    DTypeConfig_V2,
+    DTypeJSON,
+    HasEndianness,
+    HasItemSize,
+    check_dtype_spec_v2,
+)
 from zarr.core.dtype.npy.common import (
+    DATETIME_UNIT,
     DateTimeUnit,
     check_json_int,
     endianness_to_numpy_str,
@@ -140,14 +148,17 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
         dtype_string = f"{self._numpy_name}[{self.scale_factor}{self.unit}]"
         return np.dtype(dtype_string).newbyteorder(endianness_to_numpy_str(self.endianness))  # type: ignore[return-value]
 
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> str: ...
+    @overload  # type: ignore[override]
+    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
     @overload
     def to_json(self, zarr_format: Literal[3]) -> DateTime64JSONV3 | TimeDelta64JSONV3: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> str | DateTime64JSONV3 | TimeDelta64JSONV3:
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> DTypeConfig_V2[str, None] | DateTime64JSONV3 | TimeDelta64JSONV3:
         if zarr_format == 2:
-            return cast("str", self.to_native_dtype().str)
+            name = self.to_native_dtype().str
+            return {"name": name, "object_codec_id": None}
         elif zarr_format == 3:
             return cast(
                 "DateTime64JSONV3 | TimeDelta64JSONV3",
@@ -185,22 +196,25 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     unit: DateTimeUnit = "generic"
 
     @classmethod
-    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
+        if not check_dtype_spec_v2(data):
+            return False
+        name = data["name"]
         # match <m[ns], >m[M], etc
         # consider making this a standalone function
-        if not isinstance(data, str):
+        if not isinstance(name, str):
             return False
-        if not data.startswith(cls._zarr_v2_names):
+        if not name.startswith(cls._zarr_v2_names):
             return False
-        if len(data) == 3:
+        if len(name) == 3:
             # no unit, and
             # we already checked that this string is either <m8 or >m8
             return True
         else:
-            return data[4:-1].endswith(get_args(DateTimeUnit)) and data[-1] == "]"
+            return name[4:-1].endswith(DATETIME_UNIT) and name[-1] == "]"
 
     @classmethod
-    def _check_json_v3(cls, data: JSON) -> TypeGuard[DateTime64JSONV3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[DateTime64JSONV3]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
@@ -210,9 +224,10 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         )
 
     @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v2(data):
-            return cls.from_native_dtype(np.dtype(data))
+            name = data["name"]
+            return cls.from_native_dtype(np.dtype(name))
         msg = (
             f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string "
             f"representation of an instance of {cls.dtype_cls}"  # type: ignore[has-type]
@@ -220,7 +235,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v3(data):
             unit = data["configuration"]["unit"]
             scale_factor = data["configuration"]["scale_factor"]
@@ -266,7 +281,28 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
     scale_factor: int = 1
 
     @classmethod
-    def _check_json_v3(cls, data: JSON) -> TypeGuard[DateTime64JSONV3]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
+        """
+        Check that JSON input is a string representation of a NumPy datetime64 data type, like "<M8"
+        of ">M8[10s]". This function can be used as a type guard to narrow the type of unknown JSON
+        input.
+        """
+        if not check_dtype_spec_v2(data):
+            return False
+        name = data["name"]
+        if not isinstance(name, str):
+            return False
+        if not name.startswith(cls._zarr_v2_names):
+            return False
+        if len(name) == 3:
+            # no unit, and
+            # we already checked that this string is either <M8 or >M8
+            return True
+        else:
+            return name[4:-1].endswith(DATETIME_UNIT) and name[-1] == "]"
+
+    @classmethod
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[DateTime64JSONV3]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
@@ -276,9 +312,10 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         )
 
     @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v2(data):
-            return cls.from_native_dtype(np.dtype(data))
+            name = data["name"]
+            return cls.from_native_dtype(np.dtype(name))
         msg = (
             f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string "
             f"representation of an instance of {cls.dtype_cls}"  # type: ignore[has-type]
@@ -286,7 +323,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v3(data):
             unit = data["configuration"]["unit"]
             scale_factor = data["configuration"]["scale_factor"]
@@ -320,21 +357,3 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         if check_json_time(data):
             return self._cast_scalar_unchecked(data)
         raise TypeError(f"Invalid type: {data}. Expected an integer.")  # pragma: no cover
-
-    @classmethod
-    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
-        """
-        Check that JSON input is a string representation of a NumPy datetime64 data type, like "<M8"
-        of ">M8[10s]". This function can be used as a type guard to narrow the type of unknown JSON
-        input.
-        """
-        if not isinstance(data, str):
-            return False
-        if not data.startswith(cls._zarr_v2_names):
-            return False
-        if len(data) == 3:
-            # no unit, and
-            # we already checked that this string is either <M8 or >M8
-            return True
-        else:
-            return data[4:-1].endswith(get_args(DateTimeUnit)) and data[-1] == "]"

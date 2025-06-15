@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
-from zarr.core.dtype.common import HasItemSize
+from zarr.core.dtype.common import DTypeSpec_V2, DTypeSpec_V3, HasItemSize
 
 if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -25,12 +24,6 @@ class _TestZDTypeSchema:
     def test_schema(self, schema: json_schema.Schema) -> None:
         assert schema.is_valid(self.test_cls.to_json(zarr_format=2))
 """
-
-
-@dataclass(frozen=True, kw_only=True, slots=True)
-class V2JsonTestParams:
-    dtype: str | dict[str, object] | list[object]
-    object_codec_id: str | None = None
 
 
 class BaseTestZDType:
@@ -73,10 +66,10 @@ class BaseTestZDType:
     valid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
     invalid_dtype: ClassVar[tuple[TBaseDType, ...]] = ()
 
-    valid_json_v2: ClassVar[tuple[V2JsonTestParams, ...]] = ()
+    valid_json_v2: ClassVar[tuple[DTypeSpec_V2, ...]] = ()
     invalid_json_v2: ClassVar[tuple[str | dict[str, object] | list[object], ...]] = ()
 
-    valid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
+    valid_json_v3: ClassVar[tuple[DTypeSpec_V3, ...]] = ()
     invalid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
 
     # for testing scalar round-trip serialization, we need a tuple of (data type json, scalar json)
@@ -108,16 +101,13 @@ class BaseTestZDType:
         zdtype = self.test_cls.from_native_dtype(valid_dtype)
         assert zdtype.to_native_dtype() == valid_dtype
 
-    def test_from_json_roundtrip_v2(self, valid_json_v2: V2JsonTestParams) -> None:
-        zdtype = self.test_cls.from_json_v2(
-            valid_json_v2.dtype,  # type: ignore[arg-type]
-            object_codec_id=valid_json_v2.object_codec_id,
-        )
-        assert zdtype.to_json(zarr_format=2) == valid_json_v2.dtype
+    def test_from_json_roundtrip_v2(self, valid_json_v2: DTypeSpec_V2) -> None:
+        zdtype = self.test_cls.from_json(valid_json_v2, zarr_format=2)
+        assert zdtype.to_json(zarr_format=2) == valid_json_v2
 
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-    def test_from_json_roundtrip_v3(self, valid_json_v3: Any) -> None:
-        zdtype = self.test_cls.from_json_v3(valid_json_v3)
+    def test_from_json_roundtrip_v3(self, valid_json_v3: DTypeSpec_V3) -> None:
+        zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
         assert zdtype.to_json(zarr_format=3) == valid_json_v3
 
     def test_scalar_roundtrip_v2(self, scalar_v2_params: tuple[ZDType[Any, Any], Any]) -> None:

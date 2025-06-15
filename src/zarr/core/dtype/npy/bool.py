@@ -1,11 +1,21 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Self, TypeGuard, overload
+from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, overload
 
 import numpy as np
 
-from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import DataTypeValidationError, HasItemSize
+from zarr.core.dtype.common import (
+    DataTypeValidationError,
+    DTypeConfig_V2,
+    DTypeJSON,
+    HasItemSize,
+    check_dtype_spec_v2,
+)
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+
+if TYPE_CHECKING:
+    from zarr.core.common import JSON, ZarrFormat
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -44,40 +54,47 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
     @classmethod
     def _check_json_v2(
-        cls, data: JSON, *, object_codec_id: str | None = None
-    ) -> TypeGuard[Literal["|b1"]]:
+        cls,
+        data: DTypeJSON,
+    ) -> TypeGuard[DTypeConfig_V2[Literal["|b1"], None]]:
         """
         Check that the input is a valid JSON representation of a Bool.
         """
-        return data == cls._zarr_v2_name
+        return (
+            check_dtype_spec_v2(data)
+            and data["name"] == cls._zarr_v2_name
+            and data["object_codec_id"] is None
+        )
 
     @classmethod
-    def _check_json_v3(cls, data: JSON) -> TypeGuard[Literal["bool"]]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["bool"]]:
         return data == cls._zarr_v3_name
 
     @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v2(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v2_name!r}"
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def from_json_v3(cls: type[Self], data: JSON) -> Self:
+    def _from_json_v3(cls: type[Self], data: DTypeJSON) -> Self:
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> Literal["|b1"]: ...
+    @overload  # type: ignore[override]
+    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal["|b1"], None]: ...
 
     @overload
     def to_json(self, zarr_format: Literal[3]) -> Literal["bool"]: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> Literal["|b1", "bool"]:
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> DTypeConfig_V2[Literal["|b1"], None] | Literal["bool"]:
         if zarr_format == 2:
-            return self._zarr_v2_name
+            return {"name": self._zarr_v2_name, "object_codec_id": None}
         elif zarr_format == 3:
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover

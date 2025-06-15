@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype import (
     Float16,
     Float64,
@@ -26,16 +26,16 @@ class TestStructured(BaseTestZDType):
         np.dtype("|S10"),
     )
     valid_json_v2 = (
-        V2JsonTestParams(dtype=[("field1", ">i4"), ("field2", ">f8")]),
-        V2JsonTestParams(dtype=[("field1", ">i8"), ("field2", ">i4")]),
+        {"name": [["field1", ">i4"], ["field2", ">f8"]], "object_codec_id": None},
+        {"name": [["field1", ">i8"], ["field2", ">i4"]], "object_codec_id": None},
     )
     valid_json_v3 = (
         {
             "name": "structured",
             "configuration": {
                 "fields": [
-                    ("field1", "int32"),
-                    ("field2", "float64"),
+                    ["field1", "int32"],
+                    ["field2", "float64"],
                 ]
             },
         },
@@ -43,17 +43,17 @@ class TestStructured(BaseTestZDType):
             "name": "structured",
             "configuration": {
                 "fields": [
-                    (
+                    [
                         "field1",
                         {
                             "name": "numpy.datetime64",
                             "configuration": {"unit": "s", "scale_factor": 1},
                         },
-                    ),
-                    (
+                    ],
+                    [
                         "field2",
                         {"name": "fixed_length_utf32", "configuration": {"length_bytes": 32}},
-                    ),
+                    ],
                 ]
             },
         },

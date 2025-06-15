@@ -1,15 +1,25 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import (
+    TYPE_CHECKING,
     ClassVar,
     Literal,
     Self,
     TypeGuard,
+    overload,
 )
 
 import numpy as np
 
-from zarr.core.common import JSON, ZarrFormat
-from zarr.core.dtype.common import DataTypeValidationError, HasEndianness, HasItemSize
+from zarr.core.dtype.common import (
+    DataTypeValidationError,
+    DTypeConfig_V2,
+    DTypeJSON,
+    HasEndianness,
+    HasItemSize,
+    check_dtype_spec_v2,
+)
 from zarr.core.dtype.npy.common import (
     ComplexLike,
     TComplexDType_co,
@@ -24,6 +34,9 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+
+if TYPE_CHECKING:
+    from zarr.core.common import JSON, ZarrFormat
 
 
 @dataclass(frozen=True)
@@ -44,33 +57,44 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
     @classmethod
-    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
         """
         Check that the input is a valid JSON representation of this data type.
         """
-        return data in cls._zarr_v2_names
+        return (
+            check_dtype_spec_v2(data)
+            and data["name"] in cls._zarr_v2_names
+            and data["object_codec_id"] is None
+        )
 
     @classmethod
-    def _check_json_v3(cls, data: JSON) -> TypeGuard[str]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[str]:
         return data == cls._zarr_v3_name
 
     @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
-        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
             # annoying string parsing.
-            return cls.from_native_dtype(np.dtype(data))
+            name = data["name"]
+            return cls.from_native_dtype(np.dtype(name))
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {cls._zarr_v3_name}."
         raise DataTypeValidationError(msg)
 
-    def to_json(self, zarr_format: ZarrFormat) -> str:
+    @overload  # type: ignore[override]
+    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> str: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> DTypeConfig_V2[str, None] | str:
         """
         Convert the wrapped data type to a JSON-serializable form.
 
@@ -85,7 +109,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
             The JSON-serializable representation of the wrapped data type
         """
         if zarr_format == 2:
-            return self.to_native_dtype().str
+            return {"name": self.to_native_dtype().str, "object_codec_id": None}
         elif zarr_format == 3:
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover

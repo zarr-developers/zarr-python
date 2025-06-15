@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype import FixedLengthUTF32
 from zarr.core.dtype.common import UnstableSpecificationWarning
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING, VariableLengthUTF8
@@ -18,7 +18,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             np.dtype(np.float64),
             np.dtype("|S10"),
         )
-        valid_json_v2 = (V2JsonTestParams(dtype="|O", object_codec_id="vlen-utf8"),)
+        valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
         valid_json_v3 = ("variable_length_utf8",)
         invalid_json_v2 = (
             "|S10",
@@ -52,7 +52,7 @@ else:
             np.dtype(np.float64),
             np.dtype("|S10"),
         )
-        valid_json_v2 = (V2JsonTestParams(dtype="|O", object_codec_id="vlen-utf8"),)
+        valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
         valid_json_v3 = ("variable_length_utf8",)
         invalid_json_v2 = (
             "|S10",
@@ -86,7 +86,10 @@ class TestFixedLengthUTF32(BaseTestZDType):
         np.dtype(np.float64),
         np.dtype("|S10"),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">U10"), V2JsonTestParams(dtype="<U10"))
+    valid_json_v2 = (
+        {"name": ">U10", "object_codec_id": None},
+        {"name": "<U10", "object_codec_id": None},
+    )
     valid_json_v3 = ({"name": "fixed_length_utf32", "configuration": {"length_bytes": 320}},)
     invalid_json_v2 = (
         "|U",

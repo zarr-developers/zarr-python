@@ -23,6 +23,7 @@ from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype.common import unpack_dtype_json
 from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
     ConsolidatedMetadata,
@@ -516,7 +517,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
             metadata = {
                 "subarray": {
                     "attributes": {},
-                    "dtype": dtype.to_json(zarr_format=zarr_format),
+                    "dtype": unpack_dtype_json(dtype.to_json(zarr_format=zarr_format)),
                     "fill_value": fill_value,
                     "shape": (1,),
                     "chunks": (1,),
@@ -552,7 +553,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                         {"configuration": {"endian": "little"}, "name": "bytes"},
                         {"configuration": {}, "name": "zstd"},
                     ),
-                    "data_type": dtype.to_json(zarr_format=zarr_format),
+                    "data_type": unpack_dtype_json(dtype.to_json(zarr_format=zarr_format)),
                     "fill_value": fill_value,
                     "node_type": "array",
                     "shape": (1,),

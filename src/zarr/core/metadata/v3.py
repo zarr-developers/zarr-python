@@ -4,11 +4,8 @@ from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype import (
-    VariableLengthUTF8,
-    ZDType,
-    get_data_type_from_json_v3,
-)
+from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
+from zarr.core.dtype.common import check_dtype_spec_v3
 
 if TYPE_CHECKING:
     from typing import Self
@@ -306,7 +303,9 @@ class ArrayV3Metadata(Metadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         data_type_json = _data.pop("data_type")
-        data_type = get_data_type_from_json_v3(data_type_json)
+        if not check_dtype_spec_v3(data_type_json):
+            raise ValueError(f"Invalid data_type: {data_type_json!r}")
+        data_type = get_data_type_from_json(data_type_json, zarr_format=3)
 
         # check that the fill value is consistent with the data type
         try:

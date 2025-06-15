@@ -6,12 +6,15 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 
-from zarr.core.dtype.common import DataTypeValidationError
+from zarr.core.dtype.common import (
+    DataTypeValidationError,
+    DTypeJSON,
+)
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
 
-    from zarr.core.common import JSON
+    from zarr.core.common import ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
@@ -74,26 +77,14 @@ class DataTypeRegistry:
                 "For more information, see https://github.com/zarr-developers/zarr-python/issues/3117"
             )
             raise ValueError(msg)
-        raise ValueError(f"No data type wrapper found that matches dtype '{dtype}'")
+        raise ValueError(f"No Zarr data type found that matches dtype '{dtype!r}'")
 
-    def match_json_v2(
-        self, data: JSON, *, object_codec_id: str | None = None
+    def match_json(
+        self, data: DTypeJSON, *, zarr_format: ZarrFormat
     ) -> ZDType[TBaseDType, TBaseScalar]:
-        # The dtype field in zarr v2 JSON metadata is not unique across different distinct data types.
-        # Specifically, multiple distinct data types all use the "|O" data type representation.
-        # These must be disambiguated by the presence of an "object codec", which is a codec
-        # like variable-length utf8 encoding for strings.
         for val in self.contents.values():
             try:
-                return val.from_json_v2(data, object_codec_id=object_codec_id)
+                return val.from_json(data, zarr_format=zarr_format)
             except DataTypeValidationError:
                 pass
-        raise ValueError(f"No data type wrapper found that matches {data}")
-
-    def match_json_v3(self, data: JSON) -> ZDType[TBaseDType, TBaseScalar]:
-        for val in self.contents.values():
-            try:
-                return val.from_json_v3(data)
-            except DataTypeValidationError:
-                pass
-        raise ValueError(f"No data type wrapper found that matches {data}")
+        raise ValueError(f"No Zarr data type found that matches {data!r}")

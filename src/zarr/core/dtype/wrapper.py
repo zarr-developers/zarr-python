@@ -24,7 +24,6 @@ type.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -41,6 +40,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.dtype.common import DTypeJSON, DTypeSpec_V2, DTypeSpec_V3
 
 # This the upper bound for the scalar types we support. It's numpy scalars + str,
 # because the new variable-length string dtype in numpy does not have a corresponding scalar type
@@ -54,10 +54,6 @@ TBaseDType = np.dtype[np.generic]
 # to type check
 TScalar_co = TypeVar("TScalar_co", bound=TBaseScalar, covariant=True)
 TDType_co = TypeVar("TDType_co", bound=TBaseDType, covariant=True)
-
-# These types should include all JSON-serializable types that can be used to represent a data type.
-DTypeJSON_V2 = str | Sequence[object]
-DTypeJSON_V3 = str | Mapping[str, object]
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -140,94 +136,45 @@ class ZDType(Generic[TDType_co, TScalar_co], ABC):
 
     @classmethod
     @abstractmethod
-    def _check_json_v2(
-        cls: type[Self], data: JSON, *, object_codec_id: str | None = None
-    ) -> TypeGuard[DTypeJSON_V2]:
-        """
-        Check that JSON data matches the Zarr V2 JSON serialization of this ZDType.
-
-        Parameters
-        ----------
-        data : JSON
-            The JSON representation of the data type.
-
-        object_codec_id : str | None
-            The string identifier of an object codec, if applicable. Object codecs are specific
-            numcodecs codecs that zarr-python 2.x used to serialize numpy "Object" scalars.
-            For example, a dtype field set to ``"|O"`` with an object codec ID of "vlen-utf8"
-            indicates that the data type is a variable-length string.
-
-            Zarr V3 has no such logic, so this parameter is only used for Zarr V2 compatibility.
-
-        Returns
-        -------
-        Bool
-            True if the JSON representation matches this data type, False otherwise.
-        """
-        ...
+    def _from_json_v2(cls: type[Self], data: DTypeJSON) -> Self: ...
 
     @classmethod
     @abstractmethod
-    def _check_json_v3(cls: type[Self], data: JSON) -> TypeGuard[DTypeJSON_V3]:
-        """
-        Check that JSON data matches the Zarr V3 JSON serialization of this ZDType.
-
-        Parameters
-        ----------
-        data : JSON
-            The JSON representation of the data type.
-
-        Returns
-        -------
-        Bool
-            True if the JSON representation matches, False otherwise.
-        """
-        ...
+    def _from_json_v3(cls: type[Self], data: DTypeJSON) -> Self: ...
 
     @classmethod
-    @abstractmethod
-    def from_json_v2(cls: type[Self], data: JSON, *, object_codec_id: str | None = None) -> Self:
+    def from_json(cls: type[Self], data: DTypeJSON, *, zarr_format: ZarrFormat) -> Self:
         """
-        Create an instance of this ZDType from Zarr V2 JSON data.
+        Create an instance of this ZDType from JSON data.
 
         Parameters
         ----------
-        data : JSON
-            The JSON representation of the data type.
+        data : DTypeJSON
+            The JSON representation of the data type. The type annotation includes
+            Mapping[str, object] to accommodate typed dictionaries.
+
+        zarr_format : ZarrFormat
+            The zarr format version.
 
         Returns
         -------
         Self
             The wrapped data type.
         """
-        ...
-
-    @classmethod
-    @abstractmethod
-    def from_json_v3(cls: type[Self], data: JSON) -> Self:
-        """
-        Create an instance of this ZDType from Zarr V3 JSON data.
-
-        Parameters
-        ----------
-        data : JSON
-            The JSON representation of the data type.
-
-        Returns
-        -------
-        Self
-            The wrapped data type.
-        """
-        ...
+        if zarr_format == 2:
+            return cls._from_json_v2(data)
+        if zarr_format == 3:
+            return cls._from_json_v3(data)
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @overload
-    def to_json(self, zarr_format: Literal[2]) -> DTypeJSON_V2: ...
+    def to_json(self, zarr_format: Literal[2]) -> DTypeSpec_V2: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> DTypeJSON_V3: ...
+    def to_json(self, zarr_format: Literal[3]) -> DTypeSpec_V3: ...
 
     @abstractmethod
-    def to_json(self, zarr_format: ZarrFormat) -> DTypeJSON_V2 | DTypeJSON_V3:
+    def to_json(self, zarr_format: ZarrFormat) -> DTypeSpec_V2 | DTypeSpec_V3:
         """
         Serialize this ZDType to JSON.
 

@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.common import UnstableSpecificationWarning
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
 
@@ -15,9 +15,9 @@ class TestNullTerminatedBytes(BaseTestZDType):
         np.dtype("|U10"),
     )
     valid_json_v2 = (
-        V2JsonTestParams(dtype="|S0"),
-        V2JsonTestParams(dtype="|S2"),
-        V2JsonTestParams(dtype="|S4"),
+        {"name": "|S0", "object_codec_id": None},
+        {"name": "|S2", "object_codec_id": None},
+        {"name": "|S4", "object_codec_id": None},
     )
     valid_json_v3 = ({"name": "null_terminated_bytes", "configuration": {"length_bytes": 10}},)
     invalid_json_v2 = (
@@ -60,7 +60,7 @@ class TestRawBytes(BaseTestZDType):
         np.dtype(np.float64),
         np.dtype("|S10"),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype="|V10"),)
+    valid_json_v2 = ({"name": "|V10", "object_codec_id": None},)
     valid_json_v3 = (
         {"name": "raw_bytes", "configuration": {"length_bytes": 0}},
         {"name": "raw_bytes", "configuration": {"length_bytes": 8}},
@@ -106,7 +106,7 @@ class TestVariableLengthBytes(BaseTestZDType):
         np.dtype(np.float64),
         np.dtype("|U10"),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype="|O", object_codec_id="vlen-bytes"),)
+    valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-bytes"},)
     valid_json_v3 = ("variable_length_bytes",)
     invalid_json_v2 = (
         "|S",

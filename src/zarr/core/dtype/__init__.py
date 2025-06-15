@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final, TypeAlias
 
-from zarr.core.dtype.common import DataTypeValidationError
+from zarr.core.dtype.common import (
+    DataTypeValidationError,
+    DTypeJSON,
+)
 from zarr.core.dtype.npy.bool import Bool
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
 from zarr.core.dtype.npy.complex import Complex64, Complex128
@@ -131,20 +134,20 @@ def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[TBaseDType, 
     return data_type_registry.match_dtype(dtype=na_dtype)
 
 
-def get_data_type_from_json_v3(
-    dtype_spec: JSON,
+def get_data_type_from_json(
+    dtype_spec: DTypeJSON, *, zarr_format: ZarrFormat
 ) -> ZDType[TBaseDType, TBaseScalar]:
-    return data_type_registry.match_json_v3(dtype_spec)
-
-
-def get_data_type_from_json_v2(
-    dtype_spec: JSON, *, object_codec_id: str | None = None
-) -> ZDType[TBaseDType, TBaseScalar]:
-    return data_type_registry.match_json_v2(dtype_spec, object_codec_id=object_codec_id)
+    """
+    Given a JSON representation of a data type and a Zarr format version,
+    attempt to create a ZDType instance from the registered ZDType classes.
+    """
+    return data_type_registry.match_json(dtype_spec, zarr_format=zarr_format)
 
 
 def parse_data_type(
-    dtype_spec: ZDTypeLike, *, zarr_format: ZarrFormat, object_codec_id: str | None = None
+    dtype_spec: ZDTypeLike,
+    *,
+    zarr_format: ZarrFormat,
 ) -> ZDType[TBaseDType, TBaseScalar]:
     """
     Interpret the input as a ZDType instance.
@@ -153,7 +156,7 @@ def parse_data_type(
         return dtype_spec
     # dict and zarr_format 3 means that we have a JSON object representation of the dtype
     if zarr_format == 3 and isinstance(dtype_spec, Mapping):
-        return get_data_type_from_json_v3(dtype_spec)  # type: ignore[arg-type]
+        return get_data_type_from_json(dtype_spec, zarr_format=3)
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
     # we can create a numpy dtype from it, and do the dtype inference from that
     return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]

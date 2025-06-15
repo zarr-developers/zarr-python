@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
 
 
@@ -15,7 +15,7 @@ class TestInt8(BaseTestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype="|i1"),)
+    valid_json_v2 = ({"name": "|i1", "object_codec_id": None},)
     valid_json_v3 = ("int8",)
     invalid_json_v2 = (
         ">i1",
@@ -46,7 +46,10 @@ class TestInt16(BaseTestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">i2"), V2JsonTestParams(dtype="<i2"))
+    valid_json_v2 = (
+        {"name": ">i2", "object_codec_id": None},
+        {"name": "<i2", "object_codec_id": None},
+    )
     valid_json_v3 = ("int16",)
     invalid_json_v2 = (
         "|i2",
@@ -78,7 +81,10 @@ class TestInt32(BaseTestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">i4"), V2JsonTestParams(dtype="<i4"))
+    valid_json_v2 = (
+        {"name": ">i4", "object_codec_id": None},
+        {"name": "<i4", "object_codec_id": None},
+    )
     valid_json_v3 = ("int32",)
     invalid_json_v2 = (
         "|i4",
@@ -109,7 +115,10 @@ class TestInt64(BaseTestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">i8"), V2JsonTestParams(dtype="<i8"))
+    valid_json_v2 = (
+        {"name": ">i8", "object_codec_id": None},
+        {"name": "<i8", "object_codec_id": None},
+    )
     valid_json_v3 = ("int64",)
     invalid_json_v2 = (
         "|i8",
@@ -140,7 +149,7 @@ class TestUInt8(BaseTestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype="|u1"),)
+    valid_json_v2 = ({"name": "|u1", "object_codec_id": None},)
     valid_json_v3 = ("uint8",)
     invalid_json_v2 = (
         "|u1",
@@ -171,7 +180,10 @@ class TestUInt16(BaseTestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">u2"), V2JsonTestParams(dtype="<u2"))
+    valid_json_v2 = (
+        {"name": ">u2", "object_codec_id": None},
+        {"name": "<u2", "object_codec_id": None},
+    )
     valid_json_v3 = ("uint16",)
     invalid_json_v2 = (
         "|u2",
@@ -202,7 +214,10 @@ class TestUInt32(BaseTestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">u4"), V2JsonTestParams(dtype="<u4"))
+    valid_json_v2 = (
+        {"name": ">u4", "object_codec_id": None},
+        {"name": "<u4", "object_codec_id": None},
+    )
     valid_json_v3 = ("uint32",)
     invalid_json_v2 = (
         "|u4",
@@ -233,7 +248,10 @@ class TestUInt64(BaseTestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">u8"), V2JsonTestParams(dtype="<u8"))
+    valid_json_v2 = (
+        {"name": ">u8", "object_codec_id": None},
+        {"name": "<u8", "object_codec_id": None},
+    )
     valid_json_v3 = ("uint64",)
     invalid_json_v2 = (
         "|u8",

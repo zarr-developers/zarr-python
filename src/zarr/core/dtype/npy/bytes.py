@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import re
 from dataclasses import dataclass
@@ -8,9 +10,12 @@ import numpy as np
 from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import (
     DataTypeValidationError,
+    DTypeConfig_V2,
+    DTypeJSON,
     HasItemSize,
     HasLength,
     HasObjectCodec,
+    check_dtype_spec_v2,
     v3_unstable_dtype_warning,
 )
 from zarr.core.dtype.npy.common import check_json_str
@@ -44,15 +49,20 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         return self.dtype_cls(self.length)
 
     @classmethod
-    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
         """
-        Check that the input is a valid JSON representation of a numpy S dtype.
+        Check that the input is a valid representation of a numpy S dtype. We expect
+        something like ``{"name": "|S10", "object_codec_id": None}``
         """
-        # match |S1, |S2, etc
-        return isinstance(data, str) and re.match(r"^\|S\d+$", data) is not None
+        return (
+            check_dtype_spec_v2(data)
+            and isinstance(data["name"], str)
+            and re.match(r"^\|S\d+$", data["name"]) is not None
+            and data["object_codec_id"] is None
+        )
 
     @classmethod
-    def _check_json_v3(cls, data: JSON) -> TypeGuard[NullTerminatedBytesJSONV3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[NullTerminatedBytesJSONV3]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
@@ -62,28 +72,31 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         )
 
     @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v2(data):
-            return cls(length=int(data[2:]))
+            name = data["name"]
+            return cls(length=int(name[2:]))
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string like '|S1', '|S2', etc"
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v3(data):
             return cls(length=data["configuration"]["length_bytes"])
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> str: ...
+    @overload  # type: ignore[override]
+    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
 
     @overload
     def to_json(self, zarr_format: Literal[3]) -> NullTerminatedBytesJSONV3: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> str | NullTerminatedBytesJSONV3:
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> DTypeConfig_V2[str, None] | NullTerminatedBytesJSONV3:
         if zarr_format == 2:
-            return self.to_native_dtype().str
+            return {"name": self.to_native_dtype().str, "object_codec_id": None}
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
             return {
@@ -179,12 +192,20 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         return cast("np.dtypes.VoidDType[int]", np.dtype(f"V{self.length}"))
 
     @classmethod
-    def _check_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> TypeGuard[str]:
-        # Check that the dtype is |V1, |V2, ...
-        return isinstance(data, str) and re.match(r"^\|V\d+$", data) is not None
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
+        """
+        Check that the input is a valid representation of a numpy S dtype. We expect
+        something like ``{"name": "|V10", "object_codec_id": None}``
+        """
+        return (
+            check_dtype_spec_v2(data)
+            and isinstance(data["name"], str)
+            and re.match(r"^\|V\d+$", data["name"]) is not None
+            and data["object_codec_id"] is None
+        )
 
     @classmethod
-    def _check_json_v3(cls, data: JSON) -> TypeGuard[RawBytesJSONV3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[RawBytesJSONV3]:
         return (
             isinstance(data, dict)
             and set(data.keys()) == {"name", "configuration"}
@@ -194,28 +215,29 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         )
 
     @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v2(data):
-            return cls(length=int(data[2:]))
+            name = data["name"]
+            return cls(length=int(name[2:]))
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string like '|V1', '|V2', etc"
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v3(data):
             return cls(length=data["configuration"]["length_bytes"])
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> str: ...
+    @overload  # type: ignore[override]
+    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
 
     @overload
     def to_json(self, zarr_format: Literal[3]) -> RawBytesJSONV3: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> str | RawBytesJSONV3:
+    def to_json(self, zarr_format: ZarrFormat) -> DTypeConfig_V2[str, None] | RawBytesJSONV3:
         if zarr_format == 2:
-            return self.to_native_dtype().str
+            return {"name": self.to_native_dtype().str, "object_codec_id": None}
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
             return {"name": self._zarr_v3_name, "configuration": {"length_bytes": self.length}}
@@ -257,7 +279,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
     dtype_cls = np.dtypes.ObjectDType
     _zarr_v3_name: ClassVar[Literal["variable_length_bytes"]] = "variable_length_bytes"
-    object_codec_id = "vlen-bytes"
+    object_codec_id: ClassVar[Literal["vlen-bytes"]] = "vlen-bytes"
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
@@ -272,41 +294,50 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
     @classmethod
     def _check_json_v2(
-        cls, data: JSON, *, object_codec_id: str | None = None
-    ) -> TypeGuard[Literal["|O"]]:
+        cls,
+        data: DTypeJSON,
+    ) -> TypeGuard[DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]]]:
         """
         Check that the input is a valid JSON representation of a numpy O dtype, and that the
         object codec id is appropriate for variable-length UTF-8 strings.
         """
-        return data == "|O" and object_codec_id == cls.object_codec_id
+        return (
+            check_dtype_spec_v2(data)
+            and data["name"] == "|O"
+            and data["object_codec_id"] == cls.object_codec_id
+        )
 
     @classmethod
-    def _check_json_v3(cls, data: JSON) -> TypeGuard[Literal["variable_length_bytes"]]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["variable_length_bytes"]]:
         return data == cls._zarr_v3_name
 
     @classmethod
-    def from_json_v2(cls, data: JSON, *, object_codec_id: str | None = None) -> Self:
-        if cls._check_json_v2(data, object_codec_id=object_codec_id):
+    def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        if cls._check_json_v2(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string '|O' and an object_codec_id of {cls.object_codec_id}"
         raise DataTypeValidationError(msg)
 
     @classmethod
-    def from_json_v3(cls, data: JSON) -> Self:
+    def _from_json_v3(cls, data: DTypeJSON) -> Self:
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> Literal["|O"]: ...
+    @overload  # type: ignore[override]
+    def to_json(
+        self, zarr_format: Literal[2]
+    ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]]: ...
 
     @overload
     def to_json(self, zarr_format: Literal[3]) -> Literal["variable_length_bytes"]: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> Literal["|O", "variable_length_bytes"]:
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]] | Literal["variable_length_bytes"]:
         if zarr_format == 2:
-            return "|O"
+            return {"name": "|O", "object_codec_id": self.object_codec_id}
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
             return self._zarr_v3_name

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 
 
@@ -32,7 +32,10 @@ class TestFloat16(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float32),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">f2"), V2JsonTestParams(dtype="<f2"))
+    valid_json_v2 = (
+        {"name": ">f2", "object_codec_id": None},
+        {"name": "<f2", "object_codec_id": None},
+    )
     valid_json_v3 = ("float16",)
     invalid_json_v2 = (
         "|f2",
@@ -76,7 +79,10 @@ class TestFloat32(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">f4"), V2JsonTestParams(dtype="<f4"))
+    valid_json_v2 = (
+        {"name": ">f4", "object_codec_id": None},
+        {"name": "<f4", "object_codec_id": None},
+    )
     valid_json_v3 = ("float32",)
     invalid_json_v2 = (
         "|f4",
@@ -120,7 +126,10 @@ class TestFloat64(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float32),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">f8"), V2JsonTestParams(dtype="<f8"))
+    valid_json_v2 = (
+        {"name": ">f8", "object_codec_id": None},
+        {"name": "<f8", "object_codec_id": None},
+    )
     valid_json_v3 = ("float64",)
     invalid_json_v2 = (
         "|f8",

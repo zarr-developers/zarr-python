@@ -3,14 +3,14 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 import numcodecs.abc
 
 from zarr.abc.metadata import Metadata
 from zarr.core.chunk_grids import RegularChunkGrid
-from zarr.core.dtype import get_data_type_from_json_v2
-from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, TDType_co, TScalar_co, ZDType
+from zarr.core.dtype import get_data_type_from_json
+from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -19,6 +19,13 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import ChunkCoords
+    from zarr.core.dtype.wrapper import (
+        TBaseDType,
+        TBaseScalar,
+        TDType_co,
+        TScalar_co,
+        ZDType,
+    )
 
 import json
 from dataclasses import dataclass, field, fields, replace
@@ -28,7 +35,13 @@ import numpy as np
 
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_key_encodings import parse_separator
-from zarr.core.common import JSON, ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
+from zarr.core.common import (
+    JSON,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
+    MemoryOrder,
+    parse_shapelike,
+)
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
 
@@ -44,9 +57,6 @@ class ArrayV2MetadataDict(TypedDict):
 
 # Union of acceptable types for v2 compressors
 CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
-
-# These are the ids of the known object codecs for zarr v2.
-ObjectCodecIds = ("vlen-utf8", "vlen-bytes", "vlen-array", "pickle", "json2", "msgpack2")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -80,9 +90,6 @@ class ArrayV2Metadata(Metadata):
         """
         shape_parsed = parse_shapelike(shape)
         chunks_parsed = parse_shapelike(chunks)
-        # TODO: remove this
-        if not isinstance(dtype, ZDType):
-            raise TypeError
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -141,22 +148,22 @@ class ArrayV2Metadata(Metadata):
 
         # To resolve a numpy object dtype array, we need to search for an object codec,
         # which could be in filters or as a compressor.
-        # we will use a hard-coded list of object codecs for this search.
-        object_codec_id: str | None = None
-        maybe_object_codecs = (data.get("filters"), data.get("compressor"))
-        for maybe_object_codec in maybe_object_codecs:
-            if isinstance(maybe_object_codec, Sequence):
-                for codec in maybe_object_codec:
-                    if isinstance(codec, dict) and codec.get("id") in ObjectCodecIds:
-                        object_codec_id = codec["id"]
-                        break
-            elif (
-                isinstance(maybe_object_codec, dict)
-                and maybe_object_codec.get("id") in ObjectCodecIds
-            ):
-                object_codec_id = maybe_object_codec["id"]
-                break
-        dtype = get_data_type_from_json_v2(data["dtype"], object_codec_id=object_codec_id)
+        # we will reference a hard-coded collection of object codec ids for this search.
+
+        _filters, _compressor = (data.get("filters"), data.get("compressor"))
+        if _filters is not None:
+            _filters = cast("tuple[dict[str, JSON], ...]", _filters)
+            object_codec_id = get_object_codec_id(tuple(_filters) + (_compressor,))
+        else:
+            object_codec_id = get_object_codec_id((_compressor,))
+        # we add a layer of indirection here around the dtype attribute of the array metadata
+        # because we also need to know the object codec id, if any, to resolve the data type
+        dtype_spec: DTypeSpec_V2 = {
+            "name": data["dtype"],
+            "object_codec_id": object_codec_id,
+        }
+        dtype = get_data_type_from_json(dtype_spec, zarr_format=2)
+
         _data["dtype"] = dtype
         fill_value_encoded = _data.get("fill_value")
         if fill_value_encoded is not None:
@@ -216,8 +223,8 @@ class ArrayV2Metadata(Metadata):
             fill_value = self.dtype.to_json_scalar(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
-        # serialize the dtype after fill value-specific JSON encoding
-        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)  # type: ignore[assignment]
+        # pull the "name" attribute out of the dtype spec returned by self.dtype.to_json
+        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)["name"]
 
         return zarray_dict
 
@@ -304,3 +311,21 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
         )
         raise ValueError(msg)
     return data
+
+
+def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
+    """
+    Inspect a sequence of codecs / filters for an "object codec", i.e. a codec
+    that can serialize object arrays to contiguous bytes. Zarr python
+    maintains a hard-coded set of object codec ids. If any element from the input
+    has an id that matches one of the hard-coded object codec ids, that id
+    is returned immediately.
+    """
+    object_codec_id = None
+    for maybe_object_codec in maybe_object_codecs:
+        if (
+            isinstance(maybe_object_codec, dict)
+            and maybe_object_codec.get("id") in OBJECT_CODEC_IDS
+        ):
+            return cast("str", maybe_object_codec["id"])
+    return object_codec_id
