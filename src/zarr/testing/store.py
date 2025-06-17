@@ -149,6 +149,14 @@ class StoreTests(Generic[S, B]):
         ):
             await store.delete("foo")
 
+    async def test_with_read_only_store(self, open_kwargs: dict[str, Any]) -> None:
+        kwargs = {**open_kwargs, "read_only": True}
+        store = await self.store_cls.open(**kwargs)
+        with pytest.raises(
+            NotImplementedError, match="with_read_only is not implemented for this store type."
+        ):
+            store.with_read_only(read_only=False)
+
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize(
         ("data", "byte_range"),

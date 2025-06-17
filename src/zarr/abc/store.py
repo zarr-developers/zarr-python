@@ -83,6 +83,22 @@ class Store(ABC):
         await store._open()
         return store
 
+    def with_read_only(self, read_only: bool = False) -> Store:
+        """
+        Return a new store of the same type pointing to the same location with the specified read_only state.
+        The returned Store is not automatically opened.
+
+        Parameters
+        ----------
+        read_only
+            If True, the store will be created in read-only mode. Defaults to False.
+
+        Returns
+        -------
+            A new store of the same type with the new read only attribute.
+        """
+        raise NotImplementedError("with_read_only is not implemented for this store type.")
+
     def __enter__(self) -> Self:
         """Enter a context manager that will close the store upon exiting."""
         return self
