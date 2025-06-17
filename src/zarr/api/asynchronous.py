@@ -14,7 +14,6 @@ from zarr.core.array import (
     Array,
     AsyncArray,
     CompressorLike,
-    _get_default_chunk_encoding_v2,
     create_array,
     from_array,
     get_array_metadata,
@@ -32,7 +31,7 @@ from zarr.core.common import (
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
 )
-from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype, parse_data_type
+from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype
 from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,

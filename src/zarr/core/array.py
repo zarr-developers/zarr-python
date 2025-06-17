@@ -850,9 +850,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             await ensure_no_existing_node(store_path, zarr_format=2)
 
+        default_filters, default_compressor = _get_default_chunk_encoding_v2(dtype)
         compressor_parsed: CompressorLikev2
         if compressor == "auto":
-            _, compressor_parsed = _get_default_chunk_encoding_v2(dtype)
+            compressor_parsed = default_compressor
         elif isinstance(compressor, BytesBytesCodec):
             raise ValueError(
                 "Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. "
@@ -862,7 +863,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             compressor_parsed = compressor
 
         if filters is None:
-            filters = _default_filters(dtype)
+            filters = default_filters
 
         metadata = cls._create_metadata_v2(
             shape=shape,
