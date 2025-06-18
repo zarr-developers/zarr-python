@@ -74,7 +74,7 @@ class Config(DConfig):  # type: ignore[misc]
         Configure Zarr to use GPUs where possible.
         """
         return self.set(
-            {"buffer": "zarr.core.buffer.gpu.Buffer", "ndbuffer": "zarr.core.buffer.gpu.NDBuffer"}
+            {"buffer": "zarr.buffer.gpu.Buffer", "ndbuffer": "zarr.buffer.gpu.NDBuffer"}
         )
 
 
@@ -128,8 +128,8 @@ config = Config(
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                 "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
             },
-            "buffer": "zarr.core.buffer.cpu.Buffer",
-            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+            "buffer": "zarr.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.buffer.cpu.NDBuffer",
         }
     ],
 )
