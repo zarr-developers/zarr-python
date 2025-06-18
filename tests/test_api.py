@@ -171,7 +171,7 @@ def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=2)
     msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store}. Zarr v3 will be used."
     with pytest.warns(UserWarning, match=re.escape(msg)):
-        zarr.open(store=store)
+        zarr.open(store=store, mode="r")
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1318,7 +1318,7 @@ def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> No
     existing_fpath = add_empty_file(tmp_path)
 
     assert existing_fpath.exists()
-    with contextlib.suppress(FileExistsError, FileNotFoundError, ValueError):
+    with contextlib.suppress(FileExistsError, FileNotFoundError):
         open_func(store=store, mode=mode)
     if mode == "w":
         assert not existing_fpath.exists()
