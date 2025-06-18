@@ -421,6 +421,23 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[Literal[">i4"], Literal["<i4"]]] = (">i4", "<i4")
 
     @classmethod
+    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.Int32DType]:
+        """
+        A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
+
+        Parameters
+        ----------
+        dtype : TDType
+            The dtype to check.
+
+        Returns
+        -------
+        Bool
+            True if the dtype matches, False otherwise.
+        """
+        return super()._check_native_dtype(dtype) or dtype == np.dtypes.Int32DType()
+
+    @classmethod
     def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
