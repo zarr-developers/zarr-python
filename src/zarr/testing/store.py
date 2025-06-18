@@ -163,36 +163,6 @@ class StoreTests(Generic[S, B]):
         # Check if the store implements with_read_only
         try:
             writer = store.with_read_only(read_only=False)
-
-            # Test that you can write to a new store copy
-            assert not writer._is_open
-            assert not writer.read_only
-            await writer.set("foo", self.buffer_cls.from_bytes(b"bar"))
-            await writer.delete("foo")
-
-            # Test that you cannot write to the original store
-            assert store.read_only
-            with pytest.raises(
-                ValueError, match="store was opened in read-only mode and does not support writing"
-            ):
-                await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
-            with pytest.raises(
-                ValueError, match="store was opened in read-only mode and does not support writing"
-            ):
-                await store.delete("foo")
-
-            # Test that you cannot write to a read-only store copy
-            reader = store.with_read_only(read_only=True)
-            assert reader.read_only
-            with pytest.raises(
-                ValueError, match="store was opened in read-only mode and does not support writing"
-            ):
-                await reader.set("foo", self.buffer_cls.from_bytes(b"bar"))
-            with pytest.raises(
-                ValueError, match="store was opened in read-only mode and does not support writing"
-            ):
-                await reader.delete("foo")
-
         except NotImplementedError:
             # Test that stores that do not implement with_read_only raise NotImplementedError with the correct message
             with pytest.raises(
@@ -200,6 +170,36 @@ class StoreTests(Generic[S, B]):
                 match=f"with_read_only is not implemented for the {type(store)} store type.",
             ):
                 store.with_read_only(read_only=False)
+            return
+
+        # Test that you can write to a new store copy
+        assert not writer._is_open
+        assert not writer.read_only
+        await writer.set("foo", self.buffer_cls.from_bytes(b"bar"))
+        await writer.delete("foo")
+
+        # Test that you cannot write to the original store
+        assert store.read_only
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await store.delete("foo")
+
+        # Test that you cannot write to a read-only store copy
+        reader = store.with_read_only(read_only=True)
+        assert reader.read_only
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await reader.set("foo", self.buffer_cls.from_bytes(b"bar"))
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await reader.delete("foo")
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize(
