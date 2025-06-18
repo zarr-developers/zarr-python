@@ -71,6 +71,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
+    from zarr.core.dtype import ZDTypeLike
 
 logger = logging.getLogger("zarr.group")
 
@@ -1000,7 +1001,7 @@ class AsyncGroup:
         name: str,
         *,
         shape: ShapeLike | None = None,
-        dtype: npt.DTypeLike | None = None,
+        dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
@@ -2421,7 +2422,7 @@ class Group(SyncMixin):
         name: str,
         *,
         shape: ShapeLike | None = None,
-        dtype: npt.DTypeLike | None = None,
+        dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,

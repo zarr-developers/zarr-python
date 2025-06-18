@@ -863,7 +863,7 @@ async def create(
     chunks: ChunkCoords | int | bool | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
-    fill_value: Any | None = 0,  # TODO: need type
+    fill_value: Any | None = None,  # TODO: need type
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
