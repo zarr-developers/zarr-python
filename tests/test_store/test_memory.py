@@ -78,46 +78,6 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
 
-    async def test_with_read_only_store(self, open_kwargs: dict[str, Any]) -> None:
-        kwargs = {**open_kwargs, "read_only": True}
-        store = await self.store_cls.open(**kwargs)
-        assert store.read_only
-
-        # Test that you cannot write to a read-only store
-        with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
-        ):
-            await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
-
-        # Test that you can write to a copy that is not read-only
-        writer = store.with_read_only(read_only=False)
-        assert not writer._is_open
-        assert not writer.read_only
-        await writer.set("foo", self.buffer_cls.from_bytes(b"bar"))
-        await writer.delete("foo")
-
-        # Test that you cannot write to the original store
-        assert store.read_only
-        with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
-        ):
-            await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
-        with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
-        ):
-            await store.delete("foo")
-        # Test that you cannot write to a read-only store copy
-        reader = store.with_read_only(read_only=True)
-        assert reader.read_only
-        with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
-        ):
-            await reader.set("foo", self.buffer_cls.from_bytes(b"bar"))
-        with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
-        ):
-            await reader.delete("foo")
-
 
 # TODO: fix this warning
 @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
