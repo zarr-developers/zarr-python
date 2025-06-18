@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
@@ -11,6 +12,12 @@ from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, Contains
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
+
+_has_fsspec = importlib.util.find_spec("fsspec")
+if _has_fsspec:
+    from fsspec.mapping import FSMap
+else:
+    FSMap = None
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -227,7 +234,7 @@ class StorePath:
         return False
 
 
-StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
+StoreLike: TypeAlias = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
 
 
 async def make_store_path(
@@ -314,9 +321,18 @@ async def make_store_path(
             # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
             # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
             store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
+        elif _has_fsspec and isinstance(store_like, FSMap):
+            if path:
+                raise ValueError(
+                    "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
+                )
+            if storage_options:
+                raise ValueError(
+                    "'storage_options was provided but is not used for FSMap store_like objects. Specify the storage options when creating the FSMap instance instead."
+                )
+            store = FsspecStore.from_mapper(store_like, read_only=_read_only)
         else:
-            msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
-            raise TypeError(msg)
+            raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
 
         result = await StorePath.open(store, path=path_normalized, mode=mode)
 

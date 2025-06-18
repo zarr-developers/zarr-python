@@ -18,6 +18,7 @@ from zarr.api.asynchronous import (
     open_consolidated,
 )
 from zarr.core.buffer import cpu, default_buffer_prototype
+from zarr.core.dtype import parse_data_type
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -503,7 +504,7 @@ class TestConsolidated:
     async def test_consolidated_metadata_v2(self):
         store = zarr.storage.MemoryStore()
         g = await AsyncGroup.from_store(store, attributes={"key": "root"}, zarr_format=2)
-        dtype = "uint8"
+        dtype = parse_data_type("uint8", zarr_format=2)
         await g.create_array(name="a", shape=(1,), attributes={"key": "a"}, dtype=dtype)
         g1 = await g.create_group(name="g1", attributes={"key": "g1"})
         await g1.create_group(name="g2", attributes={"key": "g2"})
@@ -574,13 +575,56 @@ class TestConsolidated:
             assert good.metadata.consolidated_metadata
             assert sorted(good.metadata.consolidated_metadata.metadata) == ["a", "b"]
 
+    async def test_stale_child_metadata_ignored(self, memory_store: zarr.storage.MemoryStore):
+        # https://github.com/zarr-developers/zarr-python/issues/2921
+        # When consolidating metadata, we should ignore any (possibly stale) metadata
+        # from previous consolidations, *including at child nodes*.
+        root = await zarr.api.asynchronous.group(store=memory_store, zarr_format=3)
+        await root.create_group("foo")
+        await zarr.api.asynchronous.consolidate_metadata(memory_store, path="foo")
+        await root.create_group("foo/bar/spam")
+
+        await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+        reopened = await zarr.api.asynchronous.open_consolidated(store=memory_store, zarr_format=3)
+        result = [x[0] async for x in reopened.members(max_depth=None)]
+        expected = ["foo", "foo/bar", "foo/bar/spam"]
+        assert result == expected
+
+    async def test_use_consolidated_for_children_members(
+        self, memory_store: zarr.storage.MemoryStore
+    ):
+        # A test that has *unconsolidated* metadata at the root group, but discovers
+        # a child group with consolidated metadata.
+
+        root = await zarr.api.asynchronous.create_group(store=memory_store)
+        await root.create_group("a/b")
+        # Consolidate metadata at "a/b"
+        await zarr.api.asynchronous.consolidate_metadata(memory_store, path="a/b")
+
+        # Add a new group a/b/c, that's not present in the CM at "a/b"
+        await root.create_group("a/b/c")
+
+        # Now according to the consolidated metadata, "a" has children ["b"]
+        # but according to the unconsolidated metadata, "a" has children ["b", "c"]
+        group = await zarr.api.asynchronous.open_group(store=memory_store, path="a")
+        with pytest.warns(UserWarning, match="Object at 'c' not found"):
+            result = sorted([x[0] async for x in group.members(max_depth=None)])
+        expected = ["b"]
+        assert result == expected
+
+        result = sorted(
+            [x[0] async for x in group.members(max_depth=None, use_consolidated_for_children=False)]
+        )
+        expected = ["b", "b/c"]
+        assert result == expected
+
 
 @pytest.mark.parametrize("fill_value", [np.nan, np.inf, -np.inf])
 async def test_consolidated_metadata_encodes_special_chars(
     memory_store: Store, zarr_format: ZarrFormat, fill_value: float
 ):
     root = await group(store=memory_store, zarr_format=zarr_format)
-    _child = await root.create_group("child", attributes={"test": fill_value})
     _time = await root.create_array("time", shape=(12,), dtype=np.float64, fill_value=fill_value)
     await zarr.api.asynchronous.consolidate_metadata(memory_store)
 
@@ -594,16 +638,44 @@ async def test_consolidated_metadata_encodes_special_chars(
             "consolidated_metadata"
         ]["metadata"]
 
-    if np.isnan(fill_value):
-        expected_fill_value = "NaN"
-    elif np.isneginf(fill_value):
-        expected_fill_value = "-Infinity"
-    elif np.isinf(fill_value):
-        expected_fill_value = "Infinity"
+    expected_fill_value = _time._zdtype.to_json_scalar(fill_value, zarr_format=2)
 
     if zarr_format == 2:
-        assert root_metadata["child/.zattrs"]["test"] == expected_fill_value
         assert root_metadata["time/.zarray"]["fill_value"] == expected_fill_value
     elif zarr_format == 3:
-        assert root_metadata["child"]["attributes"]["test"] == expected_fill_value
         assert root_metadata["time"]["fill_value"] == expected_fill_value
+
+
+class NonConsolidatedStore(zarr.storage.MemoryStore):
+    """A store that doesn't support consolidated metadata"""
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        return False
+
+
+async def test_consolidate_metadata_raises_for_self_consolidating_stores():
+    """Verify calling consolidate_metadata on a non supporting stores raises an error."""
+
+    memory_store = NonConsolidatedStore()
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    await root.create_group("a/b")
+
+    with pytest.raises(TypeError, match="doesn't support consolidated metadata"):
+        await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+
+async def test_open_group_in_non_consolidating_stores():
+    memory_store = NonConsolidatedStore()
+    root = await zarr.api.asynchronous.create_group(store=memory_store)
+    await root.create_group("a/b")
+
+    # Opening a group without consolidatedion works as expected
+    await AsyncGroup.open(memory_store, use_consolidated=False)
+
+    # let the Store opt out of consolidation
+    await AsyncGroup.open(memory_store, use_consolidated=None)
+
+    # Opening a group with use_consolidated=True should fail
+    with pytest.raises(ValueError, match="doesn't support consolidated metadata"):
+        await AsyncGroup.open(memory_store, use_consolidated=True)

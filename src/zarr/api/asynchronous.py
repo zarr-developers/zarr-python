@@ -9,10 +9,12 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr.abc.store import Store
 from zarr.core.array import (
     Array,
     AsyncArray,
     CompressorLike,
+    _get_default_chunk_encoding_v2,
     create_array,
     from_array,
     get_array_metadata,
@@ -29,8 +31,8 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
-    parse_dtype,
 )
+from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype, parse_data_type
 from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
@@ -38,8 +40,8 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v2 import _default_compressor, _default_filters
-from zarr.errors import NodeTypeValidationError
+from zarr.errors import GroupNotFoundError, NodeTypeValidationError
+from zarr.storage import StorePath
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -174,7 +176,8 @@ async def consolidate_metadata(
     Consolidate the metadata of all nodes in a hierarchy.
 
     Upon completion, the metadata of the root node in the Zarr hierarchy will be
-    updated to include all the metadata of child nodes.
+    updated to include all the metadata of child nodes. For Stores that do
+    not support consolidated metadata, this operation raises a ``TypeError``.
 
     Parameters
     ----------
@@ -194,14 +197,25 @@ async def consolidate_metadata(
     -------
     group: AsyncGroup
         The group, with the ``consolidated_metadata`` field set to include
-        the metadata of each child node.
+        the metadata of each child node. If the Store doesn't support
+        consolidated metadata, this function raises a `TypeError`.
+        See ``Store.supports_consolidated_metadata``.
     """
     store_path = await make_store_path(store, path=path)
+
+    if not store_path.store.supports_consolidated_metadata:
+        store_name = type(store_path.store).__name__
+        raise TypeError(
+            f"The Zarr Store in use ({store_name}) doesn't support consolidated metadata",
+        )
 
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
 
-    members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
+    members_metadata = {
+        k: v.metadata
+        async for k, v in group.members(max_depth=None, use_consolidated_for_children=False)
+    }
     # While consolidating, we want to be explicit about when child groups
     # are empty by inserting an empty dict for consolidated_metadata.metadata
     for k, v in members_metadata.items():
@@ -225,7 +239,6 @@ async def consolidate_metadata(
         group,
         metadata=metadata,
     )
-
     await group._save_metadata()
     return group
 
@@ -286,7 +299,7 @@ async def load(
 async def open(
     *,
     store: StoreLike | None = None,
-    mode: AccessModeLiteral = "a",
+    mode: AccessModeLiteral | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -304,6 +317,7 @@ async def open(
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
+        If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional
@@ -321,7 +335,11 @@ async def open(
         Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-
+    if mode is None:
+        if isinstance(store, (Store, StorePath)) and store.read_only:
+            mode = "r"
+        else:
+            mode = "a"
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
@@ -438,11 +456,12 @@ async def save_array(
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
+    zarr_dtype = get_data_type_from_native_dtype(arr.dtype)
     new = await AsyncArray._create(
         store_path,
         zarr_format=zarr_format,
         shape=shape,
-        dtype=arr.dtype,
+        dtype=zarr_dtype,
         chunks=chunks,
         overwrite=overwrite,
         **kwargs,
@@ -502,13 +521,12 @@ async def save_group(
         raise ValueError("at least one array must be provided")
     aws = []
     for i, arr in enumerate(args):
-        _path = f"{path}/arr_{i}" if path is not None else f"arr_{i}"
         aws.append(
             save_array(
                 store_path,
                 arr,
                 zarr_format=zarr_format,
-                path=_path,
+                path=f"arr_{i}",
                 storage_options=storage_options,
             )
         )
@@ -836,14 +854,14 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    raise FileNotFoundError(f"Unable to find group: {store_path}")
+    raise GroupNotFoundError(store, store_path.path)
 
 
 async def create(
     shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | int | bool | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = 0,  # TODO: need type
     order: MemoryOrder | None = None,
@@ -990,21 +1008,13 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-
+    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
     if zarr_format == 2:
-        if chunks is None:
-            chunks = shape
-        dtype = parse_dtype(dtype, zarr_format)
+        default_filters, default_compressor = _get_default_chunk_encoding_v2(zdtype)
         if not filters:
-            filters = _default_filters(dtype)
+            filters = default_filters  # type: ignore[assignment]
         if compressor == "auto":
-            compressor = _default_compressor(dtype)
-    elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
-        if chunks is not None:
-            chunk_shape = chunks
-            chunks = None
-        else:
-            chunk_shape = shape
+            compressor = default_compressor
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -1056,7 +1066,7 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=dtype,
+        dtype=zdtype,
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,

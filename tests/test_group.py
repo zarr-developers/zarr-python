@@ -23,6 +23,8 @@ from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype.common import unpack_dtype_json
+from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
@@ -494,7 +496,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
     expected_groups = list(zip(expected_group_keys, expected_group_values, strict=False))
 
     fill_value = 3
-    dtype = "uint8"
+    dtype = UInt8()
 
     expected_group_values[0].create_group("subgroup")
     expected_group_values[0].create_array(
@@ -515,7 +517,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
             metadata = {
                 "subarray": {
                     "attributes": {},
-                    "dtype": dtype,
+                    "dtype": unpack_dtype_json(dtype.to_json(zarr_format=zarr_format)),
                     "fill_value": fill_value,
                     "shape": (1,),
                     "chunks": (1,),
@@ -551,7 +553,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                         {"configuration": {"endian": "little"}, "name": "bytes"},
                         {"configuration": {}, "name": "zstd"},
                     ),
-                    "data_type": dtype,
+                    "data_type": unpack_dtype_json(dtype.to_json(zarr_format=zarr_format)),
                     "fill_value": fill_value,
                     "node_type": "array",
                     "shape": (1,),
@@ -1519,7 +1521,6 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
     # if create_nodes is sensitive to IO latency,
     # this should take (num_groups * get_latency) seconds
     # otherwise, it should take only marginally more than get_latency seconds
-
     with zarr_config.set({"async.concurrency": 1}):
         start = time.time()
         _ = tuple(sync_group.create_nodes(store=latency_store, nodes=groups))
@@ -2025,9 +2026,7 @@ def test_group_members_concurrency_limit(store: MemoryStore) -> None:
     # if .members is sensitive to IO latency,
     # this should take (num_groups * get_latency) seconds
     # otherwise, it should take only marginally more than get_latency seconds
-    from zarr.core.config import config
-
-    with config.set({"async.concurrency": 1}):
+    with zarr_config.set({"async.concurrency": 1}):
         start = time.time()
         _ = group_read.members()
         elapsed = time.time() - start
