@@ -86,7 +86,7 @@ class Store(ABC):
     def with_read_only(self, read_only: bool = False) -> Store:
         """
         Return a new store with a new read_only setting.
-        
+
         The new store points to the same location with the specified new read_only state.
         The returned Store is not automatically opened, and this store is
         not automatically closed.
