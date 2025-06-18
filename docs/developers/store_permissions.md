@@ -19,6 +19,18 @@ This is a property of the *class* that should indicate whether the store impleme
 
 `supports_writes` is primarily used by tests to determine the expected result of write operations. It is not used by the library to enforce permissions.
 
+### `supports_partial_writes`
+
+The purpose of this property of the *class* is currently ambiguous.
+
+One interpretation is that it indicates whether the store implements the following methods:
+
+- `async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, BytesLike]]) -> None:
+
+But the `FsspecStore` class does not implement this method, but it does have `supports_partial_writes = True`.
+
+Another interpretation is that it indicates whether the store supports a `byte_range` argument in the `set` method.
+
 ### `supports_deletes`
 
 This is a property of the *class* that should indicate whether the store implements the following methods:
@@ -39,3 +51,7 @@ The `supports_deletes` property is also used by the testing framework to determi
 This is a property of the *class* that should indicate whether the store implements the following method:
 
 - `async def list(self, prefix: str = '', delimiter: str = '') -> List[str]:`
+
+This used to determine whether the `Store` abstract base classes `is_empty`, `clear`, and `delete_dir`methods should raise a `NotImplementedError`.
+
+The `supports_listing` property is also used by the testing framework to determine the expected result of list operations.
