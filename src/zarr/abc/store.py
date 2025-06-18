@@ -97,7 +97,9 @@ class Store(ABC):
         -------
             A new store of the same type with the new read only attribute.
         """
-        raise NotImplementedError("with_read_only is not implemented for this store type.")
+        raise NotImplementedError(
+            f"with_read_only is not implemented for the {type(self)} store type."
+        )
 
     def __enter__(self) -> Self:
         """Enter a context manager that will close the store upon exiting."""

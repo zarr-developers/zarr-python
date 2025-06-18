@@ -196,7 +196,8 @@ class StoreTests(Generic[S, B]):
         except NotImplementedError:
             # Test that stores that do not implement with_read_only raise NotImplementedError with the correct message
             with pytest.raises(
-                NotImplementedError, match="with_read_only is not implemented for this store type."
+                NotImplementedError,
+                match=f"with_read_only is not implemented for the {type(store)} store type.",
             ):
                 store.with_read_only(read_only=False)
 
