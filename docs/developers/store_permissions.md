@@ -4,7 +4,7 @@ Write/delete permissions in Zarr Python are confusing. This document aims to des
 
 # Data models
 
-Zarr Python has two data models (`Array` and `Group`) and one storage model (`Store`). Only the store has a concept of write/delete permissions. Both `write` and `delete` permissions on `Store` instances are controlled by the `read_only` immutable property. Permissions on Store `classes` (implementation) are also influenced by the `supports_writes` and `supports_deletes` property, which should be the same for all instances of a class.
+Zarr Python has two data models (`Array` and `Group`) and one storage model (`Store`). Only the store has a concept of write/delete permissions. Both `write` and `delete` permissions on `Store` instances are controlled by the `read_only` immutable property. Permissions on `Store` classes (i.e., implementations) are also influenced by the `supports_writes` and `supports_deletes` property, which should be the same for all instances of a class.
 
 `Array` and `Group` do not have any permissions, instead they store a reference to a store that has permissions.
 
