@@ -998,6 +998,7 @@ def test_chunks_and_shards() -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize(
     ("dtype", "fill_value_expected"), [("<U4", ""), ("<S4", b""), ("i", 0), ("f", 0.0)]
 )
