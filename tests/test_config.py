@@ -101,8 +101,8 @@ def test_config_defaults_set() -> None:
                     "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                     "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
                 },
-                "buffer": "zarr.core.buffer.cpu.Buffer",
-                "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+                "buffer": "zarr.buffer.cpu.Buffer",
+                "ndbuffer": "zarr.buffer.cpu.NDBuffer",
             }
         ]
     )
@@ -224,9 +224,6 @@ def test_config_codec_implementation(store: Store) -> None:
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_ndbuffer_implementation(store: Store) -> None:
-    # has default value
-    assert fully_qualified_name(get_ndbuffer_class()) == config.defaults[0]["ndbuffer"]
-
     # set custom ndbuffer with TestNDArrayLike implementation
     register_ndbuffer(NDBufferUsingTestNDArrayLike)
     with config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)}):
@@ -244,7 +241,7 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
 
 def test_config_buffer_implementation() -> None:
     # has default value
-    assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
+    assert config.defaults[0]["buffer"] == "zarr.buffer.cpu.Buffer"
 
     arr = zeros(shape=(100,), store=StoreExpectingTestBuffer())
 
@@ -277,6 +274,27 @@ def test_config_buffer_implementation() -> None:
         )
         arr_Crc32c[:] = data2d
         assert np.array_equal(arr_Crc32c[:], data2d)
+
+
+def test_config_buffer_backwards_compatibility() -> None:
+    # This should warn once zarr.core is private
+    # https://github.com/zarr-developers/zarr-python/issues/2621
+    with zarr.config.set(
+        {"buffer": "zarr.core.buffer.cpu.Buffer", "ndbuffer": "zarr.core.buffer.cpu.NDBuffer"}
+    ):
+        get_buffer_class()
+        get_ndbuffer_class()
+
+
+@pytest.mark.gpu
+def test_config_buffer_backwards_compatibility_gpu() -> None:
+    # This should warn once zarr.core is private
+    # https://github.com/zarr-developers/zarr-python/issues/2621
+    with zarr.config.set(
+        {"buffer": "zarr.core.buffer.gpu.Buffer", "ndbuffer": "zarr.core.buffer.gpu.NDBuffer"}
+    ):
+        get_buffer_class()
+        get_ndbuffer_class()
 
 
 @pytest.mark.filterwarnings("error")
