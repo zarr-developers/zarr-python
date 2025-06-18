@@ -122,6 +122,7 @@ class FsspecStore(Store):
 
     fs: AsyncFileSystem
     allowed_exceptions: tuple[type[Exception], ...]
+    path: str
 
     def __init__(
         self,
@@ -257,6 +258,15 @@ class FsspecStore(Store):
             path = fs._strip_protocol(path)
 
         return cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
+
+    def with_read_only(self, read_only: bool = False) -> FsspecStore:
+        # docstring inherited
+        return type(self)(
+            fs=self.fs,
+            path=self.path,
+            allowed_exceptions=self.allowed_exceptions,
+            read_only=read_only,
+        )
 
     async def clear(self) -> None:
         # docstring inherited
