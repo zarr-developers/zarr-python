@@ -5,6 +5,7 @@ __all__ = [
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
     "ContainsGroupError",
+    "GroupNotFoundError",
     "MetadataValidationError",
     "NodeTypeValidationError",
 ]
