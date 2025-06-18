@@ -522,7 +522,7 @@ class TestConsolidated:
                         dtype=dtype,
                         attributes={"key": "a"},
                         chunks=(1,),
-                        fill_value=None,
+                        fill_value=0,
                         compressor=Blosc(),
                         order="C",
                     ),
