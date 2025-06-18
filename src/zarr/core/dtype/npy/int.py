@@ -425,6 +425,9 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         """
         A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
 
+        This method is overridden for this particular data type because of a windows-specific issue where 
+        np.dtype('i') is an instance of ``np.dtypes.IntDType``, not an instance of ``np.dtypes.Int32DType``.
+
         Parameters
         ----------
         dtype : TDType
