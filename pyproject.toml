@@ -80,6 +80,7 @@ test = [
     "rich",
     "mypy",
     "hypothesis",
+    "pytest-xdist",
 ]
 remote_tests = [
     'zarr[remote]',
@@ -165,7 +166,7 @@ run = "run-coverage --no-cov"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.doctest]
@@ -194,7 +195,7 @@ run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.docs]
@@ -252,6 +253,7 @@ dependencies = [
     'obstore==0.5.*',
     # test deps
     'zarr[test]',
+    'zarr[remote_tests]',
 ]
 
 [tool.hatch.envs.min_deps.scripts]
@@ -283,6 +285,7 @@ extend-exclude = [
     "notebooks", # temporary, until we achieve compatibility with ruff ≥ 0.6
     "venv",
     "docs",
+    "tests/test_regression/scripts/", # these are scripts that use a different version of python
     "src/zarr/v2/",
     "tests/v2/",
 ]
@@ -353,7 +356,6 @@ strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
-
 [[tool.mypy.overrides]]
 module = [
     "tests.package_with_entrypoint.*",
@@ -383,6 +385,7 @@ module = [
     "tests.test_properties",
     "tests.test_sync",
     "tests.test_v2",
+    "tests.test_regression.scripts.*"
 ]
 ignore_errors = true
 
