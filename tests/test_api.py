@@ -39,7 +39,7 @@ from zarr.api.synchronous import (
 )
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import MetadataValidationError
-from zarr.storage import MemoryStore
+from zarr.storage import LocalStore, MemoryStore, ZipStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
 
@@ -399,6 +399,38 @@ def test_load_array(sync_store: Store) -> None:
             assert_array_equal(foo, array)
         else:
             assert_array_equal(bar, array)
+
+
+@pytest.mark.parametrize("path", ["data", None])
+@pytest.mark.parametrize("load_read_only", [True, False, None])
+def test_load_zip(tmp_path: pathlib.Path, path: str | None, load_read_only: bool | None) -> None:
+    file = tmp_path / "test.zip"
+    data = np.arange(100).reshape(10, 10)
+
+    with ZipStore(file, mode="w", read_only=False) as zs:
+        save(zs, data, path=path)
+    with ZipStore(file, mode="r", read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
+    with ZipStore(file, read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
+
+
+@pytest.mark.parametrize("path", ["data", None])
+@pytest.mark.parametrize("load_read_only", [True, False])
+def test_load_local(tmp_path: pathlib.Path, path: str | None, load_read_only: bool) -> None:
+    file = tmp_path / "test.zip"
+    data = np.arange(100).reshape(10, 10)
+
+    with LocalStore(file, read_only=False) as zs:
+        save(zs, data, path=path)
+    with LocalStore(file, read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
 
 
 def test_tree() -> None:

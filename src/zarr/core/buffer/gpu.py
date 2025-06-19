@@ -220,5 +220,9 @@ class NDBuffer(core.NDBuffer):
 
 buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)
+register_buffer(Buffer, qualname="zarr.buffer.gpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.buffer.gpu.NDBuffer")
+
+# backwards compatibility
+register_buffer(Buffer, qualname="zarr.core.buffer.gpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.core.buffer.gpu.NDBuffer")
