@@ -104,7 +104,7 @@ class StorePath:
             # Don't allow write operations on a read-only store
             if mode != "r":
                 raise ValueError(
-                    f"Store is read-only but mode is '{mode}'. Create a writable store or use 'r' mode."
+                    f"Store is read-only but mode is {mode!r}. Create a writable store or use 'r' mode."
                 )
             self = await cls._create_open_instance(store, path)
         elif mode == "r":
