@@ -1,7 +1,8 @@
 import json
-from collections.abc import Iterator
+from pathlib import Path
 from typing import Any, Literal
 
+import numcodecs.abc
 import numcodecs.vlen
 import numpy as np
 import pytest
@@ -18,12 +19,13 @@ from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import FixedLengthUTF32, Structured, VariableLengthUTF8
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes
 from zarr.core.dtype.wrapper import ZDType
+from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
 
 
 @pytest.fixture
-async def store() -> Iterator[StorePath]:
+async def store() -> StorePath:
     return StorePath(await MemoryStore.open())
 
 
@@ -68,7 +70,9 @@ def test_codec_pipeline() -> None:
         ("|V10", "|V10", b"X", "WAAAAAAAAAAAAA=="),
     ],
 )
-async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_json) -> None:
+async def test_v2_encode_decode(
+    dtype: str, expected_dtype: str, fill_value: bytes, fill_value_json: str
+) -> None:
     with config.set(
         {
             "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
@@ -99,8 +103,7 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_js
         assert serialized == expected
 
         data = zarr.open_array(store=store, path="foo")[:]
-        expected = np.full((3,), b"X", dtype=dtype)
-        np.testing.assert_equal(data, expected)
+        np.testing.assert_equal(data, np.full((3,), b"X", dtype=dtype))
 
 
 @pytest.mark.parametrize(
@@ -111,7 +114,7 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_js
         (VariableLengthUTF8(), "Y"),
     ],
 )
-def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str):
+def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str) -> None:
     expected = np.full((3,), value, dtype=dtype.to_native_dtype())
     a = zarr.create(
         shape=(3,),
@@ -136,12 +139,13 @@ def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
 
 @pytest.mark.filterwarnings("ignore")
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_create_array_defaults(store: Store):
+def test_create_array_defaults(store: Store) -> None:
     """
     Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
     parameter does produce a compressor.
     """
     g = zarr.open(store, mode="w", zarr_format=2)
+    assert isinstance(g, Group)
     arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
     assert arr._async_array.compressor is None
     assert not (arr.filters)
@@ -183,17 +187,19 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
     arr[6:9, 3:6] = a[6:9, 3:6]  # The slice on the RHS is important
     np.testing.assert_array_equal(arr[6:9, 3:6], a[6:9, 3:6])
 
+    buf = sync(store.get("2.1", default_buffer_prototype()))
+    assert buf is not None
     np.testing.assert_array_equal(
         a[6:9, 3:6],
-        np.frombuffer(
-            sync(store.get("2.1", default_buffer_prototype())).to_bytes(), dtype="float64"
-        ).reshape((3, 3), order=zarr_order),
+        np.frombuffer(buf.to_bytes(), dtype="float64").reshape((3, 3), order=zarr_order),
     )
     # After writing and reading from zarr array, order should be same as zarr order
+    sub_arr = arr[6:9, 3:6]
+    assert isinstance(sub_arr, np.ndarray)
     if zarr_order == "F":
-        assert (arr[6:9, 3:6]).flags.f_contiguous
+        assert (sub_arr).flags.f_contiguous
     else:
-        assert (arr[6:9, 3:6]).flags.c_contiguous
+        assert (sub_arr).flags.c_contiguous
 
     # Contiguous write
     store = MemoryStore()
@@ -214,19 +220,21 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
     arr[6:9, 3:6] = a
     np.testing.assert_array_equal(arr[6:9, 3:6], a)
     # After writing and reading from zarr array, order should be same as zarr order
+    sub_arr = arr[6:9, 3:6]
+    assert isinstance(sub_arr, np.ndarray)
     if zarr_order == "F":
-        assert (arr[6:9, 3:6]).flags.f_contiguous
+        assert (sub_arr).flags.f_contiguous
     else:
-        assert (arr[6:9, 3:6]).flags.c_contiguous
+        assert (sub_arr).flags.c_contiguous
 
 
-def test_default_compressor_deprecation_warning():
+def test_default_compressor_deprecation_warning() -> None:
     with pytest.warns(DeprecationWarning, match="default_compressor is deprecated"):
-        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"
+        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
-def test_structured_dtype_roundtrip(fill_value, tmp_path) -> None:
+def test_structured_dtype_roundtrip(fill_value: float | bytes, tmp_path: Path) -> None:
     a = np.array(
         [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
         dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
@@ -289,7 +297,7 @@ def test_parse_structured_fill_value_valid(
 
 
 @pytest.mark.parametrize("fill_value", [None, b"x"], ids=["no_fill", "fill"])
-def test_other_dtype_roundtrip(fill_value, tmp_path) -> None:
+def test_other_dtype_roundtrip(fill_value: None | bytes, tmp_path: Path) -> None:
     a = np.array([b"a\0\0", b"bb", b"ccc"], dtype="V7")
     array_path = tmp_path / "data.zarr"
     za = zarr.create(
