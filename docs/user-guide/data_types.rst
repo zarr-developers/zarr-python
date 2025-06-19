@@ -236,8 +236,10 @@ data types are so simple. Consider this case:
 .. code-block:: python
 
   >>> from zarr import create_array
+  >>> import warnings
   >>> import numpy as np
-  >>> a = create_array({}, shape=(10,), dtype=[('a', np.dtype('float')), ('b', 'i8')])
+  >>> warnings.simplefilter("ignore", category=FutureWarning)
+  >>> a = create_array({}, shape=(10,), dtype=[('a', 'f8'), ('b', 'i8')])
   >>> a.dtype # this is the NumPy data type
   dtype([('a', '<f8'), ('b', '<i8')])
   >>> a.metadata.data_type # this is the Zarr data type
