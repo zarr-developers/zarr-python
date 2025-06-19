@@ -1642,12 +1642,10 @@ async def test_create_hierarchy_existing_nodes(
     elif impl == "async":
         with pytest.raises(err_cls, match=re.escape(msg)):
             tuple(
-                [
-                    x
-                    async for x in create_hierarchy(
-                        store=store, nodes={"node": new_metadata}, overwrite=False
-                    )
-                ]
+                x
+                async for x in create_hierarchy(
+                    store=store, nodes={"node": new_metadata}, overwrite=False
+                )
             )
     else:
         raise ValueError(f"Invalid impl: {impl}")
