@@ -170,3 +170,98 @@ Deserialize a scalar value from JSON:
 
   >>> scalar_value = int8.from_json_scalar(42, zarr_format=3)
   >>> assert scalar_value == np.int8(42)
+
+Adding new data types
+~~~~~~~~~~~~~~~~~~~~~
+
+Each Zarr data type is a separate Python class that inherits from
+`ZDType <../api/zarr/dtype/index.html#zarr.dtype.ZDType>`_. You can define a custom data type by
+writing your own subclass of `ZDType <../api/zarr/dtype/index.html#zarr.dtype.ZDType>`_ and adding
+your data type to the data type registry. A complete example of this process is included below.
+
+The source code for this example can be found in the ``examples/custom_dtype.py`` file in the Zarr
+Python project directory.
+
+.. literalinclude:: ../../examples/custom_dtype.py
+  :language: python
+
+
+Data type resolution
+~~~~~~~~~~~~~~~~~~~~
+
+Although Zarr Python uses a different data type model from NumPy, you can still define a Zarr array
+with a NumPy data type object:
+
+.. code-block:: python
+
+  >>> from zarr import create_array
+  >>> import numpy as np
+  >>> a = create_array({}, shape=(10,), dtype=np.dtype('int'))
+  >>> a
+  <Array memory:... shape=(10,) dtype=int64>
+
+Or a string representation of a NumPy data type:
+
+.. code-block:: python
+
+  >>> a = create_array({}, shape=(10,), dtype='<i8')
+  >>> a
+  <Array memory:... shape=(10,) dtype=int64>
+
+The ``Array`` object presents itself like a NumPy array, including exposing a NumPy
+data type as its ``dtype`` attribute:
+
+.. code-block:: python
+
+  >>> type(a.dtype)
+  <class 'numpy.dtypes.Int64DType'>
+
+But if we inspect the metadata for the array, we can see the Zarr data type object:
+
+.. code-block:: python
+
+  >>> type(a.metadata.data_type)
+  <class 'zarr.core.dtype.npy.int.Int64'>
+
+This example illustrates a general problem Zarr Python has to solve -- how can we allow users to
+specify a data type as a string, or a NumPy ``dtype`` object, and produce the right Zarr data type
+from that input? We call this process "data type resolution". Zarr Python also performs data type
+resolution when reading stored arrays, although in this case the input is a ``JSON`` value instead
+of a NumPy data type.
+
+For simple data types like ``int`` the solution could be extremely simple: just
+maintain a lookup table that relates a NumPy data type to the Zarr data type equivalent. But not all
+data types are so simple. Consider this case:
+
+.. code-block:: python
+
+  >>> from zarr import create_array
+  >>> import numpy as np
+  >>> a = create_array({}, shape=(10,), dtype=[('a', np.dtype('float')), ('b', 'i8')])
+  >>> a.dtype # this is the NumPy data type
+  dtype([('a', '<f8'), ('b', '<i8')])
+  >>> a.metadata.data_type # this is the Zarr data type
+  Structured(fields=(('a', Float64(endianness='little')), ('b', Int64(endianness='little'))))
+
+In this example, we created a
+`NumPy structured data type <https://numpy.org/doc/stable/user/basics.rec.html#structured-datatypes>`_.
+This data type is a container that can contain any NumPy data type, which makes it recursive. It is
+not possible to make a lookup table that relates all NumPy structured data types to their Zarr
+equivalents, as there is a nearly unbounded number of different structured data types. So instead of
+a static lookup table, Zarr Python relies on a dynamic approach to data type resolution.
+
+Zarr Python defines a collection of Zarr data types. This collection, called a "data type registry",
+is essentially a dict where the keys are strings (a canonical name for each data type), and the values are
+the data type classes themselves. Dynamic data type resolution entails iterating over these data
+type classes, invoking a special class constructor defined on each one, and returning a concrete
+data type instance if and only if exactly 1 of those constructor invocations was successful.
+
+In plain language, we take some user input (a NumPy array), offer it to all the known data type
+classes, and return an instance of the one data type class that could accept that user input.
+
+We want to avoid a situation where the same NumPy data type matches multiple Zarr data types. I.e.,
+a NumPy data type should uniquely specify a single Zarr data type. But data type resolution is
+dynamic, so it's not possible to guarantee this uniqueness constraint. So we attempt data type
+resolution against every data type class, and if for some reason a NumPy data type matches multiple
+Zarr data types, we treat this as an error and raise an exception.
+
