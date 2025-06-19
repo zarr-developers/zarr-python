@@ -54,6 +54,13 @@ class MemoryStore(Store):
             store_dict = {}
         self._store_dict = store_dict
 
+    def with_read_only(self, read_only: bool = False) -> MemoryStore:
+        # docstring inherited
+        return type(self)(
+            store_dict=self._store_dict,
+            read_only=read_only,
+        )
+
     async def clear(self) -> None:
         # docstring inherited
         self._store_dict.clear()
