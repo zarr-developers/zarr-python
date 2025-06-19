@@ -7,7 +7,6 @@ exclude = [
   "/.github",
   "/bench",
   "/docs",
-  "/notebooks"
 ]
 
 [project]
@@ -282,7 +281,6 @@ extend-exclude = [
     "buck-out",
     "build",
     "dist",
-    "notebooks", # temporary, until we achieve compatibility with ruff ≥ 0.6
     "venv",
     "docs",
     "tests/test_regression/scripts/", # these are scripts that use a different version of python
@@ -384,7 +382,6 @@ module = [
     "tests.test_indexing",
     "tests.test_properties",
     "tests.test_sync",
-    "tests.test_v2",
     "tests.test_regression.scripts.*"
 ]
 ignore_errors = true
