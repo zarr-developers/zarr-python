@@ -89,6 +89,8 @@ class StorePath:
         ------
         FileExistsError
             If the mode is 'w-' and the store path already exists.
+        ValueError
+            If the mode is not "r" and the store is read-only, or
         """
 
         # fastpath if mode is None
