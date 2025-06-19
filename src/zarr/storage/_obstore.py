@@ -69,6 +69,13 @@ class ObjectStore(Store):
         super().__init__(read_only=read_only)
         self.store = store
 
+    def with_read_only(self, read_only: bool = False) -> ObjectStore:
+        # docstring inherited
+        return type(self)(
+            store=self.store,
+            read_only=read_only,
+        )
+
     def __str__(self) -> str:
         return f"object_store://{self.store}"
 
