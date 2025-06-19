@@ -63,7 +63,7 @@ This is the current default configuration::
                                        'variable-length-string': {'name': 'vlen-utf8'}},
             'write_empty_chunks': False},
    'async': {'concurrency': 10, 'timeout': None},
-   'buffer': 'zarr.core.buffer.cpu.Buffer',
+   'buffer': 'zarr.buffer.cpu.Buffer',
    'codec_pipeline': {'batch_size': 1,
                      'path': 'zarr.core.codec_pipeline.BatchedCodecPipeline'},
    'codecs': {'blosc': 'zarr.codecs.blosc.BloscCodec',
@@ -78,5 +78,5 @@ This is the current default configuration::
                'zstd': 'zarr.codecs.zstd.ZstdCodec'},
    'default_zarr_format': 3,
    'json_indent': 2,
-   'ndbuffer': 'zarr.core.buffer.cpu.NDBuffer',
+   'ndbuffer': 'zarr.buffer.cpu.NDBuffer',
    'threading': {'max_workers': None}}

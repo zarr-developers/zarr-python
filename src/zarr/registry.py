@@ -47,8 +47,10 @@ class Registry(dict[str, type[T]], Generic[T]):
 
         self.lazy_load_list.clear()
 
-    def register(self, cls: type[T]) -> None:
-        self[fully_qualified_name(cls)] = cls
+    def register(self, cls: type[T], qualname: str | None = None) -> None:
+        if qualname is None:
+            qualname = fully_qualified_name(cls)
+        self[qualname] = cls
 
 
 __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
@@ -131,12 +133,12 @@ def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
     __pipeline_registry.register(pipe_cls)
 
 
-def register_ndbuffer(cls: type[NDBuffer]) -> None:
-    __ndbuffer_registry.register(cls)
+def register_ndbuffer(cls: type[NDBuffer], qualname: str | None = None) -> None:
+    __ndbuffer_registry.register(cls, qualname)
 
 
-def register_buffer(cls: type[Buffer]) -> None:
-    __buffer_registry.register(cls)
+def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
+    __buffer_registry.register(cls, qualname)
 
 
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
