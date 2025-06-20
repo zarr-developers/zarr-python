@@ -1,5 +1,7 @@
 import builtins
-from typing import Any
+import functools
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -33,6 +35,33 @@ from zarr.testing.strategies import (
 from zarr.testing.strategies import keys as zarr_keys
 
 MAX_BINARY_SIZE = 100
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def with_frequency(frequency: float) -> Callable[[F], F]:
+    """This needs to be deterministic for hypothesis replaying"""
+
+    def decorator(func: F) -> F:
+        counter_attr = f"__{func.__name__}_counter"
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            return func(*args, **kwargs)
+
+        @precondition
+        def frequency_check(f: Any) -> Any:
+            if not hasattr(f, counter_attr):
+                setattr(f, counter_attr, 0)
+
+            current_count = getattr(f, counter_attr) + 1
+            setattr(f, counter_attr, current_count)
+
+            return (current_count * frequency) % 1.0 >= (1.0 - frequency)
+
+        return cast(F, frequency_check(wrapper))
+
+    return decorator
 
 
 def split_prefix_name(path: str) -> tuple[str, str]:
@@ -129,6 +158,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         self.all_arrays.add(path)
 
     @rule()
+    @with_frequency(0.25)
     def clear(self) -> None:
         note("clearing")
         import zarr
