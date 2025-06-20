@@ -1,0 +1,1 @@
+Trying to open a StorePath/Array with ``mode='r'`` when the store is not read-only creates a read-only copy of the store.

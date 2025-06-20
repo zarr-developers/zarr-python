@@ -1,21 +1,34 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, get_args
+
+import numpy as np
+import pytest
+
+from zarr.core.common import (
+    ANY_ACCESS_MODE,
+    AccessModeLiteral,
+    parse_name,
+    parse_shapelike,
+    product,
+)
+from zarr.core.config import parse_indexing_order
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Any, Literal
 
-import numpy as np
-import pytest
-
-from zarr.core.common import parse_name, parse_shapelike, product
-from zarr.core.config import parse_indexing_order
-
 
 @pytest.mark.parametrize("data", [(0, 0, 0, 0), (1, 3, 4, 5, 6), (2, 4)])
 def test_product(data: tuple[int, ...]) -> None:
     assert product(data) == np.prod(data)
+
+
+def test_access_modes() -> None:
+    """
+    Test that the access modes type and variable for run-time checking are equivalent.
+    """
+    assert set(ANY_ACCESS_MODE) == set(get_args(AccessModeLiteral))
 
 
 # todo: test
