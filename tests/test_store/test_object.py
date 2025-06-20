@@ -75,6 +75,9 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         with pytest.raises(TypeError):
             ObjectStore("path/to/store")
 
+    async def test_store_delete_nonexistent_key_does_not_raise(self, store: ObjectStore) -> None:
+        await store.delete("nonexistent_key")
+
 
 @pytest.mark.slow_hypothesis
 def test_zarr_hierarchy():
