@@ -176,14 +176,14 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         Bool
             True if the dtype matches, False otherwise.
         """
-        return cls.dtype_cls is type(dtype) and dtype.fields is None  # type: ignore[has-type]
+        return cls.dtype_cls is type(dtype) and dtype.fields is None
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         if cls._check_native_dtype(dtype):
             return cls(length=dtype.itemsize)
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"  # type: ignore[has-type]
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
 
     def to_native_dtype(self) -> np.dtypes.VoidDType[int]:
