@@ -121,7 +121,7 @@ class StorePath:
                     "Store is not read-only but mode is 'r'. Creating a read-only copy. "
                     "This behavior may change in the future with a more granular permissions model.",
                     UserWarning,
-                    stacklevel=2,
+                    stacklevel=1,
                 )
                 self = await cls._create_open_instance(store.with_read_only(True), path)
             except NotImplementedError as e:
