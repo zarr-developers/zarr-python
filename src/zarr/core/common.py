@@ -16,7 +16,6 @@ from typing import (
     TypedDict,
     TypeVar,
     cast,
-    get_args,
     overload,
 )
 
@@ -41,7 +40,7 @@ NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
-ANY_ACCESS_MODE: Final = get_args(AccessModeLiteral)
+ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
 
 TName = TypeVar("TName", bound=str)
