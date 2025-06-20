@@ -143,7 +143,9 @@ class MemoryStore(Store):
         except KeyError:
             logger.debug("Key %s does not exist.", key)
 
-    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview[int]]]
+    ) -> None:
         # docstring inherited
         raise NotImplementedError
 

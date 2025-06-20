@@ -93,7 +93,7 @@ class NDArrayLike(Protocol):
 
     def all(self) -> bool: ...
 
-    def __eq__(self, other: object) -> Self:  # type: ignore[explicit-override, override]
+    def __eq__(self, other: object) -> Self:  # type: ignore[override]
         """Element-wise equal
 
         Notes

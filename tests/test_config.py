@@ -47,7 +47,7 @@ from zarr.testing.buffer import (
 )
 
 if TYPE_CHECKING:
-    from zarr.core.dtype.wrapper import ZDType
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 def test_config_defaults_set() -> None:
@@ -329,9 +329,9 @@ async def test_default_codecs(dtype_category: str) -> None:
     """
     Test that the default compressors are sensitive to the current setting of the config.
     """
-    zdtype: ZDType[Any, Any]
+    zdtype: ZDType[TBaseDType, TBaseScalar]
     if dtype_category == "variable-length-string":
-        zdtype = VariableLengthUTF8()
+        zdtype = VariableLengthUTF8()  # type: ignore[assignment]
     else:
         zdtype = Int8()
     expected_compressors = (GzipCodec(),)
