@@ -24,10 +24,11 @@ from zarr.storage import LocalStore, MemoryStore
 from zarr.testing.strategies import (
     basic_indices,
     chunk_paths,
+    dimension_names,
     key_ranges,
     node_names,
     np_array_and_chunks,
-    numpy_arrays,
+    orthogonal_indices,
 )
 from zarr.testing.strategies import keys as zarr_keys
 
@@ -90,11 +91,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         zarr.group(store=self.store, path=path)
         zarr.group(store=self.model, path=path)
 
-    @rule(
-        data=st.data(),
-        name=node_names,
-        array_and_chunks=np_array_and_chunks(arrays=numpy_arrays(zarr_formats=st.just(3))),
-    )
+    @rule(data=st.data(), name=node_names, array_and_chunks=np_array_and_chunks())
     def add_array(
         self,
         data: DataObject,
@@ -122,6 +119,10 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
                 path=path,
                 store=store,
                 fill_value=fill_value,
+                zarr_format=3,
+                dimension_names=data.draw(
+                    dimension_names(ndim=array.ndim), label="dimension names"
+                ),
                 # Chose bytes codec to avoid wasting time compressing the data being written
                 codecs=[BytesCodec()],
             )
@@ -194,6 +195,14 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
 
     @precondition(lambda self: bool(self.all_arrays))
     @rule(data=st.data())
+    def check_array(self, data: DataObject) -> None:
+        path = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        actual = zarr.open_array(self.store, path=path)[:]
+        expected = zarr.open_array(self.model, path=path)[:]
+        np.testing.assert_equal(actual, expected)
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
     def overwrite_array_basic_indexing(self, data: DataObject) -> None:
         array = data.draw(st.sampled_from(sorted(self.all_arrays)))
         model_array = zarr.open_array(path=array, store=self.model)
@@ -205,6 +214,20 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         )
         model_array[slicer] = new_data
         store_array[slicer] = new_data
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
+    def overwrite_array_orthogonal_indexing(self, data: DataObject) -> None:
+        array = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        model_array = zarr.open_array(path=array, store=self.model)
+        store_array = zarr.open_array(path=array, store=self.store)
+        indexer, _ = data.draw(orthogonal_indices(shape=model_array.shape))
+        note(f"overwriting array orthogonal {indexer=}")
+        new_data = data.draw(
+            npst.arrays(shape=model_array.oindex[indexer].shape, dtype=model_array.dtype)  # type: ignore[union-attr]
+        )
+        model_array.oindex[indexer] = new_data
+        store_array.oindex[indexer] = new_data
 
     @precondition(lambda self: bool(self.all_arrays))
     @rule(data=st.data())
