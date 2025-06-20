@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
@@ -87,7 +88,11 @@ class StorePath:
         if store.read_only and mode != "r":
             raise ValueError(f"Store is read-only but mode is '{mode}'")
         if not store.read_only and mode == "r":
-            raise ValueError(f"Store is not read-only but mode is '{mode}'")
+            warnings.warn(
+                f"Store is not read-only but mode is '{mode}'. You will still be able to write to arrays and groups within this store.",
+                UserWarning,
+                stacklevel=2,
+            )
 
         match mode:
             case "w-":

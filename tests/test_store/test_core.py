@@ -263,8 +263,8 @@ def test_relativize_path_invalid() -> None:
         _relativize_path(path="a/b/c", prefix="b")
 
 
-def test_invalid_open_mode() -> None:
+def test_different_open_mode() -> None:
     store = MemoryStore()
     zarr.create((100,), store=store, zarr_format=2, path="a")
-    with pytest.raises(ValueError, match="Store is not read-only but mode is 'r'"):
+    with pytest.warns(UserWarning, match="Store is not read-only but mode is 'r'"):
         zarr.open_array(store=store, path="a", zarr_format=2, mode="r")
