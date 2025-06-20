@@ -143,9 +143,6 @@ class StorePath:
                     )
             case "w":
                 await self.delete_dir()
-            case "a" | "r" | "r+":
-                # No init action
-                pass
         return self
 
     async def get(
