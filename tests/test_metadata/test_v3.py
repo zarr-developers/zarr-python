@@ -11,13 +11,13 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
+from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
+from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
-    DataType,
-    default_fill_value,
     parse_dimension_names,
-    parse_fill_value,
     parse_zarr_format,
 )
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
@@ -54,9 +54,20 @@ float_dtypes = (
 )
 
 complex_dtypes = ("complex64", "complex128")
-vlen_dtypes = ("string", "bytes")
+flexible_dtypes = ("str", "bytes", "void")
+if _NUMPY_SUPPORTS_VLEN_STRING:
+    vlen_string_dtypes = ("T",)
+else:
+    vlen_string_dtypes = ("O",)
 
-dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes, *vlen_dtypes)
+dtypes = (
+    *bool_dtypes,
+    *int_dtypes,
+    *float_dtypes,
+    *complex_dtypes,
+    *flexible_dtypes,
+    *vlen_string_dtypes,
+)
 
 
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
@@ -110,90 +121,19 @@ def parse_dimension_names_valid(data: Sequence[str] | None) -> None:
     assert parse_dimension_names(data) == data
 
 
-@pytest.mark.parametrize("dtype_str", dtypes)
-def test_default_fill_value(dtype_str: str) -> None:
-    """
-    Test that parse_fill_value(None, dtype) results in the 0 value for the given dtype.
-    """
-    dtype = DataType(dtype_str)
-    fill_value = default_fill_value(dtype)
-    if dtype == DataType.string:
-        assert fill_value == ""
-    elif dtype == DataType.bytes:
-        assert fill_value == b""
-    else:
-        assert fill_value == dtype.to_numpy().type(0)
-
-
-@pytest.mark.parametrize(
-    ("fill_value", "dtype_str"),
-    [
-        (True, "bool"),
-        (False, "bool"),
-        (-8, "int8"),
-        (0, "int16"),
-        (1e10, "uint64"),
-        (-999, "float32"),
-        (1e32, "float64"),
-        (float("NaN"), "float64"),
-        (np.nan, "float64"),
-        (np.inf, "float64"),
-        (-1 * np.inf, "float64"),
-        (0j, "complex64"),
-    ],
-)
-def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
-    """
-    Test that parse_fill_value(fill_value, dtype) casts fill_value to the given dtype.
-    """
-    parsed = parse_fill_value(fill_value, dtype_str)
-
-    if np.isnan(fill_value):
-        assert np.isnan(parsed)
-    else:
-        assert parsed == DataType(dtype_str).to_numpy().type(fill_value)
-
-
-@pytest.mark.parametrize("fill_value", ["not a valid value"])
-@pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes, *complex_dtypes])
-def test_parse_fill_value_invalid_value(fill_value: Any, dtype_str: str) -> None:
-    """
-    Test that parse_fill_value(fill_value, dtype) raises ValueError for invalid values.
-    This test excludes bool because the bool constructor takes anything.
-    """
-    with pytest.raises(ValueError):
-        parse_fill_value(fill_value, dtype_str)
-
-
-@pytest.mark.parametrize("fill_value", [[1.0, 0.0], [0, 1], complex(1, 1), np.complex64(0)])
+@pytest.mark.parametrize("fill_value", [[1.0, 0.0], [0, 1]])
 @pytest.mark.parametrize("dtype_str", [*complex_dtypes])
-def test_parse_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
+def test_jsonify_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     """
     Test that parse_fill_value(fill_value, dtype) correctly handles complex values represented
     as length-2 sequences
     """
-    dtype = DataType(dtype_str)
-    if isinstance(fill_value, list):
-        expected = dtype.to_numpy().type(complex(*fill_value))
-    else:
-        expected = dtype.to_numpy().type(fill_value)
-    assert expected == parse_fill_value(fill_value, dtype_str)
-
-
-@pytest.mark.parametrize("fill_value", [[1.0, 0.0, 3.0], [0, 1, 3], [1]])
-@pytest.mark.parametrize("dtype_str", [*complex_dtypes])
-def test_parse_fill_value_complex_invalid(fill_value: Any, dtype_str: str) -> None:
-    """
-    Test that parse_fill_value(fill_value, dtype) correctly rejects sequences with length not
-    equal to 2
-    """
-    match = (
-        f"Got an invalid fill value for complex data type {dtype_str}."
-        f"Expected a sequence with 2 elements, but {fill_value} has "
-        f"length {len(fill_value)}."
-    )
-    with pytest.raises(ValueError, match=re.escape(match)):
-        parse_fill_value(fill_value=fill_value, dtype=dtype_str)
+    zarr_format = 3
+    dtype = get_data_type_from_native_dtype(dtype_str)
+    expected = dtype.to_native_dtype().type(complex(*fill_value))
+    observed = dtype.from_json_scalar(fill_value, zarr_format=zarr_format)
+    assert observed == expected
+    assert dtype.to_json_scalar(observed, zarr_format=zarr_format) == tuple(fill_value)
 
 
 @pytest.mark.parametrize("fill_value", [{"foo": 10}])
@@ -203,8 +143,9 @@ def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid non-sequential types.
     This test excludes bool because the bool constructor takes anything.
     """
-    with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
-        parse_fill_value(fill_value, dtype_str)
+    dtype_instance = get_data_type_from_native_dtype(dtype_str)
+    with pytest.raises(TypeError, match=f"Invalid type: {fill_value}"):
+        dtype_instance.from_json_scalar(fill_value, zarr_format=3)
 
 
 @pytest.mark.parametrize(
@@ -223,14 +164,14 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
     This test excludes bool because the bool constructor takes anything, and complex because
     complex values can be created from length-2 sequences.
     """
-    match = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype_str}"
-    with pytest.raises(TypeError, match=re.escape(match)):
-        parse_fill_value(fill_value, dtype_str)
+    dtype_instance = get_data_type_from_native_dtype(dtype_str)
+    with pytest.raises(TypeError, match=re.escape(f"Invalid type: {fill_value}")):
+        dtype_instance.from_json_scalar(fill_value, zarr_format=3)
 
 
 @pytest.mark.parametrize("chunk_grid", ["regular"])
 @pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
-@pytest.mark.parametrize("codecs", [[BytesCodec()]])
+@pytest.mark.parametrize("codecs", [[BytesCodec(endian=None)]])
 @pytest.mark.parametrize("fill_value", [0, 1])
 @pytest.mark.parametrize("chunk_key_encoding", ["v2", "default"])
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
@@ -247,7 +188,7 @@ def test_metadata_to_dict(
     storage_transformers: tuple[dict[str, JSON]] | None,
 ) -> None:
     shape = (1, 2, 3)
-    data_type = DataType.uint8
+    data_type_str = "uint8"
     if chunk_grid == "regular":
         cgrid = {"name": "regular", "configuration": {"chunk_shape": (1, 1, 1)}}
 
@@ -271,7 +212,7 @@ def test_metadata_to_dict(
         "node_type": "array",
         "shape": shape,
         "chunk_grid": cgrid,
-        "data_type": data_type,
+        "data_type": data_type_str,
         "chunk_key_encoding": cke,
         "codecs": tuple(c.to_dict() for c in codecs),
         "fill_value": fill_value,
@@ -315,50 +256,32 @@ def test_json_indent(indent: int):
         assert d == json.dumps(json.loads(d), indent=indent).encode()
 
 
-# @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
-# @pytest.mark.parametrize("precision", ["ns", "D"])
-# async def test_datetime_metadata(fill_value: int, precision: str) -> None:
-#     metadata_dict = {
-#         "zarr_format": 3,
-#         "node_type": "array",
-#         "shape": (1,),
-#         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-#         "data_type": f"<M8[{precision}]",
-#         "chunk_key_encoding": {"name": "default", "separator": "."},
-#         "codecs": (),
-#         "fill_value": np.datetime64(fill_value, precision),
-#     }
-#     metadata = ArrayV3Metadata.from_dict(metadata_dict)
-#     # ensure there isn't a TypeError here.
-#     d = metadata.to_buffer_dict(default_buffer_prototype())
-
-#     result = json.loads(d["zarr.json"].to_bytes())
-#     assert result["fill_value"] == fill_value
-
-
-def test_invalid_dtype_raises() -> None:
+@pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
+@pytest.mark.parametrize("precision", ["ns", "D"])
+async def test_datetime_metadata(fill_value: int, precision: str) -> None:
+    dtype = DateTime64(unit=precision)
     metadata_dict = {
         "zarr_format": 3,
         "node_type": "array",
         "shape": (1,),
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": "<M8[ns]",
+        "data_type": dtype.to_json(zarr_format=3),
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": (),
-        "fill_value": np.datetime64(0, "ns"),
+        "codecs": (BytesCodec(),),
+        "fill_value": dtype.to_json_scalar(
+            dtype.to_native_dtype().type(fill_value, dtype.unit), zarr_format=3
+        ),
     }
-    with pytest.raises(ValueError, match=r"Invalid Zarr format 3 data_type: .*"):
-        ArrayV3Metadata.from_dict(metadata_dict)
+    metadata = ArrayV3Metadata.from_dict(metadata_dict)
+    # ensure there isn't a TypeError here.
+    d = metadata.to_buffer_dict(default_buffer_prototype())
 
-
-@pytest.mark.parametrize("data", ["datetime64[s]", "foo", object()])
-def test_parse_invalid_dtype_raises(data):
-    with pytest.raises(ValueError, match=r"Invalid Zarr format 3 data_type: .*"):
-        DataType.parse(data)
+    result = json.loads(d["zarr.json"].to_bytes())
+    assert result["fill_value"] == fill_value
 
 
 @pytest.mark.parametrize(
-    ("data_type", "fill_value"), [("uint8", -1), ("int32", 22.5), ("float32", "foo")]
+    ("data_type", "fill_value"), [("uint8", {}), ("int32", [0, 1]), ("float32", "foo")]
 )
 async def test_invalid_fill_value_raises(data_type: str, fill_value: float) -> None:
     metadata_dict = {
@@ -368,10 +291,11 @@ async def test_invalid_fill_value_raises(data_type: str, fill_value: float) -> N
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
         "data_type": data_type,
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": (),
+        "codecs": ({"name": "bytes"},),
         "fill_value": fill_value,  # this is not a valid fill value for uint8
     }
-    with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
+    # multiple things can go wrong here, so we don't match on the error message.
+    with pytest.raises(TypeError):
         ArrayV3Metadata.from_dict(metadata_dict)
 
 
@@ -399,17 +323,3 @@ async def test_special_float_fill_values(fill_value: str) -> None:
     elif fill_value == "-Infinity":
         assert np.isneginf(m.fill_value)
         assert d["fill_value"] == "-Infinity"
-
-
-@pytest.mark.parametrize("dtype_str", dtypes)
-def test_dtypes(dtype_str: str) -> None:
-    dt = DataType(dtype_str)
-    np_dtype = dt.to_numpy()
-    if dtype_str not in vlen_dtypes:
-        # we can round trip "normal" dtypes
-        assert dt == DataType.from_numpy(np_dtype)
-        assert dt.byte_count == np_dtype.itemsize
-        assert dt.has_endianness == (dt.byte_count > 1)
-    else:
-        # return type for vlen types may vary depending on numpy version
-        assert dt.byte_count is None
