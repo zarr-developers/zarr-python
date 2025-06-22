@@ -80,6 +80,9 @@ test = [
     "mypy",
     "hypothesis",
     "pytest-xdist",
+    "packaging",
+    "tomlkit",
+    "uv"
 ]
 remote_tests = [
     'zarr[remote]',
