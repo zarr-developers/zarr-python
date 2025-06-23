@@ -1,33 +1,54 @@
-Data types
-==========
+Array Data types
+================
 
 Zarr's data type model
 ----------------------
 
-Every Zarr array has a "data type", which defines the meaning and physical layout of the
-array's elements. As Zarr Python is tightly integrated with `NumPy <https://numpy.org/doc/stable/>`_,
-it's easy to create arrays with NumPy data types:
+Zarr is designed for interperability with NumPy, so if you are familiar with NumPy or any other
+N-dimensional array library then Zarr's model for array data types should seem familiar. But Zarr
+data types have extra constraints that are important to be aware of.
 
-.. code-block:: python
+Zarr arrays operate under an essential design constraint: Unlike NumPy arrays, Zarr arrays
+are designed to stored and accessed by other Zarr implementations. This means that, among other things,
+Zarr data types must be serializable to metadata documents in accordance with the Zarr specifications,
+and this adds some unique texture to the Zarr data type model.
 
-  >>> import zarr
-  >>> import numpy as np
-  >>> z = zarr.create_array(store={}, shape=(10,), dtype=np.dtype('uint8'))
-  >>> z
-  <Array memory:... shape=(10,) dtype=uint8>
+The following sections will explain Zarr's data type model in greater detail, and demonstrate the
+Zarr Python APIs for working with Zarr data types.
 
-Unlike NumPy arrays, Zarr arrays are designed to accessed by Zarr
-implementations in different programming languages. This means Zarr data types must be interpreted
-correctly when clients read an array. Each Zarr data type defines procedures for
-encoding and decoding both the data type itself, and scalars from that data type to and from Zarr array metadata. And these serialization procedures
-depend on the Zarr format.
+Array data types
+^^^^^^^^^^^^^^^^
+
+Every Zarr array has a data type, which defines the meaning of the array's elements. An array's data
+type is encoded in the metadata for the array, which means that a declaration of the
+data type of an array must be `JSON`-serializable.
+
+In Zarr V2, the data type of an array is stored in the ``dtype`` field in array metadata.
+Zarr V3 changed the name of this field to ``data_type``, and also defined new rules for the values
+assignable to the ``data_type`` field.
+
+For example, in Zarr V2, the boolean array data type was represented in array metadata as the
+string ``"|b1"``. In Zarr V3, the same type is represented as the string ``"bool"``.
+
+Scalars
+^^^^^^^
+
+Zarr also defines how array elements, i.e. scalars, are encoded in array metadata. This is necessary
+because Zarr uses a field in array metadata to define a default value for chunks that are not stored.
+This field, called ``fill_value`` in both Zarr V2 and Zarr V3 metadata documents, contains a
+``JSON`` value that can be decoded to a scalar value compatible with the array's data type.
+
+For the boolean data type, the scalar encoding is simple -- booleans are natively supported by
+``JSON``, so zarr saves booleans as ``JSON`` booleans. Other scalars, like floats or raw bytes, have
+more elaborate encoding schemes, and in some cases this scheme depends on the Zarr format version.
+
 
 Data types in Zarr version 2
 -----------------------------
 
 Version 2 of the Zarr format defined its data types relative to
 `NumPy's data types <https://numpy.org/doc/2.1/reference/arrays.dtypes.html#data-type-objects-dtype>`_,
-and added a few non-NumPy data types as well. Thus the JSON identifier for a NumPy-compatible data
+and added a few non-NumPy data types as well. With one exception, the Zarr V2 JSON identifier for a data
 type is just the NumPy ``str`` attribute of that data type:
 
 .. code-block:: python
@@ -38,45 +59,89 @@ type is just the NumPy ``str`` attribute of that data type:
   >>>
   >>> store = {}
   >>> np_dtype = np.dtype('int64')
+  >>> np_dtype.str
+  '<i8'
   >>> z = zarr.create_array(store=store, shape=(1,), dtype=np_dtype, zarr_format=2)
   >>> dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
   >>> dtype_meta
   '<i8'
-  >>> assert dtype_meta == np_dtype.str
 
 .. note::
+
    The ``<`` character in the data type metadata encodes the
    `endianness <https://numpy.org/doc/2.2/reference/generated/numpy.dtype.byteorder.html>`_,
    or "byte order", of the data type. Following NumPy's example,
    in Zarr version 2 each data type has an endianness where applicable.
    However, Zarr version 3 data types do not store endianness information.
 
-In addition to defining a representation of the data type itself (which in the example above was
-just a simple string ``"<i8"``), Zarr also
-defines a metadata representation for scalars associated with each data type. This is necessary
-because Zarr arrays have a ``JSON``-serializable ``fill_value`` attribute that defines a scalar value to use when reading
-uninitialized chunks of a Zarr array.
-Integer and float scalars are stored as ``JSON`` numbers, except for special floats like ``NaN``,
-positive infinity, and negative infinity, which are stored as strings.
+There are two special cases to consider: `"structured" data types <#structured-data-type>`_, and
+`"object" <#object-data-type>` data types.
 
-More broadly, each Zarr data type defines its own rules for how scalars of that type are stored in
-``JSON``.
+Structured data type
+^^^^^^^^^^^^^^^^^^^^
 
+NumPy allows the construction of a so-called "structured" data type comprised of an ordered collection
+of named fields, where each field is itself a distinct NumPy data type. See the NumPy documentation
+`here <https://numpy.org/doc/stable/user/basics.rec.html>`_ .
+
+Crucially, NumPy does not use a special data type for structured data types -- instead, NumPy
+implemented structured data types as an option feature of the so-called "Void" data type, which models
+arbitrary fixed-size byte strings. Since the ``str`` attribute of an unstructured NumPy void
+data type is the same as the ``str`` of Numpy structured data type, Zarr V2 uses a special data type
+encoding for structured data types that distinguishes the two.
+
+For example:
+
+.. code-block:: python
+
+  >>> store = {}
+  >>> np_dtype = np.dtype([('field_a', '>i2'), ('field_b', '>f4')])
+  >>> np_dtype.str
+  '|V6'
+  >>> z = zarr.create_array(store=store, shape=(1,), dtype=np_dtype, zarr_format=2)
+  >>> dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
+  >>> dtype_meta
+  [['field_a', '>i2'], ['field_b', '>f4']]
+
+Object data type
+^^^^^^^^^^^^^^^^
+
+The NumPy "object" is essentially an array of references to arbitrary Python objects.
+It can model arrays of variable-length UTF-8 strings, or arrays of
+variable-length byte strings, or even arrays of variable-length arrays, each with their own distinct data type.
+
+This makes the "object" data type expressive, but also complicated for Zarr V2. Remember that, with
+the exception of "structured" data types, Zarr V2 uses the NumPy string representation of a data type
+to identify it in metadata.
+
+An "object" array of variable-length UTF-8 strings, and an "object" array of variable-length byte strings,
+have logically separate data types, but in NumPy they would both have the same array data type: "object".
+
+So Zarr V2 disambiguated different "object" data type arrays on the basis of their chunk encoding,
+i.e. the codecs declared in the ``filters`` and ``compressor`` attributes of array metadata.
+
+If an array with data type "object" used the `"vlen-utf8"` codec, then it was interpreted as an
+array of variable-length strings. If an array with data type "object" used the ``"vlen-bytes"``
+codec, then it was interpreted as an array of variable-length byte strings.
+
+This means that the ``dtype`` field alone does not specify a data type in Zarr V2. The name of the
+object codec used, if one was used, is also required. Although this fact can be ignored for many
+simple numeric data types, any comprehensive approach to Zarr V2 data types must either reject
+the "object" data types, or include the "object codec" identifier in the ``JSON`` form
+of the basic data type model.
 
 Data types in Zarr version 3
 -----------------------------
 
-Zarr V3 brings several key changes to how data types are represented:
+The NumPy-based Zarr V2 data type representation was effective for simple data types but struggled
+for more complex data types, like "object" and "structured" data types. To address these limitations,
+Zarr V3 brought several key changes to how data types are represented:
 
-- Zarr V3 identifies the basic data types as strings like ``"int8"``, ``"int16"``, etc.
+- Instead of copying NumPy character codecs, Zarr V3 defines an identifier for each data type.
+  The basic data types are identified by strings like ``"int8"``, ``"int16"``, etc, and data types
+  that require a configuration can be identified by a ``JSON`` object.
 
-  By contrast, Zarr V2 uses the NumPy character code representation for data types:
-  In Zarr V2, ``int8`` is represented as ``"|i1"``.
-- A Zarr V3 data type does not have endianness. This is a departure from Zarr V2, where multi-byte
-  data types are defined with endianness information. Instead, Zarr V3 requires that endianness,
-  where applicable, is specified in the ``codecs`` attribute of array metadata.
-- While some Zarr V3 data types are identified by strings, others can be identified by a ``JSON``
-  object. For example, consider this specification of a ``datetime`` data type:
+  For example, this ``JSON`` object declares a ``datetime`` data type:
 
   .. code-block:: json
 
@@ -89,34 +154,79 @@ Zarr V3 brings several key changes to how data types are represented:
     }
 
 
-  Zarr V2 generally uses structured string representations to convey the same information. The
-  data type given in the previous example would be represented as the string ``">M[10s]"`` in
-  Zarr V2. This is more compact, but can be harder to parse.
+- Zarr V3 data types does not have endianness. This is a departure from Zarr V2, where multi-byte
+  data types are defined with endianness information. Instead, Zarr V3 requires that the endianness
+  of encoded array chunks is specified in the ``codecs`` attribute of array metadata. And the Zarr
+  V3 spec leaves the in-memory endianness of decoded array chunks as an implementation detail.
 
 For more about data types in Zarr V3, see the
 `V3 specification <https://zarr-specs.readthedocs.io/en/latest/v3/data-types/index.html>`_.
+
 
 Data types in Zarr Python
 -------------------------
 
 The two Zarr formats that Zarr Python supports specify data types in two different ways:
-data types in Zarr version 2 are encoded as NumPy-compatible strings, while data types in Zarr version
-3 are encoded as either strings or ``JSON`` objects,
-and the Zarr V3 data types don't have any associated endianness information, unlike Zarr V2 data types.
+data types in Zarr version 2 are encoded as NumPy-compatible strings
+(or lists, in the case of structured data types), while data types in Zarr V3 are encoded as either
+strings or ``JSON`` objects, and the Zarr V3 data types don't have any associated endianness
+information, unlike Zarr V2 data types.
 
-To abstract over these syntactical and semantic differences, Zarr Python uses a class called
-`ZDType <../api/zarr/dtype/index.html#zarr.dtype.ZDType>`_ provide Zarr V2 and Zarr V3 compatibility
-routines for ""native" data types. In this context, a "native" data type is a Python class,
-typically defined in another library, that models an array's data type. For example, ``np.uint8`` is a native
-data type defined in NumPy, which Zarr Python wraps with a ``ZDType`` instance called
-`UInt8 <../api/zarr/dtype/index.html#zarr.dtype.ZDType>`_.
+Zarr Python needs to support both Zarr V2 and V3, which means we need to abstract over these differences
+We do this with an abstract Zarr data type class: `ZDType <../api/zarr/dtype/index.html#zarr.dtype.ZDType>`_,
+which provides Zarr V2 and Zarr V3 compatibility routines for "native" data types.
+
+In this context, a "native" data type is a Python class, typically defined in another library, that
+models an array's data type. For example, ``np.dtypes.UInt8DType`` is a native data type defined in NumPy.
+Zarr Python wraps the NumPy ``uint8`` with a ``ZDType`` instance called `UInt8 <../api/zarr/dtype/index.html#zarr.dtype.ZDType>`_.
+
+As of this writing the only native data types Zarr Python supports are NumPy data types. We could
+avoid the "native data type" jargon and just say "NumPy data type", but we don't want to rule out the
+possibility of using non-NumPy array backends in the future.
 
 Each data type supported by Zarr Python is modeled by ``ZDType`` subclass, which provides an
 API for the following operations:
 
-- Wrapping / unwrapping a native data type
+- Encoding / decoding a native data type
 - Encoding / decoding a data type to / from Zarr V2 and Zarr V3 array metadata.
 - Encoding / decoding a scalar value to / from Zarr V2 and Zarr V3 array metadata.
+- Casting a Python object to a scalar value consistent with the data type
+
+The following section lists the data types built in to Zarr Python.
+
+Boolean types
+^^^^^^^^^^^^^
+- `Boolean <../api/zarr/dtype/index.html#zarr.dtype.Bool>`_
+
+Integral types
+^^^^^^^^^^^^^^
+- `Signed 8-bit integer <../api/zarr/dtype/index.html#zarr.dtype.Int8>`_
+- `Signed 16-bit integer <../api/zarr/dtype/index.html#zarr.dtype.Int16>`_
+- `Signed 32-bit integer <../api/zarr/dtype/index.html#zarr.dtype.Int32>`_
+- `Signed 64-bit integer <../api/zarr/dtype/index.html#zarr.dtype.Int64>`_
+- `Unsigned 8-bit integer <../api/zarr/dtype/index.html#zarr.dtype.UInt8>`_
+- `Unsigned 16-bit integer <../api/zarr/dtype/index.html#zarr.dtype.UInt16>`_
+- `Unsigned 32-bit integer <../api/zarr/dtype/index.html#zarr.dtype.UInt32>`_
+- `Unsigned 64-bit integer <../api/zarr/dtype/index.html#zarr.dtype.UInt64>`_
+
+Floating-point types
+^^^^^^^^^^^^^^^^^^^^
+- `16-bit floating-point <../api/zarr/dtype/index.html#zarr.dtype.Float16>`_
+- `32-bit floating-point <../api/zarr/dtype/index.html#zarr.dtype.Float32>`_
+- `64-bit floating-point <../api/zarr/dtype/index.html#zarr.dtype.Float64>`_
+- `64-bit complex floating-point <../api/zarr/dtype/index.html#zarr.dtype.Complex64>`_
+- `128-bit complex floating-point <../api/zarr/dtype/index.html#zarr.dtype.Complex128>`_
+
+String types
+^^^^^^^^^^^^
+- `Fixed-length UTF-32 string <../api/zarr/dtype/index.html#zarr.dtype.FixedLengthUTF32>`_
+- `Variable-length UTF-8 string <../api/zarr/dtype/index.html#zarr.dtype.VariableLengthUTF8>`_
+
+Byte string types
+^^^^^^^^^^^^^^^^^
+- `Fixed-length null-terminated bytes <../api/zarr/dtype/index.html#zarr.dtype.NullTerminatedBytes>`_
+- `Fixed-length raw bytes <../api/zarr/dtype/index.html#zarr.dtype.RawBytes>`_
+- `Variable-length bytes <../api/zarr/dtype/index.html#zarr.dtype.VariableLengthBytes>`_
 
 
 Example Usage
@@ -145,13 +255,27 @@ Get the default scalar value for the data type:
   >>> assert default_value == np.int8(0)
 
 
-Serialize to JSON for Zarr V2 and V3
+Serialize to JSON for Zarr V2
 
 .. code-block:: python
 
   >>> json_v2 = int8.to_json(zarr_format=2)
   >>> json_v2
   {'name': '|i1', 'object_codec_id': None}
+
+.. note::
+
+  The representation returned by ``to_json`` is more abstract than the literal contents of Zarr V2
+  array metadata, because the ``JSON`` representation used by the `ZDType` classes must be distinct across
+  different data types. Zarr V2 identifies multiple distinct data types with the "object" data type
+  identifier ``"|O"``, which means extra information is needed to disambiguate these data types from
+  one another. That's the reason for the ``object_codec_id`` field you see here. See the
+  `section <#object-data-type>`_ on the "object" data type for more information.
+
+And V3:
+
+.. code-block:: python
+
   >>> json_v3 = int8.to_json(zarr_format=3)
   >>> json_v3
   'int8'
@@ -261,9 +385,9 @@ data type instance if and only if exactly 1 of those constructor invocations was
 In plain language, we take some user input (a NumPy array), offer it to all the known data type
 classes, and return an instance of the one data type class that could accept that user input.
 
-We want to avoid a situation where the same NumPy data type matches multiple Zarr data types. I.e.,
+We want to avoid a situation where the same native data type matches multiple Zarr data types. I.e.,
 a NumPy data type should uniquely specify a single Zarr data type. But data type resolution is
 dynamic, so it's not possible to guarantee this uniqueness constraint. So we attempt data type
-resolution against every data type class, and if for some reason a NumPy data type matches multiple
+resolution against every data type class, and if for some reason a native data type matches multiple
 Zarr data types, we treat this as an error and raise an exception.
 

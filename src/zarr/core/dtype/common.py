@@ -151,17 +151,23 @@ class DataTypeValidationError(ValueError): ...
 class ScalarTypeValidationError(ValueError): ...
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class HasLength:
     """
     A mix-in class for data types with a length attribute, such as fixed-size collections
     of unicode strings, or bytes.
+
+    Attributes
+    ----------
+    length : int
+        The length of the scalars belonging to this data type. Note that this class does not assign
+        a unit to the length. Child classes may assign units.
     """
 
     length: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class HasEndianness:
     """
     A mix-in class for data types with an endianness attribute
@@ -170,7 +176,7 @@ class HasEndianness:
     endianness: EndiannessStr = "little"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class HasItemSize:
     """
     A mix-in class for data types with an item size attribute.
@@ -183,7 +189,7 @@ class HasItemSize:
         raise NotImplementedError
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class HasObjectCodec:
     """
     A mix-in class for data types that require an object codec id.

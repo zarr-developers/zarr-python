@@ -41,11 +41,33 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, HasItemSize):
+    """
+    A base class for complex data types
+    """
+
     # This attribute holds the possible zarr v2 JSON names for the data type
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        """
+        Create an instance of this data type from a NumPy complex dtype.
+
+        Parameters
+        ----------
+        dtype : TBaseDType
+            The native dtype to convert.
+
+        Returns
+        -------
+        Self
+            An instance of this data type with the specified endianness.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the dtype is not compatible with this data type.
+        """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
@@ -53,6 +75,15 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         )
 
     def to_native_dtype(self) -> TComplexDType_co:
+        """
+        Convert this complex data type to a NumPy complex dtype with the appropriate byte order.
+
+        Returns
+        -------
+        TComplexDType_co
+            A NumPy data type object representing the complex data type with the specified byte order.
+        """
+
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
@@ -60,6 +91,19 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
     def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
         """
         Check that the input is a valid JSON representation of this data type.
+
+        The input data must be a mapping that contains a "name" key that is one of
+        the strings from cls._zarr_v2_names and an "object_codec_id" key that is None.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data to check.
+
+        Returns
+        -------
+        bool
+            True if the input is a valid JSON representation, False otherwise.
         """
         return (
             check_dtype_spec_v2(data)
@@ -69,10 +113,45 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[str]:
+        """
+        Check that the input is a valid JSON representation of this data type in Zarr V3.
+
+        This method verifies that the provided data matches the expected Zarr V3
+        representation, which is the string specified by the class-level attribute _zarr_v3_name.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data to check.
+
+        Returns
+        -------
+        TypeGuard[str]
+            True if the input is a valid representation of this data type in Zarr V3, False otherwise.
+        """
+
         return data == cls._zarr_v3_name
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this complex data type from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this complex data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of this complex data type.
+        """
         if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
             # annoying string parsing.
@@ -83,6 +162,24 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this complex data type from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this complex data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of this complex data type.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {cls._zarr_v3_name}."
@@ -96,18 +193,25 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
     def to_json(self, zarr_format: ZarrFormat) -> DTypeConfig_V2[str, None] | str:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Serialize this complex data type to a JSON-compatible representation.
 
         Parameters
         ----------
         zarr_format : ZarrFormat
-            The zarr format version.
+            The Zarr format version. Supported values are 2 and 3.
 
         Returns
         -------
-        str
-            The JSON-serializable representation of the wrapped data type
+        DTypeConfig_V2[str, None] | str
+            If `zarr_format` is 2, a dictionary with "name" and "object_codec_id" is returned.
+            If `zarr_format` is 3, a string representation of the complex data type is returned.
+
+        Raises
+        ------
+        ValueError
+            If `zarr_format` is not 2 or 3.
         """
+
         if zarr_format == 2:
             return {"name": self.to_native_dtype().str, "object_codec_id": None}
         elif zarr_format == 3:
@@ -115,12 +219,61 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[ComplexLike]:
+        """
+        Check that the input is a scalar complex value.
+
+        Parameters
+        ----------
+        data : object
+            The value to check.
+
+        Returns
+        -------
+        TypeGuard[ComplexLike]
+            True if the input is a scalar complex value, False otherwise.
+        """
         return isinstance(data, ComplexLike)
 
     def _cast_scalar_unchecked(self, data: ComplexLike) -> TComplexScalar_co:
+        """
+        Cast the provided scalar data to the native scalar type of this complex data type.
+
+        Parameters
+        ----------
+        data : ComplexLike
+            The data to cast.
+
+        Returns
+        -------
+        TComplexScalar_co
+            The casted data as a numpy complex scalar.
+
+        Notes
+        -----
+        This method does not perform any type checking.
+        The input data must be a scalar complex value.
+        """
         return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
     def cast_scalar(self, data: object) -> TComplexScalar_co:
+        """
+        Attempt to cast a given object to a numpy complex scalar.
+
+        Parameters
+        ----------
+        data : object
+            The data to be cast to a numpy complex scalar.
+
+        Returns
+        -------
+        TComplexScalar_co
+            The data cast as a numpy complex scalar.
+
+        Raises
+        ------
+        TypeError
+            If the data cannot be converted to a numpy complex scalar.
+        """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
         msg = f"Cannot convert object with type {type(data)} to a numpy float scalar."
@@ -193,9 +346,25 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
 @dataclass(frozen=True, kw_only=True)
 class Complex64(BaseComplex[np.dtypes.Complex64DType, np.complex64]):
+    """
+    A Zarr data type for arrays containing 64 bit complex floats.
+
+    This class wraps the NumPy ``np.dtypes.Complex64DType`` data type. Scalars for this data type
+    are instances of ``np.complex64``.
+
+    Attributes
+    ----------
+    dtype_cls : Type[np.dtypes.Complex64DType]
+        The numpy dtype class for this data type.
+    _zarr_v3_name : ClassVar[Literal["complex64"]]
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal[">c8"], Literal["<c8"]]]
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.Complex64DType
     _zarr_v3_name: ClassVar[Literal["complex64"]] = "complex64"
-    _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c8", "<c8")
+    _zarr_v2_names: ClassVar[tuple[Literal[">c8"], Literal["<c8"]]] = (">c8", "<c8")
 
     @property
     def item_size(self) -> int:
@@ -204,9 +373,25 @@ class Complex64(BaseComplex[np.dtypes.Complex64DType, np.complex64]):
 
 @dataclass(frozen=True, kw_only=True)
 class Complex128(BaseComplex[np.dtypes.Complex128DType, np.complex128], HasEndianness):
+    """
+    A Zarr data type for arrays containing 64 bit complex floats.
+
+    This class wraps the NumPy ``np.dtypes.Complex128DType`` data type. Scalars for this data type
+    are instances of ``np.complex128``.
+
+    Attributes
+    ----------
+    dtype_cls : Type[np.dtypes.Complex128DType]
+        The numpy dtype class for this data type.
+    _zarr_v3_name : ClassVar[Literal["complex128"]]
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal[">c16"], Literal["<c16"]]]
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.Complex128DType
     _zarr_v3_name: ClassVar[Literal["complex128"]] = "complex128"
-    _zarr_v2_names: ClassVar[tuple[str, ...]] = (">c16", "<c16")
+    _zarr_v2_names: ClassVar[tuple[Literal[">c16"], Literal["<c16"]]] = (">c16", "<c16")
 
     @property
     def item_size(self) -> int:

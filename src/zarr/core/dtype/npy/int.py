@@ -53,14 +53,60 @@ IntLike = SupportsInt | SupportsIndex | bytes | str
 
 @dataclass(frozen=True)
 class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
-    # This attribute holds the possible zarr V2 JSON names for the data type
+    """
+    A base class for integer data types in Zarr.
+
+    This class provides methods for serialization and deserialization of integer types
+    in both Zarr v2 and v3 formats, as well as methods for checking and casting scalars.
+
+    Attributes
+    ----------
+    _zarr_v2_names : ClassVar[tuple[str, ...]]
+        Possible Zarr V2 JSON names for the data type.
+
+    Methods
+    -------
+    _check_json_v2(data: object) -> TypeGuard[DTypeConfig_V2[str, None]]:
+        Check if input is a valid JSON representation for Zarr v2.
+    _check_json_v3(data: object) -> TypeGuard[str]:
+        Check if JSON value is consistent with Zarr v3 for this data type.
+    _check_scalar(data: object) -> TypeGuard[IntLike]:
+        Check if a Python object is IntLike.
+    _cast_scalar_unchecked(data: IntLike) -> TIntScalar_co:
+        Create an integer without type checking of the input.
+    cast_scalar(data: object) -> TIntScalar_co:
+        Convert object to numpy integer, raising TypeError if invalid.
+    default_scalar() -> TIntScalar_co:
+        Get the default value, which is 0 cast to this dtype.
+    from_json_scalar(data: JSON, *, zarr_format: ZarrFormat) -> TIntScalar_co:
+        Read a JSON-serializable value as a numpy int scalar.
+    to_json_scalar(data: object, *, zarr_format: ZarrFormat) -> int:
+        Convert an object to JSON-serializable scalar.
+    """
+
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
     @classmethod
     def _check_json_v2(cls, data: object) -> TypeGuard[DTypeConfig_V2[str, None]]:
         """
-        Check that the input is a valid JSON representation of this data type.
+        Check that the input is a valid JSON representation of this integer data type in Zarr V2.
+
+        This method verifies that the provided data matches the expected Zarr V2 representation
+        for this data type. The input data must be a mapping that contains a "name" key that is
+        one of the strings from cls._zarr_v2_names and an "object_codec_id" key that is None.
+
+        Parameters
+        ----------
+        data : object
+            The JSON data to check.
+
+        Returns
+        -------
+        TypeGuard[DTypeConfig_V2[str, None]]
+            True if the input is a valid representation of this integer data type in Zarr V2,
+            False otherwise.
         """
+
         return (
             check_dtype_spec_v2(data)
             and data["name"] in cls._zarr_v2_names
@@ -70,23 +116,82 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
     @classmethod
     def _check_json_v3(cls, data: object) -> TypeGuard[str]:
         """
-        Check that a JSON value is consistent with the zarr v3 spec for this data type.
+        Check if JSON value is consistent with Zarr v3 for this data type.
+
+        This method verifies whether the provided data matches the expected Zarr v3
+        representation for this data type, which is the string specified by the
+        class-level attribute _zarr_v3_name.
+
+        Parameters
+        ----------
+        data : object
+            The JSON data to check.
+
+        Returns
+        -------
+        TypeGuard[str]
+            True if the input is a valid representation of this data type in Zarr v3,
+            False otherwise.
         """
         return data == cls._zarr_v3_name
 
     def _check_scalar(self, data: object) -> TypeGuard[IntLike]:
         """
-        Check that a python object is IntLike
+        Check if the input object is of an IntLike type.
+
+        This method verifies whether the provided data can be considered as an integer-like
+        value, which includes objects supporting integer conversion.
+
+        Parameters
+        ----------
+        data : object
+            The data to check.
+
+        Returns
+        -------
+        TypeGuard[IntLike]
+            True if the data is IntLike, False otherwise.
         """
+
         return isinstance(data, IntLike)
 
     def _cast_scalar_unchecked(self, data: IntLike) -> TIntScalar_co:
         """
-        Create an integer without any type checking of the input.
+        Casts a given scalar value to the native integer scalar type without type checking.
+
+        Parameters
+        ----------
+        data : IntLike
+            The scalar value to cast.
+
+        Returns
+        -------
+        TIntScalar_co
+            The casted integer scalar of the native dtype.
         """
+
         return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
     def cast_scalar(self, data: object) -> TIntScalar_co:
+        """
+        Attempt to cast a given object to a numpy integer scalar.
+
+        Parameters
+        ----------
+        data : object
+            The data to be cast to a numpy integer scalar.
+
+        Returns
+        -------
+        TIntScalar_co
+            The data cast as a numpy integer scalar.
+
+        Raises
+        ------
+        TypeError
+            If the data cannot be converted to a numpy integer scalar.
+        """
+
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
         msg = f"Cannot convert object with type {type(data)} to a numpy integer."
@@ -94,11 +199,11 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
     def default_scalar(self) -> TIntScalar_co:
         """
-        Get the default value, which is 0 cast to this dtype
+        Get the default value, which is 0 cast to this dtype.
 
         Returns
         -------
-        Int scalar
+        TIntScalar_co
             The default value.
         """
         return self._cast_scalar_unchecked(0)
@@ -116,8 +221,13 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         Returns
         -------
-        TScalar_co
-            The numpy scalar.
+        TIntScalar_co
+            The numpy int scalar.
+
+        Raises
+        ------
+        TypeError
+            If the input is not a valid integer type.
         """
         if check_json_int(data):
             return self._cast_scalar_unchecked(data)
@@ -125,11 +235,12 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> int:
         """
-        Convert an object to JSON-serializable scalar.
+        Convert an object to a JSON serializable scalar. For the integer data types,
+        the JSON form is a plain integer.
 
         Parameters
         ----------
-        data : _BaseScalar
+        data : object
             The value to convert.
         zarr_format : ZarrFormat
             The zarr format version.
@@ -144,6 +255,22 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
 @dataclass(frozen=True, kw_only=True)
 class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
+    """
+    A Zarr data type for 8-bit signed integers.
+
+    This class wraps the NumPy np.dtypes.Int8DType data type. Scalars for this data type are
+    instances of np.int8.
+
+    Attributes
+    ----------
+    dtype_cls : np.dtypes.Int8DType
+        The class of the underlying numpy dtype.
+    _zarr_v3_name : ClassVar[Literal["int8"]] = "int8"
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal["|i1"]]] = ("|i1",)
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.Int8DType
     _zarr_v3_name: ClassVar[Literal["int8"]] = "int8"
     _zarr_v2_names: ClassVar[tuple[Literal["|i1"]]] = ("|i1",)
@@ -151,7 +278,22 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create a Int8 from a np.dtype('int8') instance.
+        Create an Int8 from a np.dtype('int8') instance.
+
+        Parameters
+        ----------
+        dtype : TBaseDType
+            The np.dtype('int8') instance.
+
+        Returns
+        -------
+        Self
+            An instance of Int8.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input data type is not a valid representation of an Int8.
         """
         if cls._check_native_dtype(dtype):
             return cls()
@@ -160,10 +302,36 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         )
 
     def to_native_dtype(self: Self) -> np.dtypes.Int8DType:
+        """
+        Convert the Int8 instance to a np.dtype('int8') instance.
+
+        Returns
+        -------
+        np.dtypes.Int8DType
+            The np.dtype('int8') instance.
+        """
         return self.dtype_cls()
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an Int8 from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of Int8.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of an Int8.
+        """
         if cls._check_json_v2(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v2_names[0]!r}"
@@ -171,6 +339,24 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an Int8 from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of Int8.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of an Int8.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
@@ -186,7 +372,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[Literal["|i1"], None] | Literal["int8"]:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Convert the data type to a JSON-serializable form.
 
         Parameters
         ----------
@@ -195,8 +381,13 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 
         Returns
         -------
-        str
-            The JSON-serializable representation of the wrapped data type
+        DTypeConfig_V2 or str
+            The JSON-serializable representation of the data type.
+
+        Raises
+        ------
+        ValueError
+            If the zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
             return {"name": self._zarr_v2_names[0], "object_codec_id": None}
@@ -206,11 +397,33 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 
     @property
     def item_size(self) -> int:
+        """
+        Return the size of the item in bytes.
+
+        Returns
+        -------
+        int
+            The size of the item in bytes.
+        """
         return 1
 
 
 @dataclass(frozen=True, kw_only=True)
 class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
+    """
+    A Zarr data type for arrays containing 8-bit unsigned integers. This class wraps the NumPy
+    np.dtypes.UInt8DType data type. Scalars for this data type are instances np.uint8.
+
+    Attributes
+    ----------
+    dtype_cls : np.dtypes.UInt8DType
+        The class of the underlying numpy dtype.
+    _zarr_v3_name : ClassVar[Literal["uint8"]] = "uint8"
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal["|u1"]]] = ("|u1",)
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.UInt8DType
     _zarr_v3_name: ClassVar[Literal["uint8"]] = "uint8"
     _zarr_v2_names: ClassVar[tuple[Literal["|u1"]]] = ("|u1",)
@@ -218,7 +431,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create a Bool from a np.dtype('uint8') instance.
+        Create a UInt8 from a np.dtype('uint8') instance.
         """
         if cls._check_native_dtype(dtype):
             return cls()
@@ -227,10 +440,38 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         )
 
     def to_native_dtype(self: Self) -> np.dtypes.UInt8DType:
+        """
+        Create a NumPy unsigned 8-bit integer dtype instance from this UInt8 ZDType.
+
+        Returns
+        -------
+        np.dtypes.UInt8DType
+            The NumPy unsigned 8-bit integer dtype.
+        """
+
         return self.dtype_cls()
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of this data type.
+        """
+
         if cls._check_json_v2(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v2_names[0]!r}"
@@ -238,6 +479,24 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of this data type.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
@@ -253,37 +512,80 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[Literal["|u1"], None] | Literal["uint8"]:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Convert the data type to a JSON-serializable form.
 
         Parameters
         ----------
         zarr_format : ZarrFormat
-            The zarr format version.
+            The zarr format version. Supported values are 2 and 3.
 
         Returns
         -------
-        str
-            The JSON-serializable representation of the wrapped data type
+        DTypeConfig_V2[Literal["|u1"], None] | Literal["uint8"]
+            The JSON-serializable representation of the data type.
+
+        Raises
+        ------
+        ValueError
+            If `zarr_format` is not 2 or 3.
         """
         if zarr_format == 2:
+            # For Zarr format version 2, return a dictionary with the name and object codec ID.
             return {"name": self._zarr_v2_names[0], "object_codec_id": None}
         elif zarr_format == 3:
+            # For Zarr format version 3, return the v3 name as a string.
             return self._zarr_v3_name
+        # Raise an error if the zarr_format is neither 2 nor 3.
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     @property
     def item_size(self) -> int:
+        """
+        The size of the item in bytes. For an unsigned 8-bit integer, this is always 1 byte.
+        """
         return 1
 
 
 @dataclass(frozen=True, kw_only=True)
 class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
+    """
+    A Zarr data type for arrays containing 16-bit signed integers. This class wraps the NumPy
+    np.dtypes.Int16DType data type. Scalars for this data type are instances np.int16.
+
+    Attributes
+    ----------
+    dtype_cls : np.dtypes.Int16DType
+        The class of the underlying numpy dtype.
+    _zarr_v3_name : ClassVar[Literal["int16"]] = "int16"
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal[">i2"], Literal["<i2"]]] = (">i2", "<i2")
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.Int16DType
     _zarr_v3_name: ClassVar[Literal["int16"]] = "int16"
     _zarr_v2_names: ClassVar[tuple[Literal[">i2"], Literal["<i2"]]] = (">i2", "<i2")
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        """
+        Create an instance of this data type from a np.dtype('int16') instance.
+
+        Parameters
+        ----------
+        dtype : np.dtype
+            The instance of np.dtype('int16') to create from.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input data type is not an instance of np.dtype('int16').
+        """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
@@ -291,11 +593,37 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         )
 
     def to_native_dtype(self) -> np.dtypes.Int16DType:
+        """
+        Convert the data type to a np.dtype('int16') instance.
+
+        Returns
+        -------
+        np.dtype
+            The np.dtype('int16') instance.
+        """
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of this data type.
+        """
         if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
             # annoying string parsing.
@@ -306,6 +634,24 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of this data type.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
@@ -321,17 +667,32 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[Literal[">i2", "<i2"], None] | Literal["int16"]:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Serialize this ZDType to v2- or v3-flavored JSON
+
+        If the zarr_format is 2, then return a dict like this:
+        .. code-block:: json
+
+        {
+            "name": ">i2" or "<i2",
+            "object_codec_id": None
+        }
+
+        If the zarr_format is 3, then return the string "int16"
 
         Parameters
         ----------
         zarr_format : ZarrFormat
-            The zarr format version.
+            The Zarr format version (2 or 3).
 
         Returns
         -------
-        str
-            The JSON-serializable representation of the wrapped data type
+        DTypeConfig_V2[Literal[">i2", "<i2"], None] or Literal["int16"]
+            The JSON representation of the Int16 instance.
+
+        Raises
+        ------
+        ValueError
+            If the zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
             name = self.to_native_dtype().str
@@ -342,17 +703,54 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
 
     @property
     def item_size(self) -> int:
+        """
+        The size of the item in bytes. For an unsigned 16-bit integer, this is always 2 bytes.
+        """
         return 2
 
 
 @dataclass(frozen=True, kw_only=True)
 class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
+    """
+    A Zarr data type for arrays containing 16-bit unsigned integers.
+
+    This class wraps the NumPy np.dtypes.UInt16DType data type.
+    Scalars for this data type are instances np.uint16.
+
+    Attributes
+    ----------
+    dtype_cls : np.dtypes.UInt16DType
+        The class of the underlying numpy dtype.
+    _zarr_v3_name : ClassVar[Literal["uint16"]] = "uint16"
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal[">u2"], Literal["<u2"]]] = (">u2", "<u2")
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.UInt16DType
     _zarr_v3_name: ClassVar[Literal["uint16"]] = "uint16"
     _zarr_v2_names: ClassVar[tuple[Literal[">u2"], Literal["<u2"]]] = (">u2", "<u2")
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        """
+        Create an instance of this data type from a np.dtype('uint16') instance.
+
+        Parameters
+        ----------
+        dtype : np.dtype
+            The numpy data type.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input data type is not an instance of np.dtype('uint16').
+        """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
@@ -360,11 +758,37 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         )
 
     def to_native_dtype(self) -> np.dtypes.UInt16DType:
+        """
+        Convert the data type to a np.dtype('uint16') instance.
+
+        Returns
+        -------
+        np.dtype
+            The np.dtype('uint16') instance.
+        """
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of this data type.
+        """
         if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
             # annoying string parsing.
@@ -375,6 +799,24 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of this data type.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of UInt16. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
@@ -390,17 +832,32 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[Literal[">u2", "<u2"], None] | Literal["uint16"]:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Serialize this ZDType to v2- or v3-flavored JSON
+
+        If the zarr_format is 2, then return a dict like this:
+        .. code-block:: json
+
+        {
+            "name": ">u2" or "<u2",
+            "object_codec_id": None
+        }
+
+        If the zarr_format is 3, then return the string "uint16"
 
         Parameters
         ----------
         zarr_format : ZarrFormat
-            The zarr format version.
+            The Zarr format version (2 or 3).
 
         Returns
         -------
-        str
-            The JSON-serializable representation of the wrapped data type
+        DTypeConfig_V2[Literal[">u2", "<u2"], None] or Literal["uint16"]
+            The JSON representation of the UInt16 instance.
+
+        Raises
+        ------
+        ValueError
+            If the zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
             name = self.to_native_dtype().str
@@ -411,39 +868,113 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
 
     @property
     def item_size(self) -> int:
+        """
+        The size of the item in bytes. For an unsigned 16-bit integer, this is always 2 bytes.
+        """
         return 2
 
 
 @dataclass(frozen=True, kw_only=True)
 class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
+    """
+    A Zarr data type for arrays containing 32-bit signed integers. This class wraps the NumPy
+    np.dtypes.Int32DType data type. Scalars for this data type are instances np.int32.
+
+    Attributes
+    ----------
+    dtype_cls : np.dtypes.Int32DType
+        The class of the underlying numpy dtype.
+    _zarr_v3_name : ClassVar[Literal["int32"]] = "int32"
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal[">i4"], Literal["<i4"]]] = (">i4", "<i4")
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.Int32DType
     _zarr_v3_name: ClassVar[Literal["int32"]] = "int32"
     _zarr_v2_names: ClassVar[tuple[Literal[">i4"], Literal["<i4"]]] = (">i4", "<i4")
 
     @classmethod
-    def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
+    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        """
+        Create an Int32 from a np.dtype('int32') instance.
+
+        Parameters
+        ----------
+        dtype : TBaseDType
+            The np.dtype('int32') instance.
+
+        Returns
+        -------
+        Int32
+            The Int32 instance.
+        """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
 
-    def to_native_dtype(self) -> np.dtypes.Int32DType:
+    def to_native_dtype(self: Self) -> np.dtypes.Int32DType:
+        """
+        Convert the Int32 instance to a np.dtype('int32') instance.
+
+        Returns
+        -------
+        np.dtypes.Int32DType
+            The np.dtype('int32') instance.
+        """
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an Int32 from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Int32
+            The Int32 instance.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of an Int32.
+        """
         if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
             # annoying string parsing.
             name = data["name"]
             return cls.from_native_dtype(np.dtype(name))
-        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected one of the strings {cls._zarr_v2_names}."
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected one of the strings {cls._zarr_v2_names!r}."
         raise DataTypeValidationError(msg)
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an Int32 from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Int32
+            The Int32 instance.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of an Int32.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
@@ -459,7 +990,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[Literal[">i4", "<i4"], None] | Literal["int32"]:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Convert the data type to a JSON-serializable form.
 
         Parameters
         ----------
@@ -469,7 +1000,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         Returns
         -------
         str
-            The JSON-serializable representation of the wrapped data type
+            The JSON-serializable representation of the data type
         """
         if zarr_format == 2:
             name = self.to_native_dtype().str
@@ -480,17 +1011,55 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
 
     @property
     def item_size(self) -> int:
+        """
+        The size of the item in bytes. For an signed 32-bit integer, this is always 4 bytes.
+        """
         return 4
 
 
 @dataclass(frozen=True, kw_only=True)
 class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
+    """
+    A Zarr data type for arrays containing 32-bit unsigned integers.
+
+    This class wraps the NumPy np.dtypes.UInt32DType data type. Scalars for this data type are
+    instances np.uint32.
+
+    Attributes
+    ----------
+    dtype_cls : np.dtypes.UInt32DType
+        The class of the underlying numpy dtype.
+    _zarr_v3_name : ClassVar[Literal["uint32"]] = "uint32"
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal[">u4"], Literal["<u4"]]] = (">u4", "<u4")
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.UInt32DType
     _zarr_v3_name: ClassVar[Literal["uint32"]] = "uint32"
     _zarr_v2_names: ClassVar[tuple[Literal[">u4"], Literal["<u4"]]] = (">u4", "<u4")
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        """
+        Create a UInt32 from a np.dtype('uint32') instance.
+
+        Parameters
+        ----------
+        dtype : TBaseDType
+            The NumPy data type.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input data type is not a valid representation of a 32-bit unsigned
+            integer.
+        """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
@@ -498,11 +1067,38 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         )
 
     def to_native_dtype(self) -> np.dtypes.UInt32DType:
+        """
+        Create a NumPy unsigned 32-bit integer dtype instance from this UInt32 ZDType.
+
+        Returns
+        -------
+        np.dtypes.UInt32DType
+            The NumPy unsigned 32-bit integer dtype.
+        """
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of a 32-bit unsigned
+            integer.
+        """
         if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
             # annoying string parsing.
@@ -513,6 +1109,25 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of a 32-bit unsigned
+            integer.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
@@ -526,7 +1141,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[Literal[">u4", "<u4"], None] | Literal["uint32"]:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Convert the data type to a JSON-serializable form.
 
         Parameters
         ----------
@@ -536,7 +1151,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         Returns
         -------
         str
-            The JSON-serializable representation of the wrapped data type
+            The JSON-serializable representation of the data type
         """
         if zarr_format == 2:
             name = self.to_native_dtype().str
@@ -547,17 +1162,55 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
 
     @property
     def item_size(self) -> int:
+        """
+        The size of the item in bytes. For an unsigned 32-bit integer, this is always 4 bytes.
+        """
         return 4
 
 
 @dataclass(frozen=True, kw_only=True)
 class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
+    """
+    A Zarr data type for arrays containing 64-bit signed integers.
+
+    This class wraps the NumPy np.dtypes.Int64DType data type. Scalars for this data type are
+    instances np.int64.
+
+    Attributes
+    ----------
+    dtype_cls : np.dtypes.Int64DType
+        The class of the underlying numpy dtype.
+    _zarr_v3_name : ClassVar[Literal["int64"]] = "int64"
+        The name of this data type in Zarr V3.
+    _zarr_v2_names : ClassVar[tuple[Literal[">i8"], Literal["<i8"]]] = (">i8", "<i8")
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.Int64DType
     _zarr_v3_name: ClassVar[Literal["int64"]] = "int64"
     _zarr_v2_names: ClassVar[tuple[Literal[">i8"], Literal["<i8"]]] = (">i8", "<i8")
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        """
+        Create an Int64 from a np.dtype('int64') instance.
+
+        Parameters
+        ----------
+        dtype : TBaseDType
+            The NumPy data type.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input data type is not a valid representation of a 64-bit signed
+            integer.
+        """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
@@ -565,11 +1218,38 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         )
 
     def to_native_dtype(self) -> np.dtypes.Int64DType:
+        """
+        Create a NumPy signed 64-bit integer dtype instance from this Int64 ZDType.
+
+        Returns
+        -------
+        np.dtypes.Int64DType
+            The NumPy signed 64-bit integer dtype.
+        """
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of a 64-bit signed
+            integer.
+        """
         if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
             # annoying string parsing.
@@ -580,6 +1260,25 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of a 64-bit signed
+            integer.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
@@ -593,7 +1292,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[Literal[">i8", "<i8"], None] | Literal["int64"]:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Convert the data type to a JSON-serializable form.
 
         Parameters
         ----------
@@ -603,7 +1302,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         Returns
         -------
         str
-            The JSON-serializable representation of the wrapped data type
+            The JSON-serializable representation of the data type
         """
         if zarr_format == 2:
             name = self.to_native_dtype().str
@@ -614,21 +1313,68 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
 
     @property
     def item_size(self) -> int:
+        """
+        The size of the item in bytes. For a signed 64-bit integer, this is always 8 bytes.
+        """
         return 8
 
 
 @dataclass(frozen=True, kw_only=True)
 class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
+    """
+    A Zarr data type for arrays containing 64-bit unsigned integers.
+
+    This data type wraps the NumPy np.dtypes.UInt64DType data type. Scalars for this
+    data type are instances of np.uint64.
+
+
+    Attributes
+    ----------
+    dtype_cls: np.dtypes.UInt64DType
+        The class of the underlying numpy dtype.
+    _zarr_v3_name: ClassVar[Literal["uint64"]] = "uint64"
+        The name of this data type in Zarr V3.
+    _zarr_v2_names: ClassVar[tuple[Literal[">u8"], Literal["<u8"]]] = (">u8", "<u8")
+        The names of this data type in Zarr V2.
+    """
+
     dtype_cls = np.dtypes.UInt64DType
     _zarr_v3_name: ClassVar[Literal["uint64"]] = "uint64"
     _zarr_v2_names: ClassVar[tuple[Literal[">u8"], Literal["<u8"]]] = (">u8", "<u8")
 
     def to_native_dtype(self) -> np.dtypes.UInt64DType:
+        """
+        Convert the data type to a native numpy dtype.
+
+        Returns
+        -------
+        np.dtypes.UInt64DType
+            The native numpy dtype.
+        """
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of an unsigned 64-bit
+            integer.
+        """
         if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
             # annoying string parsing.
@@ -639,6 +1385,25 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this data type from Zarr V3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input JSON is not a valid representation of an unsigned 64-bit
+            integer.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
@@ -646,7 +1411,6 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
 
     @overload  # type: ignore[override]
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal[">u8", "<u8"], None]: ...
-
     @overload
     def to_json(self, zarr_format: Literal[3]) -> Literal["uint64"]: ...
 
@@ -654,7 +1418,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[Literal[">u8", "<u8"], None] | Literal["uint64"]:
         """
-        Convert the wrapped data type to a JSON-serializable form.
+        Convert the data type to a JSON-serializable form.
 
         Parameters
         ----------
@@ -664,7 +1428,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         Returns
         -------
         str
-            The JSON-serializable representation of the wrapped data type
+            The JSON-serializable representation of the data type
         """
         if zarr_format == 2:
             name = self.to_native_dtype().str
@@ -675,6 +1439,25 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        """
+        Create an instance of this data type from a native numpy dtype.
+
+        Parameters
+        ----------
+        dtype : TBaseDType
+            The native numpy dtype.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input dtype is not a valid representation of an unsigned 64-bit
+            integer.
+        """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
@@ -683,4 +1466,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
 
     @property
     def item_size(self) -> int:
+        """
+        The size of the item in bytes. For an unsigned 64-bit integer, this is always 8 bytes.
+        """
         return 8

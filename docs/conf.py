@@ -56,7 +56,7 @@ autoapi_generate_api_docs = True
 autoapi_member_order = "groupwise"
 autoapi_root = "api"
 autoapi_keep_files = True
-autoapi_options = [ 'members', 'undoc-members', 'show-inheritance', 'show-module-summary', 'imported-members', ]
+autoapi_options = [ 'members', 'undoc-members', 'show-inheritance', 'show-module-summary', 'imported-members', 'inherited-members']
 
 def skip_submodules(
         app: sphinx.application.Sphinx,
@@ -124,7 +124,7 @@ language = "en"
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # This patterns also effect to html_static_path and html_extra_path
-exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "talks"]
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store", "talks", "api"]
 
 # The reST default role (used for this markup: `text`) to use for all
 # documents.
