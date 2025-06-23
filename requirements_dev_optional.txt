@@ -8,7 +8,7 @@ azure-storage-blob==12.24.1
 redis==6.2.0
 types-redis
 types-setuptools
-pymongo==4.13.1
+pymongo==4.13.2
 # optional test requirements
 coverage
 pytest-cov==6.2.1
