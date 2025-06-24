@@ -3,8 +3,12 @@ coverage:
     patch:
       default:
         target: auto
+        after_n_builds: 10  # Wait for all 10 reports before updating the status
     project:
       default:
         target: auto
         threshold: 0.1
+        after_n_builds: 2   # Wait for all 10 reports before updating the status
 comment: false
+github_checks:
+    annotations: false
