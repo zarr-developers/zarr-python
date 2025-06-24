@@ -28,9 +28,10 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
     Attributes
     ----------
+
     _zarr_v3_name : Literal["bool"] = "bool"
         The Zarr v3 name of the dtype.
-    _zarr_v2_name : Literal["|b1"] = "|b1"
+    _zarr_v2_name : ``Literal["|b1"]`` = ``"|b1"``
         The Zarr v2 name of the dtype, which is also a string representation
         of the boolean dtype used by NumPy.
     dtype_cls : ClassVar[type[np.dtypes.BoolDType]] = np.dtypes.BoolDType
@@ -99,7 +100,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        TypeGuard[DTypeConfig_V2[Literal["|b1"], None]]
+        ``TypeGuard[DTypeConfig_V2[Literal["|b1"], None]]``
             True if the input is a valid JSON representation, False otherwise.
         """
         return (
@@ -194,7 +195,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        DTypeConfig_V2[Literal["|b1"], None] or Literal["bool"]
+        ``DTypeConfig_V2[Literal["|b1"], None] | Literal["bool"]``
             The JSON representation of the Bool instance.
 
         Raises

@@ -248,7 +248,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         The class of the underlying NumPy dtype.
     _zarr_v3_name : ClassVar[Literal["int8"]] = "int8"
         The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal["|i1"]]] = ("|i1",)
+    _zarr_v2_names : ``ClassVar[tuple[Literal["|i1"]]]`` = ``("|i1",)``
         The names of this data type in Zarr V2.
     """
 
@@ -362,7 +362,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 
         Returns
         -------
-        DTypeConfig_V2[Literal["|i1"], None] | Literal["int8"]
+        ``DTypeConfig_V2[Literal["|i1"], None] | Literal["int8"]``
             The JSON-serializable representation of the data type.
 
         Raises
@@ -402,7 +402,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         The class of the underlying NumPy dtype.
     _zarr_v3_name : ClassVar[Literal["uint8"]] = "uint8"
         The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal["|u1"]]] = ("|u1",)
+    _zarr_v2_names : ``ClassVar[tuple[Literal["|u1"]]]`` = ``("|u1",)``
         The names of this data type in Zarr V2.
     """
 
@@ -503,7 +503,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
 
         Returns
         -------
-        DTypeConfig_V2[Literal["|u1"], None] | Literal["uint8"]
+        ``DTypeConfig_V2[Literal["|u1"], None] | Literal["uint8"]``
             The JSON-serializable representation of the data type.
 
         Raises

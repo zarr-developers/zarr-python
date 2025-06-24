@@ -990,7 +990,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
         Returns
         -------
-        DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]] | Literal["variable_length_bytes"]
+        ``DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]] | Literal["variable_length_bytes"]``
             The JSON-serializable representation of the variable-length bytes data type.
             For zarr_format 2, returns a dictionary with "name" and "object_codec_id".
             For zarr_format 3, returns a string identifier "variable_length_bytes".

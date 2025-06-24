@@ -432,7 +432,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
 
         Returns
         -------
-        TypeGuard[DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]]
+        ``TypeGuard[DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]]``
             Whether the input is a valid JSON representation of a NumPy "object" data type, and that the
             object codec id is appropriate for variable-length UTF-8 strings.
         """
@@ -524,7 +524,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
 
         Returns
         -------
-        DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]] | Literal["variable_length_utf8"]
+        ``DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]] | Literal["variable_length_utf8"]``
             The JSON representation of this data type.
         """
         if zarr_format == 2:
