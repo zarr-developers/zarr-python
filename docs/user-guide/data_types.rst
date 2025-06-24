@@ -118,8 +118,7 @@ objects has a consistent type, then we can use a special encoding procedure to s
 is how Zarr Python stores variable-length UTF-8 strings, or variable-length byte strings.
 
 Although these are separate data types in this library, they are both "object" arrays in NumPy, which means
-they have the same Zarr V2 string representation: ``"|O"``. Clearly in this case the string
-representation of the data type is ambiguous in this case.
+they have the *same* Zarr V2 string representation: ``"|O"``.
 
 So for Zarr V2 we have to disambiguate different "object" data type arrays on the basis of their
 encoding procedure, i.e., the codecs declared in the ``filters`` and ``compressor`` attributes of array
