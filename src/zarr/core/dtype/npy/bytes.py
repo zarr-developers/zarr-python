@@ -445,10 +445,10 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
     from_json(data, zarr_format) : NullTerminatedBytes
         Create RawBytes from JSON data.
 
-    cast_scalar(data) : np.void_
+    cast_scalar(data) : np.void
         Cast a python object to np.void.
 
-    default_scalar() : np.void_
+    default_scalar() : np.void
         Return the default scalar value.
 
     to_json_scalar(data, zarr_format) : str
