@@ -349,7 +349,7 @@ class Complex64(BaseComplex[np.dtypes.Complex64DType, np.complex64]):
     """
     A Zarr data type for arrays containing 64 bit complex floats.
 
-    Wraps the NumPy ``np.dtypes.Complex64DType`` data type. Scalars for this data type
+    Wraps the ``np.dtypes.Complex64DType`` data type. Scalars for this data type
     are instances of ``np.complex64``.
 
     Attributes
@@ -384,7 +384,7 @@ class Complex128(BaseComplex[np.dtypes.Complex128DType, np.complex128], HasEndia
     """
     A Zarr data type for arrays containing 64 bit complex floats.
 
-    Wraps the NumPy ``np.dtypes.Complex128DType`` data type. Scalars for this data type
+    Wraps the ``np.dtypes.Complex128DType`` data type. Scalars for this data type
     are instances of ``np.complex128``.
 
     Attributes

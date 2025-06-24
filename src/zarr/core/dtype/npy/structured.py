@@ -302,7 +302,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         Returns
         -------
-        np.void
+        numpy.void
             The casted data as a numpy structured scalar.
 
         Notes
@@ -335,7 +335,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         Returns
         -------
-        np.void
+        numpy.void
             The data cast as a NumPy structured scalar.
 
         Raises
@@ -355,7 +355,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         Returns
         -------
-        np.void
+        numpy.void
             The default scalar value, which is the scalar representation of 0
             cast to this structured data type.
         """
@@ -375,7 +375,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
         Returns
         -------
-        np.void
+        numpy.void
             The NumPy structured scalar.
 
         Raises

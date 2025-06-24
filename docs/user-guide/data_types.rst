@@ -179,7 +179,7 @@ We do this with an abstract Zarr data type class: `ZDType <../api/zarr/dtype/ind
 which provides Zarr V2 and Zarr V3 compatibility routines for "native" data types.
 
 In this context, a "native" data type is a Python class, typically defined in another library, that
-models an array's data type. For example, ``np.dtypes.UInt8DType`` is a native data type defined in NumPy.
+models an array's data type. For example, ``numpy.dtypes.UInt8DType`` is a native data type defined in NumPy.
 Zarr Python wraps the NumPy ``uint8`` with a ``ZDType`` instance called
 `UInt8 <../api/zarr/dtype/index.html#zarr.dtype.ZDType>`_.
 

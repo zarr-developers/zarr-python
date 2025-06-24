@@ -799,7 +799,7 @@ def slice_to_range(s: slice, length: int) -> range:
 
 
 def ix_(selection: Any, shape: ChunkCoords) -> npt.NDArray[np.intp]:
-    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like ``numpy.ix_``
+    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like ``np.ix_``
     but with support for slices and single ints."""
 
     # normalisation

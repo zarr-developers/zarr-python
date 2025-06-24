@@ -58,7 +58,7 @@ def datetime_from_int(data: int, *, unit: DateTimeUnit, scale_factor: int) -> np
 
     Returns
     -------
-    np.datetime64
+    numpy.datetime64
         The datetime64 value.
     """
     dtype_name = f"datetime64[{scale_factor}{unit}]"
@@ -71,7 +71,7 @@ def datetimelike_to_int(data: np.datetime64 | np.timedelta64) -> int:
 
     Parameters
     ----------
-    data : np.datetime64 | np.timedelta64
+    data : np.datetime64 | numpy.timedelta64
         The value to convert.
 
     Returns
@@ -273,7 +273,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     """
     A Zarr data type for arrays containing NumPy TimeDelta64 data.
 
-    Wraps the NumPy ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
+    Wraps the ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
     are instances of ``np.timedelta64``.
 
     Attributes
@@ -463,7 +463,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
 
         Returns
         -------
-        np.timedelta64
+        numpy.timedelta64
             The input data cast as a numpy timedelta64 scalar.
         """
         return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
@@ -500,7 +500,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
 
         Returns
         -------
-        np.timedelta64
+        numpy.timedelta64
             The scalar value of this data type.
 
         Raises
@@ -518,7 +518,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
     """
     A Zarr data type for arrays containing NumPy Datetime64 data.
 
-    Wraps the NumPy ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
+    Wraps the ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
     are instances of ``np.datetime64``.
 
     Attributes
@@ -706,7 +706,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
         Returns
         -------
-        np.datetime64
+        numpy.datetime64
             The casted data as a numpy datetime scalar.
         """
         return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
@@ -722,7 +722,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
         Returns
         -------
-        np.datetime64
+        numpy.datetime64
             The data cast as a numpy datetime scalar.
 
         Raises
@@ -758,7 +758,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
         Returns
         -------
-        np.datetime64
+        numpy.datetime64
             The numpy datetime scalar.
 
         Raises
