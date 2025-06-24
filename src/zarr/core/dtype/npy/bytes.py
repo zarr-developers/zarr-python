@@ -678,7 +678,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         Returns
         -------
-        numpy.void
+        np.void
             The casted data as a NumPy void scalar.
 
         Notes
@@ -707,7 +707,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         Returns
         -------
-        numpy.void
+        np.void
             The data cast as a NumPy void scalar.
 
         Raises
@@ -729,7 +729,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         Returns
         -------
-        numpy.void
+        np.void
             The default scalar value.
         """
         return self.to_native_dtype().type(("\x00" * self.length).encode("ascii"))
@@ -769,7 +769,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         Returns
         -------
-        numpy.void
+        np.void
             The NumPy void scalar.
 
         Raises
