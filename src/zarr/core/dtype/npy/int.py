@@ -411,8 +411,8 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 @dataclass(frozen=True, kw_only=True)
 class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     """
-    A Zarr data type for arrays containing 8-bit unsigned integers. 
-    
+    A Zarr data type for arrays containing 8-bit unsigned integers.
+
     Wraps the NumPy ``np.dtypes.UInt8DType`` data type. Scalars for this data type are instances of ``np.uint8``.
 
     Attributes
