@@ -283,7 +283,7 @@ Serialize to JSON for Zarr V2:
 .. note::
 
   The representation returned by ``to_json`` is more abstract than the literal contents of Zarr V2
-  array metadata, because the JSON representation used by the `ZDType` classes must be distinct across
+  array metadata, because the JSON representation used by the ``ZDType`` classes must be distinct across
   different data types. Zarr V2 identifies multiple distinct data types with the "object" data type
   identifier ``"|O"``, which means extra information is needed to disambiguate these data types from
   one another. That's the reason for the ``object_codec_id`` field you see here. See the
