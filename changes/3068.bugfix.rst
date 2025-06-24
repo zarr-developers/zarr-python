@@ -1,1 +1,3 @@
-Trying to open an array with ``mode='r'`` when the store is not read-only now raises an error.
+Opening an array or group with ``mode='r'`` when the store is not read-only now raises a warning.
+If you do this the group or array will still be writeable.
+We intend to fix this behaviour in a future zarr-python release.
