@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemSize):
     """
-    Base class for NumPy float data types.
+    Base class for float data types.
 
     Attributes
     ----------

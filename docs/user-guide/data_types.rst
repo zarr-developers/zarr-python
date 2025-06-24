@@ -87,10 +87,10 @@ Crucially, NumPy does not use a special data type for structured data types—in
 implements structured data types as an optional feature of the so-called "Void" data type, which models
 arbitrary fixed-size byte strings. The ``str`` attribute of a regular NumPy void
 data type is the same as the ``str`` of a NumPy structured data type. This means that the ``str``
-attribute does not convey information about the fields contained in a structured data type. For
-these reasons, Zarr V2 uses a special data type encoding for structured data types. They are stored
-in JSON as lists of pairs, where the first element is a string, and the second element is a Zarr V2
-data type specification. This representation supports recursion.
+attribute does not convey information about the fields contained in a structured data type.
+For these reasons, Zarr V2 uses a special data type encoding for structured data types.
+They are stored in JSON as lists of pairs, where the first element is a string, and the second
+element is a Zarr V2 data type specification. This representation supports recursion.
 
 For example:
 
@@ -110,28 +110,30 @@ Object Data Type
 
 The NumPy "object" type is essentially an array of references to arbitrary Python objects.
 It can model arrays of variable-length UTF-8 strings, arrays of variable-length byte strings, or
-even arrays of variable-length arrays, each with their own distinct data type.
+even arrays of variable-length arrays, each with a distinct data type. This makes the "object" data
+type expressive, but also complicated to store.
 
-This makes the "object" data type expressive, but also complicated for Zarr V2. Remember that, with
-the exception of "structured" data types, Zarr V2 uses the NumPy string representation of a data type
-to identify it in metadata.
+Zarr Python cannot persistently store references to arbitrary Python objects. But if each of those Python
+objects has a consistent type, then we can use a special encoding procedure to store the array. This
+is how Zarr Python stores variable-length UTF-8 strings, or variable-length byte strings.
 
-An "object" array of variable-length UTF-8 strings and an "object" array of variable-length byte strings
-have logically separate data types, but in NumPy they would both have the same array data type: "object",
-and thus the same string representation.
+Although these are separate data types in this library, they are both "object" arrays in NumPy, which means
+they have the same Zarr V2 string representation: ``"|O"``. Clearly in this case the string
+representation of the data type is ambiguous in this case.
 
-So, Zarr V2 disambiguated different "object" data type arrays on the basis of their chunk encoding,
-i.e., the codecs declared in the ``filters`` and ``compressor`` attributes of array metadata.
+So for Zarr V2 we have to disambiguate different "object" data type arrays on the basis of their
+encoding procedure, i.e., the codecs declared in the ``filters`` and ``compressor`` attributes of array
+metadata.
 
 If an array with data type "object" used the ``"vlen-utf8"`` codec, then it was interpreted as an
 array of variable-length strings. If an array with data type "object" used the ``"vlen-bytes"``
 codec, then it was interpreted as an array of variable-length byte strings.
 
-This means that the ``dtype`` field alone does not fully specify a data type in Zarr V2. The name of
-the object codec used, if one was used, is also required. Although this fact can be ignored for many
-simple numeric data types, any comprehensive approach to Zarr V2 data types must either reject
-the "object" data types or include the "object codec" identifier in the JSON form of the basic data
-type model.
+This all means that the ``dtype`` field alone does not fully specify a data type in Zarr V2.
+The name of the object codec used, if one was used, is also required.
+Although this fact can be ignored for many simple numeric data types, any comprehensive approach to
+Zarr V2 data types must either reject the "object" data types or include the "object codec"
+identifier in the JSON form of the basic data type model.
 
 Data Types in Zarr Version 3
 ----------------------------
