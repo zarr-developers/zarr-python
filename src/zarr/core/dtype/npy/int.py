@@ -63,25 +63,6 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
     ----------
     _zarr_v2_names : ClassVar[tuple[str, ...]]
         Possible Zarr V2 JSON names for the data type.
-
-    Methods
-    -------
-    _check_json_v2(data: object) -> TypeGuard[DTypeConfig_V2[str, None]]:
-        Check if input is a valid JSON representation for Zarr v2.
-    _check_json_v3(data: object) -> TypeGuard[str]:
-        Check if JSON value is consistent with Zarr v3 for this data type.
-    _check_scalar(data: object) -> TypeGuard[IntLike]:
-        Check if a Python object is IntLike.
-    _cast_scalar_unchecked(data: IntLike) -> TIntScalar_co:
-        Create an integer without type checking of the input.
-    cast_scalar(data: object) -> TIntScalar_co:
-        Convert object to NumPy integer, raising TypeError if invalid.
-    default_scalar() -> TIntScalar_co:
-        Get the default value, which is 0 cast to this dtype.
-    from_json_scalar(data: JSON, *, zarr_format: ZarrFormat) -> TIntScalar_co:
-        Read a JSON-serializable value as a NumPy int scalar.
-    to_json_scalar(data: object, *, zarr_format: ZarrFormat) -> int:
-        Convert an object to JSON-serializable scalar.
     """
 
     _zarr_v2_names: ClassVar[tuple[str, ...]]
