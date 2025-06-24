@@ -392,7 +392,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             return cls.from_native_dtype(np.dtype(name))
         msg = (
             f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string "
-            f"representation of an instance of {cls.dtype_cls}"  # type: ignore[has-type]
+            f"representation of an instance of {cls.dtype_cls}"
         )
         raise DataTypeValidationError(msg)
 
@@ -634,7 +634,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             return cls.from_native_dtype(np.dtype(name))
         msg = (
             f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string "
-            f"representation of an instance of {cls.dtype_cls}"  # type: ignore[has-type]
+            f"representation of an instance of {cls.dtype_cls}"
         )
         raise DataTypeValidationError(msg)
 

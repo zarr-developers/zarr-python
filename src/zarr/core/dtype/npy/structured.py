@@ -64,7 +64,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         TypeGuard[np.dtypes.VoidDType]
             True if the dtype matches, False otherwise.
         """
-        return isinstance(dtype, cls.dtype_cls) and dtype.fields is not None  # type: ignore[has-type]
+        return isinstance(dtype, cls.dtype_cls) and dtype.fields is not None
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
@@ -104,7 +104,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
 
             return cls(fields=tuple(fields))
         raise DataTypeValidationError(
-            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"  # type: ignore[has-type]
+            f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
 
     def to_native_dtype(self) -> np.dtypes.VoidDType[int]:
