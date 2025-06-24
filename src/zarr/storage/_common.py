@@ -120,7 +120,7 @@ class StorePath:
             except NotImplementedError as e:
                 raise ValueError(
                     "Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. "
-                    "Please use a read-only store or a storage class that implements .with_read_only()"
+                    "Please use a read-only store or a storage class that implements .with_read_only()."
                 ) from e
             self = await cls._create_open_instance(read_only_store, path)
         else:

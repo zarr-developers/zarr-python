@@ -7,7 +7,7 @@ from _pytest.compat import LEGACY_PATH
 import zarr
 from zarr import Group
 from zarr.core.common import AccessModeLiteral, ZarrFormat
-from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
+from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, ZipStore
 from zarr.storage._common import contains_array, contains_group, make_store_path
 from zarr.storage._utils import (
     _join_paths,
@@ -263,7 +263,19 @@ def test_relativize_path_invalid() -> None:
         _relativize_path(path="a/b/c", prefix="b")
 
 
-def test_different_open_mode() -> None:
+def test_different_open_mode(tmp_path: LEGACY_PATH) -> None:
+    # Test with a store that implements .with_read_only()
     store = MemoryStore()
     zarr.create((100,), store=store, zarr_format=2, path="a")
-    zarr.open_array(store=store, path="a", zarr_format=2, mode="r")
+    arr = zarr.open_array(store=store, path="a", zarr_format=2, mode="r")
+    assert arr.store.read_only
+
+    # Test with a store that doesn't implement .with_read_only()
+    zarr_path = tmp_path / "foo.zarr"
+    store = ZipStore(zarr_path, mode="w")
+    zarr.create((100,), store=store, zarr_format=2, path="a")
+    with pytest.raises(
+        ValueError,
+        match="Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. Please use a read-only store or a storage class that implements .with_read_only().",
+    ):
+        zarr.open_array(store=store, path="a", zarr_format=2, mode="r")
