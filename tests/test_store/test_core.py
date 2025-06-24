@@ -266,8 +266,4 @@ def test_relativize_path_invalid() -> None:
 def test_different_open_mode() -> None:
     store = MemoryStore()
     zarr.create((100,), store=store, zarr_format=2, path="a")
-    with pytest.warns(
-        UserWarning,
-        match="Store is not read-only but mode is 'r'. Creating a read-only copy. This behavior may change in the future with a more granular permissions model",
-    ):
-        zarr.open_array(store=store, path="a", zarr_format=2, mode="r")
+    zarr.open_array(store=store, path="a", zarr_format=2, mode="r")

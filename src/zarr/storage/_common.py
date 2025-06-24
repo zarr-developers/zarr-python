@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
@@ -117,12 +116,6 @@ class StorePath:
         elif mode == "r":
             # Create read-only copy for read mode on writable store
             try:
-                warnings.warn(
-                    "Store is not read-only but mode is 'r'. Creating a read-only copy. "
-                    "This behavior may change in the future with a more granular permissions model.",
-                    UserWarning,
-                    stacklevel=1,
-                )
                 self = await cls._create_open_instance(store.with_read_only(True), path)
             except NotImplementedError as e:
                 raise ValueError(
