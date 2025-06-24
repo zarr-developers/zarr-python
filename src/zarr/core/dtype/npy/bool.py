@@ -21,8 +21,10 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     """
-    A Zarr data type for arrays containing booleans. Wraps the NumPy
-    ``np.dtypes.BoolDType`` data type. Scalars for this data type are instances of ``np.bool_``.
+    A Zarr data type for arrays containing booleans.
+
+    Wraps the NumPy ``np.dtypes.BoolDType`` data type. Scalars for this data type are instances of
+    ``np.bool_``.
 
     Attributes
     ----------

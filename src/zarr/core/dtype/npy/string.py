@@ -62,7 +62,8 @@ class FixedLengthUTF32(
     """
     A Zarr data type for arrays containing fixed-length UTF-32 strings.
 
-    Wraps the NumPy np.dtypes.StrDType data type. Scalars for this data type are instances of np.str_.
+    Wraps the NumPy ``np.dtypes.StrDType`` data type. Scalars for this data type are instances of
+    ``np.str_``.
 
     Attributes
     ----------
@@ -640,8 +641,10 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthUTF8(UTF8Base[np.dtypes.StringDType]):  # type: ignore[type-var]
         """
-        A Zarr data type for arrays containing variable-length UTF-8 strings. Wraps the
-        NumPy np.dtypes.StringDType data type. Scalars for this data type are Python strings.
+        A Zarr data type for arrays containing variable-length UTF-8 strings.
+
+        Wraps the NumPy ``np.dtypes.StringDType`` data type. Scalars for this data type are instances
+        of ``str``.
 
 
         Attributes
@@ -672,8 +675,10 @@ else:
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthUTF8(UTF8Base[np.dtypes.ObjectDType]):  # type: ignore[no-redef]
         """
-        A Zarr data type for arrays containing variable-length UTF-8 strings. Wraps the
-        NumPy np.dtypes.ObjectDType data type. Scalars for this data type are Python strings.
+        A Zarr data type for arrays containing variable-length UTF-8 strings.
+
+        Wraps the NumPy ``np.dtypes.ObjectDType`` data type. Scalars for this data type are instances
+        of ``str``.
 
 
         Attributes
