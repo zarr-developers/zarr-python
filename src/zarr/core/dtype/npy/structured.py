@@ -162,8 +162,10 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
                 [f_name, f_dtype.to_json(zarr_format=zarr_format)]  # type: ignore[list-item]
                 for f_name, f_dtype in self.fields
             ]
-            base_dict = {"name": self._zarr_v3_name}
-            base_dict["configuration"] = {"fields": fields}  # type: ignore[assignment]
+            base_dict = {
+                "name": self._zarr_v3_name,
+                "configuration": {"fields": fields},
+            }
             return cast("DTypeSpec_V3", base_dict)
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
