@@ -235,7 +235,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        np.bool_
+        ``np.bool_``
             The numpy boolean scalar.
 
         Raises
@@ -254,7 +254,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        np.bool_
+        ``np.bool_``
             The default value.
         """
         return np.False_
@@ -290,7 +290,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        np.bool_
+        ``np.bool_``
             The numpy boolean scalar.
 
         Raises

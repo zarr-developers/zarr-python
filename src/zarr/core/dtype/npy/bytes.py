@@ -308,7 +308,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        np.bytes_
+        ``np.bytes_``
             The data cast as a NumPy bytes scalar.
 
         Raises
@@ -328,7 +328,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        np.bytes_
+        ``np.bytes_``
             The default scalar value.
         """
         return np.bytes_(b"")
@@ -368,7 +368,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        np.bytes_
+        ``np.bytes_``
             The NumPy bytes scalar obtained from decoding the base64 string.
 
         Raises

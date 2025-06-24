@@ -244,7 +244,7 @@ class FixedLengthUTF32(
 
         Returns
         -------
-        np.str_
+        ``np.str_``
             The default scalar value.
         """
         return np.str_("")
@@ -280,7 +280,7 @@ class FixedLengthUTF32(
 
         Returns
         -------
-        np.str_
+        ``np.str_``
             The native scalar value.
         """
         if check_json_str(data):
@@ -315,7 +315,7 @@ class FixedLengthUTF32(
 
         Returns
         -------
-        np.str_
+        ``np.str_``
             The native scalar value.
         """
         if self._check_scalar(data):
