@@ -74,7 +74,7 @@ V2 JSON identifier for a data type is just the NumPy ``str`` attribute of that d
    However, Zarr version 3 data types do not store endianness information.
 
 There are two special cases to consider: `"structured" data types <#structured-data-type>`_, and
-`"object" <#object-data-type>` data types.
+`"object" <#object-data-type>`_ data types.
 
 Structured Data Type
 ^^^^^^^^^^^^^^^^^^^^
