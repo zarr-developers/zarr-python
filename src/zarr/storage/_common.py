@@ -116,14 +116,15 @@ class StorePath:
         elif mode == "r":
             # Create read-only copy for read mode on writable store
             try:
-                self = await cls._create_open_instance(store.with_read_only(True), path)
+                read_only_store = store.with_read_only(True)
             except NotImplementedError as e:
                 raise ValueError(
-                    "Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store."
+                    "Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. "
+                    "Please use a read-only store or a storage class that implements .with_read_only()"
                 ) from e
+            self = await cls._create_open_instance(read_only_store, path)
         else:
             # writable store and writable mode
-            await store._ensure_open()
             self = await cls._create_open_instance(store, path)
 
         # Handle mode-specific operations
