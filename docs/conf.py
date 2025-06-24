@@ -38,7 +38,6 @@ sys.path.append(os.path.abspath(".."))
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     'autoapi.extension',
     "numpydoc",
@@ -46,6 +45,7 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_design",
     'sphinx_reredirects',
+    "sphinx.ext.viewcode",
 ]
 
 issues_github_path = "zarr-developers/zarr-python"
