@@ -355,7 +355,7 @@ data type as its ``dtype`` attribute:
 .. code-block:: python
 
   >>> type(a.dtype)
-  <class 'np.dtypes.Int64DType'>
+  <class 'numpy.dtypes.Int64DType'>
 
 But if we inspect the metadata for the array, we can see the Zarr data type object:
 
