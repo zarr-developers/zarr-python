@@ -14,7 +14,7 @@ from typing import (
     runtime_checkable,
 )
 
-import numpy as np
+import NumPy as np
 
 from zarr.core.common import NamedConfig
 from zarr.core.dtype.common import (
@@ -62,12 +62,12 @@ class FixedLengthUTF32(
     """
     A Zarr data type for arrays containing fixed-length UTF-32 strings.
 
-    This class wraps the NumPy np.dtypes.StrDType data type. Scalars for this data type are instances of np.str_.
+    Wraps the NumPy np.dtypes.StrDType data type. Scalars for this data type are instances of np.str_.
 
     Attributes
     ----------
     dtype_cls : Type[np.dtypes.StrDType]
-        The numpy dtype class for this data type.
+        The NumPy dtype class for this data type.
     _zarr_v3_name : ClassVar[Literal["fixed_length_utf32"]]
         The name of this data type in Zarr V3.
     code_point_bytes : ClassVar[int] = 4
@@ -118,7 +118,7 @@ class FixedLengthUTF32(
     @classmethod
     def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
         """
-        Check that the input is a valid JSON representation of a numpy U dtype.
+        Check that the input is a valid JSON representation of a NumPy U dtype.
 
         Parameters
         ----------
@@ -128,7 +128,7 @@ class FixedLengthUTF32(
         Returns
         -------
         TypeGuard[DTypeConfig_V2[str, None]]
-            Whether the input is a valid JSON representation of a numpy U dtype.
+            Whether the input is a valid JSON representation of a NumPy U dtype.
         """
         return (
             check_dtype_spec_v2(data)
@@ -140,7 +140,7 @@ class FixedLengthUTF32(
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[FixedLengthUTF32JSONV3]:
         """
-        Check that the input is a valid JSON representation of a numpy U dtype.
+        Check that the input is a valid JSON representation of a NumPy U dtype.
 
         Parameters
         ----------
@@ -150,7 +150,7 @@ class FixedLengthUTF32(
         Returns
         -------
         TypeGuard[FixedLengthUTF32JSONV3]
-            Whether the input is a valid JSON representation of a numpy U dtype.
+            Whether the input is a valid JSON representation of a NumPy U dtype.
         """
         return (
             isinstance(data, dict)
@@ -197,7 +197,7 @@ class FixedLengthUTF32(
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
         """
-        Create a FixedLengthUTF32 from a JSON representation of a numpy U dtype.
+        Create a FixedLengthUTF32 from a JSON representation of a NumPy U dtype.
 
         Parameters
         ----------
@@ -210,17 +210,17 @@ class FixedLengthUTF32(
             An instance of this data type.
         """
         if cls._check_json_v2(data):
-            # Construct the numpy dtype instead of string parsing.
+            # Construct the NumPy dtype instead of string parsing.
             name = data["name"]
             return cls.from_native_dtype(np.dtype(name))
         raise DataTypeValidationError(
-            f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string representation of a numpy U dtype."
+            f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a string representation of a NumPy U dtype."
         )
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
         """
-        Create a FixedLengthUTF32 from a JSON representation of a numpy U dtype.
+        Create a FixedLengthUTF32 from a JSON representation of a NumPy U dtype.
 
         Parameters
         ----------
@@ -318,7 +318,7 @@ class FixedLengthUTF32(
             The native scalar value.
         """
         if self._check_scalar(data):
-            # We explicitly truncate before casting because of the following numpy behavior:
+            # We explicitly truncate before casting because of the following NumPy behavior:
             # >>> x = np.dtype('U3').type('hello world')
             # >>> x
             # np.str_('hello world')
@@ -330,50 +330,58 @@ class FixedLengthUTF32(
             else:
                 return self.to_native_dtype().type(data[: self.length])
         raise TypeError(
-            f"Cannot convert object with type {type(data)} to a numpy unicode string scalar."
+            f"Cannot convert object with type {type(data)} to a NumPy unicode string scalar."
         )
 
     @property
     def item_size(self) -> int:
         """
-        Return the size of each item in the data type.
+        The size of a single scalar in bytes.
 
         Returns
         -------
         int
-            The size of each item in the data type.
+            The size of a single scalar in bytes.
         """
         return self.length * self.code_point_bytes
 
 
 def check_vlen_string_json_scalar(data: object) -> TypeGuard[int | str | float]:
     """
-    This function checks the type of JSON-encoded variable length strings. It is generous for
-    backwards compatibility, as zarr-python v2 would use ints for variable length strings
-    fill values
+    Check if the input is a valid JSON scalar for a variable-length string.
+
+    This function is generous for backwards compatibility, as Zarr Python v2 would use ints for
+    variable-length string fill values.
+
+    Parameters
+    ----------
+    data : object
+        The JSON value to check.
+
+    Returns
+    -------
+    TypeGuard[int | str | float]
+        True if the input is a valid scalar for a variable-length string.
     """
     return isinstance(data, int | str | float)
 
 
-# VariableLengthUTF8 is defined in two places, conditioned on the version of numpy.
-# If numpy 2 is installed, then VariableLengthUTF8 is defined with the numpy variable length
-# string dtype as the native dtype. Otherwise, VariableLengthUTF8 is defined with the numpy object
+# VariableLengthUTF8 is defined in two places, conditioned on the version of NumPy.
+# If NumPy 2 is installed, then VariableLengthUTF8 is defined with the NumPy variable length
+# string dtype as the native dtype. Otherwise, VariableLengthUTF8 is defined with the NumPy object
 # dtype as the native dtype.
 class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     """
-    A base class for the variable length UTF-8 string data type. This class should not be used
-    as data type, but as a base class for other variable length string data types.
-
-    This class is a generic implementation of a variable length UTF-8 string data type. It is
-    intended to be used as a base class for other variable length string data types.
+    Base class for variable-length UTF-8 string data types. Not intended for direct use, but as a
+    base for concrete implementations.
 
     Attributes
     ----------
     dtype_cls : TDType_co
         The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
+    _zarr_v3_name : ClassVar[Literal["variable_length_utf8"]]
         The name of this data type in Zarr V3.
-    object_codec_id : ClassVar[Literal["vlen-utf8"]] = "variable_length_utf8"
+    object_codec_id : ClassVar[Literal["vlen-utf8"]]
         The object codec ID for this data type.
     """
 
@@ -383,17 +391,23 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an instance of this class from a numpy dtype.
+        Create an instance of this data type from a compatible NumPy data type.
+
 
         Parameters
         ----------
-        dtype : numpy.dtype
-            The numpy dtype to create an instance from.
+        dtype : TBaseDType
+            The native data type.
 
         Returns
         -------
         Self
-            An instance of this class.
+            An instance of this data type.
+
+        Raises
+        ------
+        DataTypeValidationError
+            If the input is not compatible with this data type.
         """
         if cls._check_native_dtype(dtype):
             return cls()
@@ -407,8 +421,8 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         data: DTypeJSON,
     ) -> TypeGuard[DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]]:
         """
-        Check that the input is a valid JSON representation of a numpy O dtype, and that the
-        object codec id is appropriate for variable-length UTF-8 strings.
+        "Check if the input is a valid JSON representation of a variable-length UTF-8 string dtype
+        for Zarr v2."
 
         Parameters
         ----------
@@ -418,7 +432,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         Returns
         -------
         TypeGuard[DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]]
-            Whether the input is a valid JSON representation of a numpy O dtype, and that the
+            Whether the input is a valid JSON representation of a NumPy "object" data type, and that the
             object codec id is appropriate for variable-length UTF-8 strings.
         """
         return (
@@ -449,7 +463,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
         """
-        Create an instance of this class from a JSON representation of a numpy O dtype.
+        Create an instance of this class from a JSON representation of a NumPy "object" dtype.
 
         Parameters
         ----------
@@ -459,7 +473,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         Returns
         -------
         Self
-            An instance of this class.
+            An instance of this data type.
         """
         if cls._check_json_v2(data):
             return cls()
@@ -482,7 +496,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         Returns
         -------
         Self
-            An instance of this class.
+            An instance of this data type.
         """
         if cls._check_json_v3(data):
             return cls()
@@ -604,21 +618,21 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
 
     def cast_scalar(self, data: object) -> str:
         """
-        Cast a scalar value to the native scalar type.
+        Cast an object to a string.
 
         Parameters
         ----------
         data : object
-            The scalar value to cast.
+            The value to cast.
 
         Returns
         -------
         str
-            The native scalar type of the scalar value.
+            The input cast to str.
         """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        raise TypeError(f"Cannot convert object with type {type(data)} to a python string.")
+        raise TypeError(f"Cannot convert object with type {type(data)} to a Python string.")
 
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
@@ -626,14 +640,14 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthUTF8(UTF8Base[np.dtypes.StringDType]):  # type: ignore[type-var]
         """
-        A Zarr data type for arrays containing variable-length UTF-8 strings. This class wraps the
-        NumPy np.dtypes.StringDType data type. Scalars for this data type are python strings.
+        A Zarr data type for arrays containing variable-length UTF-8 strings. Wraps the
+        NumPy np.dtypes.StringDType data type. Scalars for this data type are Python strings.
 
 
         Attributes
         ----------
         dtype_cls : Type[np.dtypes.StringDType]
-            The numpy dtype class for this data type.
+            The NumPy dtype class for this data type.
         _zarr_v3_name : ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
             The name of this data type in Zarr V3.
         object_codec_id : ClassVar[Literal["vlen-utf8"]] = "vlen-utf8"
@@ -658,14 +672,14 @@ else:
     @dataclass(frozen=True, kw_only=True)
     class VariableLengthUTF8(UTF8Base[np.dtypes.ObjectDType]):  # type: ignore[no-redef]
         """
-        A Zarr data type for arrays containing variable-length UTF-8 strings. This class wraps the
-        NumPy np.dtypes.ObjecDType data type. Scalars for this data type are python strings.
+        A Zarr data type for arrays containing variable-length UTF-8 strings. Wraps the
+        NumPy np.dtypes.ObjectDType data type. Scalars for this data type are Python strings.
 
 
         Attributes
         ----------
         dtype_cls : Type[np.dtypes.ObjectDType]
-            The numpy dtype class for this data type.
+            The NumPy dtype class for this data type.
         _zarr_v3_name : ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
             The name of this data type in Zarr V3.
         object_codec_id : ClassVar[Literal["vlen-utf8"]] = "vlen-utf8"

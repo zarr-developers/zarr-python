@@ -160,8 +160,7 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
         Returns
         -------
         Self
-            An instance of this class configured with the unit, scale factor, and endianness
-            derived from the provided dtype.
+            An instance of this data type.
 
         Raises
         ------
@@ -259,12 +258,12 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
     @property
     def item_size(self) -> int:
         """
-        The size of each item in the data type, in bytes.
+        The size of a single scalar in bytes.
 
         Returns
         -------
         int
-            The size of each item in the data type, in bytes.
+            The size of a single scalar in bytes.
         """
         return 8
 
@@ -274,7 +273,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     """
     A Zarr data type for arrays containing NumPy TimeDelta64 data.
 
-    This class wraps the NumPy ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
+    Wraps the NumPy ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
     are instances of ``np.timedelta64``.
 
     Attributes
@@ -353,6 +352,12 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             }
 
         This function can be used as a type guard to narrow the type of unknown JSON input.
+
+        Returns
+        -------
+        TypeGuard[DateTime64JSONV3]
+            True if the JSON input is a valid representation of a TimeDelta64 in Zarr V3,
+            otherwise False.
         """
         return (
             isinstance(data, dict)
@@ -513,7 +518,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
     """
     A Zarr data type for arrays containing NumPy Datetime64 data.
 
-    This class wraps the NumPy ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
+    Wraps the NumPy ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
     are instances of ``np.datetime64``.
 
     Attributes

@@ -35,7 +35,7 @@ RawBytesJSONV3 = NamedConfig[Literal["raw_bytes"], FixedLengthBytesConfig]
 @dataclass(frozen=True, kw_only=True)
 class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength, HasItemSize):
     """
-    A Zarr data type for arrays containing null-terminated bytes. This class wraps the NumPy
+    A Zarr data type for arrays containing null-terminated bytes. Wraps the NumPy
     ``np.dtypes.BytesDType`` data type. Scalars for this data type are instances of ``np.bytes_``.
 
     This data type is parametrized by an integral length which specifies size in bytes of each
@@ -202,8 +202,8 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        NullTerminatedBytes
-            An instance of this ZDType.
+        Self
+            An instance of this data type.
 
         Raises
         ------
@@ -233,8 +233,8 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        NullTerminatedBytes
-            An instance of this NullTerminatedBytes.
+        Self
+            An instance of this data type.
 
         Raises
         ------
@@ -295,7 +295,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         Check if the provided data is of type BytesLike.
 
         This method is used to verify if the input data can be considered as a
-        scalar of bytes-like type, which includes numpy bytes, strings, bytes,
+        scalar of bytes-like type, which includes NumPy bytes, strings, bytes,
         and integers.
 
         Parameters
@@ -323,7 +323,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         Returns
         -------
         np.bytes_
-            The casted data as a numpy bytes scalar.
+            The casted data as a NumPy bytes scalar.
 
         Notes
         -----
@@ -337,31 +337,31 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
     def cast_scalar(self, data: object) -> np.bytes_:
         """
-        Attempt to cast a given object to a numpy bytes scalar.
+        Attempt to cast a given object to a NumPy bytes scalar.
 
         This method first checks if the provided data is a valid scalar that can be
-        converted to a numpy bytes scalar. If the check succeeds, the unchecked casting
+        converted to a NumPy bytes scalar. If the check succeeds, the unchecked casting
         operation is performed. If the data is not valid, a TypeError is raised.
 
         Parameters
         ----------
         data : object
-            The data to be cast to a numpy bytes scalar.
+            The data to be cast to a NumPy bytes scalar.
 
         Returns
         -------
         np.bytes_
-            The data cast as a numpy bytes scalar.
+            The data cast as a NumPy bytes scalar.
 
         Raises
         ------
         TypeError
-            If the data cannot be converted to a numpy bytes scalar.
+            If the data cannot be converted to a NumPy bytes scalar.
         """
 
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy bytes scalar."
+        msg = f"Cannot convert object with type {type(data)} to a NumPy bytes scalar."
         raise TypeError(msg)
 
     def default_scalar(self) -> np.bytes_:
@@ -379,7 +379,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         """
         Convert a scalar to a JSON-serializable string representation.
 
-        This method encodes the given scalar as a numpy bytes scalar and then
+        This method encodes the given scalar as a NumPy bytes scalar and then
         encodes the bytes as a base64-encoded string.
 
         Parameters
@@ -411,7 +411,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         Returns
         -------
         np.bytes_
-            The numpy bytes scalar obtained from decoding the base64 string.
+            The NumPy bytes scalar obtained from decoding the base64 string.
 
         Raises
         ------
@@ -428,24 +428,24 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     @property
     def item_size(self) -> int:
         """
-        Get the item size of the raw bytes.
+        The size of a single scalar in bytes.
 
         Returns
         -------
         int
-            The size of each item in bytes, equivalent to the length attribute.
+            The size of a single scalar in bytes.
         """
         return self.length
 
 
 @dataclass(frozen=True, kw_only=True)
 class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize):
-    # np.dtypes.VoidDType is specified in an odd way in numpy
+    # np.dtypes.VoidDType is specified in an odd way in NumPy
     # it cannot be used to create instances of the dtype
     # so we have to tell mypy to ignore this here
 
     """
-    A Zarr data type for arrays containing raw bytes. This class wraps the NumPy ``void`` data type.
+    A Zarr data type for arrays containing raw bytes. Wraps the NumPy ``void`` data type.
     Scalars for this data type are instances of ``np.void``.
 
     This data type is parametrized by an integral length which specifies size in bytes of each
@@ -643,8 +643,8 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         Returns
         -------
-        RawBytes
-            An instance of this ZDType.
+        Self
+            An instance of this data type.
 
         Raises
         ------
@@ -756,7 +756,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         Returns
         -------
         np.void
-            The casted data as a numpy void scalar.
+            The casted data as a NumPy void scalar.
 
         Notes
         -----
@@ -764,44 +764,44 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         The input data must be castable to np.void.
         """
         native_dtype = self.to_native_dtype()
-        # Without the second argument, numpy will return a void scalar for dtype V1.
+        # Without the second argument, NumPy will return a void scalar for dtype V1.
         # The second argument ensures that, if native_dtype is something like V10,
         # the result will actually be a V10 scalar.
         return native_dtype.type(data, native_dtype)
 
     def cast_scalar(self, data: object) -> np.void:
         """
-        Attempt to cast a given object to a numpy void scalar.
+        Attempt to cast a given object to a NumPy void scalar.
 
         This method first checks if the provided data is a valid scalar that can be
-        converted to a numpy void scalar. If the check succeeds, the unchecked casting
+        converted to a NumPy void scalar. If the check succeeds, the unchecked casting
         operation is performed. If the data is not valid, a TypeError is raised.
 
         Parameters
         ----------
         data : object
-            The data to be cast to a numpy void scalar.
+            The data to be cast to a NumPy void scalar.
 
         Returns
         -------
         np.void
-            The data cast as a numpy void scalar.
+            The data cast as a NumPy void scalar.
 
         Raises
         ------
         TypeError
-            If the data cannot be converted to a numpy void scalar.
+            If the data cannot be converted to a NumPy void scalar.
         """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy void scalar."
+        msg = f"Cannot convert object with type {type(data)} to a NumPy void scalar."
         raise TypeError(msg)
 
     def default_scalar(self) -> np.void:
         """
         Return the default scalar value for this data type.
 
-        The default scalar is a numpy void scalar of the same length as the data type,
+        The default scalar is a NumPy void scalar of the same length as the data type,
         filled with zero bytes.
 
         Returns
@@ -847,7 +847,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         Returns
         -------
         np.void
-            The numpy void scalar.
+            The NumPy void scalar.
 
         Raises
         ------
@@ -861,12 +861,12 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
     @property
     def item_size(self) -> int:
         """
-        Get the item size of the raw bytes.
+        The size of a single scalar in bytes.
 
         Returns
         -------
         int
-            The size of each item in bytes, equivalent to the length attribute.
+            The size of a single scalar in bytes.
         """
         return self.length
 
@@ -874,7 +874,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 @dataclass(frozen=True, kw_only=True)
 class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
     """
-    A Zarr data type for arrays containing variable-length bytes. This class wraps the NumPy
+    A Zarr data type for arrays containing variable-length bytes. Wraps the NumPy
     "object" data type. Scalars for this data type are instances of plain python bytes.
 
     Attributes
@@ -1017,8 +1017,8 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
         Returns
         -------
-        VariableLengthBytes
-            An instance of this ZDType.
+        Self
+            An instance of this data type.
 
         Raises
         ------
@@ -1164,7 +1164,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         Check if the provided data is of type BytesLike.
 
         This method is used to verify if the input data can be considered as a
-        scalar of bytes-like type, which includes numpy bytes, strings, bytes,
+        scalar of bytes-like type, which includes NumPy bytes, strings, bytes,
         and integers.
 
         Parameters

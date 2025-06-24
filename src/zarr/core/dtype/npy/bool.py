@@ -21,7 +21,8 @@ if TYPE_CHECKING:
 @dataclass(frozen=True, kw_only=True, slots=True)
 class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     """
-    The boolean data type.
+    A Zarr data type for arrays containing booleans. Wraps the NumPy
+    ``np.dtypes.BoolDType`` data type. Scalars for this data type are instances of ``np.bool_``.
 
     Attributes
     ----------
@@ -96,7 +97,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        bool
+        TypeGuard[DTypeConfig_V2[Literal["|b1"], None]]
             True if the input is a valid JSON representation, False otherwise.
         """
         return (
@@ -302,11 +303,11 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     @property
     def item_size(self) -> int:
         """
-        Return the item size of the boolean dtype.
+        The size of a single scalar in bytes.
 
         Returns
         -------
         int
-            The item size in bytes.
+            The size of a single scalar in bytes.
         """
         return 1

@@ -87,6 +87,9 @@ def check_structured_dtype_v2_inner(data: object) -> TypeGuard[StructuredName_V2
 
 
 def check_structured_dtype_name_v2(data: Sequence[object]) -> TypeGuard[StructuredName_V2]:
+    """
+    Check that all the elements of a sequence are valid zarr v2 structured dtype identifiers
+    """
     return all(check_structured_dtype_v2_inner(d) for d in data)
 
 

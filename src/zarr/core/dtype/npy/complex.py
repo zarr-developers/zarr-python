@@ -61,7 +61,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         Returns
         -------
         Self
-            An instance of this data type with the specified endianness.
+            An instance of this data type.
 
         Raises
         ------
@@ -145,7 +145,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         Returns
         -------
         Self
-            An instance of this complex data type.
+            An instance of this data type.
 
         Raises
         ------
@@ -173,7 +173,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         Returns
         -------
         Self
-            An instance of this complex data type.
+            An instance of this data type.
 
         Raises
         ------
@@ -349,7 +349,7 @@ class Complex64(BaseComplex[np.dtypes.Complex64DType, np.complex64]):
     """
     A Zarr data type for arrays containing 64 bit complex floats.
 
-    This class wraps the NumPy ``np.dtypes.Complex64DType`` data type. Scalars for this data type
+    Wraps the NumPy ``np.dtypes.Complex64DType`` data type. Scalars for this data type
     are instances of ``np.complex64``.
 
     Attributes
@@ -368,6 +368,14 @@ class Complex64(BaseComplex[np.dtypes.Complex64DType, np.complex64]):
 
     @property
     def item_size(self) -> int:
+        """
+        The size of a single scalar in bytes.
+
+        Returns
+        -------
+        int
+            The size of a single scalar in bytes.
+        """
         return 8
 
 
@@ -376,7 +384,7 @@ class Complex128(BaseComplex[np.dtypes.Complex128DType, np.complex128], HasEndia
     """
     A Zarr data type for arrays containing 64 bit complex floats.
 
-    This class wraps the NumPy ``np.dtypes.Complex128DType`` data type. Scalars for this data type
+    Wraps the NumPy ``np.dtypes.Complex128DType`` data type. Scalars for this data type
     are instances of ``np.complex128``.
 
     Attributes
@@ -395,4 +403,12 @@ class Complex128(BaseComplex[np.dtypes.Complex128DType, np.complex128], HasEndia
 
     @property
     def item_size(self) -> int:
+        """
+        The size of a single scalar in bytes.
+
+        Returns
+        -------
+        int
+            The size of a single scalar in bytes.
+        """
         return 16
