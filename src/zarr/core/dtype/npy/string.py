@@ -14,7 +14,7 @@ from typing import (
     runtime_checkable,
 )
 
-import NumPy as np
+import numpy as np
 
 from zarr.core.common import NamedConfig
 from zarr.core.dtype.common import (
