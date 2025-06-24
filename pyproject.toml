@@ -72,7 +72,7 @@ gpu = [
 test = [
     "coverage",
     # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
-    "pytest==8.4.0",
+    "pytest<8.4",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
