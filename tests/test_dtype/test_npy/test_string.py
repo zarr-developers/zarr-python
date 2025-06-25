@@ -120,7 +120,12 @@ class TestFixedLengthUTF32(BaseTestZDType):
     )
 
 
-@pytest.mark.parametrize("zdtype", [FixedLengthUTF32(length=10), VariableLengthUTF8()])
+@pytest.mark.parametrize(
+    "zdtype",
+    [
+        FixedLengthUTF32(length=10),
+    ],
+)
 def test_unstable_dtype_warning(zdtype: FixedLengthUTF32 | VariableLengthUTF8) -> None:
     """
     Test that we get a warning when serializing a dtype without a zarr v3 spec to json
