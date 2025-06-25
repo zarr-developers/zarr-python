@@ -108,6 +108,7 @@ class TestStructured(BaseTestZDType):
         Structured(fields=(("field1", Int64()), ("field2", Int32()))),
     )
 
+
 def test_invalid_size() -> None:
     """
     Test that it's impossible to create a data type that has no fields
