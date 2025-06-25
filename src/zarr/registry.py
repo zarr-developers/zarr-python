@@ -93,8 +93,8 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
 
-    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
-    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
+    data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
+    data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
 
     __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     __pipeline_registry.lazy_load_list.extend(

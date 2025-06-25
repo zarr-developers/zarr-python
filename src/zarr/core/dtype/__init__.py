@@ -58,6 +58,7 @@ __all__ = [
     "UInt16",
     "UInt32",
     "UInt64",
+    "VariableLengthBytes",
     "VariableLengthUTF8",
     "ZDType",
     "data_type_registry",

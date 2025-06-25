@@ -38,7 +38,6 @@ sys.path.append(os.path.abspath(".."))
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
-    "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     'autoapi.extension',
     "numpydoc",
@@ -46,6 +45,7 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_design",
     'sphinx_reredirects',
+    "sphinx.ext.viewcode",
 ]
 
 issues_github_path = "zarr-developers/zarr-python"
@@ -56,7 +56,7 @@ autoapi_generate_api_docs = True
 autoapi_member_order = "groupwise"
 autoapi_root = "api"
 autoapi_keep_files = True
-autoapi_options = [ 'members', 'undoc-members', 'show-inheritance', 'show-module-summary', 'imported-members', ]
+autoapi_options = [ 'members', 'undoc-members', 'show-inheritance', 'show-module-summary', 'imported-members', 'inherited-members']
 
 def skip_submodules(
         app: sphinx.application.Sphinx,
