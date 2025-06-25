@@ -166,7 +166,7 @@ def parse_data_type(
     if dtype_spec in VLEN_UTF8_ALIAS:
         # If the dtype request is one of the aliases for variable-length UTF-8 strings,
         # return that dtype.
-        return VariableLengthUTF8()
+        return VariableLengthUTF8()  # type: ignore[return-value]
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
     # we can create a numpy dtype from it, and do the dtype inference from that
     return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]
