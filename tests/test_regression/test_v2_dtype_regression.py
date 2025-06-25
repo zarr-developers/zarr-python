@@ -10,6 +10,9 @@ import pytest
 from numcodecs import LZ4, LZMA, Blosc, GZip, VLenBytes, VLenUTF8, Zstd
 
 import zarr
+import zarr.abc
+import zarr.abc.codec
+import zarr.codecs as zarrcodecs
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
@@ -38,6 +41,7 @@ class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
     fill_value: np.generic | str | int | bytes
     filters: tuple[numcodecs.abc.Codec, ...] = ()
+    serializer: str | None = None
     compressor: numcodecs.abc.Codec
 
 
@@ -77,7 +81,7 @@ vlen_string_cases = [
     ArrayParams(
         values=np.array(["a", "bb", "ccc", "dddd"], dtype="O"),
         fill_value="1",
-        filters=(VLenUTF8(),),
+        serializer="vlen-utf8",
         compressor=GZip(),
     )
 ]
@@ -85,7 +89,7 @@ vlen_bytes_cases = [
     ArrayParams(
         values=np.array([b"a", b"bb", b"ccc", b"dddd"], dtype="O"),
         fill_value=b"1",
-        filters=(VLenBytes(),),
+        serializer="vlen-bytes",
         compressor=GZip(),
     )
 ]
@@ -102,7 +106,7 @@ array_cases_v3_08 = vlen_string_cases
 
 
 @pytest.fixture
-def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
+def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
     """
     Writes a zarr array to a temporary directory based on the provided ArrayParams. The array is
     returned.
@@ -113,12 +117,61 @@ def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
     compressor = array_params.compressor
     chunk_key_encoding = V2ChunkKeyEncoding(separator="/")
     dtype: ZDTypeLike
-    if array_params.values.dtype == np.dtype("|O") and array_params.filters == (VLenUTF8(),):
+    if array_params.values.dtype == np.dtype("|O") and array_params.serializer == "vlen-utf8":
         dtype = VariableLengthUTF8()  # type: ignore[assignment]
-    elif array_params.values.dtype == np.dtype("|O") and array_params.filters == (VLenBytes(),):
+        filters = array_params.filters + (VLenUTF8(),)
+    elif array_params.values.dtype == np.dtype("|O") and array_params.serializer == "vlen-bytes":
         dtype = VariableLengthBytes()
+        filters = array_params.filters + (VLenBytes(),)
     else:
         dtype = array_params.values.dtype
+        filters = array_params.filters
+    z = zarr.create_array(
+        store,
+        shape=array_params.values.shape,
+        dtype=dtype,
+        chunks=array_params.values.shape,
+        compressors=compressor,
+        filters=filters,
+        fill_value=array_params.fill_value,
+        order="C",
+        chunk_key_encoding=chunk_key_encoding,
+        write_data=True,
+        zarr_format=2,
+    )
+    z[:] = array_params.values
+    return z
+
+
+@pytest.fixture
+def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
+    """
+    Writes a zarr array to a temporary directory based on the provided ArrayParams. The array is
+    returned.
+    """
+    dest = tmp_path / "in"
+    store = LocalStore(dest)
+    array_params: ArrayParams = request.param
+    chunk_key_encoding = V2ChunkKeyEncoding(separator="/")
+    dtype: ZDTypeLike
+    serializer: Literal["auto"] | zarr.abc.codec.Codec
+    if array_params.values.dtype == np.dtype("|O") and array_params.serializer == "vlen-utf8":
+        dtype = VariableLengthUTF8()  # type: ignore[assignment]
+        serializer = zarrcodecs.VLenUTF8Codec()
+    elif array_params.values.dtype == np.dtype("|O") and array_params.serializer == "vlen-bytes":
+        dtype = VariableLengthBytes()
+        serializer = zarrcodecs.VLenBytesCodec()
+    else:
+        dtype = array_params.values.dtype
+        serializer = "auto"
+    if array_params.compressor == GZip():
+        compressor = zarrcodecs.GzipCodec()
+    else:
+        msg = (
+            "This test is only compatible with gzip compression at the moment, because the author"
+            "did not want to implement a complete abstraction layer for v2 and v3 codecs in this test."
+        )
+        raise ValueError(msg)
     z = zarr.create_array(
         store,
         shape=array_params.values.shape,
@@ -126,11 +179,11 @@ def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         chunks=array_params.values.shape,
         compressors=compressor,
         filters=array_params.filters,
+        serializer=serializer,
         fill_value=array_params.fill_value,
-        order="C",
         chunk_key_encoding=chunk_key_encoding,
         write_data=True,
-        zarr_format=2,
+        zarr_format=3,
     )
     z[:] = array_params.values
     return z
@@ -142,17 +195,17 @@ script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
 
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
 @pytest.mark.parametrize(
-    "source_array", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
+    "source_array_v2", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
 )
 @pytest.mark.parametrize("script_path", script_paths)
-def test_roundtrip_v2(source_array: Array, tmp_path: Path, script_path: Path) -> None:
+def test_roundtrip_v2(source_array_v2: Array, tmp_path: Path, script_path: Path) -> None:
     out_path = tmp_path / "out"
     copy_op = subprocess.run(
         [
             "uv",
             "run",
-            script_path,
-            str(source_array.store).removeprefix("file://"),
+            str(script_path),
+            str(source_array_v2.store).removeprefix("file://"),
             str(out_path),
         ],
         capture_output=True,
@@ -160,5 +213,30 @@ def test_roundtrip_v2(source_array: Array, tmp_path: Path, script_path: Path) ->
     )
     assert copy_op.returncode == 0
     out_array = zarr.open_array(store=out_path, mode="r", zarr_format=2)
-    assert source_array.metadata.to_dict() == out_array.metadata.to_dict()
-    assert np.array_equal(source_array[:], out_array[:])
+    assert source_array_v2.metadata.to_dict() == out_array.metadata.to_dict()
+    assert np.array_equal(source_array_v2[:], out_array[:])
+
+
+@pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize(
+    "source_array_v3", array_cases_v3_08, indirect=True, ids=tuple(map(str, array_cases_v3_08))
+)
+def test_roundtrip_v3(source_array_v3: Array, tmp_path: Path) -> None:
+    script_path = Path(__file__).resolve().parent / "scripts" / "v3.0.8.py"
+    out_path = tmp_path / "out"
+    copy_op = subprocess.run(
+        [
+            "uv",
+            "run",
+            str(script_path),
+            str(source_array_v3.store).removeprefix("file://"),
+            str(out_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert copy_op.returncode == 0
+    out_array = zarr.open_array(store=out_path, mode="r", zarr_format=3)
+    assert source_array_v3.metadata.to_dict() == out_array.metadata.to_dict()
+    assert np.array_equal(source_array_v3[:], out_array[:])
