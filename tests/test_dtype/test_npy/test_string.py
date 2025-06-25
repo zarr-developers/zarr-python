@@ -133,3 +133,12 @@ def test_unstable_dtype_warning(zdtype: FixedLengthUTF32 | VariableLengthUTF8) -
     """
     with pytest.raises(UnstableSpecificationWarning):
         zdtype.to_json(zarr_format=3)
+
+def test_invalid_size() -> None:
+    """
+    Test that it's impossible to create a data type that has no length
+    """
+    length = 0
+    msg = f"length must be >= 1, got {length}."
+    with pytest.raises(ValueError, match=msg):
+        FixedLengthUTF32(length=length)

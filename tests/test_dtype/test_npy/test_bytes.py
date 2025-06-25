@@ -152,3 +152,12 @@ def test_unstable_dtype_warning(
     """
     with pytest.raises(UnstableSpecificationWarning):
         zdtype.to_json(zarr_format=3)
+@pytest.mark.parametrize("zdtype_cls", [NullTerminatedBytes, RawBytes])
+def test_invalid_size(zdtype_cls: type[NullTerminatedBytes] | type[RawBytes]) -> None:
+    """
+    Test that it's impossible to create a data type that has no length
+    """
+    length = 0
+    msg = f"length must be >= 1, got {length}."
+    with pytest.raises(ValueError, match=msg):
+        zdtype_cls(length=length)

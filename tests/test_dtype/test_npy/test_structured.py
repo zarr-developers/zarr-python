@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype import (
@@ -106,3 +107,12 @@ class TestStructured(BaseTestZDType):
         Structured(fields=(("field1", Int32()), ("field2", Float64()))),
         Structured(fields=(("field1", Int64()), ("field2", Int32()))),
     )
+
+def test_invalid_size() -> None:
+    """
+    Test that it's impossible to create a data type that has no fields
+    """
+    fields = ()
+    msg = f"must have at least one field. Got {fields!r}"
+    with pytest.raises(ValueError, match=msg):
+        Structured(fields=fields)
