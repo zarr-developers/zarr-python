@@ -63,6 +63,14 @@ class FixedLengthUTF32(
     _zarr_v3_name: ClassVar[Literal["fixed_length_utf32"]] = "fixed_length_utf32"
     code_point_bytes: ClassVar[int] = 4  # utf32 is 4 bytes per code point
 
+    def __post_init__(self) -> None:
+        """
+        We don't allow instances of this class with length less than 1 because there is no way such
+        a data type can contain actual data.
+        """
+        if self.length < 1:
+            raise ValueError(f"length must be >= 1, got {self.length}.")
+
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         if cls._check_native_dtype(dtype):

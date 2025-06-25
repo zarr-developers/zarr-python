@@ -37,6 +37,14 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     dtype_cls = np.dtypes.BytesDType
     _zarr_v3_name: ClassVar[Literal["null_terminated_bytes"]] = "null_terminated_bytes"
 
+    def __post_init__(self) -> None:
+        """
+        We don't allow instances of this class with length less than 1 because there is no way such
+        a data type can contain actual data.
+        """
+        if self.length < 1:
+            raise ValueError(f"length must be >= 1, got {self.length}.")
+
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         if cls._check_native_dtype(dtype):
@@ -154,6 +162,14 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
     # so we have to tell mypy to ignore this here
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
     _zarr_v3_name: ClassVar[Literal["raw_bytes"]] = "raw_bytes"
+
+    def __post_init__(self) -> None:
+        """
+        We don't allow instances of this class with length less than 1 because there is no way such
+        a data type can contain actual data.
+        """
+        if self.length < 1:
+            raise ValueError(f"length must be >= 1, got {self.length}.")
 
     @classmethod
     def _check_native_dtype(

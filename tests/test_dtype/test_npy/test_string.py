@@ -101,20 +101,20 @@ class TestFixedLengthUTF32(BaseTestZDType):
         {"name": "numpy.fixed_length_utf32", "configuration": {"length_bits": "invalid"}},
     )
 
-    scalar_v2_params = ((FixedLengthUTF32(length=0), ""), (FixedLengthUTF32(length=2), "hi"))
+    scalar_v2_params = ((FixedLengthUTF32(length=1), ""), (FixedLengthUTF32(length=2), "hi"))
     scalar_v3_params = (
-        (FixedLengthUTF32(length=0), ""),
+        (FixedLengthUTF32(length=1), ""),
         (FixedLengthUTF32(length=2), "hi"),
         (FixedLengthUTF32(length=4), "hihi"),
     )
 
     cast_value_params = (
-        (FixedLengthUTF32(length=0), "", np.str_("")),
+        (FixedLengthUTF32(length=1), "", np.str_("")),
         (FixedLengthUTF32(length=2), "hi", np.str_("hi")),
         (FixedLengthUTF32(length=4), "hihi", np.str_("hihi")),
     )
     item_size_params = (
-        FixedLengthUTF32(length=0),
+        FixedLengthUTF32(length=1),
         FixedLengthUTF32(length=4),
         FixedLengthUTF32(length=10),
     )

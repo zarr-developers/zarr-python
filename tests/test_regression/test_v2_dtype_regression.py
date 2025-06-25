@@ -2,7 +2,7 @@ import subprocess
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numcodecs
 import numpy as np
@@ -18,6 +18,8 @@ from zarr.storage import LocalStore
 
 if TYPE_CHECKING:
     from zarr.core.dtype import ZDTypeLike
+
+ZarrPythonVersion = Literal["2.18", "3.0.8"]
 
 
 def runner_installed() -> bool:
@@ -87,7 +89,7 @@ vlen_bytes_cases = [
         compressor=GZip(),
     )
 ]
-array_cases = (
+array_cases_v2_18 = (
     basic_array_cases
     + bytes_array_cases
     + datetime_array_cases
@@ -96,9 +98,15 @@ array_cases = (
     + vlen_bytes_cases
 )
 
+array_cases_v3_08 = vlen_string_cases
+
 
 @pytest.fixture
 def source_array(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
+    """
+    Writes a zarr array to a temporary directory based on the provided ArrayParams. The array is
+    returned.
+    """
     dest = tmp_path / "in"
     store = LocalStore(dest)
     array_params: ArrayParams = request.param
@@ -134,10 +142,10 @@ script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
 
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
 @pytest.mark.parametrize(
-    "source_array", array_cases, indirect=True, ids=tuple(map(str, array_cases))
+    "source_array", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
 )
 @pytest.mark.parametrize("script_path", script_paths)
-def test_roundtrip(source_array: Array, tmp_path: Path, script_path: Path) -> None:
+def test_roundtrip_v2(source_array: Array, tmp_path: Path, script_path: Path) -> None:
     out_path = tmp_path / "out"
     copy_op = subprocess.run(
         [
