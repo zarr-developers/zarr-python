@@ -349,6 +349,11 @@ class StoreTests(Generic[S, B]):
         assert not await store.exists("foo/zarr.json")
         assert not await store.exists("foo/c/0")
 
+    async def test_delete_nonexistent_key_does_not_raise(self, store: S) -> None:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        await store.delete("nonexistent_key")
+
     async def test_is_empty(self, store: S) -> None:
         assert await store.is_empty("")
         await self.set(
