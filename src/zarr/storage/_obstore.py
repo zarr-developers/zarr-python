@@ -188,7 +188,13 @@ class ObjectStore(Store):
         import obstore as obs
 
         self._check_writable()
-        await obs.delete_async(self.store, key)
+
+        # Some obstore stores such as local filesystems, GCP and Azure raise an error
+        # when deleting a non-existent key, while others such as S3 and in-memory do
+        # not. We suppress the error to make the behavior consistent across all obstore
+        # stores. This is also in line with the behavior of the other Zarr store adapters.
+        with contextlib.suppress(FileNotFoundError):
+            await obs.delete_async(self.store, key)
 
     @property
     def supports_partial_writes(self) -> bool:
