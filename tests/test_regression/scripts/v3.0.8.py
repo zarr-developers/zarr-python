@@ -1,17 +1,10 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = "==3.12"
 # dependencies = [
 #  "zarr==3.0.8"
 # ]
 # ///
 
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#  "zarr==2.18",
-#  "numcodecs==0.15"
-# ]
-# ///
 
 import argparse
 
