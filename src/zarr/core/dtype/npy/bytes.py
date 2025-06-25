@@ -35,8 +35,10 @@ RawBytesJSONV3 = NamedConfig[Literal["raw_bytes"], FixedLengthBytesConfig]
 @dataclass(frozen=True, kw_only=True)
 class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLength, HasItemSize):
     """
-    A Zarr data type for arrays containing null-terminated bytes. Wraps the NumPy
-    ``np.dtypes.BytesDType`` data type. Scalars for this data type are instances of ``np.bytes_``.
+    A Zarr data type for arrays containing fixed-length null-terminated byte sequences.
+
+    Wraps the ``np.dtypes.BytesDType`` data type. Scalars for this data type are instances of
+    ``np.bytes_``.
 
     This data type is parametrized by an integral length which specifies size in bytes of each
     scalar. Because this data type uses null-terminated semantics, indexing into
@@ -44,34 +46,11 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
     Attributes
     ----------
-    length : int
-        The length of the bytes.
-
     dtype_cls: ClassVar[type[np.dtypes.BytesDType[int]]] = np.dtypes.BytesDType
         The NumPy data type wrapped by this ZDType.
-
-    Methods
-    -------
-    to_json(zarr_format) : dict
-        Convert the NullTerminatedBytes to JSON data.
-
-    from_json(data, zarr_format) : NullTerminatedBytes
-        Create NullTerminatedBytes from JSON data.
-
-    cast_scalar(data) : np.bytes_
-        Cast a python object to np.bytes_.
-
-    default_scalar() : np.bytes_
-        Return the default scalar value.
-
-    to_json_scalar(data, zarr_format) : str
-        Convert input to a scalar and return as JSON data.
-
-    from_json_scalar(data, zarr_format) : np.bytes_
-        Create np.bytes_ from JSON data.
-
-    item_size : int
-        Return the item size, in bytes, of the data type.
+    _zarr_v3_name : ClassVar[Literal["null_terminated_bytes"]]
+    length : int
+        The length of the bytes.
 
     Notes
     -----
@@ -157,15 +136,6 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[NullTerminatedBytesJSONV3]:
         """
         Check that the input is a valid representation of NullTerminatedBytes in Zarr V3.
-
-        The input must be a mapping with the following structure:
-
-        {
-            "name": "null_terminated_bytes",
-            "configuration": {
-                "length_bytes": <int>
-            }
-        }
 
         Parameters
         ----------
@@ -256,19 +226,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         self, zarr_format: ZarrFormat
     ) -> DTypeConfig_V2[str, None] | NullTerminatedBytesJSONV3:
         """
-        Generate a JSON representation of NullTerminatedBytes.
-
-        If zarr_format is 2, the return value will be a dictionary with the form
-        {
-            "name": "|S<self.length>",
-            "object_codec_id": None
-        }
-
-        If zarr_format is 3, the resulting JSON will be a dictionary with the form
-        {
-            "name": "null_terminated_bytes",
-            "configuration": {"length_bytes": self.length}
-        }
+        Generate a JSON representation of this data type.
 
         Parameters
         ----------
@@ -350,7 +308,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        np.bytes_
+        ``np.bytes_``
             The data cast as a NumPy bytes scalar.
 
         Raises
@@ -370,7 +328,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        np.bytes_
+        ``np.bytes_``
             The default scalar value.
         """
         return np.bytes_(b"")
@@ -399,7 +357,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bytes_:
         """
-        Read a JSON-serializable value as np.bytes_.
+        Read a JSON-serializable value as ``np.bytes_``.
 
         Parameters
         ----------
@@ -410,7 +368,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        np.bytes_
+        ``np.bytes_``
             The NumPy bytes scalar obtained from decoding the base64 string.
 
         Raises
@@ -440,47 +398,21 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
 @dataclass(frozen=True, kw_only=True)
 class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize):
-    # np.dtypes.VoidDType is specified in an odd way in NumPy
-    # it cannot be used to create instances of the dtype
-    # so we have to tell mypy to ignore this here
-
     """
-    A Zarr data type for arrays containing raw bytes. Wraps the NumPy ``void`` data type.
-    Scalars for this data type are instances of ``np.void``.
+    A Zarr data type for arrays containing fixed-length sequences of raw bytes.
+
+    Wraps the NumPy ``void`` data type. Scalars for this data type are instances of ``np.void``.
 
     This data type is parametrized by an integral length which specifies size in bytes of each
     scalar belonging to this data type.
 
     Attributes
     ----------
-    length : int
-        The length of the bytes.
-
     dtype_cls: ClassVar[type[np.dtypes.VoidDType[int]]] = np.dtypes.VoidDtype
         The NumPy data type wrapped by this ZDType.
-
-    Methods
-    -------
-    to_json(zarr_format) : dict
-        Convert RawBytes to JSON data.
-
-    from_json(data, zarr_format) : NullTerminatedBytes
-        Create RawBytes from JSON data.
-
-    cast_scalar(data) : np.void_
-        Cast a python object to np.void.
-
-    default_scalar() : np.void_
-        Return the default scalar value.
-
-    to_json_scalar(data, zarr_format) : str
-        Convert input to a scalar and return as JSON data.
-
-    from_json_scalar(data, zarr_format) : np.bytes_
-        Create a np.void from JSON data.
-
-    item_size : int
-        Return the item size, in bytes, of the data type.
+    _zarr_v3_name : ClassVar[Literal["raw_bytes"]]
+    length : int
+        The length of the bytes.
 
     Notes
     -----
@@ -491,6 +423,9 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
     """
 
+    # np.dtypes.VoidDType is specified in an odd way in NumPy
+    # it cannot be used to create instances of the dtype
+    # so we have to tell mypy to ignore this here
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
     _zarr_v3_name: ClassVar[Literal["raw_bytes"]] = "raw_bytes"
 
@@ -694,19 +629,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
     def to_json(self, zarr_format: ZarrFormat) -> DTypeConfig_V2[str, None] | RawBytesJSONV3:
         """
-        Generate a JSON representation of RawBytes.
-
-        If zarr_format is 2, the return value will be a dictionary with the form
-        {
-            "name": "|V<self.length>",
-            "object_codec_id": None
-        }
-
-        If zarr_format is 3, the resulting JSON will be a dictionary with the form
-        {
-            "name": "raw_bytes",
-            "configuration": {"length_bytes": self.length}
-        }
+        Generate a JSON representation of this data type.
 
         Parameters
         ----------
@@ -874,33 +797,18 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 @dataclass(frozen=True, kw_only=True)
 class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
     """
-    A Zarr data type for arrays containing variable-length bytes. Wraps the NumPy
-    "object" data type. Scalars for this data type are instances of plain python bytes.
+    A Zarr data type for arrays containing variable-length sequences of bytes.
+
+    Wraps the NumPy "object" data type. Scalars for this data type are instances of ``bytes``.
 
     Attributes
     ----------
     dtype_cls: ClassVar[type[np.dtypes.ObjectDType]] = np.dtypes.ObjectDType
         The NumPy data type wrapped by this ZDType.
-
-    Methods
-    -------
-    to_json(zarr_format) : dict
-        Convert the VariableLengthBytes to JSON data.
-
-    from_json(data, zarr_format) : VariableLengthBytes
-        Create VariableLengthBytes from JSON data.
-
-    cast_scalar(data) : bytes
-        Cast a python object to bytes.
-
-    default_scalar() : bytes
-        Return the default scalar value.
-
-    to_json_scalar(data, zarr_format) : str
-        Convert input to a scalar and return as JSON data.
-
-    from_json_scalar(data, zarr_format) : bytes
-        Create bytes from JSON data.
+    _zarr_v3_name: ClassVar[Literal["variable_length_bytes"]] = "variable_length_bytes"
+        The name of this data type in Zarr V3.
+    object_codec_id: ClassVar[Literal["vlen-bytes"]] = "vlen-bytes"
+        The object codec ID for this data type.
 
     Notes
     -----
@@ -1082,7 +990,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
         Returns
         -------
-        DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]] | Literal["variable_length_bytes"]
+        ``DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]] | Literal["variable_length_bytes"]``
             The JSON-serializable representation of the variable-length bytes data type.
             For zarr_format 2, returns a dictionary with "name" and "object_codec_id".
             For zarr_format 3, returns a string identifier "variable_length_bytes".

@@ -63,25 +63,6 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
     ----------
     _zarr_v2_names : ClassVar[tuple[str, ...]]
         Possible Zarr V2 JSON names for the data type.
-
-    Methods
-    -------
-    _check_json_v2(data: object) -> TypeGuard[DTypeConfig_V2[str, None]]:
-        Check if input is a valid JSON representation for Zarr v2.
-    _check_json_v3(data: object) -> TypeGuard[str]:
-        Check if JSON value is consistent with Zarr v3 for this data type.
-    _check_scalar(data: object) -> TypeGuard[IntLike]:
-        Check if a Python object is IntLike.
-    _cast_scalar_unchecked(data: IntLike) -> TIntScalar_co:
-        Create an integer without type checking of the input.
-    cast_scalar(data: object) -> TIntScalar_co:
-        Convert object to NumPy integer, raising TypeError if invalid.
-    default_scalar() -> TIntScalar_co:
-        Get the default value, which is 0 cast to this dtype.
-    from_json_scalar(data: JSON, *, zarr_format: ZarrFormat) -> TIntScalar_co:
-        Read a JSON-serializable value as a NumPy int scalar.
-    to_json_scalar(data: object, *, zarr_format: ZarrFormat) -> int:
-        Convert an object to JSON-serializable scalar.
     """
 
     _zarr_v2_names: ClassVar[tuple[str, ...]]
@@ -256,9 +237,9 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 @dataclass(frozen=True, kw_only=True)
 class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     """
-    A Zarr data type for 8-bit signed integers.
+    A Zarr data type for arrays containing 8-bit signed integers.
 
-    Wraps the NumPy ``np.dtypes.Int8DType`` data type. Scalars for this data type are
+    Wraps the ``np.dtypes.Int8DType`` data type. Scalars for this data type are
     instances of ``np.int8``.
 
     Attributes
@@ -267,7 +248,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         The class of the underlying NumPy dtype.
     _zarr_v3_name : ClassVar[Literal["int8"]] = "int8"
         The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal["|i1"]]] = ("|i1",)
+    _zarr_v2_names : ``ClassVar[tuple[Literal["|i1"]]]`` = ``("|i1",)``
         The names of this data type in Zarr V2.
     """
 
@@ -381,7 +362,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 
         Returns
         -------
-        DTypeConfig_V2[Literal["|i1"], None] | Literal["int8"]
+        ``DTypeConfig_V2[Literal["|i1"], None] | Literal["int8"]``
             The JSON-serializable representation of the data type.
 
         Raises
@@ -411,8 +392,9 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 @dataclass(frozen=True, kw_only=True)
 class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     """
-    A Zarr data type for arrays containing 8-bit unsigned integers. Wraps the NumPy
-    np.dtypes.UInt8DType data type. Scalars for this data type are instances np.uint8.
+    A Zarr data type for arrays containing 8-bit unsigned integers.
+
+    Wraps the ``np.dtypes.UInt8DType`` data type. Scalars for this data type are instances of ``np.uint8``.
 
     Attributes
     ----------
@@ -420,7 +402,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         The class of the underlying NumPy dtype.
     _zarr_v3_name : ClassVar[Literal["uint8"]] = "uint8"
         The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal["|u1"]]] = ("|u1",)
+    _zarr_v2_names : ``ClassVar[tuple[Literal["|u1"]]]`` = ``("|u1",)``
         The names of this data type in Zarr V2.
     """
 
@@ -521,7 +503,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
 
         Returns
         -------
-        DTypeConfig_V2[Literal["|u1"], None] | Literal["uint8"]
+        ``DTypeConfig_V2[Literal["|u1"], None] | Literal["uint8"]``
             The JSON-serializable representation of the data type.
 
         Raises
@@ -554,8 +536,10 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
 @dataclass(frozen=True, kw_only=True)
 class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     """
-    A Zarr data type for arrays containing 16-bit signed integers. Wraps the NumPy
-    np.dtypes.Int16DType data type. Scalars for this data type are instances np.int16.
+    A Zarr data type for arrays containing 16-bit signed integers.
+
+    Wraps the ``np.dtypes.Int16DType`` data type. Scalars for this data type are instances of
+    ``np.int16``.
 
     Attributes
     ----------
@@ -674,16 +658,6 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         """
         Serialize this ZDType to v2- or v3-flavored JSON
 
-        If the zarr_format is 2, then return a dict like this:
-        .. code-block:: json
-
-        {
-            "name": ">i2" or "<i2",
-            "object_codec_id": None
-        }
-
-        If the zarr_format is 3, then return the string "int16"
-
         Parameters
         ----------
         zarr_format : ZarrFormat
@@ -724,7 +698,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     """
     A Zarr data type for arrays containing 16-bit unsigned integers.
 
-    Wraps the NumPy ``np.dtypes.UInt16DType`` data type. Scalars for this data type are instances of
+    Wraps the ``np.dtypes.UInt16DType`` data type. Scalars for this data type are instances of
     ``np.uint16``.
 
     Attributes
@@ -844,16 +818,6 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         """
         Serialize this ZDType to v2- or v3-flavored JSON
 
-        If the zarr_format is 2, then return a dict like this:
-        .. code-block:: json
-
-        {
-            "name": ">u2" or "<u2",
-            "object_codec_id": None
-        }
-
-        If the zarr_format is 3, then return the string "uint16"
-
         Parameters
         ----------
         zarr_format : ZarrFormat
@@ -894,7 +858,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     """
     A Zarr data type for arrays containing 32-bit signed integers.
 
-    Wraps the NumPy ``np.dtypes.Int32DType`` data type. Scalars for this data type are instances of
+    Wraps the ``np.dtypes.Int32DType`` data type. Scalars for this data type are instances of
     ``np.int32``.
 
     Attributes
@@ -1014,16 +978,6 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         """
         Serialize this ZDType to v2- or v3-flavored JSON
 
-        If the zarr_format is 2, then return a dict like this:
-        .. code-block:: json
-
-        {
-            "name": ">i4" or "<i4",
-            "object_codec_id": None
-        }
-
-        If the zarr_format is 3, then return the string "int32"
-
         Parameters
         ----------
         zarr_format : ZarrFormat
@@ -1064,7 +1018,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     """
     A Zarr data type for arrays containing 32-bit unsigned integers.
 
-    Wraps the NumPy ``np.dtypes.UInt32DType`` data type. Scalars for this data type are instances of
+    Wraps the ``np.dtypes.UInt32DType`` data type. Scalars for this data type are instances of
     ``np.uint32``.
 
     Attributes
@@ -1220,7 +1174,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     """
     A Zarr data type for arrays containing 64-bit signed integers.
 
-    Wraps the NumPy ``np.dtypes.Int64DType`` data type. Scalars for this data type are instances of
+    Wraps the ``np.dtypes.Int64DType`` data type. Scalars for this data type are instances of
     ``np.int64``.
 
     Attributes
@@ -1376,7 +1330,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     """
     A Zarr data type for arrays containing 64-bit unsigned integers.
 
-    This data type wraps the NumPy ``np.dtypes.UInt64DType`` data type. Scalars for this data type
+    Wraps the ``np.dtypes.UInt64DType`` data type. Scalars for this data type
     are instances of ``np.uint64``.
 
     Attributes

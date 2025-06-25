@@ -1,4 +1,4 @@
-Array Data Types
+Array data types
 ================
 
 Zarr's Data Type Model
@@ -74,7 +74,7 @@ V2 JSON identifier for a data type is just the NumPy ``str`` attribute of that d
    However, Zarr version 3 data types do not store endianness information.
 
 There are two special cases to consider: `"structured" data types <#structured-data-type>`_, and
-`"object" <#object-data-type>` data types.
+`"object" <#object-data-type>`_ data types.
 
 Structured Data Type
 ^^^^^^^^^^^^^^^^^^^^
@@ -118,8 +118,7 @@ objects has a consistent type, then we can use a special encoding procedure to s
 is how Zarr Python stores variable-length UTF-8 strings, or variable-length byte strings.
 
 Although these are separate data types in this library, they are both "object" arrays in NumPy, which means
-they have the same Zarr V2 string representation: ``"|O"``. Clearly in this case the string
-representation of the data type is ambiguous in this case.
+they have the *same* Zarr V2 string representation: ``"|O"``.
 
 So for Zarr V2 we have to disambiguate different "object" data type arrays on the basis of their
 encoding procedure, i.e., the codecs declared in the ``filters`` and ``compressor`` attributes of array
@@ -195,14 +194,19 @@ API for the following operations:
 - Encoding and decoding a scalar value to and from Zarr V2 and Zarr V3 array metadata
 - Casting a Python object to a scalar value consistent with the data type
 
-The following section lists the data types built into Zarr Python.
+List of data types
+^^^^^^^^^^^^^^^^^^
 
-Boolean Types
-^^^^^^^^^^^^^
+The following section lists the data types built in to Zarr Python. With a few exceptions, Zarr
+Python supports nearly all of the data types in NumPy. If you need a data type that is not listed
+here, it's possible to create it yourself: see :ref:`adding-new-data-types`.
+
+Boolean
+"""""""
 - `Boolean <../api/zarr/dtype/index.html#zarr.dtype.Bool>`_
 
-Integral Types
-^^^^^^^^^^^^^^
+Integral
+""""""""
 - `Signed 8-bit integer <../api/zarr/dtype/index.html#zarr.dtype.Int8>`_
 - `Signed 16-bit integer <../api/zarr/dtype/index.html#zarr.dtype.Int16>`_
 - `Signed 32-bit integer <../api/zarr/dtype/index.html#zarr.dtype.Int32>`_
@@ -212,27 +216,38 @@ Integral Types
 - `Unsigned 32-bit integer <../api/zarr/dtype/index.html#zarr.dtype.UInt32>`_
 - `Unsigned 64-bit integer <../api/zarr/dtype/index.html#zarr.dtype.UInt64>`_
 
-Floating-Point Types
-^^^^^^^^^^^^^^^^^^^^
+Floating-point
+""""""""""""""
 - `16-bit floating-point <../api/zarr/dtype/index.html#zarr.dtype.Float16>`_
 - `32-bit floating-point <../api/zarr/dtype/index.html#zarr.dtype.Float32>`_
 - `64-bit floating-point <../api/zarr/dtype/index.html#zarr.dtype.Float64>`_
 - `64-bit complex floating-point <../api/zarr/dtype/index.html#zarr.dtype.Complex64>`_
 - `128-bit complex floating-point <../api/zarr/dtype/index.html#zarr.dtype.Complex128>`_
 
-String Types
-^^^^^^^^^^^^
+String
+""""""
 - `Fixed-length UTF-32 string <../api/zarr/dtype/index.html#zarr.dtype.FixedLengthUTF32>`_
 - `Variable-length UTF-8 string <../api/zarr/dtype/index.html#zarr.dtype.VariableLengthUTF8>`_
 
-Byte String Types
-^^^^^^^^^^^^^^^^^
+Bytes
+"""""
 - `Fixed-length null-terminated bytes <../api/zarr/dtype/index.html#zarr.dtype.NullTerminatedBytes>`_
 - `Fixed-length raw bytes <../api/zarr/dtype/index.html#zarr.dtype.RawBytes>`_
 - `Variable-length bytes <../api/zarr/dtype/index.html#zarr.dtype.VariableLengthBytes>`_
 
+Temporal
+""""""""
+- `DateTime64 <../api/zarr/dtype/index.html#zarr.dtype.DateTime64>`_
+- `TimeDelta64 <../api/zarr/dtype/index.html#zarr.dtype.TimeDelta64>`_
+
+Struct-like
+"""""""""""
+- `Structured <../api/zarr/dtype/index.html#zarr.dtype.Structured>`_
+
 Example Usage
-~~~~~~~~~~~~~
+^^^^^^^^^^^^^
+
+This section will demonstrates the basic usage of Zarr data types.
 
 Create a ``ZDType`` from a native data type:
 
@@ -267,7 +282,7 @@ Serialize to JSON for Zarr V2:
 .. note::
 
   The representation returned by ``to_json`` is more abstract than the literal contents of Zarr V2
-  array metadata, because the JSON representation used by the `ZDType` classes must be distinct across
+  array metadata, because the JSON representation used by the ``ZDType`` classes must be distinct across
   different data types. Zarr V2 identifies multiple distinct data types with the "object" data type
   identifier ``"|O"``, which means extra information is needed to disambiguate these data types from
   one another. That's the reason for the ``object_codec_id`` field you see here. See the
@@ -296,8 +311,10 @@ Deserialize a scalar value from JSON:
   >>> scalar_value = int8.from_json_scalar(42, zarr_format=3)
   >>> assert scalar_value == np.int8(42)
 
+.. _adding-new-data-types:
+
 Adding New Data Types
-~~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^^
 
 Each Zarr data type is a separate Python class that inherits from
 `ZDType <../api/zarr/dtype/index.html#zarr.dtype.ZDType>`_. You can define a custom data type by
@@ -311,7 +328,7 @@ Python project directory.
   :language: python
 
 Data Type Resolution
-~~~~~~~~~~~~~~~~~~~~
+^^^^^^^^^^^^^^^^^^^^
 
 Although Zarr Python uses a different data type model from NumPy, you can still define a Zarr array
 with a NumPy data type object:
@@ -379,8 +396,9 @@ a static lookup table, Zarr Python relies on a dynamic approach to data type res
 Zarr Python defines a collection of Zarr data types. This collection, called a "data type registry,"
 is essentially a dictionary where the keys are strings (a canonical name for each data type), and the
 values are the data type classes themselves. Dynamic data type resolution entails iterating over
-these data type classes, invoking a special class constructor defined on each one, and returning a
-concrete data type instance if and only if exactly one of those constructor invocations is successful.
+these data type classes, invoking that class' `from_native_dtype <#api/dtype/ZDType.from_native_dtype>`_
+method, and returning a concrete data type instance if and only if exactly one of those constructor
+invocations is successful.
 
 In plain language, we take some user input, like a NumPy data type, offer it to all the
 known data type classes, and return an instance of the one data type class that can accept that user input.
