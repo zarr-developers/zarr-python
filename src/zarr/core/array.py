@@ -29,6 +29,7 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Co
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.numcodec import Numcodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_config
 from zarr.core.attributes import Attributes
@@ -4776,11 +4777,11 @@ def _parse_chunk_encoding_v3(
     elif compressors == "auto":
         out_bytes_bytes = default_compressors_v3(dtype)
     else:
-        maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
-        if isinstance(compressors, dict | Codec):
+        maybe_bytes_bytes: Iterable[Codec | dict[str, JSON] | Numcodec]
+        if isinstance(compressors, dict | Codec | Numcodec):
             maybe_bytes_bytes = (compressors,)
         else:
-            maybe_bytes_bytes = cast("Iterable[Codec | dict[str, JSON]]", compressors)
+            maybe_bytes_bytes = compressors  # type: ignore[assignment]
 
         out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
 

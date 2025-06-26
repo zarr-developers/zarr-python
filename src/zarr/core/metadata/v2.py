@@ -3,11 +3,13 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict
+from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 import numcodecs.abc
 
+from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
+from zarr.codecs.numcodec import NumcodecsAdapter
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json_v2
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, TDType_co, TScalar_co, ZDType
@@ -57,9 +59,6 @@ class ArrayV2MetadataDict(TypedDict):
 
 # Union of acceptable types for v2 compressors
 CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
-
-# These are the ids of the known object codecs for zarr v2.
-ObjectCodecIds = ("vlen-utf8", "vlen-bytes", "vlen-array", "pickle", "json2", "msgpack2")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -210,6 +209,9 @@ class ArrayV2Metadata(Metadata):
                 codec_config.pop("checksum")
             zarray_dict["compressor"] = codec_config
 
+        if isinstance(zarray_dict["compressor"], NumcodecsAdapter):
+            zarray_dict["compressor"] = zarray_dict["compressor"].to_json(zarr_format=2)
+
         if zarray_dict["filters"] is not None:
             raw_filters = zarray_dict["filters"]
             # TODO: remove this when we can stratically type the output JSON data structure
@@ -301,7 +303,7 @@ def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
     """
     Parse a potential compressor.
     """
-    if data is None or isinstance(data, numcodecs.abc.Codec):
+    if data is None or isinstance(data, numcodecs.abc.Codec | Codec):
         return data
     if isinstance(data, dict):
         return numcodecs.get_codec(data)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
+from zarr.codecs.numcodec import NumcodecsAdapter
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import (
     VariableLengthString,
@@ -335,6 +336,13 @@ class ArrayV3Metadata(Metadata):
         # the metadata document
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
+
+        out_dict["codecs"] = []
+        for codec in self.codecs:
+            if isinstance(codec, NumcodecsAdapter):
+                out_dict["codecs"].append(codec.to_json(zarr_format=3))
+            else:
+                out_dict["codecs"].append(codec.to_dict())
 
         # TODO: replace the `to_dict` / `from_dict` on the `Metadata`` class with
         # to_json, from_json, and have ZDType inherit from `Metadata`

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, overload
 
 from numcodecs.gzip import GZip
 
-from zarr.abc.codec import BytesBytesCodec
+from zarr.abc.codec import BytesBytesCodec, CodecConfig_V2
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -26,6 +27,16 @@ def parse_gzip_level(data: JSON) -> int:
             f"Expected an integer from the inclusive range (0, 9). Got {data} instead."
         )
     return data
+
+
+class GZipSettings(TypedDict):
+    level: int
+
+
+class GZipConfig_V2(CodecConfig_V2[Literal["gzip"]], GZipSettings): ...
+
+
+GZipConfig_V3 = NamedConfig[Literal["gzip"], GZipSettings]
 
 
 @dataclass(frozen=True)
@@ -46,6 +57,50 @@ class GzipCodec(BytesBytesCodec):
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "gzip", "configuration": {"level": self.level}}
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> GZipConfig_V2: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> GZipConfig_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> GZipConfig_V2 | GZipConfig_V3:
+        if zarr_format == 2:
+            return {"id": "gzip", "level": self.level}
+        elif zarr_format == 3:
+            return {"name": "gzip", "configuration": {"level": self.level}}
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
+
+    @classmethod
+    def _check_json_v2(cls, data: Mapping[str, object]) -> TypeGuard[GZipConfig_V2]:
+        return (
+            set(data.keys()) == {"id", "level"}
+            and data["id"] == "gzip"
+            and isinstance(data["level"], int)
+        )
+
+    @classmethod
+    def _check_json_v3(cls, data: Mapping[str, object]) -> TypeGuard[GZipConfig_V3]:
+        return (
+            set(data.keys()) == {"name", "configuration"}
+            and data["name"] == "gzip"
+            and isinstance(data["configuration"], dict)
+            and "level" in data["configuration"]
+            and isinstance(data["configuration"]["level"], int)
+        )
+
+    @classmethod
+    def _from_json_v2(cls, data: Mapping[str, object]) -> Self:
+        if cls._check_json_v2(data):
+            return cls(level=data["level"])
+        raise ValueError(f"Invalid GZip JSON data for Zarr format 2: {data!r}")
+
+    @classmethod
+    def _from_json_v3(cls, data: Mapping[str, object]) -> Self:
+        if cls._check_json_v3(data):
+            return cls(level=data["configuration"]["level"])
+        raise ValueError(f"Invalid GZip JSON data for Zarr format 3: {data!r}")
 
     async def _decode_single(
         self,

@@ -18,6 +18,8 @@ from typing import (
     overload,
 )
 
+from typing_extensions import ReadOnly
+
 from zarr.core.config import config as zarr_config
 
 if TYPE_CHECKING:
@@ -42,13 +44,15 @@ AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
 
-TName = TypeVar("TName", bound=str)
-TConfig = TypeVar("TConfig", bound=Mapping[str, object])
+BaseConfig = Mapping[str, object]
+
+TName_co = TypeVar("TName_co", bound=str, covariant=True)
+TConfig_co = TypeVar("TConfig_co", bound=BaseConfig, covariant=True)
 
 
-class NamedConfig(TypedDict, Generic[TName, TConfig]):
-    name: TName
-    configuration: TConfig
+class NamedConfig(TypedDict, Generic[TName_co, TConfig_co]):
+    name: ReadOnly[TName_co]
+    configuration: ReadOnly[TConfig_co]
 
 
 def product(tup: ChunkCoords) -> int:

@@ -7,7 +7,7 @@ import pickle
 import re
 import sys
 from itertools import accumulate
-from typing import TYPE_CHECKING, Any, Literal, get_args
+from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
 import numcodecs

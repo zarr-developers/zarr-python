@@ -177,19 +177,24 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
     return get_codec_class(data["name"]).from_dict(data)  # type: ignore[arg-type]
 
 
-def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
+def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec | Numcodec) -> BytesBytesCodec:
     """
     Normalize the input to a ``BytesBytesCodec`` instance.
     If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
     is converted to a ``BytesBytesCodec`` instance via the ``_resolve_codec`` function.
     """
+    # avoid circular import, AKA a sign that this function is in the wrong place
     from zarr.abc.codec import BytesBytesCodec
+    from zarr.codecs.numcodec import Numcodec, NumcodecsBytesBytesCodec
 
+    result: BytesBytesCodec
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, BytesBytesCodec):
             msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
+    elif isinstance(data, Numcodec):
+        return NumcodecsBytesBytesCodec(_codec=data)
     else:
         if not isinstance(data, BytesBytesCodec):
             raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")

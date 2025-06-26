@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from collections.abc import Mapping
+from typing import (
+    TYPE_CHECKING,
+    Generic,
+    Literal,
+    TypedDict,
+    TypeVar,
+    overload,
+)
+
+from typing_extensions import ReadOnly
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.common import ChunkCoords, NamedConfig, ZarrFormat, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -33,6 +43,15 @@ __all__ = [
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
+
+TName = TypeVar("TName", bound=str, covariant=True)
+
+
+class CodecConfig_V2(TypedDict, Generic[TName]):
+    id: ReadOnly[TName]
+
+
+CodecConfig_V3 = NamedConfig[str, Mapping[str, object]]
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
@@ -156,6 +175,34 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         Iterable[CodecOutput | None]
         """
         return await _batching_helper(self._encode_single, chunks_and_specs)
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecConfig_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecConfig_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        raise NotImplementedError
+
+    @classmethod
+    def _from_json_v2(cls, data: Mapping[str, object]) -> Self:
+        raise NotImplementedError
+
+    @classmethod
+    def _from_json_v3(cls, data: Mapping[str, object]) -> Self:
+        raise NotImplementedError
+
+    @classmethod
+    def from_json(cls, data: Mapping[str, object], zarr_format: ZarrFormat) -> Self:
+        if zarr_format == 2:
+            return cls._from_json_v2(data)
+        elif zarr_format == 3:
+            return cls._from_json_v3(data)
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
 
 
 class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
