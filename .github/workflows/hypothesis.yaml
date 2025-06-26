@@ -25,12 +25,19 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.11']
-        numpy-version: ['2.1']
+        python-version: ['3.12']
+        numpy-version: ['2.2']
         dependency-set: ["optional"]
 
     steps:
     - uses: actions/checkout@v4
+    - name: Set HYPOTHESIS_PROFILE based on trigger
+      run: |
+        if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "HYPOTHESIS_PROFILE=nightly" >> $GITHUB_ENV
+        else
+          echo "HYPOTHESIS_PROFILE=ci" >> $GITHUB_ENV
+        fi
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -58,6 +65,7 @@ jobs:
       if: success()
       id: status
       run: |
+        echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.

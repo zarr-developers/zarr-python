@@ -93,7 +93,7 @@ class NDArrayLike(Protocol):
 
     def all(self) -> bool: ...
 
-    def __eq__(self, other: object) -> Self:  # type: ignore[explicit-override, override]
+    def __eq__(self, other: object) -> Self:  # type: ignore[override]
         """Element-wise equal
 
         Notes
@@ -159,7 +159,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -207,7 +207,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -227,7 +227,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     def as_array_like(self) -> ArrayLike:
@@ -371,7 +371,7 @@ class NDBuffer:
                 "Cannot call abstract method on the abstract class 'NDBuffer'"
             )
         return cls(
-            cast(NDArrayLike, None)
+            cast("NDArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -408,7 +408,7 @@ class NDBuffer:
                 "Cannot call abstract method on the abstract class 'NDBuffer'"
             )
         return cls(
-            cast(NDArrayLike, None)
+            cast("NDArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     def as_ndarray_like(self) -> NDArrayLike:
@@ -440,7 +440,7 @@ class NDBuffer:
         """Returns the buffer as a scalar value"""
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
-        return cast(ScalarType, self.as_numpy_array()[()])
+        return cast("ScalarType", self.as_numpy_array()[()])
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -495,7 +495,9 @@ class NDBuffer:
         return np.array_equal(
             self._data,
             other,
-            equal_nan=equal_nan if self._data.dtype.kind not in "USTOV" else False,
+            equal_nan=equal_nan
+            if self._data.dtype.kind not in ("U", "S", "T", "O", "V")
+            else False,
         )
 
     def fill(self, value: Any) -> None:

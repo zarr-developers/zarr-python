@@ -1,11 +1,11 @@
 import textwrap
 
-import numpy as np
 import pytest
 
 from zarr.codecs.bytes import BytesCodec
 from zarr.core._info import ArrayInfo, GroupInfo, human_readable_size
 from zarr.core.common import ZarrFormat
+from zarr.core.dtype.npy.int import Int32
 
 ZARR_FORMATS = [2, 3]
 
@@ -53,7 +53,8 @@ def test_group_info_complete(zarr_format: ZarrFormat) -> None:
 def test_array_info(zarr_format: ZarrFormat) -> None:
     info = ArrayInfo(
         _zarr_format=zarr_format,
-        _data_type=np.dtype("int32"),
+        _data_type=Int32(),
+        _fill_value=0,
         _shape=(100, 100),
         _chunk_shape=(10, 100),
         _order="C",
@@ -65,7 +66,8 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
     assert result == textwrap.dedent(f"""\
         Type               : Array
         Zarr format        : {zarr_format}
-        Data type          : int32
+        Data type          : Int32(endianness='little')
+        Fill value         : 0
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
@@ -91,7 +93,8 @@ def test_array_info_complete(
     ) = bytes_things
     info = ArrayInfo(
         _zarr_format=zarr_format,
-        _data_type=np.dtype("int32"),
+        _data_type=Int32(),
+        _fill_value=0,
         _shape=(100, 100),
         _chunk_shape=(10, 100),
         _order="C",
@@ -106,7 +109,8 @@ def test_array_info_complete(
     assert result == textwrap.dedent(f"""\
         Type               : Array
         Zarr format        : {zarr_format}
-        Data type          : int32
+        Data type          : Int32(endianness='little')
+        Fill value         : 0
         Shape              : (100, 100)
         Chunk shape        : (10, 100)
         Order              : C
