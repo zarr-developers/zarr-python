@@ -761,7 +761,15 @@ class AsyncGroup:
         ----------
         key : str
             Array or group name
+
+        Raises
+        ------
+        ValueError
+            If attempting to delete self (empty key)
         """
+        if not key:
+            raise ValueError("Cannot delete self (empty key)")
+            
         store_path = self.store_path / key
 
         await store_path.delete_dir()
