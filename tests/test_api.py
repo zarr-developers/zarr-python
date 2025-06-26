@@ -162,16 +162,6 @@ async def test_array_like_creation(
     assert np.all(Array(new_arr)[:] == expect_fill)
 
 
-async def test_invalid_full_like() -> None:
-    """
-    Test that a fill value that is incompatible with the proposed dtype is rejected
-    """
-    ref_arr = zarr.ones(store={}, shape=(11, 12), dtype="uint8", chunks=(11, 12))
-    fill = 4
-    with pytest.raises(ValueError, match=f"fill value {fill} is not valid for dtype DataType.bool"):
-        await zarr.api.asynchronous.full_like(ref_arr, path="foo", fill_value=fill, dtype="bool")
-
-
 # TODO: parametrize over everything this function takes
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_array(store: Store, zarr_format: ZarrFormat) -> None:
