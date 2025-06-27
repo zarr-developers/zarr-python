@@ -33,7 +33,7 @@ class V2Codec(ArrayBytesCodec):
         cdata = chunk_bytes.as_array_like()
         # decompress
         if self.compressor:
-            chunk = await asyncio.to_thread(self.compressor.decode, cdata)
+            chunk = await asyncio.to_thread(self.compressor.decode, ensure_bytes(cdata))
         else:
             chunk = cdata
 

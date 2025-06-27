@@ -80,6 +80,7 @@ test = [
     "mypy",
     "hypothesis",
     "pytest-xdist",
+    "numcodecs[pcodec]"
 ]
 remote_tests = [
     'zarr[remote]',

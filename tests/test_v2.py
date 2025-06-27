@@ -6,7 +6,7 @@ import numcodecs.abc
 import numcodecs.vlen
 import numpy as np
 import pytest
-from numcodecs import Delta
+from numcodecs import Delta, PCodec
 from numcodecs.blosc import Blosc
 from numcodecs.zstd import Zstd
 
@@ -313,3 +313,11 @@ def test_other_dtype_roundtrip(fill_value: None | bytes, tmp_path: Path) -> None
     za[...] = a
     za = zarr.open_array(store=array_path)
     assert (a == za[:]).all()
+
+
+def test_pcodec_roundtrip(tmp_path: Path) -> None:
+    array_path = tmp_path / "data.zarr"
+    z = zarr.create(shape=(3,), store=array_path, chunks=(2,), zarr_format=2, compressor=PCodec())
+    z[...] = np.ones(3)
+    za = zarr.open_array(store=array_path)
+    assert (za[:] == z).all()
