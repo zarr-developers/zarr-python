@@ -7,9 +7,6 @@
 # ]
 # ///
 #
-# Note: the zarr version must be changed in order to run this outside of the
-# zarr source tree. For example, to make this script truly stand-alone, specify the zarr
-# dependency as just "zarr"
 
 """
 Demonstrate how to extend Zarr Python by defining a new data type
