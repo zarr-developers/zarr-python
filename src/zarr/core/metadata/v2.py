@@ -270,14 +270,29 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
 
     if data is None:
         return data
+    if isinstance(data, str):
+        try:
+            return (numcodecs.get_codec({"id": data}),)
+        except TypeError as e:
+            codec_cls = numcodecs.registry.codec_registry.get(data)
+            msg = (
+                f'A string representation for filter "{data}" was provided which specifies codec {codec_cls.__name__}. But that codec '
+                f"cannot be specified by a string because it takes a required configuration. Use either the dict "
+                f"representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
     if isinstance(data, Iterable):
         for idx, val in enumerate(data):
             if isinstance(val, numcodecs.abc.Codec):
                 out.append(val)
             elif isinstance(val, dict):
                 out.append(numcodecs.get_codec(val))
+            elif isinstance(val, str):
+                filter = parse_filters(val)
+                if filter is not None:
+                    out.extend(filter)
             else:
-                msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
+                msg = f"For Zarr format 2 arrays, all elements of `filters` must be a numcodecs.abc.Codec or a dict or str representation of numcodecs.abc.Codec. Got {type(val)} at index {idx} instead."
                 raise TypeError(msg)
         if len(out) == 0:
             # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
@@ -287,7 +302,7 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
     # take a single codec instance and wrap it in a tuple
     if isinstance(data, numcodecs.abc.Codec):
         return (data,)
-    msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
+    msg = f"For Zarr format 2 arrays, all elements of `filters` must be None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
     raise TypeError(msg)
 
 
@@ -299,7 +314,18 @@ def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
         return data
     if isinstance(data, dict):
         return numcodecs.get_codec(data)
-    msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
+    if isinstance(data, str):
+        try:
+            return numcodecs.get_codec({"id": data})
+        except TypeError as e:
+            codec_cls = numcodecs.registry.codec_registry.get(data)
+            msg = (
+                f'A string representation for compressor "{data}" was provided which specifies codec {codec_cls.__name__}. But that codec '
+                f"cannot be specified by a string because it takes a required configuration. Use either the dict "
+                f"representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
+    msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Expected None, a numcodecs.abc.Codec, or a dict or str representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 
 
