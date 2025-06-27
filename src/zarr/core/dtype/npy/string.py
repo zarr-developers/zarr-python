@@ -63,6 +63,14 @@ class FixedLengthUTF32(
     _zarr_v3_name: ClassVar[Literal["fixed_length_utf32"]] = "fixed_length_utf32"
     code_point_bytes: ClassVar[int] = 4  # utf32 is 4 bytes per code point
 
+    def __post_init__(self) -> None:
+        """
+        We don't allow instances of this class with length less than 1 because there is no way such
+        a data type can contain actual data.
+        """
+        if self.length < 1:
+            raise ValueError(f"length must be >= 1, got {self.length}.")
+
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         if cls._check_native_dtype(dtype):
@@ -195,7 +203,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     as data type, but as a base class for other variable length string data types.
     """
 
-    _zarr_v3_name: ClassVar[Literal["variable_length_utf8"]] = "variable_length_utf8"
+    _zarr_v3_name: ClassVar[Literal["string"]] = "string"
     object_codec_id: ClassVar[Literal["vlen-utf8"]] = "vlen-utf8"
 
     @classmethod
@@ -222,7 +230,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         )
 
     @classmethod
-    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["variable_length_utf8"]]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["string"]]:
         return data == cls._zarr_v3_name
 
     @classmethod
@@ -246,15 +254,14 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         self, zarr_format: Literal[2]
     ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]: ...
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> Literal["variable_length_utf8"]: ...
+    def to_json(self, zarr_format: Literal[3]) -> Literal["string"]: ...
 
     def to_json(
         self, zarr_format: ZarrFormat
-    ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]] | Literal["variable_length_utf8"]:
+    ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]] | Literal["string"]:
         if zarr_format == 2:
             return {"name": "|O", "object_codec_id": self.object_codec_id}
         elif zarr_format == 3:
-            v3_unstable_dtype_warning(self)
             return self._zarr_v3_name
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 

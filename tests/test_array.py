@@ -41,7 +41,7 @@ from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
-from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype import parse_data_type
 from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
 from zarr.core.dtype.npy.float import Float32, Float64
@@ -1285,7 +1285,7 @@ class TestCreateArray:
             filters=filters,
         )
         filters_expected, compressor_expected = _parse_chunk_encoding_v2(
-            filters=filters, compressor=compressors, dtype=get_data_type_from_native_dtype(dtype)
+            filters=filters, compressor=compressors, dtype=parse_data_type(dtype, zarr_format=2)
         )
         assert arr.metadata.zarr_format == 2  # guard for mypy
         assert arr.metadata.compressor == compressor_expected

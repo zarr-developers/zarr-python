@@ -109,6 +109,12 @@ ANY_DTYPE: Final = (
     VariableLengthBytes,
 )
 
+# These are aliases for variable-length UTF-8 strings
+# We handle them when a user requests a data type instead of using NumPy's dtype inferece because
+# the default NumPy behavior -- to inspect the user-provided array data and choose
+# an appropriately sized U dtype -- is unworkable for Zarr.
+VLEN_UTF8_ALIAS: Final = ("str", str, "string")
+
 # This type models inputs that can be coerced to a ZDType
 ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
 
@@ -157,6 +163,10 @@ def parse_data_type(
     # dict and zarr_format 3 means that we have a JSON object representation of the dtype
     if zarr_format == 3 and isinstance(dtype_spec, Mapping):
         return get_data_type_from_json(dtype_spec, zarr_format=3)
+    if dtype_spec in VLEN_UTF8_ALIAS:
+        # If the dtype request is one of the aliases for variable-length UTF-8 strings,
+        # return that dtype.
+        return VariableLengthUTF8()  # type: ignore[return-value]
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
     # we can create a numpy dtype from it, and do the dtype inference from that
     return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]
