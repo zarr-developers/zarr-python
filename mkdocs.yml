@@ -126,6 +126,19 @@ plugins:
 
           inventories:
             - https://docs.python.org/3/objects.inv
+  - redirects:
+      redirect_maps:
+        'spec/index.md': 'https://zarr-specs.readthedocs.io'
+        'spec/v1.md': 'https://zarr-specs.readthedocs.io/en/latest/v1/v1.0.html'
+        'spec/v2.md': 'https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html'
+        'spec/v3.md': 'https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html'
+        'license.md': 'https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt'
+        'tutorial.md': 'user-guide/installation.md'
+        'getting-started.md': 'index.md##quick-start'
+        'roadmap.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
+        'installation.md': 'user-guide/installation.md'
+        'api.md': 'api/open.md'
+        'release.md': 'release-notes.md'
 
 # https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
 markdown_extensions:
