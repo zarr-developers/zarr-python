@@ -9,6 +9,7 @@ docs_dir: docs
 
 nav:
   - "index.md"
+  - "quick-start.md"
   - User Guide:
       - user-guide/installation.md
       - user-guide/arrays.md
@@ -129,7 +130,7 @@ plugins:
         'spec/v3.md': 'https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html'
         'license.md': 'https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt'
         'tutorial.md': 'user-guide/installation.md'
-        'getting-started.md': 'index.md##quick-start'
+        'getting-started.md': 'quick-start.md'
         'roadmap.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
         'installation.md': 'user-guide/installation.md'
         'api.md': 'api/open.md'
@@ -160,5 +161,8 @@ markdown_extensions:
   - pymdownx.tasklist:
       custom_checkbox: true
   - pymdownx.tilde
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - toc:
       permalink: true
