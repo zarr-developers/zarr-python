@@ -86,7 +86,7 @@ z6 = zarr.create_array(store={}, shape=(10000, 10000, 1000), shards=(1000, 1000,
 z6.info
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.uint8
+# Data type          : UInt8()
 # Fill value         : 0
 # Shape              : (10000, 10000, 1000)
 # Shard shape        : (1000, 1000, 1000)
@@ -95,7 +95,7 @@ z6.info
 # Read-only          : False
 # Store type         : MemoryStore
 # Filters            : ()
-# Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+# Serializer         : BytesCodec(endian=None)
 # Compressors        : (ZstdCodec(level=0, checksum=False),)
 # No. bytes          : 100000000000 (93.1G)
 ```
@@ -116,7 +116,7 @@ c[:] = a
 c.info_complete()
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.int32
+# Data type          : Int32(endianness='little')
 # Fill value         : 0
 # Shape              : (10000, 10000)
 # Chunk shape        : (1000, 1000)
@@ -137,7 +137,7 @@ with zarr.config.set({'array.order': 'F'}):
 f.info_complete()
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.int32
+# Data type          : Int32(endianness='little')
 # Fill value         : 0
 # Shape              : (10000, 10000)
 # Chunk shape        : (1000, 1000)

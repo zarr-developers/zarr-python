@@ -184,7 +184,7 @@ which can be used to print useful diagnostics, e.g.:
 z.info
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.int32
+# Data type          : Int32(endianness='little')
 # Fill value         : 0
 # Shape              : (10000, 10000)
 # Chunk shape        : (1000, 1000)
@@ -204,7 +204,7 @@ prints additional diagnostics, e.g.:
 z.info_complete()
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.int32
+# Data type          : Int32(endianness='little')
 # Fill value         : 0
 # Shape              : (10000, 10000)
 # Chunk shape        : (1000, 1000)
@@ -258,7 +258,7 @@ The default compressor can be changed by setting the value of the using Zarr's
 configuration system, e.g.:
 
 ```python
-with zarr.config.set({'array.v2_default_compressor.numeric': {'id': 'blosc'}}):
+with zarr.config.set({'array.v2_default_compressor.default': {'id': 'blosc'}}):
     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
 z.filters
 # ()
@@ -299,7 +299,7 @@ z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.
 z.info
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.int32
+# Data type          : Int32(endianness='little')
 # Fill value         : 0
 # Shape              : (10000, 10000)
 # Chunk shape        : (1000, 1000)
@@ -646,7 +646,7 @@ a[:] = (np.arange(10000 * 10000) % 256).astype('uint8').reshape(10000, 10000)
 a.info_complete()
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.uint8
+# Data type          : UInt8()
 # Fill value         : 0
 # Shape              : (10000, 10000)
 # Shard shape        : (1000, 1000)
@@ -655,10 +655,10 @@ a.info_complete()
 # Read-only          : False
 # Store type         : LocalStore
 # Filters            : ()
-# Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+# Serializer         : BytesCodec(endian=None)
 # Compressors        : (ZstdCodec(level=0, checksum=False),)
 # No. bytes          : 100000000 (95.4M)
-# No. bytes stored   : 3981552
+# No. bytes stored   : 3981473
 # Storage ratio      : 25.1
 # Shards Initialized : 100
 ```

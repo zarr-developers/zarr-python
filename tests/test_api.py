@@ -39,7 +39,7 @@ from zarr.api.synchronous import (
 )
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import MetadataValidationError
-from zarr.storage import MemoryStore
+from zarr.storage import LocalStore, MemoryStore, ZipStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
 
@@ -229,22 +229,23 @@ async def test_open_group_unspecified_version(
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize("n_args", [10, 1, 0])
 @pytest.mark.parametrize("n_kwargs", [10, 1, 0])
-def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
+@pytest.mark.parametrize("path", [None, "some_path"])
+def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> None:
     data = np.arange(10)
     args = [np.arange(10) for _ in range(n_args)]
     kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
 
     if n_kwargs == 0 and n_args == 0:
         with pytest.raises(ValueError):
-            save(store)
+            save(store, path=path)
     elif n_args == 1 and n_kwargs == 0:
-        save(store, *args)
-        array = zarr.api.synchronous.open(store)
+        save(store, *args, path=path)
+        array = zarr.api.synchronous.open(store, path=path)
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
-        save(store, *args, **kwargs)  # type: ignore [arg-type]
-        group = zarr.api.synchronous.open(store)
+        save(store, *args, path=path, **kwargs)  # type: ignore [arg-type]
+        group = zarr.api.synchronous.open(store, path=path)
         assert isinstance(group, Group)
         for array in group.array_values():
             assert_array_equal(array[:], data)
@@ -384,8 +385,8 @@ def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -
 #     assert "LazyLoader: " in repr(loader)
 
 
-def test_load_array(memory_store: Store) -> None:
-    store = memory_store
+def test_load_array(sync_store: Store) -> None:
+    store = sync_store
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
     save(store, foo=foo, bar=bar)
@@ -398,6 +399,38 @@ def test_load_array(memory_store: Store) -> None:
             assert_array_equal(foo, array)
         else:
             assert_array_equal(bar, array)
+
+
+@pytest.mark.parametrize("path", ["data", None])
+@pytest.mark.parametrize("load_read_only", [True, False, None])
+def test_load_zip(tmp_path: pathlib.Path, path: str | None, load_read_only: bool | None) -> None:
+    file = tmp_path / "test.zip"
+    data = np.arange(100).reshape(10, 10)
+
+    with ZipStore(file, mode="w", read_only=False) as zs:
+        save(zs, data, path=path)
+    with ZipStore(file, mode="r", read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
+    with ZipStore(file, read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
+
+
+@pytest.mark.parametrize("path", ["data", None])
+@pytest.mark.parametrize("load_read_only", [True, False])
+def test_load_local(tmp_path: pathlib.Path, path: str | None, load_read_only: bool) -> None:
+    file = tmp_path / "test.zip"
+    data = np.arange(100).reshape(10, 10)
+
+    with LocalStore(file, read_only=False) as zs:
+        save(zs, data, path=path)
+    with LocalStore(file, read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
 
 
 def test_tree() -> None:
@@ -1285,7 +1318,7 @@ def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> No
     existing_fpath = add_empty_file(tmp_path)
 
     assert existing_fpath.exists()
-    with contextlib.suppress(FileExistsError, FileNotFoundError, ValueError):
+    with contextlib.suppress(FileExistsError, FileNotFoundError, UserWarning):
         open_func(store=store, mode=mode)
     if mode == "w":
         assert not existing_fpath.exists()

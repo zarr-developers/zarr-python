@@ -127,7 +127,7 @@ foo.info
 bar.info_complete()
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.int64
+# Data type          : Int64(endianness='little')
 # Fill value         : 0
 # Shape              : (1000000,)
 # Chunk shape        : (100000,)
@@ -144,7 +144,7 @@ bar.info_complete()
 baz.info
 # Type               : Array
 # Zarr format        : 3
-# Data type          : DataType.float32
+# Data type          : Float32(endianness='little')
 # Fill value         : 0.0
 # Shape              : (1000, 1000)
 # Chunk shape        : (100, 100)

@@ -17,6 +17,7 @@ nav:
   - User Guide:
       - user-guide/installation.md
       - user-guide/arrays.md
+      - user-guide/data_types.md
       - user-guide/groups.md
       - user-guide/attributes.md
       - user-guide/storage.md
@@ -30,6 +31,7 @@ nav:
       - api/array.md
       - api/group.md
       - api/create.md
+      - api/dtype.md
       - api/open.md
       - api/load.md
       - api/save.md
