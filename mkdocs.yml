@@ -7,11 +7,6 @@ site_author: Alistair Miles
 site_url: https://zarr.readthedocs.io/
 docs_dir: docs
 
-extra:
-  version:
-    alias: true
-    provider: mike
-
 nav:
   - "index.md"
   - User Guide:
