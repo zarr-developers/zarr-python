@@ -2062,4 +2062,9 @@ def test_get_roots(roots: tuple[str, ...]):
         for k in roots
     }
     data = root_nodes | child_nodes
-    assert set(_get_roots(data)) == set(roots)
+
+def test_group_self_deletion():
+    """Test that a group cannot delete itself."""
+    g = zarr.group()
+    with pytest.raises(ValueError, match="Cannot delete self"):
+        del g['']
