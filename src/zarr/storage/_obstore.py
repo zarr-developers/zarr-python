@@ -4,8 +4,7 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.store import (
     ByteRequest,
@@ -14,7 +13,6 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer.core import BufferPrototype
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -70,6 +68,13 @@ class ObjectStore(Store):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
         super().__init__(read_only=read_only)
         self.store = store
+
+    def with_read_only(self, read_only: bool = False) -> ObjectStore:
+        # docstring inherited
+        return type(self)(
+            store=self.store,
+            read_only=read_only,
+        )
 
     def __str__(self) -> str:
         return f"object_store://{self.store}"
@@ -183,7 +188,13 @@ class ObjectStore(Store):
         import obstore as obs
 
         self._check_writable()
-        await obs.delete_async(self.store, key)
+
+        # Some obstore stores such as local filesystems, GCP and Azure raise an error
+        # when deleting a non-existent key, while others such as S3 and in-memory do
+        # not. We suppress the error to make the behavior consistent across all obstore
+        # stores. This is also in line with the behavior of the other Zarr store adapters.
+        with contextlib.suppress(FileNotFoundError):
+            await obs.delete_async(self.store, key)
 
     @property
     def supports_partial_writes(self) -> bool:

@@ -1,16 +1,30 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
+from zarr.core.common import (
+    ANY_ACCESS_MODE,
+    ZARR_JSON,
+    ZARRAY_JSON,
+    ZGROUP_JSON,
+    AccessModeLiteral,
+    ZarrFormat,
+)
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
+
+_has_fsspec = importlib.util.find_spec("fsspec")
+if _has_fsspec:
+    from fsspec.mapping import FSMap
+else:
+    FSMap = None
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -48,55 +62,81 @@ class StorePath:
         return self.store.read_only
 
     @classmethod
-    async def open(
-        cls, store: Store, path: str, mode: AccessModeLiteral | None = None
-    ) -> StorePath:
+    async def _create_open_instance(cls, store: Store, path: str) -> Self:
+        """Helper to create and return a StorePath instance."""
+        await store._ensure_open()
+        return cls(store, path)
+
+    @classmethod
+    async def open(cls, store: Store, path: str, mode: AccessModeLiteral | None = None) -> Self:
         """
         Open StorePath based on the provided mode.
 
-        * If the mode is 'w-' and the StorePath contains keys, raise a FileExistsError.
-        * If the mode is 'w', delete all keys nested within the StorePath
-        * If the mode is 'a', 'r', or 'r+', do nothing
+        * If the mode is None, return an opened version of the store with no changes.
+        * If the mode is 'r+', 'w-', 'w', or 'a' and the store is read-only, raise a ValueError.
+        * If the mode is 'r' and the store is not read-only, return a copy of the store with read_only set to True.
+        * If the mode is 'w-' and the store is not read-only and the StorePath contains keys, raise a FileExistsError.
+        * If the mode is 'w'  and the store is not read-only, delete all keys nested within the StorePath.
 
         Parameters
         ----------
         mode : AccessModeLiteral
             The mode to use when initializing the store path.
 
+            The accepted values are:
+
+            - ``'r'``: read only (must exist)
+            - ``'r+'``: read/write (must exist)
+            - ``'a'``: read/write (create if doesn't exist)
+            - ``'w'``: read/write (overwrite if exists)
+            - ``'w-'``: read/write (create if doesn't exist).
+
         Raises
         ------
         FileExistsError
             If the mode is 'w-' and the store path already exists.
+        ValueError
+            If the mode is not "r" and the store is read-only, or
         """
-
-        await store._ensure_open()
-        self = cls(store, path)
 
         # fastpath if mode is None
         if mode is None:
-            return self
+            return await cls._create_open_instance(store, path)
 
-        if store.read_only and mode != "r":
-            raise ValueError(f"Store is read-only but mode is '{mode}'")
+        if mode not in ANY_ACCESS_MODE:
+            raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
 
+        if store.read_only:
+            # Don't allow write operations on a read-only store
+            if mode != "r":
+                raise ValueError(
+                    f"Store is read-only but mode is {mode!r}. Create a writable store or use 'r' mode."
+                )
+            self = await cls._create_open_instance(store, path)
+        elif mode == "r":
+            # Create read-only copy for read mode on writable store
+            try:
+                read_only_store = store.with_read_only(True)
+            except NotImplementedError as e:
+                raise ValueError(
+                    "Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. "
+                    "Please use a read-only store or a storage class that implements .with_read_only()."
+                ) from e
+            self = await cls._create_open_instance(read_only_store, path)
+        else:
+            # writable store and writable mode
+            self = await cls._create_open_instance(store, path)
+
+        # Handle mode-specific operations
         match mode:
             case "w-":
                 if not await self.is_empty():
-                    msg = (
-                        f"{self} is not empty, but `mode` is set to 'w-'."
-                        "Either remove the existing objects in storage,"
-                        "or set `mode` to a value that handles pre-existing objects"
-                        "in storage, like `a` or `w`."
+                    raise FileExistsError(
+                        f"Cannot create '{path}' with mode 'w-' because it already contains data. "
+                        f"Use mode 'w' to overwrite or 'a' to append."
                     )
-                    raise FileExistsError(msg)
             case "w":
                 await self.delete_dir()
-            case "a" | "r" | "r+":
-                # No init action
-                pass
-            case _:
-                raise ValueError(f"Invalid mode: {mode}")
-
         return self
 
     async def get(
@@ -224,7 +264,7 @@ class StorePath:
         return False
 
 
-StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
+StoreLike: TypeAlias = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
 
 
 async def make_store_path(
@@ -311,9 +351,18 @@ async def make_store_path(
             # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
             # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
             store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
+        elif _has_fsspec and isinstance(store_like, FSMap):
+            if path:
+                raise ValueError(
+                    "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
+                )
+            if storage_options:
+                raise ValueError(
+                    "'storage_options was provided but is not used for FSMap store_like objects. Specify the storage options when creating the FSMap instance instead."
+                )
+            store = FsspecStore.from_mapper(store_like, read_only=_read_only)
         else:
-            msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
-            raise TypeError(msg)
+            raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
 
         result = await StorePath.open(store, path=path_normalized, mode=mode)
 

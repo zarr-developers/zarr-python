@@ -1,13 +1,15 @@
+from __future__ import annotations
+
 import dataclasses
 import textwrap
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Literal
 
-import numcodecs.abc
-import numpy as np
+if TYPE_CHECKING:
+    import numcodecs.abc
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-from zarr.core.common import ZarrFormat
-from zarr.core.metadata.v3 import DataType
+    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+    from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -67,7 +69,7 @@ def byte_info(size: int) -> str:
         return f"{size} ({human_readable_size(size)})"
 
 
-@dataclasses.dataclass(kw_only=True)
+@dataclasses.dataclass(kw_only=True, frozen=True, slots=True)
 class ArrayInfo:
     """
     Visual summary for an Array.
@@ -78,7 +80,8 @@ class ArrayInfo:
 
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
-    _data_type: np.dtype[Any] | DataType
+    _data_type: ZDType[TBaseDType, TBaseScalar]
+    _fill_value: object
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
     _chunk_shape: tuple[int, ...] | None = None
@@ -97,6 +100,7 @@ class ArrayInfo:
         Type               : {_type}
         Zarr format        : {_zarr_format}
         Data type          : {_data_type}
+        Fill value         : {_fill_value}
         Shape              : {_shape}""")
 
         if self._shard_shape is not None:

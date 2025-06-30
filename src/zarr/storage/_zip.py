@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import time
 import zipfile
@@ -221,7 +222,9 @@ class ZipStore(Store):
         with self._lock:
             self._set(key, value)
 
-    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview[int]]]
+    ) -> None:
         raise NotImplementedError
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
@@ -288,3 +291,15 @@ class ZipStore(Store):
                     if k not in seen:
                         seen.add(k)
                         yield k
+
+    async def move(self, path: Path | str) -> None:
+        """
+        Move the store to another path.
+        """
+        if isinstance(path, str):
+            path = Path(path)
+        self.close()
+        os.makedirs(path.parent, exist_ok=True)
+        shutil.move(self.path, path)
+        self.path = path
+        await self._open()
