@@ -102,6 +102,13 @@ class LocalStore(Store):
             )
         self.root = root
 
+    def with_read_only(self, read_only: bool = False) -> LocalStore:
+        # docstring inherited
+        return type(self)(
+            root=self.root,
+            read_only=read_only,
+        )
+
     async def _open(self) -> None:
         if not self.read_only:
             self.root.mkdir(parents=True, exist_ok=True)
