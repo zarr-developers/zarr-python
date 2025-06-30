@@ -1,0 +1,8 @@
+Suppress `FileNotFoundError` when deleting non-existent keys in the `obstore` adapter.
+
+When writing empty chunks (i.e. chunks where all values are equal to the array's fill value) to a zarr array, zarr
+will delete those chunks from the underlying store. For zarr arrays backed by the `obstore` adapter, this will potentially
+raise a `FileNotFoundError` if the chunk doesn't already exist.
+Since whether or not a delete of a non-existing object raises an error depends on the behavior of the underlying store,
+suppressing the error in all cases results in consistent behavior across stores, and is also what `zarr` seems to expect
+from the store.

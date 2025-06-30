@@ -5,6 +5,7 @@ __all__ = [
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
     "ContainsGroupError",
+    "GroupNotFoundError",
     "MetadataValidationError",
     "NodeTypeValidationError",
 ]
@@ -19,6 +20,14 @@ class BaseZarrError(ValueError):
 
     def __init__(self, *args: Any) -> None:
         super().__init__(self._msg.format(*args))
+
+
+class GroupNotFoundError(BaseZarrError, FileNotFoundError):
+    """
+    Raised when a group isn't found at a certain path.
+    """
+
+    _msg = "No group found in store {!r} at path {!r}"
 
 
 class ContainsGroupError(BaseZarrError):

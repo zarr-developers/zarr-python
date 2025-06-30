@@ -47,7 +47,7 @@ that can be used.:
    >>> from pprint import pprint
    >>> pprint(dict(sorted(consolidated_metadata.items())))
    {'a': ArrayV3Metadata(shape=(1,),
-                          data_type=<DataType.float64: 'float64'>,
+                          data_type=Float64(endianness='little'),
                           chunk_grid=RegularChunkGrid(chunk_shape=(1,)),
                           chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
                                                                      separator='/'),
@@ -60,7 +60,7 @@ that can be used.:
                           node_type='array',
                           storage_transformers=()),
      'b': ArrayV3Metadata(shape=(2, 2),
-                          data_type=<DataType.float64: 'float64'>,
+                          data_type=Float64(endianness='little'),
                           chunk_grid=RegularChunkGrid(chunk_shape=(2, 2)),
                           chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
                                                                      separator='/'),
@@ -73,7 +73,7 @@ that can be used.:
                           node_type='array',
                           storage_transformers=()),
      'c': ArrayV3Metadata(shape=(3, 3, 3),
-                          data_type=<DataType.float64: 'float64'>,
+                          data_type=Float64(endianness='little'),
                           chunk_grid=RegularChunkGrid(chunk_shape=(3, 3, 3)),
                           chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
                                                                      separator='/'),
@@ -114,3 +114,23 @@ removed, or modified, consolidated metadata may not be desirable.
    metadata.
 
 .. _Consolidated Metadata: https://github.com/zarr-developers/zarr-specs/pull/309
+
+Stores Without Support for Consolidated Metadata
+------------------------------------------------
+
+Some stores may want to opt out of the consolidated metadata mechanism. This
+may be for several reasons like:
+
+* They want to maintain read-write consistency, which is challenging with
+  consolidated metadata.
+* They have their own consolidated metadata mechanism.
+* They offer good enough performance without need for consolidation.
+
+This type of store can declare it doesn't want consolidation by implementing
+`Store.supports_consolidated_metadata` and returning `False`. For stores that don't support
+consolidation, Zarr will:
+
+* Raise an error on `consolidate_metadata` calls, maintaining the store in
+  its unconsolidated state.
+* Raise an error in `AsyncGroup.open(..., use_consolidated=True)`
+* Not use consolidated metadata in `AsyncGroup.open(..., use_consolidated=None)`

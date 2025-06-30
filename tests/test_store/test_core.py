@@ -7,7 +7,7 @@ from _pytest.compat import LEGACY_PATH
 import zarr
 from zarr import Group
 from zarr.core.common import AccessModeLiteral, ZarrFormat
-from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
+from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, ZipStore
 from zarr.storage._common import contains_array, contains_group, make_store_path
 from zarr.storage._utils import (
     _join_paths,
@@ -16,6 +16,26 @@ from zarr.storage._utils import (
     _relativize_path,
     normalize_path,
 )
+
+
+@pytest.fixture(
+    params=["none", "temp_dir_str", "temp_dir_path", "store_path", "memory_store", "dict"]
+)
+def store_like(request):
+    if request.param == "none":
+        yield None
+    elif request.param == "temp_dir_str":
+        with tempfile.TemporaryDirectory() as temp_dir:
+            yield temp_dir
+    elif request.param == "temp_dir_path":
+        with tempfile.TemporaryDirectory() as temp_dir:
+            yield Path(temp_dir)
+    elif request.param == "store_path":
+        yield StorePath(store=MemoryStore(store_dict={}), path="/")
+    elif request.param == "memory_store":
+        yield MemoryStore(store_dict={})
+    elif request.param == "dict":
+        yield {}
 
 
 @pytest.mark.parametrize("path", ["foo", "foo/bar"])
@@ -134,17 +154,6 @@ async def test_make_store_path_fsspec(monkeypatch) -> None:
     assert isinstance(store_path.store, FsspecStore)
 
 
-@pytest.mark.parametrize(
-    "store_like",
-    [
-        None,
-        tempfile.TemporaryDirectory().name,
-        Path(tempfile.TemporaryDirectory().name),
-        StorePath(store=MemoryStore(store_dict={}), path="/"),
-        MemoryStore(store_dict={}),
-        {},
-    ],
-)
 async def test_make_store_path_storage_options_raises(store_like: StoreLike) -> None:
     with pytest.raises(TypeError, match="storage_options"):
         await make_store_path(store_like, storage_options={"foo": "bar"})
@@ -254,8 +263,19 @@ def test_relativize_path_invalid() -> None:
         _relativize_path(path="a/b/c", prefix="b")
 
 
-def test_invalid_open_mode() -> None:
+def test_different_open_mode(tmp_path: LEGACY_PATH) -> None:
+    # Test with a store that implements .with_read_only()
     store = MemoryStore()
     zarr.create((100,), store=store, zarr_format=2, path="a")
-    with pytest.raises(ValueError, match="Store is not read-only but mode is 'r'"):
+    arr = zarr.open_array(store=store, path="a", zarr_format=2, mode="r")
+    assert arr.store.read_only
+
+    # Test with a store that doesn't implement .with_read_only()
+    zarr_path = tmp_path / "foo.zarr"
+    store = ZipStore(zarr_path, mode="w")
+    zarr.create((100,), store=store, zarr_format=2, path="a")
+    with pytest.raises(
+        ValueError,
+        match="Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. Please use a read-only store or a storage class that implements .with_read_only().",
+    ):
         zarr.open_array(store=store, path="a", zarr_format=2, mode="r")

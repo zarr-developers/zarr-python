@@ -83,7 +83,10 @@ Coming soon.
 Custom array buffers
 --------------------
 
-Coming soon.
+Zarr-python provides control over where and how arrays stored in memory through
+:mod:`zarr.buffer`. Currently both CPU (the default) and GPU implementations are
+provided (see :ref:`user-guide-gpu` for more). You can implement your own buffer
+classes by implementing the interface defined in :mod:`zarr.abc.buffer`.
 
 Other extensions
 ----------------
