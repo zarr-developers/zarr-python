@@ -9,7 +9,7 @@ import numcodecs.abc
 
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
-from zarr.codecs.numcodec import NumcodecsAdapter
+from zarr.codecs.numcodec import Numcodec, NumcodecsAdapter
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json_v2
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, TDType_co, TScalar_co, ZDType
@@ -202,29 +202,21 @@ class ArrayV2Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
-        if isinstance(zarray_dict["compressor"], numcodecs.abc.Codec):
+        if isinstance(zarray_dict["compressor"], Numcodec):
+            raise ValueError('raw numcodecs codecs are not allowed.')
             codec_config = zarray_dict["compressor"].get_config()
             # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
             if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
                 codec_config.pop("checksum")
             zarray_dict["compressor"] = codec_config
 
-        if isinstance(zarray_dict["compressor"], NumcodecsAdapter):
-            zarray_dict["compressor"] = zarray_dict["compressor"].to_json(zarr_format=2)
-
+        zarray_dict["compressor"] = self.compressor.to_json(zarr_format=2)
+        new_filters = []
         if zarray_dict["filters"] is not None:
-            raw_filters = zarray_dict["filters"]
-            # TODO: remove this when we can stratically type the output JSON data structure
-            # entirely
-            if not isinstance(raw_filters, list | tuple):
-                raise TypeError("Invalid type for filters. Expected a list or tuple.")
-            new_filters = []
-            for f in raw_filters:
-                if isinstance(f, numcodecs.abc.Codec):
-                    new_filters.append(f.get_config())
-                else:
-                    new_filters.append(f)
-            zarray_dict["filters"] = new_filters
+            new_filters.append(f.to_json(zarr_format=2))
+        else:
+            new_filters = None
+        zarray_dict["filters"] = new_filters
 
         # serialize the fill value after dtype-specific JSON encoding
         if self.fill_value is not None:
