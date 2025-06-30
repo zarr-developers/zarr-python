@@ -10,6 +10,7 @@ from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
     Literal,
     TypeVar,
     cast,
@@ -40,6 +41,7 @@ NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
+ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
 
 
