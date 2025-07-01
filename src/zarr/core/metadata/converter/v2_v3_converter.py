@@ -6,6 +6,7 @@ from zarr.abc.codec import ArrayArrayCodec, BytesBytesCodec, Codec
 from zarr.codecs.blosc import BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
@@ -38,10 +39,12 @@ async def convert_v2_to_v3(zarr_v2: Array) -> None:
 def convert_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     chunk_key_encoding = DefaultChunkKeyEncoding(separator=metadata_v2.dimension_separator)
 
-    # Handle C vs F? (see gist)
     codecs: list[Codec] = []
 
     # array-array codecs
+    if metadata_v2.order == "F":
+        # F is equivalent to order: n-1, ... 1, 0
+        codecs.append(TransposeCodec(order=list(range(len(metadata_v2.shape) - 1, -1, -1))))
     codecs.extend(convert_filters(metadata_v2))
 
     # array-bytes codecs
