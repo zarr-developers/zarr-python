@@ -1,4 +1,8 @@
-from zarr.abc.codec import Codec
+from typing import cast
+
+import numcodecs.abc
+
+from zarr.abc.codec import ArrayArrayCodec, BytesBytesCodec, Codec
 from zarr.codecs.blosc import BloscCodec, BloscShuffle
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.zstd import ZstdCodec
@@ -33,7 +37,10 @@ def convert_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     chunk_key_encoding = DefaultChunkKeyEncoding(separator=metadata_v2.dimension_separator)
 
     # Handle C vs F? (see gist)
-    codecs = convert_compressor(metadata_v2)
+    convert_filters(metadata_v2)
+    convert_compressor(metadata_v2)
+
+    codecs: list[Codec] = []
 
     return ArrayV3Metadata(
         shape=metadata_v2.shape,
@@ -48,8 +55,20 @@ def convert_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     )
 
 
-def convert_compressor(metadata_v2: ArrayV2Metadata) -> list[Codec]:
-    compressor_codecs: list[Codec] = []
+def convert_filters(metadata_v2: ArrayV2Metadata) -> list[ArrayArrayCodec]:
+    if metadata_v2.filters is None:
+        return []
+
+    filters_codecs = [find_numcodecs_zarr3(filter) for filter in metadata_v2.filters]
+    for codec in filters_codecs:
+        if not isinstance(codec, ArrayArrayCodec):
+            raise TypeError(f"Filter {type(codec)} is not an ArrayArrayCodec")
+
+    return cast(list[ArrayArrayCodec], filters_codecs)
+
+
+def convert_compressor(metadata_v2: ArrayV2Metadata) -> list[BytesBytesCodec]:
+    compressor_codecs: list[BytesBytesCodec] = []
 
     if metadata_v2.compressor is None:
         return compressor_codecs
@@ -81,19 +100,30 @@ def convert_compressor(metadata_v2: ArrayV2Metadata) -> list[Codec]:
 
         case _:
             # If possible, find matching numcodecs.zarr3 codec
-            numcodec_name = f"numcodecs.{compressor_name}"
-            numcodec_dict = {
-                "name": numcodec_name,
-                "configuration": metadata_v2.compressor.get_config(),
-            }
+            compressor_codec = find_numcodecs_zarr3(metadata_v2.compressor)
 
-            try:
-                compressor_codec = get_codec_class(numcodec_name)
-            except KeyError as exc:
-                raise ValueError(
-                    f"Couldn't find corresponding numcodecs.zarr3 codec for {compressor_name}"
-                ) from exc
+            if not isinstance(compressor_codec, BytesBytesCodec):
+                raise TypeError(f"Compressor {type(compressor_codec)} is not a BytesBytesCodec")
 
-            compressor_codecs.append(compressor_codec.from_dict(numcodec_dict))
+            compressor_codecs.append(compressor_codec)
 
     return compressor_codecs
+
+
+def find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
+    """Find matching numcodecs.zarr3 codec (if it exists)"""
+
+    numcodec_name = f"numcodecs.{numcodecs_codec.codec_id}"
+    numcodec_dict = {
+        "name": numcodec_name,
+        "configuration": numcodecs_codec.get_config(),
+    }
+
+    try:
+        codec_v3 = get_codec_class(numcodec_name)
+    except KeyError as exc:
+        raise ValueError(
+            f"Couldn't find corresponding numcodecs.zarr3 codec for {numcodecs_codec.codec_id}"
+        ) from exc
+
+    return codec_v3.from_dict(numcodec_dict)
