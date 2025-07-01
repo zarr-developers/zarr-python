@@ -4,10 +4,12 @@ import numcodecs.abc
 
 from zarr.abc.codec import ArrayArrayCodec, BytesBytesCodec, Codec
 from zarr.codecs.blosc import BloscCodec, BloscShuffle
+from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
+from zarr.core.dtype.common import HasEndianness
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.registry import get_codec_class
@@ -37,10 +39,21 @@ def convert_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     chunk_key_encoding = DefaultChunkKeyEncoding(separator=metadata_v2.dimension_separator)
 
     # Handle C vs F? (see gist)
-    convert_filters(metadata_v2)
-    convert_compressor(metadata_v2)
-
     codecs: list[Codec] = []
+
+    # array-array codecs
+    codecs.extend(convert_filters(metadata_v2))
+
+    # array-bytes codecs
+    if not isinstance(metadata_v2.dtype, HasEndianness):
+        codecs.append(BytesCodec(endian=None))
+    else:
+        codecs.append(BytesCodec(endian=metadata_v2.dtype.endianness))
+
+    # bytes-bytes codecs
+    bytes_bytes_codec = convert_compressor(metadata_v2)
+    if bytes_bytes_codec is not None:
+        codecs.append(bytes_bytes_codec)
 
     return ArrayV3Metadata(
         shape=metadata_v2.shape,
@@ -67,36 +80,30 @@ def convert_filters(metadata_v2: ArrayV2Metadata) -> list[ArrayArrayCodec]:
     return cast(list[ArrayArrayCodec], filters_codecs)
 
 
-def convert_compressor(metadata_v2: ArrayV2Metadata) -> list[BytesBytesCodec]:
-    compressor_codecs: list[BytesBytesCodec] = []
-
+def convert_compressor(metadata_v2: ArrayV2Metadata) -> BytesBytesCodec | None:
     if metadata_v2.compressor is None:
-        return compressor_codecs
+        return None
 
     compressor_name = metadata_v2.compressor.codec_id
 
     match compressor_name:
         case "blosc":
-            compressor_codecs.append(
-                BloscCodec(
-                    typesize=metadata_v2.dtype.to_native_dtype().itemsize,
-                    cname=metadata_v2.compressor.cname,
-                    clevel=metadata_v2.compressor.clevel,
-                    shuffle=BloscShuffle.from_int(metadata_v2.compressor.shuffle),
-                    blocksize=metadata_v2.compressor.blocksize,
-                )
+            return BloscCodec(
+                typesize=metadata_v2.dtype.to_native_dtype().itemsize,
+                cname=metadata_v2.compressor.cname,
+                clevel=metadata_v2.compressor.clevel,
+                shuffle=BloscShuffle.from_int(metadata_v2.compressor.shuffle),
+                blocksize=metadata_v2.compressor.blocksize,
             )
 
         case "zstd":
-            compressor_codecs.append(
-                ZstdCodec(
-                    level=metadata_v2.compressor.level,
-                    checksum=metadata_v2.compressor.checksum,
-                )
+            return ZstdCodec(
+                level=metadata_v2.compressor.level,
+                checksum=metadata_v2.compressor.checksum,
             )
 
         case "gzip":
-            compressor_codecs.append(GzipCodec(level=metadata_v2.compressor.level))
+            return GzipCodec(level=metadata_v2.compressor.level)
 
         case _:
             # If possible, find matching numcodecs.zarr3 codec
@@ -105,9 +112,7 @@ def convert_compressor(metadata_v2: ArrayV2Metadata) -> list[BytesBytesCodec]:
             if not isinstance(compressor_codec, BytesBytesCodec):
                 raise TypeError(f"Compressor {type(compressor_codec)} is not a BytesBytesCodec")
 
-            compressor_codecs.append(compressor_codec)
-
-    return compressor_codecs
+            return compressor_codec
 
 
 def find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
