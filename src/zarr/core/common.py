@@ -19,6 +19,8 @@ from typing import (
     overload,
 )
 
+from typing_extensions import ReadOnly
+
 from zarr.core.config import config as zarr_config
 
 if TYPE_CHECKING:
@@ -48,8 +50,8 @@ TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 
 
 class NamedConfig(TypedDict, Generic[TName, TConfig]):
-    name: TName
-    configuration: TConfig
+    name: ReadOnly[TName]
+    configuration: ReadOnly[TConfig]
 
 
 def product(tup: ChunkCoords) -> int:

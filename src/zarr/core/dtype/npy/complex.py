@@ -185,7 +185,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {cls._zarr_v3_name}."
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
 
     @overload

@@ -343,7 +343,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal["|i1"], None]: ...
 
     @overload
@@ -484,7 +484,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal["|u1"], None]: ...
 
     @overload
@@ -646,7 +646,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal[">i2", "<i2"], None]: ...
 
     @overload
@@ -806,7 +806,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         msg = f"Invalid JSON representation of UInt16. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal[">u2", "<u2"], None]: ...
 
     @overload
@@ -987,7 +987,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal[">i4", "<i4"], None]: ...
 
     @overload
@@ -1150,7 +1150,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal[">u4", "<u4"], None]: ...
     @overload
     def to_json(self, zarr_format: Literal[3]) -> Literal["uint32"]: ...
@@ -1306,7 +1306,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal[">i8", "<i8"], None]: ...
     @overload
     def to_json(self, zarr_format: Literal[3]) -> Literal["int64"]: ...
@@ -1435,7 +1435,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal[">u8", "<u8"], None]: ...
     @overload
     def to_json(self, zarr_format: Literal[3]) -> Literal["uint64"]: ...

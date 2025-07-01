@@ -176,7 +176,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[Literal["|b1"], None]: ...
 
     @overload

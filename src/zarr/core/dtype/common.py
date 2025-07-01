@@ -13,6 +13,8 @@ from typing import (
     TypeVar,
 )
 
+from typing_extensions import ReadOnly
+
 from zarr.core.common import NamedConfig
 
 EndiannessStr = Literal["little", "big"]
@@ -55,8 +57,8 @@ TObjectCodecID_co = TypeVar("TObjectCodecID_co", bound=None | str, covariant=Tru
 
 
 class DTypeConfig_V2(TypedDict, Generic[TDTypeNameV2_co, TObjectCodecID_co]):
-    name: TDTypeNameV2_co
-    object_codec_id: TObjectCodecID_co
+    name: ReadOnly[TDTypeNameV2_co]
+    object_codec_id: ReadOnly[TObjectCodecID_co]
 
 
 DTypeSpec_V2 = DTypeConfig_V2[DTypeName_V2, None | str]
