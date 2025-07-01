@@ -1,9 +1,12 @@
 from zarr.abc.codec import Codec
 from zarr.codecs.blosc import BloscCodec, BloscShuffle
+from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.registry import get_codec_class
 
 
 async def convert_v2_to_v3(zarr_v2: Array) -> None:
@@ -53,15 +56,44 @@ def convert_compressor(metadata_v2: ArrayV2Metadata) -> list[Codec]:
 
     compressor_name = metadata_v2.compressor.codec_id
 
-    if compressor_name == "blosc":
-        compressor_codecs.append(
-            BloscCodec(
-                typesize=metadata_v2.dtype.to_native_dtype().itemsize,
-                cname=metadata_v2.compressor.cname,
-                clevel=metadata_v2.compressor.clevel,
-                shuffle=BloscShuffle.from_int(metadata_v2.compressor.shuffle),
-                blocksize=metadata_v2.compressor.blocksize,
+    match compressor_name:
+        case "blosc":
+            compressor_codecs.append(
+                BloscCodec(
+                    typesize=metadata_v2.dtype.to_native_dtype().itemsize,
+                    cname=metadata_v2.compressor.cname,
+                    clevel=metadata_v2.compressor.clevel,
+                    shuffle=BloscShuffle.from_int(metadata_v2.compressor.shuffle),
+                    blocksize=metadata_v2.compressor.blocksize,
+                )
             )
-        )
+
+        case "zstd":
+            compressor_codecs.append(
+                ZstdCodec(
+                    level=metadata_v2.compressor.level,
+                    checksum=metadata_v2.compressor.checksum,
+                )
+            )
+
+        case "gzip":
+            compressor_codecs.append(GzipCodec(level=metadata_v2.compressor.level))
+
+        case _:
+            # If possible, find matching numcodecs.zarr3 codec
+            numcodec_name = f"numcodecs.{compressor_name}"
+            numcodec_dict = {
+                "name": numcodec_name,
+                "configuration": metadata_v2.compressor.get_config(),
+            }
+
+            try:
+                compressor_codec = get_codec_class(numcodec_name)
+            except KeyError as exc:
+                raise ValueError(
+                    f"Couldn't find corresponding numcodecs.zarr3 codec for {compressor_name}"
+                ) from exc
+
+            compressor_codecs.append(compressor_codec.from_dict(numcodec_dict))
 
     return compressor_codecs
