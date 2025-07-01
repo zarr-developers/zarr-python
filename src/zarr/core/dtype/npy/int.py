@@ -876,7 +876,28 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[Literal[">i4"], Literal["<i4"]]] = (">i4", "<i4")
 
     @classmethod
-    def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.Int32DType]:
+        """
+        A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
+
+        This method is overridden for this particular data type because of a Windows-specific issue
+        where np.dtype('i') creates an instance of ``np.dtypes.IntDType``, rather than an
+        instance of ``np.dtypes.Int32DType``, even though both represent 32-bit signed integers.
+
+        Parameters
+        ----------
+        dtype : TDType
+            The dtype to check.
+
+        Returns
+        -------
+        Bool
+            True if the dtype matches, False otherwise.
+        """
+        return super()._check_native_dtype(dtype) or dtype == np.dtypes.Int32DType()
+
+    @classmethod
+    def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
         Create an Int32 from a np.dtype('int32') instance.
 

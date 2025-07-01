@@ -21,6 +21,7 @@ from zarr.core.dtype import (
     Int16,
     TBaseDType,
     TBaseScalar,
+    VariableLengthUTF8,
     ZDType,
     data_type_registry,
     get_data_type_from_json,
@@ -176,6 +177,8 @@ def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
 @pytest.mark.parametrize(
     ("dtype_params", "expected", "zarr_format"),
     [
+        ("str", VariableLengthUTF8(), 2),
+        ("str", VariableLengthUTF8(), 3),
         ("int8", Int8(), 3),
         (Int8(), Int8(), 3),
         (">i2", Int16(endianness="big"), 2),

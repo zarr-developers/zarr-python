@@ -49,6 +49,10 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
     _zarr_v3_name: ClassVar[Literal["structured"]] = "structured"
     fields: tuple[tuple[str, ZDType[TBaseDType, TBaseScalar]], ...]
 
+    def __post_init__(self) -> None:
+        if len(self.fields) < 1:
+            raise ValueError(f"must have at least one field. Got {self.fields!r}")
+
     @classmethod
     def _check_native_dtype(cls, dtype: TBaseDType) -> TypeGuard[np.dtypes.VoidDType[int]]:
         """

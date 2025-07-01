@@ -15,7 +15,7 @@ class TestNullTerminatedBytes(BaseTestZDType):
         np.dtype("|U10"),
     )
     valid_json_v2 = (
-        {"name": "|S0", "object_codec_id": None},
+        {"name": "|S1", "object_codec_id": None},
         {"name": "|S2", "object_codec_id": None},
         {"name": "|S4", "object_codec_id": None},
     )
@@ -31,22 +31,22 @@ class TestNullTerminatedBytes(BaseTestZDType):
     )
 
     scalar_v2_params = (
-        (NullTerminatedBytes(length=0), ""),
+        (NullTerminatedBytes(length=1), "MA=="),
         (NullTerminatedBytes(length=2), "YWI="),
         (NullTerminatedBytes(length=4), "YWJjZA=="),
     )
     scalar_v3_params = (
-        (NullTerminatedBytes(length=0), ""),
+        (NullTerminatedBytes(length=1), "MA=="),
         (NullTerminatedBytes(length=2), "YWI="),
         (NullTerminatedBytes(length=4), "YWJjZA=="),
     )
     cast_value_params = (
-        (NullTerminatedBytes(length=0), "", np.bytes_("")),
+        (NullTerminatedBytes(length=1), "", np.bytes_("")),
         (NullTerminatedBytes(length=2), "ab", np.bytes_("ab")),
         (NullTerminatedBytes(length=4), "abcdefg", np.bytes_("abcd")),
     )
     item_size_params = (
-        NullTerminatedBytes(length=0),
+        NullTerminatedBytes(length=1),
         NullTerminatedBytes(length=4),
         NullTerminatedBytes(length=10),
     )
@@ -62,7 +62,7 @@ class TestRawBytes(BaseTestZDType):
     )
     valid_json_v2 = ({"name": "|V10", "object_codec_id": None},)
     valid_json_v3 = (
-        {"name": "raw_bytes", "configuration": {"length_bytes": 0}},
+        {"name": "raw_bytes", "configuration": {"length_bytes": 1}},
         {"name": "raw_bytes", "configuration": {"length_bytes": 8}},
     )
 
@@ -77,22 +77,22 @@ class TestRawBytes(BaseTestZDType):
     )
 
     scalar_v2_params = (
-        (RawBytes(length=0), ""),
+        (RawBytes(length=1), "AA=="),
         (RawBytes(length=2), "YWI="),
         (RawBytes(length=4), "YWJjZA=="),
     )
     scalar_v3_params = (
-        (RawBytes(length=0), ""),
+        (RawBytes(length=1), "AA=="),
         (RawBytes(length=2), "YWI="),
         (RawBytes(length=4), "YWJjZA=="),
     )
     cast_value_params = (
-        (RawBytes(length=0), b"", np.void(b"")),
+        (RawBytes(length=1), b"\x00", np.void(b"\x00")),
         (RawBytes(length=2), b"ab", np.void(b"ab")),
         (RawBytes(length=4), b"abcd", np.void(b"abcd")),
     )
     item_size_params = (
-        RawBytes(length=0),
+        RawBytes(length=1),
         RawBytes(length=4),
         RawBytes(length=10),
     )
@@ -152,3 +152,14 @@ def test_unstable_dtype_warning(
     """
     with pytest.raises(UnstableSpecificationWarning):
         zdtype.to_json(zarr_format=3)
+
+
+@pytest.mark.parametrize("zdtype_cls", [NullTerminatedBytes, RawBytes])
+def test_invalid_size(zdtype_cls: type[NullTerminatedBytes] | type[RawBytes]) -> None:
+    """
+    Test that it's impossible to create a data type that has no length
+    """
+    length = 0
+    msg = f"length must be >= 1, got {length}."
+    with pytest.raises(ValueError, match=msg):
+        zdtype_cls(length=length)
