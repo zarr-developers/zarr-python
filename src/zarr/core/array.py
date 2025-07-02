@@ -159,19 +159,9 @@ class DefaultFillValue:
         - fill_value = None: fill_value saved as null
 
     This allows backwards compatibility with zarr format 2.
-
-    This is implemented as a singleton.
     """
 
-    _instance = None
 
-    def __new__(cls) -> Self:
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
-
-# Create the singleton instance
 DEFAULT_FILL_VALUE = DefaultFillValue()
 
 
