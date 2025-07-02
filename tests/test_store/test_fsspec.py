@@ -365,7 +365,7 @@ def test_open_fsmap_file_raises(tmp_path: pathlib.Path) -> None:
     fsspec = pytest.importorskip("fsspec.implementations.local")
     fs = fsspec.LocalFileSystem(auto_mkdir=False)
     mapper = fs.get_mapper(tmp_path)
-    with pytest.raises(ValueError, match="LocalFilesystem .*"):
+    with pytest.raises(FileNotFoundError, match="No such file or directory: .*"):
         array_roundtrip(mapper)
 
 
