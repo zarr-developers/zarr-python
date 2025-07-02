@@ -774,15 +774,13 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunks: ChunkCoords,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: float | None = None,
+        fill_value: Any | None = None,
         filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
         compressor: CompressorLikev2 = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV2Metadata:
         if dimension_separator is None:
             dimension_separator = "."
-        if fill_value is None:
-            fill_value = dtype.default_scalar()  # type: ignore[assignment]
         return ArrayV2Metadata(
             shape=shape,
             dtype=dtype,
@@ -806,7 +804,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         order: MemoryOrder,
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: float | None = None,
+        fill_value: Any | None = None,
         filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
         compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
