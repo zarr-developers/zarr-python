@@ -3,6 +3,7 @@ from typing import cast
 
 import numcodecs.abc
 
+import zarr
 from zarr.abc.codec import ArrayArrayCodec, BytesBytesCodec, Codec
 from zarr.codecs.blosc import BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec
@@ -18,10 +19,36 @@ from zarr.core.group import Group, GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.registry import get_codec_class
+from zarr.storage import StoreLike
 from zarr.storage._utils import _join_paths
 
 
-async def convert_v2_to_v3(zarr_v2: Array | Group) -> None:
+async def convert_v2_to_v3(store: StoreLike, path: str | None = None) -> None:
+    """Convert all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
+    (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
+
+    Parameters
+    ----------
+    store : StoreLike
+        Store or path to directory in file system or name of zip file.
+    path : str | None, optional
+        The path within the store to open, by default None
+    """
+
+    zarr_v2 = zarr.open(store=store, mode="r+", path=path)
+    await convert_array_or_group(zarr_v2)
+
+
+async def convert_array_or_group(zarr_v2: Array | Group) -> None:
+    """Convert all v2 metadata in a zarr array/group to v3. Note - if a group is provided, then
+    all arrays / groups within this group will also be converted. A zarr.json file will be created
+    at each level, with any V2 files (.zarray, .zattrs etc.) left as-is.
+
+    Parameters
+    ----------
+    zarr_v2 : Array | Group
+        An array or group with zarr_format = 2
+    """
     if not zarr_v2.metadata.zarr_format == 2:
         raise TypeError("Only arrays / groups with zarr v2 metadata can be converted")
 
@@ -29,18 +56,18 @@ async def convert_v2_to_v3(zarr_v2: Array | Group) -> None:
         group_metadata_v3 = GroupMetadata(
             attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
         )
-        await save_v3_metadata(zarr_v2, group_metadata_v3)
+        await _save_v3_metadata(zarr_v2, group_metadata_v3)
 
         # process members of the group
         for key in zarr_v2:
-            await convert_v2_to_v3(zarr_v2[key])
+            await convert_array_or_group(zarr_v2[key])
 
     else:
-        array_metadata_v3 = convert_array_v2_metadata(zarr_v2.metadata)
-        await save_v3_metadata(zarr_v2, array_metadata_v3)
+        array_metadata_v3 = _convert_array_metadata(zarr_v2.metadata)
+        await _save_v3_metadata(zarr_v2, array_metadata_v3)
 
 
-def convert_array_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
+def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     chunk_key_encoding = DefaultChunkKeyEncoding(separator=metadata_v2.dimension_separator)
 
     codecs: list[Codec] = []
@@ -49,7 +76,7 @@ def convert_array_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     if metadata_v2.order == "F":
         # F is equivalent to order: n-1, ... 1, 0
         codecs.append(TransposeCodec(order=list(range(len(metadata_v2.shape) - 1, -1, -1))))
-    codecs.extend(convert_filters(metadata_v2))
+    codecs.extend(_convert_filters(metadata_v2))
 
     # array-bytes codecs
     if not isinstance(metadata_v2.dtype, HasEndianness):
@@ -58,7 +85,7 @@ def convert_array_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
         codecs.append(BytesCodec(endian=metadata_v2.dtype.endianness))
 
     # bytes-bytes codecs
-    bytes_bytes_codec = convert_compressor(metadata_v2)
+    bytes_bytes_codec = _convert_compressor(metadata_v2)
     if bytes_bytes_codec is not None:
         codecs.append(bytes_bytes_codec)
 
@@ -75,11 +102,11 @@ def convert_array_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     )
 
 
-def convert_filters(metadata_v2: ArrayV2Metadata) -> list[ArrayArrayCodec]:
+def _convert_filters(metadata_v2: ArrayV2Metadata) -> list[ArrayArrayCodec]:
     if metadata_v2.filters is None:
         return []
 
-    filters_codecs = [find_numcodecs_zarr3(filter) for filter in metadata_v2.filters]
+    filters_codecs = [_find_numcodecs_zarr3(filter) for filter in metadata_v2.filters]
     for codec in filters_codecs:
         if not isinstance(codec, ArrayArrayCodec):
             raise TypeError(f"Filter {type(codec)} is not an ArrayArrayCodec")
@@ -87,7 +114,7 @@ def convert_filters(metadata_v2: ArrayV2Metadata) -> list[ArrayArrayCodec]:
     return cast(list[ArrayArrayCodec], filters_codecs)
 
 
-def convert_compressor(metadata_v2: ArrayV2Metadata) -> BytesBytesCodec | None:
+def _convert_compressor(metadata_v2: ArrayV2Metadata) -> BytesBytesCodec | None:
     if metadata_v2.compressor is None:
         return None
 
@@ -114,7 +141,7 @@ def convert_compressor(metadata_v2: ArrayV2Metadata) -> BytesBytesCodec | None:
 
         case _:
             # If possible, find matching numcodecs.zarr3 codec
-            compressor_codec = find_numcodecs_zarr3(metadata_v2.compressor)
+            compressor_codec = _find_numcodecs_zarr3(metadata_v2.compressor)
 
             if not isinstance(compressor_codec, BytesBytesCodec):
                 raise TypeError(f"Compressor {type(compressor_codec)} is not a BytesBytesCodec")
@@ -122,7 +149,7 @@ def convert_compressor(metadata_v2: ArrayV2Metadata) -> BytesBytesCodec | None:
             return compressor_codec
 
 
-def find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
+def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
     """Find matching numcodecs.zarr3 codec (if it exists)"""
 
     numcodec_name = f"numcodecs.{numcodecs_codec.codec_id}"
@@ -141,7 +168,7 @@ def find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
     return codec_v3.from_dict(numcodec_dict)
 
 
-async def save_v3_metadata(
+async def _save_v3_metadata(
     zarr_v2: Array | Group, metadata_v3: ArrayV3Metadata | GroupMetadata
 ) -> None:
     zarr_json_path = _join_paths([zarr_v2.path, ZARR_JSON])
