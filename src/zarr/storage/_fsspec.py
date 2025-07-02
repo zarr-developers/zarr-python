@@ -69,6 +69,7 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
         )
 
     import fsspec.implementations.asyn_wrapper
+
     return fsspec.implementations.asyn_wrapper.AsyncFileSystemWrapper(fs, asynchronous=True)
 
 
