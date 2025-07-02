@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Self, TypeGuard, cast, overload
+from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
 
@@ -103,6 +103,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
     The Zarr V2 data type specification can be found `here <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
     """
 
+    _zarr_v3_name: ClassVar[Literal["structured"]] = "structured"
     dtype_cls = np.dtypes.VoidDType  # type: ignore[assignment]
     fields: tuple[tuple[str, ZDType[TBaseDType, TBaseScalar]], ...]
 

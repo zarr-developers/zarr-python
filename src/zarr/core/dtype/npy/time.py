@@ -356,7 +356,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     unit: DateTimeUnit = "generic"
     scale_factor: int = 1
     _zarr_v3_name: ClassVar[Literal["numpy.timedelta64"]] = "numpy.timedelta64"
-    _zarr_v2_names: tuple[Literal[">m8"], Literal["<m8"]] = (">m8", "<m8")
+    _zarr_v2_names: ClassVar[tuple[Literal[">m8"], Literal["<m8"]]] = (">m8", "<m8")
     _numpy_name: ClassVar[Literal["timedelta64"]] = "timedelta64"
 
     @classmethod
@@ -620,7 +620,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
     dtype_cls = np.dtypes.DateTime64DType  # type: ignore[assignment]
     _zarr_v3_name: ClassVar[Literal["numpy.datetime64"]] = "numpy.datetime64"
-    _zarr_v2_names: tuple[Literal[">M8"], Literal["<M8"]] = (">M8", "<M8")
+    _zarr_v2_names: ClassVar[tuple[Literal[">M8"], Literal["<M8"]]] = (">M8", "<M8")
     _numpy_name: ClassVar[Literal["datetime64"]] = "datetime64"
     unit: DateTimeUnit = "generic"
     scale_factor: int = 1
