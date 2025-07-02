@@ -630,29 +630,6 @@ Missing features in 3.0
 
 The following features have not been ported to 3.0 yet.
 
-.. _user-guide-objects:
-
-Object arrays
-~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Object arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#object-arrays>`_ for more details.
-
-.. _user-guide-strings:
-
-Fixed-length string arrays
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Fixed-length string arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#string-arrays>`_ for more details.
-
-.. _user-guide-datetime:
-
-Datetime and Timedelta arrays
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Datetime and Timedelta <https://zarr.readthedocs.io/en/support-v2/tutorial.html#datetimes-and-timedeltas>`_ for more details.
-
-.. _user-guide-copy:
-
 Copying and migrating data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
