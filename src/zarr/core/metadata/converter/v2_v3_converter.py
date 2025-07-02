@@ -1,3 +1,4 @@
+import asyncio
 from typing import cast
 
 import numcodecs.abc
@@ -9,34 +10,37 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
+from zarr.core.common import ZARR_JSON
 from zarr.core.dtype.common import HasEndianness
+from zarr.core.group import Group, GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.registry import get_codec_class
+from zarr.storage._utils import _join_paths
 
 
-async def convert_v2_to_v3(zarr_v2: Array) -> None:
-    if not isinstance(zarr_v2.metadata, ArrayV2Metadata):
+async def convert_v2_to_v3(zarr_v2: Array | Group) -> None:
+    if not zarr_v2.metadata.zarr_format == 2:
         raise TypeError("Only arrays / groups with zarr v2 metadata can be converted")
 
-    # zarr_format = zarr_v2.metadata.zarr_format
-    # if zarr_format != 2:
-    #     raise ValueError(
-    #         f"Input zarr array / group is zarr_format {zarr_format} - only 2 is accepted."
-    #     )
+    if isinstance(zarr_v2.metadata, GroupMetadata):
+        group_metadata_v3 = GroupMetadata(
+            attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
+        )
+        await save_v3_metadata(zarr_v2, group_metadata_v3)
 
-    # accept array or group - if group, iterate into it to do the whole hierarchy
+        # process members of the group
+        for key in zarr_v2:
+            await convert_v2_to_v3(zarr_v2[key])
 
-    # how are the metadata files currently written? Which function?
-    # could add a to_v3() function on to the ArrayV2Metadata / GroupMetadata classes??
-    convert_v2_metadata(zarr_v2.metadata)
-
-    # Check for existing zarr json?
-    # await zarr_v2._async_array._save_metadata(metadata_v3)
+    else:
+        array_metadata_v3 = convert_array_v2_metadata(zarr_v2.metadata)
+        await save_v3_metadata(zarr_v2, array_metadata_v3)
 
 
-def convert_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
+def convert_array_v2_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     chunk_key_encoding = DefaultChunkKeyEncoding(separator=metadata_v2.dimension_separator)
 
     codecs: list[Codec] = []
@@ -135,3 +139,20 @@ def find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
         ) from exc
 
     return codec_v3.from_dict(numcodec_dict)
+
+
+async def save_v3_metadata(
+    zarr_v2: Array | Group, metadata_v3: ArrayV3Metadata | GroupMetadata
+) -> None:
+    zarr_json_path = _join_paths([zarr_v2.path, ZARR_JSON])
+
+    if await zarr_v2.store.exists(zarr_json_path):
+        raise ValueError(f"{ZARR_JSON} already exists at {zarr_v2.store_path}")
+
+    to_save = metadata_v3.to_buffer_dict(default_buffer_prototype())
+    awaitables = [
+        zarr_v2.store.set_if_not_exists(_join_paths([zarr_v2.path, key]), value)
+        for key, value in to_save.items()
+    ]
+
+    await asyncio.gather(*awaitables)
