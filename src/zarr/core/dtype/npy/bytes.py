@@ -56,7 +56,7 @@ class NullterminatedBytesJSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
 
     Examples
@@ -105,7 +105,7 @@ class RawBytesJSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
 
     Examples
@@ -149,7 +149,7 @@ class VariableLengthBytesJSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-byt
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
     Examples
     --------

@@ -129,7 +129,7 @@ class DateTime64JSON_V3(NamedConfig[Literal["numpy.datetime64"], TimeConfig]):
     References
     ----------
     This representation is defined in the ``numpy.datetime64``
-    `specification document <https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-datetime64>`_.
+    `specification document <https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-datetime64>`__.
 
     Examples
     --------
@@ -152,7 +152,7 @@ class TimeDelta64JSON_V3(NamedConfig[Literal["numpy.timedelta64"], TimeConfig]):
     References
     ----------
     This representation is defined in the numpy.timedelta64
-    `specification document <https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-timedelta64>`_.
+    `specification document <https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-timedelta64>`__.
 
     Examples
     --------
@@ -178,7 +178,7 @@ class TimeDelta64JSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
 
     Examples
@@ -202,7 +202,7 @@ class DateTime64JSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
 
     Examples
@@ -344,10 +344,10 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     References
     ----------
     The Zarr V2 representation of this data type is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
     The Zarr V3 representation of this data type is defined in the ``numpy.timedelta64``
-    `specification document <https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.timedelta64>`_
+    `specification document <https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.timedelta64>`__
     """
 
     # mypy infers the type of np.dtypes.TimeDelta64DType to be
@@ -612,10 +612,10 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
     References
     ----------
     The Zarr V2 representation of this data type is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
     The Zarr V3 representation of this data type is defined in the ``numpy.datetime64``
-    `specification document <https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.datetime64>`_
+    `specification document <https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.datetime64>`__
     """
 
     dtype_cls = np.dtypes.DateTime64DType  # type: ignore[assignment]

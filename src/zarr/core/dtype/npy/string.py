@@ -70,7 +70,7 @@ class FixedLengthUTF32JSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
     Examples
     --------
@@ -434,7 +434,7 @@ class VariableLengthUTF8JSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
 
     Examples
@@ -467,7 +467,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     ----------
     This data type does not have a Zarr V3 specification.
 
-    The Zarr V2 data type specification can be found `here <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+    The Zarr V2 data type specification can be found `here <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
     """
 
     _zarr_v3_name: ClassVar[Literal["string"]] = "string"

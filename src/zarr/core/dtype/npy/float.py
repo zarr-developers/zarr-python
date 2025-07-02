@@ -324,7 +324,7 @@ class Float16(BaseFloat[np.dtypes.Float16DType, np.float16]):
     ----------
     This class implements the float16 data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float16DType
@@ -361,7 +361,7 @@ class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
     ----------
     This class implements the float32 data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float32DType
@@ -398,7 +398,7 @@ class Float64(BaseFloat[np.dtypes.Float64DType, np.float64]):
     ----------
     This class implements the float64 data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float64DType
