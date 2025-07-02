@@ -138,9 +138,41 @@ if TYPE_CHECKING:
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
-__all__ = ["create_codec_pipeline", "parse_array_metadata"]
+__all__ = [
+    "DEFAULT_FILL_VALUE",
+    "DefaultFillValue",
+    "create_codec_pipeline",
+    "parse_array_metadata",
+]
 
 logger = getLogger(__name__)
+
+
+class DefaultFillValue:
+    """
+    Sentinel class to indicate that the default fill value should be used.
+
+    This class is used to distinguish between:
+    Zarr Format 3:
+        - fill_value = None: dtype default value
+    Zarr Format 2:
+        - fill_value = None: fill_value saved as null
+
+    This allows backwards compatibility with zarr format 2.
+
+    This is implemented as a singleton.
+    """
+
+    _instance = None
+
+    def __new__(cls) -> Self:
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+
+# Create the singleton instance
+DEFAULT_FILL_VALUE = DefaultFillValue()
 
 
 def parse_array_metadata(data: Any) -> ArrayMetadata:
@@ -296,7 +328,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ShapeLike,
         dtype: ZDTypeLike,
         zarr_format: Literal[2],
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -320,7 +352,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ShapeLike,
         dtype: ZDTypeLike,
         zarr_format: Literal[3],
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
         chunk_shape: ShapeLike | None = None,
@@ -348,7 +380,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ShapeLike,
         dtype: ZDTypeLike,
         zarr_format: Literal[3] = 3,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
         chunk_shape: ShapeLike | None = None,
@@ -376,7 +408,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ShapeLike,
         dtype: ZDTypeLike,
         zarr_format: ZarrFormat,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
         chunk_shape: ShapeLike | None = None,
@@ -411,7 +443,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ShapeLike,
         dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
         chunk_shape: ShapeLike | None = None,
@@ -552,7 +584,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ShapeLike,
         dtype: ZDTypeLike | ZDType[TBaseDType, TBaseScalar],
         zarr_format: ZarrFormat = 3,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
         chunk_shape: ShapeLike | None = None,
@@ -673,7 +705,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ShapeLike,
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_shape: ChunkCoords,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: DimensionNames = None,
@@ -698,8 +730,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             chunk_key_encoding_parsed = chunk_key_encoding
 
-        if fill_value is None:
-            # v3 spec will not allow a null fill value
+        if isinstance(fill_value, DefaultFillValue) or fill_value is None:
+            # Use dtype's default scalar for DefaultFillValue sentinel
+            # For v3, None is converted to DefaultFillValue behavior
             fill_value_parsed = dtype.default_scalar()
         else:
             fill_value_parsed = fill_value
@@ -725,7 +758,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_shape: ChunkCoords,
         config: ArrayConfig,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: (
             ChunkKeyEncodingLike
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -774,20 +807,28 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunks: ChunkCoords,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
         compressor: CompressorLikev2 = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV2Metadata:
         if dimension_separator is None:
             dimension_separator = "."
+
+        # Handle DefaultFillValue sentinel
+        if isinstance(fill_value, DefaultFillValue):
+            fill_value_parsed: Any = dtype.default_scalar()
+        else:
+            # For v2, preserve None as-is (backward compatibility)
+            fill_value_parsed = fill_value
+
         return ArrayV2Metadata(
             shape=shape,
             dtype=dtype,
             chunks=chunks,
             order=order,
             dimension_separator=dimension_separator,
-            fill_value=fill_value,
+            fill_value=fill_value_parsed,
             compressor=compressor,
             filters=filters,
             attributes=attributes,
@@ -804,7 +845,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         order: MemoryOrder,
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
         compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
@@ -1748,7 +1789,7 @@ class Array:
         shape: ChunkCoords,
         dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
         chunk_shape: ChunkCoords | None = None,
@@ -1877,7 +1918,7 @@ class Array:
         shape: ChunkCoords,
         dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
         chunk_shape: ChunkCoords | None = None,
@@ -3834,7 +3875,7 @@ async def from_array(
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
     serializer: SerializerLike | Literal["keep"] = "keep",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,
@@ -4096,7 +4137,7 @@ async def init_array(
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
@@ -4317,7 +4358,7 @@ async def create_array(
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
