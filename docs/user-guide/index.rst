@@ -8,7 +8,6 @@ User guide
 
     installation
     arrays
-    data_types
     groups
     attributes
     storage
@@ -21,6 +20,7 @@ Advanced Topics
 .. toctree::
     :maxdepth: 1
 
+    data_types
     performance
     consolidated_metadata
     extending

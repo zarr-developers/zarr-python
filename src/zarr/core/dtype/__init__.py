@@ -7,14 +7,28 @@ from zarr.core.dtype.common import (
     DTypeJSON,
 )
 from zarr.core.dtype.npy.bool import Bool
-from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
+from zarr.core.dtype.npy.bytes import (
+    NullTerminatedBytes,
+    NullterminatedBytesJSON_V2,
+    NullTerminatedBytesJSON_V3,
+    RawBytes,
+    RawBytesJSON_V2,
+    RawBytesJSON_V3,
+    VariableLengthBytes,
+    VariableLengthBytesJSON_V2,
+)
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
-from zarr.core.dtype.npy.structured import (
-    Structured,
+from zarr.core.dtype.npy.structured import Structured, StructuredJSON_V2, StructuredJSON_V3
+from zarr.core.dtype.npy.time import (
+    DateTime64,
+    DateTime64JSON_V2,
+    DateTime64JSON_V3,
+    TimeDelta64,
+    TimeDelta64JSON_V2,
+    TimeDelta64JSON_V3,
 )
-from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -27,7 +41,10 @@ import numpy.typing as npt
 from zarr.core.common import JSON
 from zarr.core.dtype.npy.string import (
     FixedLengthUTF32,
+    FixedLengthUTF32JSON_V2,
+    FixedLengthUTF32JSON_V3,
     VariableLengthUTF8,
+    VariableLengthUTF8JSON_V2,
 )
 from zarr.core.dtype.registry import DataTypeRegistry
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -39,7 +56,11 @@ __all__ = [
     "DataTypeRegistry",
     "DataTypeValidationError",
     "DateTime64",
+    "DateTime64JSON_V2",
+    "DateTime64JSON_V3",
     "FixedLengthUTF32",
+    "FixedLengthUTF32JSON_V2",
+    "FixedLengthUTF32JSON_V3",
     "Float16",
     "Float32",
     "Float64",
@@ -48,18 +69,28 @@ __all__ = [
     "Int32",
     "Int64",
     "NullTerminatedBytes",
+    "NullTerminatedBytesJSON_V3",
+    "NullterminatedBytesJSON_V2",
     "RawBytes",
+    "RawBytesJSON_V2",
+    "RawBytesJSON_V3",
     "Structured",
+    "StructuredJSON_V2",
+    "StructuredJSON_V3",
     "TBaseDType",
     "TBaseScalar",
     "TimeDelta64",
     "TimeDelta64",
+    "TimeDelta64JSON_V2",
+    "TimeDelta64JSON_V3",
     "UInt8",
     "UInt16",
     "UInt32",
     "UInt64",
     "VariableLengthBytes",
+    "VariableLengthBytesJSON_V2",
     "VariableLengthUTF8",
+    "VariableLengthUTF8JSON_V2",
     "ZDType",
     "data_type_registry",
     "parse_data_type",

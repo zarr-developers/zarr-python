@@ -1,3 +1,5 @@
+.. _user-guide-data-types:
+
 Array data types
 ================
 

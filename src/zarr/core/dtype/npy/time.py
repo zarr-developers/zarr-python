@@ -16,6 +16,7 @@ from typing import (
 )
 
 import numpy as np
+from typing_extensions import ReadOnly
 
 from zarr.core.common import NamedConfig
 from zarr.core.dtype.common import (
@@ -38,7 +39,6 @@ from zarr.core.dtype.wrapper import TBaseDType, ZDType
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
-_DTypeName = Literal["datetime64", "timedelta64"]
 TimeDeltaLike = str | int | bytes | np.timedelta64 | timedelta | None
 DateTimeLike = str | int | bytes | np.datetime64 | datetime | None
 
@@ -101,12 +101,119 @@ BaseTimeScalar_co = TypeVar(
 
 
 class TimeConfig(TypedDict):
-    unit: DateTimeUnit
-    scale_factor: int
+    """
+    The configuration for the numpy.timedelta64 or numpy.datetime64 data type in Zarr V3.
+
+    Attributes
+    ----------
+    unit : ReadOnly[DateTimeUnit]
+        A string encoding a unit of time.
+    scale_factor : ReadOnly[int]
+        A scale factor.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {"unit": "ms", "scale_factor": 1}
+    """
+
+    unit: ReadOnly[DateTimeUnit]
+    scale_factor: ReadOnly[int]
 
 
-DateTime64JSONV3 = NamedConfig[Literal["numpy.datetime64"], TimeConfig]
-TimeDelta64JSONV3 = NamedConfig[Literal["numpy.timedelta64"], TimeConfig]
+class DateTime64JSON_V3(NamedConfig[Literal["numpy.datetime64"], TimeConfig]):
+    """
+    The JSON representation of the ``numpy.datetime64`` data type in Zarr V3.
+
+    References
+    ----------
+    This representation is defined in the ``numpy.datetime64``
+    `specification document <https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-datetime64>`_.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "numpy.datetime64",
+            "configuration": {
+                "unit": "ms",
+                "scale_factor": 1
+                }
+        }
+    """
+
+
+class TimeDelta64JSON_V3(NamedConfig[Literal["numpy.timedelta64"], TimeConfig]):
+    """
+    The JSON representation of the ``TimeDelta64`` data type in Zarr V3.
+
+    References
+    ----------
+    This representation is defined in the numpy.timedelta64
+    `specification document <https://zarr-specs.readthedocs.io/en/latest/spec/v3/datatypes.html#numpy-timedelta64>`_.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "numpy.timedelta64",
+            "configuration": {
+                "unit": "ms",
+                "scale_factor": 1
+                }
+        }
+    """
+
+
+class TimeDelta64JSON_V2(DTypeConfig_V2[str, None]):
+    """
+    A wrapper around the JSON representation of the ``TimeDelta64`` data type in Zarr V2.
+
+    The ``name`` field of this class contains the value that would appear under the
+    ``dtype`` field in Zarr V2 array metadata.
+
+    References
+    ----------
+    The structure of the ``name`` field is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "<m8[1s]",
+            "object_codec_id": None
+        }
+    """
+
+
+class DateTime64JSON_V2(DTypeConfig_V2[str, None]):
+    """
+    A wrapper around the JSON representation of the ``DateTime64`` data type in Zarr V2.
+
+    The ``name`` field of this class contains the value that would appear under the
+    ``dtype`` field in Zarr V2 array metadata.
+
+    References
+    ----------
+    The structure of the ``name`` field is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "<M8[10s]",
+            "object_codec_id": None
+        }
+    """
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
@@ -121,21 +228,9 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
         The scale factor for the time unit.
     unit : str
         The unit of time.
-    item_size : int
-        The size of one item in bytes.
-    _zarr_v2_names : tuple
-        The names of this data type in Zarr V2.
-    _zarr_v3_name : str
-        The name of this data type in Zarr V3.
-    _numpy_name : str
-        The name of this data type in NumPy.
     """
 
-    _zarr_v2_names: ClassVar[tuple[str, ...]]
-    # this attribute exists so that we can programmatically create a numpy dtype instance
-    # because the particular numpy dtype we are wrapping does not allow direct construction via
-    # cls.dtype_cls()
-    _numpy_name: ClassVar[_DTypeName]
+    _numpy_name: ClassVar[Literal["datetime64", "timedelta64"]]
     scale_factor: int
     unit: DateTimeUnit
 
@@ -165,7 +260,7 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
         Raises
         ------
         DataTypeValidationError
-            If the dtype is not a valid representation of a NumPy temporal data type.
+            If the dtype is not a valid representation of this class.
         """
 
         if cls._check_native_dtype(dtype):
@@ -197,45 +292,6 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
 
         dtype_string = f"{self._numpy_name}[{self.scale_factor}{self.unit}]"
         return np.dtype(dtype_string).newbyteorder(endianness_to_numpy_str(self.endianness))  # type: ignore[return-value]
-
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> DateTime64JSONV3 | TimeDelta64JSONV3: ...
-
-    def to_json(
-        self, zarr_format: ZarrFormat
-    ) -> DTypeConfig_V2[str, None] | DateTime64JSONV3 | TimeDelta64JSONV3:
-        """
-        Serialize this data type to JSON.
-
-        Parameters
-        ----------
-        zarr_format : ZarrFormat
-            The Zarr format version (2 or 3).
-
-        Returns
-        -------
-        DTypeConfig_V2[str, None] | DateTime64JSONV3 | TimeDelta64JSONV3
-            The JSON representation of the data type.
-
-        Raises
-        ------
-        ValueError
-            If the zarr_format is not 2 or 3.
-        """
-        if zarr_format == 2:
-            name = self.to_native_dtype().str
-            return {"name": name, "object_codec_id": None}
-        elif zarr_format == 3:
-            return cast(
-                "DateTime64JSONV3 | TimeDelta64JSONV3",
-                {
-                    "name": self._zarr_v3_name,
-                    "configuration": {"unit": self.unit, "scale_factor": self.scale_factor},
-                },
-            )
-        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> int:
         """
@@ -274,31 +330,37 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
     A Zarr data type for arrays containing NumPy TimeDelta64 data.
 
     Wraps the ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
-    are instances of ``np.timedelta64``.
+    are instances of `np.timedelta64`.
 
     Attributes
     ----------
-    dtype_cls : Type[np.dtypes.TimeDelta64DType]
+    dtype_cls : Type[np.dtypesTimeDelta64DType]
         The NumPy dtype class for this data type.
-    _zarr_v3_name : ClassVar[Literal["numpy.timedelta64"]]
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : tuple
-        The names of this data type in Zarr V2.
-    _numpy_name : ClassVar[Literal["timedelta64"]] = "timedelta64"
-        The literate NumPy name of this data type.
+    scale_factor : int
+        The scale factor for this data type.
+    unit : DateTimeUnit
+        The unit for this data type.
+
+    References
+    ----------
+    The Zarr V2 representation of this data type is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+    The Zarr V3 representation of this data type is defined in the ``numpy.timedelta64``
+    `specification document <https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.timedelta64>`_
     """
 
     # mypy infers the type of np.dtypes.TimeDelta64DType to be
     # "Callable[[Literal['Y', 'M', 'W', 'D'] | Literal['h', 'm', 's', 'ms', 'us', 'ns', 'ps', 'fs', 'as']], Never]"
     dtype_cls = np.dtypes.TimeDelta64DType  # type: ignore[assignment]
-    _zarr_v3_name: ClassVar[Literal["numpy.timedelta64"]] = "numpy.timedelta64"
-    _zarr_v2_names = (">m8", "<m8")
-    _numpy_name: ClassVar[Literal["timedelta64"]] = "timedelta64"
-    scale_factor: int = 1
     unit: DateTimeUnit = "generic"
+    scale_factor: int = 1
+    _zarr_v3_name: ClassVar[Literal["numpy.timedelta64"]] = "numpy.timedelta64"
+    _zarr_v2_names: tuple[Literal[">m8"], Literal["<m8"]] = (">m8", "<m8")
+    _numpy_name: ClassVar[Literal["timedelta64"]] = "timedelta64"
 
     @classmethod
-    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[TimeDelta64JSON_V2]:
         """
         Validate that the provided JSON input accurately represents a NumPy timedelta64 data type,
         which could be in the form of strings like "<m8" or ">m8[10s]". This method serves as a type
@@ -312,7 +374,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         Returns
         -------
         bool
-            True if the JSON input is a valid representation of a NumPy timedelta64 data type,
+            True if the JSON input is a valid representation of this class,
             otherwise False.
         """
         if not check_dtype_spec_v2(data):
@@ -332,31 +394,14 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             return name[4:-1].endswith(DATETIME_UNIT) and name[-1] == "]"
 
     @classmethod
-    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[DateTime64JSONV3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[DateTime64JSON_V3]:
         """
-        Check that JSON input is a dict with a 'name' key with the value 'numpy.timedelta64', and a
-        'configuration' key with a value of a dict with a 'unit' key and a 'scale_factor' key. The
-        'unit' key should map to a string describing the unit of time, and the 'scale_factor' key
-        should map to an integer describing the scale factor.
-
-        For example, the following is a valid JSON representation of a TimeDelta64 in Zarr V3:
-
-        .. code-block:: json
-
-            {
-                "name": "numpy.timedelta64",
-                "configuration": {
-                    "unit": "generic",
-                    "scale_factor": 1
-                }
-            }
-
-        This function can be used as a type guard to narrow the type of unknown JSON input.
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Returns
         -------
-        TypeGuard[DateTime64JSONV3]
-            True if the JSON input is a valid representation of a TimeDelta64 in Zarr V3,
+        TypeGuard[DateTime64JSON_V3]
+            True if the JSON input is a valid representation of this class,
             otherwise False.
         """
         return (
@@ -385,7 +430,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of a TimeDelta64.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v2(data):
             name = data["name"]
@@ -429,6 +474,40 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             "'scale_factor' key"
         )
         raise DataTypeValidationError(msg)
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> TimeDelta64JSON_V2: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> TimeDelta64JSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> TimeDelta64JSON_V2 | TimeDelta64JSON_V3:
+        """
+        Serialize this data type to JSON.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The Zarr format version (2 or 3).
+
+        Returns
+        -------
+        TimeDelta64JSON_V2 | TimeDelta64JSON_V3
+            The JSON representation of the data type.
+
+        Raises
+        ------
+        ValueError
+            If the zarr_format is not 2 or 3.
+        """
+        if zarr_format == 2:
+            name = self.to_native_dtype().str
+            return {"name": name, "object_codec_id": None}
+        elif zarr_format == 3:
+            return {
+                "name": self._zarr_v3_name,
+                "configuration": {"unit": self.unit, "scale_factor": self.scale_factor},
+            }
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[TimeDeltaLike]:
         """
@@ -506,7 +585,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         Raises
         ------
         TypeError
-            If the input JSON is not a valid representation of a scalar of this data type.
+            If the input JSON is not a valid representation of a scalar for this data type.
         """
         if check_json_time(data):
             return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
@@ -518,30 +597,36 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
     """
     A Zarr data type for arrays containing NumPy Datetime64 data.
 
-    Wraps the ``np.dtypesTimeDelta64DType`` data type. Scalars for this data type
+    Wraps the ``np.dtypes.TimeDelta64DType`` data type. Scalars for this data type
     are instances of ``np.datetime64``.
 
     Attributes
     ----------
     dtype_cls : Type[np.dtypesTimeDelta64DType]
         The numpy dtype class for this data type.
-    _zarr_v3_name : ClassVar[Literal["numpy.timedelta64"]]
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">m8"], Literal["<m8"]]]
-        The names of this data type in Zarr V2.
-    _numpy_name : ClassVar[Literal["timedelta64"]]
-        The name of this data type in NumPy.
+    unit : DateTimeUnit
+        The unit of time for this data type.
+    scale_factor : int
+        The scale factor for the time unit.
+
+    References
+    ----------
+    The Zarr V2 representation of this data type is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+    The Zarr V3 representation of this data type is defined in the ``numpy.datetime64``
+    `specification document <https://github.com/zarr-developers/zarr-extensions/tree/main/data-types/numpy.datetime64>`_
     """
 
     dtype_cls = np.dtypes.DateTime64DType  # type: ignore[assignment]
     _zarr_v3_name: ClassVar[Literal["numpy.datetime64"]] = "numpy.datetime64"
-    _zarr_v2_names = (">M8", "<M8")
+    _zarr_v2_names: tuple[Literal[">M8"], Literal["<M8"]] = (">M8", "<M8")
     _numpy_name: ClassVar[Literal["datetime64"]] = "datetime64"
     unit: DateTimeUnit = "generic"
     scale_factor: int = 1
 
     @classmethod
-    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DateTime64JSON_V2]:
         """
         Check that the input is a valid JSON representation of this data type.
 
@@ -552,7 +637,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
         Returns
         -------
-        TypeGuard[DTypeConfig_V2[str, None]]
+        TypeGuard[DateTime64JSON_V2]
             True if the input is a valid JSON representation of a NumPy datetime64 data type,
             otherwise False.
         """
@@ -571,19 +656,9 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             return name[4:-1].endswith(DATETIME_UNIT) and name[-1] == "]"
 
     @classmethod
-    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[DateTime64JSONV3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[DateTime64JSON_V3]:
         """
-        Check that the input is a valid JSON representation of this data type.
-
-        The input must be a dictionary with the following structure:
-
-        {
-            "name": "numpy.datetime64",
-            "configuration": {
-                "unit": <str>,
-                "scale_factor": <int>
-            }
-        }
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -592,7 +667,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
         Returns
         -------
-        TypeGuard[DateTime64JSONV3]
+        TypeGuard[DateTime64JSON_V3]
             True if the input is a valid JSON representation of a numpy datetime64 data type in Zarr V3, False otherwise.
         """
 
@@ -609,7 +684,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         """
         Create an instance of this data type from a Zarr V2-flavored JSON representation.
 
-        This method checks if the provided JSON data is a valid representation of the data type.
+        This method checks if the provided JSON data is a valid representation of this class.
         If valid, it creates an instance using the native NumPy dtype. Otherwise, it raises a
         DataTypeValidationError.
 
@@ -626,7 +701,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this data type.
+            If the input JSON is not a valid representation of this class.
         """
 
         if cls._check_json_v2(data):
@@ -643,7 +718,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         """
         Create an instance of this data type from a Zarr V3-flavored JSON representation.
 
-        This method checks if the provided JSON data is a valid representation of the data type.
+        This method checks if the provided JSON data is a valid representation of this class.
         If valid, it creates an instance using the native NumPy dtype. Otherwise, it raises a
         DataTypeValidationError.
 
@@ -660,7 +735,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this data type.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v3(data):
             unit = data["configuration"]["unit"]
@@ -674,9 +749,43 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         )
         raise DataTypeValidationError(msg)
 
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> DateTime64JSON_V2: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> DateTime64JSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> DateTime64JSON_V2 | DateTime64JSON_V3:
+        """
+        Serialize this data type to JSON.
+
+        Parameters
+        ----------
+        zarr_format : ZarrFormat
+            The Zarr format version (2 or 3).
+
+        Returns
+        -------
+        DateTime64JSON_V2 | DateTime64JSON_V3
+            The JSON representation of the data type.
+
+        Raises
+        ------
+        ValueError
+            If the zarr_format is not 2 or 3.
+        """
+        if zarr_format == 2:
+            name = self.to_native_dtype().str
+            return {"name": name, "object_codec_id": None}
+        elif zarr_format == 3:
+            return {
+                "name": self._zarr_v3_name,
+                "configuration": {"unit": self.unit, "scale_factor": self.scale_factor},
+            }
+        raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
+
     def _check_scalar(self, data: object) -> TypeGuard[DateTimeLike]:
         """
-        Check if the input is a scalar of this data type.
+        Check if the input is convertible to a scalar of this data type.
 
         Parameters
         ----------
@@ -694,10 +803,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
     def _cast_scalar_unchecked(self, data: DateTimeLike) -> np.datetime64:
         """
-        Cast the provided scalar data to np.datetime64 without checking.
-
-        This method does not perform any type checking.
-        The input data must be a scalar of this data type.
+        Cast the input to a scalar of this data type without any type checking.
 
         Parameters
         ----------
@@ -707,13 +813,13 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         Returns
         -------
         numpy.datetime64
-            The casted data as a numpy datetime scalar.
+            The input cast to a NumPy datetime scalar.
         """
         return self.to_native_dtype().type(data, f"{self.scale_factor}{self.unit}")
 
     def cast_scalar(self, data: object) -> np.datetime64:
         """
-        Cast a scalar value to a numpy datetime scalar.
+        Cast the input to a scalar of this data type after a type check.
 
         Parameters
         ----------
@@ -723,7 +829,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         Returns
         -------
         numpy.datetime64
-            The data cast as a numpy datetime scalar.
+            The input cast to a NumPy datetime scalar.
 
         Raises
         ------
@@ -737,17 +843,19 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
 
     def default_scalar(self) -> np.datetime64:
         """
-        Return a default scalar of this data type.
+        Return the default scalar value for this data type.
 
-        This method provides a default value for the datetime64 scalar, which is
-        a 'Not-a-Time' (NaT) value.
+        Returns
+        -------
+        numpy.datetime64
+            The default scalar value, which is a 'Not-a-Time' (NaT) value
         """
 
         return np.datetime64("NaT")
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.datetime64:
         """
-        Read a JSON-serializable value as a numpy datetime scalar.
+        Read a JSON-serializable value as a scalar.
 
         Parameters
         ----------

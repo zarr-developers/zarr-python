@@ -36,12 +36,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemSize):
     """
-    Base class for float data types.
-
-    Attributes
-    ----------
-    _zarr_v2_names : ClassVar[tuple[str, ...]]
-        The possible Zarr V2 JSON names for the data type.
+    A base class for Zarr data types that wrap NumPy float data types.
     """
 
     # This attribute holds the possible zarr v2 JSON names for the data type
@@ -104,7 +99,7 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[str]:
         """
-        Check that the input is a valid JSON representation of this data type.
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -114,7 +109,7 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         Returns
         -------
         TypeGuard[str]
-            True if the input is a valid JSON representation of this data type, False otherwise.
+            True if the input is a valid JSON representation of this class, False otherwise.
         """
         return data == cls._zarr_v3_name
 
@@ -324,10 +319,12 @@ class Float16(BaseFloat[np.dtypes.Float16DType, np.float16]):
     ----------
     dtype_cls : Type[np.dtypes.Float16DType]
         The NumPy dtype class for this data type.
-    _zarr_v3_name : ClassVar[Literal["float16"]]
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">f2"], Literal["<f2"]]]
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the float16 data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float16DType
@@ -359,10 +356,12 @@ class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
     ----------
     dtype_cls : Type[np.dtypes.Float32DType]
         The NumPy dtype class for this data type.
-    _zarr_v3_name : ClassVar[Literal["float32"]]
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">f4"], Literal["<f4"]]]
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the float32 data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float32DType
@@ -394,10 +393,12 @@ class Float64(BaseFloat[np.dtypes.Float64DType, np.float64]):
     ----------
     dtype_cls : Type[np.dtypes.Float64DType]
         The NumPy dtype class for this data type.
-    _zarr_v3_name : ClassVar[Literal["float64"]]
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">f8"], Literal["<f8"]]]
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the float64 data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float64DType

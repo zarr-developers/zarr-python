@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, HasItemSize):
     """
-    A base class for complex data types
+    A base class for Zarr data types that wrap NumPy complex float data types.
     """
 
     # This attribute holds the possible zarr v2 JSON names for the data type
@@ -76,7 +76,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
     def to_native_dtype(self) -> TComplexDType_co:
         """
-        Convert this complex data type to a NumPy complex dtype with the appropriate byte order.
+        Convert this class to a NumPy complex dtype with the appropriate byte order.
 
         Returns
         -------
@@ -127,7 +127,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         Returns
         -------
         TypeGuard[str]
-            True if the input is a valid representation of this data type in Zarr V3, False otherwise.
+            True if the input is a valid representation of this class in Zarr V3, False otherwise.
         """
 
         return data == cls._zarr_v3_name
@@ -135,7 +135,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
         """
-        Create an instance of this complex data type from Zarr V2-flavored JSON.
+        Create an instance of this class from Zarr V2-flavored JSON.
 
         Parameters
         ----------
@@ -145,12 +145,12 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         Returns
         -------
         Self
-            An instance of this data type.
+            An instance of this class.
 
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this complex data type.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v2(data):
             # Going via numpy ensures that we get the endianness correct without
@@ -163,7 +163,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
         """
-        Create an instance of this complex data type from Zarr V3-flavored JSON.
+        Create an instance of this class from Zarr V3-flavored JSON.
 
         Parameters
         ----------
@@ -178,7 +178,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this complex data type.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v3(data):
             return cls()
@@ -193,7 +193,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
     def to_json(self, zarr_format: ZarrFormat) -> DTypeConfig_V2[str, None] | str:
         """
-        Serialize this complex data type to a JSON-compatible representation.
+        Serialize this object to a JSON-serializable representation.
 
         Parameters
         ----------
@@ -203,8 +203,9 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         Returns
         -------
         DTypeConfig_V2[str, None] | str
-            If `zarr_format` is 2, a dictionary with "name" and "object_codec_id" is returned.
-            If `zarr_format` is 3, a string representation of the complex data type is returned.
+            If ``zarr_format`` is 2, a dictionary with ``"name"`` and ``"object_codec_id"`` keys is
+            returned.
+            If ``zarr_format`` is 3, a string representation of the complex data type is returned.
 
         Raises
         ------
@@ -236,7 +237,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
     def _cast_scalar_unchecked(self, data: ComplexLike) -> TComplexScalar_co:
         """
-        Cast the provided scalar data to the native scalar type of this complex data type.
+        Cast the provided scalar data to the native scalar type of this class.
 
         Parameters
         ----------

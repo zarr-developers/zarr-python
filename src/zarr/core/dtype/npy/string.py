@@ -48,11 +48,60 @@ class SupportsStr(Protocol):
 
 
 class LengthBytesConfig(TypedDict):
+    """
+    Configuration for a fixed-length string data type in Zarr V3.
+
+    Attributes
+    ----------
+    length_bytes : int
+        The length in bytes of the data associated with this configuration.
+    """
+
     length_bytes: int
 
 
-# TODO: Fix this terrible name
-FixedLengthUTF32JSONV3 = NamedConfig[Literal["fixed_length_utf32"], LengthBytesConfig]
+class FixedLengthUTF32JSON_V2(DTypeConfig_V2[str, None]):
+    """
+    A wrapper around the JSON representation of the ``FixedLengthUTF32`` data type in Zarr V2.
+
+    The ``name`` field of this class contains the value that would appear under the
+    ``dtype`` field in Zarr V2 array metadata.
+
+    References
+    ----------
+    The structure of the ``name`` field is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+    Examples
+    --------
+
+    .. code-block:: python
+
+        {
+            "name": "<U12",
+            "object_codec_id": None
+        }
+    """
+
+
+class FixedLengthUTF32JSON_V3(NamedConfig[Literal["fixed_length_utf32"], LengthBytesConfig]):
+    """
+    The JSON representation of the ``FixedLengthUTF32`` data type in Zarr V3.
+
+    References
+    ----------
+    This representation is not currently defined in an external specification.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "fixed_length_utf32",
+            "configuration": {
+                "length_bytes": 12
+        }
+    """
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -72,7 +121,7 @@ class FixedLengthUTF32(
     _zarr_v3_name : ClassVar[Literal["fixed_length_utf32"]]
         The name of this data type in Zarr V3.
     code_point_bytes : ClassVar[int] = 4
-        The number of bytes per code point in UTF-32.
+        The number of bytes per code point in UTF-32, which is 4.
     """
 
     dtype_cls = np.dtypes.StrDType
@@ -125,7 +174,7 @@ class FixedLengthUTF32(
         return self.dtype_cls(self.length).newbyteorder(byte_order)
 
     @classmethod
-    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[FixedLengthUTF32JSON_V2]:
         """
         Check that the input is a valid JSON representation of a NumPy U dtype.
 
@@ -136,7 +185,7 @@ class FixedLengthUTF32(
 
         Returns
         -------
-        TypeGuard[DTypeConfig_V2[str, None]]
+        TypeGuard[FixedLengthUTF32JSON_V2]
             Whether the input is a valid JSON representation of a NumPy U dtype.
         """
         return (
@@ -147,9 +196,9 @@ class FixedLengthUTF32(
         )
 
     @classmethod
-    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[FixedLengthUTF32JSONV3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[FixedLengthUTF32JSON_V3]:
         """
-        Check that the input is a valid JSON representation of a NumPy U dtype.
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -175,11 +224,11 @@ class FixedLengthUTF32(
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> FixedLengthUTF32JSONV3: ...
+    def to_json(self, zarr_format: Literal[3]) -> FixedLengthUTF32JSON_V3: ...
 
     def to_json(
         self, zarr_format: ZarrFormat
-    ) -> DTypeConfig_V2[str, None] | FixedLengthUTF32JSONV3:
+    ) -> DTypeConfig_V2[str, None] | FixedLengthUTF32JSON_V3:
         """
         Convert the FixedLengthUTF32 instance to a JSON representation.
 
@@ -190,7 +239,7 @@ class FixedLengthUTF32(
 
         Returns
         -------
-        DTypeConfig_V2[str, None] | FixedLengthUTF32JSONV3
+        DTypeConfig_V2[str, None] | FixedLengthUTF32JSON_V3
             The JSON representation of the data type.
         """
         if zarr_format == 2:
@@ -375,23 +424,50 @@ def check_vlen_string_json_scalar(data: object) -> TypeGuard[int | str | float]:
     return isinstance(data, int | str | float)
 
 
+class VariableLengthUTF8JSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]):
+    """
+    A wrapper around the JSON representation of the ``VariableLengthUTF8`` data type in Zarr V2.
+
+    The ``name`` field of this class contains the value that would appear under the
+    ``dtype`` field in Zarr V2 array metadata. The ``object_codec_id`` field is always ``"vlen-utf8"``.
+
+    References
+    ----------
+    The structure of the ``name`` field is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "|O",
+            "object_codec_id": "vlen-utf8"
+        }
+    """
+
+
 # VariableLengthUTF8 is defined in two places, conditioned on the version of NumPy.
 # If NumPy 2 is installed, then VariableLengthUTF8 is defined with the NumPy variable length
 # string dtype as the native dtype. Otherwise, VariableLengthUTF8 is defined with the NumPy object
 # dtype as the native dtype.
 class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     """
-    Base class for variable-length UTF-8 string data types. Not intended for direct use, but as a
-    base for concrete implementations.
+    A base class for variable-length UTF-8 string data types.
+
+    Not intended for direct use, but as a base for concrete implementations.
 
     Attributes
     ----------
-    dtype_cls : TDType_co
-        The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["variable_length_utf8"]]
-        The name of this data type in Zarr V3.
     object_codec_id : ClassVar[Literal["vlen-utf8"]]
         The object codec ID for this data type.
+
+    References
+    ----------
+    This data type does not have a Zarr V3 specification.
+
+    The Zarr V2 data type specification can be found `here <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
     """
 
     _zarr_v3_name: ClassVar[Literal["string"]] = "string"
@@ -428,7 +504,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     def _check_json_v2(
         cls,
         data: DTypeJSON,
-    ) -> TypeGuard[DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]]:
+    ) -> TypeGuard[VariableLengthUTF8JSON_V2]:
         """
         "Check if the input is a valid JSON representation of a variable-length UTF-8 string dtype
         for Zarr v2."
@@ -440,7 +516,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
 
         Returns
         -------
-        ``TypeGuard[DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]]``
+        ``TypeGuard[VariableLengthUTF8JSON_V2]``
             Whether the input is a valid JSON representation of a NumPy "object" data type, and that the
             object codec id is appropriate for variable-length UTF-8 strings.
         """
@@ -453,8 +529,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["variable_length_utf8"]]:
         """
-        Check that the input is a valid JSON representation of a variable length UTF-8 string
-        data type.
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -513,15 +588,11 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         raise DataTypeValidationError(msg)
 
     @overload
-    def to_json(
-        self, zarr_format: Literal[2]
-    ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]]: ...
+    def to_json(self, zarr_format: Literal[2]) -> VariableLengthUTF8JSON_V2: ...
     @overload
     def to_json(self, zarr_format: Literal[3]) -> Literal["string"]: ...
 
-    def to_json(
-        self, zarr_format: ZarrFormat
-    ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]] | Literal["string"]:
+    def to_json(self, zarr_format: ZarrFormat) -> VariableLengthUTF8JSON_V2 | Literal["string"]:
         """
         Convert this data type to a JSON representation.
 
@@ -532,7 +603,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
 
         Returns
         -------
-        ``DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8"]] | Literal["string"]``
+        ``VariableLengthUTF8JSON_V2 | Literal["string"]``
             The JSON representation of this data type.
         """
         if zarr_format == 2:

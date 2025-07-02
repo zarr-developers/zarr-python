@@ -58,11 +58,6 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
     This class provides methods for serialization and deserialization of integer types
     in both Zarr v2 and v3 formats, as well as methods for checking and casting scalars.
-
-    Attributes
-    ----------
-    _zarr_v2_names : ClassVar[tuple[str, ...]]
-        Possible Zarr V2 JSON names for the data type.
     """
 
     _zarr_v2_names: ClassVar[tuple[str, ...]]
@@ -84,7 +79,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
         Returns
         -------
         TypeGuard[DTypeConfig_V2[str, None]]
-            True if the input is a valid representation of this integer data type in Zarr V2,
+            True if the input is a valid representation of this class in Zarr V2,
             False otherwise.
         """
 
@@ -97,11 +92,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
     @classmethod
     def _check_json_v3(cls, data: object) -> TypeGuard[str]:
         """
-        Check if JSON value is consistent with Zarr v3 for this data type.
-
-        This method verifies whether the provided data matches the expected Zarr v3
-        representation for this data type, which is the string specified by the
-        class-level attribute _zarr_v3_name.
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -111,7 +102,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
         Returns
         -------
         TypeGuard[str]
-            True if the input is a valid representation of this data type in Zarr v3,
+            True if the input is a valid representation of this class in Zarr v3,
             False otherwise.
         """
         return data == cls._zarr_v3_name
@@ -246,10 +237,12 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     ----------
     dtype_cls : np.dtypes.Int8DType
         The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["int8"]] = "int8"
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ``ClassVar[tuple[Literal["|i1"]]]`` = ``("|i1",)``
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the 8-bit signed integer data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int8DType
@@ -274,7 +267,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         Raises
         ------
         DataTypeValidationError
-            If the input data type is not a valid representation of an Int8.
+            If the input data type is not a valid representation of this class Int8.
         """
         if cls._check_native_dtype(dtype):
             return cls()
@@ -311,7 +304,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of an Int8.
+            If the input JSON is not a valid representation of this class Int8.
         """
         if cls._check_json_v2(data):
             return cls()
@@ -336,7 +329,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of an Int8.
+            If the input JSON is not a valid representation of this class Int8.
         """
         if cls._check_json_v3(data):
             return cls()
@@ -400,10 +393,12 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     ----------
     dtype_cls : np.dtypes.UInt8DType
         The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["uint8"]] = "uint8"
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ``ClassVar[tuple[Literal["|u1"]]]`` = ``("|u1",)``
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the 8-bit unsigned integer data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt8DType
@@ -451,7 +446,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this data type.
+            If the input JSON is not a valid representation of this class.
         """
 
         if cls._check_json_v2(data):
@@ -477,7 +472,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this data type.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v3(data):
             return cls()
@@ -545,10 +540,12 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     ----------
     dtype_cls : np.dtypes.Int16DType
         The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["int16"]] = "int16"
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">i2"], Literal["<i2"]]] = (">i2", "<i2")
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the 16-bit signed integer data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int16DType
@@ -611,7 +608,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this data type.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v2(data):
             # Going via NumPy ensures that we get the endianness correct without
@@ -639,7 +636,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this data type.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v3(data):
             return cls()
@@ -705,10 +702,12 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     ----------
     dtype_cls : np.dtypes.UInt16DType
         The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["uint16"]] = "uint16"
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">u2"], Literal["<u2"]]] = (">u2", "<u2")
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the unsigned 16-bit unsigned integer data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt16DType
@@ -771,7 +770,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this data type.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v2(data):
             # Going via NumPy ensures that we get the endianness correct without
@@ -799,7 +798,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of this data type.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v3(data):
             return cls()
@@ -865,10 +864,12 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     ----------
     dtype_cls : np.dtypes.Int32DType
         The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["int32"]] = "int32"
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">i4"], Literal["<i4"]]] = (">i4", "<i4")
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the 32-bit signed integer data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int32DType
@@ -914,7 +915,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of an Int32.
+            If the input JSON is not a valid representation of this class Int32.
         """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
@@ -952,7 +953,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of an Int32.
+            If the input JSON is not a valid representation of this class Int32.
         """
         if cls._check_json_v2(data):
             # Going via NumPy ensures that we get the endianness correct without
@@ -980,7 +981,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of an Int32.
+            If the input JSON is not a valid representation of this class Int32.
         """
         if cls._check_json_v3(data):
             return cls()
@@ -1046,10 +1047,12 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     ----------
     dtype_cls : np.dtypes.UInt32DType
         The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["uint32"]] = "uint32"
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">u4"], Literal["<u4"]]] = (">u4", "<u4")
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the 32-bit unsigned integer data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt32DType
@@ -1074,7 +1077,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input data type is not a valid representation of a 32-bit unsigned
+            If the input data type is not a valid representation of this class 32-bit unsigned
             integer.
         """
         if cls._check_native_dtype(dtype):
@@ -1113,7 +1116,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of a 32-bit unsigned
+            If the input JSON is not a valid representation of this class 32-bit unsigned
             integer.
         """
         if cls._check_json_v2(data):
@@ -1142,7 +1145,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of a 32-bit unsigned
+            If the input JSON is not a valid representation of this class 32-bit unsigned
             integer.
         """
         if cls._check_json_v3(data):
@@ -1202,10 +1205,12 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     ----------
     dtype_cls : np.dtypes.Int64DType
         The class of the underlying NumPy dtype.
-    _zarr_v3_name : ClassVar[Literal["int64"]] = "int64"
-        The name of this data type in Zarr V3.
-    _zarr_v2_names : ClassVar[tuple[Literal[">i8"], Literal["<i8"]]] = (">i8", "<i8")
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the 64-bit signed integer data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int64DType
@@ -1230,7 +1235,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input data type is not a valid representation of a 64-bit signed
+            If the input data type is not a valid representation of this class 64-bit signed
             integer.
         """
         if cls._check_native_dtype(dtype):
@@ -1269,7 +1274,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of a 64-bit signed
+            If the input JSON is not a valid representation of this class 64-bit signed
             integer.
         """
         if cls._check_json_v2(data):
@@ -1298,7 +1303,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of a 64-bit signed
+            If the input JSON is not a valid representation of this class 64-bit signed
             integer.
         """
         if cls._check_json_v3(data):
@@ -1358,10 +1363,12 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     ----------
     dtype_cls: np.dtypes.UInt64DType
         The class of the underlying NumPy dtype.
-    _zarr_v3_name: ClassVar[Literal["uint64"]] = "uint64"
-        The name of this data type in Zarr V3.
-    _zarr_v2_names: ClassVar[tuple[Literal[">u8"], Literal["<u8"]]] = (">u8", "<u8")
-        The names of this data type in Zarr V2.
+
+    References
+    ----------
+    This class implements the unsigned 64-bit integer data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt64DType
@@ -1375,7 +1382,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         Returns
         -------
         np.dtypes.UInt64DType
-            The native NumPy dtype.
+            The native NumPy dtype.eeeeeeeeeeeeeeeee
         """
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)
@@ -1398,7 +1405,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of an unsigned 64-bit
+            If the input JSON is not a valid representation of this class unsigned 64-bit
             integer.
         """
         if cls._check_json_v2(data):
@@ -1427,7 +1434,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of an unsigned 64-bit
+            If the input JSON is not a valid representation of this class unsigned 64-bit
             integer.
         """
         if cls._check_json_v3(data):
@@ -1481,7 +1488,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
         Raises
         ------
         DataTypeValidationError
-            If the input dtype is not a valid representation of an unsigned 64-bit
+            If the input dtype is not a valid representation of this class unsigned 64-bit
             integer.
         """
         if cls._check_native_dtype(dtype):

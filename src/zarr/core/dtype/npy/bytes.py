@@ -25,11 +25,141 @@ BytesLike = np.bytes_ | str | bytes | int
 
 
 class FixedLengthBytesConfig(TypedDict):
+    """
+    A configuration for a data type that takes a ``length_bytes`` parameter.
+
+    Attributes
+    ----------
+
+    length_bytes : int
+        The length in bytes of the data associated with this configuration.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "length_bytes": 12
+        }
+    """
+
     length_bytes: int
 
 
-NullTerminatedBytesJSONV3 = NamedConfig[Literal["null_terminated_bytes"], FixedLengthBytesConfig]
-RawBytesJSONV3 = NamedConfig[Literal["raw_bytes"], FixedLengthBytesConfig]
+class NullterminatedBytesJSON_V2(DTypeConfig_V2[str, None]):
+    """
+    A wrapper around the JSON representation of the ``NullTerminatedBytes`` data type in Zarr V2.
+
+    The ``name`` field of this class contains the value that would appear under the
+    ``dtype`` field in Zarr V2 array metadata.
+
+    References
+    ----------
+    The structure of the ``name`` field is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "|S10",
+            "object_codec_id": None
+        }
+    """
+
+
+class NullTerminatedBytesJSON_V3(
+    NamedConfig[Literal["null_terminated_bytes"], FixedLengthBytesConfig]
+):
+    """
+    The JSON representation of the ``NullTerminatedBytes`` data type in Zarr V3.
+
+    References
+    ----------
+    This representation is not currently defined in an external specification.
+
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "null_terminated_bytes",
+            "configuration": {
+                "length_bytes": 12
+            }
+        }
+
+    """
+
+
+class RawBytesJSON_V2(DTypeConfig_V2[str, None]):
+    """
+    A wrapper around the JSON representation of the ``RawBytes`` data type in Zarr V2.
+
+    The ``name`` field of this class contains the value that would appear under the
+    ``dtype`` field in Zarr V2 array metadata.
+
+    References
+    ----------
+    The structure of the ``name`` field is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "|V10",
+            "object_codec_id": None
+        }
+    """
+
+
+class RawBytesJSON_V3(NamedConfig[Literal["raw_bytes"], FixedLengthBytesConfig]):
+    """
+    The JSON representation of the ``RawBytes`` data type in Zarr V3.
+
+    References
+    ----------
+    This representation is not currently defined in an external specification.
+
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "raw_bytes",
+            "configuration": {
+                "length_bytes": 12
+    """
+
+
+class VariableLengthBytesJSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]]):
+    """
+    A wrapper around the JSON representation of the ``VariableLengthBytes`` data type in Zarr V2.
+
+    The ``name`` field of this class contains the value that would appear under the
+    ``dtype`` field in Zarr V2 array metadata. The ``object_codec_id`` field is always ``"vlen-bytes"``
+
+    References
+    ----------
+    The structure of the ``name`` field is defined in the Zarr V2
+    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_.
+
+    Examples
+    --------
+    .. code-block:: python
+
+        {
+            "name": "|O",
+            "object_codec_id": "vlen-bytes"
+        }
+    """
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -115,7 +245,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         return self.dtype_cls(self.length)
 
     @classmethod
-    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[NullterminatedBytesJSON_V2]:
         """
         Check that the input is a valid JSON representation of NullTerminatedBytes in Zarr V2.
 
@@ -141,9 +271,9 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         )
 
     @classmethod
-    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[NullTerminatedBytesJSONV3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[NullTerminatedBytesJSON_V3]:
         """
-        Check that the input is a valid representation of NullTerminatedBytes in Zarr V3.
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -152,8 +282,9 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        True if the input is a valid representation of NullTerminatedBytes in Zarr V3, False
-        otherwise.
+        TypeGuard[NullTerminatedBytesJSON_V3]
+            True if the input is a valid representation of this class in Zarr V3, False
+            otherwise.
         """
         return (
             isinstance(data, dict)
@@ -167,11 +298,11 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
         """
-        Create an instance of NullTerminatedBytes from Zarr V2-flavored JSON.
+        Create an instance of this class from Zarr V2-flavored JSON.
 
         This method checks if the input data is a valid representation of
-        NullTerminatedBytes in Zarr V2. If so, it returns a new instance of
-        NullTerminatedBytes with a ``length`` as specified in the input data.
+        this class in Zarr V2. If so, it returns a new instance of
+        this class with a ``length`` as specified in the input data.
 
         Parameters
         ----------
@@ -186,7 +317,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         Raises
         ------
         DataTypeValidationError
-            If the input data is not a valid representation of NullTerminatedBytes.
+            If the input data is not a valid representation of this class.
         """
 
         if cls._check_json_v2(data):
@@ -198,11 +329,11 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
         """
-        Create an instance of NullTerminatedBytes from Zarr V3-flavored JSON.
+        Create an instance of this class from Zarr V3-flavored JSON.
 
         This method checks if the input data is a valid representation of
-        NullTerminatedBytes in Zarr V3. If so, it returns a new instance of
-        NullTerminatedBytes with a ``length`` as specified in the input data.
+        this class in Zarr V3. If so, it returns a new instance of
+        this class with a ``length`` as specified in the input data.
 
         Parameters
         ----------
@@ -217,7 +348,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         Raises
         ------
         DataTypeValidationError
-            If the input data is not a valid representation of NullTerminatedBytes.
+            If the input data is not a valid representation of this class.
         """
         if cls._check_json_v3(data):
             return cls(length=data["configuration"]["length_bytes"])
@@ -225,14 +356,14 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         raise DataTypeValidationError(msg)
 
     @overload
-    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
+    def to_json(self, zarr_format: Literal[2]) -> NullterminatedBytesJSON_V2: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> NullTerminatedBytesJSONV3: ...
+    def to_json(self, zarr_format: Literal[3]) -> NullTerminatedBytesJSON_V3: ...
 
     def to_json(
         self, zarr_format: ZarrFormat
-    ) -> DTypeConfig_V2[str, None] | NullTerminatedBytesJSONV3:
+    ) -> DTypeConfig_V2[str, None] | NullTerminatedBytesJSON_V3:
         """
         Generate a JSON representation of this data type.
 
@@ -243,7 +374,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        DTypeConfig_V2[str, None] | NullTerminatedBytesJSONV3
+        NullterminatedBytesJSON_V2 | NullTerminatedBytesJSON_V3
             The JSON-serializable representation of the data type
         """
         if zarr_format == 2:
@@ -517,16 +648,9 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         return cast("np.dtypes.VoidDType[int]", np.dtype(f"V{self.length}"))
 
     @classmethod
-    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[RawBytesJSON_V2]:
         """
-        Check that the input is a valid representation of RawBytes in Zarr V2.
-
-        The input data must be a mapping with the following structure:
-
-        {
-            "name": "|V<int>",
-            "object_codec_id": None
-        }
+        Check that the input is a valid representation of this class in Zarr V2.
 
         Parameters
         ----------
@@ -535,7 +659,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         Returns
         -------
-        True if the input is a valid representation of RawBytes in Zarr V3, False otherwise.
+        True if the input is a valid representation of this class in Zarr V3, False otherwise.
 
         """
         return (
@@ -546,18 +670,9 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         )
 
     @classmethod
-    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[RawBytesJSONV3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[RawBytesJSON_V3]:
         """
-        Check that the input is a valid representation of RawBytes in Zarr V3.
-
-        The input must be a mapping with the following structure:
-
-        {
-            "name": "raw_bytes",
-            "configuration": {
-                "length_bytes": <int>
-            }
-        }
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -566,8 +681,9 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         Returns
         -------
-        True if the input is a valid representation of RawBytes in Zarr V3, False
-        otherwise.
+        TypeGuard[RawBytesJSON_V3]
+            True if the input is a valid representation of this class in Zarr V3, False
+            otherwise.
         """
         return (
             isinstance(data, dict)
@@ -600,7 +716,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         Raises
         ------
         DataTypeValidationError
-            If the input data is not a valid representation of this RawBytes.
+            If the input data is not a valid representation of this class.
         """
         if cls._check_json_v2(data):
             name = data["name"]
@@ -630,7 +746,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         Raises
         ------
         DataTypeValidationError
-            If the input data is not a valid representation of RawBytes.
+            If the input data is not a valid representation of this class.
         """
         if cls._check_json_v3(data):
             return cls(length=data["configuration"]["length_bytes"])
@@ -638,12 +754,12 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         raise DataTypeValidationError(msg)
 
     @overload
-    def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
+    def to_json(self, zarr_format: Literal[2]) -> RawBytesJSON_V2: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> RawBytesJSONV3: ...
+    def to_json(self, zarr_format: Literal[3]) -> RawBytesJSON_V3: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> DTypeConfig_V2[str, None] | RawBytesJSONV3:
+    def to_json(self, zarr_format: ZarrFormat) -> RawBytesJSON_V2 | RawBytesJSON_V3:
         """
         Generate a JSON representation of this data type.
 
@@ -654,7 +770,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         Returns
         -------
-        DTypeConfig_V2[str, None] | RawBytesJSONV3
+        RawBytesJSON_V2 | RawBytesJSON_V3
             The JSON-serializable representation of the data type.
         """
         if zarr_format == 2:
@@ -881,7 +997,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
     def _check_json_v2(
         cls,
         data: DTypeJSON,
-    ) -> TypeGuard[DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]]]:
+    ) -> TypeGuard[VariableLengthBytesJSON_V2]:
         """
         Check that the input is a valid JSON representation of a NumPy O dtype, and that the
         object codec id is appropriate for variable-length bytes strings.
@@ -893,7 +1009,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
         Returns
         -------
-        True if the input is a valid representation of VariableLengthBytes in Zarr V2, False
+        True if the input is a valid representation of this class in Zarr V2, False
         otherwise.
         """
         # Check that the input is a valid JSON representation of a Zarr v2 data type spec.
@@ -908,10 +1024,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["variable_length_bytes"]]:
         """
-        Check that the input is a valid representation of VariableLengthBytes in Zarr V3.
-
-        This method verifies that the provided data matches the expected Zarr V3 representation
-        for VariableLengthBytes, which is the string "variable_length_bytes".
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -921,7 +1034,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         Returns
         -------
         TypeGuard[Literal["variable_length_bytes"]]
-            True if the input is a valid representation of VariableLengthBytes in Zarr V3, False otherwise.
+            True if the input is a valid representation of this class in Zarr V3, False otherwise.
         """
 
         return data == cls._zarr_v3_name
@@ -931,8 +1044,8 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         """
         Create an instance of this VariableLengthBytes from Zarr V2-flavored JSON.
 
-        This method checks if the input data is a valid representation of this VariableLengthBytes
-        in Zarr V2. If so, it returns a new instance VariableLengthBytes.
+        This method checks if the input data is a valid representation of this class
+        in Zarr V2. If so, it returns a new instance this class.
 
         Parameters
         ----------
@@ -947,7 +1060,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         Raises
         ------
         DataTypeValidationError
-            If the input data is not a valid representation of this class.
+            If the input data is not a valid representation of this class class.
         """
 
         if cls._check_json_v2(data):
@@ -977,7 +1090,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         Raises
         ------
         DataTypeValidationError
-            If the input data is not a valid representation of VariableLengthBytes.
+            If the input data is not a valid representation of this class.
         """
 
         if cls._check_json_v3(data):
@@ -986,16 +1099,14 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         raise DataTypeValidationError(msg)
 
     @overload
-    def to_json(
-        self, zarr_format: Literal[2]
-    ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]]: ...
+    def to_json(self, zarr_format: Literal[2]) -> VariableLengthBytesJSON_V2: ...
 
     @overload
     def to_json(self, zarr_format: Literal[3]) -> Literal["variable_length_bytes"]: ...
 
     def to_json(
         self, zarr_format: ZarrFormat
-    ) -> DTypeConfig_V2[Literal["|O"], Literal["vlen-bytes"]] | Literal["variable_length_bytes"]:
+    ) -> VariableLengthBytesJSON_V2 | Literal["variable_length_bytes"]:
         """
         Convert the variable-length bytes data type to a JSON-serializable form.
 

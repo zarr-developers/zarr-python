@@ -37,11 +37,11 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     dtype_cls : ClassVar[type[np.dtypes.BoolDType]] = np.dtypes.BoolDType
         The NumPy dtype class.
 
-    Notes
-    -----
+    References
+    ----------
     This class implements the boolean data type defined in Zarr V2 and V3.
-    You can read the formal specification of that data type in the respective
-    `specification document <https://zarr-specs.readthedocs.io/en/latest/specs.html>`_
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`_ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`_ specification documents for details.
     """
 
     _zarr_v3_name: ClassVar[Literal["bool"]] = "bool"
@@ -112,7 +112,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["bool"]]:
         """
-        Check that the input is a valid JSON representation of a Bool in Zarr V3 format.
+        Check that the input is a valid JSON representation of this class in Zarr V3.
 
         Parameters
         ----------
@@ -144,7 +144,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of a Bool.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v2(data):
             return cls()
@@ -169,7 +169,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         Raises
         ------
         DataTypeValidationError
-            If the input JSON is not a valid representation of a Bool.
+            If the input JSON is not a valid representation of this class.
         """
         if cls._check_json_v3(data):
             return cls()
