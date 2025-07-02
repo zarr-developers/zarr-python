@@ -45,6 +45,7 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
     is wrapped with AsyncFileSystemWrapper.
     """
     import fsspec
+    import fsspec.implementations.asyn_wrapper
 
     fsspec_version = parse_version(fsspec.__version__)
     if fs.async_impl and fs.asynchronous:
