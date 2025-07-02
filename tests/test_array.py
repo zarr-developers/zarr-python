@@ -1013,6 +1013,28 @@ class TestCreateArray:
             assert a.fill_value == dtype.default_scalar()
 
     @staticmethod
+    # @pytest.mark.parametrize("zarr_format", [2, 3])
+    @pytest.mark.parametrize("dtype", zdtype_examples)
+    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+    def test_default_fill_value_None(
+        dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat
+    ) -> None:
+        """
+        Test that the fill value of an array is set to the default value for an explicit None arguement for
+        Zarr Format 3, and to null for Zarr Format 2
+        """
+        a = zarr.create_array(
+            store, shape=(5,), chunks=(5,), dtype=dtype, fill_value=None, zarr_format=zarr_format
+        )
+        if zarr_format == 3:
+            if isinstance(dtype, DateTime64 | TimeDelta64) and np.isnat(a.fill_value):
+                assert np.isnat(dtype.default_scalar())
+            else:
+                assert a.fill_value == dtype.default_scalar()
+        elif zarr_format == 2:
+            assert a.fill_value is None
+
+    @staticmethod
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("dtype", zdtype_examples)
     def test_dtype_forms(dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat) -> None:
