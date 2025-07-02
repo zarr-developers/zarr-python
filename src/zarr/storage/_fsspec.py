@@ -56,11 +56,6 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
         fs_dict["asynchronous"] = True
         return fsspec.AbstractFileSystem.from_json(json.dumps(fs_dict))
 
-    # Wrap sync filesystems with the async wrapper
-    if type(fs) is fsspec.implementations.local.LocalFileSystem and not fs.auto_mkdir:
-        raise ValueError(
-            f"LocalFilesystem {fs} was created with auto_mkdir=False but Zarr requires the filesystem to automatically create directories"
-        )
     if fsspec_version < parse_version("2024.12.0"):
         raise ImportError(
             f"The filesystem '{fs}' is synchronous, and the required "
