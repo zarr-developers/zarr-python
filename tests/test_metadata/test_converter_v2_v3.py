@@ -12,10 +12,11 @@ from zarr.abc.store import Store
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
-from zarr.core.dtype.npy.int import UInt16
+from zarr.core.dtype.npy.int import BaseInt, UInt8, UInt16
 from zarr.core.metadata.converter.cli import app
 
 runner = CliRunner()
@@ -188,6 +189,70 @@ def test_convert_filter(local_store: Store) -> None:
         filter_v3,
         BytesCodec(endian="little"),
     )
+
+
+@pytest.mark.parametrize(
+    ("order", "expected_codecs"),
+    [
+        ("C", (BytesCodec(endian="little"),)),
+        ("F", (TransposeCodec(order=(1, 0)), BytesCodec(endian="little"))),
+    ],
+)
+def test_convert_C_vs_F_order(
+    local_store: Store, order: str, expected_codecs: tuple[Codec]
+) -> None:
+    zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype="uint16",
+        compressors=None,
+        zarr_format=2,
+        fill_value=0,
+        order=order,
+    )
+
+    result = runner.invoke(app, ["convert", str(local_store.root)])
+    assert result.exit_code == 0
+    assert (local_store.root / "zarr.json").exists()
+
+    zarr_array = zarr.open(local_store.root, zarr_format=3)
+    metadata = zarr_array.metadata
+    assert metadata.zarr_format == 3
+
+    assert metadata.codecs == expected_codecs
+
+
+@pytest.mark.parametrize(
+    ("dtype", "expected_data_type", "expected_codecs"),
+    [
+        ("uint8", UInt8(), (BytesCodec(endian=None),)),
+        ("uint16", UInt16(), (BytesCodec(endian="little"),)),
+    ],
+    ids=["single_byte", "multi_byte"],
+)
+def test_convert_endian(
+    local_store: Store, dtype: str, expected_data_type: BaseInt, expected_codecs: tuple[Codec]
+) -> None:
+    zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype=dtype,
+        compressors=None,
+        zarr_format=2,
+        fill_value=0,
+    )
+
+    result = runner.invoke(app, ["convert", str(local_store.root)])
+    assert result.exit_code == 0
+    assert (local_store.root / "zarr.json").exists()
+
+    zarr_array = zarr.open(local_store.root, zarr_format=3)
+    metadata = zarr_array.metadata
+    assert metadata.zarr_format == 3
+    assert metadata.data_type == expected_data_type
+    assert metadata.codecs == expected_codecs
 
 
 @pytest.mark.parametrize("node_type", ["array", "group"])
