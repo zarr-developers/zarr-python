@@ -152,13 +152,12 @@ class DefaultFillValue:
     """
     Sentinel class to indicate that the default fill value should be used.
 
-    This class is used to distinguish between:
-    Zarr Format 3:
-        - fill_value = None: dtype default value
-    Zarr Format 2:
-        - fill_value = None: fill_value saved as null
-
-    This allows backwards compatibility with zarr format 2.
+   This class exists because the normal values used to convey "defaultness" 
+   like ``None`` or ``"auto"` do not work for the fill value parameter of a Zarr array. 
+   ``None`` is a valid fill value for Zarr V2 (resulting in ``"fill_value: null"`` in array metadata). 
+   A string like ``"auto"`` is a valid fill value for an array with a string data type. 
+   But an instance of this class lies outside the space of valid fill values, which makes it 
+   suitable for expressing that the default fill value should be used.
     """
 
 
