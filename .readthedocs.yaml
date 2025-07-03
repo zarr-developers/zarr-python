@@ -12,11 +12,8 @@ build:
           towncrier build --version Unreleased --yes;
         fi
 
-sphinx:
-  configuration: docs/conf.py
-  fail_on_warning: true
-
-formats: all
+mkdocs:
+  configuration: mkdocs.yml
 
 python:
    install:
