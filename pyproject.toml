@@ -80,6 +80,9 @@ test = [
     "mypy",
     "hypothesis",
     "pytest-xdist",
+    "packaging",
+    "tomlkit",
+    "uv"
 ]
 remote_tests = [
     'zarr[remote]',
@@ -106,7 +109,8 @@ docs = [
     'numcodecs[msgpack]',
     'rich',
     's3fs>=2023.10.0',
-    'astroid<4'
+    'astroid<4',
+    'pytest'
 ]
 
 

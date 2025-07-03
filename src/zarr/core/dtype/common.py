@@ -13,6 +13,8 @@ from typing import (
     TypeVar,
 )
 
+from typing_extensions import ReadOnly
+
 from zarr.core.common import NamedConfig
 
 EndiannessStr = Literal["little", "big"]
@@ -55,8 +57,8 @@ TObjectCodecID_co = TypeVar("TObjectCodecID_co", bound=None | str, covariant=Tru
 
 
 class DTypeConfig_V2(TypedDict, Generic[TDTypeNameV2_co, TObjectCodecID_co]):
-    name: TDTypeNameV2_co
-    object_codec_id: TObjectCodecID_co
+    name: ReadOnly[TDTypeNameV2_co]
+    object_codec_id: ReadOnly[TObjectCodecID_co]
 
 
 DTypeSpec_V2 = DTypeConfig_V2[DTypeName_V2, None | str]
@@ -87,6 +89,9 @@ def check_structured_dtype_v2_inner(data: object) -> TypeGuard[StructuredName_V2
 
 
 def check_structured_dtype_name_v2(data: Sequence[object]) -> TypeGuard[StructuredName_V2]:
+    """
+    Check that all the elements of a sequence are valid zarr v2 structured dtype identifiers
+    """
     return all(check_structured_dtype_v2_inner(d) for d in data)
 
 
@@ -151,17 +156,23 @@ class DataTypeValidationError(ValueError): ...
 class ScalarTypeValidationError(ValueError): ...
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class HasLength:
     """
     A mix-in class for data types with a length attribute, such as fixed-size collections
     of unicode strings, or bytes.
+
+    Attributes
+    ----------
+    length : int
+        The length of the scalars belonging to this data type. Note that this class does not assign
+        a unit to the length. Child classes may assign units.
     """
 
     length: int
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class HasEndianness:
     """
     A mix-in class for data types with an endianness attribute
@@ -170,7 +181,7 @@ class HasEndianness:
     endianness: EndiannessStr = "little"
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class HasItemSize:
     """
     A mix-in class for data types with an item size attribute.
@@ -183,7 +194,7 @@ class HasItemSize:
         raise NotImplementedError
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class HasObjectCodec:
     """
     A mix-in class for data types that require an object codec id.
