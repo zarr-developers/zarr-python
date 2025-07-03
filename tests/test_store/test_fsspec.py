@@ -428,6 +428,10 @@ async def test_delete_dir_wrapped_filesystem(tmp_path: Path) -> None:
     assert not await store.exists("foo/c/0")
 
 
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
 async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
     """
     Test that creating a read-only copy of a store backed by the local file system does not error
