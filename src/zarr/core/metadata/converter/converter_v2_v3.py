@@ -41,9 +41,7 @@ def convert_v2_to_v3(
         the Store constructor for that implementation. Ignored otherwise.
     """
 
-    zarr_v2 = zarr.open(
-        store=store, mode="r+", zarr_format=2, path=path, storage_options=storage_options
-    )
+    zarr_v2 = zarr.open(store=store, mode="r+", path=path, storage_options=storage_options)
     convert_array_or_group(zarr_v2)
 
 
