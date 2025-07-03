@@ -1,5 +1,5 @@
 import asyncio
-from typing import cast
+from typing import Any, cast
 
 import numcodecs.abc
 
@@ -18,12 +18,15 @@ from zarr.core.dtype.common import HasEndianness
 from zarr.core.group import Group, GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.core.sync import sync
 from zarr.registry import get_codec_class
 from zarr.storage import StoreLike
 from zarr.storage._utils import _join_paths
 
 
-async def convert_v2_to_v3(store: StoreLike, path: str | None = None) -> None:
+def convert_v2_to_v3(
+    store: StoreLike, path: str | None = None, storage_options: dict[str, Any] | None = None
+) -> None:
     """Convert all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
     (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
 
@@ -33,13 +36,18 @@ async def convert_v2_to_v3(store: StoreLike, path: str | None = None) -> None:
         Store or path to directory in file system or name of zip file.
     path : str | None, optional
         The path within the store to open, by default None
+    storage_options : dict | None, optional
+        If the store is backed by an fsspec-based implementation, then this dict will be passed to
+        the Store constructor for that implementation. Ignored otherwise.
     """
 
-    zarr_v2 = zarr.open(store=store, mode="r+", path=path)
-    await convert_array_or_group(zarr_v2)
+    zarr_v2 = zarr.open(
+        store=store, mode="r+", zarr_format=2, path=path, storage_options=storage_options
+    )
+    convert_array_or_group(zarr_v2)
 
 
-async def convert_array_or_group(zarr_v2: Array | Group) -> None:
+def convert_array_or_group(zarr_v2: Array | Group) -> None:
     """Convert all v2 metadata in a zarr array/group to v3. Note - if a group is provided, then
     all arrays / groups within this group will also be converted. A zarr.json file will be created
     at each level, with any V2 files (.zarray, .zattrs etc.) left as-is.
@@ -56,15 +64,15 @@ async def convert_array_or_group(zarr_v2: Array | Group) -> None:
         group_metadata_v3 = GroupMetadata(
             attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
         )
-        await _save_v3_metadata(zarr_v2, group_metadata_v3)
+        sync(_save_v3_metadata(zarr_v2, group_metadata_v3))
 
         # process members of the group
         for key in zarr_v2:
-            await convert_array_or_group(zarr_v2[key])
+            convert_array_or_group(zarr_v2[key])
 
     else:
         array_metadata_v3 = _convert_array_metadata(zarr_v2.metadata)
-        await _save_v3_metadata(zarr_v2, array_metadata_v3)
+        sync(_save_v3_metadata(zarr_v2, array_metadata_v3))
 
 
 def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:

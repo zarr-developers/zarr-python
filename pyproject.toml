@@ -68,6 +68,7 @@ remote = [
 gpu = [
     "cupy-cuda12x",
 ]
+cli = ["typer"]
 # Development extras
 test = [
     "coverage",
