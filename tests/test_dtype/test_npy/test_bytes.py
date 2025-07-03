@@ -24,6 +24,7 @@ class TestNullTerminatedBytes(BaseTestZDType):
         "|S",
         "|U10",
         "|f8",
+        {"name": "|S4", "object_codec_id": "vlen-bytes"},
     )
     invalid_json_v3 = (
         {"name": "fixed_length_ascii", "configuration": {"length_bits": 0}},

@@ -246,7 +246,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         """
         if self._check_scalar(data):
             return np.bool_(data)
-        msg = (
+        msg = (  # pragma: no cover
             f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
             f"data type {self}."
         )

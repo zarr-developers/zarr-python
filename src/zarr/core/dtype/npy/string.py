@@ -385,7 +385,7 @@ class FixedLengthUTF32(
 
             return self.to_native_dtype().type(str(data)[: self.length])
 
-        msg = (
+        msg = (  # pragma: no cover
             f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
             f"data type {self}."
         )
@@ -711,11 +711,11 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        msg = (
+        msg = (  # pragma: no cover
             f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
             f"data type {self}."
         )
-        raise TypeError(msg)
+        raise TypeError(msg)  # pragma: no cover
 
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
