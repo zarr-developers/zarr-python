@@ -365,7 +365,7 @@ def test_open_fsmap_file_raises(tmp_path: pathlib.Path) -> None:
     fsspec = pytest.importorskip("fsspec.implementations.local")
     fs = fsspec.LocalFileSystem(auto_mkdir=False)
     mapper = fs.get_mapper(tmp_path)
-    with pytest.raises(ValueError, match="LocalFilesystem .*"):
+    with pytest.raises(FileNotFoundError, match="No such file or directory: .*"):
         array_roundtrip(mapper)
 
 
@@ -426,3 +426,17 @@ async def test_delete_dir_wrapped_filesystem(tmp_path: Path) -> None:
     assert await store.exists("foo-bar/zarr.json")
     assert not await store.exists("foo/zarr.json")
     assert not await store.exists("foo/c/0")
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
+    """
+    Test that creating a read-only copy of a store backed by the local file system does not error
+    if auto_mkdir is False.
+    """
+
+    store_w = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
+    _ = store_w.with_read_only()
