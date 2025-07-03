@@ -55,14 +55,15 @@ def create_hierarchy(
     overwrite: bool = False,
 ) -> Iterator[tuple[str, Group | Array]]:
     """
-    Create a complete zarr hierarchy from a collection of metadata objects.
+    Lazily create a complete zarr hierarchy from a collection of metadata objects.
 
     This function will parse its input to ensure that the hierarchy is complete. Any implicit groups
     will be inserted as needed. For example, an input like
     ```{'a/b': GroupMetadata}``` will be parsed to
     ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```
 
-    After input parsing, this function then creates all the nodes in the hierarchy concurrently.
+    This function returns a generator that will create the nodes in the hierarchy
+    when consumed. After input parsing, this function then creates all the nodes in the hierarchy concurrently.
 
     Arrays and Groups are yielded in the order they are created. This order is not stable and
     should not be relied on.
