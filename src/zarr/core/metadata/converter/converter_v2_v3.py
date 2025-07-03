@@ -59,16 +59,18 @@ def convert_array_or_group(zarr_v2: Array | Group) -> None:
         raise TypeError("Only arrays / groups with zarr v2 metadata can be converted")
 
     if isinstance(zarr_v2.metadata, GroupMetadata):
+        # process members of the group
+        for key in zarr_v2:
+            convert_array_or_group(zarr_v2[key])
+
+        # write group's converted metadata
         group_metadata_v3 = GroupMetadata(
             attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
         )
         sync(_save_v3_metadata(zarr_v2, group_metadata_v3))
 
-        # process members of the group
-        for key in zarr_v2:
-            convert_array_or_group(zarr_v2[key])
-
     else:
+        # write array's converted metadata
         array_metadata_v3 = _convert_array_metadata(zarr_v2.metadata)
         sync(_save_v3_metadata(zarr_v2, array_metadata_v3))
 
