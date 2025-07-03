@@ -1020,7 +1020,7 @@ class TestCreateArray:
         dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat
     ) -> None:
         """
-        Test that the fill value of an array is set to the default value for an explicit None arguement for
+        Test that the fill value of an array is set to the default value for an explicit None argument for
         Zarr Format 3, and to null for Zarr Format 2
         """
         a = zarr.create_array(
