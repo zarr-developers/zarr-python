@@ -55,7 +55,7 @@ class AsyncCUDAEvent(Awaitable[None]):
     async def _wait(self) -> None:
         """Polls the CUDA event asynchronously with exponential backoff until it completes."""
         delay = self.initial_delay
-        while not self.event.query():  # `query()` returns True if the event is complete
+        while not self.event.done:  # `done` returns True if the event is complete
             await asyncio.sleep(delay)  # Yield control to other async tasks
             delay = min(delay * 2, self.max_delay)  # Exponential backoff
 
@@ -127,9 +127,13 @@ class NvcompZstdCodec(BytesBytesCodec):
         self,
         arrays: Iterable[nvcomp.Array],
         chunks_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
+        awaitable: AsyncCUDAEvent,
     ) -> Iterable[Buffer | None]:
+        await awaitable  # Wait for array computation to complete before accessing
         return [
-            spec.prototype.buffer.from_array_like(cp.asarray(a, dtype=np.dtype("b"))) if a else None
+            spec.prototype.buffer.from_array_like(cp.array(a, dtype=np.dtype("b"), copy=False))
+            if a
+            else None
             for a, (_, spec) in zip(arrays, chunks_and_specs, strict=True)
         ]
 
@@ -155,10 +159,15 @@ class NvcompZstdCodec(BytesBytesCodec):
         filtered_inputs, none_indices = await self._convert_to_nvcomp_arrays(chunks_and_specs)
 
         outputs = self._zstd_codec.decode(filtered_inputs) if len(filtered_inputs) > 0 else []
+
+        # Record event for synchronization
+        event = cp.cuda.Event()
+        awaitable = AsyncCUDAEvent(event)  # Convert CUDA event to awaitable object
+
         for index in none_indices:
             outputs.insert(index, None)
 
-        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs)
+        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs, awaitable)
 
     async def encode(
         self,
@@ -183,10 +192,15 @@ class NvcompZstdCodec(BytesBytesCodec):
         filtered_inputs, none_indices = await self._convert_to_nvcomp_arrays(chunks_and_specs)
 
         outputs = self._zstd_codec.encode(filtered_inputs) if len(filtered_inputs) > 0 else []
+
+        # Record event for synchronization
+        event = cp.cuda.Event()
+        awaitable = AsyncCUDAEvent(event)  # Convert CUDA event to awaitable object
+
         for index in none_indices:
             outputs.insert(index, None)
 
-        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs)
+        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs, awaitable)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
