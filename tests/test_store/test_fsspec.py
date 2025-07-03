@@ -426,3 +426,13 @@ async def test_delete_dir_wrapped_filesystem(tmp_path: Path) -> None:
     assert await store.exists("foo-bar/zarr.json")
     assert not await store.exists("foo/zarr.json")
     assert not await store.exists("foo/c/0")
+
+
+async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
+    """
+    Test that creating a read-only copy of a store backed by the local file system does not error
+    if auto_mkdir is False.
+    """
+
+    store_w = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
+    _ = store_w.with_read_only()
