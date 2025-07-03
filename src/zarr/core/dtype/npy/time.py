@@ -554,7 +554,10 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
         """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy timedelta64 scalar."
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {self}."
+        )
         raise TypeError(msg)
 
     def default_scalar(self) -> np.timedelta64:
@@ -838,7 +841,10 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy datetime scalar."
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {self}."
+        )
         raise TypeError(msg)
 
     def default_scalar(self) -> np.datetime64:

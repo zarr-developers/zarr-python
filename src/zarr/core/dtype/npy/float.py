@@ -11,7 +11,6 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasEndianness,
     HasItemSize,
-    ScalarTypeValidationError,
     check_dtype_spec_v2,
 )
 from zarr.core.dtype.npy.common import (
@@ -235,8 +234,11 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a NumPy float scalar."
-        raise ScalarTypeValidationError(msg)
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {self}."
+        )
+        raise TypeError(msg)
 
     def default_scalar(self) -> TFloatScalar_co:
         """

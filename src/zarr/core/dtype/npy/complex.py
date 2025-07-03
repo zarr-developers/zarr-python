@@ -277,7 +277,10 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy float scalar."
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {self}."
+        )
         raise TypeError(msg)
 
     def default_scalar(self) -> TComplexScalar_co:

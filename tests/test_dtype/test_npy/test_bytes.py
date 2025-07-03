@@ -45,6 +45,7 @@ class TestNullTerminatedBytes(BaseTestZDType):
         (NullTerminatedBytes(length=2), "ab", np.bytes_("ab")),
         (NullTerminatedBytes(length=4), "abcdefg", np.bytes_("abcd")),
     )
+    invalid_scalar_params = ((NullTerminatedBytes(length=1), 1.0),)
     item_size_params = (
         NullTerminatedBytes(length=1),
         NullTerminatedBytes(length=4),
@@ -91,6 +92,7 @@ class TestRawBytes(BaseTestZDType):
         (RawBytes(length=2), b"ab", np.void(b"ab")),
         (RawBytes(length=4), b"abcd", np.void(b"abcd")),
     )
+    invalid_scalar_params = ((RawBytes(length=1), 1.0),)
     item_size_params = (
         RawBytes(length=1),
         RawBytes(length=4),
@@ -133,11 +135,8 @@ class TestVariableLengthBytes(BaseTestZDType):
         (VariableLengthBytes(), "ab", b"ab"),
         (VariableLengthBytes(), "abcdefg", b"abcdefg"),
     )
-    item_size_params = (
-        VariableLengthBytes(),
-        VariableLengthBytes(),
-        VariableLengthBytes(),
-    )
+    invalid_scalar_params = ((VariableLengthBytes(), 1.0),)
+    item_size_params = (VariableLengthBytes(),)
 
 
 @pytest.mark.parametrize(

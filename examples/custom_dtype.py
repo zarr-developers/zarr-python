@@ -169,7 +169,10 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
         """
         if self._check_scalar(data):
             return ml_dtypes.int2(data)
-        msg = f"Cannot convert object with type {type(data)} to a 2-bit integer."
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {self}."
+        )
         raise TypeError(msg)
 
     def default_scalar(self) -> ml_dtypes.int2:

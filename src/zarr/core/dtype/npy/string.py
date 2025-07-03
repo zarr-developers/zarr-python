@@ -344,7 +344,7 @@ class FixedLengthUTF32(
             return self.to_native_dtype().type(data)
         raise TypeError(f"Invalid type: {data}. Expected a string.")  # pragma: no cover
 
-    def _check_scalar(self, data: object) -> TypeGuard[str | np.str_ | bytes | int]:
+    def _check_scalar(self, data: object) -> TypeGuard[SupportsStr]:
         """
         Check that the input is a valid scalar value for this data type.
 
@@ -355,11 +355,11 @@ class FixedLengthUTF32(
 
         Returns
         -------
-        TypeGuard[str | np.str_ | bytes | int]
+        TypeGuard[SupportsStr]
             Whether the input is a valid scalar value for this data type.
         """
         # this is generous for backwards compatibility
-        return isinstance(data, str | np.str_ | bytes | int)
+        return isinstance(data, SupportsStr)
 
     def cast_scalar(self, data: object) -> np.str_:
         """
@@ -383,13 +383,13 @@ class FixedLengthUTF32(
             # >>> x.dtype
             # dtype('U11')
 
-            if isinstance(data, int):
-                return self.to_native_dtype().type(str(data)[: self.length])
-            else:
-                return self.to_native_dtype().type(data[: self.length])
-        raise TypeError(
-            f"Cannot convert object with type {type(data)} to a NumPy unicode string scalar."
+            return self.to_native_dtype().type(str(data)[: self.length])
+
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {self}."
         )
+        raise TypeError(msg)  # pragma: no-cover
 
     @property
     def item_size(self) -> int:
@@ -711,7 +711,11 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
         """
         if self._check_scalar(data):
             return self._cast_scalar_unchecked(data)
-        raise TypeError(f"Cannot convert object with type {type(data)} to a Python string.")
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {self}."
+        )
+        raise TypeError(msg)
 
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
