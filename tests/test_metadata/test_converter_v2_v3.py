@@ -1,11 +1,18 @@
+import lzma
+
 import numcodecs
+import numcodecs.abc
 import pytest
+from numcodecs.zarr3 import LZMA, Delta
 from typer.testing import CliRunner
 
 import zarr
+from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.dtype.npy.int import UInt16
@@ -109,6 +116,78 @@ def test_convert_nested_groups_and_arrays(local_store: Store) -> None:
         metadata = zarr_v3.metadata
         assert metadata.zarr_format == 3
         assert metadata.attributes == attributes
+
+
+@pytest.mark.parametrize(
+    ("compressor_v2", "compressor_v3"),
+    [
+        (
+            numcodecs.Blosc(cname="zstd", clevel=3, shuffle=1),
+            BloscCodec(typesize=2, cname="zstd", clevel=3, shuffle="shuffle", blocksize=0),
+        ),
+        (numcodecs.Zstd(level=3), ZstdCodec(level=3)),
+        (numcodecs.GZip(level=3), GzipCodec(level=3)),
+        (
+            numcodecs.LZMA(
+                format=1, check=-1, preset=None, filters=[{"id": lzma.FILTER_DELTA, "dist": 4}]
+            ),
+            LZMA(format=1, check=-1, preset=None, filters=[{"id": lzma.FILTER_DELTA, "dist": 4}]),
+        ),
+    ],
+    ids=["blosc", "zstd", "gzip", "numcodecs-compressor"],
+)
+def test_convert_compressor(
+    local_store: Store, compressor_v2: numcodecs.abc.Codec, compressor_v3: Codec
+) -> None:
+    zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype="uint16",
+        compressors=compressor_v2,
+        zarr_format=2,
+        fill_value=0,
+    )
+
+    result = runner.invoke(app, ["convert", str(local_store.root)])
+    assert result.exit_code == 0
+    assert (local_store.root / "zarr.json").exists()
+
+    zarr_array = zarr.open(local_store.root, zarr_format=3)
+    metadata = zarr_array.metadata
+    assert metadata.zarr_format == 3
+    assert metadata.codecs == (
+        BytesCodec(endian="little"),
+        compressor_v3,
+    )
+
+
+def test_convert_filter(local_store: Store) -> None:
+    filter_v2 = numcodecs.Delta(dtype="<u2", astype="<u2")
+    filter_v3 = Delta(dtype="<u2", astype="<u2")
+
+    zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype="uint16",
+        compressors=None,
+        filters=filter_v2,
+        zarr_format=2,
+        fill_value=0,
+    )
+
+    result = runner.invoke(app, ["convert", str(local_store.root)])
+    assert result.exit_code == 0
+    assert (local_store.root / "zarr.json").exists()
+
+    zarr_array = zarr.open(local_store.root, zarr_format=3)
+    metadata = zarr_array.metadata
+    assert metadata.zarr_format == 3
+    assert metadata.codecs == (
+        filter_v3,
+        BytesCodec(endian="little"),
+    )
 
 
 @pytest.mark.parametrize("node_type", ["array", "group"])
