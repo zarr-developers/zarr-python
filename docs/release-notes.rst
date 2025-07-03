@@ -3,6 +3,17 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.10 (2025-07-03)
+-------------------
+
+Bugfixes
+~~~~~~~~
+
+- Removed an unnecessary check from ``_fsspec._make_async`` that would raise an exception when
+  creating a read-only store backed by a local file system with ``auto_mkdir`` set  to ``False``. (:issue:`3193`)
+- Add missing import for AsyncFileSystemWrapper for _make_async in _fsspec.py (:issue:`3195`)
+
+
 3.0.9 (2025-06-30)
 ------------------
 
