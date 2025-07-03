@@ -7,7 +7,7 @@ from typing_extensions import deprecated
 import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr._compat import _deprecate_positional_args
-from zarr.core.array import Array, AsyncArray, CompressorLike
+from zarr.core.array import DEFAULT_FILL_VALUE, Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
@@ -606,7 +606,7 @@ def create(
     chunks: ChunkCoords | int | bool | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
-    fill_value: Any | None = None,  # TODO: need type
+    fill_value: Any | None = DEFAULT_FILL_VALUE,  # TODO: need type
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
@@ -763,7 +763,7 @@ def create_array(
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
@@ -929,7 +929,7 @@ def from_array(
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
     serializer: SerializerLike | Literal["keep"] = "keep",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,
