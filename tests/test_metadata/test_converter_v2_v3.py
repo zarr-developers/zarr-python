@@ -270,3 +270,67 @@ def test_convert_v3(local_store: Store, node_type: str) -> None:
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert str(result.exception) == "Only arrays / groups with zarr v2 metadata can be converted"
+
+
+def test_convert_unknown_codec(local_store: Store) -> None:
+    """Attempting to convert a codec without a v3 equivalent should always fail"""
+
+    zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype="uint16",
+        filters=[numcodecs.Categorize(labels=["a", "b"], dtype=object)],
+        zarr_format=2,
+        fill_value=0,
+    )
+
+    result = runner.invoke(app, ["convert", str(local_store.root)])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, ValueError)
+    assert (
+        str(result.exception) == "Couldn't find corresponding numcodecs.zarr3 codec for categorize"
+    )
+
+
+def test_convert_incorrect_filter(local_store: Store) -> None:
+    """Attempting to convert a filter (which is the wrong type of codec) should always fail"""
+
+    zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype="uint16",
+        filters=[numcodecs.Zstd(level=3)],
+        zarr_format=2,
+        fill_value=0,
+    )
+
+    result = runner.invoke(app, ["convert", str(local_store.root)])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, TypeError)
+    assert (
+        str(result.exception) == "Filter <class 'numcodecs.zarr3.Zstd'> is not an ArrayArrayCodec"
+    )
+
+
+def test_convert_incorrect_compressor(local_store: Store) -> None:
+    """Attempting to convert a compressor (which is the wrong type of codec) should always fail"""
+
+    zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype="uint16",
+        compressors=numcodecs.Delta(dtype="<u2", astype="<u2"),
+        zarr_format=2,
+        fill_value=0,
+    )
+
+    result = runner.invoke(app, ["convert", str(local_store.root)])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, TypeError)
+    assert (
+        str(result.exception)
+        == "Compressor <class 'numcodecs.zarr3.Delta'> is not a BytesBytesCodec"
+    )
