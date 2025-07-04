@@ -1,4 +1,5 @@
 import lzma
+from typing import Any
 
 import numcodecs
 import numcodecs.abc
@@ -79,26 +80,38 @@ def test_convert_group(local_store: Store) -> None:
     assert metadata.consolidated_metadata is None
 
 
-def test_convert_nested_groups_and_arrays(local_store: Store) -> None:
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
+def create_nested_zarr(store: Store, attributes: dict[str, Any], separator: str) -> list[str]:
+    """Create a zarr with nested groups / arrays, returning the paths to all."""
 
     # 3 levels of nested groups
-    group_1 = zarr.create_group(store=local_store, zarr_format=2, attributes=attributes)
+    group_0 = zarr.create_group(store=store, zarr_format=2, attributes=attributes)
+    group_1 = group_0.create_group(name="group_1", attributes=attributes)
     group_2 = group_1.create_group(name="group_2", attributes=attributes)
-    group_3 = group_2.create_group(name="group_3", attributes=attributes)
+    paths = [group_0.path, group_1.path, group_2.path]
 
     # 1 array per group
-    array_1 = group_1.create_array(
-        name="array_1", shape=(10, 10), chunks=(10, 10), dtype="uint16", attributes=attributes
-    )
-    array_2 = group_2.create_array(
-        name="array_2", shape=(10, 10), chunks=(10, 10), dtype="uint16", attributes=attributes
-    )
-    array_3 = group_3.create_array(
-        name="array_3", shape=(10, 10), chunks=(10, 10), dtype="uint16", attributes=attributes
-    )
+    for i, group in enumerate([group_0, group_1, group_2]):
+        array = group.create_array(
+            name=f"array_{i}",
+            shape=(10, 10),
+            chunks=(5, 5),
+            dtype="uint16",
+            attributes=attributes,
+            chunk_key_encoding={"name": "v2", "separator": separator},
+        )
+        array[:] = 1
+        paths.append(array.path)
 
-    paths = [group_1.path, group_2.path, group_3.path, array_1.path, array_2.path, array_3.path]
+    return paths
+
+
+@pytest.mark.parametrize("separator", [".", "/"])
+def test_convert_nested_groups_and_arrays(local_store: Store, separator: str) -> None:
+    """Test that zarr.json are made at the correct points in a hierarchy of groups and arrays
+    (including when there are additional dirs due to using a / separator)"""
+
+    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
+    paths = create_nested_zarr(local_store, attributes, separator)
 
     result = runner.invoke(app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
@@ -106,8 +119,13 @@ def test_convert_nested_groups_and_arrays(local_store: Store) -> None:
     # check zarr.json were created for every group and array
     total_zarr_jsons = 0
     for _, _, filenames in local_store.root.walk():
-        assert "zarr.json" in filenames
-        total_zarr_jsons += 1
+        # group / array directories
+        if ".zattrs" in filenames:
+            assert "zarr.json" in filenames
+            total_zarr_jsons += 1
+        # other directories e.g. for chunks when separator is /
+        else:
+            assert "zarr.json" not in filenames
     assert total_zarr_jsons == 6
 
     # Check converted zarr can be opened + metadata accessed at all levels
