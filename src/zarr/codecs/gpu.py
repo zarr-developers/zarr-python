@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING
@@ -13,8 +12,8 @@ from zarr.core.common import JSON, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable
-    from typing import Any, Self
+    from collections.abc import Iterable
+    from typing import Self
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
@@ -28,36 +27,6 @@ try:
     from nvidia import nvcomp
 except ImportError:
     nvcomp = None
-
-
-class AsyncCUDAEvent(Awaitable[None]):
-    """An awaitable wrapper around a CuPy CUDA event for asynchronous waiting."""
-
-    def __init__(
-        self, event: cp.cuda.Event, initial_delay: float = 0.001, max_delay: float = 0.1
-    ) -> None:
-        """
-        Initialize the async CUDA event.
-
-        Args:
-            event (cp.cuda.Event): The CuPy CUDA event to wait on.
-            initial_delay (float): Initial polling delay in seconds (default: 0.001s).
-            max_delay (float): Maximum polling delay in seconds (default: 0.1s).
-        """
-        self.event = event
-        self.initial_delay = initial_delay
-        self.max_delay = max_delay
-
-    def __await__(self) -> Generator[Any, None, None]:
-        """Makes the event awaitable by yielding control until the event is complete."""
-        return self._wait().__await__()
-
-    async def _wait(self) -> None:
-        """Polls the CUDA event asynchronously with exponential backoff until it completes."""
-        delay = self.initial_delay
-        while not self.event.done:  # `done` returns True if the event is complete
-            await asyncio.sleep(delay)  # Yield control to other async tasks
-            delay = min(delay * 2, self.max_delay)  # Exponential backoff
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -127,9 +96,7 @@ class NvcompZstdCodec(BytesBytesCodec):
         self,
         arrays: Iterable[nvcomp.Array],
         chunks_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
-        awaitable: AsyncCUDAEvent,
     ) -> Iterable[Buffer | None]:
-        await awaitable  # Wait for array computation to complete before accessing
         return [
             spec.prototype.buffer.from_array_like(cp.array(a, dtype=np.dtype("b"), copy=False))
             if a
@@ -162,12 +129,13 @@ class NvcompZstdCodec(BytesBytesCodec):
 
         # Record event for synchronization
         event = cp.cuda.Event()
-        awaitable = AsyncCUDAEvent(event)  # Convert CUDA event to awaitable object
+        # Wait for decode to complete in a separate async thread
+        await asyncio.to_thread(event.synchronize)
 
         for index in none_indices:
             outputs.insert(index, None)
 
-        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs, awaitable)
+        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs)
 
     async def encode(
         self,
@@ -195,12 +163,13 @@ class NvcompZstdCodec(BytesBytesCodec):
 
         # Record event for synchronization
         event = cp.cuda.Event()
-        awaitable = AsyncCUDAEvent(event)  # Convert CUDA event to awaitable object
+        # Wait for decode to complete in a separate async thread
+        await asyncio.to_thread(event.synchronize)
 
         for index in none_indices:
             outputs.insert(index, None)
 
-        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs, awaitable)
+        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
