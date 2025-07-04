@@ -1,1 +1,0 @@
-Implemented ``move`` for ``LocalStore`` and ``ZipStore``. This allows users to move the store to a different root path.

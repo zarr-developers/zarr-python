@@ -1,1 +1,0 @@
-Added `~zarr.errors.GroupNotFoundError`, which is raised when attempting to open a group that does not exist.

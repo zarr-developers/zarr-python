@@ -3,6 +3,60 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.10 (2025-07-03)
+-------------------
+
+Bugfixes
+~~~~~~~~
+
+- Removed an unnecessary check from ``_fsspec._make_async`` that would raise an exception when
+  creating a read-only store backed by a local file system with ``auto_mkdir`` set  to ``False``. (:issue:`3193`)
+- Add missing import for AsyncFileSystemWrapper for _make_async in _fsspec.py (:issue:`3195`)
+
+
+3.0.9 (2025-06-30)
+------------------
+
+Features
+~~~~~~~~
+
+- Add `zarr.storage.FsspecStore.from_mapper()` so that `zarr.open()` supports stores of type `fsspec.mapping.FSMap`. (:issue:`2774`)
+- Implemented ``move`` for ``LocalStore`` and ``ZipStore``. This allows users to move the store to a different root path. (:issue:`3021`)
+- Added `~zarr.errors.GroupNotFoundError`, which is raised when attempting to open a group that does not exist. (:issue:`3066`)
+- Adds ``fill_value`` to the list of attributes displayed in the output of the ``AsyncArray.info()`` method. (:issue:`3081`)
+- Use :py:func:`numpy.zeros` instead of :py:func:`np.full` for a performance speedup when creating a `zarr.core.buffer.NDBuffer` with `fill_value=0`. (:issue:`3082`)
+- Port more stateful testing actions from `Icechunk <https://icechunk.io>`_. (:issue:`3130`)
+- Adds a `with_read_only` convenience method to the `Store` abstract base class (raises `NotImplementedError`) and implementations to the `MemoryStore`, `ObjectStore`, `LocalStore`, and `FsspecStore` classes. (:issue:`3138`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Ignore stale child metadata when reconsolidating metadata. (:issue:`2921`)
+- For Zarr format 2, allow fixed-length string arrays to be created without automatically inserting a
+  ``Vlen-UT8`` codec in the array of filters. Fixed-length string arrays do not need this codec. This
+  change fixes a regression where fixed-length string arrays created with Zarr Python 3 could not be read with Zarr Python 2.18. (:issue:`3100`)
+- When creating arrays without explicitly specifying a chunk size using `zarr.create` and other
+  array creation routines, the chunk size will now set automatically instead of defaulting to the data shape.
+  For large arrays this will result in smaller default chunk sizes.
+  To retain previous behaviour, explicitly set the chunk shape to the data shape.
+
+  This fix matches the existing chunking behaviour of
+  `zarr.save_array` and `zarr.api.asynchronous.AsyncArray.create`. (:issue:`3103`)
+- When `zarr.save` has an argument `path=some/path/` and multiple arrays in `args`, the path resulted in `some/path/some/path` due to using the `path`
+  argument twice while building the array path. This is now fixed. (:issue:`3127`)
+- Fix `zarr.open` default for argument `mode` when `store` is `read_only` (:issue:`3128`)
+- Suppress `FileNotFoundError` when deleting non-existent keys in the `obstore` adapter.
+
+  When writing empty chunks (i.e. chunks where all values are equal to the array's fill value) to a zarr array, zarr
+  will delete those chunks from the underlying store. For zarr arrays backed by the `obstore` adapter, this will potentially
+  raise a `FileNotFoundError` if the chunk doesn't already exist.
+  Since whether or not a delete of a non-existing object raises an error depends on the behavior of the underlying store,
+  suppressing the error in all cases results in consistent behavior across stores, and is also what `zarr` seems to expect
+  from the store. (:issue:`3140`)
+- Trying to open a StorePath/Array with ``mode='r'`` when the store is not read-only creates a read-only copy of the store. (:issue:`3156`)
+
+
 3.0.8 (2025-05-19)
 ------------------
 
