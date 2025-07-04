@@ -225,7 +225,7 @@ def v3_unstable_dtype_warning(dtype: object) -> None:
     """
     msg = (
         f"The data type ({dtype}) does not have a Zarr V3 specification. "
-        "That means that the representation of array saved with this data type may change without "
+        "That means that the representation of arrays saved with this data type may change without "
         "warning in a future version of Zarr Python. "
         "Arrays stored with this data type may be unreadable by other Zarr libraries. "
         "Use this data type at your own risk! "
