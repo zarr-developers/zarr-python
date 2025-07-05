@@ -1,0 +1,9 @@
+- Introduced ``Store.get_many_ordered`` and ``StorePath.get_many_ordered`` to
+  retrieve multiple metadata files in a single call, optimizing the retrieval
+  process and reducing overhead. ``get_many_ordered`` is used in
+  ``get_array_metadata``.
+- Modified ``FsspecStore._get_many`` to conditionally use ``asyncio.gather``
+  based on the concurrency safety of the underlying file system, enhancing
+  compatibility with synchronous file systems by avoiding deadlocks when
+  accessing metadata concurrently.
+- Modified ``_read_metadata_v2`` to use ``Store._get_many``

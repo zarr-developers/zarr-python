@@ -11,7 +11,7 @@ from zarr.core.common import concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable, Sequence
     from types import TracebackType
     from typing import Any, Self, TypeAlias
 
@@ -416,6 +416,18 @@ class Store(ABC):
         """
         for req in requests:
             yield (req[0], await self.get(*req))
+
+    async def _get_many_ordered(
+        self, requests: Sequence[tuple[str, BufferPrototype, ByteRequest | None]]
+    ) -> tuple[Buffer | None, ...]:
+        """
+        Retrieve a collection of objects from storage in the order they were requested.
+        """
+        key_to_index = {req[0]: i for i, req in enumerate(requests)}
+        results: list[Buffer | None] = [None] * len(requests)
+        async for key, value in self._get_many(requests):
+            results[key_to_index[key]] = value
+        return tuple(results)
 
     async def getsize(self, key: str) -> int:
         """
