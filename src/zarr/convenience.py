@@ -22,6 +22,7 @@ from zarr.api.synchronous import (
     save_group,
     tree,
 )
+from zarr.errors import ZarrDeprecationWarning
 
 __all__ = [
     "consolidate_metadata",
@@ -40,6 +41,6 @@ __all__ = [
 warnings.warn(
     "zarr.convenience is deprecated. "
     "Import these functions from the top level zarr. namespace instead.",
-    DeprecationWarning,
+    ZarrDeprecationWarning,
     stacklevel=2,
 )
