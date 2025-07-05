@@ -31,6 +31,25 @@ module documentation.
 
 .. _user-guide-array:
 
+Initializing with data
+----------------------
+Pass existing data during array creation for convenience:
+
+.. code-block:: python
+
+   import zarr
+   import numpy as np
+
+   data = np.random.rand(1000, 1000)
+   arr = zarr.create_array("data.zarr", data=data)
+
+Equivalent to separate assignment:
+
+.. code-block:: python
+
+   arr = zarr.create_array("data.zarr", shape=(1000, 1000))
+   arr[:] = data
+
 Reading and writing data
 ------------------------
 
