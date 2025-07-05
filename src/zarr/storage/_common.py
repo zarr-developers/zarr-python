@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from asyncio import gather
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
@@ -162,6 +163,35 @@ class StorePath:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
+
+    async def get_many_ordered(
+        self,
+        *path_components: str,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> tuple[Buffer | None, ...]:
+        """
+        Read multiple bytes from the store in order of the provided path_components.
+
+        Parameters
+        ----------
+        path_components : str
+            Components to append to the store path.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use when reading the bytes.
+        byte_range : ByteRequest, optional
+            The range of bytes to read.
+
+        Returns
+        -------
+        tuple[Buffer | None, ...]
+            A tuple of buffers read from the store, in the order of the provided path_components.
+        """
+        if prototype is None:
+            prototype = default_buffer_prototype()
+
+        tasks = [(self / component).path for component in path_components]
+        return await self.store._get_many_ordered([(task, prototype, byte_range) for task in tasks])
 
     async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
         """

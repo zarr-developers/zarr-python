@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
+import warnings
+from itertools import cycle
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -42,6 +45,7 @@ pytestmark = [
 ]
 
 fsspec = pytest.importorskip("fsspec")
+AsyncFileSystem = pytest.importorskip("fsspec.asyn").AsyncFileSystem
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
 moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
@@ -440,3 +444,121 @@ async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
 
     store_w = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
     _ = store_w.with_read_only()
+
+
+class LockableFileSystem(AsyncFileSystem):
+    """
+    A mock file system that simulates asynchronous and synchronous behaviors with artificial delays.
+    """
+
+    def __init__(
+        self,
+        asynchronous: bool,
+        lock: bool | None = None,
+        delays: tuple[float, ...] | None = None,
+    ) -> None:
+        if delays is None:
+            delays = (
+                0.03,
+                0.01,
+            )
+        lock = lock if lock is not None else not asynchronous
+
+        # self.asynchronous = asynchronous
+        self.lock = asyncio.Lock() if lock else None
+        self.delays = cycle(delays)
+        self.async_impl = True
+
+        super().__init__(asynchronous=asynchronous)
+
+    async def _check_active(self) -> None:
+        if self.lock and self.lock.locked():
+            raise RuntimeError("Concurrent requests!")
+
+    async def _cat_file(self, path, start=None, end=None) -> bytes:
+        await self._simulate_io_operation(path)
+        return self.get_data(path)
+
+    async def _await_io(self) -> None:
+        await asyncio.sleep(next(self.delays))
+
+    async def _simulate_io_operation(self, path) -> None:
+        if self.lock:
+            await self._check_active()
+            async with self.lock:
+                await self._await_io()
+        else:
+            await self._await_io()
+
+    def get_store(self, path: str) -> FsspecStore:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=UserWarning)
+            return FsspecStore(fs=self, path=path)
+
+    @staticmethod
+    def get_data(key: str) -> bytes:
+        return f"{key}_data".encode()
+
+
+@pytest.mark.asyncio
+class TestLockableFSSPECFileSystem:
+    @pytest.fixture(autouse=True)
+    async def setup(self):
+        self.path = "root"
+        self.store_async = LockableFileSystem(asynchronous=True).get_store(path=self.path)
+        self.store_sync = LockableFileSystem(asynchronous=False).get_store(path=self.path)
+
+    def get_requests_and_true_results(self, path_components=("a", "b")):
+        true_results = [
+            (component, LockableFileSystem.get_data(f"{self.path}/{component}"))
+            for component in path_components
+        ]
+        requests = [(component, default_buffer_prototype(), None) for component in path_components]
+        return requests, true_results
+
+    async def test_get_many_asynchronous_fs(self):
+        requests, true_results = self.get_requests_and_true_results(("a", "b", "c"))
+
+        results = []
+        async for k, v in self.store_async._get_many(requests):
+            results.append((k, v.to_bytes() if v else None))
+
+        results_ordered = sorted(results, key=lambda x: x[0])
+        assert results_ordered == true_results
+
+    async def test_get_many_synchronous_fs(self):
+        requests, true_results = self.get_requests_and_true_results()
+
+        results = []
+        async for k, v in self.store_sync._get_many(requests):
+            results.append((k, v.to_bytes() if v else None))
+        # Results should already be in the same order as requests
+
+        assert results == true_results
+
+    async def test_get_many_ordered_synchronous_fs(self):
+        requests, true_results = self.get_requests_and_true_results()
+
+        results = await self.store_sync._get_many_ordered(requests)
+        results = [value.to_bytes() if value else None for value in results]
+
+        assert results == [value[1] for value in true_results]
+
+    async def test_get_many_ordered_asynchronous_fs(self):
+        requests, true_results = self.get_requests_and_true_results()
+
+        results = await self.store_async._get_many_ordered(requests)
+        results = [value.to_bytes() if value else None for value in results]
+
+        assert results == [value[1] for value in true_results]
+
+    async def test_asynchronous_locked_fs_raises(self):
+        store = LockableFileSystem(asynchronous=True, lock=True).get_store(path="root")
+        requests, _ = self.get_requests_and_true_results()
+
+        with pytest.raises(RuntimeError, match="Concurrent requests!"):
+            async for _, _ in store._get_many(requests):
+                pass
+
+        with pytest.raises(RuntimeError, match="Concurrent requests!"):
+            await store._get_many_ordered(requests)
