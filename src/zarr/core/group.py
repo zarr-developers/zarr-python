@@ -3453,12 +3453,21 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
     """
     # TODO: consider first fetching array metadata, and only fetching group metadata when we don't
     # find an array
-    print(f"Reading metadata from {path} in store {store}", file=sys.stderr)
-    zarray_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
-        store.get(_join_paths([path, ZARRAY_JSON]), prototype=default_buffer_prototype()),
-        store.get(_join_paths([path, ZGROUP_JSON]), prototype=default_buffer_prototype()),
-        store.get(_join_paths([path, ZATTRS_JSON]), prototype=default_buffer_prototype()),
-    )
+    requests = [
+        (_join_paths([path, ZARRAY_JSON]), default_buffer_prototype(), None),
+        (_join_paths([path, ZGROUP_JSON]), default_buffer_prototype(), None),
+        (_join_paths([path, ZATTRS_JSON]), default_buffer_prototype(), None),
+    ]
+
+    # Use the _get_many method to retrieve the data
+    results = {}
+    async for key, buffer in store._get_many(requests):
+        results[key] = buffer
+
+    zarray_bytes = results.get(_join_paths([path, ZARRAY_JSON]))
+    zgroup_bytes = results.get(_join_paths([path, ZGROUP_JSON]))
+    zattrs_bytes = results.get(_join_paths([path, ZATTRS_JSON]))
+
     if zattrs_bytes is None:
         zattrs = {}
     else:
