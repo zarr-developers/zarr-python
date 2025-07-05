@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from asyncio import gather
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
@@ -163,6 +164,24 @@ class StorePath:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
+    async def get_many(
+        self,
+        *suffixes : str,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ):
+        tasks = [
+            (self / suffix).get(prototype=prototype, byte_range=byte_range) for suffix in suffixes
+        ]
+        if await self._is_concurrency_save():
+            return await gather(*tasks)
+        else:
+            results = []
+            for task in tasks:
+                result = await task
+                results.append(result)
+            return results
+
     async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
         """
         Write bytes to the store.
@@ -262,6 +281,10 @@ class StorePath:
         except Exception:
             pass
         return False
+
+    async def _is_concurrency_save(self):
+        fs = getattr(self.store, "fs", None)
+        return getattr(fs, "asynchronous", True)
 
 
 StoreLike: TypeAlias = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
