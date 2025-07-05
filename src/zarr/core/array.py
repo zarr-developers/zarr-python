@@ -196,14 +196,25 @@ def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
     raise TypeError  # pragma: no cover
 
 
+def is_concurrency_safe(store: Store) -> bool:
+    fs = getattr(store, "fs", None)
+    return getattr(fs, "asynchronous", True)
+
+
 async def get_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
 ) -> dict[str, JSON]:
+    concurrency_safe = is_concurrency_safe(store_path.store)
+
     if zarr_format == 2:
-        zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
-        )
+        if concurrency_safe:
+            zarray_bytes, zattrs_bytes = await gather(
+                (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
+                (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
+            )
+        else:
+            zarray_bytes = await (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype)
+            zattrs_bytes = await (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype)
         if zarray_bytes is None:
             raise FileNotFoundError(store_path)
     elif zarr_format == 3:
@@ -211,11 +222,16 @@ async def get_array_metadata(
         if zarr_json_bytes is None:
             raise FileNotFoundError(store_path)
     elif zarr_format is None:
-        zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
-        )
+        if concurrency_safe:
+            zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
+                (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
+                (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
+                (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
+            )
+        else:
+            zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
+            zarray_bytes = await (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype)
+            zattrs_bytes = await (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype)
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
             msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
@@ -1426,7 +1442,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     ]
                 )
 
-        await gather(*awaitables)
+        if is_concurrency_safe(self.store_path.store):
+            await gather(*awaitables)
+        else:
+            for awaitable in awaitables:
+                await awaitable
 
     async def _set_selection(
         self,

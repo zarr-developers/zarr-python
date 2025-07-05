@@ -30,6 +30,7 @@ from zarr.core.array import (
     _build_parents,
     _parse_deprecated_compressor,
     create_array,
+    is_concurrency_safe,
 )
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -533,17 +534,23 @@ class AsyncGroup:
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)
         elif zarr_format is None:
+            paths = [
+                (store_path / ZARR_JSON).get(),
+                (store_path / ZGROUP_JSON).get(),
+                (store_path / ZATTRS_JSON).get(),
+                (store_path / consolidated_key).get(),
+            ]
             (
                 zarr_json_bytes,
                 zgroup_bytes,
                 zattrs_bytes,
                 maybe_consolidated_metadata_bytes,
-            ) = await asyncio.gather(
-                (store_path / ZARR_JSON).get(),
-                (store_path / ZGROUP_JSON).get(),
-                (store_path / ZATTRS_JSON).get(),
-                (store_path / str(consolidated_key)).get(),
+            ) = (
+                await asyncio.gather(*paths)
+                if is_concurrency_safe(store_path.store)
+                else [await path for path in paths]
             )
+
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
                 msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
@@ -3453,11 +3460,23 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
     """
     # TODO: consider first fetching array metadata, and only fetching group metadata when we don't
     # find an array
-    zarray_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
-        store.get(_join_paths([path, ZARRAY_JSON]), prototype=default_buffer_prototype()),
-        store.get(_join_paths([path, ZGROUP_JSON]), prototype=default_buffer_prototype()),
-        store.get(_join_paths([path, ZATTRS_JSON]), prototype=default_buffer_prototype()),
-    )
+    print(f"Reading metadata from {path} in store {store}", file=sys.stderr)
+    if is_concurrency_safe(store):
+        zarray_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
+            store.get(_join_paths([path, ZARRAY_JSON]), prototype=default_buffer_prototype()),
+            store.get(_join_paths([path, ZGROUP_JSON]), prototype=default_buffer_prototype()),
+            store.get(_join_paths([path, ZATTRS_JSON]), prototype=default_buffer_prototype()),
+        )
+    else:
+        zarray_bytes = await store.get(
+            _join_paths([path, ZARRAY_JSON]), prototype=default_buffer_prototype()
+        )
+        zgroup_bytes = await store.get(
+            _join_paths([path, ZGROUP_JSON]), prototype=default_buffer_prototype()
+        )
+        zattrs_bytes = await store.get(
+            _join_paths([path, ZATTRS_JSON]), prototype=default_buffer_prototype()
+        )
 
     if zattrs_bytes is None:
         zattrs = {}
