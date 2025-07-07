@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Literal, cast
 
 import typer
@@ -46,6 +47,25 @@ def clear(
     Note - this will remove metadata files at all levels of the hierarchy (every group and array).
     """
     sync(remove_metadata(store=store, zarr_format=cast(Literal[2, 3], zarr_format), path=path))
+
+
+@app.callback()  # type: ignore[misc]
+def main(
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            help="enable verbose logging - will print info about metadata files being deleted / saved."
+        ),
+    ] = False,
+) -> None:
+    """
+    Convert metadata from v2 to v3. See available commands below - access help for individual commands with
+    cli.py COMMAND --help.
+    """
+    if verbose:
+        lvl = logging.INFO
+        fmt = "%(message)s"
+        logging.basicConfig(level=lvl, format=fmt)
 
 
 if __name__ == "__main__":

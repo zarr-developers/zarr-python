@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any, cast
 
 import numcodecs.abc
@@ -29,6 +30,8 @@ from zarr.core.sync import sync
 from zarr.registry import get_codec_class
 from zarr.storage import StoreLike
 from zarr.storage._common import make_store_path
+
+logger = logging.getLogger(__name__)
 
 
 def convert_v2_to_v3(
@@ -117,11 +120,11 @@ async def remove_metadata(
     else:
         metadata_files = [ZARR_JSON]
 
-    awaitables = [
-        (store_path / file_path).delete()
-        async for file_path in store_path.store.list_prefix(prefix)
-        if file_path.split("/")[-1] in metadata_files
-    ]
+    awaitables = []
+    async for file_path in store_path.store.list_prefix(prefix):
+        if file_path.split("/")[-1] in metadata_files:
+            logger.info("Deleting metadata at %s", store_path / file_path)
+            awaitables.append((store_path / file_path).delete())
 
     await asyncio.gather(*awaitables)
 
@@ -234,5 +237,6 @@ async def _save_v3_metadata(
     if await zarr_json_path.exists():
         raise ValueError(f"{ZARR_JSON} already exists at {zarr_v2.store_path}")
 
+    logger.info("Saving metadata to %s", zarr_json_path)
     to_save = metadata_v3.to_buffer_dict(default_buffer_prototype())
     await zarr_json_path.set_if_not_exists(to_save[ZARR_JSON])
