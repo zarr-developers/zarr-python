@@ -1,0 +1,4 @@
+Restores the ability to create a Zarr V2 array with a ``null`` fill value by introducing a new
+class ``DefaultFillValue``, and setting the default value of the ``fill_value`` parameter in array
+creation routines to an instance of ``DefaultFillValue``. For Zarr V3 arrays, ``None`` will act as an
+alias for a ``DefaultFillValue`` instance, thus preserving compatibility with existing code.

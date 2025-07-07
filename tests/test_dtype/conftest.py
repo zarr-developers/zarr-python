@@ -65,7 +65,4 @@ def pytest_generate_tests(metafunc: Any) -> None:
     for fixture_name in metafunc.fixturenames:
         if hasattr(metafunc.cls, fixture_name):
             params = getattr(metafunc.cls, fixture_name)
-            if len(params) == 0:
-                msg = f"{metafunc.cls}.{fixture_name} is empty. Please provide a non-empty sequence of values."
-                raise ValueError(msg)
-            metafunc.parametrize(fixture_name, params, scope="class")
+            metafunc.parametrize(fixture_name, params, scope="class", ids=str)

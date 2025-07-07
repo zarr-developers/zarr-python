@@ -68,6 +68,10 @@ class TestDateTime64(_TestTimeBase):
         (DateTime64(unit="s", scale_factor=1), "2005-02-25", np.datetime64("2005-02-25", "s")),
         (DateTime64(unit="ns", scale_factor=1), "NaT", np.datetime64("NaT")),
     )
+    invalid_scalar_params = (
+        (DateTime64(unit="Y", scale_factor=1), 1.3),
+        (DateTime64(unit="Y", scale_factor=1), [1.3]),
+    )
     item_size_params = (DateTime64(unit="ns", scale_factor=1),)
 
 
@@ -112,6 +116,10 @@ class TestTimeDelta64(_TestTimeBase):
     cast_value_params = (
         (TimeDelta64(unit="ns", scale_factor=1), "1", np.timedelta64(1, "ns")),
         (TimeDelta64(unit="ns", scale_factor=1), "NaT", np.timedelta64("NaT")),
+    )
+    invalid_scalar_params = (
+        (TimeDelta64(unit="Y", scale_factor=1), 1.3),
+        (TimeDelta64(unit="Y", scale_factor=1), [1.3]),
     )
     item_size_params = (TimeDelta64(unit="ns", scale_factor=1),)
 
