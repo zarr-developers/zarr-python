@@ -79,7 +79,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
-@pytest.mark.parametrize("bytes_things", [(1_000_000, "976.6K", 500_000, "500000", "2.0", 5)])
+@pytest.mark.parametrize("bytes_things", [(1_000_000, "976.6K", 500_000, "488.3K", "2.0", 5)])
 def test_array_info_complete(
     zarr_format: ZarrFormat, bytes_things: tuple[int, str, int, str, str, int]
 ) -> None:
@@ -120,7 +120,7 @@ def test_array_info_complete(
         Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
         Compressors        : ()
         No. bytes          : {count_bytes} ({count_bytes_formatted})
-        No. bytes stored   : {count_bytes_stored_formatted}
+        No. bytes stored   : {count_bytes_stored} ({count_bytes_stored_formatted})
         Storage ratio      : {storage_ratio_formatted}
         Chunks Initialized : 5""")
 
