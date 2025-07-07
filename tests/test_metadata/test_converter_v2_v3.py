@@ -457,6 +457,29 @@ def test_remove_metadata_v2(local_store: Store, expected_paths_no_metadata: list
     assert paths == expected_paths
 
 
+def test_remove_metadata_v2_with_path(
+    local_store: Store, expected_paths_no_metadata: list[Path]
+) -> None:
+    """Test only v2 metadata within the given path (group_1) is removed"""
+
+    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
+    create_nested_zarr(local_store, attributes, ".")
+
+    result = runner.invoke(app, ["clear", str(local_store.root), "2", "--path", "group_1"])
+    assert result.exit_code == 0
+
+    # check all metadata files inside group_1 are removed (.zattrs / .zgroup / .zarray should remain only inside the top
+    # group)
+    paths = sorted(local_store.root.rglob("*"))
+
+    expected_paths = [local_store.root / p for p in expected_paths_no_metadata]
+    expected_paths.append(local_store.root / ".zattrs")
+    expected_paths.append(local_store.root / ".zgroup")
+    expected_paths.append(local_store.root / "array_0" / ".zarray")
+    expected_paths.append(local_store.root / "array_0" / ".zattrs")
+    assert paths == sorted(expected_paths)
+
+
 @pytest.mark.parametrize(
     ("zarr_format", "expected_paths"),
     [("2", "expected_paths_v3_metadata"), ("3", "expected_paths_v2_metadata")],
