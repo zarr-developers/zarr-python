@@ -38,8 +38,8 @@ assignees: ''
   - [ ] Click on "Generate release notes" to auto-fill the description.
   - [ ] Make a release by clicking the 'Publish Release' button, this will automatically create a tag too.
 - [ ] Verify that release workflows succeeded.
-  - [ ] The latest version is correct on [PyPI].(https://pypi.org/project/zarr/)
-  - [ ] The stable version is correct on [ReadTheDocs].(https://zarr.readthedocs.io/en/stable/)
+  - [ ] The latest version is correct on [PyPI](https://pypi.org/project/zarr/)
+  - [ ] The stable version is correct on [ReadTheDocs](https://zarr.readthedocs.io/en/stable/)
 
 **After release**:
 
