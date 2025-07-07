@@ -1,4 +1,5 @@
 import lzma
+from pathlib import Path
 from typing import Any
 
 import numcodecs
@@ -21,6 +22,93 @@ from zarr.core.dtype.npy.int import BaseInt, UInt8, UInt16
 from zarr.core.metadata.converter.cli import app
 
 runner = CliRunner()
+
+
+def create_nested_zarr(store: Store, attributes: dict[str, Any], separator: str) -> list[str]:
+    """Create a zarr with nested groups / arrays, returning the paths to all."""
+
+    # 3 levels of nested groups
+    group_0 = zarr.create_group(store=store, zarr_format=2, attributes=attributes)
+    group_1 = group_0.create_group(name="group_1", attributes=attributes)
+    group_2 = group_1.create_group(name="group_2", attributes=attributes)
+    paths = [group_0.path, group_1.path, group_2.path]
+
+    # 1 array per group
+    for i, group in enumerate([group_0, group_1, group_2]):
+        array = group.create_array(
+            name=f"array_{i}",
+            shape=(10, 10),
+            chunks=(5, 5),
+            dtype="uint16",
+            attributes=attributes,
+            chunk_key_encoding={"name": "v2", "separator": separator},
+        )
+        array[:] = 1
+        paths.append(array.path)
+
+    return paths
+
+
+@pytest.fixture
+def expected_paths_no_metadata() -> list[Path]:
+    """Expected paths from create_nested_zarr, with no metadata files"""
+    return [
+        Path("array_0"),
+        Path("array_0/0.0"),
+        Path("array_0/0.1"),
+        Path("array_0/1.0"),
+        Path("array_0/1.1"),
+        Path("group_1"),
+        Path("group_1/array_1"),
+        Path("group_1/array_1/0.0"),
+        Path("group_1/array_1/0.1"),
+        Path("group_1/array_1/1.0"),
+        Path("group_1/array_1/1.1"),
+        Path("group_1/group_2"),
+        Path("group_1/group_2/array_2"),
+        Path("group_1/group_2/array_2/0.0"),
+        Path("group_1/group_2/array_2/0.1"),
+        Path("group_1/group_2/array_2/1.0"),
+        Path("group_1/group_2/array_2/1.1"),
+    ]
+
+
+@pytest.fixture
+def expected_paths_v3_metadata(expected_paths_no_metadata: list[Path]) -> list[Path]:
+    """Expected paths from create_nested_zarr, with v3 metadata files"""
+    v3_paths = [
+        Path("array_0/zarr.json"),
+        Path("group_1/array_1/zarr.json"),
+        Path("group_1/group_2/array_2/zarr.json"),
+        Path("zarr.json"),
+        Path("group_1/zarr.json"),
+        Path("group_1/group_2/zarr.json"),
+    ]
+    expected_paths_no_metadata.extend(v3_paths)
+
+    return sorted(expected_paths_no_metadata)
+
+
+@pytest.fixture
+def expected_paths_v2_metadata(expected_paths_no_metadata: list[Path]) -> list[Path]:
+    """Expected paths from create_nested_zarr, with v2 metadata files"""
+    v2_paths = [
+        Path("array_0/.zarray"),
+        Path("array_0/.zattrs"),
+        Path("group_1/array_1/.zarray"),
+        Path("group_1/array_1/.zattrs"),
+        Path("group_1/group_2/array_2/.zarray"),
+        Path("group_1/group_2/array_2/.zattrs"),
+        Path(".zgroup"),
+        Path(".zattrs"),
+        Path("group_1/.zgroup"),
+        Path("group_1/.zattrs"),
+        Path("group_1/group_2/.zgroup"),
+        Path("group_1/group_2/.zattrs"),
+    ]
+    expected_paths_no_metadata.extend(v2_paths)
+
+    return sorted(expected_paths_no_metadata)
 
 
 def test_convert_array(local_store: Store) -> None:
@@ -78,31 +166,6 @@ def test_convert_group(local_store: Store) -> None:
     assert metadata.node_type == "group"
     assert metadata.attributes == attributes
     assert metadata.consolidated_metadata is None
-
-
-def create_nested_zarr(store: Store, attributes: dict[str, Any], separator: str) -> list[str]:
-    """Create a zarr with nested groups / arrays, returning the paths to all."""
-
-    # 3 levels of nested groups
-    group_0 = zarr.create_group(store=store, zarr_format=2, attributes=attributes)
-    group_1 = group_0.create_group(name="group_1", attributes=attributes)
-    group_2 = group_1.create_group(name="group_2", attributes=attributes)
-    paths = [group_0.path, group_1.path, group_2.path]
-
-    # 1 array per group
-    for i, group in enumerate([group_0, group_1, group_2]):
-        array = group.create_array(
-            name=f"array_{i}",
-            shape=(10, 10),
-            chunks=(5, 5),
-            dtype="uint16",
-            attributes=attributes,
-            chunk_key_encoding={"name": "v2", "separator": separator},
-        )
-        array[:] = 1
-        paths.append(array.path)
-
-    return paths
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
@@ -376,3 +439,43 @@ def test_convert_incorrect_compressor(local_store: Store) -> None:
         str(result.exception)
         == "Compressor <class 'numcodecs.zarr3.Delta'> is not a BytesBytesCodec"
     )
+
+
+def test_remove_metadata_v2(local_store: Store, expected_paths_no_metadata: list[Path]) -> None:
+    """Test all v2 metadata can be removed (leaving all groups / arrays as-is)"""
+
+    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
+    create_nested_zarr(local_store, attributes, ".")
+
+    result = runner.invoke(app, ["clear", str(local_store.root), "2"])
+    assert result.exit_code == 0
+
+    # check metadata files removed, but all groups / arrays still remain
+    paths = sorted(local_store.root.rglob("*"))
+
+    expected_paths = [local_store.root / p for p in expected_paths_no_metadata]
+    assert paths == expected_paths
+
+
+@pytest.mark.parametrize(
+    ("zarr_format", "expected_paths"),
+    [("2", "expected_paths_v3_metadata"), ("3", "expected_paths_v2_metadata")],
+)
+def test_remove_metadata_after_conversion(
+    local_store: Store, request: pytest.FixtureRequest, zarr_format: str, expected_paths: list[Path]
+) -> None:
+    """Test all v2/v3 metadata can be removed after metadata conversion (all groups / arrays /
+    metadata of other versions should remain as-is)"""
+
+    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
+    create_nested_zarr(local_store, attributes, ".")
+
+    # convert v2 metadata to v3 (so now both v2 and v3 metadata present!), then remove either the v2 or v3 metadata
+    result = runner.invoke(app, ["convert", str(local_store.root)])
+    assert result.exit_code == 0
+    result = runner.invoke(app, ["clear", str(local_store.root), zarr_format])
+    assert result.exit_code == 0
+
+    paths = sorted(local_store.root.rglob("*"))
+    expected_paths = [local_store.root / p for p in request.getfixturevalue(expected_paths)]
+    assert paths == expected_paths
