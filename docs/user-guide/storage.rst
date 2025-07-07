@@ -87,6 +87,14 @@ API. ``storage_options`` can be used to configure the fsspec backend.:
    >>> zarr.open_group(store=store, mode='r')
    <Group <FsspecStore(S3FileSystem, noaa-nwm-retro-v2-zarr-pds)>>
 
+The type of filesystem (e.g. S3, https, etc..) is inferred from the scheme of the url (e.g. s3 for "**s3**://noaa-nwm-retro-v2-zarr-pds").
+In case a specific filesystem is needed, one can explicitly create it. For example to create a S3 filesystem:
+   >>> fs = fsspec.filesystem(
+   ...    's3', anon=True, asynchronous=True,
+   ...    client_kwargs={'endpoint_url': "https://s3.example-site.org"}
+   ... )
+   >>> store = zarr.storage.FsspecStore(fs)
+
 Memory Store
 ~~~~~~~~~~~~
 
