@@ -43,8 +43,7 @@ assignees: ''
 
 **After release**:
 
-- [ ] Review and merge the pull request on the conda-forge [zarr-feedstock](https://github.com/conda-forge/zarr-feedstock)
-  that will be automatically generated.
+- [ ] Review and merge the pull request on the conda-forge [zarr-feedstock](https://github.com/conda-forge/zarr-feedstock) that will be automatically generated.
 
 ---
 
