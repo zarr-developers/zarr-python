@@ -24,7 +24,7 @@ assignees: ''
   - [ ] All tests pass in the ["Tests" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/test.yml)
   - [ ] All tests pass in the ["GPU Tests" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/gpu_test.yml)
   - [ ] All tests pass in the ["Hypothesis" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/hypothesis.yaml)
-  - [ ] All tests pass in [Xarray's upstream test](https://github.com/pydata/xarray/actions/workflows/upstream-dev-ci.yaml)
+  - [ ] All Zarr tests pass in [Xarray's upstream test](https://github.com/pydata/xarray/actions/workflows/upstream-dev-ci.yaml)
     - [ ] Click on the most recent workflow and check that the `upstream-dev` job has run and passed. `upstream-dev` is not run on all all workflow runs.
     - [ ] Check that the expected version of Zarr-Python was tested using the `Version Info` step of the `upstream-dev` job.
     - [ ] If testing on a branch other than `main` is needed, open a PR modifying https://github.com/pydata/xarray/blob/90ee30943aedba66a37856b2332a41264e288c20/ci/install-upstream-wheels.sh#L56 and add the `run-upstream` label.
