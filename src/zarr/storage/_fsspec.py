@@ -216,7 +216,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from a URL.
+        Create a FsspecStore from a URL. The type of store is determined from the URL scheme.
 
         Parameters
         ----------
