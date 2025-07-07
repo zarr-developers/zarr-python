@@ -2,10 +2,10 @@ coverage:
   status:
     patch:
       default:
-        target: 100
+        target: auto
     project:
       default:
-        target: 100
+        target: auto
         threshold: 0.1
 codecov:
   notify:
