@@ -23,7 +23,8 @@ The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total). The data is written to a
 :class:`zarr.storage.MemoryStore` (e.g. an in-memory dict). See
-:ref:`user-guide-persist` for details on storing arrays in other stores.
+:ref:`user-guide-persist` for details on storing arrays in other stores, and see
+:ref:`user-guide-data-types` for an in-depth look at the data types supported by Zarr.
 
 For a complete list of array creation routines see the :mod:`zarr`
 module documentation.
@@ -631,29 +632,6 @@ Missing features in 3.0
 
 
 The following features have not been ported to 3.0 yet.
-
-.. _user-guide-objects:
-
-Object arrays
-~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Object arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#object-arrays>`_ for more details.
-
-.. _user-guide-strings:
-
-Fixed-length string arrays
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Fixed-length string arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#string-arrays>`_ for more details.
-
-.. _user-guide-datetime:
-
-Datetime and Timedelta arrays
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Datetime and Timedelta <https://zarr.readthedocs.io/en/support-v2/tutorial.html#datetimes-and-timedeltas>`_ for more details.
-
-.. _user-guide-copy:
 
 Copying and migrating data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

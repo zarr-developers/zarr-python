@@ -38,4 +38,5 @@ class TestBool(BaseTestZDType):
         (Bool(), np.True_, np.True_),
         (Bool(), np.False_, np.False_),
     )
+    invalid_scalar_params = (None,)
     item_size_params = (Bool(),)
