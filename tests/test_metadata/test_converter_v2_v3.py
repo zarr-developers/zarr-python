@@ -137,6 +137,30 @@ def test_convert_nested_groups_and_arrays(local_store: Store, separator: str) ->
         assert metadata.attributes == attributes
 
 
+@pytest.mark.parametrize("separator", [".", "/"])
+def test_convert_nested_with_path(local_store: Store, separator: str) -> None:
+    """Test that only arrays/groups within group_1 are converted (+ no other files in store)"""
+
+    create_nested_zarr(local_store, {}, separator)
+
+    result = runner.invoke(app, ["convert", str(local_store.root), "--path", "group_1"])
+    assert result.exit_code == 0
+
+    group_path = local_store.root / "group_1"
+
+    total_zarr_jsons = 0
+    for dirpath, _, filenames in local_store.root.walk():
+        inside_group = (dirpath == group_path) or (group_path in dirpath.parents)
+        if (".zattrs" in filenames) and inside_group:
+            # group / array directories inside the group
+            assert "zarr.json" in filenames
+            total_zarr_jsons += 1
+        else:
+            assert "zarr.json" not in filenames
+
+    assert total_zarr_jsons == 4
+
+
 @pytest.mark.parametrize(
     ("compressor_v2", "compressor_v3"),
     [
