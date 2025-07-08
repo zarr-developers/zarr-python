@@ -502,3 +502,24 @@ def test_remove_metadata_after_conversion(
     paths = sorted(local_store.root.rglob("*"))
     expected_paths = [local_store.root / p for p in request.getfixturevalue(expected_paths)]
     assert paths == expected_paths
+
+
+@pytest.mark.parametrize("cli_command", ["convert", "clear"])
+def test_dry_run(
+    local_store: Store, cli_command: str, expected_paths_v2_metadata: list[Path]
+) -> None:
+    """Test that all files are un-changed after a dry run"""
+
+    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
+    create_nested_zarr(local_store, attributes, ".")
+
+    if cli_command == "convert":
+        result = runner.invoke(app, ["convert", str(local_store.root), "--dry-run"])
+    else:
+        result = runner.invoke(app, ["clear", str(local_store.root), "2", "--dry-run"])
+
+    assert result.exit_code == 0
+
+    paths = sorted(local_store.root.rglob("*"))
+    expected_paths = [local_store.root / p for p in expected_paths_v2_metadata]
+    assert paths == expected_paths
