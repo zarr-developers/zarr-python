@@ -1644,6 +1644,30 @@ async def test_from_array(
     assert result.chunks == new_chunks
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("chunks", [(10, 10)])
+@pytest.mark.parametrize("shards", [(60, 60)])
+async def test_from_array_shards(
+    store: Store,
+    zarr_format: ZarrFormat,
+    chunks: tuple[int, ...],
+    shards: tuple[int, ...],
+) -> None:
+    # Regression test for https://github.com/zarr-developers/zarr-python/issues/3169
+    source_data = np.arange(3600).reshape((60, 60))
+
+    zarr.create_array(
+        store=store,
+        data=source_data,
+        chunks=chunks,
+        shards=shards,
+    )
+
+    array = zarr.open_array(store=store)
+
+    assert np.array_equal(array[:], source_data)
+
+
 @pytest.mark.parametrize("store", ["local"], indirect=True)
 @pytest.mark.parametrize("chunks", ["keep", "auto"])
 @pytest.mark.parametrize("write_data", [True, False])

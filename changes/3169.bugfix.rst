@@ -1,0 +1,1 @@
+Fix race condition when passing array data in ``create_array(data=..)`` for an array that has a set shard size.
