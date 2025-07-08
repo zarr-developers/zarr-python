@@ -35,7 +35,10 @@ logger = logging.getLogger(__name__)
 
 
 def convert_v2_to_v3(
-    store: StoreLike, path: str | None = None, storage_options: dict[str, Any] | None = None
+    store: StoreLike,
+    path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
+    dry_run: bool = False,
 ) -> None:
     """Convert all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
     (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
@@ -49,13 +52,15 @@ def convert_v2_to_v3(
     storage_options : dict | None, optional
         If the store is backed by an fsspec-based implementation, then this dict will be passed to
         the Store constructor for that implementation. Ignored otherwise.
+    dry_run : bool, optional
+        Enable a 'dry run' - files that would be created are logged, but no files are actually created.
     """
 
     zarr_v2 = zarr.open(store=store, mode="r+", path=path, storage_options=storage_options)
-    convert_array_or_group(zarr_v2)
+    convert_array_or_group(zarr_v2, dry_run=dry_run)
 
 
-def convert_array_or_group(zarr_v2: Array | Group) -> None:
+def convert_array_or_group(zarr_v2: Array | Group, dry_run: bool = False) -> None:
     """Convert all v2 metadata in a zarr array/group to v3. Note - if a group is provided, then
     all arrays / groups within this group will also be converted. A zarr.json file will be created
     at each level, with any V2 files (.zarray, .zattrs etc.) left as-is.
@@ -64,6 +69,8 @@ def convert_array_or_group(zarr_v2: Array | Group) -> None:
     ----------
     zarr_v2 : Array | Group
         An array or group with zarr_format = 2
+    dry_run : bool, optional
+        Enable a 'dry run' - files that would be created are logged, but no files are actually created.
     """
     if not zarr_v2.metadata.zarr_format == 2:
         raise TypeError("Only arrays / groups with zarr v2 metadata can be converted")
@@ -71,18 +78,18 @@ def convert_array_or_group(zarr_v2: Array | Group) -> None:
     if isinstance(zarr_v2.metadata, GroupMetadata):
         # process members of the group
         for key in zarr_v2:
-            convert_array_or_group(zarr_v2[key])
+            convert_array_or_group(zarr_v2[key], dry_run=dry_run)
 
         # write group's converted metadata
         group_metadata_v3 = GroupMetadata(
             attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
         )
-        sync(_save_v3_metadata(zarr_v2, group_metadata_v3))
+        sync(_save_v3_metadata(zarr_v2, group_metadata_v3, dry_run=dry_run))
 
     else:
         # write array's converted metadata
         array_metadata_v3 = _convert_array_metadata(zarr_v2.metadata)
-        sync(_save_v3_metadata(zarr_v2, array_metadata_v3))
+        sync(_save_v3_metadata(zarr_v2, array_metadata_v3, dry_run=dry_run))
 
 
 async def remove_metadata(
@@ -90,6 +97,7 @@ async def remove_metadata(
     zarr_format: ZarrFormat,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
+    dry_run: bool = False,
 ) -> None:
     """Remove all v2 (.zarray, .zattrs, .zgroup, .zmetadata) or v3 (zarr.json) metadata files from the given Zarr.
     Note - this will remove metadata files at all levels of the hierarchy (every group and array).
@@ -105,6 +113,8 @@ async def remove_metadata(
     storage_options : dict | None, optional
         If the store is backed by an fsspec-based implementation, then this dict will be passed to
         the Store constructor for that implementation. Ignored otherwise.
+    dry_run : bool, optional
+        Enable a 'dry run' - files that would be deleted are logged, but no files are actually removed.
     """
     store_path = await make_store_path(store, mode="r+", storage_options=storage_options)
     if not store_path.store.supports_deletes:
@@ -124,7 +134,9 @@ async def remove_metadata(
     async for file_path in store_path.store.list_prefix(prefix):
         if file_path.split("/")[-1] in metadata_files:
             logger.info("Deleting metadata at %s", store_path / file_path)
-            awaitables.append((store_path / file_path).delete())
+
+            if not dry_run:
+                awaitables.append((store_path / file_path).delete())
 
     await asyncio.gather(*awaitables)
 
@@ -231,7 +243,7 @@ def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
 
 
 async def _save_v3_metadata(
-    zarr_v2: Array | Group, metadata_v3: ArrayV3Metadata | GroupMetadata
+    zarr_v2: Array | Group, metadata_v3: ArrayV3Metadata | GroupMetadata, dry_run: bool = False
 ) -> None:
     zarr_json_path = zarr_v2.store_path / ZARR_JSON
     if await zarr_json_path.exists():
@@ -239,4 +251,6 @@ async def _save_v3_metadata(
 
     logger.info("Saving metadata to %s", zarr_json_path)
     to_save = metadata_v3.to_buffer_dict(default_buffer_prototype())
-    await zarr_json_path.set_if_not_exists(to_save[ZARR_JSON])
+
+    if not dry_run:
+        await zarr_json_path.set_if_not_exists(to_save[ZARR_JSON])

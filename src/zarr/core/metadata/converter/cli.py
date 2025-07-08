@@ -8,6 +8,21 @@ from zarr.core.sync import sync
 
 app = typer.Typer()
 
+logger = logging.getLogger(__name__)
+
+
+def _set_logging_config(verbose: bool) -> None:
+    if verbose:
+        lvl = logging.INFO
+    else:
+        lvl = logging.WARNING
+    fmt = "%(message)s"
+    logging.basicConfig(level=lvl, format=fmt)
+
+
+def _set_verbose_level() -> None:
+    logging.getLogger().setLevel(logging.INFO)
+
 
 @app.command()  # type: ignore[misc]
 def convert(
@@ -18,11 +33,23 @@ def convert(
         ),
     ],
     path: Annotated[str | None, typer.Option(help="The path within the store to open")] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            help="Enable a dry-run: files that would be converted are logged, but no new files are actually created."
+        ),
+    ] = False,
 ) -> None:
     """Convert all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
     (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
     """
-    convert_v2_to_v3(store=store, path=path)
+    if dry_run:
+        _set_verbose_level()
+        logger.info(
+            "Dry run enabled - no new files will be created. Log of files that would be created on a real run:"
+        )
+
+    convert_v2_to_v3(store=store, path=path, dry_run=dry_run)
 
 
 @app.command()  # type: ignore[misc]
@@ -42,11 +69,27 @@ def clear(
         ),
     ],
     path: Annotated[str | None, typer.Option(help="The path within the store to open")] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            help="Enable a dry-run: files that would be deleted are logged, but no files are actually removed."
+        ),
+    ] = False,
 ) -> None:
     """Remove all v2 (.zarray, .zattrs, .zgroup, .zmetadata) or v3 (zarr.json) metadata files from the given Zarr.
     Note - this will remove metadata files at all levels of the hierarchy (every group and array).
     """
-    sync(remove_metadata(store=store, zarr_format=cast(Literal[2, 3], zarr_format), path=path))
+    if dry_run:
+        _set_verbose_level()
+        logger.info(
+            "Dry run enabled - no files will be deleted. Log of files that would be deleted on a real run:"
+        )
+
+    sync(
+        remove_metadata(
+            store=store, zarr_format=cast(Literal[2, 3], zarr_format), path=path, dry_run=dry_run
+        )
+    )
 
 
 @app.callback()  # type: ignore[misc]
@@ -62,10 +105,7 @@ def main(
     Convert metadata from v2 to v3. See available commands below - access help for individual commands with
     cli.py COMMAND --help.
     """
-    if verbose:
-        lvl = logging.INFO
-        fmt = "%(message)s"
-        logging.basicConfig(level=lvl, format=fmt)
+    _set_logging_config(verbose)
 
 
 if __name__ == "__main__":
