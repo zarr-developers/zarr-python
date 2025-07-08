@@ -1677,6 +1677,22 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         return self
 
+    async def refresh_attributes(self) -> Self:
+        """Reload the attributes of this array from the store.
+
+        Returns
+        -------
+        AsyncArray
+            The array updated with the newest attributes from storage."""
+
+        metadata = await get_array_metadata(self.store_path, self.metadata.zarr_format)
+        reparsed_metadata = parse_array_metadata(metadata)
+
+        self.metadata.attributes.clear()
+        self.metadata.attributes.update(reparsed_metadata.attributes)
+
+        return self
+
     def __repr__(self) -> str:
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
@@ -1768,6 +1784,7 @@ class Array:
     """
 
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
+    cache_attrs: bool | None = field(default=None)
 
     @classmethod
     @deprecated("Use zarr.create_array instead.")
@@ -2105,6 +2122,8 @@ class Array:
         -----
         Note that attribute values must be JSON serializable.
         """
+        if self.cache_attrs is False:
+            self.refresh_attributes()
         return Attributes(self)
 
     @property
@@ -3699,6 +3718,19 @@ class Array:
         """
         # TODO: remove this cast when type inference improves
         new_array = sync(self._async_array.update_attributes(new_attributes))
+        # TODO: remove this cast when type inference improves
+        _new_array = cast("AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]", new_array)
+        return type(self)(_new_array)
+
+    def refresh_attributes(self) -> Array:
+        """Reload the attributes of this array from the store.
+
+        Returns
+        -------
+        Array
+            The array with the updated attributes."""
+        # TODO: remove this cast when type inference improves
+        new_array = sync(self._async_array.refresh_attributes())
         # TODO: remove this cast when type inference improves
         _new_array = cast("AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]", new_array)
         return type(self)(_new_array)

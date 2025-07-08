@@ -441,7 +441,6 @@ def group(
                 store=store,
                 overwrite=overwrite,
                 chunk_store=chunk_store,
-                cache_attrs=cache_attrs,
                 synchronizer=synchronizer,
                 path=path,
                 zarr_version=zarr_version,
@@ -450,7 +449,8 @@ def group(
                 attributes=attributes,
                 storage_options=storage_options,
             )
-        )
+        ),
+        cache_attrs=cache_attrs,
     )
 
 
@@ -536,7 +536,6 @@ def open_group(
             async_api.open_group(
                 store=store,
                 mode=mode,
-                cache_attrs=cache_attrs,
                 synchronizer=synchronizer,
                 path=path,
                 chunk_store=chunk_store,
@@ -547,7 +546,8 @@ def open_group(
                 attributes=attributes,
                 use_consolidated=use_consolidated,
             )
-        )
+        ),
+        cache_attrs=cache_attrs,
     )
 
 
@@ -559,6 +559,7 @@ def create_group(
     overwrite: bool = False,
     attributes: dict[str, Any] | None = None,
     storage_options: dict[str, Any] | None = None,
+    cache_attrs: bool | None = None,
 ) -> Group:
     """Create a group.
 
@@ -595,7 +596,8 @@ def create_group(
                 zarr_format=zarr_format,
                 attributes=attributes,
             )
-        )
+        ),
+        cache_attrs=cache_attrs,
     )
 
 
@@ -730,7 +732,6 @@ def create(
                 chunk_store=chunk_store,
                 filters=filters,
                 cache_metadata=cache_metadata,
-                cache_attrs=cache_attrs,
                 read_only=read_only,
                 object_codec=object_codec,
                 dimension_separator=dimension_separator,
@@ -747,7 +748,8 @@ def create(
                 config=config,
                 **kwargs,
             )
-        )
+        ),
+        cache_attrs=cache_attrs,
     )
 
 
@@ -773,6 +775,7 @@ def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
+    cache_attrs: bool | None = None,
 ) -> Array:
     """Create an array.
 
@@ -872,6 +875,10 @@ def create_array(
         then ``write_data`` determines whether the values in that array-like object should be
         written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
         array will be left empty.
+    cache_attrs : bool, optional
+        If True (default), user attributes will be cached for attribute read
+        operations. If False, user attributes are reloaded from the store prior
+        to all attribute read operations.
 
     Returns
     -------
@@ -914,7 +921,8 @@ def create_array(
                 config=config,
                 write_data=write_data,
             )
-        )
+        ),
+        cache_attrs=cache_attrs,
     )
 
 

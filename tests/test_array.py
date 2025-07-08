@@ -494,6 +494,68 @@ def test_update_attrs(zarr_format: ZarrFormat) -> None:
     assert arr2.attrs["foo"] == "bar"
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_refresh_attrs(zarr_format: ZarrFormat) -> None:
+    """
+    Test the behavior of `Array.refresh_attributes`
+    """
+    store = MemoryStore()
+    attrs: dict[str, JSON] = {"foo": 100}
+    arr = zarr.create_array(
+        store=store, shape=(5,), chunks=(5,), dtype="f8", attributes=attrs, zarr_format=zarr_format
+    )
+    assert arr.attrs.asdict() == attrs
+
+    new_attrs: dict[str, JSON] = {"bar": 50}
+    arr2 = zarr.create_array(
+        store=store,
+        shape=(5,),
+        chunks=(5,),
+        dtype="f8",
+        attributes=new_attrs,
+        zarr_format=zarr_format,
+        overwrite=True,
+    )
+    assert arr2.attrs.asdict() == new_attrs
+
+    assert arr.attrs.asdict() == attrs
+    arr.refresh_attributes()
+    assert arr.attrs.asdict() == new_attrs
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_cache_attrs(zarr_format: ZarrFormat) -> None:
+    """
+    Test the behavior of `Array.cache_attrs`
+    """
+    store = MemoryStore()
+    attrs: dict[str, JSON] = {"foo": 100}
+    arr = zarr.create_array(
+        store=store,
+        shape=(5,),
+        chunks=(5,),
+        dtype="f8",
+        attributes=attrs,
+        zarr_format=zarr_format,
+        cache_attrs=False,
+    )
+    assert arr.attrs.asdict() == attrs
+
+    new_attrs: dict[str, JSON] = {"bar": 50}
+    arr2 = zarr.create_array(
+        store=store,
+        shape=(5,),
+        chunks=(5,),
+        dtype="f8",
+        attributes=new_attrs,
+        zarr_format=zarr_format,
+        overwrite=True,
+    )
+
+    assert arr2.attrs.asdict() == new_attrs
+    assert arr.attrs.asdict() == new_attrs
+
+
 @pytest.mark.parametrize(("chunks", "shards"), [((2, 2), None), ((2, 2), (4, 4))])
 class TestInfo:
     def test_info_v2(self, chunks: tuple[int, int], shards: tuple[int, int] | None) -> None:
