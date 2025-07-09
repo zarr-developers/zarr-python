@@ -119,6 +119,28 @@ Zarr allows you to create hierarchical groups, similar to directories::
 
 This creates a group with two datasets: ``foo`` and ``bar``.
 
+Batch Hierarchy Creation
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Zarr provides tools for creating a collection of arrays and groups with a single function call.
+Suppose we want to copy existing groups and arrays into a new storage backend:
+
+    >>> # Create nested groups and add arrays
+    >>> root = zarr.group("data/example-3.zarr", attributes={'name': 'root'})
+    >>> foo = root.create_group(name="foo")
+    >>> bar = root.create_array(
+    ...     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
+    ... )
+    >>> nodes = {'': root.metadata} | {k: v.metadata for k,v in root.members()}
+    >>> print(nodes)
+    >>> from zarr.storage import MemoryStore
+    >>> new_nodes = dict(zarr.create_hierarchy(store=MemoryStore(), nodes=nodes))
+    >>> new_root = new_nodes['']
+    >>> assert new_root.attrs == root.attrs
+
+Note that :func:`zarr.create_hierarchy` will only initialize arrays and groups -- copying array data must
+be done in a separate step.
+
 Persistent Storage
 ------------------
 

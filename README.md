@@ -70,7 +70,7 @@
   </td>
 </tr>
 <tr>
-	<td>Zulip</td>
+	<td>Developer Chat</td>
 	<td>
 		<a href="https://ossci.zulipchat.com/">
 		<img src="https://img.shields.io/badge/zulip-join_chat-brightgreen.svg" />
@@ -101,13 +101,13 @@ Zarr is a Python package providing an implementation of compressed, chunked, N-d
 
 ## Main Features
 
-- [**Create**](https://zarr.readthedocs.io/en/stable/tutorial.html#creating-an-array) N-dimensional arrays with any NumPy `dtype`.
-- [**Chunk arrays**](https://zarr.readthedocs.io/en/stable/tutorial.html#chunk-optimizations) along any dimension.
-- [**Compress**](https://zarr.readthedocs.io/en/stable/tutorial.html#compressors) and/or filter chunks using any NumCodecs codec.
-- [**Store arrays**](https://zarr.readthedocs.io/en/stable/tutorial.html#tutorial-storage) in memory, on disk, inside a zip file, on S3, etc...
-- [**Read**](https://zarr.readthedocs.io/en/stable/tutorial.html#reading-and-writing-data) an array [**concurrently**](https://zarr.readthedocs.io/en/stable/tutorial.html#parallel-computing-and-synchronization) from multiple threads or processes.
-- Write to an array concurrently from multiple threads or processes.
-- Organize arrays into hierarchies via [**groups**](https://zarr.readthedocs.io/en/stable/tutorial.html#groups).
+- [**Create**](https://zarr.readthedocs.io/en/stable/user-guide/arrays.html#creating-an-array) N-dimensional arrays with any NumPy `dtype`.
+- [**Chunk arrays**](https://zarr.readthedocs.io/en/stable/user-guide/performance.html#chunk-optimizations) along any dimension.
+- [**Compress**](https://zarr.readthedocs.io/en/stable/user-guide/arrays.html#compressors) and/or filter chunks using any NumCodecs codec.
+- [**Store arrays**](https://zarr.readthedocs.io/en/stable/user-guide/storage.html) in memory, on disk, inside a zip file, on S3, etc...
+- [**Read**](https://zarr.readthedocs.io/en/stable/user-guide/arrays.html#reading-and-writing-data) an array [**concurrently**](https://zarr.readthedocs.io/en/stable/user-guide/performance.html#parallel-computing-and-synchronization) from multiple threads or processes.
+- [**Write**](https://zarr.readthedocs.io/en/stable/user-guide/arrays.html#reading-and-writing-data) to an array concurrently from multiple threads or processes.
+- Organize arrays into hierarchies via [**groups**](https://zarr.readthedocs.io/en/stable/quickstart.html#hierarchical-groups).
 
 ## Where to get it
 

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
-    from zarr.core.common import BytesLike
+    from zarr.core.common import BytesLike, ChunkCoords
 
 try:
     import cupy as cp
@@ -59,7 +59,7 @@ class Buffer(core.Buffer):
 
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
-        if array_like.dtype != np.dtype("b"):
+        if array_like.dtype != np.dtype("B"):
             raise ValueError("array_like: only byte dtype allowed")
 
         if not hasattr(array_like, "__cuda_array_interface__"):
@@ -84,7 +84,7 @@ class Buffer(core.Buffer):
         -------
             New empty 0-length buffer
         """
-        return cls(cp.array([], dtype="b"))
+        return cls(cp.array([], dtype="B"))
 
     @classmethod
     def from_buffer(cls, buffer: core.Buffer) -> Self:
@@ -100,14 +100,14 @@ class Buffer(core.Buffer):
 
     @classmethod
     def from_bytes(cls, bytes_like: BytesLike) -> Self:
-        return cls.from_array_like(cp.frombuffer(bytes_like, dtype="b"))
+        return cls.from_array_like(cp.frombuffer(bytes_like, dtype="B"))
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
-        return cast(npt.NDArray[Any], cp.asnumpy(self._data))
+        return cast("npt.NDArray[Any]", cp.asnumpy(self._data))
 
     def __add__(self, other: core.Buffer) -> Self:
         other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("b")
+        assert other_array.dtype == np.dtype("B")
         gpu_other = Buffer(other_array)
         gpu_other_array = gpu_other.as_array_like()
         return self.__class__(
@@ -129,7 +129,7 @@ class NDBuffer(core.NDBuffer):
     Notes
     -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
-    is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
+    is a special case of NDBuffer where dim=1, stride=1, and dtype="B". However,
     in order to use Python's type system to differentiate between the contiguous
     Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
     two classes separate.
@@ -179,6 +179,12 @@ class NDBuffer(core.NDBuffer):
         return ret
 
     @classmethod
+    def empty(
+        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+    ) -> Self:
+        return cls(cp.empty(shape=shape, dtype=dtype, order=order))
+
+    @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         """Create a new buffer of Numpy array-like object
 
@@ -204,7 +210,7 @@ class NDBuffer(core.NDBuffer):
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        return cast(npt.NDArray[Any], cp.asnumpy(self._data))
+        return cast("npt.NDArray[Any]", cp.asnumpy(self._data))
 
     def __getitem__(self, key: Any) -> Self:
         return self.__class__(self._data.__getitem__(key))
@@ -220,5 +226,9 @@ class NDBuffer(core.NDBuffer):
 
 buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)
+register_buffer(Buffer, qualname="zarr.buffer.gpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.buffer.gpu.NDBuffer")
+
+# backwards compatibility
+register_buffer(Buffer, qualname="zarr.core.buffer.gpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.core.buffer.gpu.NDBuffer")

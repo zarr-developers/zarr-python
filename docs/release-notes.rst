@@ -3,6 +3,179 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.10 (2025-07-03)
+-------------------
+
+Bugfixes
+~~~~~~~~
+
+- Removed an unnecessary check from ``_fsspec._make_async`` that would raise an exception when
+  creating a read-only store backed by a local file system with ``auto_mkdir`` set  to ``False``. (:issue:`3193`)
+- Add missing import for AsyncFileSystemWrapper for _make_async in _fsspec.py (:issue:`3195`)
+
+
+3.0.9 (2025-06-30)
+------------------
+
+Features
+~~~~~~~~
+
+- Add `zarr.storage.FsspecStore.from_mapper()` so that `zarr.open()` supports stores of type `fsspec.mapping.FSMap`. (:issue:`2774`)
+- Implemented ``move`` for ``LocalStore`` and ``ZipStore``. This allows users to move the store to a different root path. (:issue:`3021`)
+- Added `~zarr.errors.GroupNotFoundError`, which is raised when attempting to open a group that does not exist. (:issue:`3066`)
+- Adds ``fill_value`` to the list of attributes displayed in the output of the ``AsyncArray.info()`` method. (:issue:`3081`)
+- Use :py:func:`numpy.zeros` instead of :py:func:`np.full` for a performance speedup when creating a `zarr.core.buffer.NDBuffer` with `fill_value=0`. (:issue:`3082`)
+- Port more stateful testing actions from `Icechunk <https://icechunk.io>`_. (:issue:`3130`)
+- Adds a `with_read_only` convenience method to the `Store` abstract base class (raises `NotImplementedError`) and implementations to the `MemoryStore`, `ObjectStore`, `LocalStore`, and `FsspecStore` classes. (:issue:`3138`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Ignore stale child metadata when reconsolidating metadata. (:issue:`2921`)
+- For Zarr format 2, allow fixed-length string arrays to be created without automatically inserting a
+  ``Vlen-UT8`` codec in the array of filters. Fixed-length string arrays do not need this codec. This
+  change fixes a regression where fixed-length string arrays created with Zarr Python 3 could not be read with Zarr Python 2.18. (:issue:`3100`)
+- When creating arrays without explicitly specifying a chunk size using `zarr.create` and other
+  array creation routines, the chunk size will now set automatically instead of defaulting to the data shape.
+  For large arrays this will result in smaller default chunk sizes.
+  To retain previous behaviour, explicitly set the chunk shape to the data shape.
+
+  This fix matches the existing chunking behaviour of
+  `zarr.save_array` and `zarr.api.asynchronous.AsyncArray.create`. (:issue:`3103`)
+- When `zarr.save` has an argument `path=some/path/` and multiple arrays in `args`, the path resulted in `some/path/some/path` due to using the `path`
+  argument twice while building the array path. This is now fixed. (:issue:`3127`)
+- Fix `zarr.open` default for argument `mode` when `store` is `read_only` (:issue:`3128`)
+- Suppress `FileNotFoundError` when deleting non-existent keys in the `obstore` adapter.
+
+  When writing empty chunks (i.e. chunks where all values are equal to the array's fill value) to a zarr array, zarr
+  will delete those chunks from the underlying store. For zarr arrays backed by the `obstore` adapter, this will potentially
+  raise a `FileNotFoundError` if the chunk doesn't already exist.
+  Since whether or not a delete of a non-existing object raises an error depends on the behavior of the underlying store,
+  suppressing the error in all cases results in consistent behavior across stores, and is also what `zarr` seems to expect
+  from the store. (:issue:`3140`)
+- Trying to open a StorePath/Array with ``mode='r'`` when the store is not read-only creates a read-only copy of the store. (:issue:`3156`)
+
+
+3.0.8 (2025-05-19)
+------------------
+
+.. warning::
+
+    In versions 3.0.0 to 3.0.7 opening arrays or groups with ``mode='a'`` (the default for many builtin functions)
+    would cause any existing paths in the store to be deleted. This is fixed in 3.0.8, and
+    we recommend all users upgrade to avoid this bug that could cause unintentional data loss.
+
+Features
+~~~~~~~~
+
+- Added a `print_debug_info` function for bug reports. (:issue:`2913`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Fix a bug that prevented the number of initialized chunks being counted properly. (:issue:`2862`)
+- Fixed sharding with GPU buffers. (:issue:`2978`)
+- Fix structured `dtype` fill value serialization for consolidated metadata (:issue:`2998`)
+- It is now possible to specify no compressor when creating a zarr format 2 array.
+  This can be done by passing ``compressor=None`` to the various array creation routines.
+
+  The default behaviour of automatically choosing a suitable default compressor remains if the compressor argument is not given.
+  To reproduce the behaviour in previous zarr-python versions when ``compressor=None`` was passed, pass ``compressor='auto'`` instead. (:issue:`3039`)
+- Fixed the typing of ``dimension_names`` arguments throughout so that it now accepts iterables that contain `None` alongside `str`. (:issue:`3045`)
+- Using various functions to open data with ``mode='a'`` no longer deletes existing data in the store. (:issue:`3062`)
+- Internally use `typesize` constructor parameter for :class:`numcodecs.blosc.Blosc` to improve compression ratios back to the v2-package levels. (:issue:`2962`)
+- Specifying the memory order of Zarr format 2 arrays using the ``order`` keyword argument has been fixed. (:issue:`2950`)
+
+
+Misc
+~~~~
+
+- :issue:`2972`, :issue:`3027`, :issue:`3049`
+
+
+3.0.7 (2025-04-22)
+------------------
+
+Features
+~~~~~~~~
+
+- Add experimental ObjectStore storage class based on obstore. (:issue:`1661`)
+- Add ``zarr.from_array`` using concurrent streaming of source data (:issue:`2622`)
+
+
+Bugfixes
+~~~~~~~~
+
+- 0-dimensional arrays are now returning a scalar. Therefore, the return type of ``__getitem__`` changed
+  to NDArrayLikeOrScalar. This change is to make the behavior of 0-dimensional arrays consistent with
+  ``numpy`` scalars. (:issue:`2718`)
+- Fix `fill_value` serialization for `NaN` in `ArrayV2Metadata` and add property-based testing of round-trip serialization (:issue:`2802`)
+- Fixes `ConsolidatedMetadata` serialization of `nan`, `inf`, and `-inf` to be
+  consistent with the behavior of `ArrayMetadata`. (:issue:`2996`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Updated the 3.0 migration guide to include the removal of "." syntax for getting group members. (:issue:`2991`, :issue:`2997`)
+
+
+Misc
+~~~~
+- Define a new versioning policy based on Effective Effort Versioning. This replaces the old Semantic
+  Versioning-based policy. (:issue:`2924`, :issue:`2910`)
+- Make warning filters in the tests more specific, so warnings emitted by tests added in the future
+  are more likely to be caught instead of ignored. (:issue:`2714`)
+- Avoid an unnecessary memory copy when writing Zarr to a local file (:issue:`2944`)
+
+
+3.0.6 (2025-03-20)
+------------------
+
+Bugfixes
+~~~~~~~~
+
+- Restore functionality of `del z.attrs['key']` to actually delete the key. (:issue:`2908`)
+
+
+3.0.5 (2025-03-07)
+------------------
+
+Bugfixes
+~~~~~~~~
+
+- Fixed a bug where ``StorePath`` creation would not apply standard path normalization to the ``path`` parameter,
+  which led to the creation of arrays and groups with invalid keys. (:issue:`2850`)
+- Prevent update_attributes calls from deleting old attributes (:issue:`2870`)
+
+
+Misc
+~~~~
+
+- :issue:`2796`
+
+3.0.4 (2025-02-23)
+------------------
+
+Features
+~~~~~~~~
+
+- Adds functions for concurrently creating multiple arrays and groups. (:issue:`2665`)
+
+Bugfixes
+~~~~~~~~
+
+- Fixed a bug where ``ArrayV2Metadata`` could save ``filters`` as an empty array. (:issue:`2847`)
+- Fix a bug when setting values of a smaller last chunk. (:issue:`2851`)
+
+Misc
+~~~~
+
+- :issue:`2828`
+
+
 3.0.3 (2025-02-14)
 ------------------
 
@@ -99,6 +272,8 @@ Other
 
 3.0.1 (Jan. 17, 2025)
 ---------------------
+
+* Implement ``zarr.from_array`` using concurrent streaming (:issue:`2622`).
 
 Bug fixes
 ~~~~~~~~~

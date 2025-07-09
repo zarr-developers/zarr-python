@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 import pytest
 
@@ -31,23 +30,20 @@ def has_cupy() -> bool:
     try:
         import cupy
 
-        return cast(bool, cupy.cuda.runtime.getDeviceCount() > 0)
+        return cast("bool", cupy.cuda.runtime.getDeviceCount() > 0)
     except ImportError:
         return False
     except cupy.cuda.runtime.CUDARuntimeError:
         return False
 
 
-T_Callable = TypeVar("T_Callable", bound=Callable[..., Coroutine[Any, Any, None] | None])
+T = TypeVar("T")
+
+
+gpu_mark = pytest.mark.gpu
+skip_if_no_gpu = pytest.mark.skipif(not has_cupy(), reason="CuPy not installed or no GPU available")
 
 
 # Decorator for GPU tests
-def gpu_test(func: T_Callable) -> T_Callable:
-    return cast(
-        T_Callable,
-        pytest.mark.gpu(
-            pytest.mark.skipif(not has_cupy(), reason="CuPy not installed or no GPU available")(
-                func
-            )
-        ),
-    )
+def gpu_test(func: T) -> T:
+    return cast("T", gpu_mark(skip_if_no_gpu(func)))

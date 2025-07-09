@@ -42,7 +42,7 @@ class StoreTests(Generic[S, B]):
     async def set(self, store: S, key: str, value: Buffer) -> None:
         """
         Insert a value into a storage backend, with a specific key.
-        This should not not use any store methods. Bypassing the store methods allows them to be
+        This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
         ...
@@ -51,14 +51,14 @@ class StoreTests(Generic[S, B]):
     async def get(self, store: S, key: str) -> Buffer:
         """
         Retrieve a value from a storage backend, by key.
-        This should not not use any store methods. Bypassing the store methods allows them to be
+        This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
         ...
 
     @abstractmethod
     @pytest.fixture
-    def store_kwargs(self) -> dict[str, Any]:
+    def store_kwargs(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Kwargs for instantiating a store"""
         ...
 
@@ -149,10 +149,68 @@ class StoreTests(Generic[S, B]):
         ):
             await store.delete("foo")
 
+    async def test_with_read_only_store(self, open_kwargs: dict[str, Any]) -> None:
+        kwargs = {**open_kwargs, "read_only": True}
+        store = await self.store_cls.open(**kwargs)
+        assert store.read_only
+
+        # Test that you cannot write to a read-only store
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
+
+        # Check if the store implements with_read_only
+        try:
+            writer = store.with_read_only(read_only=False)
+        except NotImplementedError:
+            # Test that stores that do not implement with_read_only raise NotImplementedError with the correct message
+            with pytest.raises(
+                NotImplementedError,
+                match=f"with_read_only is not implemented for the {type(store)} store type.",
+            ):
+                store.with_read_only(read_only=False)
+            return
+
+        # Test that you can write to a new store copy
+        assert not writer._is_open
+        assert not writer.read_only
+        await writer.set("foo", self.buffer_cls.from_bytes(b"bar"))
+        await writer.delete("foo")
+
+        # Test that you cannot write to the original store
+        assert store.read_only
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await store.delete("foo")
+
+        # Test that you cannot write to a read-only store copy
+        reader = store.with_read_only(read_only=True)
+        assert reader.read_only
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await reader.set("foo", self.buffer_cls.from_bytes(b"bar"))
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await reader.delete("foo")
+
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
-    @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize(
-        "byte_range", [None, RangeByteRequest(1, 4), OffsetByteRequest(1), SuffixByteRequest(1)]
+        ("data", "byte_range"),
+        [
+            (b"\x01\x02\x03\x04", None),
+            (b"\x01\x02\x03\x04", RangeByteRequest(1, 4)),
+            (b"\x01\x02\x03\x04", OffsetByteRequest(1)),
+            (b"\x01\x02\x03\x04", SuffixByteRequest(1)),
+            (b"", None),
+        ],
     )
     async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRequest) -> None:
         """
@@ -273,16 +331,6 @@ class StoreTests(Generic[S, B]):
         for k, v in store_dict.items():
             assert (await self.get(store, k)).to_bytes() == v.to_bytes()
 
-    async def test_set_invalid_buffer(self, store: S) -> None:
-        """
-        Ensure that set raises a Type or Value Error for invalid buffer arguments.
-        """
-        with pytest.raises(
-            (ValueError, TypeError),
-            match=r"\S+\.set\(\): `value` must be a Buffer instance. Got an instance of <class 'int'> instead.",
-        ):
-            await store.set("c/0", 0)  # type: ignore[arg-type]
-
     @pytest.mark.parametrize(
         "key_ranges",
         [
@@ -352,6 +400,11 @@ class StoreTests(Generic[S, B]):
         assert await store.exists("foo-bar/zarr.json")
         assert not await store.exists("foo/zarr.json")
         assert not await store.exists("foo/c/0")
+
+    async def test_delete_nonexistent_key_does_not_raise(self, store: S) -> None:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        await store.delete("nonexistent_key")
 
     async def test_is_empty(self, store: S) -> None:
         assert await store.is_empty("")

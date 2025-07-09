@@ -5,9 +5,9 @@ name: Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 3.0.x ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 3.0.x ]
   workflow_dispatch:
 
 concurrency:
@@ -21,7 +21,7 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        numpy-version: ['1.25', '2.1']
+        numpy-version: ['1.25', '2.2']
         dependency-set: ["minimal", "optional"]
         os: ["ubuntu-latest"]
         include:
@@ -30,7 +30,7 @@ jobs:
             dependency-set: 'optional'
             os: 'macos-latest'
           - python-version: '3.13'
-            numpy-version: '2.1'
+            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'macos-latest'
           - python-version: '3.11'
@@ -38,7 +38,7 @@ jobs:
             dependency-set: 'optional'
             os: 'windows-latest'
           - python-version: '3.13'
-            numpy-version: '2.1'
+            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'windows-latest'
     runs-on: ${{ matrix.os }}
@@ -61,9 +61,12 @@ jobs:
         hatch env create test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
         hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
+      env:
+        HYPOTHESIS_PROFILE: ci
       run: |
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
+      if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -101,7 +104,7 @@ jobs:
         hatch env run -e ${{ matrix.dependency-set }} list-env
     - name: Run Tests
       run: |
-        hatch env run --env ${{ matrix.dependency-set }} run
+        hatch env run --env ${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
       uses: codecov/codecov-action@v5
       with:
