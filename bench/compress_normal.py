@@ -1,11 +1,11 @@
 import sys
 import timeit
 
+import blosc
 import line_profiler
 import numpy as np
 
 import zarr
-from zarr import blosc
 
 if __name__ == "__main__":
     sys.path.insert(0, "..")
