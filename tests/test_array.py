@@ -970,6 +970,43 @@ def test_auto_partition_auto_shards(
     assert auto_shards == expected_shards
 
 
+def test_chunks_and_shards() -> None:
+    store = StorePath(MemoryStore())
+    shape = (100, 100)
+    chunks = (5, 5)
+    shards = (10, 10)
+
+    arr_v3 = zarr.create_array(store=store / "v3", shape=shape, chunks=chunks, dtype="i4")
+    assert arr_v3.chunks == chunks
+    assert arr_v3.shards is None
+
+    arr_v3_sharding = zarr.create_array(
+        store=store / "v3_sharding",
+        shape=shape,
+        chunks=chunks,
+        shards=shards,
+        dtype="i4",
+    )
+    assert arr_v3_sharding.chunks == chunks
+    assert arr_v3_sharding.shards == shards
+
+    arr_v2 = zarr.create_array(
+        store=store / "v2", shape=shape, chunks=chunks, zarr_format=2, dtype="i4"
+    )
+    assert arr_v2.chunks == chunks
+    assert arr_v2.shards is None
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize(
+    ("dtype", "fill_value_expected"), [("<U4", ""), ("<S4", b""), ("i", 0), ("f", 0.0)]
+)
+def test_default_fill_value(dtype: str, fill_value_expected: object, store: Store) -> None:
+    a = zarr.create_array(store, shape=(5,), chunks=(5,), dtype=dtype)
+    assert a.fill_value == fill_value_expected
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 class TestCreateArray:
     @staticmethod
@@ -1767,6 +1804,25 @@ def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkser
     with ctx.Pool() as pool:
         results = pool.starmap(_index_array, [(arr, slice(len(data)))])
     assert all(np.array_equal(r, data) for r in results)
+
+
+def test_create_array_method_signature() -> None:
+    """
+    Test that the signature of the ``AsyncGroup.create_array`` function has nearly the same signature
+    as the ``create_array`` function. ``AsyncGroup.create_array`` should take all of the same keyword
+    arguments as ``create_array`` except ``store``.
+    """
+
+    base_sig = inspect.signature(create_array)
+    meth_sig = inspect.signature(AsyncGroup.create_array)
+    # ignore keyword arguments that are either missing or have different semantics when
+    # create_array is invoked as a group method
+    ignore_kwargs = {"zarr_format", "store", "name"}
+    # TODO: make this test stronger. right now, it only checks that all the parameters in the
+    # function signature are used in the method signature. we can be more strict and check that
+    # the method signature uses no extra parameters.
+    base_params = dict(filter(lambda kv: kv[0] not in ignore_kwargs, base_sig.parameters.items()))
+    assert (set(base_params.items()) - set(meth_sig.parameters.items())) == set()
 
 
 async def test_sharding_coordinate_selection() -> None:
