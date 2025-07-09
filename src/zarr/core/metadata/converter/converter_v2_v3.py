@@ -13,7 +13,7 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
+from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.common import (
     ZARR_JSON,
     ZARRAY_JSON,
@@ -142,7 +142,7 @@ async def remove_metadata(
 
 
 def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
-    chunk_key_encoding = DefaultChunkKeyEncoding(separator=metadata_v2.dimension_separator)
+    chunk_key_encoding = V2ChunkKeyEncoding(separator=metadata_v2.dimension_separator)
 
     codecs: list[Codec] = []
 

@@ -16,7 +16,7 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.chunk_grids import RegularChunkGrid
-from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
+from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.int import BaseInt, UInt8, UInt16
 
 typer_testing = pytest.importorskip(
@@ -145,7 +145,7 @@ def test_convert_array(local_store: Store) -> None:
     assert metadata.node_type == "array"
     assert metadata.shape == shape
     assert metadata.chunk_grid == RegularChunkGrid(chunk_shape=chunks)
-    assert metadata.chunk_key_encoding == DefaultChunkKeyEncoding(separator=".")
+    assert metadata.chunk_key_encoding == V2ChunkKeyEncoding(separator=".")
     assert metadata.data_type == UInt16("little")
     assert metadata.codecs == (
         BytesCodec(endian="little"),
