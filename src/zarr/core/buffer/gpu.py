@@ -8,9 +8,6 @@ from typing import (
     cast,
 )
 
-import numpy as np
-import numpy.typing as npt
-
 from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
 from zarr.errors import ZarrUserWarning
@@ -23,7 +20,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
-    from zarr.core.common import BytesLike
+    import numpy.typing as npt
+
+    from zarr.core.common import BytesLike, ChunkCoords
 
 try:
     import cupy as cp
@@ -108,13 +107,13 @@ class Buffer(core.Buffer):
         return cast("npt.NDArray[Any]", cp.asnumpy(self._data))
 
     def combine(self, others: Iterable[core.Buffer]) -> Self:
-        data = [cp.asanyarray(self._data)]
+        left = cp.asanyarray(self._data)
+        data = [left]
         for other in others:
-            other_array = other.as_array_like()
-            assert other_array.dtype == np.dtype("B")
-            gpu_other = Buffer(other_array)
-            gpu_other_array = gpu_other.as_array_like()
-            data.append(cp.asanyarray(gpu_other_array))
+            other_array = cp.asanyarray(other.as_array_like())
+            if other_array.dtype != left.dtype:
+                other_array = other_array.view(left.dtype)
+            data.append(other_array)
         return self.__class__(cp.concatenate(data))
 
 
