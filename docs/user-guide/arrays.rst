@@ -212,7 +212,7 @@ prints additional diagnostics, e.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 3558573
+   No. bytes stored   : 3558573 (3.4M)
    Storage ratio      : 112.4
    Chunks Initialized : 100
 
@@ -286,7 +286,7 @@ Here is an example using a delta filter with the Blosc compressor::
    >>> compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle=zarr.codecs.BloscShuffle.shuffle)
    >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
    >>> z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
-   >>> z.info
+   >>> z.info_complete()
    Type               : Array
    Zarr format        : 3
    Data type          : Int32(endianness='little')
@@ -300,6 +300,9 @@ Here is an example using a delta filter with the Blosc compressor::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=1, shuffle=<BloscShuffle.shuffle: 'shuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
+   No. bytes stored   : 826
+   Storage ratio      : 484261.5
+   Chunks Initialized : 0
 
 For more information about available filter codecs, see the `Numcodecs
 <https://numcodecs.readthedocs.io/>`_ documentation.
@@ -616,7 +619,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Serializer         : BytesCodec(endian=None)
   Compressors        : (ZstdCodec(level=0, checksum=False),)
   No. bytes          : 100000000 (95.4M)
-  No. bytes stored   : 3981473
+  No. bytes stored   : 3981473 (3.8M)
   Storage ratio      : 25.1
   Shards Initialized : 100
 

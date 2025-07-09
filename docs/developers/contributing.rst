@@ -339,36 +339,6 @@ breaking changes may be more frequent than usual.
 Release procedure
 -----------------
 
-Pre-release
-~~~~~~~~~~~
-1. Make sure that all pull requests which will be included in the release
-   have been properly documented as changelog files in the :file:`changes/` directory.
-2. Run ``towncrier build --version x.y.z`` to create the changelog, and commit the result
-   to the main branch.
-
-Releasing
-~~~~~~~~~
-1. Go to https://github.com/zarr-developers/zarr-python/releases
-2. Click "Draft a new release".
-3. Choose a version number prefixed with a `v` (e.g. `v0.0.0`).
-   For pre-releases, include the appropriate suffix (e.g. `v0.0.0a1` or `v0.0.0rc2`).
-4. Set the description of the release to::
-
-    See release notes https://zarr.readthedocs.io/en/stable/release-notes.html#release-0-0-0
-
-   replacing the correct version numbers. For pre-release versions,
-   the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
-5. Click on "Generate release notes" to auto-fill the description.
-
-After creating the release, the documentation will be built on
-https://readthedocs.io. Full releases will be available under
-`/stable <https://zarr.readthedocs.io/en/stable>`_ while
-pre-releases will be available under
-`/latest <https://zarr.readthedocs.io/en/latest>`_.
-
-Post-release
-~~~~~~~~~~~~
-
-- Review and merge the pull request on the
-  `conda-forge feedstock <https://github.com/conda-forge/zarr-feedstock>`_ that will be
-  automatically generated.
+Open an issue on GitHub announcing the release using the release checklist template:
+`https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md <https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md>`_.
+The release checklist includes all steps necessary for the release.

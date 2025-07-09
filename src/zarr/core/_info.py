@@ -133,7 +133,7 @@ class ArrayInfo:
 
         if self._count_bytes_stored is not None:
             template += "\nNo. bytes stored   : {_count_bytes_stored}"
-            kwargs["_count_stored"] = byte_info(self._count_bytes_stored)
+            kwargs["_count_bytes_stored"] = byte_info(self._count_bytes_stored)
 
         if (
             self._count_bytes is not None
