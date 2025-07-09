@@ -72,8 +72,6 @@ class NvcompZstdCodec(BytesBytesCodec):
 
     @cached_property
     def _zstd_codec(self) -> nvcomp.Codec:
-        # config_dict = {algorithm = "Zstd", "level": self.level, "checksum": self.checksum}
-        # return Zstd.from_config(config_dict)
         device = cp.cuda.Device()  # Select the current default device
         stream = cp.cuda.get_current_stream()  # Use the current default stream
         return nvcomp.Codec(

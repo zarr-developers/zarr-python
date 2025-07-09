@@ -32,3 +32,14 @@ def test_nvcomp_zstd(store: Store, checksum: bool) -> None:
 
         a[:, :] = data
         cp.testing.assert_array_equal(data, a[:, :])
+
+
+def test_invalid_raises() -> None:
+    with pytest.raises(ValueError):
+        NvcompZstdCodec(level=100, checksum=False)
+
+    with pytest.raises(TypeError):
+        NvcompZstdCodec(level="100", checksum=False)  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError):
+        NvcompZstdCodec(checksum="False")  # type: ignore[arg-type]
