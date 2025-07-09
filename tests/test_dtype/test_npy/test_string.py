@@ -19,7 +19,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             np.dtype("|S10"),
         )
         valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
-        valid_json_v3 = ("variable_length_utf8",)
+        valid_json_v3 = ("string",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
@@ -40,6 +40,8 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             (VariableLengthUTF8(), "", np.str_("")),
             (VariableLengthUTF8(), "hi", np.str_("hi")),
         )
+        # anything can become a string
+        invalid_scalar_params = (None,)
         item_size_params = (VariableLengthUTF8(),)
 
 else:
@@ -53,7 +55,7 @@ else:
             np.dtype("|S10"),
         )
         valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
-        valid_json_v3 = ("variable_length_utf8",)
+        valid_json_v3 = ("string",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
@@ -74,7 +76,8 @@ else:
             (VariableLengthUTF8(), "", np.str_("")),
             (VariableLengthUTF8(), "hi", np.str_("hi")),
         )
-
+        # anything can become a string
+        invalid_scalar_params = (None,)
         item_size_params = (VariableLengthUTF8(),)
 
 
@@ -101,26 +104,33 @@ class TestFixedLengthUTF32(BaseTestZDType):
         {"name": "numpy.fixed_length_utf32", "configuration": {"length_bits": "invalid"}},
     )
 
-    scalar_v2_params = ((FixedLengthUTF32(length=0), ""), (FixedLengthUTF32(length=2), "hi"))
+    scalar_v2_params = ((FixedLengthUTF32(length=1), ""), (FixedLengthUTF32(length=2), "hi"))
     scalar_v3_params = (
-        (FixedLengthUTF32(length=0), ""),
+        (FixedLengthUTF32(length=1), ""),
         (FixedLengthUTF32(length=2), "hi"),
         (FixedLengthUTF32(length=4), "hihi"),
     )
 
     cast_value_params = (
-        (FixedLengthUTF32(length=0), "", np.str_("")),
+        (FixedLengthUTF32(length=1), "", np.str_("")),
         (FixedLengthUTF32(length=2), "hi", np.str_("hi")),
         (FixedLengthUTF32(length=4), "hihi", np.str_("hihi")),
     )
     item_size_params = (
-        FixedLengthUTF32(length=0),
+        FixedLengthUTF32(length=1),
         FixedLengthUTF32(length=4),
         FixedLengthUTF32(length=10),
     )
+    # anything can become a string
+    invalid_scalar_params = (None,)
 
 
-@pytest.mark.parametrize("zdtype", [FixedLengthUTF32(length=10), VariableLengthUTF8()])
+@pytest.mark.parametrize(
+    "zdtype",
+    [
+        FixedLengthUTF32(length=10),
+    ],
+)
 def test_unstable_dtype_warning(zdtype: FixedLengthUTF32 | VariableLengthUTF8) -> None:
     """
     Test that we get a warning when serializing a dtype without a zarr v3 spec to json
@@ -128,3 +138,13 @@ def test_unstable_dtype_warning(zdtype: FixedLengthUTF32 | VariableLengthUTF8) -
     """
     with pytest.raises(UnstableSpecificationWarning):
         zdtype.to_json(zarr_format=3)
+
+
+def test_invalid_size() -> None:
+    """
+    Test that it's impossible to create a data type that has no length
+    """
+    length = 0
+    msg = f"length must be >= 1, got {length}."
+    with pytest.raises(ValueError, match=msg):
+        FixedLengthUTF32(length=length)

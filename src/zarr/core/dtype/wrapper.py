@@ -80,7 +80,9 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     @classmethod
     def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[TDType_co]:
         """
-        Check that a native data type matches the dtype_cls class attribute. Used as a type guard.
+        Check that a native data type matches the dtype_cls class attribute.
+
+        Used as a type guard.
 
         Parameters
         ----------
@@ -98,9 +100,10 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     @abstractmethod
     def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
-        Create a ZDType instance from a native data type. The default implementation first performs
-        a type check via ``cls._check_native_dtype``. If that type check succeeds, the ZDType class
-        instance is created.
+        Create a ZDType instance from a native data type.
+
+        The base implementation first performs a type check via ``cls._check_native_dtype``.
+        If that type check succeeds, the ZDType class instance is created.
 
         This method is used when taking a user-provided native data type, like a NumPy data type,
         and creating the corresponding ZDType instance from them.
@@ -150,8 +153,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         Parameters
         ----------
         data : DTypeJSON
-            The JSON representation of the data type. The type annotation includes
-            Mapping[str, object] to accommodate typed dictionaries.
+            The JSON representation of the data type.
 
         zarr_format : ZarrFormat
             The zarr format version.
@@ -159,7 +161,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         Returns
         -------
         Self
-            The wrapped data type.
+            An instance of this data type.
         """
         if zarr_format == 2:
             return cls._from_json_v2(data)
@@ -211,6 +213,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     def cast_scalar(self, data: object) -> TScalar_co:
         """
         Cast a python object to the wrapped scalar type.
+
         The type of the provided scalar is first checked for compatibility.
         If it's incompatible with the associated scalar type, a ``TypeError`` will be raised.
 
@@ -228,8 +231,9 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     @abstractmethod
     def default_scalar(self) -> TScalar_co:
         """
-        Get the default scalar value for the wrapped data type. This is a method, rather than an
-        attribute, because the default value for some data types depends on parameters that are
+        Get the default scalar value for the wrapped data type.
+
+        This is a method, rather than an attribute, because the default value for some data types depends on parameters that are
         not known until a concrete data type is wrapped. For example, data types parametrized by a
         length like fixed-length strings or bytes will generate scalars consistent with that length.
 
@@ -263,8 +267,10 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     @abstractmethod
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> JSON:
         """
-        Serialize a python object to the JSON representation of a scalar. The value will first be
-        cast to the scalar type associated with this ZDType, then serialized to JSON.
+        Serialize a python object to the JSON representation of a scalar.
+
+        The value will first be cast to the scalar type associated with this ZDType, then serialized
+        to JSON.
 
         Parameters
         ----------

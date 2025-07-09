@@ -2191,7 +2191,7 @@ class Group(SyncMixin):
             group already exists at path ``a``, then this function will leave the group at ``a`` as-is.
 
         Yields
-        -------
+        ------
             tuple[str, Array | Group].
 
         Examples

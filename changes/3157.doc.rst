@@ -1,0 +1,2 @@
+Add a self-contained example of data type extension to the ``examples`` directory, and expanded
+the documentation for data types.
