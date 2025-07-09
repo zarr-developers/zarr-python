@@ -83,7 +83,7 @@ class NvcompZstdCodec(BytesBytesCodec):
             cuda_stream=stream.ptr,
         )
 
-    async def _convert_to_nvcomp_arrays(
+    def _convert_to_nvcomp_arrays(
         self,
         chunks_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
     ) -> tuple[list[nvcomp.Array], list[int]]:
@@ -92,7 +92,7 @@ class NvcompZstdCodec(BytesBytesCodec):
         # TODO: add CUDA stream here
         return nvcomp.as_arrays(filtered_inputs), none_indices
 
-    async def _convert_from_nvcomp_arrays(
+    def _convert_from_nvcomp_arrays(
         self,
         arrays: Iterable[nvcomp.Array],
         chunks_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
@@ -123,7 +123,7 @@ class NvcompZstdCodec(BytesBytesCodec):
         chunks_and_specs = list(chunks_and_specs)
 
         # Convert to nvcomp arrays
-        filtered_inputs, none_indices = await self._convert_to_nvcomp_arrays(chunks_and_specs)
+        filtered_inputs, none_indices = self._convert_to_nvcomp_arrays(chunks_and_specs)
 
         outputs = self._zstd_codec.decode(filtered_inputs) if len(filtered_inputs) > 0 else []
 
@@ -135,7 +135,7 @@ class NvcompZstdCodec(BytesBytesCodec):
         for index in none_indices:
             outputs.insert(index, None)
 
-        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs)
+        return self._convert_from_nvcomp_arrays(outputs, chunks_and_specs)
 
     async def encode(
         self,
@@ -157,7 +157,7 @@ class NvcompZstdCodec(BytesBytesCodec):
         chunks_and_specs = list(chunks_and_specs)
 
         # Convert to nvcomp arrays
-        filtered_inputs, none_indices = await self._convert_to_nvcomp_arrays(chunks_and_specs)
+        filtered_inputs, none_indices = self._convert_to_nvcomp_arrays(chunks_and_specs)
 
         outputs = self._zstd_codec.encode(filtered_inputs) if len(filtered_inputs) > 0 else []
 
@@ -169,7 +169,7 @@ class NvcompZstdCodec(BytesBytesCodec):
         for index in none_indices:
             outputs.insert(index, None)
 
-        return await self._convert_from_nvcomp_arrays(outputs, chunks_and_specs)
+        return self._convert_from_nvcomp_arrays(outputs, chunks_and_specs)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
