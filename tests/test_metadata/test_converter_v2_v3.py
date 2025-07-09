@@ -6,7 +6,6 @@ import numcodecs
 import numcodecs.abc
 import pytest
 from numcodecs.zarr3 import LZMA, Delta
-from typer.testing import CliRunner
 
 import zarr
 from zarr.abc.codec import Codec
@@ -19,9 +18,15 @@ from zarr.codecs.zstd import ZstdCodec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.dtype.npy.int import BaseInt, UInt8, UInt16
-from zarr.core.metadata.converter.cli import app
 
-runner = CliRunner()
+typer_testing = pytest.importorskip(
+    "typer.testing", reason="optional cli dependencies aren't installed"
+)
+cli = pytest.importorskip(
+    "zarr.core.metadata.converter.cli", reason="optional cli dependencies aren't installed"
+)
+
+runner = typer_testing.CliRunner()
 
 
 def create_nested_zarr(store: Store, attributes: dict[str, Any], separator: str) -> list[str]:
@@ -130,7 +135,7 @@ def test_convert_array(local_store: Store) -> None:
         attributes=attributes,
     )
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -156,7 +161,7 @@ def test_convert_group(local_store: Store) -> None:
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
     zarr.create_group(store=local_store, zarr_format=2, attributes=attributes)
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -176,7 +181,7 @@ def test_convert_nested_groups_and_arrays(local_store: Store, separator: str) ->
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
     paths = create_nested_zarr(local_store, attributes, separator)
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
 
     # check zarr.json were created for every group and array
@@ -206,7 +211,7 @@ def test_convert_nested_with_path(local_store: Store, separator: str) -> None:
 
     create_nested_zarr(local_store, {}, separator)
 
-    result = runner.invoke(app, ["convert", str(local_store.root), "--path", "group_1"])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root), "--path", "group_1"])
     assert result.exit_code == 0
 
     group_path = local_store.root / "group_1"
@@ -255,7 +260,7 @@ def test_convert_compressor(
         fill_value=0,
     )
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -283,7 +288,7 @@ def test_convert_filter(local_store: Store) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -317,7 +322,7 @@ def test_convert_C_vs_F_order(
         order=order,
     )
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -349,7 +354,7 @@ def test_convert_endian(
         fill_value=0,
     )
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -371,7 +376,7 @@ def test_convert_v3(local_store: Store, node_type: str) -> None:
     else:
         zarr.create_group(store=local_store, zarr_format=3)
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert str(result.exception) == "Only arrays / groups with zarr v2 metadata can be converted"
@@ -390,7 +395,7 @@ def test_convert_unknown_codec(local_store: Store) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 1
     assert isinstance(result.exception, ValueError)
     assert (
@@ -411,7 +416,7 @@ def test_convert_incorrect_filter(local_store: Store) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert (
@@ -432,7 +437,7 @@ def test_convert_incorrect_compressor(local_store: Store) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert (
@@ -447,7 +452,7 @@ def test_remove_metadata_v2(local_store: Store, expected_paths_no_metadata: list
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
     create_nested_zarr(local_store, attributes, ".")
 
-    result = runner.invoke(app, ["clear", str(local_store.root), "2"])
+    result = runner.invoke(cli.app, ["clear", str(local_store.root), "2"])
     assert result.exit_code == 0
 
     # check metadata files removed, but all groups / arrays still remain
@@ -465,7 +470,7 @@ def test_remove_metadata_v2_with_path(
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
     create_nested_zarr(local_store, attributes, ".")
 
-    result = runner.invoke(app, ["clear", str(local_store.root), "2", "--path", "group_1"])
+    result = runner.invoke(cli.app, ["clear", str(local_store.root), "2", "--path", "group_1"])
     assert result.exit_code == 0
 
     # check all metadata files inside group_1 are removed (.zattrs / .zgroup / .zarray should remain only inside the top
@@ -494,9 +499,9 @@ def test_remove_metadata_after_conversion(
     create_nested_zarr(local_store, attributes, ".")
 
     # convert v2 metadata to v3 (so now both v2 and v3 metadata present!), then remove either the v2 or v3 metadata
-    result = runner.invoke(app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
-    result = runner.invoke(app, ["clear", str(local_store.root), zarr_format])
+    result = runner.invoke(cli.app, ["clear", str(local_store.root), zarr_format])
     assert result.exit_code == 0
 
     paths = sorted(local_store.root.rglob("*"))
@@ -514,9 +519,9 @@ def test_dry_run(
     create_nested_zarr(local_store, attributes, ".")
 
     if cli_command == "convert":
-        result = runner.invoke(app, ["convert", str(local_store.root), "--dry-run"])
+        result = runner.invoke(cli.app, ["convert", str(local_store.root), "--dry-run"])
     else:
-        result = runner.invoke(app, ["clear", str(local_store.root), "2", "--dry-run"])
+        result = runner.invoke(cli.app, ["clear", str(local_store.root), "2", "--dry-run"])
 
     assert result.exit_code == 0
 

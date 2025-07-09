@@ -103,7 +103,7 @@ def main(
 ) -> None:
     """
     Convert metadata from v2 to v3. See available commands below - access help for individual commands with
-    cli.py COMMAND --help.
+    zarr-converter COMMAND --help.
     """
     _set_logging_config(verbose)
 
