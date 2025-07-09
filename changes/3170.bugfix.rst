@@ -1,0 +1,6 @@
+Fixes a variety of issues related to string data types.
+
+- Brings the ``VariableLengthUTF8`` data type Zarr V3 identifier in alignment with Zarr Python 3.0.8
+- Disallows creation of 0-length fixed-length data types
+- Adds a regression test for the ``VariableLengthUTF8`` data type that checks against version 3.0.8
+- Allows users to request the ``VariableLengthUTF8`` data type with ``str``, ``"str"``, or ``"string"``.

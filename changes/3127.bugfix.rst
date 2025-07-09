@@ -1,2 +1,0 @@
-When `zarr.save` has an argument `path=some/path/` and multiple arrays in `args`, the path resulted in `some/path/some/path` due to using the `path`
-argument twice while building the array path. This is now fixed.
