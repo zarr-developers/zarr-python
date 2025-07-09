@@ -20,6 +20,7 @@ from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
 from zarr.core.array import (
+    DEFAULT_FILL_VALUE,
     Array,
     AsyncArray,
     CompressorLike,
@@ -1009,7 +1010,7 @@ class AsyncGroup:
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = "auto",
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
@@ -2430,7 +2431,7 @@ class Group(SyncMixin):
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = "auto",
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = None,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
@@ -2835,7 +2836,7 @@ class Group(SyncMixin):
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = None,
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = 0,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,

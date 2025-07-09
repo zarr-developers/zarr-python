@@ -11,6 +11,7 @@ from typing_extensions import deprecated
 
 from zarr.abc.store import Store
 from zarr.core.array import (
+    DEFAULT_FILL_VALUE,
     Array,
     AsyncArray,
     CompressorLike,
@@ -863,7 +864,7 @@ async def create(
     chunks: ChunkCoords | int | bool | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
-    fill_value: Any | None = None,  # TODO: need type
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
