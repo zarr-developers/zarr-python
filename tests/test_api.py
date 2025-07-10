@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import zarr.codecs
 import zarr.storage
+from zarr.core.array import init_array
+from zarr.storage._common import StorePath
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -380,6 +382,20 @@ def test_array_order(
     if zarr_format == 2:
         assert arr.metadata.zarr_format == 2
         assert arr.metadata.order == expected_order
+
+
+async def test_init_order_warns() -> None:
+    with pytest.warns(
+        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+    ):
+        await init_array(
+            store_path=StorePath(store=MemoryStore()),
+            shape=(1,),
+            dtype="uint8",
+            config=None,
+            zarr_format=3,
+            order="F",
+        )
 
 
 # def test_lazy_loader():
