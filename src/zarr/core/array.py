@@ -4721,7 +4721,7 @@ def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[numcodecs.abc.Codec] | 
 
             return (VLenUTF8(),)
         else:
-            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id}"
+            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}"
             raise ValueError(msg)
     return None
 
@@ -4795,7 +4795,7 @@ def _parse_chunk_encoding_v2(
             elif isinstance(dtype, VariableLengthBytes):
                 codec_name = "the numcodecs.VLenBytes codec"
             else:
-                codec_name = "an unknown object codec"
+                codec_name = f"an unknown object codec with id {dtype.object_codec_id!r}"
             msg = (
                 f"Data type {dtype} requires {codec_name}, "
                 "but no such codec was specified in the filters or compressor parameters for "
