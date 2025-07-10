@@ -70,6 +70,8 @@ from zarr.core.common import (
 from zarr.core.config import categorize_data_type
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
+    VariableLengthBytes,
+    VariableLengthUTF8,
     ZDType,
     ZDTypeLike,
     parse_data_type,
@@ -111,6 +113,7 @@ from zarr.core.metadata import (
 )
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
+    get_object_codec_id,
     parse_compressor,
     parse_filters,
 )
@@ -4686,7 +4689,7 @@ def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
     ``VLenBytesCodec``, respectively.
 
     """
-    serializer: ArrayBytesCodec = BytesCodec()
+    serializer: ArrayBytesCodec = BytesCodec(endian=None)
 
     if isinstance(dtype, HasEndianness):
         serializer = BytesCodec(endian="little")
@@ -4772,7 +4775,33 @@ def _parse_chunk_encoding_v2(
                     )
                     raise TypeError(msg)
         _filters = parse_filters(filters)
-
+    if isinstance(dtype, HasObjectCodec):
+        # check the filters and the compressor for the object codec required for this data type
+        if _filters is None:
+            if _compressor is None:
+                object_codec_id = None
+            else:
+                object_codec_id = get_object_codec_id((_compressor.get_config(),))
+        else:
+            object_codec_id = get_object_codec_id(
+                (
+                    *[f.get_config() for f in _filters],
+                    _compressor.get_config() if _compressor is not None else None,
+                )
+            )
+        if object_codec_id is None:
+            if isinstance(dtype, VariableLengthUTF8):
+                codec_name = "the numcodecs.VLenUTF8 codec"
+            elif isinstance(dtype, VariableLengthBytes):
+                codec_name = "the numcodecs.VLenBytes codec"
+            else:
+                codec_name = "an unknown object codec"
+            msg = (
+                f"Data type {dtype} requires {codec_name}, "
+                "but no such codec was specified in the filters or compressor parameters for "
+                "this array. "
+            )
+            raise ValueError(msg)
     return _filters, _compressor
 
 
@@ -4820,17 +4849,11 @@ def _parse_chunk_encoding_v3(
 
         out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
 
-    # specialize codecs as needed given the dtype
-
-    # TODO: refactor so that the config only contains the name of the codec, and we use the dtype
-    # to create the codec instance, instead of storing a dict representation of a full codec.
-
     # TODO: ensure that the serializer is compatible with the ndarray produced by the
     # array-array codecs. For example, if a sequence of array-array codecs produces an
     # array with a single-byte data type, then the serializer should not specify endiannesss.
-    if isinstance(out_array_bytes, BytesCodec) and not isinstance(dtype, HasEndianness):
-        # The default endianness in the bytescodec might not be None, so we need to replace it
-        out_array_bytes = replace(out_array_bytes, endian=None)
+
+    # TODO: add checks to ensure that the right serializer is used for vlen data types
     return out_array_array, out_array_bytes, out_bytes_bytes
 
 
