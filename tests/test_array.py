@@ -1335,6 +1335,8 @@ class TestCreateArray:
     async def test_v2_chunk_encoding(
         store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
     ) -> None:
+        if dtype == "str" and filters != "auto":
+            pytest.skip("Only the auto filters are compatible with str dtype in this test.")
         arr = await create_array(
             store=store,
             dtype=dtype,
