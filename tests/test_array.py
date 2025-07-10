@@ -1869,7 +1869,7 @@ class UnknownObjectDtype(UTF8Base[np.dtypes.ObjectDType]):
         np.dtypes.ObjectDType
             The NumPy object dtype.
         """
-        return np.dtype("o")
+        return np.dtype("o")  # type: ignore[return-value]
 
 
 @pytest.mark.parametrize(
@@ -1885,7 +1885,7 @@ def test_chunk_encoding_no_object_codec_errors(dtype: ZDType[Any, Any]) -> None:
     elif isinstance(dtype, VariableLengthBytes):
         codec_name = "the numcodecs.VLenBytes codec"
     else:
-        codec_name = f"an unknown object codec with id {dtype.object_codec_id!r}"
+        codec_name = f"an unknown object codec with id {dtype.object_codec_id!r}"  # type: ignore[attr-defined]
     msg = (
         f"Data type {dtype} requires {codec_name}, "
         "but no such codec was specified in the filters or compressor parameters for "

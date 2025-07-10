@@ -4790,10 +4790,10 @@ def _parse_chunk_encoding_v2(
                 )
             )
         if object_codec_id is None:
-            if isinstance(dtype, VariableLengthUTF8):
-                codec_name = "the numcodecs.VLenUTF8 codec"
-            elif isinstance(dtype, VariableLengthBytes):
-                codec_name = "the numcodecs.VLenBytes codec"
+            if isinstance(dtype, VariableLengthUTF8):  # type: ignore[unreachable]
+                codec_name = "the numcodecs.VLenUTF8 codec"  # type: ignore[unreachable]
+            elif isinstance(dtype, VariableLengthBytes):  # type: ignore[unreachable]
+                codec_name = "the numcodecs.VLenBytes codec"  # type: ignore[unreachable]
             else:
                 codec_name = f"an unknown object codec with id {dtype.object_codec_id!r}"
             msg = (
