@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 import itertools
 import json
 import logging
@@ -20,6 +19,7 @@ from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
 from zarr.core.array import (
+    DEFAULT_FILL_VALUE,
     Array,
     AsyncArray,
     CompressorLike,
@@ -49,7 +49,6 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v3 import V3JsonEncoder, _replace_special_floats
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import StoreLike, StorePath
@@ -72,6 +71,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
+    from zarr.core.dtype import ZDTypeLike
 
 logger = logging.getLogger("zarr.group")
 
@@ -336,7 +336,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(_replace_special_floats(self.to_dict()), cls=V3JsonEncoder).encode()
+                    json.dumps(self.to_dict(), indent=json_indent, allow_nan=False).encode()
                 )
             }
         else:
@@ -345,7 +345,7 @@ class GroupMetadata(Metadata):
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
                 ZATTRS_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.attributes, indent=json_indent).encode()
+                    json.dumps(self.attributes, indent=json_indent, allow_nan=False).encode()
                 ),
             }
             if self.consolidated_metadata:
@@ -356,16 +356,10 @@ class GroupMetadata(Metadata):
                 consolidated_metadata = self.consolidated_metadata.to_dict()["metadata"]
                 assert isinstance(consolidated_metadata, dict)
                 for k, v in consolidated_metadata.items():
-                    attrs = v.pop("attributes", None)
-                    d[f"{k}/{ZATTRS_JSON}"] = _replace_special_floats(attrs)
+                    attrs = v.pop("attributes", {})
+                    d[f"{k}/{ZATTRS_JSON}"] = attrs
                     if "shape" in v:
                         # it's an array
-                        if isinstance(v.get("fill_value", None), np.void):
-                            v["fill_value"] = base64.standard_b64encode(
-                                cast("bytes", v["fill_value"])
-                            ).decode("ascii")
-                        else:
-                            v = _replace_special_floats(v)
                         d[f"{k}/{ZARRAY_JSON}"] = v
                     else:
                         d[f"{k}/{ZGROUP_JSON}"] = {
@@ -379,8 +373,7 @@ class GroupMetadata(Metadata):
 
                 items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
                     json.dumps(
-                        {"metadata": d, "zarr_consolidated_format": 1},
-                        cls=V3JsonEncoder,
+                        {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=False
                     ).encode()
                 )
 
@@ -489,10 +482,11 @@ class AsyncGroup:
 
             By default, consolidated metadata is used if it's present in the
             store (in the ``zarr.json`` for Zarr format 3 and in the ``.zmetadata`` file
-            for Zarr format 2).
+            for Zarr format 2) and the Store supports it.
 
-            To explicitly require consolidated metadata, set ``use_consolidated=True``,
-            which will raise an exception if consolidated metadata is not found.
+            To explicitly require consolidated metadata, set ``use_consolidated=True``.
+            In this case, if the Store doesn't support consolidation or consolidated metadata is
+            not found, a ``ValueError`` exception is raised.
 
             To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
             which will fall back to using the regular, non consolidated metadata.
@@ -502,6 +496,16 @@ class AsyncGroup:
             to load consolidated metadata from a non-default key.
         """
         store_path = await make_store_path(store)
+        if not store_path.store.supports_consolidated_metadata:
+            # Fail if consolidated metadata was requested but the Store doesn't support it
+            if use_consolidated:
+                store_name = type(store_path.store).__name__
+                raise ValueError(
+                    f"The Zarr store in use ({store_name}) doesn't support consolidated metadata."
+                )
+
+            # if use_consolidated was None (optional), the Store dictates it doesn't want consolidation
+            use_consolidated = False
 
         consolidated_key = ZMETADATA_V2_JSON
 
@@ -619,6 +623,7 @@ class AsyncGroup:
                     consolidated_metadata[path].update(v)
                 else:
                     raise ValueError(f"Invalid file type '{kind}' at path '{path}")
+
             group_metadata["consolidated_metadata"] = {
                 "metadata": dict(consolidated_metadata),
                 "kind": "inline",
@@ -995,22 +1000,24 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        shape: ShapeLike | None = None,
+        dtype: ZDTypeLike | None = None,
+        data: np.ndarray[Any, np.dtype[Any]] | None = None,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = "auto",
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = 0,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
+        write_data: bool = True,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array within this group.
 
@@ -1098,6 +1105,11 @@ class AsyncGroup:
             Whether to overwrite an array with the same name in the store, if one exists.
         config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
+        write_data : bool
+            If a pre-existing array-like object was provided to this function via the ``data`` parameter
+            then ``write_data`` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            array will be left empty.
 
         Returns
         -------
@@ -1112,6 +1124,7 @@ class AsyncGroup:
             name=name,
             shape=shape,
             dtype=dtype,
+            data=data,
             chunks=chunks,
             shards=shards,
             filters=filters,
@@ -1126,6 +1139,7 @@ class AsyncGroup:
             storage_options=storage_options,
             overwrite=overwrite,
             config=config,
+            write_data=write_data,
         )
 
     @deprecated("Use AsyncGroup.create_array instead.")
@@ -1304,6 +1318,8 @@ class AsyncGroup:
     async def members(
         self,
         max_depth: int | None = 0,
+        *,
+        use_consolidated_for_children: bool = True,
     ) -> AsyncGenerator[
         tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
         None,
@@ -1321,6 +1337,11 @@ class AsyncGroup:
             default, (``max_depth=0``) only immediate children are included. Set
             ``max_depth=None`` to include all nodes, and some positive integer
             to consider children within that many levels of the root Group.
+        use_consolidated_for_children : bool, default True
+            Whether to use the consolidated metadata of child groups loaded
+            from the store. Note that this only affects groups loaded from the
+            store. If the current Group already has consolidated metadata, it
+            will always be used.
 
         Returns
         -------
@@ -1331,7 +1352,9 @@ class AsyncGroup:
         """
         if max_depth is not None and max_depth < 0:
             raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
-        async for item in self._members(max_depth=max_depth):
+        async for item in self._members(
+            max_depth=max_depth, use_consolidated_for_children=use_consolidated_for_children
+        ):
             yield item
 
     def _members_consolidated(
@@ -1361,7 +1384,7 @@ class AsyncGroup:
                     yield from obj._members_consolidated(new_depth, prefix=key)
 
     async def _members(
-        self, max_depth: int | None
+        self, max_depth: int | None, *, use_consolidated_for_children: bool = True
     ) -> AsyncGenerator[
         tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
     ]:
@@ -1391,7 +1414,11 @@ class AsyncGroup:
         # enforce a concurrency limit by passing a semaphore to all the recursive functions
         semaphore = asyncio.Semaphore(config.get("async.concurrency"))
         async for member in _iter_members_deep(
-            self, max_depth=max_depth, skip_keys=skip_keys, semaphore=semaphore
+            self,
+            max_depth=max_depth,
+            skip_keys=skip_keys,
+            semaphore=semaphore,
+            use_consolidated_for_children=use_consolidated_for_children,
         ):
             yield member
 
@@ -1437,7 +1464,7 @@ class AsyncGroup:
             group already exists at path ``a``, then this function will leave the group at ``a`` as-is.
 
         Yields
-        -------
+        ------
             tuple[str, AsyncArray | AsyncGroup].
         """
         # check that all the nodes have the same zarr_format as Self
@@ -2091,10 +2118,34 @@ class Group(SyncMixin):
 
         return self._sync(self._async_group.nmembers(max_depth=max_depth))
 
-    def members(self, max_depth: int | None = 0) -> tuple[tuple[str, Array | Group], ...]:
+    def members(
+        self, max_depth: int | None = 0, *, use_consolidated_for_children: bool = True
+    ) -> tuple[tuple[str, Array | Group], ...]:
         """
-        Return the sub-arrays and sub-groups of this group as a tuple of (name, array | group)
-        pairs
+        Returns an AsyncGenerator over the arrays and groups contained in this group.
+        This method requires that `store_path.store` supports directory listing.
+
+        The results are not guaranteed to be ordered.
+
+        Parameters
+        ----------
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
+        use_consolidated_for_children : bool, default True
+            Whether to use the consolidated metadata of child groups loaded
+            from the store. Note that this only affects groups loaded from the
+            store. If the current Group already has consolidated metadata, it
+            will always be used.
+
+        Returns
+        -------
+        path:
+            A string giving the path to the target, relative to the Group ``self``.
+        value: AsyncArray or AsyncGroup
+            The AsyncArray or AsyncGroup that is a child of ``self``.
         """
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
@@ -2140,7 +2191,7 @@ class Group(SyncMixin):
             group already exists at path ``a``, then this function will leave the group at ``a`` as-is.
 
         Yields
-        -------
+        ------
             tuple[str, Array | Group].
 
         Examples
@@ -2369,22 +2420,24 @@ class Group(SyncMixin):
         self,
         name: str,
         *,
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        shape: ShapeLike | None = None,
+        dtype: ZDTypeLike | None = None,
+        data: np.ndarray[Any, np.dtype[Any]] | None = None,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = "auto",
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = 0,
-        order: MemoryOrder | None = "C",
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
+        order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
+        write_data: bool = True,
     ) -> Array:
         """Create an array within this group.
 
@@ -2395,10 +2448,13 @@ class Group(SyncMixin):
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : ChunkCoords
-            Shape of the array.
-        dtype : npt.DTypeLike
-            Data type of the array.
+        shape : ChunkCoords, optional
+            Shape of the array. Can be ``None`` if ``data`` is provided.
+        dtype : npt.DTypeLike | None
+            Data type of the array. Can be ``None`` if ``data`` is provided.
+        data : Array-like data to use for initializing the array. If this parameter is provided, the
+            ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
+            or ``None``.
         chunks : ChunkCoords, optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
@@ -2472,6 +2528,11 @@ class Group(SyncMixin):
             Whether to overwrite an array with the same name in the store, if one exists.
         config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
+        write_data : bool
+            If a pre-existing array-like object was provided to this function via the ``data`` parameter
+            then ``write_data`` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            array will be left empty.
 
         Returns
         -------
@@ -2486,6 +2547,7 @@ class Group(SyncMixin):
                     name=name,
                     shape=shape,
                     dtype=dtype,
+                    data=data,
                     chunks=chunks,
                     shards=shards,
                     fill_value=fill_value,
@@ -2499,6 +2561,7 @@ class Group(SyncMixin):
                     overwrite=overwrite,
                     storage_options=storage_options,
                     config=config,
+                    write_data=write_data,
                 )
             )
         )
@@ -2762,7 +2825,7 @@ class Group(SyncMixin):
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = None,
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = 0,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
@@ -3318,6 +3381,7 @@ async def _iter_members_deep(
     max_depth: int | None,
     skip_keys: tuple[str, ...],
     semaphore: asyncio.Semaphore | None = None,
+    use_consolidated_for_children: bool = True,
 ) -> AsyncGenerator[
     tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
 ]:
@@ -3335,6 +3399,11 @@ async def _iter_members_deep(
         A tuple of keys to skip when iterating over the possible members of the group.
     semaphore : asyncio.Semaphore | None
         An optional semaphore to use for concurrency control.
+    use_consolidated_for_children : bool, default True
+        Whether to use the consolidated metadata of child groups loaded
+        from the store. Note that this only affects groups loaded from the
+        store. If the current Group already has consolidated metadata, it
+        will always be used.
 
     Yields
     ------
@@ -3349,8 +3418,19 @@ async def _iter_members_deep(
     else:
         new_depth = max_depth - 1
     async for name, node in _iter_members(group, skip_keys=skip_keys, semaphore=semaphore):
+        is_group = isinstance(node, AsyncGroup)
+        if (
+            is_group
+            and not use_consolidated_for_children
+            and node.metadata.consolidated_metadata is not None  # type: ignore [union-attr]
+        ):
+            node = cast("AsyncGroup", node)
+            # We've decided not to trust consolidated metadata at this point, because we're
+            # reconsolidating the metadata, for example.
+            node = replace(node, metadata=replace(node.metadata, consolidated_metadata=None))
         yield name, node
-        if isinstance(node, AsyncGroup) and do_recursion:
+        if is_group and do_recursion:
+            node = cast("AsyncGroup", node)
             to_recurse[name] = _iter_members_deep(
                 node, max_depth=new_depth, skip_keys=skip_keys, semaphore=semaphore
             )

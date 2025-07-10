@@ -6,7 +6,7 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 import zarr.core.array
-from zarr.core.array import Array, AsyncArray, CompressorLike
+from zarr.core.array import DEFAULT_FILL_VALUE, Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
@@ -14,6 +14,7 @@ from zarr.core.sync_group import create_hierarchy
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    import numcodecs.abc
     import numpy as np
     import numpy.typing as npt
 
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
         ShapeLike,
         ZarrFormat,
     )
+    from zarr.core.dtype import ZDTypeLike
     from zarr.storage import StoreLike
 
 __all__ = [
@@ -80,7 +82,8 @@ def consolidate_metadata(
     Consolidate the metadata of all nodes in a hierarchy.
 
     Upon completion, the metadata of the root node in the Zarr hierarchy will be
-    updated to include all the metadata of child nodes.
+    updated to include all the metadata of child nodes. For Stores that do
+    not use consolidated metadata, this operation raises a `TypeError`.
 
     Parameters
     ----------
@@ -100,7 +103,10 @@ def consolidate_metadata(
     -------
     group: Group
         The group, with the ``consolidated_metadata`` field set to include
-        the metadata of each child node.
+        the metadata of each child node. If the Store doesn't support
+        consolidated metadata, this function raises a `TypeError`.
+        See ``Store.supports_consolidated_metadata``.
+
     """
     return Group(sync(async_api.consolidate_metadata(store, path=path, zarr_format=zarr_format)))
 
@@ -156,7 +162,7 @@ def load(
 def open(
     store: StoreLike | None = None,
     *,
-    mode: AccessModeLiteral = "a",
+    mode: AccessModeLiteral | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -174,6 +180,7 @@ def open(
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
+        If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional
@@ -593,16 +600,16 @@ def create(
     shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | int | bool | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
-    fill_value: Any | None = 0,  # TODO: need type
+    fill_value: Any | None = DEFAULT_FILL_VALUE,  # TODO: need type
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -745,14 +752,14 @@ def create_array(
     *,
     name: str | None = None,
     shape: ShapeLike | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
@@ -776,7 +783,7 @@ def create_array(
         at the root of the store.
     shape : ChunkCoords, optional
         Shape of the array. Can be ``None`` if ``data`` is provided.
-    dtype : npt.DTypeLike, optional
+    dtype : ZDTypeLike, optional
         Data type of the array. Can be ``None`` if ``data`` is provided.
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
@@ -918,7 +925,7 @@ def from_array(
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
     serializer: SerializerLike | Literal["keep"] = "keep",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,

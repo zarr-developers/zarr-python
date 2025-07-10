@@ -1,13 +1,15 @@
+from __future__ import annotations
+
 import dataclasses
 import textwrap
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Literal
 
-import numcodecs.abc
-import numpy as np
+if TYPE_CHECKING:
+    import numcodecs.abc
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-from zarr.core.common import ZarrFormat
-from zarr.core.metadata.v3 import DataType
+    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+    from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -78,7 +80,7 @@ class ArrayInfo:
 
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
-    _data_type: np.dtype[Any] | DataType
+    _data_type: ZDType[TBaseDType, TBaseScalar]
     _fill_value: object
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
@@ -131,7 +133,7 @@ class ArrayInfo:
 
         if self._count_bytes_stored is not None:
             template += "\nNo. bytes stored   : {_count_bytes_stored}"
-            kwargs["_count_stored"] = byte_info(self._count_bytes_stored)
+            kwargs["_count_bytes_stored"] = byte_info(self._count_bytes_stored)
 
         if (
             self._count_bytes is not None

@@ -10,16 +10,18 @@ from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
+    Generic,
     Literal,
+    TypedDict,
     TypeVar,
     cast,
     overload,
 )
 
-import numpy as np
+from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
-from zarr.core.strings import _STRING_DTYPE
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -40,7 +42,27 @@ NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
+ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
+
+TName = TypeVar("TName", bound=str)
+TConfig = TypeVar("TConfig", bound=Mapping[str, object])
+
+
+class NamedConfig(TypedDict, Generic[TName, TConfig]):
+    """
+    A typed dictionary representing an object with a name and configuration, where the configuration
+    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+    """
+
+    name: ReadOnly[TName]
+    """The name of the object."""
+
+    configuration: ReadOnly[TConfig]
+    """The configuration of the object."""
 
 
 def product(tup: ChunkCoords) -> int:
@@ -166,16 +188,6 @@ def parse_bool(data: Any) -> bool:
     if isinstance(data, bool):
         return data
     raise ValueError(f"Expected bool, got {data} instead.")
-
-
-def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
-    if dtype is str or dtype == "str":
-        if zarr_format == 2:
-            # special case as object
-            return np.dtype("object")
-        else:
-            return _STRING_DTYPE
-    return np.dtype(dtype)
 
 
 def _warn_write_empty_chunks_kwarg() -> None:

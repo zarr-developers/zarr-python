@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer.core import ArrayLike, NDArrayLike
-    from zarr.core.common import BytesLike
+    from zarr.core.common import BytesLike, ChunkCoords
 
 
 class Buffer(core.Buffer):
@@ -161,6 +161,12 @@ class NDBuffer(core.NDBuffer):
             return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
 
     @classmethod
+    def empty(
+        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+    ) -> Self:
+        return cls(np.empty(shape=shape, dtype=dtype, order=order))
+
+    @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         return cls.from_ndarray_like(np.asanyarray(array_like))
 
@@ -224,5 +230,10 @@ def numpy_buffer_prototype() -> core.BufferPrototype:
     return core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
 
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)
+register_buffer(Buffer, qualname="zarr.buffer.cpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.buffer.cpu.NDBuffer")
+
+
+# backwards compatibility
+register_buffer(Buffer, qualname="zarr.core.buffer.cpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.core.buffer.cpu.NDBuffer")

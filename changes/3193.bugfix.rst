@@ -1,0 +1,2 @@
+Removed an unnecessary check from ``_fsspec._make_async`` that would raise an exception when
+creating a read-only store backed by a local file system with ``auto_mkdir`` set  to ``False``.

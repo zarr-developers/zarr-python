@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
-    from zarr.core.common import BytesLike
+    from zarr.core.common import BytesLike, ChunkCoords
 
 try:
     import cupy as cp
@@ -179,6 +179,12 @@ class NDBuffer(core.NDBuffer):
         return ret
 
     @classmethod
+    def empty(
+        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+    ) -> Self:
+        return cls(cp.empty(shape=shape, dtype=dtype, order=order))
+
+    @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         """Create a new buffer of Numpy array-like object
 
@@ -220,5 +226,9 @@ class NDBuffer(core.NDBuffer):
 
 buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)
+register_buffer(Buffer, qualname="zarr.buffer.gpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.buffer.gpu.NDBuffer")
+
+# backwards compatibility
+register_buffer(Buffer, qualname="zarr.core.buffer.gpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.core.buffer.gpu.NDBuffer")
