@@ -491,11 +491,34 @@ class BatchedCodecPipeline(CodecPipeline):
 def codecs_from_list(
     codecs: Iterable[Codec],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
+    from zarr.codecs.numcodec import NumcodecsWrapper
     from zarr.codecs.sharding import ShardingCodec
-
     array_array: tuple[ArrayArrayCodec, ...] = ()
     array_bytes_maybe: ArrayBytesCodec | None = None
     bytes_bytes: tuple[BytesBytesCodec, ...] = ()
+
+    # handle two cases
+    # either all of the codecs are numcodecwrapper instances, in which case we set the last element
+    # to array-bytes and the rest to array-array
+    # or one of the codecs is an array-bytes, in which case we convert any preceding numcodecswrapper
+    # instances to array-array, and any following numcodecswrapper instances to bytes-bytes
+
+    codecs_tup = tuple(codecs)
+    array_array_idcs: tuple[tuple[int, ArrayArrayCodec], ...] = ()
+    array_bytes_idcs: tuple[tuple[int, ArrayBytesCodec], ...] = ()
+    bytes_bytes_idcs: tuple[tuple[int, BytesBytesCodec], ...] = ()
+    numcodec_wrapper_idcs: tuple[tuple[int, NumcodecsWrapper], ...] = ()
+
+    for idx, codec in enumerate(codecs_tup):
+        match codec:
+            case ArrayArrayCodec():
+                array_array_idcs += ((idx,codec),)
+            case ArrayBytesCodec():
+                array_bytes_idcs += ((idx,codec),)
+            case BytesBytesCodec():
+                bytes_bytes_idcs += ((idx,codec),)
+            case NumcodecsWrapper():
+                numcodec_wrapper_idcs += ((idx,codec),)
 
     if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(tuple(codecs)) > 1:
         warn(
@@ -503,6 +526,86 @@ def codecs_from_list(
             "writes, which may lead to inefficient performance.",
             stacklevel=3,
         )
+    if len(array_bytes_idcs) == 0:
+        if len(numcodec_wrapper_idcs) == 0:
+            msg = f'No ArrayBytesCodec was found, that is a big error!. Got {codecs_tup} instead.'
+            raise ValueError(msg)
+        elif len(numcodec_wrapper_idcs) == len(codecs_tup):
+                # convert the last entry to an array-bytes codec, and the previous codecs to
+                # array-array
+                array_bytes_maybe = codecs_tup[-1].to_array_bytes()
+                array_array = tuple(c.to_array_array() for c in codecs_tup[:-1])
+        else:
+            if len(array_array_idcs) > 0:
+                last_array_array_idx = array_array_idcs[-1][0]
+
+                if last_array_array_idx == len(codecs_tup) - 1:
+                    raise ValueError(
+                        "The last codec is an ArrayArrayCodec, but there is no ArrayBytesCodec."
+                    )
+
+                for idx, aac in enumerate(codecs_tup[:(last_array_array_idx + 1)]):
+                    if isinstance(aac, NumcodecsWrapper):
+                        array_array += (aac.to_array_array(),)
+                    elif isinstance(aac, ArrayArrayCodec):
+                        array_array += (aac,)
+                    else:
+                        msg = (
+                            f"Invalid codec {aac} at index {idx}. Expected an ArrayArrayCodec"
+                            )
+                        raise TypeError(msg)
+
+                if isinstance(codecs_tup[last_array_array_idx + 1], NumcodecsWrapper):
+                    array_bytes_maybe = codecs_tup[last_array_array_idx + 1].to_array_bytes()
+                else:
+                    msg = (
+                        f"Invalid codec {codecs_tup[last_array_array_idx + 1]} at index "
+                        f"{last_array_array_idx + 1}."
+                        "Expected a NumcodecsWrapper or an ArrayBytesCodec, got "
+                        f"{type(codecs_tup[last_array_array_idx + 1])}"
+                        )
+                    raise TypeError(msg)
+                for idx, rem in enumerate(codecs_tup[(last_array_array_idx + 2):]):
+                    if isinstance(rem, NumcodecsWrapper):
+                        bytes_bytes += (rem.to_bytes_bytes(),)
+                    elif isinstance(rem, BytesBytesCodec):
+                        bytes_bytes += (rem,)
+                    else:
+                        msg = (
+                            f"Invalid codec {rem} at index {idx}. Expected a BytesBytesCodec"
+                            )
+                        raise TypeError(msg)
+
+    elif len(array_bytes_idcs) == 1:
+        bb_idx, ab_codec = array_bytes_idcs[0]
+        array_bytes_maybe = ab_codec
+
+        for idx, aa_codec in enumerate(codecs_tup[:bb_idx]):
+            if isinstance(aa_codec, NumcodecsWrapper):
+                array_array += (c.to_bytes_bytes(),)
+            elif isinstance(aa_codec, ArrayArrayCodec):
+                array_array += (aa_codec,)
+            else:
+                msg = (
+                    f"Invalid codec {aa_codec} at index {idx}. Expected an ArrayArrayCodec"
+                    )
+                raise TypeError(msg)
+
+        if bb_idx < len(codecs_tup) - 1:
+            for idx, bb_codec in enumerate(codecs_tup[bb_idx + 1:]):
+                if isinstance(bb_codec, NumcodecsWrapper):
+                    bytes_bytes += (bb_codec.to_bytes_bytes(),)
+                elif isinstance(bb_codec, BytesBytesCodec):
+                    bytes_bytes += (bb_codec,)
+                else:
+                    msg = (
+                        f"Invalid codec {bb_codec} at index {idx}. Expected a BytesBytesCodec"
+                        )
+                    raise TypeError(msg)
+    else:
+        raise ValueError('More than one ArrayBytes codec found, that is a big error!')
+
+    return array_array, array_bytes_maybe, bytes_bytes
 
     for prev_codec, cur_codec in pairwise((None, *codecs)):
         if isinstance(cur_codec, ArrayArrayCodec):
@@ -540,7 +643,8 @@ def codecs_from_list(
                     f"Got {type(prev_codec)} instead."
                 )
             bytes_bytes += (cur_codec,)
-        else:
+        elif isinstance(cur_codec, NumcodecsWrapper):
+
             raise TypeError
 
     if array_bytes_maybe is None:

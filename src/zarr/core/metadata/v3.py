@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
-from zarr.codecs.numcodec import NumcodecsAdapter
+from zarr.codecs.numcodec import NumcodecsWrapper
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import (
     VariableLengthString,
@@ -40,7 +40,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
-from zarr.registry import get_codec_class
+from zarr.registry import get_codec, get_codec_class
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -67,15 +67,19 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
-            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-            out += (get_codec_class(name_parsed).from_dict(c),)
+            name_parsed, _config = parse_named_configuration(c, require_configuration=False)
+            if _config is None:
+                config = {}
+            else:
+                config = _config
+            out += (get_codec(name_parsed, config),)
 
     return out
 
 
 def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
     # ensure that we have at least one ArrayBytesCodec
-    abcs: list[ArrayBytesCodec] = [codec for codec in codecs if isinstance(codec, ArrayBytesCodec)]
+    abcs: list[ArrayBytesCodec] = [codec for codec in codecs if isinstance(codec, (ArrayBytesCodec, NumcodecsWrapper))]
     if len(abcs) == 0:
         raise ValueError("At least one ArrayBytesCodec is required.")
     elif len(abcs) > 1:
@@ -337,12 +341,12 @@ class ArrayV3Metadata(Metadata):
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
 
-        out_dict["codecs"] = []
+        out_dict["codecs"] = ()
         for codec in self.codecs:
-            if isinstance(codec, NumcodecsAdapter):
-                out_dict["codecs"].append(codec.to_json(zarr_format=3))
+            if isinstance(codec, NumcodecsWrapper):
+                out_dict["codecs"] += (codec.to_json(zarr_format=3),)
             else:
-                out_dict["codecs"].append(codec.to_dict())
+                out_dict["codecs"] += (codec.to_dict(),)
 
         # TODO: replace the `to_dict` / `from_dict` on the `Metadata`` class with
         # to_json, from_json, and have ZDType inherit from `Metadata`

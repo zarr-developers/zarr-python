@@ -71,8 +71,9 @@ def test_scripts_can_run(script_path: Path, tmp_path: Path) -> None:
     # We resave the script after inserting the absolute path to the local Zarr project directory,
     # and then test its behavior.
     # This allows the example to be useful to users who don't have Zarr installed, but also testable.
+    # --refresh ensures that uv doesn't use a cached build of our local package
     resave_script(script_path, dest_path)
-    result = subprocess.run(["uv", "run", str(dest_path)], capture_output=True, text=True)
+    result = subprocess.run(["uv", "run", "--refresh", str(dest_path)], capture_output=True, text=True)
     assert result.returncode == 0, (
         f"Script at {script_path} failed to run. Output: {result.stdout} Error: {result.stderr}"
     )

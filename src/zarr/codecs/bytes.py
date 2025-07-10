@@ -74,12 +74,11 @@ class BytesCodec(ArrayBytesCodec):
     ) -> NDBuffer:
         assert isinstance(chunk_bytes, Buffer)
         # TODO: remove endianness enum in favor of literal union
-        endian_str = cast(
-            "Endianness | None", self.endian.value if self.endian is not None else None
-        )
-        new_byte_order = endianness_to_numpy_str(endian_str)
-        dtype = chunk_spec.dtype.to_native_dtype().newbyteorder(new_byte_order)
-
+        endian = self.endian.value if self.endian is not None else None
+        if isinstance(chunk_spec.dtype, HasEndianness) and endian is not None:
+            dtype = replace(chunk_spec.dtype, endianness=endian).to_native_dtype()  # type: ignore[call-arg]
+        else:
+            dtype = chunk_spec.dtype.to_native_dtype()
         as_array_like = chunk_bytes.as_array_like()
         if isinstance(as_array_like, NDArrayLike):
             as_nd_array_like = as_array_like

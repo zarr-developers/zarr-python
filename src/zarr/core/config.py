@@ -107,12 +107,12 @@ config = Config(
                 "order": "C",
                 "write_empty_chunks": False,
                 "v2_default_compressor": {
-                    "default": {"id": "zstd", "level": 0, "checksum": False},
-                    "variable-length-string": {"id": "zstd", "level": 0, "checksum": False},
+                    "default": {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    "variable-length-string": {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
                 },
                 "v2_default_filters": {
                     "default": None,
-                    "variable-length-string": [{"id": "vlen-utf8"}],
+                    "variable-length-string": [{"name": "vlen-utf8"}],
                 },
                 "v3_default_filters": {"default": [], "variable-length-string": []},
                 "v3_default_serializer": {

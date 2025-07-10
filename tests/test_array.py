@@ -465,7 +465,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressors=(numcodecs.Zstd(),),
+            _compressors=(ZstdCodec(),),
         )
         assert result == expected
 
@@ -542,7 +542,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressors=(numcodecs.Zstd(),),
+            _compressors=(ZstdCodec(),),
         )
         assert result == expected
 

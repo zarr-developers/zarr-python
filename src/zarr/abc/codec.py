@@ -47,7 +47,7 @@ CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 TName = TypeVar("TName", bound=str, covariant=True)
 
 
-class CodecConfig_V2(TypedDict, Generic[TName]):
+class CodecJSON_V2(TypedDict, Generic[TName]):
     id: ReadOnly[TName]
 
 
@@ -177,13 +177,13 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         return await _batching_helper(self._encode_single, chunks_and_specs)
 
     @overload
-    def to_json(self, zarr_format: Literal[2]) -> CodecConfig_V2[str]: ...
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
     @overload
     def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
 
     def to_json(
         self, zarr_format: ZarrFormat
-    ) -> CodecConfig_V2[str] | NamedConfig[str, Mapping[str, object]]:
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
         raise NotImplementedError
 
     @classmethod

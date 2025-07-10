@@ -1,13 +1,3 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#   "zarr @ file:///home/bennettd/dev/zarr-python/",
-#   "imagecodecs==2025.3.30"
-# ]
-# ///
-
-#   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
-
 import numcodecs
 import numpy as np
 from imagecodecs.numcodecs import Jpeg

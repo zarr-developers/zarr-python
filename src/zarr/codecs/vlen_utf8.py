@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, overload
+from warnings import warn
 
 import numpy as np
 from numcodecs.vlen import VLenBytes, VLenUTF8
 
-from zarr.abc.codec import ArrayBytesCodec
+from zarr.abc.codec import ArrayBytesCodec, CodecJSON_V2
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -21,6 +22,14 @@ if TYPE_CHECKING:
 _vlen_utf8_codec = VLenUTF8()
 _vlen_bytes_codec = VLenBytes()
 
+class VlenUF8Config(TypedDict):
+    ...
+
+class VLenUTF8JSON_V2(CodecJSON_V2[Literal["vlen-utf8"]]):
+    ...
+
+class VLenUTF8JSON_V3(NamedConfig[Literal["vlen-utf8"], VlenUF8Config]):
+    ...
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
@@ -34,6 +43,16 @@ class VLenUTF8Codec(ArrayBytesCodec):
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "vlen-utf8", "configuration": {}}
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> VLenUTF8JSON_V2: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> VLenUTF8JSON_V3: ...
+    def to_json(self, zarr_format: ZarrFormat) -> VLenUTF8JSON_V2 | VLenUTF8JSON_V3:
+        if zarr_format == 2:
+            return {"id": "vlen-utf8"}
+        else:
+            return {"name": "vlen-utf8"}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self

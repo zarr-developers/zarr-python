@@ -82,7 +82,8 @@ test = [
     "pytest-xdist",
     "packaging",
     "tomlkit",
-    "uv"
+    "uv",
+    "imagecodecs"
 ]
 remote_tests = [
     'zarr[remote]',

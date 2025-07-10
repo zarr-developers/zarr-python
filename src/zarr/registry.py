@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
+from collections.abc import Mapping
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
         Codec,
         CodecPipeline,
     )
+    from zarr.codecs.numcodec import Numcodec, NumcodecsWrapper
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
 
@@ -125,55 +127,10 @@ def fully_qualified_name(cls: type) -> str:
     module = cls.__module__
     return module + "." + cls.__qualname__
 
-def register_filter(key: str, codec_cls: type[ArrayArrayCodec]) -> None:
-    if key not in __filter_registries:
-        __filter_registries[key] = Registry()
-    __filter_registries[key].register(codec_cls)
-
-def register_serializer(key: str, codec_cls: type[ArrayBytesCodec]) -> None:
-    from zarr.codecs.numcodec import NumcodecsArrayBytesCodec, is_numcodec_cls
-    if is_numcodec_cls(codec_cls):
-        _codec_cls = NumcodecsArrayBytesCodec(_codec=codec_cls)
-    else:
-        _codec_cls = codec_cls
-    if key not in __serializer_registries:
-        __serializer_registries[key] = Registry()
-    __serializer_registries[key].register(_codec_cls)
-
-def register_serializer(key: str, codec_cls: type[ArrayBytesCodec]) -> None:
-    from zarr.codecs.numcodec import NumcodecsArrayBytesCodec, is_numcodec_cls
-    if is_numcodec_cls(codec_cls):
-        _codec_cls = NumcodecsArrayBytesCodec(_codec=codec_cls)
-    else:
-        _codec_cls = codec_cls
-    if key not in __serializer_registries:
-        __serializer_registries[key] = Registry()
-    __serializer_registries[key].register(_codec_cls)
-
-def register_compressor(key: str, codec_cls: type[BytesBytesCodec | Numcodec]) -> None:
-    from zarr.codecs.numcodec import NumcodecsBytesBytesCodec, is_numcodec_cls
-    if is_numcodec_cls(codec_cls):
-        _codec_cls = NumcodecsBytesBytesCodec(_codec=codec_cls)
-    else:
-        _codec_cls = codec_cls
-    if key not in __compressor_registries:
-        __compressor_registries[key] = Registry()
-    __compressor_registries[key].register(_codec_cls)
-
 def register_codec(key: str, codec_cls: type[Codec]) -> None:
-    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
-    if issubclass(codec_cls, ArrayBytesCodec):
-        register_serializer(key, codec_cls)
-    elif issubclass(codec_cls, ArrayArrayCodec):
-        register_filter(key, codec_cls)
-    else:
-        register_compressor(key, codec_cls)
-
-    """
     if key not in __codec_registries:
         __codec_registries[key] = Registry()
     __codec_registries[key].register(codec_cls)
-    """
 
 def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
     __pipeline_registry.register(pipe_cls)
@@ -186,16 +143,9 @@ def register_ndbuffer(cls: type[NDBuffer], qualname: str | None = None) -> None:
 def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
     __buffer_registry.register(cls, qualname)
 
-def get_filter_class(key: str, reload_config: bool = False) -> type[ArrayArrayCodec]:
-    return _get_codec_class(key, __serializer_registries, reload_config=reload_config)
-
-def get_serializer_class(key: str, reload_config: bool = False) -> type[ArrayBytesCodec]:
-    return _get_codec_class(key, __serializer_registries, reload_config=reload_config)
-
-def get_compressor_class(key: str, reload_config: bool = False) -> type[BytesBytesCodec]:
-    return _get_codec_class(key, __compressor_registries, reload_config=reload_config)
-
-def _get_codec_class(key: str, registry: dict[str, Registry[Codec]], *, reload_config: bool = False) -> type[Codec]:
+def _get_codec_class(
+    key: str, registry: dict[str, Registry[Codec]], *, reload_config: bool = False
+) -> type[Codec]:
     if reload_config:
         _reload_config()
 
@@ -204,6 +154,7 @@ def _get_codec_class(key: str, registry: dict[str, Registry[Codec]], *, reload_c
         registry[key].lazy_load()
 
     codec_classes = registry[key]
+
     if not codec_classes:
         raise KeyError(key)
 
@@ -222,7 +173,27 @@ def _get_codec_class(key: str, registry: dict[str, Registry[Codec]], *, reload_c
         return selected_codec_cls
     raise KeyError(key)
 
+
+def get_codec(name: str, configuration: Mapping[str, object]) -> Codec | NumcodecsWrapper:
+    """
+    Get an instance of a codec from a name and a configuration
+    """
+    # avoid circular import
+    from zarr.codecs.numcodec import NumcodecsWrapper, get_numcodec_class
+    try:
+        codec_cls = get_codec_class(name)
+        return codec_cls(**configuration)
+    except KeyError as e:
+        # if we can't find the codec in the zarr python registry, try the numcodecs registry
+        try:
+            codec_cls = get_numcodec_class(name)
+            return NumcodecsWrapper(codec=codec_cls.from_config(configuration))
+        except KeyError:
+            raise KeyError(name) from e
+
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
+    return _get_codec_class(key, __codec_registries, reload_config=reload_config)
+
     if reload_config:
         _reload_config()
 
@@ -270,7 +241,7 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec | Numcodec) -> BytesB
 
     result: BytesBytesCodec
     if isinstance(data, dict):
-        result = get_compressor_class(data["name"]).from_dict(data)
+        result = get_codec(data["name"], data["configuration"])
         if not isinstance(result, BytesBytesCodec):
             msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
@@ -292,12 +263,12 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec | Numcodec) -> ArrayB
     from zarr.abc.codec import ArrayBytesCodec
     from zarr.codecs.numcodec import Numcodec, NumcodecsArrayBytesCodec
     if isinstance(data, dict):
-        result = get_serializer_class(data["name"]).from_dict(data)
+        result = get_codec(data["name"], data.get("configuration", {}))
         if not isinstance(result, ArrayBytesCodec):
             msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     elif isinstance(data, Numcodec):
-        return NumcodecsArrayBytesCodec(_codec=data)
+        return NumcodecsArrayBytesCodec(codec=data)
     else:
         if not isinstance(data, ArrayBytesCodec):
             raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
@@ -314,12 +285,12 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec | Numcodec) -> ArrayA
     from zarr.abc.codec import ArrayArrayCodec
     from zarr.codecs.numcodec import Numcodec, NumcodecsArrayArrayCodec
     if isinstance(data, dict):
-        result = get_filter_class(data["name"]).from_dict(data)
+        result = get_codec(data["name"], data["configuration"])
         if not isinstance(result, ArrayArrayCodec):
             msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     elif isinstance(data, Numcodec):
-        return NumcodecsArrayArrayCodec(_codec=data)
+        return NumcodecsArrayArrayCodec(codec=data)
     else:
         if not isinstance(data, ArrayArrayCodec):
             raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")

@@ -3,15 +3,15 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, Required, TypedDict
 
 import numcodecs
 from numcodecs.zstd import Zstd
 from packaging.version import Version
 
-from zarr.abc.codec import BytesBytesCodec
+from zarr.abc.codec import BytesBytesCodec, CodecJSON_V2
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -20,6 +20,19 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
 
+class ZstdSettings(TypedDict):
+    level: int
+
+class ZstdJSON_V2(CodecJSON_V2[Literal["zstd"]], ZstdSettings):
+    """
+    The JSON form of the Zstandard codec in Zarr v2.
+    """
+
+class ZstdJSON_V3(NamedConfig[Literal["zstd"], ZstdSettings]):
+    """
+    The JSON form of the GZip codec in Zarr v3.
+    """
+    configuration: Required[ZstdSettings]
 
 def parse_zstd_level(data: JSON) -> int:
     if isinstance(data, int):
@@ -64,6 +77,12 @@ class ZstdCodec(BytesBytesCodec):
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
+
+    def to_json(self, zarr_format: ZarrFormat) -> ZstdJSON_V2 | ZstdJSON_V3:
+        if zarr_format == 2:
+            return {"id": "zstd", "level": self.level}
+        else:
+            return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
 
     @cached_property
     def _zstd_codec(self) -> Zstd:

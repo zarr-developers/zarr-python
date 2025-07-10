@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 import numcodecs.abc
 
-from zarr.abc.codec import Codec
+from zarr.abc.codec import ArrayArrayCodec, BytesBytesCodec, Codec
 from zarr.abc.metadata import Metadata
-from zarr.codecs.numcodec import Numcodec, NumcodecsAdapter
+from zarr.codecs.numcodec import Numcodec, NumcodecsWrapper, NumcodecsArrayArrayCodec
 from zarr.core.chunk_grids import RegularChunkGrid
-from zarr.core.dtype import get_data_type_from_json_v2
-from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, TDType_co, TScalar_co, ZDType
+from zarr.core.dtype import get_data_type_from_json
+from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
+from zarr.registry import get_codec
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -58,7 +59,7 @@ class ArrayV2MetadataDict(TypedDict):
 
 
 # Union of acceptable types for v2 compressors
-CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
+CompressorLike_V2: TypeAlias = Mapping[str, JSON] | Numcodec | Codec
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -68,9 +69,9 @@ class ArrayV2Metadata(Metadata):
     dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: int | float | str | bytes | None = None
     order: MemoryOrder = "C"
-    filters: tuple[numcodecs.abc.Codec, ...] | None = None
+    filters: tuple[Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: numcodecs.abc.Codec | None
+    compressor: Codec
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
@@ -83,8 +84,8 @@ class ArrayV2Metadata(Metadata):
         fill_value: Any,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
-        compressor: CompressorLikev2 = None,
-        filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
+        compressor: CompressorLike_V2 | None = None,
+        filters: Iterable[CompressorLike_V2] | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> None:
         """
@@ -153,22 +154,22 @@ class ArrayV2Metadata(Metadata):
 
         # To resolve a numpy object dtype array, we need to search for an object codec,
         # which could be in filters or as a compressor.
-        # we will use a hard-coded list of object codecs for this search.
-        object_codec_id: str | None = None
-        maybe_object_codecs = (data.get("filters"), data.get("compressor"))
-        for maybe_object_codec in maybe_object_codecs:
-            if isinstance(maybe_object_codec, Sequence):
-                for codec in maybe_object_codec:
-                    if isinstance(codec, dict) and codec.get("id") in ObjectCodecIds:
-                        object_codec_id = codec["id"]
-                        break
-            elif (
-                isinstance(maybe_object_codec, dict)
-                and maybe_object_codec.get("id") in ObjectCodecIds
-            ):
-                object_codec_id = maybe_object_codec["id"]
-                break
-        dtype = get_data_type_from_json_v2(data["dtype"], object_codec_id=object_codec_id)
+        # we will reference a hard-coded collection of object codec ids for this search.
+
+        _filters, _compressor = (_data.get("filters"), _data.get("compressor"))
+        if _filters is not None:
+            _filters = cast("tuple[dict[str, JSON], ...]", _filters)
+            object_codec_id = get_object_codec_id(tuple(_filters) + (_compressor,))
+        else:
+            object_codec_id = get_object_codec_id((_compressor,))
+        # we add a layer of indirection here around the dtype attribute of the array metadata
+        # because we also need to know the object codec id, if any, to resolve the data type
+        dtype_spec: DTypeSpec_V2 = {
+            "name": _data["dtype"],
+            "object_codec_id": object_codec_id,
+        }
+        dtype = get_data_type_from_json(dtype_spec, zarr_format=2)
+
         _data["dtype"] = dtype
         fill_value_encoded = _data.get("fill_value")
         if fill_value_encoded is not None:
@@ -182,11 +183,9 @@ class ArrayV2Metadata(Metadata):
         expected |= {"dtype", "chunks"}
 
         # check if `filters` is an empty sequence; if so use None instead and raise a warning
-        filters = _data.get("filters")
         if (
-            isinstance(filters, Sequence)
-            and not isinstance(filters, (str, bytes))
-            and len(filters) == 0
+            isinstance(_filters, Sequence)
+            and len(_filters) == 0
         ):
             msg = (
                 "Found an empty list of filters in the array metadata document. "
@@ -202,18 +201,13 @@ class ArrayV2Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
-        if isinstance(zarray_dict["compressor"], Numcodec):
-            raise ValueError('raw numcodecs codecs are not allowed.')
-            codec_config = zarray_dict["compressor"].get_config()
-            # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
-            if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
-                codec_config.pop("checksum")
-            zarray_dict["compressor"] = codec_config
-
-        zarray_dict["compressor"] = self.compressor.to_json(zarr_format=2)
+        if self.compressor is not None:
+            zarray_dict["compressor"] = self.compressor.to_json(zarr_format=2)
+        else:
+            zarray_dict["compressor"] = None
         new_filters = []
         if zarray_dict["filters"] is not None:
-            new_filters.append(f.to_json(zarr_format=2))
+            new_filters.extend([f.to_json(zarr_format=2) for f in self.filters])
         else:
             new_filters = None
         zarray_dict["filters"] = new_filters
@@ -262,20 +256,24 @@ def parse_zarr_format(data: object) -> Literal[2]:
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
+def parse_filters(data: object) -> tuple[ArrayArrayCodec, ...] | None:
     """
     Parse a potential tuple of filters
     """
-    out: list[numcodecs.abc.Codec] = []
+    out: list[Codec | NumcodecsWrapper] = []
 
     if data is None:
         return data
     if isinstance(data, Iterable):
         for idx, val in enumerate(data):
-            if isinstance(val, numcodecs.abc.Codec):
+            if isinstance(val, (Codec, NumcodecsWrapper)):
                 out.append(val)
+            elif isinstance(val, Numcodec):
+                out.append(NumcodecsWrapper(codec=val))
             elif isinstance(val, dict):
-                out.append(numcodecs.get_codec(val))
+                name = val['id']
+                codec = get_codec(name, {k: v for k, v in val.items() if k != 'id'})
+                out.append(codec)
             else:
                 msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
                 raise TypeError(msg)
@@ -285,20 +283,27 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
         else:
             return tuple(out)
     # take a single codec instance and wrap it in a tuple
-    if isinstance(data, numcodecs.abc.Codec):
+    if isinstance(data, Numcodec):
+        return (NumcodecsWrapper(codec=data),)
+    elif isinstance(data, Codec):
         return (data,)
     msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
     raise TypeError(msg)
 
 
-def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
+def parse_compressor(data: object) -> Codec | NumcodecsWrapper | None:
     """
     Parse a potential compressor.
     """
-    if data is None or isinstance(data, numcodecs.abc.Codec | Codec):
+    if data is None or isinstance(data, Codec | NumcodecsWrapper):
         return data
+    if isinstance(data, Numcodec):
+        try:
+            return get_codec(data.codec_id, {k: v for k,v in data.get_config().items() if k != 'id'})
+        except KeyError:
+            return NumcodecsWrapper(codec=data)
     if isinstance(data, dict):
-        return numcodecs.get_codec(data)
+        return get_codec(data['id'], {k: v for k, v in data.items() if k != 'id'})
     msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 

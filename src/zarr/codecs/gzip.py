@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, overload
 
 from numcodecs.gzip import GZip
 
-from zarr.abc.codec import BytesBytesCodec, CodecConfig_V2
+from zarr.abc.codec import BytesBytesCodec, CodecJSON_V2
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.registry import register_codec
@@ -29,14 +29,18 @@ def parse_gzip_level(data: JSON) -> int:
     return data
 
 
-class GZipSettings(TypedDict):
+class GZipConfig(TypedDict):
     level: int
 
+class GZipJSON_V2(CodecJSON_V2[Literal["gzip"]], GZipConfig):
+    """
+    The JSON form of the GZip codec in Zarr V2.
+    """
 
-class GZipConfig_V2(CodecConfig_V2[Literal["gzip"]], GZipSettings): ...
-
-
-GZipConfig_V3 = NamedConfig[Literal["gzip"], GZipSettings]
+class GZipJSON_V3(NamedConfig[Literal["gzip"], GZipConfig]):
+    """
+    The JSON form of the GZip codec in Zarr V3.
+    """
 
 
 @dataclass(frozen=True)
@@ -59,11 +63,11 @@ class GzipCodec(BytesBytesCodec):
         return {"name": "gzip", "configuration": {"level": self.level}}
 
     @overload
-    def to_json(self, zarr_format: Literal[2]) -> GZipConfig_V2: ...
+    def to_json(self, zarr_format: Literal[2]) -> GZipJSON_V2: ...
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> GZipConfig_V3: ...
+    def to_json(self, zarr_format: Literal[3]) -> GZipJSON_V3: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> GZipConfig_V2 | GZipConfig_V3:
+    def to_json(self, zarr_format: ZarrFormat) -> GZipJSON_V2 | GZipJSON_V3:
         if zarr_format == 2:
             return {"id": "gzip", "level": self.level}
         elif zarr_format == 3:
@@ -73,7 +77,7 @@ class GzipCodec(BytesBytesCodec):
         )  # pragma: no cover
 
     @classmethod
-    def _check_json_v2(cls, data: Mapping[str, object]) -> TypeGuard[GZipConfig_V2]:
+    def _check_json_v2(cls, data: Mapping[str, object]) -> TypeGuard[GZipJSON_V2]:
         return (
             set(data.keys()) == {"id", "level"}
             and data["id"] == "gzip"
@@ -81,7 +85,7 @@ class GzipCodec(BytesBytesCodec):
         )
 
     @classmethod
-    def _check_json_v3(cls, data: Mapping[str, object]) -> TypeGuard[GZipConfig_V3]:
+    def _check_json_v3(cls, data: Mapping[str, object]) -> TypeGuard[GZipJSON_V3]:
         return (
             set(data.keys()) == {"name", "configuration"}
             and data["name"] == "gzip"
