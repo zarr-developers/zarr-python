@@ -75,6 +75,21 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         with pytest.raises(TypeError):
             ObjectStore("path/to/store")
 
+    async def test_store_getsize(self, store: ObjectStore) -> None:
+        buf = cpu.Buffer.from_bytes(b"\x01\x02\x03\x04")
+        await self.set(store, "key", buf)
+        size = await store.getsize("key")
+        assert size == len(buf)
+
+    async def test_store_getsize_prefix(self, store: ObjectStore) -> None:
+        buf = cpu.Buffer.from_bytes(b"\x01\x02\x03\x04")
+        await self.set(store, "c/key1/0", buf)
+        await self.set(store, "c/key2/0", buf)
+        size = await store.getsize_prefix("c/key1")
+        assert size == len(buf)
+        total_size = await store.getsize_prefix("c")
+        assert total_size == len(buf) * 2
+
 
 @pytest.mark.slow_hypothesis
 def test_zarr_hierarchy():
