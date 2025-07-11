@@ -1,0 +1,7 @@
+Added GPU-accelerated Zstd Codec
+
+This adds support for decoding with the Zstd Codec on NVIDIA GPUs using the
+nvidia-nvcomp library.
+
+With ``zarr.config.enable_gpu()``, buffers will be decoded using the GPU
+and the output will reside in device memory.
