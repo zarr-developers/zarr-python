@@ -177,7 +177,7 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
     return get_codec_class(data["name"]).from_dict(data)  # type: ignore[arg-type]
 
 
-def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
+def _parse_bytes_bytes_codec(data: dict[str, JSON] | str | Codec) -> BytesBytesCodec:
     """
     Normalize the input to a ``BytesBytesCodec`` instance.
     If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
@@ -185,19 +185,28 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     """
     from zarr.abc.codec import BytesBytesCodec
 
-    if isinstance(data, dict):
+    if isinstance(data, str):
+        try:
+            result = _resolve_codec({"name": data, "configuration": {}})
+        except TypeError as e:
+            codec_cls = get_codec_class(data)
+            msg = (
+                f'A string representation for compressor "{data}" was provided which specifies codec {codec_cls.__name__}. '
+                f"But that codec cannot be specified by a string because it takes a required configuration. Use either "
+                f"the dict representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
-        if not isinstance(result, BytesBytesCodec):
-            msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
     else:
-        if not isinstance(data, BytesBytesCodec):
-            raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, BytesBytesCodec):
+        msg = f"Expected a representation of a BytesBytesCodec; got a representation of a {type(result)} instead."
+        raise TypeError(msg)
     return result
 
 
-def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
+def _parse_array_bytes_codec(data: dict[str, JSON] | str | Codec) -> ArrayBytesCodec:
     """
     Normalize the input to a ``ArrayBytesCodec`` instance.
     If the input is already a ``ArrayBytesCodec``, it is returned as is. If the input is a dict, it
@@ -205,19 +214,28 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
     """
     from zarr.abc.codec import ArrayBytesCodec
 
-    if isinstance(data, dict):
+    if isinstance(data, str):
+        try:
+            result = _resolve_codec({"name": data, "configuration": {}})
+        except TypeError as e:
+            codec_cls = get_codec_class(data)
+            msg = (
+                f'A string representation for serializer "{data}" was provided which specifies codec {codec_cls.__name__}. '
+                f"But that codec cannot be specified by a string because it takes a required configuration. Use either "
+                f"the dict representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
-        if not isinstance(result, ArrayBytesCodec):
-            msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
     else:
-        if not isinstance(data, ArrayBytesCodec):
-            raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, ArrayBytesCodec):
+        msg = f"Expected a representation of a ArrayBytesCodec; got a representation of a {type(result)} instead."
+        raise TypeError(msg)
     return result
 
 
-def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
+def _parse_array_array_codec(data: dict[str, JSON] | str | Codec) -> ArrayArrayCodec:
     """
     Normalize the input to a ``ArrayArrayCodec`` instance.
     If the input is already a ``ArrayArrayCodec``, it is returned as is. If the input is a dict, it
@@ -225,15 +243,24 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
     """
     from zarr.abc.codec import ArrayArrayCodec
 
-    if isinstance(data, dict):
+    if isinstance(data, str):
+        try:
+            result = _resolve_codec({"name": data, "configuration": {}})
+        except TypeError as e:
+            codec_cls = get_codec_class(data)
+            msg = (
+                f'A string representation for filter "{data}" was provided which specifies codec {codec_cls.__name__}. '
+                f"But that codec cannot be specified by a string because it takes a required configuration. Use either "
+                f"the dict representation of {data} codec, or pass in a concrete {codec_cls.__name__} instance instead"
+            )
+            raise TypeError(msg) from e
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
-        if not isinstance(result, ArrayArrayCodec):
-            msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
     else:
-        if not isinstance(data, ArrayArrayCodec):
-            raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, ArrayArrayCodec):
+        msg = f"Expected a representation of a ArrayArrayCodec; got a representation of a {type(result)} instead."
+        raise TypeError(msg)
     return result
 
 

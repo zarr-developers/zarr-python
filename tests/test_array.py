@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
 import numcodecs
+import numcodecs.abc
 import numpy as np
 import numpy.typing as npt
 import pytest
@@ -20,6 +21,7 @@ import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
 from tests.conftest import skip_object_dtype
 from zarr import Array, AsyncArray, Group
+from zarr.abc.codec import BytesBytesCodec
 from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
@@ -31,11 +33,13 @@ from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsLike,
     FiltersLike,
+    SerializerLike,
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
     chunks_initialized,
     create_array,
 )
+from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
@@ -57,6 +61,7 @@ from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
+from zarr.registry import register_codec
 from zarr.storage import LocalStore, MemoryStore, StorePath
 
 from .test_dtype.conftest import zdtype_examples
@@ -1145,6 +1150,15 @@ class TestCreateArray:
             ZstdCodec(level=3),
             {"name": "zstd", "configuration": {"level": 3}},
             ({"name": "zstd", "configuration": {"level": 3}},),
+            "zstd",
+            ("crc32c", "zstd"),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "serializer",
+        [
+            "auto",
+            "bytes",
         ],
     )
     @pytest.mark.parametrize(
@@ -1185,6 +1199,7 @@ class TestCreateArray:
     async def test_v3_chunk_encoding(
         store: MemoryStore,
         compressors: CompressorsLike,
+        serializer: SerializerLike,
         filters: FiltersLike,
         dtype: str,
         chunks: tuple[int, ...],
@@ -1193,6 +1208,9 @@ class TestCreateArray:
         """
         Test various possibilities for the compressors and filters parameter to create_array
         """
+        if serializer == "bytes" and dtype == "str":
+            serializer = "vlen-utf8"
+
         arr = await create_array(
             store=store,
             dtype=dtype,
@@ -1201,15 +1219,17 @@ class TestCreateArray:
             shards=shards,
             zarr_format=3,
             filters=filters,
+            serializer=serializer,
             compressors=compressors,
         )
-        filters_expected, _, compressors_expected = _parse_chunk_encoding_v3(
+        filters_expected, serializer_expected, compressors_expected = _parse_chunk_encoding_v3(
             filters=filters,
             compressors=compressors,
-            serializer="auto",
+            serializer=serializer,
             dtype=arr._zdtype,
         )
         assert arr.filters == filters_expected
+        assert arr.serializer == serializer_expected
         assert arr.compressors == compressors_expected
 
     @staticmethod
@@ -1326,11 +1346,20 @@ class TestCreateArray:
             None,
             numcodecs.Zstd(level=3),
             (),
-            (numcodecs.Zstd(level=3),),
+            (numcodecs.Zstd(level=2),),
+            "zstd",
         ],
     )
     @pytest.mark.parametrize(
-        "filters", ["auto", None, numcodecs.GZip(level=1), (numcodecs.GZip(level=1),)]
+        "filters",
+        [
+            "auto",
+            None,
+            numcodecs.GZip(level=1),
+            (numcodecs.GZip(level=2)),
+            "gzip",
+            ("gzip", "zstd"),
+        ],
     )
     async def test_v2_chunk_encoding(
         store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
@@ -1356,6 +1385,123 @@ class TestCreateArray:
 
         assert arr.compressors == compressor_expected
         assert arr.filters == filters_expected
+
+    @staticmethod
+    async def test_invalid_chunk_encoding(store: MemoryStore) -> None:
+        """
+        Test that passing an invalid compressor or filter to create_array raises an error.
+        """
+        invalid_compressor_type = 2
+        msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Expected None, a numcodecs.abc.Codec, or a dict or str representation of a numcodecs.abc.Codec. Got {type(invalid_compressor_type)} instead."
+        with pytest.raises(ValueError, match=msg):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=2,
+                compressors=invalid_compressor_type,
+            )
+        with pytest.raises(KeyError):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=3,
+                filters="nonexistent_filter_name",
+            )
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("argument_key", "codec"),
+        [
+            ("filters", "bytes"),
+            ("filters", "gzip"),
+            ("serializer", "blosc"),
+            ("compressors", "bytes"),
+        ],
+    )
+    async def test_chunk_encoding_wrong_type(
+        argument_key: str, codec: FiltersLike | SerializerLike | CompressorsLike, store: MemoryStore
+    ) -> None:
+        """
+        Test that passing an invalid codec to create_array raises an error.
+        """
+        msg = "Expected a representation of a .*Codec; got a representation of a <class 'zarr.codecs.*Codec'> instead"
+        with pytest.raises(TypeError, match=msg):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=3,
+                **{argument_key: codec},  # type: ignore[arg-type]
+            )
+
+    @staticmethod
+    @pytest.mark.parametrize(
+        ("argument_key", "codec", "codec_cls_name", "zarr_format"),
+        [
+            ("filters", "delta", "Delta", 2),
+            ("filters", ("delta",), "Delta", 2),
+            ("filters", "transpose", "TransposeCodec", 3),
+            ("filters", ("transpose",), "TransposeCodec", 3),
+            ("serializer", "sharding_indexed", "ShardingCodec", 3),
+            ("compressors", "mock_compressor_v3", "MockCompressorRequiresConfig3", 3),
+            ("compressors", ("mock_compressor_v3",), "MockCompressorRequiresConfig3", 3),
+            ("compressors", "mock_compressor_v2", "MockCompressorRequiresConfig2", 2),
+            ("compressors", ("mock_compressor_v2",), "MockCompressorRequiresConfig2", 2),
+        ],
+    )
+    async def test_chunk_encoding_missing_arguments(
+        store: MemoryStore,
+        argument_key: str,
+        codec: str | tuple[str],
+        codec_cls_name: str,
+        zarr_format: ZarrFormat,
+    ) -> None:
+        codec_key = codec if not isinstance(codec, tuple) else codec[0]
+        argument_key_single = argument_key.removesuffix("s")
+        error_msg = (
+            f'A string representation for {argument_key_single} "{codec_key}" was provided which specifies codec {codec_cls_name}. But that codec '
+            f"cannot be specified by a string because it takes a required configuration. Use either the dict "
+            f"representation of {codec_key} codec, or pass in a concrete {codec_cls_name} instance instead"
+        )
+        if "mock_compressor_v3" in codec:
+
+            class MockCompressorRequiresConfig3(BytesBytesCodec):
+                def compute_encoded_size(
+                    self, input_byte_length: int, chunk_spec: ArraySpec
+                ) -> int:
+                    return 0
+
+                def __init__(self, *, argument: str) -> None:
+                    super().__init__()
+
+            register_codec("mock_compressor_v3", MockCompressorRequiresConfig3)
+        elif "mock_compressor_v2" in codec:
+            # ignore mypy error because numcodecs is not typed
+            class MockCompressorRequiresConfig2(numcodecs.abc.Codec):  # type: ignore[misc]
+                def __init__(self, *, argument: str) -> None:
+                    super().__init__()
+
+                def encode(self: Any, buf) -> Any:  # type: ignore[no-untyped-def]
+                    pass
+
+                def decode(self, buf: Any, out=None) -> Any:  # type: ignore[no-untyped-def]
+                    pass
+
+            numcodecs.register_codec(
+                MockCompressorRequiresConfig2,
+                "mock_compressor_v2",
+            )
+        # string representation of a codec is only supported if codec has no required arguments
+        with pytest.raises(TypeError, match=re.escape(error_msg)):
+            await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                zarr_format=zarr_format,
+                **{argument_key: codec},  # type: ignore[arg-type]
+            )
 
     @staticmethod
     @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthUTF8()])

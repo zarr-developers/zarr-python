@@ -1043,7 +1043,7 @@ class AsyncGroup:
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
+            and these values must be instances of ``ArrayArrayCodec``, or dict or string representations
             of ``ArrayArrayCodec``.
             If no ``filters`` are provided, a default set of filters will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_filters``
@@ -2467,7 +2467,7 @@ class Group(SyncMixin):
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
+            and these values must be instances of ``ArrayArrayCodec``, or dict or string representations
             of ``ArrayArrayCodec``.
             If no ``filters`` are provided, a default set of filters will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_filters``
@@ -2872,7 +2872,7 @@ class Group(SyncMixin):
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
+            and these values must be instances of ``ArrayArrayCodec``, or dict or string representations
             of ``ArrayArrayCodec``.
             If no ``filters`` are provided, a default set of filters will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_filters``

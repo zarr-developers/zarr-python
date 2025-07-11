@@ -1,0 +1,1 @@
+Array creation allows string representation of codecs for ``filters``, ``serializer``, and ``compressors``.
