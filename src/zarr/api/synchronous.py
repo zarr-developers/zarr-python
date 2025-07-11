@@ -15,6 +15,7 @@ from zarr.core.sync_group import create_hierarchy
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    import numcodecs.abc
     import numpy as np
     import numpy.typing as npt
 
@@ -613,7 +614,7 @@ def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,

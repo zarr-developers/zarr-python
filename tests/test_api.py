@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import inspect
+import pathlib
 import re
 from typing import TYPE_CHECKING
 
@@ -8,6 +10,7 @@ import zarr.storage
 
 if TYPE_CHECKING:
     import pathlib
+    from collections.abc import Callable
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -1216,6 +1219,43 @@ def test_open_array_with_mode_r_plus(store: Store, zarr_format: ZarrFormat) -> N
     z2[:] = 3
 
 
+@pytest.mark.parametrize(
+    ("a_func", "b_func"),
+    [
+        (zarr.api.asynchronous.create_array, zarr.api.synchronous.create_array),
+        (zarr.api.asynchronous.save, zarr.api.synchronous.save),
+        (zarr.api.asynchronous.save_array, zarr.api.synchronous.save_array),
+        (zarr.api.asynchronous.save_group, zarr.api.synchronous.save_group),
+        (zarr.api.asynchronous.open_group, zarr.api.synchronous.open_group),
+        (zarr.api.asynchronous.create, zarr.api.synchronous.create),
+    ],
+)
+def test_consistent_signatures(
+    a_func: Callable[[object], object], b_func: Callable[[object], object]
+) -> None:
+    """
+    Ensure that pairs of functions have the same signature
+    """
+    base_sig = inspect.signature(a_func)
+    test_sig = inspect.signature(b_func)
+    wrong: dict[str, list[object]] = {
+        "missing_from_test": [],
+        "missing_from_base": [],
+        "wrong_type": [],
+    }
+    for key, value in base_sig.parameters.items():
+        if key not in test_sig.parameters:
+            wrong["missing_from_test"].append((key, value))
+    for key, value in test_sig.parameters.items():
+        if key not in base_sig.parameters:
+            wrong["missing_from_base"].append((key, value))
+        if base_sig.parameters[key] != value:
+            wrong["wrong_type"].append({key: {"test": value, "base": base_sig.parameters[key]}})
+    assert wrong["missing_from_base"] == []
+    assert wrong["missing_from_test"] == []
+    assert wrong["wrong_type"] == []
+
+
 def test_api_exports() -> None:
     """
     Test that the sync API and the async API export the same objects
@@ -1372,3 +1412,10 @@ def test_auto_chunks(f: Callable[..., Array]) -> None:
 
     a = f(**kwargs)
     assert a.chunks == (500, 500)
+
+
+@pytest.mark.parametrize("kwarg_name", ["synchronizer", "chunk_store", "cache_attrs", "meta_array"])
+def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
+    kwargs = {kwarg_name: 1}
+    with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
+        zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
