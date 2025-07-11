@@ -1,0 +1,3 @@
+Fix the type of ``ArrayV2Metadata.codec`` to constrain it to ``numcodecs.abc.Codec | None``.
+Previously the type was more permissive, allowing objects that can be parsed into Codecs (e.g., the codec name).
+The constructor of ``ArrayV2Metadata`` still allows the permissive input when creating new objects.
