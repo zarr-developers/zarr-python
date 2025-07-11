@@ -35,23 +35,30 @@ from zarr.core.array import (
     _parse_chunk_encoding_v3,
     chunks_initialized,
     create_array,
+    default_filters_v2,
+    default_serializer_v3,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
-from zarr.core.dtype import parse_data_type
+from zarr.core.dtype import (
+    DateTime64,
+    Float32,
+    Float64,
+    Int16,
+    Structured,
+    TimeDelta64,
+    UInt8,
+    VariableLengthBytes,
+    VariableLengthUTF8,
+    ZDType,
+    parse_data_type,
+)
 from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
-from zarr.core.dtype.npy.float import Float32, Float64
-from zarr.core.dtype.npy.int import Int16, UInt8
-from zarr.core.dtype.npy.string import VariableLengthUTF8
-from zarr.core.dtype.npy.structured import (
-    Structured,
-)
-from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
-from zarr.core.dtype.wrapper import ZDType
+from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -1335,6 +1342,8 @@ class TestCreateArray:
     async def test_v2_chunk_encoding(
         store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
     ) -> None:
+        if dtype == "str" and filters != "auto":
+            pytest.skip("Only the auto filters are compatible with str dtype in this test.")
         arr = await create_array(
             store=store,
             dtype=dtype,
@@ -1848,3 +1857,63 @@ def test_array_repr(store: Store) -> None:
     dtype = "uint8"
     arr = zarr.create_array(store, shape=shape, dtype=dtype)
     assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"
+
+
+class UnknownObjectDtype(UTF8Base[np.dtypes.ObjectDType]):
+    object_codec_id = "unknown"  # type: ignore[assignment]
+
+    def to_native_dtype(self) -> np.dtypes.ObjectDType:
+        """
+        Create a NumPy object dtype from this VariableLengthUTF8 ZDType.
+
+        Returns
+        -------
+        np.dtypes.ObjectDType
+            The NumPy object dtype.
+        """
+        return np.dtype("o")  # type: ignore[return-value]
+
+
+@pytest.mark.parametrize(
+    "dtype", [VariableLengthUTF8(), VariableLengthBytes(), UnknownObjectDtype()]
+)
+def test_chunk_encoding_no_object_codec_errors(dtype: ZDType[Any, Any]) -> None:
+    """
+    Test that a valuerror is raised when checking the chunk encoding for a v2 array with a
+    data type that requires an object codec, but where no object codec is specified
+    """
+    if isinstance(dtype, VariableLengthUTF8):
+        codec_name = "the numcodecs.VLenUTF8 codec"
+    elif isinstance(dtype, VariableLengthBytes):
+        codec_name = "the numcodecs.VLenBytes codec"
+    else:
+        codec_name = f"an unknown object codec with id {dtype.object_codec_id!r}"  # type: ignore[attr-defined]
+    msg = (
+        f"Data type {dtype} requires {codec_name}, "
+        "but no such codec was specified in the filters or compressor parameters for "
+        "this array. "
+    )
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        _parse_chunk_encoding_v2(filters=None, compressor=None, dtype=dtype)
+
+
+def test_unknown_object_codec_default_serializer_v3() -> None:
+    """
+    Test that we get a valueerrror when trying to create the default serializer for a data type
+    that requires an unknown object codec
+    """
+    dtype = UnknownObjectDtype()
+    msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        default_serializer_v3(dtype)
+
+
+def test_unknown_object_codec_default_filters_v2() -> None:
+    """
+    Test that we get a valueerrror when trying to create the default serializer for a data type
+    that requires an unknown object codec
+    """
+    dtype = UnknownObjectDtype()
+    msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        default_filters_v2(dtype)
