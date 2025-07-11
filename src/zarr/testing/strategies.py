@@ -411,7 +411,7 @@ def orthogonal_indices(
         newshape[axis] = idxr.size
         npindexer.append(idxr.reshape(newshape))
 
-    # casting the output of broadcast_arrays is needed for numpy 1.25
+    # casting the output of broadcast_arrays is needed for numpy < 2
     return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
