@@ -14,7 +14,7 @@ was a NumPy ``dtype`` object, and ``ArrayV3Metadata.data_type`` was an internall
 After this change, both ``ArrayV2Metadata.dtype`` and ``ArrayV3Metadata.data_type`` are instances of
 ``ZDType``. A NumPy data type can be generated from a ``ZDType`` via the ``ZDType.to_native_dtype()``
 method. The internally-defined Zarr V3 ``enum`` class is gone entirely, but the ``ZDType.to_json(zarr_format=3)``
-method can be used to generate a dictionary that has a ``name`` field that contains the string value
-previously associated with that ``enum``.
+method can be used to generate either a string, or dictionary that has a string ``name`` field, that
+represents the string value previously associated with that ``enum``.
 
 For more on this new feature, see the `documentation </user-guide/data_types.html>`_
