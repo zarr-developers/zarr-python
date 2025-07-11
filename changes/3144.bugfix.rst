@@ -1,0 +1,1 @@
+Ensure that -0.0 is not considered equal to 0.0 when checking if all the values in a chunk are equal to an array's fill value.```
