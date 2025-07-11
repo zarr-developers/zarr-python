@@ -1,11 +1,9 @@
 name: Slow Hypothesis CI
 on:
   push:
-    branches:
-      - "main"
+    branches: [main, 3.0.x]
   pull_request:
-    branches:
-      - "main"
+    branches: [main, 3.0.x]
     types: [opened, reopened, synchronize, labeled]
   schedule:
     - cron: "0 0 * * *" # Daily “At 00:00” UTC

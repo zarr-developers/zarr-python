@@ -11,10 +11,10 @@ from typing_extensions import deprecated
 
 from zarr.abc.store import Store
 from zarr.core.array import (
+    DEFAULT_FILL_VALUE,
     Array,
     AsyncArray,
     CompressorLike,
-    _get_default_chunk_encoding_v2,
     create_array,
     from_array,
     get_array_metadata,
@@ -32,7 +32,7 @@ from zarr.core.common import (
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
 )
-from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype, parse_data_type
+from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype
 from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
@@ -46,6 +46,8 @@ from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+
+    import numcodecs.abc
 
     from zarr.abc.codec import Codec
     from zarr.core.buffer import NDArrayLikeOrScalar
@@ -860,17 +862,17 @@ async def open_group(
 async def create(
     shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
+    chunks: ChunkCoords | int | bool | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
-    fill_value: Any | None = 0,  # TODO: need type
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -1008,13 +1010,6 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
-    if zarr_format == 2:
-        default_filters, default_compressor = _get_default_chunk_encoding_v2(zdtype)
-        if not filters:
-            filters = default_filters  # type: ignore[assignment]
-        if compressor == "auto":
-            compressor = default_compressor
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -1028,13 +1023,13 @@ async def create(
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
     if read_only is not None:
         warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
+    if meta_array is not None:
+        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+
     if order is not None:
         _warn_order_kwarg()
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
-
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     mode = kwargs.pop("mode", None)
     if mode is None:
@@ -1066,7 +1061,7 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=zdtype,
+        dtype=dtype,
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,

@@ -40,6 +40,8 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             (VariableLengthUTF8(), "", np.str_("")),
             (VariableLengthUTF8(), "hi", np.str_("hi")),
         )
+        # anything can become a string
+        invalid_scalar_params = (None,)
         item_size_params = (VariableLengthUTF8(),)
 
 else:
@@ -74,7 +76,8 @@ else:
             (VariableLengthUTF8(), "", np.str_("")),
             (VariableLengthUTF8(), "hi", np.str_("hi")),
         )
-
+        # anything can become a string
+        invalid_scalar_params = (None,)
         item_size_params = (VariableLengthUTF8(),)
 
 
@@ -118,6 +121,8 @@ class TestFixedLengthUTF32(BaseTestZDType):
         FixedLengthUTF32(length=4),
         FixedLengthUTF32(length=10),
     )
+    # anything can become a string
+    invalid_scalar_params = (None,)
 
 
 @pytest.mark.parametrize(

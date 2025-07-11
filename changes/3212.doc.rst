@@ -1,0 +1,4 @@
+- Add a description on how to create a RemoteStore of a specific filesystem to the `Remote Store` section in `docs\user-guide\storage.rst`.
+- State in the docstring of `FsspecStore.from_url` that the filesystem type is inferred from the URL scheme.
+
+It should help a user handling the case when the type of FsspecStore doesn't match the URL scheme.

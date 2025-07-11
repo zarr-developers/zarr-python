@@ -3,12 +3,19 @@ coverage:
     patch:
       default:
         target: auto
-        after_n_builds: 10  # Wait for all 10 reports before updating the status
     project:
       default:
         target: auto
         threshold: 0.1
-        after_n_builds: 2   # Wait for all 10 reports before updating the status
-comment: false
+codecov:
+  notify:
+    after_n_builds: 10 # Wait for all 10 reports before updating the status
+    wait_for_ci: yes
+comment:
+  layout: "diff, files"
+  behavior: default
+  require_changes: true  # if true: only post the comment if coverage changes
+  branches:               # branch names that can post comment
+    - "main"
 github_checks:
-    annotations: false
+  annotations: false
