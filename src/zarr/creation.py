@@ -23,6 +23,7 @@ from zarr.api.synchronous import (
     zeros,
     zeros_like,
 )
+from zarr.errors import ZarrDeprecationWarning
 
 __all__ = [
     "array",
@@ -42,6 +43,6 @@ __all__ = [
 warnings.warn(
     "zarr.creation is deprecated. "
     "Import these functions from the top level zarr. namespace instead.",
-    DeprecationWarning,
+    ZarrDeprecationWarning,
     stacklevel=2,
 )
