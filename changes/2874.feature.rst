@@ -1,9 +1,19 @@
-Adds zarr-specific data type classes. This replaces the internal use of numpy data types for zarr
-v2 and a fixed set of string enums for zarr v3. This change is largely internal, but it does
-change the type of the ``dtype`` and ``data_type`` fields on the ``ArrayV2Metadata`` and
-``ArrayV3Metadata`` classes. It also changes the JSON metadata representation of the
-variable-length string data type, but the old metadata representation can still be
-used when reading arrays. The logic for automatically choosing the chunk encoding for a given data
-type has also changed, and this necessitated changes to the ``config`` API.
+Adds zarr-specific data type classes.
+
+This change adds a ``ZDType`` base class for Zarr V2 and Zarr V3 data types. Child classes are
+defined for each NumPy data type. Each child class defines routines for ``JSON`` serialization.
+New data types can be created and registered dynamically.
+
+Prior to this change, Zarr Python had two streams for handling data types. For Zarr V2 arrays,
+we used NumPy data type identifiers. For Zarr V3 arrays, we used a fixed set of string enums. Both
+of these systems proved hard to extend.
+
+This change is largely internal, but it does change the type of the ``dtype`` and ``data_type``
+fields on the ``ArrayV2Metadata`` and ``ArrayV3Metadata`` classes. Previously, ``ArrayV2Metadata.dtype``
+was a NumPy ``dtype`` object, and ``ArrayV3Metadata.data_type`` was an internally-defined ``enum``.
+After this change, both ``ArrayV2Metadata.dtype`` and ``ArrayV3Metadata.data_type`` are instances of
+``ZDType``. A NumPy data type can be generated from a ``ZDType`` via the ``ZDType.to_native_dtype()``
+method. The internally-defined Zarr V3 ``enum`` class is gone entirely, but the ``ZDType._zarr_v3_name``
+attribute contains the string value previously associated with that ``enum``.
 
 For more on this new feature, see the `documentation </user-guide/data_types.html>`_
