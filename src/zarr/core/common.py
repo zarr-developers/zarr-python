@@ -195,7 +195,7 @@ def _warn_write_empty_chunks_kwarg() -> None:
     msg = (
         "The `write_empty_chunks` keyword argument is deprecated and will be removed in future versions. "
         "To control whether empty chunks are written to storage, either use the `config` keyword "
-        "argument, as in `config={'write_empty_chunks: True}`,"
+        "argument, as in `config={'write_empty_chunks': True}`,"
         "or change the global 'array.write_empty_chunks' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)
@@ -206,7 +206,7 @@ def _warn_order_kwarg() -> None:
     msg = (
         "The `order` keyword argument has no effect for Zarr format 3 arrays. "
         "To control the memory layout of the array, either use the `config` keyword "
-        "argument, as in `config={'order: 'C'}`,"
+        "argument, as in `config={'order': 'C'}`,"
         "or change the global 'array.order' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)

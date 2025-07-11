@@ -246,16 +246,6 @@ built-in delta filter::
    >>> z.compressors
    (LZMA(codec_name='numcodecs.lzma', codec_config={'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]}),)
 
-The default compressor can be changed by setting the value of the using Zarr's
-:ref:`user-guide-config`, e.g.::
-
-   >>> with zarr.config.set({'array.v2_default_compressor.default': {'id': 'blosc'}}):
-   ...     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
-   >>> z.filters
-   ()
-   >>> z.compressors
-   (Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0),)
-
 To disable compression, set ``compressors=None`` when creating an array, e.g.::
 
    >>> z = zarr.create_array(store='data/example-8.zarr', shape=(100000000,), chunks=(1000000,), dtype='int32', compressors=None)

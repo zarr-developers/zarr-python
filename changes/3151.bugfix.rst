@@ -1,2 +1,0 @@
-Fixed an issue preventing correct parsing of NumPy ``int32`` dtypes when constructed via
-``np.dtype('i')``.

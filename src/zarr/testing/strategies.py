@@ -43,7 +43,7 @@ def paths(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> str:
     return draw(st.just("/") | keys(max_num_nodes=max_num_nodes))
 
 
-def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
+def dtypes() -> st.SearchStrategy[np.dtype[Any]]:
     return (
         npst.boolean_dtypes()
         | npst.integer_dtypes(endianness="=")
@@ -55,20 +55,14 @@ def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
         | npst.datetime64_dtypes(endianness="=")
         | npst.timedelta64_dtypes(endianness="=")
     )
+
+
+def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
+    return dtypes()
 
 
 def v2_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
-    return (
-        npst.boolean_dtypes()
-        | npst.integer_dtypes(endianness="=")
-        | npst.unsigned_integer_dtypes(endianness="=")
-        | npst.floating_dtypes(endianness="=")
-        | npst.complex_number_dtypes(endianness="=")
-        | npst.byte_string_dtypes(endianness="=")
-        | npst.unicode_string_dtypes(endianness="=")
-        | npst.datetime64_dtypes(endianness="=")
-        | npst.timedelta64_dtypes(endianness="=")
-    )
+    return dtypes()
 
 
 def safe_unicode_for_dtype(dtype: np.dtype[np.str_]) -> st.SearchStrategy[str]:
@@ -144,7 +138,7 @@ def array_metadata(
     shape = draw(array_shapes())
     ndim = len(shape)
     chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
-    np_dtype = draw(v3_dtypes())
+    np_dtype = draw(dtypes())
     dtype = get_data_type_from_native_dtype(np_dtype)
     fill_value = draw(npst.from_dtype(np_dtype))
     if zarr_format == 2:
@@ -179,14 +173,12 @@ def numpy_arrays(
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
     dtype: np.dtype[Any] | None = None,
-    zarr_formats: st.SearchStrategy[ZarrFormat] = zarr_formats,
 ) -> npt.NDArray[Any]:
     """
     Generate numpy arrays that can be saved in the provided Zarr format.
     """
-    zarr_format = draw(zarr_formats)
     if dtype is None:
-        dtype = draw(v3_dtypes() if zarr_format == 3 else v2_dtypes())
+        dtype = draw(dtypes())
     if np.issubdtype(dtype, np.str_):
         safe_unicode_strings = safe_unicode_for_dtype(dtype)
         return draw(npst.arrays(dtype=dtype, shape=shapes, elements=safe_unicode_strings))
@@ -255,17 +247,24 @@ def arrays(
     attrs: st.SearchStrategy = attrs,
     zarr_formats: st.SearchStrategy = zarr_formats,
 ) -> Array:
-    store = draw(stores)
-    path = draw(paths)
-    name = draw(array_names)
-    attributes = draw(attrs)
-    zarr_format = draw(zarr_formats)
+    store = draw(stores, label="store")
+    path = draw(paths, label="array parent")
+    name = draw(array_names, label="array name")
+    attributes = draw(attrs, label="attributes")
+    zarr_format = draw(zarr_formats, label="zarr format")
     if arrays is None:
-        arrays = numpy_arrays(shapes=shapes, zarr_formats=st.just(zarr_format))
-    nparray = draw(arrays)
-    chunk_shape = draw(chunk_shapes(shape=nparray.shape))
+        arrays = numpy_arrays(shapes=shapes)
+    nparray = draw(arrays, label="array data")
+    chunk_shape = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
+    extra_kwargs = {}
     if zarr_format == 3 and all(c > 0 for c in chunk_shape):
-        shard_shape = draw(st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunk_shape))
+        shard_shape = draw(
+            st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunk_shape),
+            label="shard shape",
+        )
+        extra_kwargs["dimension_names"] = draw(
+            dimension_names(ndim=nparray.ndim), label="dimension names"
+        )
     else:
         shard_shape = None
     # test that None works too.
@@ -286,6 +285,7 @@ def arrays(
         attributes=attributes,
         # compressor=compressor,  # FIXME
         fill_value=fill_value,
+        **extra_kwargs,
     )
 
     assert isinstance(a, Array)
@@ -385,13 +385,19 @@ def orthogonal_indices(
     npindexer = []
     ndim = len(shape)
     for axis, size in enumerate(shape):
-        val = draw(
-            npst.integer_array_indices(
+        if size != 0:
+            strategy = npst.integer_array_indices(
                 shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
-            )
-            | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
-            .map(lambda x: (x,) if not isinstance(x, tuple) else x)  # bare ints, slices
-            .filter(bool)  # skip empty tuple
+            ) | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+        else:
+            strategy = basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+
+        val = draw(
+            strategy
+            # bare ints, slices
+            .map(lambda x: (x,) if not isinstance(x, tuple) else x)
+            # skip empty tuple
+            .filter(bool)
         )
         (idxr,) = val
         if isinstance(idxr, int):
@@ -405,7 +411,7 @@ def orthogonal_indices(
         newshape[axis] = idxr.size
         npindexer.append(idxr.reshape(newshape))
 
-    # casting the output of broadcast_arrays is needed for numpy 1.25
+    # casting the output of broadcast_arrays is needed for numpy < 2
     return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
