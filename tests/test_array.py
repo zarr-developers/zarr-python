@@ -42,7 +42,7 @@ from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_pr
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
-from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype import (
     DateTime64,
     Float32,
