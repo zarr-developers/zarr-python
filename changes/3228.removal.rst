@@ -12,5 +12,5 @@ reconfigured at runtime. Users who relied on setting the default chunk encoding 
 instead specify the desired chunk encoding explicitly when creating an array.
 
 This change also adds an extra validation step to the creation of Zarr V2 arrays, which ensures that
-arrays with a ``VariableLengthUTF8`` or ``VariableLengthBytes`` cannot be created without the
+arrays with a ``VariableLengthUTF8`` or ``VariableLengthBytes`` data type cannot be created without the
 correct "object codec".
