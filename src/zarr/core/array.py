@@ -4699,7 +4699,7 @@ def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
         elif dtype.object_codec_id == "vlen-utf8":
             serializer = VLenUTF8Codec()
         else:
-            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id}"
+            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
             raise ValueError(msg)
     return serializer
 
@@ -4721,7 +4721,7 @@ def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[numcodecs.abc.Codec] | 
 
             return (VLenUTF8(),)
         else:
-            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}"
+            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
             raise ValueError(msg)
     return None
 

@@ -35,6 +35,8 @@ from zarr.core.array import (
     _parse_chunk_encoding_v3,
     chunks_initialized,
     create_array,
+    default_filters_v2,
+    default_serializer_v3,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
@@ -1893,3 +1895,25 @@ def test_chunk_encoding_no_object_codec_errors(dtype: ZDType[Any, Any]) -> None:
     )
     with pytest.raises(ValueError, match=re.escape(msg)):
         _parse_chunk_encoding_v2(filters=None, compressor=None, dtype=dtype)
+
+
+def test_unknown_object_codec_default_serializer_v3() -> None:
+    """
+    Test that we get a valueerrror when trying to create the default serializer for a data type
+    that requires an unknown object codec
+    """
+    dtype = UnknownObjectDtype()
+    msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        default_serializer_v3(dtype)
+
+
+def test_unknown_object_codec_default_filters_v2() -> None:
+    """
+    Test that we get a valueerrror when trying to create the default serializer for a data type
+    that requires an unknown object codec
+    """
+    dtype = UnknownObjectDtype()
+    msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        default_filters_v2(dtype)
