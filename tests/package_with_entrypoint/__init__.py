@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
@@ -14,7 +14,7 @@ from zarr.core.dtype.npy.bool import Bool
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-    from typing import ClassVar, Literal
+    from typing import Any, ClassVar, Literal, Self
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.common import ZarrFormat

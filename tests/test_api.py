@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import pathlib
 import re
 from typing import TYPE_CHECKING
 
@@ -9,8 +8,8 @@ import zarr.codecs
 import zarr.storage
 
 if TYPE_CHECKING:
-    import pathlib
     from collections.abc import Callable
+    from pathlib import Path
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -45,10 +44,6 @@ from zarr.errors import MetadataValidationError
 from zarr.storage import LocalStore, MemoryStore, ZipStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
 
 
 def test_create(memory_store: Store) -> None:
@@ -210,9 +205,7 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
-async def test_open_group_unspecified_version(
-    tmpdir: pathlib.Path, zarr_format: ZarrFormat
-) -> None:
+async def test_open_group_unspecified_version(tmpdir: Path, zarr_format: ZarrFormat) -> None:
     """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
 
     # create a group with specified zarr format (could be 2, 3, or None)
@@ -273,7 +266,7 @@ def test_save_errors() -> None:
         zarr.save("data/example.zarr", a, mode="w")
 
 
-def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_r(tmp_path: Path) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmp_path, mode="r")
@@ -289,7 +282,7 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
         z2[:] = 3
 
 
-def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_r_plus(tmp_path: Path) -> None:
     # 'r+' means read/write (must exist)
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmp_path, mode="r+")
@@ -302,7 +295,7 @@ def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
     z2[:] = 3
 
 
-async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+async def test_open_with_mode_a(tmp_path: Path) -> None:
     # Open without shape argument should default to group
     g = zarr.open(store=tmp_path, mode="a")
     assert isinstance(g, Group)
@@ -320,7 +313,7 @@ async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
     z2[:] = 3
 
 
-def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_w(tmp_path: Path) -> None:
     # 'w' means create (overwrite if exists);
     arr = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
     assert isinstance(arr, Array)
@@ -334,7 +327,7 @@ def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
     z2[:] = 3
 
 
-def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_w_minus(tmp_path: Path) -> None:
     # 'w-' means create  (fail if exists)
     arr = zarr.open(store=tmp_path, mode="w-", shape=(3, 3))
     assert isinstance(arr, Array)
@@ -406,7 +399,7 @@ def test_load_array(sync_store: Store) -> None:
 
 @pytest.mark.parametrize("path", ["data", None])
 @pytest.mark.parametrize("load_read_only", [True, False, None])
-def test_load_zip(tmp_path: pathlib.Path, path: str | None, load_read_only: bool | None) -> None:
+def test_load_zip(tmp_path: Path, path: str | None, load_read_only: bool | None) -> None:
     file = tmp_path / "test.zip"
     data = np.arange(100).reshape(10, 10)
 
@@ -424,7 +417,7 @@ def test_load_zip(tmp_path: pathlib.Path, path: str | None, load_read_only: bool
 
 @pytest.mark.parametrize("path", ["data", None])
 @pytest.mark.parametrize("load_read_only", [True, False])
-def test_load_local(tmp_path: pathlib.Path, path: str | None, load_read_only: bool) -> None:
+def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> None:
     file = tmp_path / "test.zip"
     data = np.arange(100).reshape(10, 10)
 
@@ -1174,7 +1167,7 @@ async def test_open_falls_back_to_open_group_async(zarr_format: ZarrFormat) -> N
 
 
 @pytest.mark.parametrize("mode", ["r", "r+", "w", "a"])
-def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
+def test_open_modes_creates_group(tmp_path: Path, mode: str) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2490
     zarr_dir = tmp_path / f"mode-{mode}-test.zarr"
     if mode in ["r", "r+"]:
