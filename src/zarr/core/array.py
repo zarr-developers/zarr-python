@@ -1198,6 +1198,18 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
 
     @property
+    def _shard_data_shape(self) -> ChunkCoords:
+        """
+        The shape of the shard grid for this array.
+
+        Returns
+        -------
+        Tuple[int]
+            The shape of the chunk grid for this array.
+        """
+        return tuple(starmap(ceildiv, zip(self.shape, self.shards or self.chunks, strict=False)))
+
+    @property
     def nchunks(self) -> int:
         """
         The number of chunks in the stored representation of this array.
@@ -1239,7 +1251,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return await self.store_path.store.getsize_prefix(self.store_path.path)
 
     def _iter_chunk_coords(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        iter_shards: bool = False,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[ChunkCoords]:
         """
         Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
@@ -1251,6 +1267,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Parameters
         ----------
+        iter_shards : bool, default=False
+            Whether to iterate by shard (if True) or by chunk (if False).
         origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
         selection_shape : Sequence[int] | None, default=None
@@ -1261,7 +1279,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunk_coords: ChunkCoords
             The coordinates of each chunk in the selection.
         """
-        return _iter_grid(self.cdata_shape, origin=origin, selection_shape=selection_shape)
+        return _iter_grid(
+            self._shard_data_shape if iter_shards else self.cdata_shape,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
     def _iter_chunk_keys(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -1288,13 +1310,19 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             yield self.metadata.encode_chunk_key(k)
 
     def _iter_chunk_regions(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        iter_shards: bool = False,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each chunk.
 
         Parameters
         ----------
+        iter_shards : bool, default=False
+            Whether to iterate by shard (if True) or by chunk (if False).
         origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
         selection_shape : Sequence[int] | None, default=None
@@ -1305,11 +1333,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         region: tuple[slice, ...]
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
+        region_size = (self.shards or self.chunks) if iter_shards else self.chunks
         for cgrid_position in self._iter_chunk_coords(
-            origin=origin, selection_shape=selection_shape
+            iter_shards=iter_shards, origin=origin, selection_shape=selection_shape
         ):
             out: tuple[slice, ...] = ()
-            for c_pos, c_shape in zip(cgrid_position, self.chunks, strict=False):
+            for c_pos, c_shape in zip(cgrid_position, region_size, strict=False):
                 start = c_pos * c_shape
                 stop = start + c_shape
                 out += (slice(start, stop, 1),)
@@ -2208,6 +2237,13 @@ class Array:
         return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
 
     @property
+    def _shard_data_shape(self) -> ChunkCoords:
+        """
+        The shape of the shard grid for this array.
+        """
+        return tuple(starmap(ceildiv, zip(self.shape, self.shards or self.chunks, strict=False)))
+
+    @property
     def nchunks(self) -> int:
         """
         The number of chunks in the stored representation of this array.
@@ -2294,7 +2330,10 @@ class Array:
         return sync(self._async_array.nbytes_stored())
 
     def _iter_chunk_keys(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[str]:
         """
         Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
@@ -2317,13 +2356,19 @@ class Array:
         )
 
     def _iter_chunk_regions(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        iter_shards: bool = False,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each chunk.
 
         Parameters
         ----------
+        iter_shards : bool, default=False
+            Whether to iterate by shard (if True) or by chunk (if False).
         origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
         selection_shape : Sequence[int] | None, default=None
@@ -2335,7 +2380,7 @@ class Array:
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
         yield from self._async_array._iter_chunk_regions(
-            origin=origin, selection_shape=selection_shape
+            iter_shards=iter_shards, origin=origin, selection_shape=selection_shape
         )
 
     def __array__(
@@ -4123,7 +4168,7 @@ async def from_array(
 
             # Stream data from the source array to the new array
             await concurrent_map(
-                [(region, data) for region in result._iter_chunk_regions()],
+                [(region, data) for region in result._iter_chunk_regions(iter_shards=True)],
                 _copy_array_region,
                 zarr.core.config.config.get("async.concurrency"),
             )
@@ -4134,7 +4179,7 @@ async def from_array(
 
             # Stream data from the source array to the new array
             await concurrent_map(
-                [(region, data) for region in result._iter_chunk_regions()],
+                [(region, data) for region in result._iter_chunk_regions(iter_shards=True)],
                 _copy_arraylike_region,
                 zarr.core.config.config.get("async.concurrency"),
             )
