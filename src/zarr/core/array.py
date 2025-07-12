@@ -192,7 +192,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     raise TypeError  # pragma: no cover
 
 
-def create_codec_pipeline(metadata: ArrayMetadata, store: Store | None = None) -> CodecPipeline:
+def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None) -> CodecPipeline:
     if store is not None:
         try:
             return get_pipeline_class().from_array_metadata_and_store(
