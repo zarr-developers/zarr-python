@@ -91,7 +91,15 @@ Deprecations and Removals
   This change also adds an extra validation step to the creation of Zarr V2 arrays, which ensures that
   arrays with a ``VariableLengthUTF8`` or ``VariableLengthBytes`` data type cannot be created without the
   correct "object codec". (:issue:`3228`)
-
+- Removes support for passing certain arguments positionally to the following functions and methods:
+  ``save_array``, ``open``, ``group``, ``open_group``, ``create``, ``get_basic_selection``, ``set_basic_selection``,
+  ``get_orthogonal_selection``,  ``set_orthogonal_selection``, ``get_mask_selection``, ``set_mask_selection``,
+  ``get_coordinate_selection``, ``set_coordinate_selection``, ``get_block_selection``, ``set_block_selection``,
+  ``Group.create_array``, ``Group.empty``, ``Group.zeroes``, ``Group.ones``, ``Group.empty_like``, ``Group.full``,
+  ``Group.zeros_like``, ``Group.ones_like``, ``Group.full_like``, ``Group.array``. Prior to this change,
+  we allowed arguments to these routines annotated as keyword-only to be passed positionally, with
+  a deprecation warning. That warning is now gone, and passing keyword-only arguments to these functions
+  and methods is now an error.
 
 3.0.10 (2025-07-03)
 -------------------
