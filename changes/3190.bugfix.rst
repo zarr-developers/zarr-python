@@ -1,0 +1,1 @@
+Add human readable size for No. bytes stored to `info_complete`

@@ -133,7 +133,7 @@ ratios, depending on the correlation structure within the data. E.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 342588911
+   No. bytes stored   : 342588911 (326.7M)
    Storage ratio      : 1.2
    Chunks Initialized : 100
    >>> with zarr.config.set({'array.order': 'F'}):
@@ -153,7 +153,7 @@ ratios, depending on the correlation structure within the data. E.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 342588911
+   No. bytes stored   : 342588911 (326.7M)
    Storage ratio      : 1.2
    Chunks Initialized : 100
 

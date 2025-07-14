@@ -1,0 +1,1 @@
+Add an alternate `from_array_metadata_and_store` constructor to `CodecPipeline`.

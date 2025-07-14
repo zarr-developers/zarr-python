@@ -11,7 +11,6 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasEndianness,
     HasItemSize,
-    ScalarTypeValidationError,
     check_dtype_spec_v2,
 )
 from zarr.core.dtype.npy.common import (
@@ -35,11 +34,28 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemSize):
+    """
+    A base class for Zarr data types that wrap NumPy float data types.
+    """
+
     # This attribute holds the possible zarr v2 JSON names for the data type
     _zarr_v2_names: ClassVar[tuple[str, ...]]
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+        """
+        Create an instance of this ZDType from a NumPy data type.
+
+        Parameters
+        ----------
+        dtype : TBaseDType
+            The NumPy data type.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+        """
         if cls._check_native_dtype(dtype):
             return cls(endianness=get_endianness_from_numpy_dtype(dtype))
         raise DataTypeValidationError(
@@ -47,6 +63,14 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         )
 
     def to_native_dtype(self) -> TFloatDType_co:
+        """
+        Convert the wrapped data type to a NumPy data type.
+
+        Returns
+        -------
+        TFloatDType_co
+            The NumPy data type.
+        """
         byte_order = endianness_to_numpy_str(self.endianness)
         return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
 
@@ -54,6 +78,16 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
     def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:
         """
         Check that the input is a valid JSON representation of this data type.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        TypeGuard[DTypeConfig_V2[str, None]]
+            True if the input is a valid JSON representation of this data type, False otherwise.
         """
         return (
             check_dtype_spec_v2(data)
@@ -63,12 +97,38 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[str]:
+        """
+        Check that the input is a valid JSON representation of this class in Zarr V3.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        TypeGuard[str]
+            True if the input is a valid JSON representation of this class, False otherwise.
+        """
         return data == cls._zarr_v3_name
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this ZDType from Zarr v2-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+        """
         if cls._check_json_v2(data):
-            # Going via numpy ensures that we get the endianness correct without
+            # Going via NumPy ensures that we get the endianness correct without
             # annoying string parsing.
             name = data["name"]
             return cls.from_native_dtype(np.dtype(name))
@@ -77,12 +137,25 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
 
     @classmethod
     def _from_json_v3(cls, data: DTypeJSON) -> Self:
+        """
+        Create an instance of this ZDType from Zarr v3-flavored JSON.
+
+        Parameters
+        ----------
+        data : DTypeJSON
+            The JSON data.
+
+        Returns
+        -------
+        Self
+            An instance of this data type.
+        """
         if cls._check_json_v3(data):
             return cls()
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {cls._zarr_v3_name}."
         raise DataTypeValidationError(msg)
 
-    @overload  # type: ignore[override]
+    @overload
     def to_json(self, zarr_format: Literal[2]) -> DTypeConfig_V2[str, None]: ...
 
     @overload
@@ -99,8 +172,13 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
 
         Returns
         -------
-        str
-            The JSON-serializable representation of the wrapped data type
+        DTypeConfig_V2[str, None] or str
+            The JSON-serializable representation of the wrapped data type.
+
+        Raises
+        ------
+        ValueError
+            If zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
             return {"name": self.to_native_dtype().str, "object_codec_id": None}
@@ -109,31 +187,73 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[FloatLike]:
-        return isinstance(data, FloatLike)
-
-    def _cast_scalar_unchecked(self, data: FloatLike) -> TFloatScalar_co:
-        return self.to_native_dtype().type(data)  # type: ignore[return-value]
-
-    def cast_scalar(self, data: object) -> TFloatScalar_co:
-        if self._check_scalar(data):
-            return self._cast_scalar_unchecked(data)
-        msg = f"Cannot convert object with type {type(data)} to a numpy float scalar."
-        raise ScalarTypeValidationError(msg)
-
-    def default_scalar(self) -> TFloatScalar_co:
         """
-        Get the default value, which is 0 cast to this dtype
+        Check that the input is a valid scalar value.
+
+        Parameters
+        ----------
+        data : object
+            The input to check.
 
         Returns
         -------
-        Int scalar
+        TypeGuard[FloatLike]
+            True if the input is a valid scalar value, False otherwise.
+        """
+        return isinstance(data, FloatLike)
+
+    def _cast_scalar_unchecked(self, data: FloatLike) -> TFloatScalar_co:
+        """
+        Cast a scalar value to a NumPy float scalar.
+
+        Parameters
+        ----------
+        data : FloatLike
+            The scalar value to cast.
+
+        Returns
+        -------
+        TFloatScalar_co
+            The NumPy float scalar.
+        """
+        return self.to_native_dtype().type(data)  # type: ignore[return-value]
+
+    def cast_scalar(self, data: object) -> TFloatScalar_co:
+        """
+        Cast a scalar value to a NumPy float scalar.
+
+        Parameters
+        ----------
+        data : object
+            The scalar value to cast.
+
+        Returns
+        -------
+        TFloatScalar_co
+            The NumPy float scalar.
+        """
+        if self._check_scalar(data):
+            return self._cast_scalar_unchecked(data)
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {self}."
+        )
+        raise TypeError(msg)
+
+    def default_scalar(self) -> TFloatScalar_co:
+        """
+        Get the default value, which is 0 cast to this zdtype.
+
+        Returns
+        -------
+        TFloatScalar_co
             The default value.
         """
         return self._cast_scalar_unchecked(0)
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> TFloatScalar_co:
         """
-        Read a JSON-serializable value as a numpy float.
+        Read a JSON-serializable value as a NumPy float scalar.
 
         Parameters
         ----------
@@ -144,8 +264,8 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
 
         Returns
         -------
-        TScalar_co
-            The numpy float.
+        TFloatScalar_co
+            The NumPy float scalar.
         """
         if zarr_format == 2:
             if check_json_float_v2(data):
@@ -191,32 +311,110 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
 
 @dataclass(frozen=True, kw_only=True)
 class Float16(BaseFloat[np.dtypes.Float16DType, np.float16]):
+    """
+    A Zarr data type for arrays containing 16-bit floating point numbers.
+
+    Wraps the ``np.dtypes.Float16DType`` data type. Scalars for this data type are instances
+    of ``np.float16``.
+
+    Attributes
+    ----------
+    dtype_cls : Type[np.dtypes.Float16DType]
+        The NumPy dtype class for this data type.
+
+    References
+    ----------
+    This class implements the float16 data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    """
+
     dtype_cls = np.dtypes.Float16DType
     _zarr_v3_name = "float16"
     _zarr_v2_names: ClassVar[tuple[Literal[">f2"], Literal["<f2"]]] = (">f2", "<f2")
 
     @property
     def item_size(self) -> int:
+        """
+        The size of a single scalar in bytes.
+
+        Returns
+        -------
+        int
+            The size of a single scalar in bytes.
+        """
         return 2
 
 
 @dataclass(frozen=True, kw_only=True)
 class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
+    """
+    A Zarr data type for arrays containing 32-bit floating point numbers.
+
+    Wraps the ``np.dtypes.Float32DType`` data type. Scalars for this data type are instances
+    of ``np.float32``.
+
+    Attributes
+    ----------
+    dtype_cls : Type[np.dtypes.Float32DType]
+        The NumPy dtype class for this data type.
+
+    References
+    ----------
+    This class implements the float32 data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    """
+
     dtype_cls = np.dtypes.Float32DType
     _zarr_v3_name = "float32"
     _zarr_v2_names: ClassVar[tuple[Literal[">f4"], Literal["<f4"]]] = (">f4", "<f4")
 
     @property
     def item_size(self) -> int:
+        """
+        The size of a single scalar in bytes.
+
+        Returns
+        -------
+        int
+            The size of a single scalar in bytes.
+        """
         return 4
 
 
 @dataclass(frozen=True, kw_only=True)
 class Float64(BaseFloat[np.dtypes.Float64DType, np.float64]):
+    """
+    A Zarr data type for arrays containing 64-bit floating point numbers.
+
+    Wraps the ``np.dtypes.Float64DType`` data type. Scalars for this data type are instances
+    of ``np.float64``.
+
+    Attributes
+    ----------
+    dtype_cls : Type[np.dtypes.Float64DType]
+        The NumPy dtype class for this data type.
+
+    References
+    ----------
+    This class implements the float64 data type defined in Zarr V2 and V3.
+
+    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    """
+
     dtype_cls = np.dtypes.Float64DType
     _zarr_v3_name = "float64"
     _zarr_v2_names: ClassVar[tuple[Literal[">f8"], Literal["<f8"]]] = (">f8", "<f8")
 
     @property
     def item_size(self) -> int:
+        """
+        The size of a single scalar in bytes.
+
+        Returns
+        -------
+        int
+            The size of a single scalar in bytes.
+        """
         return 8

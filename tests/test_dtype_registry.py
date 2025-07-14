@@ -145,7 +145,7 @@ class TestRegistry:
 def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
     from package_with_entrypoint import TestDataType
 
-    data_type_registry.lazy_load()
+    data_type_registry._lazy_load()
     instance = TestDataType()
     dtype_json = instance.to_json(zarr_format=zarr_format)
     assert get_data_type_from_json(dtype_json, zarr_format=zarr_format) == instance
