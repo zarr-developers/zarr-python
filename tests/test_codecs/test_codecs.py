@@ -16,10 +16,12 @@ from zarr.codecs import (
     GzipCodec,
     ShardingCodec,
     TransposeCodec,
+    ZstdCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import BasicSelection, morton_order_iter
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.registry import register_codec
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
@@ -413,3 +415,22 @@ async def test_resize(store: Store) -> None:
     assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
     assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is None
     assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is None
+
+
+def test_uses_default_codec() -> None:
+    class MyZstdCodec(ZstdCodec):
+        pass
+
+    register_codec("zstd", MyZstdCodec)
+
+    with zarr.config.set(
+        {"codecs": {"zstd": f"{MyZstdCodec.__module__}.{MyZstdCodec.__qualname__}"}}
+    ):
+        a = zarr.create_array(
+            StorePath(zarr.storage.MemoryStore(), path="mycodec"),
+            shape=(10, 10),
+            chunks=(10, 10),
+            dtype="int32",
+        )
+        assert a.metadata.zarr_format == 3
+        assert isinstance(a.metadata.codecs[-1], MyZstdCodec)
