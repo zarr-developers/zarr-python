@@ -23,7 +23,8 @@ The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total). The data is written to a
 :class:`zarr.storage.MemoryStore` (e.g. an in-memory dict). See
-:ref:`user-guide-persist` for details on storing arrays in other stores.
+:ref:`user-guide-persist` for details on storing arrays in other stores, and see
+:ref:`user-guide-data-types` for an in-depth look at the data types supported by Zarr.
 
 For a complete list of array creation routines see the :mod:`zarr`
 module documentation.
@@ -182,7 +183,8 @@ which can be used to print useful diagnostics, e.g.::
    >>> z.info
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.int32
+   Data type          : Int32(endianness='little')
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -199,7 +201,8 @@ prints additional diagnostics, e.g.::
    >>> z.info_complete()
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.int32
+   Data type          : Int32(endianness='little')
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -209,8 +212,8 @@ prints additional diagnostics, e.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 9696520
-   Storage ratio      : 41.3
+   No. bytes stored   : 3558573 (3.4M)
+   Storage ratio      : 112.4
    Chunks Initialized : 100
 
 .. note::
@@ -243,16 +246,6 @@ built-in delta filter::
    >>> z.compressors
    (LZMA(codec_name='numcodecs.lzma', codec_config={'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]}),)
 
-The default compressor can be changed by setting the value of the using Zarr's
-:ref:`user-guide-config`, e.g.::
-
-   >>> with zarr.config.set({'array.v2_default_compressor.numeric': {'id': 'blosc'}}):
-   ...     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
-   >>> z.filters
-   ()
-   >>> z.compressors
-   (Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0),)
-
 To disable compression, set ``compressors=None`` when creating an array, e.g.::
 
    >>> z = zarr.create_array(store='data/example-8.zarr', shape=(100000000,), chunks=(1000000,), dtype='int32', compressors=None)
@@ -283,10 +276,11 @@ Here is an example using a delta filter with the Blosc compressor::
    >>> compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle=zarr.codecs.BloscShuffle.shuffle)
    >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
    >>> z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
-   >>> z.info
+   >>> z.info_complete()
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.int32
+   Data type          : Int32(endianness='little')
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -296,6 +290,9 @@ Here is an example using a delta filter with the Blosc compressor::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=1, shuffle=<BloscShuffle.shuffle: 'shuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
+   No. bytes stored   : 826
+   Storage ratio      : 484261.5
+   Chunks Initialized : 0
 
 For more information about available filter codecs, see the `Numcodecs
 <https://numcodecs.readthedocs.io/>`_ documentation.
@@ -600,7 +597,8 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   >>> a.info_complete()
   Type               : Array
   Zarr format        : 3
-  Data type          : DataType.uint8
+  Data type          : UInt8()
+  Fill value         : 0
   Shape              : (10000, 10000)
   Shard shape        : (1000, 1000)
   Chunk shape        : (100, 100)
@@ -608,10 +606,10 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Read-only          : False
   Store type         : LocalStore
   Filters            : ()
-  Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+  Serializer         : BytesCodec(endian=None)
   Compressors        : (ZstdCodec(level=0, checksum=False),)
   No. bytes          : 100000000 (95.4M)
-  No. bytes stored   : 3981552
+  No. bytes stored   : 3981473 (3.8M)
   Storage ratio      : 25.1
   Shards Initialized : 100
 
@@ -624,29 +622,6 @@ Missing features in 3.0
 
 
 The following features have not been ported to 3.0 yet.
-
-.. _user-guide-objects:
-
-Object arrays
-~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Object arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#object-arrays>`_ for more details.
-
-.. _user-guide-strings:
-
-Fixed-length string arrays
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Fixed-length string arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#string-arrays>`_ for more details.
-
-.. _user-guide-datetime:
-
-Datetime and Timedelta arrays
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-See the Zarr-Python 2 documentation on `Datetime and Timedelta <https://zarr.readthedocs.io/en/support-v2/tutorial.html#datetimes-and-timedeltas>`_ for more details.
-
-.. _user-guide-copy:
 
 Copying and migrating data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

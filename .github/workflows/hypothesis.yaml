@@ -1,11 +1,9 @@
 name: Slow Hypothesis CI
 on:
   push:
-    branches:
-      - "main"
+    branches: [main, 3.0.x]
   pull_request:
-    branches:
-      - "main"
+    branches: [main, 3.0.x]
     types: [opened, reopened, synchronize, labeled]
   schedule:
     - cron: "0 0 * * *" # Daily “At 00:00” UTC
@@ -25,12 +23,19 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.11']
-        numpy-version: ['2.1']
+        python-version: ['3.12']
+        numpy-version: ['2.2']
         dependency-set: ["optional"]
 
     steps:
     - uses: actions/checkout@v4
+    - name: Set HYPOTHESIS_PROFILE based on trigger
+      run: |
+        if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "HYPOTHESIS_PROFILE=nightly" >> $GITHUB_ENV
+        else
+          echo "HYPOTHESIS_PROFILE=ci" >> $GITHUB_ENV
+        fi
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -58,6 +63,7 @@ jobs:
       if: success()
       id: status
       run: |
+        echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.
@@ -81,7 +87,7 @@ jobs:
         && steps.status.outcome == 'failure'
         && github.event_name == 'schedule'
         && github.repository_owner == 'zarr-developers'
-      uses: xarray-contrib/issue-from-pytest-log@v1
+      uses: scientific-python/issue-from-pytest-log-action@v1
       with:
         log-path: output-${{ matrix.python-version }}-log.jsonl
         issue-title: "Nightly Hypothesis tests failed"

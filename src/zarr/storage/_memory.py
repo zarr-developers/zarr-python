@@ -19,7 +19,7 @@ logger = getLogger(__name__)
 
 class MemoryStore(Store):
     """
-    In-memory store.
+    Store for local memory.
 
     Parameters
     ----------
@@ -53,6 +53,13 @@ class MemoryStore(Store):
         if store_dict is None:
             store_dict = {}
         self._store_dict = store_dict
+
+    def with_read_only(self, read_only: bool = False) -> MemoryStore:
+        # docstring inherited
+        return type(self)(
+            store_dict=self._store_dict,
+            read_only=read_only,
+        )
 
     async def clear(self) -> None:
         # docstring inherited
@@ -136,7 +143,9 @@ class MemoryStore(Store):
         except KeyError:
             logger.debug("Key %s does not exist.", key)
 
-    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview[int]]]
+    ) -> None:
         # docstring inherited
         raise NotImplementedError
 
@@ -173,8 +182,10 @@ class MemoryStore(Store):
 
 
 class GpuMemoryStore(MemoryStore):
-    """A GPU only memory store that stores every chunk in GPU memory irrespective
-    of the original location.
+    """
+    Store for GPU memory.
+
+    Stores every chunk in GPU memory irrespective of the original location.
 
     The dictionary of buffers to initialize this memory store with *must* be
     GPU Buffers.

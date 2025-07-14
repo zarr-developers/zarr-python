@@ -93,7 +93,7 @@ class NDArrayLike(Protocol):
 
     def all(self) -> bool: ...
 
-    def __eq__(self, other: object) -> Self:  # type: ignore[explicit-override, override]
+    def __eq__(self, other: object) -> Self:  # type: ignore[override]
         """Element-wise equal
 
         Notes
@@ -103,6 +103,10 @@ class NDArrayLike(Protocol):
         This is true, but since NumPy's ndarray is defined as an element-wise equal,
         our hands are tied.
         """
+
+
+ScalarType = int | float | complex | bytes | str | bool | np.generic
+NDArrayLikeOrScalar = ScalarType | NDArrayLike
 
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:
@@ -139,7 +143,7 @@ class Buffer(ABC):
     def __init__(self, array_like: ArrayLike) -> None:
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
-        if array_like.dtype != np.dtype("b"):
+        if array_like.dtype != np.dtype("B"):
             raise ValueError("array_like: only byte dtype allowed")
         self._data = array_like
 
@@ -155,7 +159,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -203,7 +207,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
@@ -223,7 +227,7 @@ class Buffer(ABC):
         if cls is Buffer:
             raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
         return cls(
-            cast(ArrayLike, None)
+            cast("ArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     def as_array_like(self) -> ArrayLike:
@@ -250,6 +254,19 @@ class Buffer(ABC):
             NumPy array of this buffer (might be a data copy)
         """
         ...
+
+    def as_buffer_like(self) -> BytesLike:
+        """Returns the buffer as an object that implements the Python buffer protocol.
+
+        Notes
+        -----
+        Might have to copy data, since the implementation uses `.as_numpy_array()`.
+
+        Returns
+        -------
+            An object that implements the Python buffer protocol
+        """
+        return memoryview(self.as_numpy_array())  # type: ignore[arg-type]
 
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
@@ -302,7 +319,7 @@ class NDBuffer:
     Notes
     -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
-    is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
+    is a special case of NDBuffer where dim=1, stride=1, and dtype="B". However,
     in order to use Python's type system to differentiate between the contiguous
     Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
     two classes separate.
@@ -354,8 +371,43 @@ class NDBuffer:
                 "Cannot call abstract method on the abstract class 'NDBuffer'"
             )
         return cls(
-            cast(NDArrayLike, None)
+            cast("NDArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
+
+    @classmethod
+    def empty(
+        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+    ) -> Self:
+        """
+        Create an empty buffer with the given shape, dtype, and order.
+
+        This method can be faster than ``NDBuffer.create`` because it doesn't
+        have to initialize the memory used by the underlying ndarray-like
+        object.
+
+        Parameters
+        ----------
+        shape
+            The shape of the buffer and its underlying ndarray-like object
+        dtype
+            The datatype of the buffer and its underlying ndarray-like object
+        order
+            Whether to store multi-dimensional data in row-major (C-style) or
+            column-major (Fortran-style) order in memory.
+
+        Returns
+        -------
+        buffer
+            New buffer representing a new ndarray_like object with empty data.
+
+        See Also
+        --------
+        NDBuffer.create
+            Create a new buffer with some initial fill value.
+        """
+        # Implementations should override this method if they have a faster way
+        # to allocate an empty buffer.
+        return cls.create(shape=shape, dtype=dtype, order=order)
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
@@ -391,7 +443,7 @@ class NDBuffer:
                 "Cannot call abstract method on the abstract class 'NDBuffer'"
             )
         return cls(
-            cast(NDArrayLike, None)
+            cast("NDArrayLike", None)
         )  # This line will never be reached, but it satisfies the type checker
 
     def as_ndarray_like(self) -> NDArrayLike:
@@ -418,6 +470,12 @@ class NDBuffer:
             NumPy array of this buffer (might be a data copy)
         """
         ...
+
+    def as_scalar(self) -> ScalarType:
+        """Returns the buffer as a scalar value"""
+        if self._data.size != 1:
+            raise ValueError("Buffer does not contain a single scalar value")
+        return cast("ScalarType", self.as_numpy_array()[()])
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -472,7 +530,9 @@ class NDBuffer:
         return np.array_equal(
             self._data,
             other,
-            equal_nan=equal_nan if self._data.dtype.kind not in "USTOV" else False,
+            equal_nan=equal_nan
+            if self._data.dtype.kind not in ("U", "S", "T", "O", "V")
+            else False,
         )
 
     def fill(self, value: Any) -> None:

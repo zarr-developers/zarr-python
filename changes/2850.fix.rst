@@ -1,2 +1,0 @@
-Fixed a bug where ``StorePath`` creation would not apply standard path normalization to the ``path`` parameter,
-which led to the creation of arrays and groups with invalid keys.

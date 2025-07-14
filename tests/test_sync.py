@@ -15,7 +15,6 @@ from zarr.core.sync import (
     loop,
     sync,
 )
-from zarr.storage import MemoryStore
 
 
 @pytest.fixture(params=[True, False])
@@ -90,6 +89,7 @@ def test_sync_raises_if_loop_is_closed() -> None:
     foo.assert_not_awaited()
 
 
+@pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
 @pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
 def test_sync_raises_if_calling_sync_from_within_a_running_loop(
     sync_loop: asyncio.AbstractEventLoop | None,
@@ -140,12 +140,6 @@ def test_sync_mixin(sync_loop) -> None:
     foo = SyncFoo(async_foo)
     assert foo.foo() == "foo"
     assert foo.bar() == list(range(10))
-
-
-def test_open_positional_args_deprecate():
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        zarr.open(store, "w", shape=(1,))
 
 
 @pytest.mark.parametrize("workers", [None, 1, 2])

@@ -6,8 +6,7 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 import zarr.core.array
-from zarr._compat import _deprecate_positional_args
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import DEFAULT_FILL_VALUE, Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
@@ -15,6 +14,7 @@ from zarr.core.sync_group import create_hierarchy
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    import numcodecs.abc
     import numpy as np
     import numpy.typing as npt
 
@@ -27,16 +27,18 @@ if TYPE_CHECKING:
         ShardsLike,
     )
     from zarr.core.array_spec import ArrayConfigLike
-    from zarr.core.buffer import NDArrayLike
+    from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,
         AccessModeLiteral,
         ChunkCoords,
+        DimensionNames,
         MemoryOrder,
         ShapeLike,
         ZarrFormat,
     )
+    from zarr.core.dtype import ZDTypeLike
     from zarr.storage import StoreLike
 
 __all__ = [
@@ -50,6 +52,7 @@ __all__ = [
     "create_hierarchy",
     "empty",
     "empty_like",
+    "from_array",
     "full",
     "full_like",
     "group",
@@ -79,7 +82,8 @@ def consolidate_metadata(
     Consolidate the metadata of all nodes in a hierarchy.
 
     Upon completion, the metadata of the root node in the Zarr hierarchy will be
-    updated to include all the metadata of child nodes.
+    updated to include all the metadata of child nodes. For Stores that do
+    not use consolidated metadata, this operation raises a `TypeError`.
 
     Parameters
     ----------
@@ -99,7 +103,10 @@ def consolidate_metadata(
     -------
     group: Group
         The group, with the ``consolidated_metadata`` field set to include
-        the metadata of each child node.
+        the metadata of each child node. If the Store doesn't support
+        consolidated metadata, this function raises a `TypeError`.
+        See ``Store.supports_consolidated_metadata``.
+
     """
     return Group(sync(async_api.consolidate_metadata(store, path=path, zarr_format=zarr_format)))
 
@@ -121,7 +128,7 @@ def load(
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     zarr_version: ZarrFormat | None = None,
-) -> NDArrayLike | dict[str, NDArrayLike]:
+) -> NDArrayLikeOrScalar | dict[str, NDArrayLikeOrScalar]:
     """Load data from an array or group into memory.
 
     Parameters
@@ -152,11 +159,10 @@ def load(
     )
 
 
-@_deprecate_positional_args
 def open(
     store: StoreLike | None = None,
     *,
-    mode: AccessModeLiteral = "a",
+    mode: AccessModeLiteral | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -174,6 +180,7 @@ def open(
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
+        If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional
@@ -246,7 +253,6 @@ def save(
     )
 
 
-@_deprecate_positional_args
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
@@ -359,7 +365,7 @@ def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> An
 
 
 # TODO: add type annotations for kwargs
-def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
+def array(data: npt.ArrayLike | Array, **kwargs: Any) -> Array:
     """Create an array filled with `data`.
 
     Parameters
@@ -378,7 +384,6 @@ def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
-@_deprecate_positional_args
 def group(
     store: StoreLike | None = None,
     *,
@@ -446,7 +451,6 @@ def group(
     )
 
 
-@_deprecate_positional_args
 def open_group(
     store: StoreLike | None = None,
     *,
@@ -596,16 +600,16 @@ def create(
     shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | int | bool | None = None,
-    dtype: npt.DTypeLike | None = None,
-    compressor: dict[str, JSON] | None = None,  # TODO: default and type change
-    fill_value: Any | None = 0,  # TODO: need type
+    dtype: ZDTypeLike | None = None,
+    compressor: CompressorLike = "auto",
+    fill_value: Any | None = DEFAULT_FILL_VALUE,  # TODO: need type
     order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -625,7 +629,7 @@ def create(
         | None
     ) = None,
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNames = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
     **kwargs: Any,
@@ -748,22 +752,23 @@ def create_array(
     *,
     name: str | None = None,
     shape: ShapeLike | None = None,
-    dtype: npt.DTypeLike | None = None,
+    dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
-    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    chunk_key_encoding: ChunkKeyEncodingLike | None = None,
+    dimension_names: DimensionNames = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
+    write_data: bool = True,
 ) -> Array:
     """Create an array.
 
@@ -778,7 +783,7 @@ def create_array(
         at the root of the store.
     shape : ChunkCoords, optional
         Shape of the array. Can be ``None`` if ``data`` is provided.
-    dtype : npt.DTypeLike, optional
+    dtype : ZDTypeLike, optional
         Data type of the array. Can be ``None`` if ``data`` is provided.
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
@@ -855,8 +860,14 @@ def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
+        If `True`, all existing paths in the store will be deleted.
     config : ArrayConfigLike, optional
         Runtime configuration for the array.
+    write_data : bool
+        If a pre-existing array-like object was provided to this function via the ``data`` parameter
+        then ``write_data`` determines whether the values in that array-like object should be
+        written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+        array will be left empty.
 
     Returns
     -------
@@ -866,7 +877,7 @@ def create_array(
     Examples
     --------
     >>> import zarr
-    >>> store = zarr.storage.MemoryStore(mode='w')
+    >>> store = zarr.storage.MemoryStore()
     >>> arr = await zarr.create_array(
     >>>     store=store,
     >>>     shape=(100,100),
@@ -883,6 +894,220 @@ def create_array(
                 shape=shape,
                 dtype=dtype,
                 data=data,
+                chunks=chunks,
+                shards=shards,
+                filters=filters,
+                compressors=compressors,
+                serializer=serializer,
+                fill_value=fill_value,
+                order=order,
+                zarr_format=zarr_format,
+                attributes=attributes,
+                chunk_key_encoding=chunk_key_encoding,
+                dimension_names=dimension_names,
+                storage_options=storage_options,
+                overwrite=overwrite,
+                config=config,
+                write_data=write_data,
+            )
+        )
+    )
+
+
+def from_array(
+    store: str | StoreLike,
+    *,
+    data: Array | npt.ArrayLike,
+    write_data: bool = True,
+    name: str | None = None,
+    chunks: Literal["auto", "keep"] | ChunkCoords = "keep",
+    shards: ShardsLike | None | Literal["keep"] = "keep",
+    filters: FiltersLike | Literal["keep"] = "keep",
+    compressors: CompressorsLike | Literal["keep"] = "keep",
+    serializer: SerializerLike | Literal["keep"] = "keep",
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
+    order: MemoryOrder | None = None,
+    zarr_format: ZarrFormat | None = None,
+    attributes: dict[str, JSON] | None = None,
+    chunk_key_encoding: ChunkKeyEncodingLike | None = None,
+    dimension_names: DimensionNames = None,
+    storage_options: dict[str, Any] | None = None,
+    overwrite: bool = False,
+    config: ArrayConfigLike | None = None,
+) -> Array:
+    """Create an array from an existing array or array-like.
+
+    Parameters
+    ----------
+    store : str or Store
+        Store or path to directory in file system or name of zip file for the new array.
+    data : Array | array-like
+        The array to copy.
+    write_data : bool, default True
+        Whether to copy the data from the input array to the new array.
+        If ``write_data`` is ``False``, the new array will be created with the same metadata as the
+        input array, but without any data.
+    name : str or None, optional
+        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        at the root of the store.
+    chunks : ChunkCoords or "auto" or "keep", optional
+        Chunk shape of the array.
+        Following values are supported:
+
+        - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
+        - "keep": Retain the chunk shape of the data array if it is a zarr Array.
+        - ChunkCoords: A tuple of integers representing the chunk shape.
+
+        If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
+    shards : ChunkCoords, optional
+        Shard shape of the array.
+        Following values are supported:
+
+        - "auto": Automatically determine the shard shape based on the array's shape and chunk shape.
+        - "keep": Retain the shard shape of the data array if it is a zarr Array.
+        - ChunkCoords: A tuple of integers representing the shard shape.
+        - None: No sharding.
+
+        If not specified, defaults to "keep" if data is a zarr Array, otherwise None.
+    filters : Iterable[Codec] or "auto" or "keep", optional
+        Iterable of filters to apply to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+
+        For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+        and these values must be instances of ``ArrayArrayCodec``, or dict representations
+        of ``ArrayArrayCodec``.
+
+        For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
+        the order if your filters is consistent with the behavior of each filter.
+
+        Following values are supported:
+
+        - Iterable[Codec]: List of filters to apply to the array.
+        - "auto": Automatically determine the filters based on the array's dtype.
+        - "keep": Retain the filters of the data array if it is a zarr Array.
+
+        If no ``filters`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
+    compressors : Iterable[Codec] or "auto" or "keep", optional
+        List of compressors to apply to the array. Compressors are applied in order, and after any
+        filters are applied (if any are specified) and the data is serialized into bytes.
+
+        For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
+        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+
+        For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
+        be provided for Zarr format 2.
+
+        Following values are supported:
+
+        - Iterable[Codec]: List of compressors to apply to the array.
+        - "auto": Automatically determine the compressors based on the array's dtype.
+        - "keep": Retain the compressors of the input array if it is a zarr Array.
+
+        If no ``compressors`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
+    serializer : dict[str, JSON] | ArrayBytesCodec or "auto" or "keep", optional
+        Array-to-bytes codec to use for encoding the array data.
+        Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
+
+        Following values are supported:
+
+        - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
+        - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
+        - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
+          ``array.v3_default_serializer`` in :mod:`zarr.core.config`.
+        - "keep": Retain the serializer of the input array if it is a zarr Array.
+
+    fill_value : Any, optional
+        Fill value for the array.
+        If not specified, defaults to the fill value of the data array.
+    order : {"C", "F"}, optional
+        The memory of the array (default is "C").
+        For Zarr format 2, this parameter sets the memory order of the array.
+        For Zarr format 3, this parameter is deprecated, because memory order
+        is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
+        order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+        If not specified, defaults to the memory order of the data array.
+    zarr_format : {2, 3}, optional
+        The zarr format to use when saving.
+        If not specified, defaults to the zarr format of the data array.
+    attributes : dict, optional
+        Attributes for the array.
+        If not specified, defaults to the attributes of the data array.
+    chunk_key_encoding : ChunkKeyEncoding, optional
+        A specification of how the chunk keys are represented in storage.
+        For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
+        For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        If not specified and the data array has the same zarr format as the target array,
+        the chunk key encoding of the data array is used.
+    dimension_names : Iterable[str], optional
+        The names of the dimensions (default is None).
+        Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
+        If not specified, defaults to the dimension names of the data array.
+    storage_options : dict, optional
+        If using an fsspec URL to create the store, these will be passed to the backend implementation.
+        Ignored otherwise.
+    overwrite : bool, default False
+        Whether to overwrite an array with the same name in the store, if one exists.
+    config : ArrayConfig or ArrayConfigLike, optional
+        Runtime configuration for the array.
+
+    Returns
+    -------
+    Array
+        The array.
+
+    Examples
+    --------
+    Create an array from an existing Array::
+
+        >>> import zarr
+        >>> store = zarr.storage.MemoryStore()
+        >>> store2 = zarr.storage.LocalStore('example.zarr')
+        >>> arr = zarr.create_array(
+        >>>     store=store,
+        >>>     shape=(100,100),
+        >>>     chunks=(10,10),
+        >>>     dtype='int32',
+        >>>     fill_value=0)
+        >>> arr2 = zarr.from_array(store2, data=arr)
+        <Array file://example.zarr shape=(100, 100) dtype=int32>
+
+    Create an array from an existing NumPy array::
+
+        >>> import numpy as np
+        >>> arr3 = zarr.from_array(
+                zarr.storage.MemoryStore(),
+        >>>     data=np.arange(10000, dtype='i4').reshape(100, 100),
+        >>> )
+        <Array memory://125477403529984 shape=(100, 100) dtype=int32>
+
+    Create an array from any array-like object::
+
+        >>> arr4 = zarr.from_array(
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=[[1, 2], [3, 4]],
+        >>> )
+        <Array memory://125477392154368 shape=(2, 2) dtype=int64>
+        >>> arr4[...]
+        array([[1, 2],[3, 4]])
+
+    Create an array from an existing Array without copying the data::
+
+        >>> arr5 = zarr.from_array(
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=arr4,
+        >>>     write_data=False,
+        >>> )
+        <Array memory://140678602965568 shape=(2, 2) dtype=int64>
+        >>> arr5[...]
+        array([[0, 0],[0, 0]])
+    """
+    return Array(
+        sync(
+            zarr.core.array.from_array(
+                store,
+                data=data,
+                write_data=write_data,
+                name=name,
                 chunks=chunks,
                 shards=shards,
                 filters=filters,

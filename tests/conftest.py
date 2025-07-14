@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -18,15 +19,19 @@ from zarr.core.array import (
     _parse_chunk_key_encoding,
 )
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
-from zarr.core.common import JSON, parse_dtype, parse_shapelike
+from zarr.core.common import JSON, DimensionNames, parse_shapelike
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype import (
+    get_data_type_from_native_dtype,
+)
+from zarr.core.dtype.common import HasItemSize
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterable
+    from collections.abc import Generator
     from typing import Any, Literal
 
     from _pytest.compat import LEGACY_PATH
@@ -35,6 +40,7 @@ if TYPE_CHECKING:
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import ChunkCoords, MemoryOrder, ShapeLike, ZarrFormat
+    from zarr.core.dtype.wrapper import ZDType
 
 
 async def parse_store(
@@ -87,6 +93,14 @@ async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
 async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     param = request.param
     return await parse_store(param, str(tmpdir))
+
+
+@pytest.fixture
+async def store2(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+    """Fixture to create a second store for testing copy operations between stores"""
+    param = request.param
+    store2_path = tmpdir.mkdir("store2")
+    return await parse_store(param, str(store2_path))
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
@@ -180,17 +194,31 @@ def pytest_collection_modifyitems(config: Any, items: Any) -> None:
 
 
 settings.register_profile(
+    "default",
+    parent=settings.get_profile("default"),
+    max_examples=300,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+    deadline=None,
+    verbosity=Verbosity.verbose,
+)
+settings.register_profile(
     "ci",
-    max_examples=1000,
+    parent=settings.get_profile("ci"),
+    max_examples=300,
+    derandomize=True,  # more like regression testing
     deadline=None,
     suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
 )
 settings.register_profile(
-    "local",
-    max_examples=300,
-    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
-    verbosity=Verbosity.verbose,
+    "nightly",
+    max_examples=500,
+    parent=settings.get_profile("ci"),
+    derandomize=False,
+    stateful_step_count=100,
 )
+
+settings.load_profile(os.getenv("HYPOTHESIS_PROFILE", "default"))
+
 
 # TODO: uncomment these overrides when we can get mypy to accept them
 """
@@ -242,24 +270,29 @@ def create_array_metadata(
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any = 0,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNames = None,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
     """
     Create array metadata
     """
-    dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+    dtype_parsed = get_data_type_from_native_dtype(dtype)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
     )
-
+    item_size = 1
+    if isinstance(dtype_parsed, HasItemSize):
+        item_size = dtype_parsed.item_size
     shard_shape_parsed, chunk_shape_parsed = _auto_partition(
-        array_shape=shape_parsed, shard_shape=shards, chunk_shape=chunks, dtype=dtype_parsed
+        array_shape=shape_parsed,
+        shard_shape=shards,
+        chunk_shape=chunks,
+        item_size=item_size,
     )
 
     if order is None:
@@ -270,11 +303,11 @@ def create_array_metadata(
 
     if zarr_format == 2:
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
-            compressor=compressors, filters=filters, dtype=np.dtype(dtype)
+            compressor=compressors, filters=filters, dtype=dtype_parsed
         )
         return ArrayV2Metadata(
             shape=shape_parsed,
-            dtype=np.dtype(dtype),
+            dtype=dtype_parsed,
             chunks=chunk_shape_parsed,
             order=order_parsed,
             dimension_separator=chunk_key_encoding_parsed.separator,
@@ -375,12 +408,12 @@ def meta_from_array(
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
     serializer: SerializerLike = "auto",
-    fill_value: Any | None = None,
+    fill_value: Any = 0,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNames = None,
 ) -> ArrayV3Metadata | ArrayV2Metadata:
     """
     Create array metadata from an array
@@ -400,3 +433,12 @@ def meta_from_array(
         chunk_key_encoding=chunk_key_encoding,
         dimension_names=dimension_names,
     )
+
+
+def skip_object_dtype(dtype: ZDType[Any, Any]) -> None:
+    if dtype.dtype_cls is type(np.dtype("O")):
+        msg = (
+            f"{dtype} uses the numpy object data type, which is not a valid target for data "
+            "type resolution"
+        )
+        pytest.skip(msg)

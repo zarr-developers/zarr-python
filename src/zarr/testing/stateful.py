@@ -1,5 +1,7 @@
 import builtins
-from typing import Any
+import functools
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -17,13 +19,49 @@ from hypothesis.strategies import DataObject
 import zarr
 from zarr import Array
 from zarr.abc.store import Store
+from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import Buffer, BufferPrototype, cpu, default_buffer_prototype
 from zarr.core.sync import SyncMixin
 from zarr.storage import LocalStore, MemoryStore
-from zarr.testing.strategies import key_ranges, node_names, np_array_and_chunks, numpy_arrays
+from zarr.testing.strategies import (
+    basic_indices,
+    chunk_paths,
+    dimension_names,
+    key_ranges,
+    node_names,
+    np_array_and_chunks,
+    orthogonal_indices,
+)
 from zarr.testing.strategies import keys as zarr_keys
 
 MAX_BINARY_SIZE = 100
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def with_frequency(frequency: float) -> Callable[[F], F]:
+    """This needs to be deterministic for hypothesis replaying"""
+
+    def decorator(func: F) -> F:
+        counter_attr = f"__{func.__name__}_counter"
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            return func(*args, **kwargs)
+
+        @precondition
+        def frequency_check(f: Any) -> Any:
+            if not hasattr(f, counter_attr):
+                setattr(f, counter_attr, 0)
+
+            current_count = getattr(f, counter_attr) + 1
+            setattr(f, counter_attr, current_count)
+
+            return (current_count * frequency) % 1.0 >= (1.0 - frequency)
+
+        return cast(F, frequency_check(wrapper))
+
+    return decorator
 
 
 def split_prefix_name(path: str) -> tuple[str, str]:
@@ -82,11 +120,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         zarr.group(store=self.store, path=path)
         zarr.group(store=self.model, path=path)
 
-    @rule(
-        data=st.data(),
-        name=node_names,
-        array_and_chunks=np_array_and_chunks(arrays=numpy_arrays(zarr_formats=st.just(3))),
-    )
+    @rule(data=st.data(), name=node_names, array_and_chunks=np_array_and_chunks())
     def add_array(
         self,
         data: DataObject,
@@ -108,8 +142,157 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         assume(self.can_add(path))
         note(f"Adding array:  path='{path}'  shape={array.shape}  chunks={chunks}")
         for store in [self.store, self.model]:
-            zarr.array(array, chunks=chunks, path=path, store=store, fill_value=fill_value)
+            zarr.array(
+                array,
+                chunks=chunks,
+                path=path,
+                store=store,
+                fill_value=fill_value,
+                zarr_format=3,
+                dimension_names=data.draw(
+                    dimension_names(ndim=array.ndim), label="dimension names"
+                ),
+                # Chose bytes codec to avoid wasting time compressing the data being written
+                codecs=[BytesCodec()],
+            )
         self.all_arrays.add(path)
+
+    @rule()
+    @with_frequency(0.25)
+    def clear(self) -> None:
+        note("clearing")
+        import zarr
+
+        self._sync(self.store.clear())
+        self._sync(self.model.clear())
+
+        assert self._sync(self.store.is_empty("/"))
+        assert self._sync(self.model.is_empty("/"))
+
+        self.all_groups.clear()
+        self.all_arrays.clear()
+
+        zarr.group(store=self.store)
+        zarr.group(store=self.model)
+
+        # TODO: MemoryStore is broken?
+        # assert not self._sync(self.store.is_empty("/"))
+        # assert not self._sync(self.model.is_empty("/"))
+
+    def draw_directory(self, data: DataObject) -> str:
+        group_st = st.sampled_from(sorted(self.all_groups)) if self.all_groups else st.nothing()
+        array_st = st.sampled_from(sorted(self.all_arrays)) if self.all_arrays else st.nothing()
+        array_or_group = data.draw(st.one_of(group_st, array_st))
+        if data.draw(st.booleans()) and array_or_group in self.all_arrays:
+            arr = zarr.open_array(path=array_or_group, store=self.model)
+            path = data.draw(
+                st.one_of(
+                    st.sampled_from([array_or_group]),
+                    chunk_paths(ndim=arr.ndim, numblocks=arr.cdata_shape).map(
+                        lambda x: f"{array_or_group}/c/"
+                    ),
+                )
+            )
+        else:
+            path = array_or_group
+        return path
+
+    @precondition(lambda self: bool(self.all_groups))
+    @rule(data=st.data())
+    def check_list_dir(self, data: DataObject) -> None:
+        path = self.draw_directory(data)
+        note(f"list_dir for {path=!r}")
+        # Consider .list_dir("path/to/array") for an array with a single chunk.
+        # The MemoryStore model will return `"c", "zarr.json"` only if the chunk exists
+        # If that chunk was deleted, then `"c"` is not returned.
+        # LocalStore will not have this behaviour :/
+        # There are similar consistency issues with delete_dir("/path/to/array/c/0/0")
+        assume(not isinstance(self.store, LocalStore))
+        model_ls = sorted(self._sync_iter(self.model.list_dir(path)))
+        store_ls = sorted(self._sync_iter(self.store.list_dir(path)))
+        assert model_ls == store_ls, (model_ls, store_ls)
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
+    def delete_chunk(self, data: DataObject) -> None:
+        array = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        arr = zarr.open_array(path=array, store=self.model)
+        chunk_path = data.draw(chunk_paths(ndim=arr.ndim, numblocks=arr.cdata_shape, subset=False))
+        path = f"{array}/c/{chunk_path}"
+        note(f"deleting chunk {path=!r}")
+        self._sync(self.model.delete(path))
+        self._sync(self.store.delete(path))
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
+    def check_array(self, data: DataObject) -> None:
+        path = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        actual = zarr.open_array(self.store, path=path)[:]
+        expected = zarr.open_array(self.model, path=path)[:]
+        np.testing.assert_equal(actual, expected)
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
+    def overwrite_array_basic_indexing(self, data: DataObject) -> None:
+        array = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        model_array = zarr.open_array(path=array, store=self.model)
+        store_array = zarr.open_array(path=array, store=self.store)
+        slicer = data.draw(basic_indices(shape=model_array.shape))
+        note(f"overwriting array with basic indexer: {slicer=}")
+        new_data = data.draw(
+            npst.arrays(shape=np.shape(model_array[slicer]), dtype=model_array.dtype)
+        )
+        model_array[slicer] = new_data
+        store_array[slicer] = new_data
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
+    def overwrite_array_orthogonal_indexing(self, data: DataObject) -> None:
+        array = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        model_array = zarr.open_array(path=array, store=self.model)
+        store_array = zarr.open_array(path=array, store=self.store)
+        indexer, _ = data.draw(orthogonal_indices(shape=model_array.shape))
+        note(f"overwriting array orthogonal {indexer=}")
+        new_data = data.draw(
+            npst.arrays(shape=model_array.oindex[indexer].shape, dtype=model_array.dtype)  # type: ignore[union-attr]
+        )
+        model_array.oindex[indexer] = new_data
+        store_array.oindex[indexer] = new_data
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
+    def resize_array(self, data: DataObject) -> None:
+        array = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        model_array = zarr.open_array(path=array, store=self.model)
+        store_array = zarr.open_array(path=array, store=self.store)
+        ndim = model_array.ndim
+        new_shape = tuple(
+            0 if oldsize == 0 else newsize
+            for newsize, oldsize in zip(
+                data.draw(npst.array_shapes(max_dims=ndim, min_dims=ndim, min_side=0)),
+                model_array.shape,
+                strict=True,
+            )
+        )
+
+        note(f"resizing array from {model_array.shape} to {new_shape}")
+        model_array.resize(new_shape)
+        store_array.resize(new_shape)
+
+    @precondition(lambda self: bool(self.all_arrays) or bool(self.all_groups))
+    @rule(data=st.data())
+    def delete_dir(self, data: DataObject) -> None:
+        path = self.draw_directory(data)
+        note(f"delete_dir with {path=!r}")
+        self._sync(self.model.delete_dir(path))
+        self._sync(self.store.delete_dir(path))
+
+        matches = set()
+        for node in self.all_groups | self.all_arrays:
+            if node.startswith(path):
+                matches.add(node)
+        self.all_groups = self.all_groups - matches
+        self.all_arrays = self.all_arrays - matches
 
     # @precondition(lambda self: bool(self.all_groups))
     # @precondition(lambda self: bool(self.all_arrays))
@@ -221,13 +404,19 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     #     self.check_group_arrays(group)
     #     t1 = time.time()
     #     note(f"Checks took {t1 - t0} sec.")
-
     @invariant()
     def check_list_prefix_from_root(self) -> None:
         model_list = self._sync_iter(self.model.list_prefix(""))
         store_list = self._sync_iter(self.store.list_prefix(""))
-        note(f"Checking {len(model_list)} keys")
-        assert sorted(model_list) == sorted(store_list)
+        note(f"Checking {len(model_list)} expected keys vs {len(store_list)} actual keys")
+        assert sorted(model_list) == sorted(store_list), (
+            sorted(model_list),
+            sorted(store_list),
+        )
+
+        # check that our internal state matches that of the store and model
+        assert all(f"{path}/zarr.json" in model_list for path in self.all_groups | self.all_arrays)
+        assert all(f"{path}/zarr.json" in store_list for path in self.all_groups | self.all_arrays)
 
 
 class SyncStoreWrapper(zarr.core.sync.SyncMixin):
@@ -326,8 +515,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.store.clear()
 
     @rule(key=zarr_keys(), data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
-    def set(self, key: str, data: DataObject) -> None:
-        note(f"(set) Setting {key!r} with {data}")
+    def set(self, key: str, data: bytes) -> None:
+        note(f"(set) Setting {key!r} with {data!r}")
         assert not self.store.read_only
         data_buf = cpu.Buffer.from_bytes(data)
         self.store.set(key, data_buf)
