@@ -43,3 +43,16 @@ def test_invalid_raises() -> None:
 
     with pytest.raises(TypeError):
         NvcompZstdCodec(checksum="False")  # type: ignore[arg-type]
+
+
+@gpu_test
+def test_uses_default_codec() -> None:
+    with zarr.config.enable_gpu():
+        a = zarr.create_array(
+            StorePath(zarr.storage.MemoryStore(), path="nvcomp_zstd"),
+            shape=(10, 10),
+            chunks=(10, 10),
+            dtype="int32",
+        )
+        assert a.metadata.zarr_format == 3
+        assert isinstance(a.metadata.codecs[-1], NvcompZstdCodec)
