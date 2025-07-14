@@ -30,7 +30,7 @@ runner = typer_testing.CliRunner()
 
 
 def create_nested_zarr(store: Store, attributes: dict[str, Any], separator: str) -> list[str]:
-    """Create a zarr with nested groups / arrays, returning the paths to all."""
+    """Create a zarr with nested groups / arrays for testing, returning the paths to all."""
 
     # 3 levels of nested groups
     group_0 = zarr.create_group(store=store, zarr_format=2, attributes=attributes)
@@ -146,7 +146,7 @@ def test_convert_array(local_store: Store) -> None:
     assert metadata.shape == shape
     assert metadata.chunk_grid == RegularChunkGrid(chunk_shape=chunks)
     assert metadata.chunk_key_encoding == V2ChunkKeyEncoding(separator=".")
-    assert metadata.data_type == UInt16("little")
+    assert metadata.data_type == UInt16(endianness="little")
     assert metadata.codecs == (
         BytesCodec(endian="little"),
         BloscCodec(typesize=2, cname="zstd", clevel=3, shuffle="shuffle", blocksize=0),
