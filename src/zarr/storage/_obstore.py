@@ -216,14 +216,14 @@ class ObjectStore(Store):
         # docstring inherited
         import obstore as obs
 
-        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store)  # type: ignore[type-var, assignment]
+        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store)
         return _transform_list(objects)
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         import obstore as obs
 
-        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store, prefix=prefix)  # type: ignore[assignment, type-var]
+        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store, prefix=prefix)
         return _transform_list(objects)
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
@@ -231,11 +231,11 @@ class ObjectStore(Store):
         import obstore as obs
 
         coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
-        return _transform_list_dir(coroutine, prefix)  # type: ignore[arg-type]
+        return _transform_list_dir(coroutine, prefix)
 
 
 async def _transform_list(
-    list_stream: ListStream[Sequence[ObjectMeta]],  # type: ignore[type-var]
+    list_stream: ListStream[Sequence[ObjectMeta]],
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list into an async generator of paths.
@@ -246,7 +246,7 @@ async def _transform_list(
 
 
 async def _transform_list_dir(
-    list_result_coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]],  # type: ignore[type-var]
+    list_result_coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]],
     prefix: str,
 ) -> AsyncGenerator[str, None]:
     """
