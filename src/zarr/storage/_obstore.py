@@ -16,7 +16,7 @@ from zarr.abc.store import (
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Coroutine, Iterable
+    from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
     from typing import Any
 
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
@@ -216,14 +216,14 @@ class ObjectStore(Store):
         # docstring inherited
         import obstore as obs
 
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store)
+        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store)
         return _transform_list(objects)
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         import obstore as obs
 
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
+        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store, prefix=prefix)
         return _transform_list(objects)
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
@@ -235,7 +235,7 @@ class ObjectStore(Store):
 
 
 async def _transform_list(
-    list_stream: ListStream[list[ObjectMeta]],
+    list_stream: ListStream[Sequence[ObjectMeta]],
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list into an async generator of paths.
@@ -246,7 +246,8 @@ async def _transform_list(
 
 
 async def _transform_list_dir(
-    list_result_coroutine: Coroutine[Any, Any, ListResult[list[ObjectMeta]]], prefix: str
+    list_result_coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]],
+    prefix: str,
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list_with_delimiter into an async generator of paths.
