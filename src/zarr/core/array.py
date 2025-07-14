@@ -192,7 +192,15 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     raise TypeError  # pragma: no cover
 
 
-def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
+def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None) -> CodecPipeline:
+    if store is not None:
+        try:
+            return get_pipeline_class().from_array_metadata_and_store(
+                array_metadata=metadata, store=store
+            )
+        except NotImplementedError:
+            pass
+
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
@@ -311,7 +319,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
         object.__setattr__(self, "_config", config_parsed)
-        object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
+        object.__setattr__(
+            self,
+            "codec_pipeline",
+            create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
+        )
 
     # this overload defines the function signature when zarr_format is 2
     @overload
