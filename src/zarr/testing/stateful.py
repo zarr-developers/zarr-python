@@ -343,6 +343,8 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     @precondition(lambda self: len(self.all_groups) >= 2)  # fixme don't delete root
     @rule(data=st.data())
     def delete_group_using_del(self, data: DataObject) -> None:
+        # ensure that we don't include the root group in the list of member names that we try
+        # to delete
         member_names = tuple(filter(lambda v: "/" in v, sorted(self.all_groups)))
         group_path = data.draw(st.sampled_from(member_names), label="Group deletion target")
         prefix, group_name = split_prefix_name(group_path)
