@@ -450,6 +450,6 @@ handles a range of input types:
 
     >>> dt_dict = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}
     >>> parse_data_type(dt_dict, zarr_format=3)
-    DateTime64(endianness='big', scale_factor=10, unit='s')
+    DateTime64(endianness='little', scale_factor=10, unit='s')
     >>> parse_data_type(dt_dict, zarr_format=3).to_json(zarr_format=3)
-    {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}
+    {'name': 'numpy.datetime64', 'configuration': {'unit': 's', 'scale_factor': 10}}
