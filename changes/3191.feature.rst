@@ -1,1 +1,0 @@
-Added `NDBuffer.empty` method for faster ndbuffer initialization.
