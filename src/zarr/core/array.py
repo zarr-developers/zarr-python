@@ -4321,9 +4321,7 @@ async def init_array(
                 chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
             )
             codecs_out = (sharding_codec,)
-            chunks_out = shard_shape_parsed
         else:
-            chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
 
         if config is None:
@@ -4335,7 +4333,7 @@ async def init_array(
             shape=shape_parsed,
             dtype=zdtype,
             fill_value=fill_value,
-            chunk_shape=chunks_out,
+            chunk_shape=chunk_shape_parsed,
             chunk_key_encoding=chunk_key_encoding_parsed,
             codecs=codecs_out,
             dimension_names=dimension_names,
