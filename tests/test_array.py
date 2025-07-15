@@ -39,7 +39,6 @@ from zarr.core.array import (
     default_serializer_v3,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
-from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -255,50 +254,6 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
-
-
-async def test_create_deprecated() -> None:
-    with pytest.warns(DeprecationWarning):
-        with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
-            await zarr.AsyncArray.create(MemoryStore(), (2, 2), dtype="f8")  # type: ignore[call-overload]
-    with pytest.warns(DeprecationWarning):
-        with pytest.warns(FutureWarning, match=re.escape("Pass shape=(2, 2) as keyword args")):
-            zarr.Array.create(MemoryStore(), (2, 2), dtype="f8")
-
-
-def test_selection_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    arr = zarr.create_array(store, shape=(2, 2), dtype="f8")
-
-    with pytest.warns(FutureWarning, match="Pass out"):
-        arr.get_basic_selection(..., NDBuffer(array=np.empty((2, 2))))
-
-    with pytest.warns(FutureWarning, match="Pass fields"):
-        arr.set_basic_selection(..., 1, None)
-
-    with pytest.warns(FutureWarning, match="Pass out"):
-        arr.get_orthogonal_selection(..., NDBuffer(array=np.empty((2, 2))))
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.set_orthogonal_selection(..., 1, None)
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.get_mask_selection(np.zeros((2, 2), dtype=bool), NDBuffer(array=np.empty((0,))))
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.set_mask_selection(np.zeros((2, 2), dtype=bool), 1, None)
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.get_coordinate_selection(([0, 1], [0, 1]), NDBuffer(array=np.empty((2,))))
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.set_coordinate_selection(([0, 1], [0, 1]), 1, None)
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.get_block_selection((0, slice(None)), NDBuffer(array=np.empty((2, 2))))
-
-    with pytest.warns(FutureWarning, match="Pass"):
-        arr.set_block_selection((0, slice(None)), 1, None)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
