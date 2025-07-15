@@ -120,7 +120,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TypeError
             If the native data type is not consistent with the wrapped data type.
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def to_native_dtype(self: Self) -> TDType_co:
@@ -132,7 +132,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TDType
             The native data type wrapped by this ZDType.
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     @classmethod
     @abstractmethod
@@ -187,7 +187,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         DTypeJSON_V2 | DTypeJSON_V3
             The JSON-serializable representation of the wrapped data type
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def _check_scalar(self, data: object) -> bool:
@@ -204,7 +204,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         Bool
             True if the object is valid, False otherwise.
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def cast_scalar(self, data: object) -> TScalar_co:
@@ -224,7 +224,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TScalar
             The cast value.
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def default_scalar(self) -> TScalar_co:
@@ -240,7 +240,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TScalar
             The default value for this data type.
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def from_json_scalar(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar_co:
@@ -260,7 +260,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TScalar
             The deserialized scalar value.
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     @abstractmethod
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> JSON:
@@ -283,7 +283,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         JSON
             The JSON-serialized scalar.
         """
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
 
 def scalar_failed_type_check_msg(
