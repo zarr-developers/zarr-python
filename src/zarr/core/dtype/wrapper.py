@@ -102,9 +102,6 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         """
         Create a ZDType instance from a native data type.
 
-        The base implementation first performs a type check via ``cls._check_native_dtype``.
-        If that type check succeeds, the ZDType class instance is created.
-
         This method is used when taking a user-provided native data type, like a NumPy data type,
         and creating the corresponding ZDType instance from them.
 
@@ -123,7 +120,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TypeError
             If the native data type is not consistent with the wrapped data type.
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def to_native_dtype(self: Self) -> TDType_co:
@@ -135,7 +132,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TDType
             The native data type wrapped by this ZDType.
         """
-        ...
+        raise NotImplementedError
 
     @classmethod
     @abstractmethod
@@ -190,7 +187,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         DTypeJSON_V2 | DTypeJSON_V3
             The JSON-serializable representation of the wrapped data type
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def _check_scalar(self, data: object) -> bool:
@@ -207,7 +204,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         Bool
             True if the object is valid, False otherwise.
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def cast_scalar(self, data: object) -> TScalar_co:
@@ -227,6 +224,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TScalar
             The cast value.
         """
+        raise NotImplementedError
 
     @abstractmethod
     def default_scalar(self) -> TScalar_co:
@@ -242,7 +240,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TScalar
             The default value for this data type.
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def from_json_scalar(self: Self, data: JSON, *, zarr_format: ZarrFormat) -> TScalar_co:
@@ -262,7 +260,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         TScalar
             The deserialized scalar value.
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> JSON:
@@ -285,7 +283,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
         JSON
             The JSON-serialized scalar.
         """
-        ...
+        raise NotImplementedError
 
 
 def scalar_failed_type_check_msg(
