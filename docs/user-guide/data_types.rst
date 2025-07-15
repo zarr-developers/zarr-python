@@ -410,3 +410,46 @@ a NumPy data type should *uniquely* specify a single Zarr data type. But data ty
 dynamic, so it's not possible to statically guarantee this uniqueness constraint. Therefore, we
 attempt data type resolution against *every* data type class, and if, for some reason, a native data
 type matches multiple Zarr data types, we treat this as an error and raise an exception.
+
+If you have a NumPy data type and you want to get the corresponding ``ZDType`` instance, you can use
+the ``parse_data_type`` function, which will use the dynamic resolution described above. ``parse_data_type``
+handles a range of input types:
+
+- NumPy data types:
+
+  .. code-block:: python
+
+    >>> import numpy as np
+    >>> from zarr.dtype import parse_data_type
+    >>> my_dtype = np.dtype('>M8[10s]')
+    >>> parse_data_type(my_dtype, zarr_format=2)
+    DateTime64(endianness='big', scale_factor=10, unit='s')
+
+
+- NumPy data type-compatible strings:
+
+  .. code-block:: python
+
+    >>> dtype_str = '>M8[10s]'
+    >>> parse_data_type(dtype_str, zarr_format=2)
+    DateTime64(endianness='big', scale_factor=10, unit='s')
+
+- ``ZDType`` instances:
+
+  .. code-block:: python
+
+    >>> from zarr.dtype import DateTime64
+    >>> zdt = DateTime64(endianness='big', scale_factor=10, unit='s')
+    >>> parse_data_type(zdt, zarr_format=2) # Use a ZDType (this is a no-op)
+    DateTime64(endianness='big', scale_factor=10, unit='s')
+
+- Python dictionaries (requires ``zarr_format=3``). These dictionaries must be consistent with the
+  ``JSON`` form of the data type:
+
+  .. code-block:: python
+
+    >>> dt_dict = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}
+    >>> parse_data_type(dt_dict, zarr_format=3)
+    DateTime64(endianness='big', scale_factor=10, unit='s')
+    >>> parse_data_type(dt_dict, zarr_format=3).to_json(zarr_format=3)
+    {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}
