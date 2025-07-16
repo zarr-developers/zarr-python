@@ -138,6 +138,7 @@ exclude_lines = [
 [tool.coverage.run]
 omit = [
     "bench/compress_normal.py",
+    "src/zarr/testing/conftest.py",  # only for downstream projects
 ]
 
 [tool.hatch]
