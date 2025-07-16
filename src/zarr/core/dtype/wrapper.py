@@ -136,11 +136,13 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
 
     @classmethod
     @abstractmethod
-    def _from_json_v2(cls: type[Self], data: DTypeJSON) -> Self: ...
+    def _from_json_v2(cls: type[Self], data: DTypeJSON) -> Self:
+        raise NotImplementedError  # pragma: no cover
 
     @classmethod
     @abstractmethod
-    def _from_json_v3(cls: type[Self], data: DTypeJSON) -> Self: ...
+    def _from_json_v3(cls: type[Self], data: DTypeJSON) -> Self:
+        raise NotImplementedError  # pragma: no cover
 
     @classmethod
     def from_json(cls: type[Self], data: DTypeJSON, *, zarr_format: ZarrFormat) -> Self:
