@@ -290,6 +290,8 @@ Bug fixes
 
 Documentation
 ~~~~~~~~~~~~~
+* Add v3.0.0 release announcement banner (:issue:`2677`).
+
 * Quickstart guide alignment with V3 API (:issue:`2697`).
 
 * Fix doctest failures related to numcodecs 0.15 (:issue:`2727`).
