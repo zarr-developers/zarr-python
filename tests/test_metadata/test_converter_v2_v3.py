@@ -79,39 +79,57 @@ def expected_paths_no_metadata() -> list[Path]:
 
 
 @pytest.fixture
-def expected_paths_v3_metadata(expected_paths_no_metadata: list[Path]) -> list[Path]:
-    """Expected paths from create_nested_zarr, with v3 metadata files"""
-    v3_paths = [
-        Path("array_0/zarr.json"),
-        Path("group_1/array_1/zarr.json"),
-        Path("group_1/group_2/array_2/zarr.json"),
-        Path("zarr.json"),
-        Path("group_1/zarr.json"),
-        Path("group_1/group_2/zarr.json"),
-    ]
-    expected_paths_no_metadata.extend(v3_paths)
+def expected_v3_metadata() -> list[Path]:
+    """Expected v3 metadata for create_nested_zarr"""
+    return sorted(
+        [
+            Path("array_0/zarr.json"),
+            Path("group_1/array_1/zarr.json"),
+            Path("group_1/group_2/array_2/zarr.json"),
+            Path("zarr.json"),
+            Path("group_1/zarr.json"),
+            Path("group_1/group_2/zarr.json"),
+        ]
+    )
+
+
+@pytest.fixture
+def expected_v2_metadata() -> list[Path]:
+    """Expected v2 metadata for create_nested_zarr"""
+    return sorted(
+        [
+            Path("array_0/.zarray"),
+            Path("array_0/.zattrs"),
+            Path("group_1/array_1/.zarray"),
+            Path("group_1/array_1/.zattrs"),
+            Path("group_1/group_2/array_2/.zarray"),
+            Path("group_1/group_2/array_2/.zattrs"),
+            Path(".zgroup"),
+            Path(".zattrs"),
+            Path("group_1/.zgroup"),
+            Path("group_1/.zattrs"),
+            Path("group_1/group_2/.zgroup"),
+            Path("group_1/group_2/.zattrs"),
+        ]
+    )
+
+
+@pytest.fixture
+def expected_paths_v3_metadata(
+    expected_paths_no_metadata: list[Path], expected_v3_metadata: list[Path]
+) -> list[Path]:
+    """Expected paths from create_nested_zarr + v3 metadata files"""
+    expected_paths_no_metadata.extend(expected_v3_metadata)
 
     return sorted(expected_paths_no_metadata)
 
 
 @pytest.fixture
-def expected_paths_v2_metadata(expected_paths_no_metadata: list[Path]) -> list[Path]:
-    """Expected paths from create_nested_zarr, with v2 metadata files"""
-    v2_paths = [
-        Path("array_0/.zarray"),
-        Path("array_0/.zattrs"),
-        Path("group_1/array_1/.zarray"),
-        Path("group_1/array_1/.zattrs"),
-        Path("group_1/group_2/array_2/.zarray"),
-        Path("group_1/group_2/array_2/.zattrs"),
-        Path(".zgroup"),
-        Path(".zattrs"),
-        Path("group_1/.zgroup"),
-        Path("group_1/.zattrs"),
-        Path("group_1/group_2/.zgroup"),
-        Path("group_1/group_2/.zattrs"),
-    ]
-    expected_paths_no_metadata.extend(v2_paths)
+def expected_paths_v2_metadata(
+    expected_paths_no_metadata: list[Path], expected_v2_metadata: list[Path]
+) -> list[Path]:
+    """Expected paths from create_nested_zarr + v2 metadata files"""
+    expected_paths_no_metadata.extend(expected_v2_metadata)
 
     return sorted(expected_paths_no_metadata)
 
@@ -174,7 +192,9 @@ def test_convert_group(local_store: Store) -> None:
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-def test_convert_nested_groups_and_arrays(local_store: Store, separator: str) -> None:
+def test_convert_nested_groups_and_arrays(
+    local_store: Store, separator: str, expected_v3_metadata: list[Path]
+) -> None:
     """Test that zarr.json are made at the correct points in a hierarchy of groups and arrays
     (including when there are additional dirs due to using a / separator)"""
 
@@ -184,17 +204,9 @@ def test_convert_nested_groups_and_arrays(local_store: Store, separator: str) ->
     result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
 
-    # check zarr.json were created for every group and array
-    total_zarr_jsons = 0
-    for _, _, filenames in local_store.root.walk():
-        # group / array directories
-        if ".zattrs" in filenames:
-            assert "zarr.json" in filenames
-            total_zarr_jsons += 1
-        # other directories e.g. for chunks when separator is /
-        else:
-            assert "zarr.json" not in filenames
-    assert total_zarr_jsons == 6
+    zarr_json_paths = sorted(local_store.root.rglob("zarr.json"))
+    expected_zarr_json_paths = [local_store.root / p for p in expected_v3_metadata]
+    assert zarr_json_paths == expected_zarr_json_paths
 
     # Check converted zarr can be opened + metadata accessed at all levels
     zarr_array = zarr.open(local_store.root, zarr_format=3)
@@ -206,7 +218,9 @@ def test_convert_nested_groups_and_arrays(local_store: Store, separator: str) ->
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-def test_convert_nested_with_path(local_store: Store, separator: str) -> None:
+def test_convert_nested_with_path(
+    local_store: Store, separator: str, expected_v3_metadata: list[Path]
+) -> None:
     """Test that only arrays/groups within group_1 are converted (+ no other files in store)"""
 
     create_nested_zarr(local_store, {}, separator)
@@ -216,17 +230,13 @@ def test_convert_nested_with_path(local_store: Store, separator: str) -> None:
 
     group_path = local_store.root / "group_1"
 
-    total_zarr_jsons = 0
-    for dirpath, _, filenames in local_store.root.walk():
-        inside_group = (dirpath == group_path) or (group_path in dirpath.parents)
-        if (".zattrs" in filenames) and inside_group:
-            # group / array directories inside the group
-            assert "zarr.json" in filenames
-            total_zarr_jsons += 1
-        else:
-            assert "zarr.json" not in filenames
-
-    assert total_zarr_jsons == 4
+    zarr_json_paths = sorted(local_store.root.rglob("zarr.json"))
+    expected_zarr_json_paths = [
+        local_store.root / p
+        for p in expected_v3_metadata
+        if group_path in (local_store.root / p).parents
+    ]
+    assert zarr_json_paths == expected_zarr_json_paths
 
 
 @pytest.mark.parametrize(
