@@ -455,3 +455,6 @@ issue_format = ":issue:`{issue}`"
 
 [tool.codespell]
 ignore-words-list = "astroid"
+
+[project.entry-points.pytest11]
+zarr = "zarr.testing"
