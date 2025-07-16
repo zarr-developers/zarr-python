@@ -187,7 +187,6 @@ html_theme_options = {
     ],
     "collapse_navigation": True,
     "navigation_with_keys": False,
-    "announcement": "Zarr-Python 3 is here! Check out the release announcement <a href='https://zarr.dev/blog/zarr-python-3-release/'>here.</a>",
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
