@@ -240,9 +240,23 @@ def test_convert_nested_with_path(local_store: Store, separator: str) -> None:
         (numcodecs.GZip(level=3), GzipCodec(level=3)),
         (
             numcodecs.LZMA(
-                format=1, check=-1, preset=None, filters=[{"id": lzma.FILTER_DELTA, "dist": 4}]
+                format=lzma.FORMAT_RAW,
+                check=-1,
+                preset=None,
+                filters=[
+                    {"id": lzma.FILTER_DELTA, "dist": 4},
+                    {"id": lzma.FILTER_LZMA2, "preset": 1},
+                ],
             ),
-            LZMA(format=1, check=-1, preset=None, filters=[{"id": lzma.FILTER_DELTA, "dist": 4}]),
+            LZMA(
+                format=lzma.FORMAT_RAW,
+                check=-1,
+                preset=None,
+                filters=[
+                    {"id": lzma.FILTER_DELTA, "dist": 4},
+                    {"id": lzma.FILTER_LZMA2, "preset": 1},
+                ],
+            ),
         ),
     ],
     ids=["blosc", "zstd", "gzip", "numcodecs-compressor"],
@@ -250,7 +264,7 @@ def test_convert_nested_with_path(local_store: Store, separator: str) -> None:
 def test_convert_compressor(
     local_store: Store, compressor_v2: numcodecs.abc.Codec, compressor_v3: Codec
 ) -> None:
-    zarr.create_array(
+    zarr_array = zarr.create_array(
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
@@ -259,6 +273,7 @@ def test_convert_compressor(
         zarr_format=2,
         fill_value=0,
     )
+    zarr_array[:] = 1
 
     result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
@@ -271,6 +286,7 @@ def test_convert_compressor(
         BytesCodec(endian="little"),
         compressor_v3,
     )
+    assert (zarr_array[:] == 1).all()
 
 
 def test_convert_filter(local_store: Store) -> None:
@@ -311,7 +327,7 @@ def test_convert_filter(local_store: Store) -> None:
 def test_convert_C_vs_F_order(
     local_store: Store, order: str, expected_codecs: tuple[Codec]
 ) -> None:
-    zarr.create_array(
+    zarr_array = zarr.create_array(
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
@@ -321,6 +337,7 @@ def test_convert_C_vs_F_order(
         fill_value=0,
         order=order,
     )
+    zarr_array[:] = 1
 
     result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
@@ -329,8 +346,8 @@ def test_convert_C_vs_F_order(
     zarr_array = zarr.open(local_store.root, zarr_format=3)
     metadata = zarr_array.metadata
     assert metadata.zarr_format == 3
-
     assert metadata.codecs == expected_codecs
+    assert (zarr_array[:] == 1).all()
 
 
 @pytest.mark.parametrize(
@@ -344,7 +361,7 @@ def test_convert_C_vs_F_order(
 def test_convert_endian(
     local_store: Store, dtype: str, expected_data_type: BaseInt, expected_codecs: tuple[Codec]
 ) -> None:
-    zarr.create_array(
+    zarr_array = zarr.create_array(
         store=local_store,
         shape=(10, 10),
         chunks=(10, 10),
@@ -353,6 +370,7 @@ def test_convert_endian(
         zarr_format=2,
         fill_value=0,
     )
+    zarr_array[:] = 1
 
     result = runner.invoke(cli.app, ["convert", str(local_store.root)])
     assert result.exit_code == 0
@@ -363,6 +381,7 @@ def test_convert_endian(
     assert metadata.zarr_format == 3
     assert metadata.data_type == expected_data_type
     assert metadata.codecs == expected_codecs
+    assert (zarr_array[:] == 1).all()
 
 
 @pytest.mark.parametrize("node_type", ["array", "group"])
