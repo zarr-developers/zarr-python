@@ -655,12 +655,13 @@ def test_group_create_array(
 
     if not overwrite:
         if method == "create_array":
-            with pytest.raises(ContainsArrayError):
+            with pytest.raises(ContainsArrayError):  # noqa: PT012
                 a = group.create_array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
         elif method == "array":
-            with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
-                a = group.array(name=name, shape=shape, dtype=dtype)
+            with pytest.raises(ContainsArrayError):  # noqa: PT012
+                with pytest.warns(DeprecationWarning):
+                    a = group.array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
 
     assert array.path == normalize_path(name)
