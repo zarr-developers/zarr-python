@@ -1,0 +1,1 @@
+Add lightweight implementations of .getsize() and .getsize_prefix() for ObjectStore.
