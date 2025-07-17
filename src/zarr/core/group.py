@@ -2826,7 +2826,7 @@ class Group(SyncMixin):
         compressor: CompressorLike = None,
         serializer: SerializerLike = "auto",
         fill_value: Any | None = DEFAULT_FILL_VALUE,
-        order: MemoryOrder | None = "C",
+        order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: DimensionNames = None,

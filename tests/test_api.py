@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 
 import zarr.codecs
 import zarr.storage
+from zarr.core.array import init_array
+from zarr.storage._common import StorePath
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -259,9 +261,9 @@ def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
+    a = np.arange(10)
     with pytest.raises(TypeError):
         # mode is no valid argument and would get handled as an array
-        a = np.arange(10)
         zarr.save("data/example.zarr", a, mode="w")
 
 
@@ -335,33 +337,65 @@ def test_open_with_mode_w_minus(tmp_path: Path) -> None:
         zarr.open(store=tmp_path, mode="w-")
 
 
-def test_array_order(zarr_format: ZarrFormat) -> None:
-    arr = zarr.ones(shape=(2, 2), order=None, zarr_format=zarr_format)
-    expected = zarr.config.get("array.order")
-    assert arr.order == expected
+@pytest.mark.parametrize("order", ["C", "F", None])
+@pytest.mark.parametrize("config", [{"order": "C"}, {"order": "F"}, {}], ids=["C", "F", "None"])
+def test_array_order(
+    order: MemoryOrder | None, config: dict[str, MemoryOrder | None], zarr_format: ZarrFormat
+) -> None:
+    """
+    Check that:
+    - For v2, memory order is taken from the `order` keyword argument.
+    - For v3, memory order is taken from `config`, and when order is passed a warning is raised
+    - The numpy array returned has the expected order
+    - For v2, the order metadata is set correctly
+    """
+    default_order = zarr.config.get("array.order")
+    ctx: contextlib.AbstractContextManager  # type: ignore[type-arg]
 
+    if zarr_format == 3:
+        if order is None:
+            ctx = contextlib.nullcontext()
+        else:
+            ctx = pytest.warns(
+                RuntimeWarning,
+                match="The `order` keyword argument has no effect for Zarr format 3 arrays",
+            )
+
+        expected_order = config.get("order", default_order)
+
+    if zarr_format == 2:
+        ctx = contextlib.nullcontext()
+        expected_order = order or config.get("order", default_order)
+
+    with ctx:
+        arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format, config=config)
+
+    assert arr.order == expected_order
     vals = np.asarray(arr)
-    if expected == "C":
+    if expected_order == "C":
         assert vals.flags.c_contiguous
-    elif expected == "F":
+    elif expected_order == "F":
         assert vals.flags.f_contiguous
     else:
         raise AssertionError
 
+    if zarr_format == 2:
+        assert arr.metadata.zarr_format == 2
+        assert arr.metadata.order == expected_order
 
-@pytest.mark.parametrize("order", ["C", "F"])
-def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
-    with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
-        arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
-    assert arr.order == order
 
-    vals = np.asarray(arr)
-    if order == "C":
-        assert vals.flags.c_contiguous
-    elif order == "F":
-        assert vals.flags.f_contiguous
-    else:
-        raise AssertionError
+async def test_init_order_warns() -> None:
+    with pytest.warns(
+        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+    ):
+        await init_array(
+            store_path=StorePath(store=MemoryStore()),
+            shape=(1,),
+            dtype="uint8",
+            config=None,
+            zarr_format=3,
+            order="F",
+        )
 
 
 # def test_lazy_loader():
