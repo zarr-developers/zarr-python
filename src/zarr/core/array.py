@@ -4581,7 +4581,7 @@ def _parse_keep_array_attr(
         if data.metadata.zarr_format == 2 and zarr_format == 3 and data.order == "F":
             # Can't set order="F" for v3 arrays
             warnings.warn(
-                "Zarr format 3 arrays are always stored with order='C'. "
+                "The 'order' attribute of a Zarr format 2 array does not have a direct analogue in Zarr format 3. "
                 "The existing order='F' of the source Zarr format 2 array will be ignored.",
                 UserWarning,
                 stacklevel=2,
