@@ -220,8 +220,6 @@ class ObjectStore(Store):
             for item in batch:
                 yield item
 
-        # return (obj async for obj in _transform_list(objects))
-
     def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
         return (obj["path"] async for obj in self._list())
