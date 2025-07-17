@@ -21,6 +21,7 @@ from zarr.core.dtype import (
     ZDType,
     data_type_registry,
     get_data_type_from_json,
+    parse_data_type,
     parse_dtype,
 )
 
@@ -174,7 +175,7 @@ def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
 @pytest.mark.parametrize("data_type", zdtype_examples, ids=str)
 def test_parse_data_type(data_type: ZDType[Any, Any], zarr_format: ZarrFormat) -> None:
     """
-    Test that parse_data_type accepts alternative representations of ZDType instances, and resolves
+    Test that parse_dtype accepts alternative representations of ZDType instances, and resolves
     those inputs to the expected ZDType instance.
     """
     dtype_spec: Any
@@ -189,3 +190,26 @@ def test_parse_data_type(data_type: ZDType[Any, Any], zarr_format: ZarrFormat) -
     else:
         observed = parse_dtype(dtype_spec, zarr_format=zarr_format)
         assert observed == data_type
+
+
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize("data_type", zdtype_examples, ids=str)
+def test_parse_data_type_funcs(data_type: ZDType[Any, Any], zarr_format: ZarrFormat) -> None:
+    """
+    Test that parse_data_type generates the same output as parse_dtype.
+    """
+    dtype_spec: Any
+    if zarr_format == 2:
+        dtype_spec = data_type.to_json(zarr_format=zarr_format)["name"]
+    else:
+        dtype_spec = data_type.to_json(zarr_format=zarr_format)
+    if dtype_spec == "|O":
+        msg = "Zarr data type resolution from object failed."
+        with pytest.raises(ValueError, match=msg):
+            parse_dtype(dtype_spec, zarr_format=zarr_format)
+        with pytest.raises(ValueError, match=msg):
+            parse_data_type(dtype_spec, zarr_format=zarr_format)
+    else:
+        assert parse_dtype(dtype_spec, zarr_format=zarr_format) == parse_data_type(
+            dtype_spec, zarr_format=zarr_format
+        )
