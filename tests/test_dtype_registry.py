@@ -187,5 +187,5 @@ def test_parse_data_type(data_type: ZDType[Any, Any], zarr_format: ZarrFormat) -
         with pytest.raises(ValueError, match=msg):
             parse_dtype(dtype_spec, zarr_format=zarr_format)
     else:
-        observed = parse_dtype(dtype_spec, zarr_format=zarr_format)  # type: ignore[arg-type]
+        observed = parse_dtype(dtype_spec, zarr_format=zarr_format)
         assert observed == data_type
