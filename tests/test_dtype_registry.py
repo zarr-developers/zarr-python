@@ -15,17 +15,13 @@ from zarr.core.dtype import (
     AnyDType,
     Bool,
     DataTypeRegistry,
-    DateTime64,
     FixedLengthUTF32,
-    Int8,
-    Int16,
     TBaseDType,
     TBaseScalar,
-    VariableLengthUTF8,
     ZDType,
     data_type_registry,
     get_data_type_from_json,
-    parse_data_type,
+    parse_dtype,
 )
 
 if TYPE_CHECKING:
@@ -174,28 +170,22 @@ def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
     data_type_registry.unregister(TestDataType._zarr_v3_name)
 
 
-@pytest.mark.parametrize(
-    ("dtype_params", "expected", "zarr_format"),
-    [
-        ("str", VariableLengthUTF8(), 2),
-        ("str", VariableLengthUTF8(), 3),
-        ("int8", Int8(), 3),
-        (Int8(), Int8(), 3),
-        (">i2", Int16(endianness="big"), 2),
-        ("datetime64[10s]", DateTime64(unit="s", scale_factor=10), 2),
-        (
-            {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}},
-            DateTime64(unit="s", scale_factor=10),
-            3,
-        ),
-    ],
-)
-def test_parse_data_type(
-    dtype_params: Any, expected: ZDType[Any, Any], zarr_format: ZarrFormat
-) -> None:
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize("data_type", zdtype_examples, ids=str)
+def test_parse_data_type(data_type: ZDType[Any, Any], zarr_format: ZarrFormat) -> None:
     """
     Test that parse_data_type accepts alternative representations of ZDType instances, and resolves
     those inputs to the expected ZDType instance.
     """
-    observed = parse_data_type(dtype_params, zarr_format=zarr_format)
-    assert observed == expected
+    dtype_spec: Any
+    if zarr_format == 2:
+        dtype_spec = data_type.to_json(zarr_format=zarr_format)["name"]
+    else:
+        dtype_spec = data_type.to_json(zarr_format=zarr_format)
+    if dtype_spec == "|O":
+        msg = "Zarr data type resolution from object failed."
+        with pytest.raises(ValueError, match=msg):
+            parse_dtype(dtype_spec, zarr_format=zarr_format)
+    else:
+        observed = parse_dtype(dtype_spec, zarr_format=zarr_format)  # type: ignore[arg-type]
+        assert observed == data_type
