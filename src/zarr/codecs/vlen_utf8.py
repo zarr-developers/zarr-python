@@ -25,15 +25,6 @@ _vlen_bytes_codec = VLenBytes()
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
-    def __init__(self) -> None:
-        warn(
-            "The codec `vlen-utf8` is currently not part in the Zarr format 3 specification. It "
-            "may not be supported by other zarr implementations and may change in the future.",
-            category=UserWarning,
-            stacklevel=2,
-        )
-        super().__init__()
-
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
