@@ -141,8 +141,8 @@ def test_config_codec_pipeline_class(store: Store) -> None:
 
     _mock.call.assert_called()
 
+    config.set({"codec_pipeline.path": "wrong_name"})
     with pytest.raises(BadConfigError):
-        config.set({"codec_pipeline.path": "wrong_name"})
         get_pipeline_class()
 
     class MockEnvCodecPipeline(CodecPipeline):
