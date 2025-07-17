@@ -232,9 +232,7 @@ class ObjectStore(Store):
         # docstring inherited
         import obstore as obs
 
-        coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]] = (
-            obs.list_with_delimiter_async(self.store, prefix=prefix)
-        )
+        coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
         return _transform_list_dir(coroutine, prefix)
 
     async def getsize(self, key: str) -> int:
