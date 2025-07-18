@@ -2,15 +2,6 @@
 
 Zarr can use GPUs to accelerate your workload by running `zarr.config.enable_gpu()`.
 
-!!! note
-    `zarr-python` currently supports reading the ndarray data into device (GPU)
-    memory as the final stage of the codec pipeline. Data will still be read into
-    or copied to host (CPU) memory for encoding and decoding.
-
-    In the future, codecs will be available for compressing and decompressing data on
-    the GPU, avoiding the need to move data between the host and device for
-    compression and decompression.
-
 ## Installation
 
 Zarr's GPU support requires [CuPy](https://cupy.dev), which in turn requires a
@@ -58,3 +49,6 @@ Under the hood, `enable_gpu()` selects the GPU-backed buffer classes
 `zarr.buffer.gpu.Buffer` and `zarr.buffer.gpu.NDBuffer` via the `buffer` and
 `ndbuffer` configuration keys. See [Custom array buffers](extending.md#custom-array-buffers)
 for more on Zarr's buffer classes, including how to implement your own.
+
+For Zstd compressed buffers, zarr will use the [nvcomp](https://docs.nvidia.com/cuda/nvcomp/samples/python_samples.html)
+library to compress and decompress data on the GPU.
