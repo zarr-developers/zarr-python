@@ -113,3 +113,21 @@ def test_compute_encoded_chunk_size() -> None:
                 prototype=buffer_prototype,
             ),
         )
+
+
+async def test_nvcomp_zstd_encode_none() -> None:
+    codec = NvcompZstdCodec(level=0, checksum=False)
+    chunks_and_specs = [
+        (
+            None,
+            ArraySpec(
+                shape=(10, 10),
+                dtype=zarr.core.dtype.npy.int.Int32,
+                fill_value=0,
+                config=ArrayConfig(order="C", write_empty_chunks=False),
+                prototype=buffer_prototype,
+            ),
+        )
+    ]
+    result = await codec.encode(chunks_and_specs)
+    assert result == [None]
