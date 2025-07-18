@@ -30,7 +30,7 @@ if typing.TYPE_CHECKING:
     "selection",
     [
         (slice(None), slice(None)),  # everything
-        (slice(1, None), slice(1, None)),  # top-left chunk is empty
+        (slice(4, None), slice(4, None)),  # top-left chunk is empty
     ],
 )
 def test_nvcomp_zstd(store: Store, checksum: bool, selection: tuple[slice, slice]) -> None:
@@ -48,15 +48,16 @@ def test_nvcomp_zstd(store: Store, checksum: bool, selection: tuple[slice, slice
             compressors=NvcompZstdCodec(level=0, checksum=checksum),
         )
 
-        a[*selection] = data
+        a[*selection] = data[*selection]
 
         if selection == (slice(None), slice(None)):
             cp.testing.assert_array_equal(data[*selection], a[*selection])
             cp.testing.assert_array_equal(data[:, :], a[:, :])
         else:
+            assert a.nchunks_initialized < a.nchunks
             expected = cp.full(data.shape, a.fill_value)
             expected[*selection] = data[*selection]
-            cp.testing.assert_array_equal(expected, a)
+            cp.testing.assert_array_equal(expected[*selection], a[*selection])
             cp.testing.assert_array_equal(expected[:, :], a[:, :])
 
 
