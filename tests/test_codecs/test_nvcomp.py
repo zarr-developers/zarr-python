@@ -61,6 +61,7 @@ def test_nvcomp_zstd(store: Store, checksum: bool, selection: tuple[slice, slice
             cp.testing.assert_array_equal(expected[:, :], a[:, :])
 
 
+@gpu_test  # type: ignore[misc,unused-ignore]
 def test_invalid_raises() -> None:
     with pytest.raises(ValueError):
         NvcompZstdCodec(level=100, checksum=False)
@@ -115,6 +116,7 @@ def test_compute_encoded_chunk_size() -> None:
         )
 
 
+@gpu_test  # type: ignore[misc,unused-ignore]
 async def test_nvcomp_zstd_encode_none() -> None:
     codec = NvcompZstdCodec(level=0, checksum=False)
     chunks_and_specs = [
