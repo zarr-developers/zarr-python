@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 import inspect
-import pathlib
 import re
 from typing import TYPE_CHECKING
 
 import zarr.codecs
 import zarr.storage
+from zarr.core.array import init_array
+from zarr.storage._common import StorePath
 
 if TYPE_CHECKING:
-    import pathlib
     from collections.abc import Callable
+    from pathlib import Path
 
     from zarr.abc.codec import Codec
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 
 import contextlib
-import warnings
 from typing import Literal
 
 import numpy as np
@@ -47,10 +47,6 @@ from zarr.errors import MetadataValidationError
 from zarr.storage import LocalStore, MemoryStore, ZipStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-    from pathlib import Path
 
 
 def test_create(memory_store: Store) -> None:
@@ -212,9 +208,7 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
-async def test_open_group_unspecified_version(
-    tmpdir: pathlib.Path, zarr_format: ZarrFormat
-) -> None:
+async def test_open_group_unspecified_version(tmpdir: Path, zarr_format: ZarrFormat) -> None:
     """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
 
     # create a group with specified zarr format (could be 2, 3, or None)
@@ -265,17 +259,17 @@ def test_save_errors() -> None:
         save_group("data/group.zarr")
     with pytest.raises(TypeError):
         # no array provided
-        save_array("data/group.zarr")
+        save_array("data/group.zarr")  # type: ignore[call-arg]
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
+    a = np.arange(10)
     with pytest.raises(TypeError):
         # mode is no valid argument and would get handled as an array
-        a = np.arange(10)
         zarr.save("data/example.zarr", a, mode="w")
 
 
-def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_r(tmp_path: Path) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmp_path, mode="r")
@@ -291,7 +285,7 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
         z2[:] = 3
 
 
-def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_r_plus(tmp_path: Path) -> None:
     # 'r+' means read/write (must exist)
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmp_path, mode="r+")
@@ -304,7 +298,7 @@ def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
     z2[:] = 3
 
 
-async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+async def test_open_with_mode_a(tmp_path: Path) -> None:
     # Open without shape argument should default to group
     g = zarr.open(store=tmp_path, mode="a")
     assert isinstance(g, Group)
@@ -322,7 +316,7 @@ async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
     z2[:] = 3
 
 
-def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_w(tmp_path: Path) -> None:
     # 'w' means create (overwrite if exists);
     arr = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
     assert isinstance(arr, Array)
@@ -336,7 +330,7 @@ def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
     z2[:] = 3
 
 
-def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_w_minus(tmp_path: Path) -> None:
     # 'w-' means create  (fail if exists)
     arr = zarr.open(store=tmp_path, mode="w-", shape=(3, 3))
     assert isinstance(arr, Array)
@@ -345,33 +339,65 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
         zarr.open(store=tmp_path, mode="w-")
 
 
-def test_array_order(zarr_format: ZarrFormat) -> None:
-    arr = zarr.ones(shape=(2, 2), order=None, zarr_format=zarr_format)
-    expected = zarr.config.get("array.order")
-    assert arr.order == expected
+@pytest.mark.parametrize("order", ["C", "F", None])
+@pytest.mark.parametrize("config", [{"order": "C"}, {"order": "F"}, {}], ids=["C", "F", "None"])
+def test_array_order(
+    order: MemoryOrder | None, config: dict[str, MemoryOrder | None], zarr_format: ZarrFormat
+) -> None:
+    """
+    Check that:
+    - For v2, memory order is taken from the `order` keyword argument.
+    - For v3, memory order is taken from `config`, and when order is passed a warning is raised
+    - The numpy array returned has the expected order
+    - For v2, the order metadata is set correctly
+    """
+    default_order = zarr.config.get("array.order")
+    ctx: contextlib.AbstractContextManager  # type: ignore[type-arg]
 
+    if zarr_format == 3:
+        if order is None:
+            ctx = contextlib.nullcontext()
+        else:
+            ctx = pytest.warns(
+                RuntimeWarning,
+                match="The `order` keyword argument has no effect for Zarr format 3 arrays",
+            )
+
+        expected_order = config.get("order", default_order)
+
+    if zarr_format == 2:
+        ctx = contextlib.nullcontext()
+        expected_order = order or config.get("order", default_order)
+
+    with ctx:
+        arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format, config=config)
+
+    assert arr.order == expected_order
     vals = np.asarray(arr)
-    if expected == "C":
+    if expected_order == "C":
         assert vals.flags.c_contiguous
-    elif expected == "F":
+    elif expected_order == "F":
         assert vals.flags.f_contiguous
     else:
         raise AssertionError
 
+    if zarr_format == 2:
+        assert arr.metadata.zarr_format == 2
+        assert arr.metadata.order == expected_order
 
-@pytest.mark.parametrize("order", ["C", "F"])
-def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
-    with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
-        arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
-    assert arr.order == order
 
-    vals = np.asarray(arr)
-    if order == "C":
-        assert vals.flags.c_contiguous
-    elif order == "F":
-        assert vals.flags.f_contiguous
-    else:
-        raise AssertionError
+async def test_init_order_warns() -> None:
+    with pytest.warns(
+        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+    ):
+        await init_array(
+            store_path=StorePath(store=MemoryStore()),
+            shape=(1,),
+            dtype="uint8",
+            config=None,
+            zarr_format=3,
+            order="F",
+        )
 
 
 # def test_lazy_loader():
@@ -408,7 +434,7 @@ def test_load_array(sync_store: Store) -> None:
 
 @pytest.mark.parametrize("path", ["data", None])
 @pytest.mark.parametrize("load_read_only", [True, False, None])
-def test_load_zip(tmp_path: pathlib.Path, path: str | None, load_read_only: bool | None) -> None:
+def test_load_zip(tmp_path: Path, path: str | None, load_read_only: bool | None) -> None:
     file = tmp_path / "test.zip"
     data = np.arange(100).reshape(10, 10)
 
@@ -426,7 +452,7 @@ def test_load_zip(tmp_path: pathlib.Path, path: str | None, load_read_only: bool
 
 @pytest.mark.parametrize("path", ["data", None])
 @pytest.mark.parametrize("load_read_only", [True, False])
-def test_load_local(tmp_path: pathlib.Path, path: str | None, load_read_only: bool) -> None:
+def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> None:
     file = tmp_path / "test.zip"
     data = np.arange(100).reshape(10, 10)
 
@@ -446,7 +472,7 @@ def test_tree() -> None:
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(DeprecationWarning):  # noqa: PT031
         assert repr(zarr.tree(g1)) == repr(g1.tree())
         assert str(zarr.tree(g1)) == str(g1.tree())
 
@@ -1118,40 +1144,6 @@ def test_tree() -> None:
 #             copy(source["foo"], dest, dry_run=True, log=True)
 
 
-def test_open_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        zarr.api.synchronous.open(store, "w", shape=(1,))
-
-
-def test_save_array_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", message="zarr_version is deprecated", category=DeprecationWarning
-        )
-        with pytest.warns(FutureWarning, match="pass"):
-            save_array(
-                store,
-                np.ones(
-                    1,
-                ),
-                3,
-            )
-
-
-def test_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        group(store, True)
-
-
-def test_open_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        open_group(store, "w")
-
-
 def test_open_falls_back_to_open_group() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     store = MemoryStore()
@@ -1176,15 +1168,15 @@ async def test_open_falls_back_to_open_group_async(zarr_format: ZarrFormat) -> N
 
 
 @pytest.mark.parametrize("mode", ["r", "r+", "w", "a"])
-def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
+def test_open_modes_creates_group(tmp_path: Path, mode: str) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2490
     zarr_dir = tmp_path / f"mode-{mode}-test.zarr"
     if mode in ["r", "r+"]:
         # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
         with pytest.raises(FileNotFoundError):
-            zarr.open(store=zarr_dir, mode=mode)
+            zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
     else:
-        group = zarr.open(store=zarr_dir, mode=mode)
+        group = zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
         assert isinstance(group, Group)
 
 

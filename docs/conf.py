@@ -167,8 +167,17 @@ html_favicon = "_static/logo1.png"
 # documentation.
 html_theme_options = {
     "github_url": "https://github.com/zarr-developers/zarr-python",
-    "twitter_url": "https://twitter.com/zarr_dev",
     "icon_links": [
+        {
+            "name": "Bluesky",
+            "url": "https://bsky.app/profile/zarr.dev",
+            "icon": "fa-brands fa-bluesky",
+        },
+        {
+            "name": "Mastodon",
+            "url": "https://fosstodon.org/@zarr",
+            "icon": "fa-brands fa-mastodon",
+        },
         {
             "name": "Zarr Dev",
             "url": "https://zarr.dev/",
@@ -178,7 +187,6 @@ html_theme_options = {
     ],
     "collapse_navigation": True,
     "navigation_with_keys": False,
-    "announcement": "Zarr-Python 3 is here! Check out the release announcement <a href='https://zarr.dev/blog/zarr-python-3-release/'>here.</a>",
 }
 
 # Add any paths that contain custom themes here, relative to this directory.

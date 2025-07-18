@@ -655,12 +655,13 @@ def test_group_create_array(
 
     if not overwrite:
         if method == "create_array":
-            with pytest.raises(ContainsArrayError):
+            with pytest.raises(ContainsArrayError):  # noqa: PT012
                 a = group.create_array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
         elif method == "array":
-            with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
-                a = group.array(name=name, shape=shape, dtype=dtype)
+            with pytest.raises(ContainsArrayError):  # noqa: PT012
+                with pytest.warns(DeprecationWarning):
+                    a = group.array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
 
     assert array.path == normalize_path(name)
@@ -1444,26 +1445,6 @@ def test_update_attrs() -> None:
     )
     root.attrs["foo"] = "bar"
     assert root.attrs["foo"] == "bar"
-
-
-@pytest.mark.parametrize("method", ["empty", "zeros", "ones", "full"])
-def test_group_deprecated_positional_args(method: str) -> None:
-    if method == "full":
-        kwargs = {"fill_value": 0}
-    else:
-        kwargs = {}
-
-    root = zarr.group()
-    with pytest.warns(FutureWarning, match=r"Pass name=.* as keyword args."):
-        arr = getattr(root, method)("foo", shape=1, **kwargs)
-        assert arr.shape == (1,)
-
-    method += "_like"
-    data = np.ones(1)
-
-    with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
-        arr = getattr(root, method)("foo_like", data, **kwargs)
-        assert arr.shape == data.shape
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])

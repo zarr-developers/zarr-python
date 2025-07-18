@@ -256,15 +256,13 @@ def arrays(
         arrays = numpy_arrays(shapes=shapes)
     nparray = draw(arrays, label="array data")
     chunk_shape = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
-    extra_kwargs = {}
+    dim_names: None | list[str | None] = None
     if zarr_format == 3 and all(c > 0 for c in chunk_shape):
         shard_shape = draw(
             st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunk_shape),
             label="shard shape",
         )
-        extra_kwargs["dimension_names"] = draw(
-            dimension_names(ndim=nparray.ndim), label="dimension names"
-        )
+        dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
     else:
         shard_shape = None
     # test that None works too.
@@ -285,7 +283,7 @@ def arrays(
         attributes=attributes,
         # compressor=compressor,  # FIXME
         fill_value=fill_value,
-        **extra_kwargs,
+        dimension_names=dim_names,
     )
 
     assert isinstance(a, Array)
