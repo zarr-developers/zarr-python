@@ -355,7 +355,10 @@ def test_invalid_metadata(store: Store) -> None:
             ],
         )
     spath7 = StorePath(store, "warning_inefficient_codecs")
-    with pytest.warns(UserWarning):
+    with pytest.warns(
+        UserWarning,
+        match="Combining a `sharding_indexed` codec disables partial reads and writes, which may lead to inefficient performance",
+    ):
         Array.create(
             spath7,
             shape=(16, 16),
@@ -372,7 +375,10 @@ def test_invalid_metadata(store: Store) -> None:
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_invalid_metadata_create_array(store: Store) -> None:
     spath = StorePath(store, "warning_inefficient_codecs")
-    with pytest.warns(UserWarning):
+    with pytest.warns(
+        UserWarning,
+        match="codec disables partial reads and writes, which may lead to inefficient performance",
+    ):
         zarr.create_array(
             spath,
             shape=(16, 16),

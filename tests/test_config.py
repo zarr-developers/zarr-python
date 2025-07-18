@@ -287,7 +287,7 @@ def test_warning_on_missing_codec_config() -> None:
 
     # warning because multiple implementations are available but none is selected in the config
     register_codec("new_codec", NewCodec2)
-    with pytest.warns(UserWarning):
+    with pytest.warns(UserWarning, match="not configured in config. Selecting any implementation"):
         get_codec_class("new_codec")
 
     # no warning if multiple implementations are available and one is selected in the config
