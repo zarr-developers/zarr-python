@@ -107,7 +107,7 @@ def test_compute_encoded_chunk_size() -> None:
             _input_byte_length=0,
             _chunk_spec=ArraySpec(
                 shape=(10, 10),
-                dtype=zarr.core.dtype.npy.int.Int32,
+                dtype=zarr.core.dtype.npy.int.Int32(),
                 fill_value=0,
                 config=ArrayConfig(order="C", write_empty_chunks=False),
                 prototype=buffer_prototype,
@@ -122,7 +122,7 @@ async def test_nvcomp_zstd_encode_none() -> None:
             None,
             ArraySpec(
                 shape=(10, 10),
-                dtype=zarr.core.dtype.npy.int.Int32,
+                dtype=zarr.core.dtype.npy.int.Int32(),
                 fill_value=0,
                 config=ArrayConfig(order="C", write_empty_chunks=False),
                 prototype=buffer_prototype,
