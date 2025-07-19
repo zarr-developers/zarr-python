@@ -627,6 +627,39 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
     assert new_group.attrs == new_attrs
 
 
+def test_group_refresh_attributes(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    Test the behavior of `Group.refresh_attributes`
+    """
+    attrs = {"foo": 100}
+    group = Group.from_store(store, zarr_format=zarr_format, attributes=attrs)
+    assert group.attrs == attrs
+    new_attrs = {"foo": 50}
+    group2 = Group.open(store, zarr_format=zarr_format)
+    group2.update_attributes(new_attrs)
+    assert group2.attrs == new_attrs
+
+    assert group.attrs == attrs
+    new_group = group.refresh_attributes()
+    assert new_group.attrs == new_attrs
+
+
+def test_group_cache_attrs(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    Test the behavior of `Group.cache_attrs`
+    """
+    attrs = {"foo": 100}
+    group = Group.from_store(store, zarr_format=zarr_format, attributes=attrs, cache_attrs=False)
+    assert group.attrs == attrs
+
+    new_attrs = {"foo": 50}
+    group2 = Group.open(store, zarr_format=zarr_format)
+    group2.update_attributes(new_attrs)
+    assert group2.attrs == new_attrs
+
+    assert group.attrs == new_attrs
+
+
 @pytest.mark.parametrize("method", ["create_array", "array"])
 @pytest.mark.parametrize("name", ["a", "/a"])
 def test_group_create_array(
