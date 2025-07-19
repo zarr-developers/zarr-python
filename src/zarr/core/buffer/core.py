@@ -523,6 +523,12 @@ class NDBuffer:
         if other is None:
             # Handle None fill_value for Zarr V2
             return False
+        if other == 0.0 and self._data.dtype.kind not in ("U", "S", "T", "O", "V"):
+            # Handle positive and negative zero
+            if np.any(self._data):  # Check for any truthy value
+                return False
+            # Check signs:
+            return np.array_equiv(np.signbit(self._data), np.signbit(other))
         # use array_equal to obtain equal_nan=True functionality
         # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value
         # every single time we have to write data?
