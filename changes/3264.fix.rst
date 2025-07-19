@@ -1,0 +1,4 @@
+- Expand the range of types accepted by ``parse_data_type`` to include strings and Sequences.
+- Move the functionality of ``parse_data_type`` to a new function called ``parse_dtype``. This change
+  ensures that nomenclature is consistent across the codebase. ``parse_data_type`` remains, so this
+  change is not breaking.

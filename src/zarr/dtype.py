@@ -39,6 +39,7 @@ from zarr.core.dtype import (
     ZDType,
     data_type_registry,
     parse_data_type,
+    parse_dtype,
 )
 
 __all__ = [
@@ -84,4 +85,5 @@ __all__ = [
     "data_type_registry",
     "data_type_registry",
     "parse_data_type",
+    "parse_dtype",
 ]
