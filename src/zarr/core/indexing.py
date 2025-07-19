@@ -28,7 +28,7 @@ import numpy.typing as npt
 from zarr.core.common import product
 
 if TYPE_CHECKING:
-    from zarr.core.array import Array
+    from zarr.core.array import Array, AsyncArray
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
@@ -961,6 +961,25 @@ class OIndex:
 
 
 @dataclass(frozen=True)
+class AsyncOIndex:
+    array: AsyncArray
+
+    async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
+        from zarr.core.array import Array
+
+        # if input is a Zarr array, we materialize it now.
+        if isinstance(selection, Array):
+            selection = _zarr_array_to_int_or_bool_array(selection)
+
+        fields, new_selection = pop_fields(selection)
+        new_selection = ensure_tuple(new_selection)
+        new_selection = replace_lists(new_selection)
+        return await self.array.get_orthogonal_selection(
+            cast(OrthogonalSelection, new_selection), fields=fields
+        )
+
+
+@dataclass(frozen=True)
 class BlockIndexer(Indexer):
     dim_indexers: list[SliceDimIndexer]
     shape: ChunkCoords
@@ -1264,6 +1283,30 @@ class VIndex:
             self.array.set_coordinate_selection(new_selection, value, fields=fields)
         elif is_mask_selection(new_selection, self.array.shape):
             self.array.set_mask_selection(new_selection, value, fields=fields)
+        else:
+            raise VindexInvalidSelectionError(new_selection)
+
+
+@dataclass(frozen=True)
+class AsyncVIndex:
+    array: AsyncArray
+
+    # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
+    async def getitem(
+        self, selection: CoordinateSelection | MaskSelection | Array
+    ) -> NDArrayLikeOrScalar:
+        from zarr.core.array import Array
+
+        # if input is a Zarr array, we materialize it now.
+        if isinstance(selection, Array):
+            selection = _zarr_array_to_int_or_bool_array(selection)
+        fields, new_selection = pop_fields(selection)
+        new_selection = ensure_tuple(new_selection)
+        new_selection = replace_lists(new_selection)
+        if is_coordinate_selection(new_selection, self.array.shape):
+            return await self.array.get_coordinate_selection(new_selection, fields=fields)
+        elif is_mask_selection(new_selection, self.array.shape):
+            return self.array.get_mask_selection(new_selection, fields=fields)
         else:
             raise VindexInvalidSelectionError(new_selection)
 
