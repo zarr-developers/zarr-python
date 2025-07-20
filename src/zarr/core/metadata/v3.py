@@ -5,11 +5,9 @@ from typing import TYPE_CHECKING, TypedDict
 from zarr.abc.metadata import Metadata
 from zarr.codecs.numcodec import NumcodecsWrapper
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype import (
-    VariableLengthString,
-    ZDType,
-    get_data_type_from_json_v3,
-)
+from zarr.core.codec_pipeline import codecs_from_list
+from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
+from zarr.core.dtype.common import check_dtype_spec_v3
 
 if TYPE_CHECKING:
     from typing import Self
@@ -34,7 +32,6 @@ from zarr.core.common import (
     ZARR_JSON,
     ChunkCoords,
     DimensionNames,
-    parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -67,19 +64,14 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
-            name_parsed, _config = parse_named_configuration(c, require_configuration=False)
-            if _config is None:
-                config = {}
-            else:
-                config = _config
-            out += (get_codec(name_parsed, config),)
+            out += (get_codec(c, zarr_format=3),)
 
     return out
 
 
 def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
     # ensure that we have at least one ArrayBytesCodec
-    abcs: list[ArrayBytesCodec] = [codec for codec in codecs if isinstance(codec, (ArrayBytesCodec, NumcodecsWrapper))]
+    abcs: list[ArrayBytesCodec] = [codec for codec in codecs if isinstance(codec, ArrayBytesCodec)]
     if len(abcs) == 0:
         raise ValueError("At least one ArrayBytesCodec is required.")
     elif len(abcs) > 1:
@@ -92,7 +84,10 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     """Check that the codecs are valid for the given dtype"""
     from zarr.codecs.sharding import ShardingCodec
 
-    abc = validate_array_bytes_codec(codecs)
+    array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
+    _codecs = (*array_array_codecs, array_bytes_codec, *bytes_bytes_codecs)
+
+    abc = validate_array_bytes_codec(_codecs)
 
     # Recursively resolve array-bytes codecs within sharding codecs
     while isinstance(abc, ShardingCodec):

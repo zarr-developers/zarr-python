@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-from numcodecs import Blosc
 
 import zarr.api.asynchronous
 import zarr.api.synchronous
@@ -17,6 +16,7 @@ from zarr.api.asynchronous import (
     open,
     open_consolidated,
 )
+from zarr.core.array import default_compressor_v2
 from zarr.core.buffer import cpu, default_buffer_prototype
 from zarr.core.dtype import parse_data_type
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
@@ -523,7 +523,7 @@ class TestConsolidated:
                         attributes={"key": "a"},
                         chunks=(1,),
                         fill_value=0,
-                        compressor=Blosc(),
+                        compressor=default_compressor_v2(dtype),
                         order="C",
                     ),
                     "g1": GroupMetadata(

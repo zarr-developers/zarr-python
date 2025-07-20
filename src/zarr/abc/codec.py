@@ -53,6 +53,12 @@ class CodecJSON_V2(TypedDict, Generic[TName]):
 
 CodecConfig_V3 = NamedConfig[str, Mapping[str, object]]
 
+CodecJSON_V3 = str | CodecConfig_V3
+
+# The widest type we will accept for a codec JSON
+# This covers v2 and v3
+CodecJSON = str | Mapping[str, object]
+
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
     """Generic base class for codecs.
@@ -187,15 +193,15 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         raise NotImplementedError
 
     @classmethod
-    def _from_json_v2(cls, data: Mapping[str, object]) -> Self:
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
         raise NotImplementedError
 
     @classmethod
-    def _from_json_v3(cls, data: Mapping[str, object]) -> Self:
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
         raise NotImplementedError
 
     @classmethod
-    def from_json(cls, data: Mapping[str, object], zarr_format: ZarrFormat) -> Self:
+    def from_json(cls, data: CodecJSON, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2:
             return cls._from_json_v2(data)
         elif zarr_format == 3:
@@ -494,3 +500,7 @@ def _noop_for_none(
         return await func(chunk, chunk_spec)
 
     return wrap
+
+
+# Raised when a codec JSON data is invalid
+class CodecValidationError(ValueError): ...

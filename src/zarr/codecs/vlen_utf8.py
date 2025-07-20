@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, overload
-from warnings import warn
+from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, overload
 
 import numpy as np
 from numcodecs.vlen import VLenBytes, VLenUTF8
 
-from zarr.abc.codec import ArrayBytesCodec, CodecJSON_V2
+from zarr.abc.codec import ArrayBytesCodec, CodecJSON, CodecJSON_V2
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.registry import register_codec
@@ -31,10 +30,20 @@ class VLenUTF8JSON_V2(CodecJSON_V2[Literal["vlen-utf8"]]):
 class VLenUTF8JSON_V3(NamedConfig[Literal["vlen-utf8"], VlenUF8Config]):
     ...
 
+class VLenBytesConfig(TypedDict): ...
+
+
+class VLenBytesJSON_V2(CodecJSON_V2[Literal["vlen-bytes"]]): ...
+
+
+VLenBytesJSON_V3 = NamedConfig[Literal["vlen-bytes"], VLenBytesConfig] | Literal["vlen-bytes"]
+
+
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
+        return cls.from_json(data, zarr_format=3)
         _, configuration_parsed = parse_named_configuration(
             data, "vlen-utf8", require_configuration=False
         )
@@ -53,6 +62,30 @@ class VLenUTF8Codec(ArrayBytesCodec):
             return {"id": "vlen-utf8"}
         else:
             return {"name": "vlen-utf8"}
+
+    @classmethod
+    def _check_json_v2(cls, data: CodecJSON) -> TypeGuard[VLenUTF8JSON_V2]:
+        return data == {"id": "vlen-utf8"}
+
+    @classmethod
+    def _check_json_v3(cls, data: CodecJSON) -> TypeGuard[VLenUTF8JSON_V3]:
+        return data in (
+            {"name": "vlen-utf8"},
+            {"name": "vlen-utf8", "configuration": {}},
+            "vlen-utf8",
+        )
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        if cls._check_json_v2(data):
+            return cls()
+        raise ValueError(f"Invalid VLenUTF8 JSON data for Zarr format 2: {data!r}")
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        raise ValueError(f"Invalid VLenUTF8 JSON data for Zarr format 3: {data!r}")
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self
@@ -91,6 +124,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
 class VLenBytesCodec(ArrayBytesCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
+        return cls.from_json(data, zarr_format=3)
         _, configuration_parsed = parse_named_configuration(
             data, "vlen-bytes", require_configuration=False
         )
@@ -99,6 +133,40 @@ class VLenBytesCodec(ArrayBytesCodec):
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "vlen-bytes", "configuration": {}}
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> VLenBytesJSON_V2: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> VLenBytesJSON_V3: ...
+    def to_json(self, zarr_format: ZarrFormat) -> VLenBytesJSON_V2 | VLenBytesJSON_V3:
+        if zarr_format == 2:
+            return {"id": "vlen-bytes"}
+        else:
+            return {"name": "vlen-bytes"}
+
+    @classmethod
+    def _check_json_v2(cls, data: CodecJSON) -> TypeGuard[VLenBytesJSON_V2]:
+        return data == {"id": "vlen-bytes"}
+
+    @classmethod
+    def _check_json_v3(cls, data: CodecJSON) -> TypeGuard[VLenBytesJSON_V3]:
+        return data in (
+            {"name": "vlen-bytes"},
+            {"name": "vlen-bytes", "configuration": {}},
+            "vlen-bytes",
+        )
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        if cls._check_json_v2(data):
+            return cls()
+        raise ValueError(f"Invalid VLenBytes JSON data for Zarr format 2: {data!r}")
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        if cls._check_json_v3(data):
+            return cls()
+        raise ValueError(f"Invalid VLenBytes JSON data for Zarr format 3: {data!r}")
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self

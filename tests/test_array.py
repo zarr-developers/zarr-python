@@ -1070,8 +1070,8 @@ class TestCreateArray:
             (ZstdCodec(level=3),),
             (ZstdCodec(level=3), GzipCodec(level=0)),
             ZstdCodec(level=3),
-            {"name": "zstd", "configuration": {"level": 3}},
-            ({"name": "zstd", "configuration": {"level": 3}},),
+            {"name": "zstd", "configuration": {"level": 3, "checksum": True}},
+            ({"name": "zstd", "configuration": {"level": 3, "checksum": True}},),
         ],
     )
     @pytest.mark.parametrize(
@@ -1625,12 +1625,12 @@ def test_roundtrip_numcodecs() -> None:
     store = MemoryStore()
 
     compressors = [
-        {"name": "numcodecs.shuffle", "configuration": {"elementsize": 2}},
-        {"name": "numcodecs.zlib", "configuration": {"level": 4}},
+        {"name": "shuffle", "configuration": {"elementsize": 2}},
+        {"name": "zlib", "configuration": {"level": 4}},
     ]
     filters = [
         {
-            "name": "numcodecs.fixedscaleoffset",
+            "name": "fixedscaleoffset",
             "configuration": {
                 "scale": 100.0,
                 "offset": 0.0,

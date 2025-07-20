@@ -1,11 +1,22 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import lru_cache
 from operator import itemgetter
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Literal,
+    NamedTuple,
+    NotRequired,
+    Self,
+    TypedDict,
+    TypeGuard,
+    cast,
+    overload,
+)
 
 import numpy as np
 import numpy.typing as npt
@@ -15,7 +26,11 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
     Codec,
+    CodecJSON,
+    CodecJSON_V2,
+    CodecJSON_V3,
     CodecPipeline,
+    CodecValidationError,
 )
 from zarr.abc.store import (
     ByteGetter,
@@ -38,6 +53,7 @@ from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.common import (
     ChunkCoords,
     ChunkCoordsLike,
+    NamedRequiredConfig,
     parse_enum,
     parse_named_configuration,
     parse_shapelike,
@@ -65,6 +81,28 @@ MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, Buffer]
 ShardMutableMapping = MutableMapping[ChunkCoords, Buffer]
 
+IndexLocation = Literal["start", "end"]
+
+
+class ShardingConfigV2(TypedDict):
+    codecs: tuple[CodecJSON_V2[str], ...]
+    chunk_shape: tuple[int, ...]
+    index_codecs: tuple[CodecJSON_V2[str], ...]
+    index_location: NotRequired[Literal["start", "end"]]
+
+
+class ShardingConfigV3(TypedDict):
+    codecs: tuple[CodecJSON_V3, ...]
+    chunk_shape: tuple[int, ...]
+    index_codecs: tuple[CodecJSON_V3, ...]
+    index_location: NotRequired[Literal["start", "end"]]
+
+
+class ShardingJSON_V2(CodecJSON_V2[Literal["sharding_indexed"]], ShardingConfigV2): ...
+
+
+class ShardingJSON_V3(NamedRequiredConfig[Literal["sharding_indexed"], ShardingConfigV3]): ...
+
 
 class ShardingCodecIndexLocation(Enum):
     """
@@ -77,6 +115,37 @@ class ShardingCodecIndexLocation(Enum):
 
 def parse_index_location(data: object) -> ShardingCodecIndexLocation:
     return parse_enum(data, ShardingCodecIndexLocation)
+
+
+def check_json_v2(data: CodecJSON) -> TypeGuard[ShardingJSON_V2]:
+    return (
+        isinstance(data, Mapping)
+        and set(data.keys()) == {"id", "codecs", "chunk_shape"}
+        and data["id"] == "sharding_indexed"
+        and isinstance(data["chunk_shape"], Sequence)
+        and not isinstance(data["chunk_shape"], str)
+        and isinstance(data["codecs"], Sequence)
+        and not isinstance(data["codecs"], str)
+    )
+
+
+def check_json_v3(data: CodecJSON) -> TypeGuard[ShardingJSON_V3]:
+    # TODO: Automate this with a function that does runtime type checking on typeddicts.
+    return (
+        isinstance(data, Mapping)
+        and set(data.keys()) == {"name", "configuration"}
+        and data["name"] == "sharding_indexed"
+        and isinstance(data["configuration"], Mapping)
+        and set(data["configuration"].keys())
+        == {"codecs", "chunk_shape", "index_codecs", "index_location"}
+        and isinstance(data["configuration"]["chunk_shape"], Sequence)
+        and not isinstance(data["configuration"]["chunk_shape"], str)
+        and isinstance(data["configuration"]["codecs"], Sequence)
+        and not isinstance(data["configuration"]["codecs"], str)
+        and isinstance(data["configuration"]["index_codecs"], Sequence)
+        and not isinstance(data["configuration"]["index_codecs"], str)
+        and data["configuration"]["index_location"] in ("start", "end")
+    )
 
 
 @dataclass(frozen=True)
@@ -383,14 +452,47 @@ class ShardingCodec(
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
+        return cls.from_json(data, zarr_format=3)
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        if check_json_v2(data):
+            return cls(
+                codecs=data["codecs"],
+                index_codecs=data["index_codecs"],
+                index_location=data["index_location"],
+                chunk_shape=data["chunk_shape"],
+            )
+        msg = (
+            "Invalid Zarr V2 JSON representation of the sharding codec. "
+            f"Got {data!r}, expected a Mapping with keys ('id', 'codecs', 'index_codecs', 'chunk_shape', 'index_location')"
+        )
+        raise CodecValidationError(msg)
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        if check_json_v3(data):
+            return cls(
+                codecs=data["configuration"]["codecs"],
+                index_codecs=data["configuration"]["index_codecs"],
+                index_location=data["configuration"]["index_location"],
+                chunk_shape=data["configuration"]["chunk_shape"],
+            )
+        msg = (
+            "Invalid Zarr V3 JSON representation of the sharding codec. "
+            f"Got {data!r}, expected a Mapping with keys ('name', 'configuration')"
+            "Where the 'configuration' key is a Mapping with keys ('codecs', 'index_codecs', 'index_location', 'chunk_shape')"
+        )
+        raise CodecValidationError(msg)
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
         return get_pipeline_class().from_codecs(self.codecs)
 
     def to_dict(self) -> dict[str, JSON]:
+        return self.to_json(zarr_format=3)
         return {
             "name": "sharding_indexed",
             "configuration": {
@@ -400,6 +502,37 @@ class ShardingCodec(
                 "index_location": self.index_location.value,
             },
         }
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> ShardingJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> ShardingJSON_V3: ...
+
+    def to_json(self, zarr_format: int) -> ShardingJSON_V2 | ShardingJSON_V3:
+        if zarr_format == 2:
+            return {
+                "id": "sharding_indexed",
+                "codecs": tuple(s.to_json(zarr_format=zarr_format) for s in self.codecs),
+                "index_codecs": tuple(
+                    s.to_json(zarr_format=zarr_format) for s in self.index_codecs
+                ),
+                "chunk_shape": self.chunk_shape,
+                "index_location": self.index_location.value,
+            }
+        elif zarr_format == 3:
+            return {
+                "name": "sharding_indexed",
+                "configuration": {
+                    "chunk_shape": self.chunk_shape,
+                    "codecs": tuple(s.to_json(zarr_format=zarr_format) for s in self.codecs),
+                    "index_codecs": tuple(
+                        s.to_json(zarr_format=zarr_format) for s in self.index_codecs
+                    ),
+                    "index_location": self.index_location.value,
+                },
+            }
+        raise ValueError(f"Unsupported Zarr format {zarr_format}. Expected 2 or 3.")
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         shard_spec = self._get_chunk_spec(array_spec)

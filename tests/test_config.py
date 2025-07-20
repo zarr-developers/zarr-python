@@ -206,7 +206,18 @@ def test_config_codec_implementation(store: Store) -> None:
             chunks=(10,),
             zarr_format=3,
             dtype="i4",
-            compressors=[{"name": "blosc", "configuration": {}}],
+            compressors=[
+                {
+                    "name": "blosc",
+                    "configuration": {
+                        "typesize": 1,
+                        "cname": "lz4",
+                        "clevel": 1,
+                        "blocksize": 1,
+                        "shuffle": "bitshuffle",
+                    },
+                }
+            ],
         )
         arr[:] = range(100)
         _mock.call.assert_called()

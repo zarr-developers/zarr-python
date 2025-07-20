@@ -69,7 +69,8 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
     configuration: NotRequired[ReadOnly[TConfig]]
     """The configuration of the object."""
 
-class NamedRequiredConfig(NamedConfig[TName, TConfig]):
+
+class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
     is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.

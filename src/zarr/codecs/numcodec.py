@@ -13,14 +13,19 @@ import numcodecs.registry as numcodecs_registry
 import numpy as np
 from typing_extensions import Protocol, runtime_checkable
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BaseCodec, BytesBytesCodec, CodecJSON_V2
+from zarr.abc.codec import (
+    ArrayArrayCodec,
+    ArrayBytesCodec,
+    BaseCodec,
+    BytesBytesCodec,
+    CodecJSON,
+    CodecJSON_V2,
+)
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer.core import Buffer, BufferPrototype, NDArrayLike, NDBuffer
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from zarr.core.array_spec import ArraySpec
     from zarr.core.common import BaseConfig, NamedConfig, ZarrFormat
 
@@ -31,8 +36,8 @@ def get_numcodec_class(name: str) -> type[Numcodec]:
 
     Parameters
     ----------
-    config : dict-like
-        Configuration object.
+    name : str
+        The name of the codec to get
 
     Returns
     -------
@@ -42,7 +47,7 @@ def get_numcodec_class(name: str) -> type[Numcodec]:
     --------
 
     >>> import numcodecs as codecs
-    >>> codec = codecs.get_codec(dict(id='zlib', level=1))
+    >>> codec = codecs.get_codec('zlib')
     >>> codec
     Zlib(level=1)
 
@@ -120,11 +125,11 @@ class NumcodecsWrapper(BaseCodec[Buffer | NDBuffer, Buffer | NDBuffer]):
         raise ValueError(f"Unsupported zarr format: {zarr_format}")  # pragma: no cover
 
     @classmethod
-    def _from_json_v2(cls, data: Mapping[str, object]) -> Self:
-        return cls(_codec=resolve_numcodec(data))  # type: ignore[arg-type]
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        return cls(codec=resolve_numcodec(data))  # type: ignore[arg-type]
 
     @classmethod
-    def _from_json_v3(cls, data: Mapping[str, object]) -> Self:
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
         raise NotImplementedError(
             "This class does not support creating instances from JSON data for Zarr format 3."
         )

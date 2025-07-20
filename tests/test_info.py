@@ -72,7 +72,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         Read-only          : True
         Store type         : MemoryStore
         Filters            : ()
-        Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+        Serializer         : BytesCodec(endian='little')
         Compressors        : ()""")
 
 
@@ -113,7 +113,7 @@ def test_array_info_complete(
         Read-only          : True
         Store type         : MemoryStore
         Filters            : ()
-        Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+        Serializer         : BytesCodec(endian='little')
         Compressors        : ()
         No. bytes          : {count_bytes} ({count_bytes_formatted})
         No. bytes stored   : {count_bytes_stored} ({count_bytes_stored_formatted})

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec
+from zarr.abc.codec import ArrayArrayCodec, CodecJSON, CodecJSON_V2, CodecValidationError
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
+from zarr.core.common import (
+    JSON,
+    ChunkCoordsLike,
+    NamedRequiredConfig,
+    ZarrFormat,
+)
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -27,6 +32,42 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
     return tuple(cast("Iterable[int]", data))
 
 
+class TransposeConfig(TypedDict):
+    order: tuple[int, ...]
+
+
+class TransposeJSON_V2(CodecJSON_V2[Literal["transpose"]], TransposeConfig):
+    """
+    The JSON form of the Transpose codec in Zarr V2.
+    """
+
+
+class TransposeJSON_V3(NamedRequiredConfig[Literal["transpose"], TransposeConfig]):
+    """
+    The JSON form of the Transpose codec in Zarr V3.
+    """
+
+
+def check_json_v2(data: CodecJSON) -> TypeGuard[TransposeJSON_V2]:
+    return (
+        isinstance(data, Mapping)
+        and set(data.keys()) == {"id", "configuration"}
+        and data["id"] == "transpose"
+        and isinstance(data["order"], Sequence)
+        and not isinstance(data["order"], str)
+    )
+
+
+def check_json_v3(data: CodecJSON) -> TypeGuard[TransposeJSON_V3]:
+    return (
+        isinstance(data, Mapping)
+        and set(data.keys()) == {"name", "configuration"}
+        and data["name"] == "transpose"
+        and isinstance(data["configuration"], Mapping)
+        and set(data["configuration"].keys()) == {"order"}
+    )
+
+
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
     is_fixed_size = True
@@ -40,11 +81,46 @@ class TransposeCodec(ArrayArrayCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "transpose")
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
+        return cls.from_json(data, zarr_format=3)
+
+    @classmethod
+    def _from_json_v2(cls, data: str | Mapping[str, object]) -> Self:
+        if check_json_v2(data):
+            return cls(order=data["order"])  # type: ignore[arg-type]
+        msg = (
+            "Invalid Zarr V2 JSON representation of the transpose codec. "
+            f"Got {data!r}, expected a Mapping with keys ('id', 'order')"
+        )
+        raise CodecValidationError(msg)
+
+    @classmethod
+    def _from_json_v3(cls, data: str | Mapping[str, object]) -> Self:
+        if check_json_v3(data):
+            return cls(order=data["configuration"]["order"])
+        msg = (
+            "Invalid Zarr V3 JSON representation of the transpose codec. "
+            f"Got {data!r}, expected a Mapping with keys ('name', 'configuration')"
+            "Where the 'configuration' key is a Mapping with keys ('order')"
+        )
+        raise CodecValidationError(msg)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": tuple(self.order)}}
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> TransposeJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> TransposeJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> CodecJSON:
+        if zarr_format == 2:
+            return {"id": "transpose", "order": self.order}
+        elif zarr_format == 3:
+            return {"name": "transpose", "configuration": {"order": self.order}}
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
 
     def validate(
         self,

@@ -4,6 +4,7 @@ import pytest
 
 import zarr
 from zarr.codecs import GzipCodec
+from zarr.core.common import ZarrFormat
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
