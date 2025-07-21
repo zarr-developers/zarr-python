@@ -475,7 +475,7 @@ class NDBuffer:
         """Returns the buffer as a scalar value"""
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
-        return cast(ScalarType, self.as_numpy_array()[()])
+        return cast("ScalarType", self.as_numpy_array()[()])
 
     @property
     def dtype(self) -> np.dtype[Any]:

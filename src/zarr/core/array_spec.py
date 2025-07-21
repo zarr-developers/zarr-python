@@ -63,7 +63,7 @@ class ArrayConfig:
         """
         kwargs_out: ArrayConfigParams = {}
         for f in fields(ArrayConfig):
-            field_name = cast(Literal["order", "write_empty_chunks"], f.name)
+            field_name = cast("Literal['order', 'write_empty_chunks']", f.name)
             if field_name not in data:
                 kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
             else:
