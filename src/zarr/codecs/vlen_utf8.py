@@ -21,14 +21,15 @@ if TYPE_CHECKING:
 _vlen_utf8_codec = VLenUTF8()
 _vlen_bytes_codec = VLenBytes()
 
-class VlenUF8Config(TypedDict):
-    ...
 
-class VLenUTF8JSON_V2(CodecJSON_V2[Literal["vlen-utf8"]]):
-    ...
+class VlenUF8Config(TypedDict): ...
 
-class VLenUTF8JSON_V3(NamedConfig[Literal["vlen-utf8"], VlenUF8Config]):
-    ...
+
+class VLenUTF8JSON_V2(CodecJSON_V2[Literal["vlen-utf8"]]): ...
+
+
+class VLenUTF8JSON_V3(NamedConfig[Literal["vlen-utf8"], VlenUF8Config]): ...
+
 
 class VLenBytesConfig(TypedDict): ...
 
@@ -125,11 +126,6 @@ class VLenBytesCodec(ArrayBytesCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         return cls.from_json(data, zarr_format=3)
-        _, configuration_parsed = parse_named_configuration(
-            data, "vlen-bytes", require_configuration=False
-        )
-        configuration_parsed = configuration_parsed or {}
-        return cls(**configuration_parsed)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "vlen-bytes", "configuration": {}}

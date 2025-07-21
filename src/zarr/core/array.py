@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
@@ -61,18 +61,18 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     concurrent_map,
-    parse_order,
     parse_shapelike,
     product,
 )
-from zarr.core.config import categorize_data_type
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
+    VariableLengthBytes,
+    VariableLengthUTF8,
     ZDType,
     ZDTypeLike,
     parse_data_type,
 )
-from zarr.core.dtype.common import HasEndianness, HasItemSize
+from zarr.core.dtype.common import HasEndianness, HasItemSize, HasObjectCodec
 from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -109,6 +109,7 @@ from zarr.core.metadata import (
 )
 from zarr.core.metadata.v2 import (
     CompressorLike_V2,
+    get_object_codec_id,
     parse_compressor,
     parse_filters,
 )
@@ -119,12 +120,10 @@ from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
     _parse_bytes_bytes_codec,
-    get_codec,
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
 from zarr.storage._utils import _relativize_path
-from collections.abc import Sequence
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -741,7 +740,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         shape = parse_shapelike(shape)
         if codecs is None:
-            filters, serializer, compressors = _get_default_chunk_encoding_v3(dtype)
+            filters = default_filters_v3(dtype)
+            serializer = default_serializer_v3(dtype)
+            compressors = default_compressors_v3(dtype)
+
             codecs_parsed = (*filters, serializer, *compressors)
         else:
             codecs_parsed = tuple(codecs)
@@ -752,8 +754,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             chunk_key_encoding_parsed = chunk_key_encoding
 
-        if fill_value is None:
-            # v3 spec will not allow a null fill value
+        if isinstance(fill_value, DefaultFillValue) or fill_value is None:
+            # Use dtype's default scalar for DefaultFillValue sentinel
+            # For v3, None is converted to DefaultFillValue behavior
             fill_value_parsed = dtype.default_scalar()
         else:
             fill_value_parsed = fill_value
@@ -829,14 +832,20 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
-        filters: Iterable[Codec] | None = None,
-        compressor: Codec | None = None,
+        filters: Iterable[CompressorLike_V2] | None = None,
+        compressor: CompressorLike_V2 | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV2Metadata:
         if dimension_separator is None:
             dimension_separator = "."
-        if fill_value is None:
-            fill_value = dtype.default_scalar()  # type: ignore[assignment]
+
+        # Handle DefaultFillValue sentinel
+        if isinstance(fill_value, DefaultFillValue):
+            fill_value_parsed: Any = dtype.default_scalar()
+        else:
+            # For v2, preserve None as-is (backward compatibility)
+            fill_value_parsed = fill_value
+
         return ArrayV2Metadata(
             shape=shape,
             dtype=dtype,
@@ -862,7 +871,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         filters: Iterable[CompressorLike_V2] | None = None,
-        compressor: CompressorLike = "auto",
+        compressor: CompressorLike_V2 | Literal["auto"] = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArray[ArrayV2Metadata]:
@@ -876,7 +885,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         compressor_parsed: CompressorLike_V2
         if compressor == "auto":
-            _, compressor_parsed = _get_default_chunk_encoding_v2(dtype)
+            compressor_parsed = default_compressor_v2(dtype)
         else:
             compressor_parsed = compressor
 
@@ -1765,6 +1774,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=self._zdtype,
+            _fill_value=self.metadata.fill_value,
             _shape=self.shape,
             _order=self.order,
             _shard_shape=self.shards,
@@ -4480,30 +4490,26 @@ async def create_array(
     data_parsed, shape_parsed, dtype_parsed = _parse_data_params(
         data=data, shape=shape, dtype=dtype
     )
-    result = await init_array(
-        store_path=store_path,
-        shape=shape_parsed,
-        dtype=dtype_parsed,
-        chunks=chunks,
-        shards=shards,
-        filters=filters,
-        compressors=compressors,
-        serializer=serializer,
-        fill_value=fill_value,
-        order=order,
-        zarr_format=zarr_format,
-        attributes=attributes,
-        chunk_key_encoding=chunk_key_encoding,
-        dimension_names=dimension_names,
-        overwrite=overwrite,
-        config=config,
-    )
-
-    if write_data is True and data_parsed is not None:
-        await result._set_selection(
-            BasicIndexer(..., shape=result.shape, chunk_grid=result.chunk_grid),
-            data_parsed,
-            prototype=default_buffer_prototype(),
+    if data_parsed is not None:
+        return await from_array(
+            store,
+            data=data_parsed,
+            write_data=write_data,
+            name=name,
+            chunks=chunks,
+            shards=shards,
+            filters=filters,
+            compressors=compressors,
+            serializer=serializer,
+            fill_value=fill_value,
+            order=order,
+            zarr_format=zarr_format,
+            attributes=attributes,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+            storage_options=storage_options,
+            overwrite=overwrite,
+            config=config,
         )
     else:
         mode: Literal["a"] = "a"
@@ -4649,46 +4655,74 @@ def _parse_chunk_key_encoding(
     return result
 
 
-def _get_default_chunk_encoding_v3(
-    dtype: ZDType[TBaseDType, TBaseScalar],
-) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
-    """
-    Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
-    """
-
-    dtype_category = categorize_data_type(dtype)
-
-    filters = zarr_config.get("array.v3_default_filters").get(dtype_category)
-    compressors = zarr_config.get("array.v3_default_compressors").get(dtype_category)
-    serializer = zarr_config.get("array.v3_default_serializer").get(dtype_category)
-
-    return (
-        tuple(_parse_array_array_codec(f) for f in filters),
-        _parse_array_bytes_codec(serializer),
-        tuple(_parse_bytes_bytes_codec(c) for c in compressors),
-    )
-
-
-def _get_default_chunk_encoding_v2(
-    dtype: ZDType[TBaseDType, TBaseScalar],
-) -> tuple[tuple[Codec | NumcodecsWrapper, ...] | None, Codec | NumcodecsWrapper | None]:
+def default_filters_v3(dtype: ZDType[Any, Any]) -> tuple[ArrayArrayCodec, ...]:
     """
     Given a data type, return the default filters for that data type.
 
     This is an empty tuple. No data types have default filters.
     """
-    dtype_category = categorize_data_type(dtype)
-    filters_config = zarr_config.get("array.v2_default_filters").get(dtype_category)
-    compressor_config = zarr_config.get("array.v2_default_compressor").get(dtype_category)
-    if compressor_config is not None:
-        compressor = get_codec(compressor_config["name"], compressor_config.get("configuration", {}))
-    else:
-        compressor = None
-    if filters_config is not None:
-        filters = tuple(get_codec(f['name'], f.get('configuration', {})) for f in filters_config)
-    else:
-        filters = None
-    return filters, compressor
+    return ()
+
+
+def default_compressors_v3(dtype: ZDType[Any, Any]) -> tuple[BytesBytesCodec, ...]:
+    """
+    Given a data type, return the default compressors for that data type.
+
+    This is just a tuple containing ``ZstdCodec``
+    """
+    return (ZstdCodec(),)
+
+
+def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
+    """
+    Given a data type, return the default serializer for that data type.
+
+    The default serializer for most data types is the ``BytesCodec``, which may or may not be
+    parameterized with an endianness, depending on whether the data type has endianness. Variable
+    length strings and variable length bytes have hard-coded serializers -- ``VLenUTF8Codec`` and
+    ``VLenBytesCodec``, respectively.
+
+    """
+    serializer: ArrayBytesCodec = BytesCodec(endian=None)
+
+    if isinstance(dtype, HasEndianness):
+        serializer = BytesCodec(endian="little")
+    elif isinstance(dtype, HasObjectCodec):
+        if dtype.object_codec_id == "vlen-bytes":
+            serializer = VLenBytesCodec()
+        elif dtype.object_codec_id == "vlen-utf8":
+            serializer = VLenUTF8Codec()
+        else:
+            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
+            raise ValueError(msg)
+    return serializer
+
+
+def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[Codec] | None:
+    """
+    Given a data type, return the default filters for that data type.
+
+    For data types that require an object codec, namely variable length data types,
+    this is a tuple containing the object codec. Otherwise it's ``None``.
+    """
+    if isinstance(dtype, HasObjectCodec):
+        if dtype.object_codec_id == "vlen-bytes":
+            return (VLenBytesCodec(),)
+        elif dtype.object_codec_id == "vlen-utf8":
+            return (VLenUTF8Codec(),)
+        else:
+            msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
+            raise ValueError(msg)
+    return None
+
+
+def default_compressor_v2(dtype: ZDType[Any, Any]) -> BytesBytesCodec:
+    """
+    Given a data type, return the default compressors for that data type.
+
+    This is just the ``Zstd`` codec.
+    """
+    return ZstdCodec()
 
 
 def _parse_chunk_encoding_v2(
@@ -4706,7 +4740,7 @@ def _parse_chunk_encoding_v2(
     if compressor is None or compressor == ():
         _compressor = None
     elif compressor == "auto":
-        _compressor = default_compressor
+        _compressor = default_compressor_v2(dtype)
     elif isinstance(compressor, Sequence) and len(compressor) == 1:
         _compressor = parse_compressor(compressor[0])
     else:

@@ -37,7 +37,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
-from zarr.registry import get_codec, get_codec_class
+from zarr.registry import get_codec
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -97,7 +97,7 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     # TODO: use codec ID instead of class name
     codec_class_name = abc.__class__.__name__
     # TODO: Fix typing here
-    if isinstance(dtype, VariableLengthString) and not codec_class_name == "VLenUTF8Codec":  # type: ignore[unreachable]
+    if isinstance(dtype, VariableLengthUTF8) and not codec_class_name == "VLenUTF8Codec":  # type: ignore[unreachable]
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
@@ -306,7 +306,9 @@ class ArrayV3Metadata(Metadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         data_type_json = _data.pop("data_type")
-        data_type = get_data_type_from_json_v3(data_type_json)
+        if not check_dtype_spec_v3(data_type_json):
+            raise ValueError(f"Invalid data_type: {data_type_json!r}")
+        data_type = get_data_type_from_json(data_type_json, zarr_format=3)
 
         # check that the fill value is consistent with the data type
         try:

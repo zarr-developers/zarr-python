@@ -21,12 +21,12 @@ from zarr.core.dtype import (
     Int16,
     TBaseDType,
     TBaseScalar,
+    VariableLengthUTF8,
     ZDType,
     data_type_registry,
-    get_data_type_from_json_v3,
+    get_data_type_from_json,
     parse_data_type,
 )
-from zarr.core.dtype.common import HasObjectCodec
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -85,14 +85,14 @@ class TestRegistry:
         """
         Test that match_dtype raises an error if the dtype is not registered.
         """
-        outside_dtype = "int8"
-        with pytest.raises(
-            ValueError, match=f"No data type wrapper found that matches dtype '{outside_dtype}'"
-        ):
-            data_type_registry_fixture.match_dtype(np.dtype(outside_dtype))
+        outside_dtype_name = "int8"
+        outside_dtype = np.dtype(outside_dtype_name)
+        msg = f"No Zarr data type found that matches dtype '{outside_dtype!r}'"
+        with pytest.raises(ValueError, match=re.escape(msg)):
+            data_type_registry_fixture.match_dtype(outside_dtype)
 
         with pytest.raises(KeyError):
-            data_type_registry_fixture.get(outside_dtype)
+            data_type_registry_fixture.get(outside_dtype_name)
 
     @staticmethod
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -110,23 +110,12 @@ class TestRegistry:
     def test_registered_dtypes_match_json(
         zdtype: ZDType[TBaseDType, TBaseScalar], zarr_format: ZarrFormat
     ) -> None:
-        if zarr_format == 2:
-            if isinstance(zdtype, HasObjectCodec):
-                object_codec_id = zdtype.object_codec_id
-            else:
-                object_codec_id = None
-            assert (
-                data_type_registry.match_json_v2(
-                    zdtype.to_json(zarr_format=zarr_format),  # type: ignore[arg-type]
-                    object_codec_id=object_codec_id,
-                )
-                == zdtype
+        assert (
+            data_type_registry.match_json(
+                zdtype.to_json(zarr_format=zarr_format), zarr_format=zarr_format
             )
-        else:
-            skip_object_dtype(zdtype)
-            assert (
-                data_type_registry.match_json_v3(zdtype.to_json(zarr_format=zarr_format)) == zdtype  # type: ignore[arg-type]
-            )
+            == zdtype
+        )
 
     @staticmethod
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
@@ -148,14 +137,14 @@ class TestRegistry:
 
         dtype_instance = zdtype.to_native_dtype()
 
-        msg = f"No data type wrapper found that matches dtype '{dtype_instance}'"
+        msg = f"No Zarr data type found that matches dtype '{dtype_instance!r}'"
         with pytest.raises(ValueError, match=re.escape(msg)):
             data_type_registry_fixture.match_dtype(dtype_instance)
 
         instance_dict = zdtype.to_json(zarr_format=zarr_format)
-        msg = f"No data type wrapper found that matches {instance_dict}"
+        msg = f"No Zarr data type found that matches {instance_dict!r}"
         with pytest.raises(ValueError, match=re.escape(msg)):
-            data_type_registry_fixture.match_json_v3(instance_dict)  # type: ignore[arg-type]
+            data_type_registry_fixture.match_json(instance_dict, zarr_format=zarr_format)
 
 
 # this is copied from the registry tests -- we should deduplicate
@@ -178,16 +167,18 @@ def set_path() -> Generator[None, None, None]:
 def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
     from package_with_entrypoint import TestDataType
 
-    data_type_registry.lazy_load()
+    data_type_registry._lazy_load()
     instance = TestDataType()
     dtype_json = instance.to_json(zarr_format=zarr_format)
-    assert get_data_type_from_json_v3(dtype_json) == instance
+    assert get_data_type_from_json(dtype_json, zarr_format=zarr_format) == instance
     data_type_registry.unregister(TestDataType._zarr_v3_name)
 
 
 @pytest.mark.parametrize(
     ("dtype_params", "expected", "zarr_format"),
     [
+        ("str", VariableLengthUTF8(), 2),
+        ("str", VariableLengthUTF8(), 3),
         ("int8", Int8(), 3),
         (Int8(), Int8(), 3),
         (">i2", Int16(endianness="big"), 2),

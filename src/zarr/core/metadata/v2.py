@@ -5,15 +5,13 @@ from collections.abc import Iterable, Mapping, Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
-import numcodecs.abc
-
-from zarr.abc.codec import ArrayArrayCodec, BytesBytesCodec, Codec
+from zarr.abc.codec import ArrayArrayCodec, Codec
 from zarr.abc.metadata import Metadata
 from zarr.codecs.numcodec import Numcodec, NumcodecsWrapper
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
-from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
+from zarr.core.dtype.common import OBJECT_CODEC_IDS
 from zarr.registry import get_codec
 
 if TYPE_CHECKING:
@@ -23,18 +21,17 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import ChunkCoords
+    from zarr.core.dtype.common import DTypeSpec_V2
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
         TDType_co,
         TScalar_co,
-        ZDType,
     )
 
 import json
 from dataclasses import dataclass, field, fields, replace
 
-import numcodecs
 import numpy as np
 
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -47,6 +44,9 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
+from zarr.core.dtype.wrapper import (
+    ZDType,
+)
 from zarr.core.metadata.common import parse_attributes
 
 
@@ -169,7 +169,7 @@ class ArrayV2Metadata(Metadata):
         # which could be in filters or as a compressor.
         # we will reference a hard-coded collection of object codec ids for this search.
 
-        _filters, _compressor = (_data.get("filters"), _data.get("compressor"))
+        _filters, _compressor = (data.get("filters"), data.get("compressor"))
         if _filters is not None:
             _filters = cast("tuple[dict[str, JSON], ...]", _filters)
             object_codec_id = get_object_codec_id(tuple(_filters) + (_compressor,))
@@ -177,8 +177,9 @@ class ArrayV2Metadata(Metadata):
             object_codec_id = get_object_codec_id((_compressor,))
         # we add a layer of indirection here around the dtype attribute of the array metadata
         # because we also need to know the object codec id, if any, to resolve the data type
+
         dtype_spec: DTypeSpec_V2 = {
-            "name": _data["dtype"],
+            "name": data["dtype"],
             "object_codec_id": object_codec_id,
         }
         dtype = get_data_type_from_json(dtype_spec, zarr_format=2)
@@ -196,9 +197,11 @@ class ArrayV2Metadata(Metadata):
         expected |= {"dtype", "chunks"}
 
         # check if `filters` is an empty sequence; if so use None instead and raise a warning
+        filters = _data.get("filters")
         if (
-            isinstance(_filters, Sequence)
-            and len(_filters) == 0
+            isinstance(filters, Sequence)
+            and not isinstance(filters, (str, bytes))
+            and len(filters) == 0
         ):
             msg = (
                 "Found an empty list of filters in the array metadata document. "
@@ -231,7 +234,7 @@ class ArrayV2Metadata(Metadata):
             zarray_dict["fill_value"] = fill_value
 
         # serialize the dtype after fill value-specific JSON encoding
-        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)  # type: ignore[assignment]
+        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)["name"]  # type: ignore[assignment]
 
         return zarray_dict
 
@@ -330,3 +333,21 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
         )
         raise ValueError(msg)
     return data
+
+
+def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
+    """
+    Inspect a sequence of codecs / filters for an "object codec", i.e. a codec
+    that can serialize object arrays to contiguous bytes. Zarr python
+    maintains a hard-coded set of object codec ids. If any element from the input
+    has an id that matches one of the hard-coded object codec ids, that id
+    is returned immediately.
+    """
+    object_codec_id = None
+    for maybe_object_codec in maybe_object_codecs:
+        if (
+            isinstance(maybe_object_codec, dict)
+            and maybe_object_codec.get("id") in OBJECT_CODEC_IDS
+        ):
+            return cast("str", maybe_object_codec["id"])
+    return object_codec_id

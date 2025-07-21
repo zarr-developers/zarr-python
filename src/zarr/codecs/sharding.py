@@ -55,7 +55,6 @@ from zarr.core.common import (
     ChunkCoordsLike,
     NamedRequiredConfig,
     parse_enum,
-    parse_named_configuration,
     parse_shapelike,
     product,
 )
@@ -453,8 +452,6 @@ class ShardingCodec(
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         return cls.from_json(data, zarr_format=3)
-        _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
@@ -493,15 +490,6 @@ class ShardingCodec(
 
     def to_dict(self) -> dict[str, JSON]:
         return self.to_json(zarr_format=3)
-        return {
-            "name": "sharding_indexed",
-            "configuration": {
-                "chunk_shape": self.chunk_shape,
-                "codecs": tuple(s.to_dict() for s in self.codecs),
-                "index_codecs": tuple(s.to_dict() for s in self.index_codecs),
-                "index_location": self.index_location.value,
-            },
-        }
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> ShardingJSON_V2: ...

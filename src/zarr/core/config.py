@@ -106,27 +106,6 @@ config = Config(
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
-                "v2_default_compressor": {
-                    "default": {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    "variable-length-string": {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                },
-                "v2_default_filters": {
-                    "default": None,
-                    "variable-length-string": [{"name": "vlen-utf8"}],
-                },
-                "v3_default_filters": {"default": [], "variable-length-string": []},
-                "v3_default_serializer": {
-                    "default": {"name": "bytes", "configuration": {"endian": "little"}},
-                    "variable-length-string": {"name": "vlen-utf8"},
-                },
-                "v3_default_compressors": {
-                    "default": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                    ],
-                    "variable-length-string": [
-                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}}
-                    ],
-                },
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
@@ -169,8 +148,8 @@ def categorize_data_type(dtype: ZDType[Any, Any]) -> DTypeCategory:
     This is used by the config system to determine how to encode arrays with the associated data type
     when the user has not specified a particular serialization scheme.
     """
-    from zarr.core.dtype import VariableLengthString
+    from zarr.core.dtype import VariableLengthUTF8
 
-    if isinstance(dtype, VariableLengthString):
+    if isinstance(dtype, VariableLengthUTF8):
         return "variable-length-string"
     return "default"

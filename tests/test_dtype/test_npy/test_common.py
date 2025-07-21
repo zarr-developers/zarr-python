@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Any, get_args
 import numpy as np
 import pytest
 
-from zarr.core.dtype.common import Endianness, JSONFloatV2, SpecialFloatStrings
+from zarr.core.dtype.common import ENDIANNESS_STR, JSONFloatV2, SpecialFloatStrings
 from zarr.core.dtype.npy.common import (
-    EndiannessNumpy,
+    NumpyEndiannessStr,
     bytes_from_json,
     bytes_to_json,
     check_json_bool,
@@ -67,10 +67,10 @@ def test_endianness_from_numpy_str(data: str, expected: str | None) -> None:
     Test that endianness_from_numpy_str correctly converts a numpy str literal to a human-readable literal value.
     This test also checks that an invalid string input raises a ``ValueError``
     """
-    if data in get_args(EndiannessNumpy):
+    if data in get_args(NumpyEndiannessStr):
         assert endianness_from_numpy_str(data) == expected  # type: ignore[arg-type]
     else:
-        msg = f"Invalid endianness: {data!r}. Expected one of {get_args(EndiannessNumpy)}"
+        msg = f"Invalid endianness: {data!r}. Expected one of {get_args(NumpyEndiannessStr)}"
         with pytest.raises(ValueError, match=re.escape(msg)):
             endianness_from_numpy_str(data)  # type: ignore[arg-type]
 
@@ -84,10 +84,10 @@ def test_endianness_to_numpy_str(data: str | None, expected: str) -> None:
     Test that endianness_to_numpy_str correctly converts a human-readable literal value to a numpy str literal.
     This test also checks that an invalid string input raises a ``ValueError``
     """
-    if data in get_args(Endianness) + (None,):
+    if data in ENDIANNESS_STR:
         assert endianness_to_numpy_str(data) == expected  # type: ignore[arg-type]
     else:
-        msg = f"Invalid endianness: {data!r}. Expected one of {get_args(Endianness)}"
+        msg = f"Invalid endianness: {data!r}. Expected one of {ENDIANNESS_STR}"
         with pytest.raises(ValueError, match=re.escape(msg)):
             endianness_to_numpy_str(data)  # type: ignore[arg-type]
 

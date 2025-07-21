@@ -6,7 +6,7 @@ from typing import get_args
 import numpy as np
 import pytest
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.common import DateTimeUnit
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64, datetime_from_int
 
@@ -35,10 +35,10 @@ class TestDateTime64(_TestTimeBase):
         np.dtype("timedelta64[ns]"),
     )
     valid_json_v2 = (
-        V2JsonTestParams(dtype=">M8"),
-        V2JsonTestParams(dtype=">M8[s]"),
-        V2JsonTestParams(dtype="<M8[10s]"),
-        V2JsonTestParams(dtype="<M8[10us]"),
+        {"name": ">M8", "object_codec_id": None},
+        {"name": ">M8[s]", "object_codec_id": None},
+        {"name": "<M8[10s]", "object_codec_id": None},
+        {"name": "<M8[10us]", "object_codec_id": None},
     )
     valid_json_v3 = (
         {"name": "numpy.datetime64", "configuration": {"unit": "ns", "scale_factor": 10}},
@@ -68,6 +68,10 @@ class TestDateTime64(_TestTimeBase):
         (DateTime64(unit="s", scale_factor=1), "2005-02-25", np.datetime64("2005-02-25", "s")),
         (DateTime64(unit="ns", scale_factor=1), "NaT", np.datetime64("NaT")),
     )
+    invalid_scalar_params = (
+        (DateTime64(unit="Y", scale_factor=1), 1.3),
+        (DateTime64(unit="Y", scale_factor=1), [1.3]),
+    )
     item_size_params = (DateTime64(unit="ns", scale_factor=1),)
 
 
@@ -81,10 +85,10 @@ class TestTimeDelta64(_TestTimeBase):
     )
 
     valid_json_v2 = (
-        V2JsonTestParams(dtype=">m8"),
-        V2JsonTestParams(dtype=">m8[s]"),
-        V2JsonTestParams(dtype="<m8[10s]"),
-        V2JsonTestParams(dtype="<m8[10us]"),
+        {"name": ">m8", "object_codec_id": None},
+        {"name": ">m8[s]", "object_codec_id": None},
+        {"name": "<m8[10s]", "object_codec_id": None},
+        {"name": "<m8[10us]", "object_codec_id": None},
     )
     valid_json_v3 = (
         {"name": "numpy.timedelta64", "configuration": {"unit": "ns", "scale_factor": 10}},
@@ -112,6 +116,10 @@ class TestTimeDelta64(_TestTimeBase):
     cast_value_params = (
         (TimeDelta64(unit="ns", scale_factor=1), "1", np.timedelta64(1, "ns")),
         (TimeDelta64(unit="ns", scale_factor=1), "NaT", np.timedelta64("NaT")),
+    )
+    invalid_scalar_params = (
+        (TimeDelta64(unit="Y", scale_factor=1), 1.3),
+        (TimeDelta64(unit="Y", scale_factor=1), [1.3]),
     )
     item_size_params = (TimeDelta64(unit="ns", scale_factor=1),)
 

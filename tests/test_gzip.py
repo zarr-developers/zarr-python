@@ -4,13 +4,12 @@ import pytest
 
 import zarr
 from zarr.codecs import GzipCodec
-from zarr.core.common import ZarrFormat
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_gzip_compression(zarr_format):
+def test_gzip_compression(zarr_format) -> None:
     store = {}
-    arr_in = zarr.create_array(
+    zarr.create_array(
         store=store,
         dtype="int",
         shape=(1,),
@@ -24,4 +23,4 @@ def test_gzip_compression(zarr_format):
     else:
         print(json.dumps(json.loads(store["zarr.json"].to_bytes()), indent=2))
 
-    arr_out = zarr.open_array(store=store, zarr_format=zarr_format)
+    zarr.open_array(store=store, zarr_format=zarr_format)

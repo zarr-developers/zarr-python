@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
 
 
@@ -15,7 +15,7 @@ class TestInt8(BaseTestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype="|i1"),)
+    valid_json_v2 = ({"name": "|i1", "object_codec_id": None},)
     valid_json_v3 = ("int8",)
     invalid_json_v2 = (
         ">i1",
@@ -34,6 +34,7 @@ class TestInt8(BaseTestZDType):
         (Int8(), 1, np.int8(1)),
         (Int8(), -1, np.int8(-1)),
     )
+    invalid_scalar_params = ((Int8(), {"set!"}), (Int8(), ("tuple",)))
     item_size_params = (Int8(),)
 
 
@@ -46,7 +47,10 @@ class TestInt16(BaseTestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">i2"), V2JsonTestParams(dtype="<i2"))
+    valid_json_v2 = (
+        {"name": ">i2", "object_codec_id": None},
+        {"name": "<i2", "object_codec_id": None},
+    )
     valid_json_v3 = ("int16",)
     invalid_json_v2 = (
         "|i2",
@@ -65,20 +69,26 @@ class TestInt16(BaseTestZDType):
         (Int16(), 1, np.int16(1)),
         (Int16(), -1, np.int16(-1)),
     )
-
+    invalid_scalar_params = ((Int16(), {"set!"}), (Int16(), ("tuple",)))
     item_size_params = (Int16(),)
 
 
 class TestInt32(BaseTestZDType):
     test_cls = Int32
     scalar_type = np.int32
-    valid_dtype = (np.dtype(">i4"), np.dtype("<i4"))
+    # The behavior of some tests associated with this class variable are
+    # order-dependent -- np.dtype('i') correctly fails certain tests only if it's not
+    # in the last position of the tuple. I have no idea how this is possible!
+    valid_dtype = (np.dtype("i"), np.dtype(">i4"), np.dtype("<i4"))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">i4"), V2JsonTestParams(dtype="<i4"))
+    valid_json_v2 = (
+        {"name": ">i4", "object_codec_id": None},
+        {"name": "<i4", "object_codec_id": None},
+    )
     valid_json_v3 = ("int32",)
     invalid_json_v2 = (
         "|i4",
@@ -97,6 +107,7 @@ class TestInt32(BaseTestZDType):
         (Int32(), 1, np.int32(1)),
         (Int32(), -1, np.int32(-1)),
     )
+    invalid_scalar_params = ((Int32(), {"set!"}), (Int32(), ("tuple",)))
     item_size_params = (Int32(),)
 
 
@@ -109,7 +120,10 @@ class TestInt64(BaseTestZDType):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">i8"), V2JsonTestParams(dtype="<i8"))
+    valid_json_v2 = (
+        {"name": ">i8", "object_codec_id": None},
+        {"name": "<i8", "object_codec_id": None},
+    )
     valid_json_v3 = ("int64",)
     invalid_json_v2 = (
         "|i8",
@@ -128,6 +142,7 @@ class TestInt64(BaseTestZDType):
         (Int64(), 1, np.int64(1)),
         (Int64(), -1, np.int64(-1)),
     )
+    invalid_scalar_params = ((Int64(), {"set!"}), (Int64(), ("tuple",)))
     item_size_params = (Int64(),)
 
 
@@ -140,7 +155,7 @@ class TestUInt8(BaseTestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype="|u1"),)
+    valid_json_v2 = ({"name": "|u1", "object_codec_id": None},)
     valid_json_v3 = ("uint8",)
     invalid_json_v2 = (
         "|u1",
@@ -159,6 +174,7 @@ class TestUInt8(BaseTestZDType):
         (UInt8(), 1, np.uint8(1)),
         (UInt8(), 0, np.uint8(0)),
     )
+    invalid_scalar_params = ((UInt8(), {"set!"}), (UInt8(), ("tuple",)))
     item_size_params = (UInt8(),)
 
 
@@ -171,7 +187,10 @@ class TestUInt16(BaseTestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">u2"), V2JsonTestParams(dtype="<u2"))
+    valid_json_v2 = (
+        {"name": ">u2", "object_codec_id": None},
+        {"name": "<u2", "object_codec_id": None},
+    )
     valid_json_v3 = ("uint16",)
     invalid_json_v2 = (
         "|u2",
@@ -190,6 +209,7 @@ class TestUInt16(BaseTestZDType):
         (UInt16(), 1, np.uint16(1)),
         (UInt16(), 0, np.uint16(0)),
     )
+    invalid_scalar_params = ((UInt16(), {"set!"}), (UInt16(), ("tuple",)))
     item_size_params = (UInt16(),)
 
 
@@ -202,7 +222,10 @@ class TestUInt32(BaseTestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">u4"), V2JsonTestParams(dtype="<u4"))
+    valid_json_v2 = (
+        {"name": ">u4", "object_codec_id": None},
+        {"name": "<u4", "object_codec_id": None},
+    )
     valid_json_v3 = ("uint32",)
     invalid_json_v2 = (
         "|u4",
@@ -221,6 +244,7 @@ class TestUInt32(BaseTestZDType):
         (UInt32(), 1, np.uint32(1)),
         (UInt32(), 0, np.uint32(0)),
     )
+    invalid_scalar_params = ((UInt32(), {"set!"}), (UInt32(), ("tuple",)))
     item_size_params = (UInt32(),)
 
 
@@ -233,7 +257,10 @@ class TestUInt64(BaseTestZDType):
         np.dtype(np.int16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">u8"), V2JsonTestParams(dtype="<u8"))
+    valid_json_v2 = (
+        {"name": ">u8", "object_codec_id": None},
+        {"name": "<u8", "object_codec_id": None},
+    )
     valid_json_v3 = ("uint64",)
     invalid_json_v2 = (
         "|u8",
@@ -252,4 +279,5 @@ class TestUInt64(BaseTestZDType):
         (UInt64(), 1, np.uint64(1)),
         (UInt64(), 0, np.uint64(0)),
     )
+    invalid_scalar_params = ((UInt64(), {"set!"}), (UInt64(), ("tuple",)))
     item_size_params = (UInt64(),)

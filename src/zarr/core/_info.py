@@ -81,6 +81,7 @@ class ArrayInfo:
     _type: Literal["Array"] = "Array"
     _zarr_format: ZarrFormat
     _data_type: ZDType[TBaseDType, TBaseScalar]
+    _fill_value: object
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
     _chunk_shape: tuple[int, ...] | None = None

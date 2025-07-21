@@ -491,6 +491,7 @@ def codecs_from_list(
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     from zarr.codecs.numcodec import NumcodecsWrapper
     from zarr.codecs.sharding import ShardingCodec
+
     array_array: tuple[ArrayArrayCodec, ...] = ()
     array_bytes_maybe: ArrayBytesCodec
     bytes_bytes: tuple[BytesBytesCodec, ...] = ()
@@ -510,9 +511,9 @@ def codecs_from_list(
     for idx, codec in enumerate(codecs_tup):
         match codec:
             case ArrayArrayCodec():
-                array_array_idcs += ((idx,codec),)
+                array_array_idcs += ((idx, codec),)
             case ArrayBytesCodec():
-                array_bytes_idcs += ((idx,codec),)
+                array_bytes_idcs += ((idx, codec),)
             case BytesBytesCodec():
                 bytes_bytes_idcs += ((idx, codec),)
             case NumcodecsWrapper():  # type: ignore[union-attr]
@@ -586,7 +587,7 @@ def codecs_from_list(
                         f"{last_array_array_idx + 1}."
                         "Expected a NumcodecsWrapper or an ArrayBytesCodec, got "
                         f"{type(codecs_tup[last_array_array_idx + 1])}"
-                        )
+                    )
                     raise TypeError(msg)
 
                 start = last_array_array_idx + 2
@@ -638,9 +639,7 @@ def codecs_from_list(
             elif isinstance(aa_codec, NumcodecsWrapper):
                 array_array += (aa_codec.to_array_array(),)
             else:
-                msg = (
-                    f"Invalid codec {aa_codec} at index {idx}. Expected an ArrayArrayCodec"
-                    )
+                msg = f"Invalid codec {aa_codec} at index {idx}. Expected an ArrayArrayCodec"
                 raise TypeError(msg)
         start = bb_idx + 1
         if bb_idx < len(codecs_tup) - 1:
@@ -653,7 +652,7 @@ def codecs_from_list(
                     msg = f"Invalid codec {bb_codec} at index {start + idx}. Expected a BytesBytesCodec"
                     raise TypeError(msg)
     else:
-        raise ValueError('More than one ArrayBytes codec found, that is a big error!')
+        raise ValueError("More than one ArrayBytes codec found, that is a big error!")
 
     return array_array, array_bytes_maybe, bytes_bytes
 
@@ -694,7 +693,6 @@ def codecs_from_list(
                 )
             bytes_bytes += (cur_codec,)
         elif isinstance(cur_codec, NumcodecsWrapper):
-
             raise TypeError
 
     if array_bytes_maybe is None:

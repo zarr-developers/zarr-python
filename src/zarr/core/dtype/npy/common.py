@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
     Literal,
     SupportsComplex,
     SupportsFloat,
@@ -14,12 +15,17 @@ from typing import (
     SupportsInt,
     TypeGuard,
     TypeVar,
-    get_args,
 )
 
 import numpy as np
 
-from zarr.core.dtype.common import SPECIAL_FLOAT_STRINGS, Endianness, JSONFloatV2, JSONFloatV3
+from zarr.core.dtype.common import (
+    ENDIANNESS_STR,
+    SPECIAL_FLOAT_STRINGS,
+    EndiannessStr,
+    JSONFloatV2,
+    JSONFloatV3,
+)
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -30,7 +36,26 @@ ComplexLike = SupportsFloat | SupportsIndex | SupportsComplex | bytes | str | No
 DateTimeUnit = Literal[
     "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
 ]
-EndiannessNumpy = Literal[">", "<", "|", "="]
+DATETIME_UNIT: Final = (
+    "Y",
+    "M",
+    "W",
+    "D",
+    "h",
+    "m",
+    "s",
+    "ms",
+    "us",
+    "μs",
+    "ns",
+    "ps",
+    "fs",
+    "as",
+    "generic",
+)
+
+NumpyEndiannessStr = Literal[">", "<", "="]
+NUMPY_ENDIANNESS_STR: Final = ">", "<", "="
 
 TFloatDType_co = TypeVar(
     "TFloatDType_co",
@@ -47,18 +72,18 @@ TComplexDType_co = TypeVar(
 TComplexScalar_co = TypeVar("TComplexScalar_co", bound=np.complex64 | np.complex128, covariant=True)
 
 
-def endianness_from_numpy_str(endianness: EndiannessNumpy) -> Endianness | None:
+def endianness_from_numpy_str(endianness: NumpyEndiannessStr) -> EndiannessStr:
     """
     Convert a numpy endianness string literal to a human-readable literal value.
 
     Parameters
     ----------
-    endianness : Literal[">", "<", "=", "|"]
+    endianness : Literal[">", "<", "="]
         The numpy string representation of the endianness.
 
     Returns
     -------
-    Endianness or None
+    Endianness
         The human-readable representation of the endianness.
 
     Raises
@@ -74,26 +99,21 @@ def endianness_from_numpy_str(endianness: EndiannessNumpy) -> Endianness | None:
             return "little"
         case ">":
             return "big"
-        case "|":
-            # for dtypes without byte ordering semantics
-            return None
-    raise ValueError(
-        f"Invalid endianness: {endianness!r}. Expected one of {get_args(EndiannessNumpy)}"
-    )
+    raise ValueError(f"Invalid endianness: {endianness!r}. Expected one of {NUMPY_ENDIANNESS_STR}")
 
 
-def endianness_to_numpy_str(endianness: Endianness | None) -> EndiannessNumpy:
+def endianness_to_numpy_str(endianness: EndiannessStr) -> NumpyEndiannessStr:
     """
     Convert an endianness literal to its numpy string representation.
 
     Parameters
     ----------
-    endianness : Endianness or None
+    endianness : Endianness
         The endianness to convert.
 
     Returns
     -------
-    Literal[">", "<", "|"]
+    Literal[">", "<"]
         The numpy string representation of the endianness.
 
     Raises
@@ -106,11 +126,20 @@ def endianness_to_numpy_str(endianness: Endianness | None) -> EndiannessNumpy:
             return "<"
         case "big":
             return ">"
-        case None:
-            return "|"
     raise ValueError(
-        f"Invalid endianness: {endianness!r}. Expected one of {get_args(Endianness)} or None"
+        f"Invalid endianness: {endianness!r}. Expected one of {ENDIANNESS_STR} or None"
     )
+
+
+def get_endianness_from_numpy_dtype(dtype: np.dtype[np.generic]) -> EndiannessStr:
+    """
+    Gets the endianness from a numpy dtype that has an endianness. This function will
+    raise a ValueError if the numpy data type does not have a concrete endianness.
+    """
+    endianness = dtype.byteorder
+    if dtype.byteorder in NUMPY_ENDIANNESS_STR:
+        return endianness_from_numpy_str(endianness)  # type: ignore [arg-type]
+    raise ValueError(f"The dtype {dtype} has an unsupported endianness: {endianness}")
 
 
 def float_from_json_v2(data: JSONFloatV2) -> float:
@@ -355,9 +384,7 @@ def check_json_float_v2(data: JSON) -> TypeGuard[JSONFloatV2]:
     Bool
         True if the data is a float, False otherwise.
     """
-    if data == "NaN" or data == "Infinity" or data == "-Infinity":
-        return True
-    return isinstance(data, float | int)
+    return data in ("NaN", "Infinity", "-Infinity") or isinstance(data, float | int)
 
 
 def check_json_float_v3(data: JSON) -> TypeGuard[JSONFloatV3]:

@@ -20,7 +20,7 @@ from zarr.core.metadata.v3 import (
     parse_dimension_names,
     parse_zarr_format,
 )
-from zarr.errors import MetadataValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence

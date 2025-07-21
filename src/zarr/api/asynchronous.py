@@ -9,14 +9,17 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr.abc.store import Store
 from zarr.core.array import (
+    DEFAULT_FILL_VALUE,
     Array,
     AsyncArray,
-    _get_default_chunk_encoding_v2,
+    CompressorLike,
     create_array,
+    from_array,
     get_array_metadata,
 )
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
+from zarr.core.array_spec import ArrayConfigLike, parse_array_config
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
@@ -28,7 +31,7 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_write_empty_chunks_kwarg,
 )
-from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype, parse_data_type
+from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype
 from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
@@ -36,7 +39,8 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.errors import NodeTypeValidationError
+from zarr.errors import GroupNotFoundError, NodeTypeValidationError
+from zarr.storage import StorePath
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
@@ -857,7 +861,7 @@ async def open_group(
 async def create(
     shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
+    chunks: ChunkCoords | int | bool | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,
@@ -1005,21 +1009,6 @@ async def create(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
-    if zarr_format == 2:
-        if chunks is None:
-            chunks = shape
-        default_filters, default_compressor = _get_default_chunk_encoding_v2(zdtype)
-        if not filters:
-            filters = default_filters  # type: ignore[assignment]
-        if compressor is None:
-            compressor = default_compressor
-    elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
-        if chunks is not None:
-            chunk_shape = chunks
-            chunks = None
-        else:
-            chunk_shape = shape
 
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -1060,7 +1049,7 @@ async def create(
         store_path,
         shape=shape,
         chunks=chunks,
-        dtype=zdtype,
+        dtype=dtype,
         compressor=compressor,
         fill_value=fill_value,
         overwrite=overwrite,

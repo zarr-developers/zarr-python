@@ -16,8 +16,10 @@ import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype import FixedLengthASCII, FixedLengthUTF32, Structured, VariableLengthString
+from zarr.core.dtype import FixedLengthUTF32, Structured, VariableLengthUTF8
+from zarr.core.dtype.npy.bytes import NullTerminatedBytes
 from zarr.core.dtype.wrapper import ZDType
+from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
 
@@ -68,35 +70,31 @@ def test_codec_pipeline() -> None:
         ("|V10", "|V10", b"X", "WAAAAAAAAAAAAA=="),
     ],
 )
-async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_json) -> None:
-    with config.set(
-        {
-            "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
-            "array.v2_default_compressor.bytes": None,
-        }
-    ):
-        store = zarr.storage.MemoryStore()
-        g = zarr.group(store=store, zarr_format=2)
-        g.create_array(
-            name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
-        )
+async def test_v2_encode_decode(
+    dtype: str, expected_dtype: str, fill_value: bytes, fill_value_json: str
+) -> None:
+    store = zarr.storage.MemoryStore()
+    g = zarr.group(store=store, zarr_format=2)
+    g.create_array(
+        name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
+    )
 
     result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
     assert result is not None
 
-        serialized = json.loads(result.to_bytes())
-        expected = {
-            "chunks": [3],
-            "compressor": None,
-            "dtype": expected_dtype,
-            "fill_value": fill_value_json,
-            "filters": None,
-            "order": "C",
-            "shape": [3],
-            "zarr_format": 2,
-            "dimension_separator": ".",
-        }
-        assert serialized == expected
+    serialized = json.loads(result.to_bytes())
+    expected = {
+        "chunks": [3],
+        "compressor": None,
+        "dtype": expected_dtype,
+        "fill_value": fill_value_json,
+        "filters": None,
+        "order": "C",
+        "shape": [3],
+        "zarr_format": 2,
+        "dimension_separator": ".",
+    }
+    assert serialized == expected
 
     data = zarr.open_array(store=store, path="foo")[:]
     np.testing.assert_equal(data, np.full((3,), b"X", dtype=dtype))
@@ -108,12 +106,12 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_js
 @pytest.mark.parametrize(
     ("dtype", "value"),
     [
-        (FixedLengthASCII(length=1), b"Y"),
+        (NullTerminatedBytes(length=1), b"Y"),
         (FixedLengthUTF32(length=1), "Y"),
-        (VariableLengthString(), "Y"),
+        (VariableLengthUTF8(), "Y"),
     ],
 )
-def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str):
+def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str) -> None:
     expected = np.full((3,), value, dtype=dtype.to_native_dtype())
     a = zarr.create(
         shape=(3,),
@@ -229,7 +227,7 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
 
 def test_default_compressor_deprecation_warning() -> None:
     with pytest.warns(DeprecationWarning, match="default_compressor is deprecated"):
-        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"
+        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
-from collections.abc import Mapping
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
@@ -11,7 +10,7 @@ from zarr.core.dtype import data_type_registry
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
-    from zarr.codecs.numcodec import Numcodec
+
     from zarr.abc.codec import (
         ArrayArrayCodec,
         ArrayBytesCodec,
@@ -56,10 +55,6 @@ class Registry(dict[str, type[T]], Generic[T]):
         self[qualname] = cls
 
 
-__filter_registries: dict[str, Registry[ArrayArrayCodec]] = defaultdict(Registry)
-__serializer_registries: dict[str, Registry[ArrayBytesCodec]] = defaultdict(Registry)
-__compressor_registries: dict[str, Registry[BytesBytesCodec]] = defaultdict(Registry)
-
 __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
@@ -100,8 +95,8 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
 
-    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
-    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
+    data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
+    data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
 
     __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     __pipeline_registry.lazy_load_list.extend(
@@ -124,14 +119,17 @@ def _collect_entrypoints() -> list[Registry[Any]]:
 def _reload_config() -> None:
     config.refresh()
 
+
 def fully_qualified_name(cls: type) -> str:
     module = cls.__module__
     return module + "." + cls.__qualname__
+
 
 def register_codec(key: str, codec_cls: type[Codec]) -> None:
     if key not in __codec_registries:
         __codec_registries[key] = Registry()
     __codec_registries[key].register(codec_cls)
+
 
 def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
     __pipeline_registry.register(pipe_cls)
@@ -143,6 +141,7 @@ def register_ndbuffer(cls: type[NDBuffer], qualname: str | None = None) -> None:
 
 def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
     __buffer_registry.register(cls, qualname)
+
 
 def _get_codec_class(
     key: str, registry: dict[str, Registry[Codec]], *, reload_config: bool = False
@@ -188,8 +187,9 @@ def get_codec(request: CodecJSON, *, zarr_format: ZarrFormat) -> Codec:
             raise TypeError(
                 f"Invalid request type {type(request)} for zarr format 2. Expected dict, got {request!r}"
             )
-        codec_name = request["id"]
-        codec_config = {k: v for k, v in request.items() if k != "id"}
+        else:
+            codec_name = request["id"]
+            codec_config = {k: v for k, v in request.items() if k != "id"}
     elif zarr_format == 3:
         if isinstance(request, str):
             codec_name = request
@@ -209,6 +209,7 @@ def get_codec(request: CodecJSON, *, zarr_format: ZarrFormat) -> Codec:
         # if we can't find the codec in the zarr python registry, try the numcodecs registry
         codec = get_numcodec_class(codec_name)(**codec_config)
         return NumcodecsWrapper(codec=codec)
+
 
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     return _get_codec_class(key, __codec_registries, reload_config=reload_config)

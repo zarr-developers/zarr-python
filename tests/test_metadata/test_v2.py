@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
 import pytest
 
 import zarr.api.asynchronous

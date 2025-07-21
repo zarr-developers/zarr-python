@@ -1,23 +1,25 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
-from zarr.core.dtype import FixedLengthASCII, FixedLengthUTF32
-from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING, VariableLengthString
+from tests.test_dtype.test_wrapper import BaseTestZDType
+from zarr.core.dtype import FixedLengthUTF32
+from zarr.core.dtype.common import UnstableSpecificationWarning
+from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING, VariableLengthUTF8
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
     class TestVariableLengthString(BaseTestZDType):
-        test_cls = VariableLengthString  # type: ignore[assignment]
+        test_cls = VariableLengthUTF8  # type: ignore[assignment]
         valid_dtype = (np.dtypes.StringDType(),)  # type: ignore[assignment]
         invalid_dtype = (
             np.dtype(np.int8),
             np.dtype(np.float64),
             np.dtype("|S10"),
         )
-        valid_json_v2 = (V2JsonTestParams(dtype="|O", object_codec_id="vlen-utf8"),)
-        valid_json_v3 = ("variable_length_utf8",)
+        valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
+        valid_json_v3 = ("string",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
@@ -28,30 +30,32 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             {"name": "invalid_name"},
         )
 
-        scalar_v2_params = ((VariableLengthString(), ""), (VariableLengthString(), "hi"))
+        scalar_v2_params = ((VariableLengthUTF8(), ""), (VariableLengthUTF8(), "hi"))
         scalar_v3_params = (
-            (VariableLengthString(), ""),
-            (VariableLengthString(), "hi"),
+            (VariableLengthUTF8(), ""),
+            (VariableLengthUTF8(), "hi"),
         )
 
         cast_value_params = (
-            (VariableLengthString(), "", np.str_("")),
-            (VariableLengthString(), "hi", np.str_("hi")),
+            (VariableLengthUTF8(), "", np.str_("")),
+            (VariableLengthUTF8(), "hi", np.str_("hi")),
         )
-        item_size_params = (VariableLengthString(),)
+        # anything can become a string
+        invalid_scalar_params = (None,)
+        item_size_params = (VariableLengthUTF8(),)
 
 else:
 
     class TestVariableLengthString(BaseTestZDType):  # type: ignore[no-redef]
-        test_cls = VariableLengthString  # type: ignore[assignment]
+        test_cls = VariableLengthUTF8  # type: ignore[assignment]
         valid_dtype = (np.dtype("O"),)
         invalid_dtype = (
             np.dtype(np.int8),
             np.dtype(np.float64),
             np.dtype("|S10"),
         )
-        valid_json_v2 = (V2JsonTestParams(dtype="|O", object_codec_id="vlen-utf8"),)
-        valid_json_v3 = ("variable_length_utf8",)
+        valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-utf8"},)
+        valid_json_v3 = ("string",)
         invalid_json_v2 = (
             "|S10",
             "|f8",
@@ -62,64 +66,19 @@ else:
             {"name": "invalid_name"},
         )
 
-        scalar_v2_params = ((VariableLengthString(), ""), (VariableLengthString(), "hi"))
+        scalar_v2_params = ((VariableLengthUTF8(), ""), (VariableLengthUTF8(), "hi"))
         scalar_v3_params = (
-            (VariableLengthString(), ""),
-            (VariableLengthString(), "hi"),
+            (VariableLengthUTF8(), ""),
+            (VariableLengthUTF8(), "hi"),
         )
 
         cast_value_params = (
-            (VariableLengthString(), "", np.str_("")),
-            (VariableLengthString(), "hi", np.str_("hi")),
+            (VariableLengthUTF8(), "", np.str_("")),
+            (VariableLengthUTF8(), "hi", np.str_("hi")),
         )
-
-        item_size_params = (VariableLengthString(),)
-
-
-class TestFixedLengthAscii(BaseTestZDType):
-    test_cls = FixedLengthASCII
-    valid_dtype = (np.dtype("|S10"), np.dtype("|S4"))
-    invalid_dtype = (
-        np.dtype(np.int8),
-        np.dtype(np.float64),
-        np.dtype("|U10"),
-    )
-    valid_json_v2 = (
-        V2JsonTestParams(dtype="|S0"),
-        V2JsonTestParams(dtype="|S2"),
-        V2JsonTestParams(dtype="|S4"),
-    )
-    valid_json_v3 = ({"name": "fixed_length_ascii", "configuration": {"length_bytes": 10}},)
-    invalid_json_v2 = (
-        "|S",
-        "|U10",
-        "|f8",
-    )
-    invalid_json_v3 = (
-        {"name": "fixed_length_ascii", "configuration": {"length_bits": 0}},
-        {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": "invalid"}},
-    )
-
-    scalar_v2_params = (
-        (FixedLengthASCII(length=0), ""),
-        (FixedLengthASCII(length=2), "YWI="),
-        (FixedLengthASCII(length=4), "YWJjZA=="),
-    )
-    scalar_v3_params = (
-        (FixedLengthASCII(length=0), ""),
-        (FixedLengthASCII(length=2), "YWI="),
-        (FixedLengthASCII(length=4), "YWJjZA=="),
-    )
-    cast_value_params = (
-        (FixedLengthASCII(length=0), "", np.bytes_("")),
-        (FixedLengthASCII(length=2), "ab", np.bytes_("ab")),
-        (FixedLengthASCII(length=4), "abcd", np.bytes_("abcd")),
-    )
-    item_size_params = (
-        FixedLengthASCII(length=0),
-        FixedLengthASCII(length=4),
-        FixedLengthASCII(length=10),
-    )
+        # anything can become a string
+        invalid_scalar_params = (None,)
+        item_size_params = (VariableLengthUTF8(),)
 
 
 class TestFixedLengthUTF32(BaseTestZDType):
@@ -130,7 +89,10 @@ class TestFixedLengthUTF32(BaseTestZDType):
         np.dtype(np.float64),
         np.dtype("|S10"),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">U10"), V2JsonTestParams(dtype="<U10"))
+    valid_json_v2 = (
+        {"name": ">U10", "object_codec_id": None},
+        {"name": "<U10", "object_codec_id": None},
+    )
     valid_json_v3 = ({"name": "fixed_length_utf32", "configuration": {"length_bytes": 320}},)
     invalid_json_v2 = (
         "|U",
@@ -142,20 +104,47 @@ class TestFixedLengthUTF32(BaseTestZDType):
         {"name": "numpy.fixed_length_utf32", "configuration": {"length_bits": "invalid"}},
     )
 
-    scalar_v2_params = ((FixedLengthUTF32(length=0), ""), (FixedLengthUTF32(length=2), "hi"))
+    scalar_v2_params = ((FixedLengthUTF32(length=1), ""), (FixedLengthUTF32(length=2), "hi"))
     scalar_v3_params = (
-        (FixedLengthUTF32(length=0), ""),
+        (FixedLengthUTF32(length=1), ""),
         (FixedLengthUTF32(length=2), "hi"),
         (FixedLengthUTF32(length=4), "hihi"),
     )
 
     cast_value_params = (
-        (FixedLengthUTF32(length=0), "", np.str_("")),
+        (FixedLengthUTF32(length=1), "", np.str_("")),
         (FixedLengthUTF32(length=2), "hi", np.str_("hi")),
         (FixedLengthUTF32(length=4), "hihi", np.str_("hihi")),
     )
     item_size_params = (
-        FixedLengthUTF32(length=0),
+        FixedLengthUTF32(length=1),
         FixedLengthUTF32(length=4),
         FixedLengthUTF32(length=10),
     )
+    # anything can become a string
+    invalid_scalar_params = (None,)
+
+
+@pytest.mark.parametrize(
+    "zdtype",
+    [
+        FixedLengthUTF32(length=10),
+    ],
+)
+def test_unstable_dtype_warning(zdtype: FixedLengthUTF32 | VariableLengthUTF8) -> None:
+    """
+    Test that we get a warning when serializing a dtype without a zarr v3 spec to json
+    when zarr_format is 3
+    """
+    with pytest.raises(UnstableSpecificationWarning):
+        zdtype.to_json(zarr_format=3)
+
+
+def test_invalid_size() -> None:
+    """
+    Test that it's impossible to create a data type that has no length
+    """
+    length = 0
+    msg = f"length must be >= 1, got {length}."
+    with pytest.raises(ValueError, match=msg):
+        FixedLengthUTF32(length=length)

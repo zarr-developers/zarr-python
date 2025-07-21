@@ -16,7 +16,7 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import Array
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
-from zarr.core.common import ZarrFormat
+from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
@@ -43,21 +43,7 @@ def paths(draw: st.DrawFn, *, max_num_nodes: int | None = None) -> str:
     return draw(st.just("/") | keys(max_num_nodes=max_num_nodes))
 
 
-def v3_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
-    return (
-        npst.boolean_dtypes()
-        | npst.integer_dtypes(endianness="=")
-        | npst.unsigned_integer_dtypes(endianness="=")
-        | npst.floating_dtypes(endianness="=")
-        | npst.complex_number_dtypes(endianness="=")
-        | npst.byte_string_dtypes(endianness="=")
-        | npst.unicode_string_dtypes(endianness="=")
-        | npst.datetime64_dtypes(endianness="=")
-        | npst.timedelta64_dtypes(endianness="=")
-    )
-
-
-def v2_dtypes() -> st.SearchStrategy[np.dtype[Any]]:
+def dtypes() -> st.SearchStrategy[np.dtype[Any]]:
     return (
         npst.boolean_dtypes()
         | npst.integer_dtypes(endianness="=")
@@ -152,7 +138,7 @@ def array_metadata(
     shape = draw(array_shapes())
     ndim = len(shape)
     chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
-    np_dtype = draw(v3_dtypes())
+    np_dtype = draw(dtypes())
     dtype = get_data_type_from_native_dtype(np_dtype)
     fill_value = draw(npst.from_dtype(np_dtype))
     if zarr_format == 2:

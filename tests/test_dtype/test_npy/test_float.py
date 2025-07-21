@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from tests.test_dtype.test_wrapper import BaseTestZDType, V2JsonTestParams
+from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 
 
@@ -32,7 +32,10 @@ class TestFloat16(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float32),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">f2"), V2JsonTestParams(dtype="<f2"))
+    valid_json_v2 = (
+        {"name": ">f2", "object_codec_id": None},
+        {"name": "<f2", "object_codec_id": None},
+    )
     valid_json_v3 = ("float16",)
     invalid_json_v2 = (
         "|f2",
@@ -62,7 +65,7 @@ class TestFloat16(_BaseTestFloat):
         (Float16(), -1.0, np.float16(-1.0)),
         (Float16(), "NaN", np.float16("NaN")),
     )
-
+    invalid_scalar_params = ((Float16(), {"set!"}),)
     hex_string_params = (("0x7fc0", np.nan), ("0x7fc1", np.nan), ("0x3c00", 1.0))
     item_size_params = (Float16(),)
 
@@ -76,7 +79,10 @@ class TestFloat32(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float64),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">f4"), V2JsonTestParams(dtype="<f4"))
+    valid_json_v2 = (
+        {"name": ">f4", "object_codec_id": None},
+        {"name": "<f4", "object_codec_id": None},
+    )
     valid_json_v3 = ("float32",)
     invalid_json_v2 = (
         "|f4",
@@ -107,7 +113,7 @@ class TestFloat32(_BaseTestFloat):
         (Float32(), -1.0, np.float32(-1.0)),
         (Float32(), "NaN", np.float32("NaN")),
     )
-
+    invalid_scalar_params = ((Float32(), {"set!"}),)
     hex_string_params = (("0x7fc00000", np.nan), ("0x7fc00001", np.nan), ("0x3f800000", 1.0))
     item_size_params = (Float32(),)
 
@@ -120,7 +126,10 @@ class TestFloat64(_BaseTestFloat):
         np.dtype(np.uint16),
         np.dtype(np.float32),
     )
-    valid_json_v2 = (V2JsonTestParams(dtype=">f8"), V2JsonTestParams(dtype="<f8"))
+    valid_json_v2 = (
+        {"name": ">f8", "object_codec_id": None},
+        {"name": "<f8", "object_codec_id": None},
+    )
     valid_json_v3 = ("float64",)
     invalid_json_v2 = (
         "|f8",
@@ -151,7 +160,7 @@ class TestFloat64(_BaseTestFloat):
         (Float64(), -1.0, np.float64(-1.0)),
         (Float64(), "NaN", np.float64("NaN")),
     )
-
+    invalid_scalar_params = ((Float64(), {"set!"}),)
     hex_string_params = (
         ("0x7ff8000000000000", np.nan),
         ("0x7ff8000000000001", np.nan),

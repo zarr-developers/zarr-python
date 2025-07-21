@@ -19,7 +19,7 @@ from zarr.core.array import (
     _parse_chunk_key_encoding,
 )
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
-from zarr.core.common import JSON, parse_shapelike
+from zarr.core.common import JSON, DimensionNames, parse_shapelike
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     get_data_type_from_native_dtype,

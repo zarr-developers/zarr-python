@@ -36,6 +36,7 @@ def parse_gzip_level(data: JSON) -> int:
 class GZipConfig(TypedDict):
     level: int
 
+
 class GZipJSON_V2(CodecJSON_V2[Literal["gzip"]], GZipConfig):
     """
     The JSON form of the GZip codec in Zarr V2.

@@ -16,7 +16,6 @@ from zarr.core.common import (
     JSON,
     NamedRequiredConfig,
     ZarrFormat,
-    parse_named_configuration,
 )
 from zarr.registry import register_codec
 
@@ -61,6 +60,7 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[ZstdJSON_V3]:
         and set(data["configuration"].keys()) == {"level", "checksum"}
     )
 
+
 def parse_zstd_level(data: JSON) -> int:
     if isinstance(data, int):
         if data >= 23:
@@ -100,8 +100,6 @@ class ZstdCodec(BytesBytesCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         return cls.from_json(data, zarr_format=3)
-        _, configuration_parsed = parse_named_configuration(data, "zstd")
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
@@ -125,13 +123,13 @@ class ZstdCodec(BytesBytesCodec):
             )
         msg = (
             "Invalid Zarr V3 JSON representation of the zstd codec. "
-            f"Got {data!r}, expected a Mapping with keys ('name', 'configuration')"
+            f"Got {data!r}, expected a Mapping with keys ('name', 'configuration') "
             "Where the 'configuration' key is a Mapping with keys ('level', 'checksum')"
         )
         raise CodecValidationError(msg)
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
+        return self.to_json(zarr_format=3)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> ZstdJSON_V2: ...
@@ -143,7 +141,10 @@ class ZstdCodec(BytesBytesCodec):
         if zarr_format == 2:
             return {"id": "zstd", "level": self.level}
         else:
-            return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
+            return {
+                "name": "zstd",
+                "configuration": {"level": self.level, "checksum": self.checksum},
+            }
 
     @cached_property
     def _zstd_codec(self) -> Zstd:

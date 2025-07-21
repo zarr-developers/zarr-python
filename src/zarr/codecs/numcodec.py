@@ -6,10 +6,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Literal, Self, TypeGuard, overload
+from typing import TYPE_CHECKING, Literal, Self, TypeGuard, overload
 
-import numcodecs
-import numcodecs.registry as numcodecs_registry
 import numpy as np
 from typing_extensions import Protocol, runtime_checkable
 
@@ -30,6 +28,7 @@ if TYPE_CHECKING:
     from zarr.core.common import BaseConfig, NamedConfig, ZarrFormat
 
 BufferOrNDArray = Buffer | np.ndarray[tuple[int, ...], np.dtype[np.generic]] | NDArrayLike
+
 
 def get_numcodec_class(name: str) -> type[Numcodec]:
     """Obtain a numcodec codec class by name.
@@ -52,6 +51,8 @@ def get_numcodec_class(name: str) -> type[Numcodec]:
     Zlib(level=1)
 
     """
+    import numcodecs.registry as numcodecs_registry
+
     cls = numcodecs_registry.codec_registry.get(name)
     if cls is None and name in numcodecs_registry.entries:
         cls = numcodecs_registry.entries[name].load()
@@ -59,9 +60,6 @@ def get_numcodec_class(name: str) -> type[Numcodec]:
     if cls is not None:
         return cls
     raise KeyError(name)
-
-def resolve_numcodec(config: CodecJSON_V2[str]) -> Numcodec:
-    return numcodecs.get_codec(config)  # type: ignore[no-any-return]
 
 
 @runtime_checkable
@@ -83,6 +81,7 @@ class Numcodec(Protocol):
     @classmethod
     def from_config(cls, config: CodecJSON_V2[str]) -> Self: ...
 
+
 def is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:
     """
     Check if the given object implements the Numcodec protocol. Because the @runtime_checkable
@@ -90,18 +89,18 @@ def is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:
     we need to manually check for the presence of the required attributes and methods.
     """
     return (
-        isinstance(obj, type) and
-        hasattr(obj, "codec_id") and
-        isinstance(obj.codec_id, str) and
-        hasattr(obj, "encode") and
-        callable(obj.encode) and
-        hasattr(obj, "decode") and
-        callable(obj.decode) and
-        hasattr(obj, "get_config") and
-        callable(obj.get_config) and
-        hasattr(obj, "from_config") and
-        callable(obj.from_config)
-        )
+        isinstance(obj, type)
+        and hasattr(obj, "codec_id")
+        and isinstance(obj.codec_id, str)
+        and hasattr(obj, "encode")
+        and callable(obj.encode)
+        and hasattr(obj, "decode")
+        and callable(obj.decode)
+        and hasattr(obj, "get_config")
+        and callable(obj.get_config)
+        and hasattr(obj, "from_config")
+        and callable(obj.from_config)
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -113,9 +112,7 @@ class NumcodecsWrapper(BaseCodec[Buffer | NDBuffer, Buffer | NDBuffer]):
     @overload
     def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, BaseConfig]: ...
 
-    def to_json(
-        self, zarr_format: ZarrFormat
-    ) -> CodecJSON_V2[str] | NamedConfig[str, BaseConfig]:
+    def to_json(self, zarr_format: ZarrFormat) -> CodecJSON_V2[str] | NamedConfig[str, BaseConfig]:
         if zarr_format == 2:
             return self.codec.get_config()
         elif zarr_format == 3:
@@ -126,7 +123,9 @@ class NumcodecsWrapper(BaseCodec[Buffer | NDBuffer, Buffer | NDBuffer]):
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
-        return cls(codec=resolve_numcodec(data))  # type: ignore[arg-type]
+        raise NotADirectoryError(
+            "This class does not support creating instances from JSON data for Zarr format 2."
+            )
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON) -> Self:
@@ -136,7 +135,6 @@ class NumcodecsWrapper(BaseCodec[Buffer | NDBuffer, Buffer | NDBuffer]):
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
-
 
     def to_array_array(self) -> NumcodecsArrayArrayCodec:
         """

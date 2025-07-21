@@ -10,6 +10,7 @@ from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
     Generic,
     Literal,
     NotRequired,
@@ -52,7 +53,7 @@ TName_co = TypeVar("TName_co", bound=str, covariant=True)
 TConfig_co = TypeVar("TConfig_co", bound=BaseConfig, covariant=True)
 
 
-class NamedConfig(TypedDict, Generic[TName, TConfig]):
+class NamedConfig(TypedDict, Generic[TName_co, TConfig_co]):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
     is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
@@ -63,14 +64,14 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
     The configuration key is not required.
     """
 
-    name: ReadOnly[TName]
+    name: ReadOnly[TName_co]
     """The name of the object."""
 
-    configuration: NotRequired[ReadOnly[TConfig]]
+    configuration: NotRequired[ReadOnly[TConfig_co]]
     """The configuration of the object."""
 
 
-class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
+class NamedRequiredConfig(TypedDict, Generic[TName_co, TConfig_co]):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
     is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
@@ -81,11 +82,12 @@ class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
     The configuration key is required.
     """
 
-    name: ReadOnly[TName]
+    name: ReadOnly[TName_co]
     """The name of the object."""
 
-    configuration: Required[ReadOnly[TConfig]]
+    configuration: Required[ReadOnly[TConfig_co]]
     """The configuration of the object."""
+
 
 def product(tup: ChunkCoords) -> int:
     return functools.reduce(operator.mul, tup, 1)

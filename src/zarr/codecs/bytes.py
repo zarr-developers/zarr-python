@@ -12,7 +12,6 @@ from zarr.abc.codec import ArrayBytesCodec, CodecJSON, CodecJSON_V2
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import HasEndianness
-from zarr.core.dtype.npy.common import endianness_to_numpy_str
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:

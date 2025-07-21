@@ -6,7 +6,7 @@ import numpy as np
 
 from zarr.core.dtype import data_type_registry
 from zarr.core.dtype.common import HasLength
-from zarr.core.dtype.npy.sized import Structured
+from zarr.core.dtype.npy.structured import Structured
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 
@@ -65,7 +65,4 @@ def pytest_generate_tests(metafunc: Any) -> None:
     for fixture_name in metafunc.fixturenames:
         if hasattr(metafunc.cls, fixture_name):
             params = getattr(metafunc.cls, fixture_name)
-            if len(params) == 0:
-                msg = f"{metafunc.cls}.{fixture_name} is empty. Please provide a non-empty sequence of values."
-                raise ValueError(msg)
-            metafunc.parametrize(fixture_name, params, scope="class")
+            metafunc.parametrize(fixture_name, params, scope="class", ids=str)
