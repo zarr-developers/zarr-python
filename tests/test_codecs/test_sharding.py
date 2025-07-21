@@ -346,6 +346,79 @@ def test_sharding_multiple_chunks_partial_shard_read(
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_sharding_read_empty_chunks_within_non_empty_shard_write_empty_false(
+    store: Store, index_location: ShardingCodecIndexLocation
+) -> None:
+    """
+    Case where
+        - some, but not all, chunks in the last shard are empty
+        - the last shard is not complete (array length is not a multiple of shard shape),
+          this takes us down the partial shard read path
+        - write_empty_chunks=False so the shard index will have less entries than chunks in the shard
+    """
+    # array with mixed empty and non-empty chunks in second shard
+    data = np.array([
+        # shard 0. full 8 elements, all chunks have some non-fill data
+        0, 1, 2, 3, 4, 5, 6, 7,
+        # shard 1. 6 elements (< shard shape)
+        2, 0, # chunk 0, written
+        0, 0, # chunk 1, all fill, not written
+        4, 5  # chunk 2, written
+    ], dtype="int32")  # fmt: off
+
+    spath = StorePath(store)
+    a = zarr.create_array(
+        spath,
+        shape=(14,),
+        chunks=(2,),
+        shards={"shape": (8,), "index_location": index_location},
+        dtype="int32",
+        fill_value=0,
+        filters=None,
+        compressors=None,
+        config={"write_empty_chunks": False},
+    )
+    a[:] = data
+
+    assert np.array_equal(a[:], data)
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_sharding_read_empty_chunks_within_empty_shard_write_empty_false(
+    store: Store, index_location: ShardingCodecIndexLocation
+) -> None:
+    """
+    Case where
+        - all chunks in last shard are empty
+        - the last shard is not complete (array length is not a multiple of shard shape),
+          this takes us down the partial shard read path
+        - write_empty_chunks=False so the shard index will have no entries
+    """
+    fill_value = -99
+    shard_size = 8
+    data = np.arange(14, dtype="int32")
+    data[shard_size:] = fill_value  # 2nd shard is all fill value
+
+    spath = StorePath(store)
+    a = zarr.create_array(
+        spath,
+        shape=(14,),
+        chunks=(2,),
+        shards={"shape": (shard_size,), "index_location": index_location},
+        dtype="int32",
+        fill_value=fill_value,
+        filters=None,
+        compressors=None,
+        config={"write_empty_chunks": False},
+    )
+    a[:] = data
+
+    assert np.array_equal(a[:], data)
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_shard_read__index_load_fails(
     store: Store, index_location: ShardingCodecIndexLocation
 ) -> None:
@@ -577,7 +650,6 @@ def test_nested_sharding_create_array(
         filters=None,
         compressors=None,
     )
-    print(a.metadata.to_dict())
 
     a[:, :, :] = data
 
@@ -637,7 +709,6 @@ async def test_delete_empty_shards(store: Store) -> None:
         compressors=None,
         fill_value=1,
     )
-    print(a.metadata.to_dict())
     await _AsyncArrayProxy(a)[:, :].set(np.zeros((16, 16)))
     await _AsyncArrayProxy(a)[8:, :].set(np.ones((8, 16)))
     await _AsyncArrayProxy(a)[:, 8:].set(np.ones((16, 8)))
@@ -682,7 +753,6 @@ async def test_sharding_with_empty_inner_chunk(
     )
     data[:4, :4] = fill_value
     await a.setitem(..., data)
-    print("read data")
     data_read = await a.getitem(...)
     assert np.array_equal(data_read, data)
 
