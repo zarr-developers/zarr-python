@@ -1,11 +1,14 @@
+import contextlib
 import typing
 
+import numpy as np
 import pytest
 
 import zarr
 from zarr.abc.store import Store
 from zarr.buffer.gpu import buffer_prototype
 from zarr.codecs import NvcompZstdCodec
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.storage import StorePath
 from zarr.testing.utils import gpu_test
@@ -59,6 +62,57 @@ def test_nvcomp_zstd(store: Store, checksum: bool, selection: tuple[slice, slice
             expected[*selection] = data[*selection]
             cp.testing.assert_array_equal(expected[*selection], a[*selection])
             cp.testing.assert_array_equal(expected[:, :], a[:, :])
+
+
+@gpu_test  # type: ignore[misc,unused-ignore]
+@pytest.mark.parametrize("host_encode", [True, False], ids=["host_encode", "device_encode"])
+def test_nvcomp_zstd_matches(memory_store: zarr.storage.MemoryStore, host_encode: bool) -> None:
+    # Test to ensure that
+    import cupy as cp
+
+    @contextlib.contextmanager
+    def enable_gpu():
+        with zarr.config.enable_gpu():
+            yield
+
+    if host_encode:
+        write_ctx = contextlib.nullcontext()
+        read_ctx = enable_gpu()
+        data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
+    else:
+        write_ctx = zarr.config.enable_gpu()
+        read_ctx = enable_gpu()
+        data = cp.arange(0, 256, dtype="uint16").reshape((16, 16))
+
+    with write_ctx:
+        a = zarr.create_array(
+            store=memory_store,
+            name="data",
+            shape=data.shape,
+            chunks=(4, 4),
+            dtype=data.dtype,
+            fill_value=0,
+        )
+        a[:, :] = data
+    assert a.metadata.zarr_format == 3
+    assert a.metadata.codecs[-1].to_dict()["name"] == "zstd"
+
+    with read_ctx:
+        b = zarr.open_array(a.store_path, mode="r")
+        assert b.metadata.zarr_format == 3
+
+        zstd_codec = b.metadata.codecs[-1]
+        assert zstd_codec.to_dict()["name"] == "zstd"
+
+        if host_encode:
+            assert isinstance(zstd_codec, NvcompZstdCodec)
+        else:
+            assert isinstance(zstd_codec, ZstdCodec)
+
+        if host_encode:
+            cp.testing.assert_array_equal(data, b[:, :])
+        else:
+            np.testing.assert_array_equal(data.get(), b[:, :])
 
 
 @gpu_test  # type: ignore[misc,unused-ignore]
