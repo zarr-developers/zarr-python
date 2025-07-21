@@ -333,6 +333,8 @@ class _MergingShardBuilder(ShardMutableMapping):
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
 ):
+    """Sharding codec"""
+
     chunk_shape: ChunkCoords
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
