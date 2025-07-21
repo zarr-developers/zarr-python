@@ -8,7 +8,6 @@ User guide
 
     installation
     arrays
-    data_types
     groups
     attributes
     storage

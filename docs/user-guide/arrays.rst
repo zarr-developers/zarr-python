@@ -184,6 +184,7 @@ which can be used to print useful diagnostics, e.g.::
    Type               : Array
    Zarr format        : 3
    Data type          : Int32(endianness='little')
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -201,6 +202,7 @@ prints additional diagnostics, e.g.::
    Type               : Array
    Zarr format        : 3
    Data type          : Int32(endianness='little')
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -210,7 +212,7 @@ prints additional diagnostics, e.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 3558573
+   No. bytes stored   : 3558573 (3.4M)
    Storage ratio      : 112.4
    Chunks Initialized : 100
 
@@ -243,16 +245,6 @@ built-in delta filter::
    >>> z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
    >>> z.compressors
    (LZMA(codec_name='numcodecs.lzma', codec_config={'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]}),)
-
-The default compressor can be changed by setting the value of the using Zarr's
-:ref:`user-guide-config`, e.g.::
-
-   >>> with zarr.config.set({'array.v2_default_compressor.default': {'id': 'blosc'}}):
-   ...     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
-   >>> z.filters
-   ()
-   >>> z.compressors
-   (Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0),)
 
 To disable compression, set ``compressors=None`` when creating an array, e.g.::
 
@@ -288,6 +280,7 @@ Here is an example using a delta filter with the Blosc compressor::
    Type               : Array
    Zarr format        : 3
    Data type          : Int32(endianness='little')
+   Fill value         : 0
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
@@ -605,6 +598,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Type               : Array
   Zarr format        : 3
   Data type          : UInt8()
+  Fill value         : 0
   Shape              : (10000, 10000)
   Shard shape        : (1000, 1000)
   Chunk shape        : (100, 100)
@@ -615,7 +609,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Serializer         : BytesCodec(endian=None)
   Compressors        : (ZstdCodec(level=0, checksum=False),)
   No. bytes          : 100000000 (95.4M)
-  No. bytes stored   : 3981473
+  No. bytes stored   : 3981473 (3.8M)
   Storage ratio      : 25.1
   Shards Initialized : 100
 
