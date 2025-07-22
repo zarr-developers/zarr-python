@@ -83,6 +83,27 @@ class Store(ABC):
         await store._open()
         return store
 
+    def with_read_only(self, read_only: bool = False) -> Store:
+        """
+        Return a new store with a new read_only setting.
+
+        The new store points to the same location with the specified new read_only state.
+        The returned Store is not automatically opened, and this store is
+        not automatically closed.
+
+        Parameters
+        ----------
+        read_only
+            If True, the store will be created in read-only mode. Defaults to False.
+
+        Returns
+        -------
+            A new store of the same type with the new read only attribute.
+        """
+        raise NotImplementedError(
+            f"with_read_only is not implemented for the {type(self)} store type."
+        )
+
     def __enter__(self) -> Self:
         """Enter a context manager that will close the store upon exiting."""
         return self
@@ -263,6 +284,18 @@ class Store(ABC):
         Insert multiple (key, value) pairs into storage.
         """
         await gather(*starmap(self.set, values))
+
+    @property
+    def supports_consolidated_metadata(self) -> bool:
+        """
+        Does the store support consolidated metadata?.
+
+        If it doesn't an error will be raised on requests to consolidate the metadata.
+        Returning `False` can be useful for stores which implement their own
+        consolidation mechanism outside of the zarr-python implementation.
+        """
+
+        return True
 
     @property
     @abstractmethod

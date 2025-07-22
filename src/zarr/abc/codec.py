@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
@@ -12,12 +12,12 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
     from typing import Self
 
-    import numpy as np
-
-    from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
     from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
+    from zarr.core.metadata import ArrayMetadata
 
 __all__ = [
     "ArrayArrayCodec",
@@ -93,7 +93,13 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         """
         return self
 
-    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self,
+        *,
+        shape: ChunkCoords,
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
+    ) -> None:
         """Validates that the codec configuration is compatible with the array metadata.
         Raises errors when the codec configuration is not compatible.
 
@@ -276,6 +282,25 @@ class CodecPipeline:
         """
         ...
 
+    @classmethod
+    def from_array_metadata_and_store(cls, array_metadata: ArrayMetadata, store: Store) -> Self:
+        """Creates a codec pipeline from array metadata and a store path.
+
+        Raises NotImplementedError by default, indicating the CodecPipeline must be created with from_codecs instead.
+
+        Parameters
+        ----------
+        array_metadata : ArrayMetadata
+        store : Store
+
+        Returns
+        -------
+        Self
+        """
+        raise NotImplementedError(
+            f"'{type(cls).__name__}' does not implement CodecPipeline.from_array_metadata_and_store."
+        )
+
     @property
     @abstractmethod
     def supports_partial_decode(self) -> bool: ...
@@ -285,7 +310,9 @@ class CodecPipeline:
     def supports_partial_encode(self) -> bool: ...
 
     @abstractmethod
-    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self, *, shape: ChunkCoords, dtype: ZDType[TBaseDType, TBaseScalar], chunk_grid: ChunkGrid
+    ) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
 

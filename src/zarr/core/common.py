@@ -10,16 +10,18 @@ from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
+    Final,
+    Generic,
     Literal,
+    TypedDict,
     TypeVar,
     cast,
     overload,
 )
 
-import numpy as np
+from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
-from zarr.core.strings import _STRING_DTYPE
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -40,7 +42,27 @@ NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
+ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
+
+TName = TypeVar("TName", bound=str)
+TConfig = TypeVar("TConfig", bound=Mapping[str, object])
+
+
+class NamedConfig(TypedDict, Generic[TName, TConfig]):
+    """
+    A typed dictionary representing an object with a name and configuration, where the configuration
+    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+    """
+
+    name: ReadOnly[TName]
+    """The name of the object."""
+
+    configuration: ReadOnly[TConfig]
+    """The configuration of the object."""
 
 
 def product(tup: ChunkCoords) -> int:
@@ -158,7 +180,7 @@ def parse_fill_value(data: Any) -> Any:
 
 def parse_order(data: Any) -> Literal["C", "F"]:
     if data in ("C", "F"):
-        return cast(Literal["C", "F"], data)
+        return cast("Literal['C', 'F']", data)
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
 
 
@@ -168,22 +190,12 @@ def parse_bool(data: Any) -> bool:
     raise ValueError(f"Expected bool, got {data} instead.")
 
 
-def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
-    if dtype is str or dtype == "str":
-        if zarr_format == 2:
-            # special case as object
-            return np.dtype("object")
-        else:
-            return _STRING_DTYPE
-    return np.dtype(dtype)
-
-
 def _warn_write_empty_chunks_kwarg() -> None:
     # TODO: link to docs page on array configuration in this message
     msg = (
         "The `write_empty_chunks` keyword argument is deprecated and will be removed in future versions. "
         "To control whether empty chunks are written to storage, either use the `config` keyword "
-        "argument, as in `config={'write_empty_chunks: True}`,"
+        "argument, as in `config={'write_empty_chunks': True}`,"
         "or change the global 'array.write_empty_chunks' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)
@@ -194,7 +206,7 @@ def _warn_order_kwarg() -> None:
     msg = (
         "The `order` keyword argument has no effect for Zarr format 3 arrays. "
         "To control the memory layout of the array, either use the `config` keyword "
-        "argument, as in `config={'order: 'C'}`,"
+        "argument, as in `config={'order': 'C'}`,"
         "or change the global 'array.order' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)
@@ -202,4 +214,4 @@ def _warn_order_kwarg() -> None:
 
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_version"""
-    return cast(ZarrFormat, int(zarr_config.get("default_zarr_format", 3)))
+    return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))

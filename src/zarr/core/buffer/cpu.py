@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer.core import ArrayLike, NDArrayLike
-    from zarr.core.common import BytesLike
+    from zarr.core.common import BytesLike, ChunkCoords
 
 
 class Buffer(core.Buffer):
@@ -154,10 +154,17 @@ class NDBuffer(core.NDBuffer):
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
-        if fill_value is None:
+        # np.zeros is much faster than np.full, and therefore using it when possible is better.
+        if fill_value is None or (isinstance(fill_value, int) and fill_value == 0):
             return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
         else:
             return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
+
+    @classmethod
+    def empty(
+        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+    ) -> Self:
+        return cls(np.empty(shape=shape, dtype=dtype, order=order))
 
     @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
@@ -223,5 +230,10 @@ def numpy_buffer_prototype() -> core.BufferPrototype:
     return core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
 
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)
+register_buffer(Buffer, qualname="zarr.buffer.cpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.buffer.cpu.NDBuffer")
+
+
+# backwards compatibility
+register_buffer(Buffer, qualname="zarr.core.buffer.cpu.Buffer")
+register_ndbuffer(NDBuffer, qualname="zarr.core.buffer.cpu.NDBuffer")

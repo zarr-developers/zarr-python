@@ -7,7 +7,6 @@ exclude = [
   "/.github",
   "/bench",
   "/docs",
-  "/notebooks"
 ]
 
 [project]
@@ -34,7 +33,7 @@ requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'packaging>=22.0',
-    'numpy>=1.25',
+    'numpy>=1.26',
     'numcodecs[crc32c]>=0.14',
     'typing_extensions>=4.9',
     'donfig>=0.8',
@@ -72,13 +71,18 @@ gpu = [
 # Development extras
 test = [
     "coverage",
-    "pytest",
+    # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
+    "pytest<8.4",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
     "rich",
     "mypy",
     "hypothesis",
+    "pytest-xdist",
+    "packaging",
+    "tomlkit",
+    "uv"
 ]
 remote_tests = [
     'zarr[remote]',
@@ -105,13 +109,14 @@ docs = [
     'numcodecs[msgpack]',
     'rich',
     's3fs>=2023.10.0',
-    'astroid<4'
+    'astroid<4',
+    'pytest'
 ]
 
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
-Changelog = "https://zarr.readthedocs.io/en/stable/release.html"
+Changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
 Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
 Documentation = "https://zarr.readthedocs.io/"
 Homepage = "https://github.com/zarr-developers/zarr-python"
@@ -133,6 +138,7 @@ exclude_lines = [
 [tool.coverage.run]
 omit = [
     "bench/compress_normal.py",
+    "src/zarr/testing/conftest.py",  # only for downstream projects
 ]
 
 [tool.hatch]
@@ -149,7 +155,7 @@ features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
+numpy = ["1.26", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -164,7 +170,7 @@ run = "run-coverage --no-cov"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.doctest]
@@ -185,7 +191,7 @@ features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.1"]
+numpy = ["1.26", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
@@ -193,7 +199,7 @@ run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.docs]
@@ -209,7 +215,6 @@ dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
-    'fsspec @ git+https://github.com/fsspec/filesystem_spec',
     's3fs @ git+https://github.com/fsspec/s3fs',
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
@@ -242,7 +247,7 @@ python = "3.11"
 dependencies = [
     'zarr[remote]',
     'packaging==22.*',
-    'numpy==1.25.*',
+    'numpy==1.26.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
@@ -252,6 +257,7 @@ dependencies = [
     'obstore==0.5.*',
     # test deps
     'zarr[test]',
+    'zarr[remote_tests]',
 ]
 
 [tool.hatch.envs.min_deps.scripts]
@@ -280,9 +286,9 @@ extend-exclude = [
     "buck-out",
     "build",
     "dist",
-    "notebooks", # temporary, until we achieve compatibility with ruff ≥ 0.6
     "venv",
     "docs",
+    "tests/test_regression/scripts/", # these are scripts that use a different version of python
     "src/zarr/v2/",
     "tests/v2/",
 ]
@@ -291,8 +297,8 @@ extend-exclude = [
 extend-select = [
     "ANN",  # flake8-annotations
     "B",    # flake8-bugbear
-    "EXE",  # flake8-executable
     "C4",   # flake8-comprehensions
+    "EXE",  # flake8-executable
     "FA",   # flake8-future-annotations
     "FLY",  # flynt
     "FURB", # refurb
@@ -318,7 +324,6 @@ extend-select = [
 ignore = [
     "ANN401",
     "PT011",  # TODO: apply this rule
-    "PT012",  # TODO: apply this rule
     "RET505",
     "RET506",
     "RUF005",
@@ -353,7 +358,6 @@ strict = true
 warn_unreachable = true
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
-
 [[tool.mypy.overrides]]
 module = [
     "tests.package_with_entrypoint.*",
@@ -364,6 +368,7 @@ module = [
     "tests.test_store.test_local",
     "tests.test_store.test_fsspec",
     "tests.test_store.test_memory",
+    "tests.test_codecs.test_codecs",
 ]
 strict = false
 
@@ -371,7 +376,6 @@ strict = false
 # and fix the errors
 [[tool.mypy.overrides]]
 module = [
-    "tests.test_codecs.test_codecs",
     "tests.test_metadata.*",
     "tests.test_store.test_core",
     "tests.test_store.test_logging",
@@ -382,7 +386,7 @@ module = [
     "tests.test_indexing",
     "tests.test_properties",
     "tests.test_sync",
-    "tests.test_v2",
+    "tests.test_regression.scripts.*"
 ]
 ignore_errors = true
 
@@ -449,3 +453,6 @@ issue_format = ":issue:`{issue}`"
 
 [tool.codespell]
 ignore-words-list = "astroid"
+
+[project.entry-points.pytest11]
+zarr = "zarr.testing"

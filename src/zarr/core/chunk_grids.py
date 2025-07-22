@@ -64,6 +64,9 @@ def _guess_chunks(
     if isinstance(shape, int):
         shape = (shape,)
 
+    if typesize == 0:
+        return shape
+
     ndims = len(shape)
     # require chunks to have non-zero length for all dimensions
     chunks = np.maximum(np.array(shape, dtype="=f8"), 1)
@@ -204,7 +207,7 @@ def _auto_partition(
     array_shape: tuple[int, ...],
     chunk_shape: tuple[int, ...] | Literal["auto"],
     shard_shape: ShardsLike | None,
-    dtype: np.dtype[Any],
+    item_size: int,
 ) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
     """
     Automatically determine the shard shape and chunk shape for an array, given the shape and dtype of the array.
@@ -214,7 +217,6 @@ def _auto_partition(
     of the array; if the `chunk_shape` is also "auto", then the chunks will be set heuristically as well,
     given the dtype and shard shape. Otherwise, the chunks will be returned as-is.
     """
-    item_size = dtype.itemsize
     if shard_shape is None:
         _shards_out: None | tuple[int, ...] = None
         if chunk_shape == "auto":

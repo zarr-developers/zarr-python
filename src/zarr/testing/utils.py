@@ -30,7 +30,7 @@ def has_cupy() -> bool:
     try:
         import cupy
 
-        return cast(bool, cupy.cuda.runtime.getDeviceCount() > 0)
+        return cast("bool", cupy.cuda.runtime.getDeviceCount() > 0)
     except ImportError:
         return False
     except cupy.cuda.runtime.CUDARuntimeError:
@@ -40,13 +40,10 @@ def has_cupy() -> bool:
 T = TypeVar("T")
 
 
+gpu_mark = pytest.mark.gpu
+skip_if_no_gpu = pytest.mark.skipif(not has_cupy(), reason="CuPy not installed or no GPU available")
+
+
 # Decorator for GPU tests
 def gpu_test(func: T) -> T:
-    return cast(
-        "T",
-        pytest.mark.gpu(
-            pytest.mark.skipif(not has_cupy(), reason="CuPy not installed or no GPU available")(
-                func
-            )
-        ),
-    )
+    return cast("T", gpu_mark(skip_if_no_gpu(func)))

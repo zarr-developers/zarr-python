@@ -23,6 +23,8 @@ from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
+from zarr.core.dtype.common import unpack_dtype_json
+from zarr.core.dtype.npy.int import UInt8
 from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
@@ -494,7 +496,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
     expected_groups = list(zip(expected_group_keys, expected_group_values, strict=False))
 
     fill_value = 3
-    dtype = "uint8"
+    dtype = UInt8()
 
     expected_group_values[0].create_group("subgroup")
     expected_group_values[0].create_array(
@@ -515,7 +517,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
             metadata = {
                 "subarray": {
                     "attributes": {},
-                    "dtype": dtype,
+                    "dtype": unpack_dtype_json(dtype.to_json(zarr_format=zarr_format)),
                     "fill_value": fill_value,
                     "shape": (1,),
                     "chunks": (1,),
@@ -551,7 +553,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                         {"configuration": {"endian": "little"}, "name": "bytes"},
                         {"configuration": {}, "name": "zstd"},
                     ),
-                    "data_type": dtype,
+                    "data_type": unpack_dtype_json(dtype.to_json(zarr_format=zarr_format)),
                     "fill_value": fill_value,
                     "node_type": "array",
                     "shape": (1,),
@@ -646,19 +648,20 @@ def test_group_create_array(
         array = group.create_array(name=name, shape=shape, dtype=dtype)
         array[:] = data
     elif method == "array":
-        with pytest.warns(DeprecationWarning):
+        with pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."):
             array = group.array(name=name, data=data, shape=shape, dtype=dtype)
     else:
         raise AssertionError
 
     if not overwrite:
         if method == "create_array":
-            with pytest.raises(ContainsArrayError):
+            with pytest.raises(ContainsArrayError):  # noqa: PT012
                 a = group.create_array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
         elif method == "array":
-            with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
-                a = group.array(name=name, shape=shape, dtype=dtype)
+            with pytest.raises(ContainsArrayError):  # noqa: PT012
+                with pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."):
+                    a = group.array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
 
     assert array.path == normalize_path(name)
@@ -1181,22 +1184,28 @@ def test_create_dataset_with_data(store: Store, zarr_format: ZarrFormat) -> None
     """
     root = Group.from_store(store=store, zarr_format=zarr_format)
     arr = np.random.random((5, 5))
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."):
         data = root.create_dataset("random", data=arr, shape=arr.shape)
     np.testing.assert_array_equal(np.asarray(data), arr)
 
 
 async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."):
         foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
     assert foo.shape == (10,)
 
-    with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
+    with (
+        pytest.raises(ContainsArrayError),
+        pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."),
+    ):
         await root.create_dataset("foo", shape=(100,), dtype="int8")
 
     _ = await root.create_group("bar")
-    with pytest.raises(ContainsGroupError), pytest.warns(DeprecationWarning):
+    with (
+        pytest.raises(ContainsGroupError),
+        pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."),
+    ):
         await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
@@ -1444,26 +1453,6 @@ def test_update_attrs() -> None:
     assert root.attrs["foo"] == "bar"
 
 
-@pytest.mark.parametrize("method", ["empty", "zeros", "ones", "full"])
-def test_group_deprecated_positional_args(method: str) -> None:
-    if method == "full":
-        kwargs = {"fill_value": 0}
-    else:
-        kwargs = {}
-
-    root = zarr.group()
-    with pytest.warns(FutureWarning, match=r"Pass name=.* as keyword args."):
-        arr = getattr(root, method)("foo", shape=1, **kwargs)
-        assert arr.shape == (1,)
-
-    method += "_like"
-    data = np.ones(1)
-
-    with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
-        arr = getattr(root, method)("foo_like", data, **kwargs)
-        assert arr.shape == data.shape
-
-
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2191
@@ -1519,7 +1508,6 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
     # if create_nodes is sensitive to IO latency,
     # this should take (num_groups * get_latency) seconds
     # otherwise, it should take only marginally more than get_latency seconds
-
     with zarr_config.set({"async.concurrency": 1}):
         start = time.time()
         _ = tuple(sync_group.create_nodes(store=latency_store, nodes=groups))
@@ -1530,6 +1518,7 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
 @pytest.mark.parametrize(
     ("a_func", "b_func"),
     [
+        (zarr.core.group.AsyncGroup.create_array, zarr.core.group.Group.create_array),
         (zarr.core.group.AsyncGroup.create_hierarchy, zarr.core.group.Group.create_hierarchy),
         (zarr.core.group.create_hierarchy, zarr.core.sync_group.create_hierarchy),
         (zarr.core.group.create_nodes, zarr.core.sync_group.create_nodes),
@@ -1545,7 +1534,22 @@ def test_consistent_signatures(
     """
     base_sig = inspect.signature(a_func)
     test_sig = inspect.signature(b_func)
-    assert test_sig.parameters == base_sig.parameters
+    wrong: dict[str, list[object]] = {
+        "missing_from_test": [],
+        "missing_from_base": [],
+        "wrong_type": [],
+    }
+    for key, value in base_sig.parameters.items():
+        if key not in test_sig.parameters:
+            wrong["missing_from_test"].append((key, value))
+    for key, value in test_sig.parameters.items():
+        if key not in base_sig.parameters:
+            wrong["missing_from_base"].append((key, value))
+        if base_sig.parameters[key] != value:
+            wrong["wrong_type"].append({key: {"test": value, "base": base_sig.parameters[key]}})
+    assert wrong["missing_from_base"] == []
+    assert wrong["missing_from_test"] == []
+    assert wrong["wrong_type"] == []
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -2024,9 +2028,7 @@ def test_group_members_concurrency_limit(store: MemoryStore) -> None:
     # if .members is sensitive to IO latency,
     # this should take (num_groups * get_latency) seconds
     # otherwise, it should take only marginally more than get_latency seconds
-    from zarr.core.config import config
-
-    with config.set({"async.concurrency": 1}):
+    with zarr_config.set({"async.concurrency": 1}):
         start = time.time()
         _ = group_read.members()
         elapsed = time.time() - start

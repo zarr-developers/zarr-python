@@ -128,7 +128,8 @@ property. E.g.::
    >>> bar.info_complete()
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.int64
+   Data type          : Int64(endianness='little')
+   Fill value         : 0
    Shape              : (1000000,)
    Chunk shape        : (100000,)
    Order              : C
@@ -138,13 +139,14 @@ property. E.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 8000000 (7.6M)
-   No. bytes stored   : 1614
+   No. bytes stored   : 1614 (1.6K)
    Storage ratio      : 4956.6
    Chunks Initialized : 10
    >>> baz.info
    Type               : Array
    Zarr format        : 3
-   Data type          : DataType.float32
+   Data type          : Float32(endianness='little')
+   Fill value         : 0.0
    Shape              : (1000, 1000)
    Chunk shape        : (100, 100)
    Order              : C

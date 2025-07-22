@@ -13,6 +13,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
+    from zarr.core.common import ChunkCoords
+
 
 __all__ = [
     "NDBufferUsingTestNDArrayLike",
@@ -50,6 +52,15 @@ class NDBufferUsingTestNDArrayLike(cpu.NDBuffer):
         if fill_value is not None:
             ret.fill(fill_value)
         return ret
+
+    @classmethod
+    def empty(
+        cls,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        order: Literal["C", "F"] = "C",
+    ) -> Self:
+        return super(cpu.NDBuffer, cls).empty(shape=shape, dtype=dtype, order=order)
 
 
 class StoreExpectingTestBuffer(MemoryStore):

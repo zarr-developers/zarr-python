@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
 
 import zarr
+from zarr.abc.buffer import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.buffer import cpu, gpu
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike, cpu, gpu
 from zarr.storage import MemoryStore, StorePath
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
@@ -19,7 +20,7 @@ from zarr.testing.buffer import (
     TestBuffer,
     TestNDArrayLike,
 )
-from zarr.testing.utils import gpu_test
+from zarr.testing.utils import gpu_mark, gpu_test, skip_if_no_gpu
 
 if TYPE_CHECKING:
     import types
@@ -199,3 +200,39 @@ def test_gpu_buffer_prototype() -> None:
 def test_cpu_buffer_as_scalar() -> None:
     buf = cpu.buffer_prototype.nd_buffer.create(shape=(), dtype="int64")
     assert buf.as_scalar() == buf.as_ndarray_like()[()]  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    "prototype",
+    [
+        cpu.buffer_prototype,
+        pytest.param(
+            gpu.buffer_prototype,
+            marks=[gpu_mark, skip_if_no_gpu],
+        ),
+        BufferPrototype(
+            buffer=cpu.Buffer,
+            nd_buffer=NDBufferUsingTestNDArrayLike,
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (1, 2),
+        (1, 2, 3),
+    ],
+)
+@pytest.mark.parametrize("dtype", ["int32", "float64"])
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_empty(
+    prototype: BufferPrototype, shape: tuple[int, ...], dtype: str, order: Literal["C", "F"]
+) -> None:
+    buf = prototype.nd_buffer.empty(shape=shape, dtype=dtype, order=order)
+    result = buf.as_ndarray_like()
+    assert result.shape == shape
+    assert result.dtype == dtype
+    if order == "C":
+        assert result.flags.c_contiguous  # type: ignore[attr-defined]
+    else:
+        assert result.flags.f_contiguous  # type: ignore[attr-defined]

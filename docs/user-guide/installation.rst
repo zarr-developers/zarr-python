@@ -8,7 +8,7 @@ Required dependencies include:
 
 - `Python <https://docs.python.org/3/>`_ (3.11 or later)
 - `packaging <https://packaging.pypa.io>`_ (22.0 or later)
-- `numpy <https://numpy.org>`_ (1.25 or later)
+- `numpy <https://numpy.org>`_ (1.26 or later)
 - `numcodecs[crc32c] <https://numcodecs.readthedocs.io>`_ (0.14 or later)
 - `typing_extensions <https://typing-extensions.readthedocs.io>`_ (4.9 or later)
 - `donfig <https://donfig.readthedocs.io>`_ (0.8 or later)

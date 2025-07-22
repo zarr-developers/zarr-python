@@ -20,6 +20,7 @@ Advanced Topics
 .. toctree::
     :maxdepth: 1
 
+    data_types
     performance
     consolidated_metadata
     extending

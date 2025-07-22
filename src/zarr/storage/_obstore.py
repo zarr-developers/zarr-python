@@ -4,8 +4,7 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.store import (
     ByteRequest,
@@ -14,11 +13,10 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer.core import BufferPrototype
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Coroutine, Iterable
+    from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
     from typing import Any
 
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
@@ -70,6 +68,13 @@ class ObjectStore(Store):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
         super().__init__(read_only=read_only)
         self.store = store
+
+    def with_read_only(self, read_only: bool = False) -> ObjectStore:
+        # docstring inherited
+        return type(self)(
+            store=self.store,
+            read_only=read_only,
+        )
 
     def __str__(self) -> str:
         return f"object_store://{self.store}"
@@ -183,7 +188,13 @@ class ObjectStore(Store):
         import obstore as obs
 
         self._check_writable()
-        await obs.delete_async(self.store, key)
+
+        # Some obstore stores such as local filesystems, GCP and Azure raise an error
+        # when deleting a non-existent key, while others such as S3 and in-memory do
+        # not. We suppress the error to make the behavior consistent across all obstore
+        # stores. This is also in line with the behavior of the other Zarr store adapters.
+        with contextlib.suppress(FileNotFoundError):
+            await obs.delete_async(self.store, key)
 
     @property
     def supports_partial_writes(self) -> bool:
@@ -201,19 +212,21 @@ class ObjectStore(Store):
         # docstring inherited
         return True
 
-    def list(self) -> AsyncGenerator[str, None]:
-        # docstring inherited
+    async def _list(self, prefix: str | None = None) -> AsyncGenerator[ObjectMeta, None]:
         import obstore as obs
 
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store)
-        return _transform_list(objects)
+        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store, prefix=prefix)
+        async for batch in objects:
+            for item in batch:
+                yield item
+
+    def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
+        return (obj["path"] async for obj in self._list())
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        import obstore as obs
-
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
-        return _transform_list(objects)
+        return (obj["path"] async for obj in self._list(prefix))
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
@@ -222,20 +235,21 @@ class ObjectStore(Store):
         coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
         return _transform_list_dir(coroutine, prefix)
 
+    async def getsize(self, key: str) -> int:
+        # docstring inherited
+        import obstore as obs
 
-async def _transform_list(
-    list_stream: ListStream[list[ObjectMeta]],
-) -> AsyncGenerator[str, None]:
-    """
-    Transform the result of list into an async generator of paths.
-    """
-    async for batch in list_stream:
-        for item in batch:
-            yield item["path"]
+        resp = await obs.head_async(self.store, key)
+        return resp["size"]
+
+    async def getsize_prefix(self, prefix: str) -> int:
+        # docstring inherited
+        sizes = [obj["size"] async for obj in self._list(prefix=prefix)]
+        return sum(sizes)
 
 
 async def _transform_list_dir(
-    list_result_coroutine: Coroutine[Any, Any, ListResult[list[ObjectMeta]]], prefix: str
+    list_result_coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]], prefix: str
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list_with_delimiter into an async generator of paths.
