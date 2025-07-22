@@ -778,7 +778,7 @@ class ShardingCodec(
     ) -> ShardMapping | None:
         """
         Read chunks from `byte_getter` for the case where the read is less than a full shard.
-        Returns a mapping of chunk coordinates to bytes.
+        Returns a mapping of chunk coordinates to bytes or None.
         """
         shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
         if shard_index is None:
@@ -788,11 +788,9 @@ class ShardingCodec(
             _ChunkCoordsByteSlice(chunk_coords, slice(*chunk_byte_slice))
             for chunk_coords in all_chunk_coords
             # Drop chunks where index lookup fails
-            # e.g. when write_empty_chunks = False and the chunk is empty
+            # e.g. empty chunks when write_empty_chunks = False
             if (chunk_byte_slice := shard_index.get_chunk_slice(chunk_coords))
         ]
-        if len(chunks) == 0:
-            return None
 
         groups = self._coalesce_chunks(chunks)
 
@@ -816,7 +814,7 @@ class ShardingCodec(
     ) -> list[list[_ChunkCoordsByteSlice]]:
         """
         Combine chunks from a single shard into groups that should be read together
-        in a single request.
+        in a single request to the store.
 
         Respects the following configuration options:
         - `sharding.read.coalesce_max_gap_bytes`: The maximum gap between
@@ -827,6 +825,9 @@ class ShardingCodec(
         coalesce_max_bytes = config.get("sharding.read.coalesce_max_bytes")
 
         sorted_chunks = sorted(chunks, key=lambda c: c.byte_slice.start)
+
+        if len(sorted_chunks) == 0:
+            return []
 
         groups = []
         current_group = [sorted_chunks[0]]

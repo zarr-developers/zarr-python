@@ -354,7 +354,7 @@ def test_sharding_read_empty_chunks_within_non_empty_shard_write_empty_false(
         - some, but not all, chunks in the last shard are empty
         - the last shard is not complete (array length is not a multiple of shard shape),
           this takes us down the partial shard read path
-        - write_empty_chunks=False so the shard index will have less entries than chunks in the shard
+        - write_empty_chunks=False so the shard index will have fewer entries than chunks in the shard
     """
     # array with mixed empty and non-empty chunks in second shard
     data = np.array([
