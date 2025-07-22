@@ -53,7 +53,7 @@ from zarr.core.dtype import (
     VariableLengthBytes,
     VariableLengthUTF8,
     ZDType,
-    parse_data_type,
+    parse_dtype,
 )
 from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
@@ -1308,7 +1308,7 @@ class TestCreateArray:
             filters=filters,
         )
         filters_expected, compressor_expected = _parse_chunk_encoding_v2(
-            filters=filters, compressor=compressors, dtype=parse_data_type(dtype, zarr_format=2)
+            filters=filters, compressor=compressors, dtype=parse_dtype(dtype, zarr_format=2)
         )
         assert arr.metadata.zarr_format == 2  # guard for mypy
         assert arr.metadata.compressor == compressor_expected
