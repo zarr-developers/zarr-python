@@ -412,7 +412,7 @@ attempt data type resolution against *every* data type class, and if, for some r
 type matches multiple Zarr data types, we treat this as an error and raise an exception.
 
 If you have a NumPy data type and you want to get the corresponding ``ZDType`` instance, you can use
-the ``parse_data_type`` function, which will use the dynamic resolution described above. ``parse_data_type``
+the ``parse_dtype`` function, which will use the dynamic resolution described above. ``parse_dtype``
 handles a range of input types:
 
 - NumPy data types:
@@ -420,9 +420,9 @@ handles a range of input types:
   .. code-block:: python
 
     >>> import numpy as np
-    >>> from zarr.dtype import parse_data_type
+    >>> from zarr.dtype import parse_dtype
     >>> my_dtype = np.dtype('>M8[10s]')
-    >>> parse_data_type(my_dtype, zarr_format=2)
+    >>> parse_dtype(my_dtype, zarr_format=2)
     DateTime64(endianness='big', scale_factor=10, unit='s')
 
 
@@ -431,7 +431,7 @@ handles a range of input types:
   .. code-block:: python
 
     >>> dtype_str = '>M8[10s]'
-    >>> parse_data_type(dtype_str, zarr_format=2)
+    >>> parse_dtype(dtype_str, zarr_format=2)
     DateTime64(endianness='big', scale_factor=10, unit='s')
 
 - ``ZDType`` instances:
@@ -440,7 +440,7 @@ handles a range of input types:
 
     >>> from zarr.dtype import DateTime64
     >>> zdt = DateTime64(endianness='big', scale_factor=10, unit='s')
-    >>> parse_data_type(zdt, zarr_format=2) # Use a ZDType (this is a no-op)
+    >>> parse_dtype(zdt, zarr_format=2) # Use a ZDType (this is a no-op)
     DateTime64(endianness='big', scale_factor=10, unit='s')
 
 - Python dictionaries (requires ``zarr_format=3``). These dictionaries must be consistent with the
@@ -449,7 +449,7 @@ handles a range of input types:
   .. code-block:: python
 
     >>> dt_dict = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}
-    >>> parse_data_type(dt_dict, zarr_format=3)
+    >>> parse_dtype(dt_dict, zarr_format=3)
     DateTime64(endianness='little', scale_factor=10, unit='s')
-    >>> parse_data_type(dt_dict, zarr_format=3).to_json(zarr_format=3)
+    >>> parse_dtype(dt_dict, zarr_format=3).to_json(zarr_format=3)
     {'name': 'numpy.datetime64', 'configuration': {'unit': 's', 'scale_factor': 10}}
