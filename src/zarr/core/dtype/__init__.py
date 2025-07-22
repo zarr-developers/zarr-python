@@ -202,7 +202,9 @@ def parse_data_type(
         directly, or a JSON representation of a ZDType, or a native dtype, or a python object that
         can be converted into a native dtype.
     zarr_format : ZarrFormat
-        The Zarr format version.
+        The Zarr format version. This parameter is required because this function will attempt to
+        parse the JSON representation of a data type, and the JSON representation of data types
+        varies between Zarr 2 and Zarr 3.
 
     Returns
     -------
@@ -211,10 +213,18 @@ def parse_data_type(
 
     Examples
     --------
-    >>> parse_dtype("int32", zarr_format=2)
+    >>> from zarr.dtype import parse_data_type
+    >>> import numpy as np
+    >>> parse_data_type("int32", zarr_format=2)
+    Int32(endianness='little')
+    >>> parse_dtype(np.dtype('S10'), zarr_format=2)
+    NullTerminatedBytes(length=10)
+    >>> parse_data_type({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
+    DateTime64(endianness='little', scale_factor=10, unit='s')
+    >>> parse_data_type("int32", zarr_format=2)
     Int32(endianness="little")
     """
-    return parse_dtype(dtype_spec, zarr_format=zarr_format)
+    return parse_data_type(dtype_spec, zarr_format=zarr_format)
 
 
 def parse_dtype(
@@ -234,7 +244,7 @@ def parse_dtype(
     zarr_format : ZarrFormat
         The Zarr format version. This parameter is required because this function will attempt to
         parse the JSON representation of a data type, and the JSON representation of data types
-        is different between Zarr 2 and Zarr 3.
+        varies between Zarr 2 and Zarr 3.
 
     Returns
     -------
@@ -259,7 +269,7 @@ def parse_dtype(
     # First attempt to interpret the input as JSON
     if isinstance(dtype_spec, Mapping | str | Sequence):
         try:
-            return get_data_type_from_json(dtype_spec, zarr_format=3)  # type: ignore[arg-type]
+            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)  # type: ignore[arg-type]
         except ValueError:
             # no data type matched this JSON-like input
             pass
@@ -268,5 +278,5 @@ def parse_dtype(
         # return that dtype.
         return VariableLengthUTF8()  # type: ignore[return-value]
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
-    # we can create a numpy dtype from it, and do the dtype inference from that
+    # we can create a native dtype from it, and do the dtype inference from that
     return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]
