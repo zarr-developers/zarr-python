@@ -217,7 +217,7 @@ def parse_data_type(
     >>> import numpy as np
     >>> parse_data_type("int32", zarr_format=2)
     Int32(endianness='little')
-    >>> parse_dtype(np.dtype('S10'), zarr_format=2)
+    >>> parse_data_type(np.dtype('S10'), zarr_format=2)
     NullTerminatedBytes(length=10)
     >>> parse_data_type({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
     DateTime64(endianness='little', scale_factor=10, unit='s')
