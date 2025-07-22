@@ -15,11 +15,11 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
-from zarr._compat import _deprecate_positional_args
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
 from zarr.core.array import (
+    DEFAULT_FILL_VALUE,
     Array,
     AsyncArray,
     CompressorLike,
@@ -71,6 +71,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
+    from zarr.core.dtype import ZDTypeLike
 
 logger = logging.getLogger("zarr.group")
 
@@ -999,22 +1000,24 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        shape: ShapeLike | None = None,
+        dtype: ZDTypeLike | None = None,
+        data: np.ndarray[Any, np.dtype[Any]] | None = None,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = "auto",
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = 0,
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
+        write_data: bool = True,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array within this group.
 
@@ -1102,6 +1105,11 @@ class AsyncGroup:
             Whether to overwrite an array with the same name in the store, if one exists.
         config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
+        write_data : bool
+            If a pre-existing array-like object was provided to this function via the ``data`` parameter
+            then ``write_data`` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            array will be left empty.
 
         Returns
         -------
@@ -1116,6 +1124,7 @@ class AsyncGroup:
             name=name,
             shape=shape,
             dtype=dtype,
+            data=data,
             chunks=chunks,
             shards=shards,
             filters=filters,
@@ -1130,6 +1139,7 @@ class AsyncGroup:
             storage_options=storage_options,
             overwrite=overwrite,
             config=config,
+            write_data=write_data,
         )
 
     @deprecated("Use AsyncGroup.create_array instead.")
@@ -2406,27 +2416,28 @@ class Group(SyncMixin):
         # Backwards compatibility for 2.x
         return self.create_array(*args, **kwargs)
 
-    @_deprecate_positional_args
     def create_array(
         self,
         name: str,
         *,
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        shape: ShapeLike | None = None,
+        dtype: ZDTypeLike | None = None,
+        data: np.ndarray[Any, np.dtype[Any]] | None = None,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = "auto",
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = 0,
-        order: MemoryOrder | None = "C",
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
+        order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
+        write_data: bool = True,
     ) -> Array:
         """Create an array within this group.
 
@@ -2437,10 +2448,13 @@ class Group(SyncMixin):
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : ChunkCoords
-            Shape of the array.
-        dtype : npt.DTypeLike
-            Data type of the array.
+        shape : ChunkCoords, optional
+            Shape of the array. Can be ``None`` if ``data`` is provided.
+        dtype : npt.DTypeLike | None
+            Data type of the array. Can be ``None`` if ``data`` is provided.
+        data : Array-like data to use for initializing the array. If this parameter is provided, the
+            ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
+            or ``None``.
         chunks : ChunkCoords, optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
@@ -2514,6 +2528,11 @@ class Group(SyncMixin):
             Whether to overwrite an array with the same name in the store, if one exists.
         config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
+        write_data : bool
+            If a pre-existing array-like object was provided to this function via the ``data`` parameter
+            then ``write_data`` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            array will be left empty.
 
         Returns
         -------
@@ -2528,6 +2547,7 @@ class Group(SyncMixin):
                     name=name,
                     shape=shape,
                     dtype=dtype,
+                    data=data,
                     chunks=chunks,
                     shards=shards,
                     fill_value=fill_value,
@@ -2541,6 +2561,7 @@ class Group(SyncMixin):
                     overwrite=overwrite,
                     storage_options=storage_options,
                     config=config,
+                    write_data=write_data,
                 )
             )
         )
@@ -2612,7 +2633,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
         the array's fill value or zeros if no fill value is provided.
@@ -2634,7 +2654,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
@@ -2654,7 +2673,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
@@ -2674,7 +2692,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
-    @_deprecate_positional_args
     def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> Array:
@@ -2702,7 +2719,6 @@ class Group(SyncMixin):
             )
         )
 
-    @_deprecate_positional_args
     def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create an empty sub-array like `data`. The contents will be filled
         with the array's fill value or zeros if no fill value is provided.
@@ -2729,7 +2745,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array of zeros like `data`.
 
@@ -2750,7 +2765,6 @@ class Group(SyncMixin):
 
         return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array of ones like `data`.
 
@@ -2770,7 +2784,6 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         """Create a sub-array like `data` filled with the `fill_value` of `data` .
 
@@ -2800,7 +2813,6 @@ class Group(SyncMixin):
         return self._sync(self._async_group.move(source, dest))
 
     @deprecated("Use Group.create_array instead.")
-    @_deprecate_positional_args
     def array(
         self,
         name: str,
@@ -2813,8 +2825,8 @@ class Group(SyncMixin):
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = None,
         serializer: SerializerLike = "auto",
-        fill_value: Any | None = 0,
-        order: MemoryOrder | None = "C",
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
+        order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: DimensionNames = None,

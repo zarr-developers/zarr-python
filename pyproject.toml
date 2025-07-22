@@ -33,7 +33,7 @@ requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'packaging>=22.0',
-    'numpy>=1.25',
+    'numpy>=1.26',
     'numcodecs[crc32c]>=0.14',
     'typing_extensions>=4.9',
     'donfig>=0.8',
@@ -138,6 +138,7 @@ exclude_lines = [
 [tool.coverage.run]
 omit = [
     "bench/compress_normal.py",
+    "src/zarr/testing/conftest.py",  # only for downstream projects
 ]
 
 [tool.hatch]
@@ -154,7 +155,7 @@ features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.2"]
+numpy = ["1.26", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -190,7 +191,7 @@ features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.2"]
+numpy = ["1.26", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
@@ -246,7 +247,7 @@ python = "3.11"
 dependencies = [
     'zarr[remote]',
     'packaging==22.*',
-    'numpy==1.25.*',
+    'numpy==1.26.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
@@ -323,9 +324,6 @@ extend-select = [
 ignore = [
     "ANN401",
     "PT011",  # TODO: apply this rule
-    "PT012",  # TODO: apply this rule
-    "PT030",  # TODO: apply this rule
-    "PT031",  # TODO: apply this rule
     "RET505",
     "RET506",
     "RUF005",
@@ -456,3 +454,6 @@ issue_format = ":issue:`{issue}`"
 
 [tool.codespell]
 ignore-words-list = "astroid"
+
+[project.entry-points.pytest11]
+zarr = "zarr.testing"

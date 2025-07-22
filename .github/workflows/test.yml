@@ -5,9 +5,9 @@ name: Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 3.0.x ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 3.0.x ]
   workflow_dispatch:
 
 concurrency:
@@ -21,12 +21,12 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        numpy-version: ['1.25', '2.2']
+        numpy-version: ['1.26', '2.2']
         dependency-set: ["minimal", "optional"]
         os: ["ubuntu-latest"]
         include:
           - python-version: '3.11'
-            numpy-version: '1.25'
+            numpy-version: '1.26'
             dependency-set: 'optional'
             os: 'macos-latest'
           - python-version: '3.13'
@@ -34,7 +34,7 @@ jobs:
             dependency-set: 'optional'
             os: 'macos-latest'
           - python-version: '3.11'
-            numpy-version: '1.25'
+            numpy-version: '1.26'
             dependency-set: 'optional'
             os: 'windows-latest'
           - python-version: '3.13'

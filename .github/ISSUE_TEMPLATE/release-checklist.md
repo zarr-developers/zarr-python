@@ -25,6 +25,7 @@ assignees: ''
   - [ ] All tests pass in the ["GPU Tests" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/gpu_test.yml).
   - [ ] All tests pass in the ["Hypothesis" workflow](https://github.com/zarr-developers/zarr-python/actions/workflows/hypothesis.yaml).
   - [ ] Check that downstream libraries work well (maintainers can make executive decisions about whether all checks are required for this release).
+    - [ ] numcodecs
     - [ ] Xarray (@jhamman @dcherian @TomNicholas)
         - Zarr's upstream compatibility is tested via the [Upstream Dev CI worklow](https://github.com/pydata/xarray/actions/workflows/upstream-dev-ci.yaml).
         - Click on the most recent workflow and check that the `upstream-dev` job has run and passed. `upstream-dev` is not run on all all workflow runs.
