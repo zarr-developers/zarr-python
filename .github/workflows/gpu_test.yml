@@ -30,6 +30,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # grab all branches and tags
     # - name: cuda-toolkit
     #   uses: Jimver/cuda-toolkit@v0.2.16
     #   id: cuda-toolkit
