@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#   "zarr @ file:///home/bennettd/dev/zarr-python/",
+#   "zarr @ git+https://github.com/d-v-b/zarr-python.git@a2bc6555",
 #   "imagecodecs==2025.3.30",
 #   "pytest"
 # ]
@@ -25,21 +25,22 @@ jpg_codec = Jpeg()
 def test(zarr_format: Literal[2, 3]) -> None:
     store = {}
     if zarr_format == 2:
-        zarr.create_array(
+        z_w = zarr.create_array(
             store=store,
             data=np.zeros((100, 100, 3), dtype=np.uint8),
             compressors=jpg_codec,
             zarr_format=zarr_format,
         )
     else:
-        zarr.create_array(
+        z_w = zarr.create_array(
             store=store,
             data=np.zeros((100, 100, 3), dtype=np.uint8),
             serializer=jpg_codec,
             zarr_format=zarr_format,
         )
-
+    z_w[:] = 2
     z_r = zarr.open_array(store=store, zarr_format=zarr_format)
+    assert np.all(z_r[:] == 2)
     if zarr_format == 2:
         print(z_r.metadata.to_dict()["compressor"])
     else:
