@@ -219,7 +219,8 @@ def test_sharding_multiple_chunks_partial_shard_read(
         # 1MiB, enough to coalesce all chunks within a shard in this example
         zarr.config.set({"sharding.read.coalesce_max_gap_bytes": 2**20})
     else:
-        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": -1})  # disable coalescing
+        # disable coalescing
+        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": -1})
 
     store_mock = AsyncMock(wraps=store, spec=store.__class__)
     a = zarr.create_array(
@@ -267,6 +268,54 @@ def test_sharding_multiple_chunks_partial_shard_read(
         assert method == "get"
         assert args[0].startswith("c/")  # get from a chunk
         assert isinstance(kwargs["byte_range"], (SuffixByteRequest, RangeByteRequest))
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("coalesce_reads", [True, False])
+def test_sharding_duplicate_read_indexes(
+    store: Store, index_location: ShardingCodecIndexLocation, coalesce_reads: bool
+) -> None:
+    """
+    Check that coalesce optimization parses the grouped reads back out correctly
+    when there are multiple reads for the same index.
+    """
+    array_shape = (15,)
+    shard_shape = (8,)
+    chunk_shape = (2,)
+    data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
+
+    if coalesce_reads:
+        # 1MiB, enough to coalesce all chunks within a shard in this example
+        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": 2**20})
+    else:
+        # disable coalescing
+        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": -1})
+
+    store_mock = AsyncMock(wraps=store, spec=store.__class__)
+    a = zarr.create_array(
+        StorePath(store_mock),
+        shape=data.shape,
+        chunks=chunk_shape,
+        shards={"shape": shard_shape, "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        dtype=data.dtype,
+        fill_value=-1,
+    )
+    a[:] = data
+
+    store_mock.reset_mock()  # ignore store calls during array creation
+
+    # Read the same index multiple times, do that from two chunks which can be coalesced
+    indexer = [8, 8, 12, 12]
+    np.array_equal(a[indexer], data[indexer])
+
+    if coalesce_reads:
+        # 1 shard index request + 1 coalesced read
+        assert store_mock.get.call_count == 2
+    else:
+        # 1 shard index request + 2 chunks
+        assert store_mock.get.call_count == 3
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
