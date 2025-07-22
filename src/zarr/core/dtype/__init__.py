@@ -224,7 +224,7 @@ def parse_data_type(
     >>> parse_data_type("int32", zarr_format=2)
     Int32(endianness="little")
     """
-    return parse_data_type(dtype_spec, zarr_format=zarr_format)
+    return parse_dtype(dtype_spec, zarr_format=zarr_format)
 
 
 def parse_dtype(
