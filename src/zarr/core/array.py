@@ -1442,7 +1442,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             indexer=indexer, out=out, fields=fields, prototype=prototype
         )
 
-    @_deprecate_positional_args
     async def get_coordinate_selection(
         self,
         selection: CoordinateSelection,
