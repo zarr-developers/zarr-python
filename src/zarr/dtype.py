@@ -84,6 +84,5 @@ __all__ = [
     "ZDType",
     "data_type_registry",
     "data_type_registry",
-    "parse_data_type",
     "parse_dtype",
 ]
