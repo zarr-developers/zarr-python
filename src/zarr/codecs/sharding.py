@@ -855,6 +855,7 @@ class ShardingCodec(
         Reads a possibly coalesced group of one or more chunks from a shard.
         Returns a mapping of chunk coordinates to bytes.
         """
+        # _coalesce_chunks ensures that the group is not empty.
         group_start = group[0].byte_slice.start
         group_end = group[-1].byte_slice.stop
 
