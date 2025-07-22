@@ -38,7 +38,7 @@ from zarr.core.dtype import (
     VariableLengthUTF8JSON_V2,
     ZDType,
     data_type_registry,
-    parse_data_type,
+    parse_dtype,
 )
 
 __all__ = [
@@ -83,5 +83,5 @@ __all__ = [
     "ZDType",
     "data_type_registry",
     "data_type_registry",
-    "parse_data_type",
+    "parse_dtype",
 ]
