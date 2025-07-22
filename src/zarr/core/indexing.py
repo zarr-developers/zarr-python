@@ -962,7 +962,7 @@ class OIndex:
 
 @dataclass(frozen=True)
 class AsyncOIndex:
-    array: AsyncArray
+    array: AsyncArray[ArrayMetadata]
 
     async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
@@ -1289,7 +1289,7 @@ class VIndex:
 
 @dataclass(frozen=True)
 class AsyncVIndex:
-    array: AsyncArray
+    array: AsyncArray[ArrayMetadata]
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
     async def getitem(
