@@ -237,7 +237,7 @@ def parse_dtype(
     ----------
     dtype_spec : ZDTypeLike
         The input to be converted to a ZDType. This could be a ZDType, which will be returned
-        directly, or a JSON representation of a ZDType, or a native dtype, or a python object that
+        directly, or a JSON representation of a ZDType, or a numpy dtype, or a python object that
         can be converted into a native dtype.
     zarr_format : ZarrFormat
         The Zarr format version. This parameter is required because this function will attempt to
