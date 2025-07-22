@@ -62,7 +62,6 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     concurrent_map,
-    parse_order,
     parse_shapelike,
     product,
 )
@@ -651,7 +650,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
             if order is not None:
                 _warn_order_kwarg()
-                config_parsed = replace(config_parsed, order=order)
 
             result = await cls._create_v3(
                 store_path,
@@ -679,9 +677,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
 
             if order is None:
-                order_parsed = parse_order(zarr_config.get("array.order"))
+                order_parsed = config_parsed.order
             else:
                 order_parsed = order
+                config_parsed = replace(config_parsed, order=order)
 
             result = await cls._create_v2(
                 store_path,
@@ -4326,10 +4325,8 @@ async def init_array(
             chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
 
-        if config is None:
-            config = {}
-        if order is not None and isinstance(config, dict):
-            config["order"] = config.get("order", order)
+        if order is not None:
+            _warn_order_kwarg()
 
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
@@ -4580,8 +4577,18 @@ def _parse_keep_array_attr(
                 serializer = "auto"
         if fill_value is None:
             fill_value = data.fill_value
-        if order is None:
+
+        if data.metadata.zarr_format == 2 and zarr_format == 3 and data.order == "F":
+            # Can't set order="F" for v3 arrays
+            warnings.warn(
+                "The 'order' attribute of a Zarr format 2 array does not have a direct analogue in Zarr format 3. "
+                "The existing order='F' of the source Zarr format 2 array will be ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+        elif order is None and zarr_format == 2:
             order = data.order
+
         if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
             if isinstance(data.metadata, ArrayV2Metadata):
                 chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}

@@ -1093,17 +1093,17 @@ def test_get_coordinate_selection_2d(store: StorePath) -> None:
     ix1 = np.array([[1, 3, 2], [1, 0, 0]])
     _test_get_coordinate_selection(a, z, (ix0, ix1))
 
+    selection = slice(5, 15), [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = slice(5, 15), [1, 2, 3]
         z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+    selection = [1, 2, 3], slice(5, 15)
     with pytest.raises(IndexError):
-        selection = [1, 2, 3], slice(5, 15)
         z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+    selection = Ellipsis, [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = Ellipsis, [1, 2, 3]
         z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+    selection = Ellipsis
     with pytest.raises(IndexError):
-        selection = Ellipsis
         z.get_coordinate_selection(selection)  # type:ignore[arg-type]
 
 
@@ -1299,14 +1299,14 @@ def test_get_block_selection_2d(store: StorePath) -> None:
     ):
         _test_get_block_selection(a, z, selection, expected_idx)
 
+    selection = slice(5, 15), [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = slice(5, 15), [1, 2, 3]
         z.get_block_selection(selection)
+    selection = Ellipsis, [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = Ellipsis, [1, 2, 3]
         z.get_block_selection(selection)
+    selection = slice(15, 20), slice(None)
     with pytest.raises(IndexError):  # out of bounds
-        selection = slice(15, 20), slice(None)
         z.get_block_selection(selection)
 
 
@@ -1360,14 +1360,14 @@ def test_set_block_selection_2d(store: StorePath) -> None:
     ):
         _test_set_block_selection(v, a, z, selection, expected_idx)
 
+    selection = slice(5, 15), [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = slice(5, 15), [1, 2, 3]
         z.set_block_selection(selection, 42)
+    selection = Ellipsis, [1, 2, 3]
     with pytest.raises(IndexError):
-        selection = Ellipsis, [1, 2, 3]
         z.set_block_selection(selection, 42)
+    selection = slice(15, 20), slice(None)
     with pytest.raises(IndexError):  # out of bounds
-        selection = slice(15, 20), slice(None)
         z.set_block_selection(selection, 42)
 
 
