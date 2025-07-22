@@ -259,8 +259,6 @@ def parse_dtype(
     NullTerminatedBytes(length=10)
     >>> parse_dtype({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
     DateTime64(endianness='little', scale_factor=10, unit='s')
-    >>> parse_dtype("int32", zarr_format=2)
-    Int32(endianness="little")
     """
     if isinstance(dtype_spec, ZDType):
         return dtype_spec
