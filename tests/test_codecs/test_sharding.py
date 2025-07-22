@@ -335,9 +335,9 @@ def test_sharding_read_empty_chunks_within_non_empty_shard_write_empty_false(
         # shard 0. full 8 elements, all chunks have some non-fill data
         0, 1, 2, 3, 4, 5, 6, 7,
         # shard 1. 6 elements (< shard shape)
-        2, 0, # chunk 0, written
-        0, 0, # chunk 1, all fill, not written
-        4, 5  # chunk 2, written
+         2,  0, # chunk 0, written
+        -9, -9, # chunk 1, all fill, not written
+         4,  5  # chunk 2, written
     ], dtype="int32")  # fmt: off
 
     spath = StorePath(store)
@@ -347,7 +347,7 @@ def test_sharding_read_empty_chunks_within_non_empty_shard_write_empty_false(
         chunks=(2,),
         shards={"shape": (8,), "index_location": index_location},
         dtype="int32",
-        fill_value=0,
+        fill_value=-9,
         filters=None,
         compressors=None,
         config={"write_empty_chunks": False},

@@ -469,7 +469,7 @@ class ShardingCodec(
             shape=shard_shape,
             dtype=shard_spec.dtype.to_native_dtype(),
             order=shard_spec.order,
-            fill_value=shard_spec.fill_value,
+            fill_value=0,
         )
         shard_dict = await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
 
@@ -516,7 +516,7 @@ class ShardingCodec(
             shape=indexer.shape,
             dtype=shard_spec.dtype.to_native_dtype(),
             order=shard_spec.order,
-            fill_value=shard_spec.fill_value,
+            fill_value=0,
         )
 
         indexed_chunks = list(indexer)
