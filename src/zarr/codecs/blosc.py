@@ -87,6 +87,8 @@ def parse_blocksize(data: JSON) -> int:
 
 @dataclass(frozen=True)
 class BloscCodec(BytesBytesCodec):
+    """blosc codec"""
+
     is_fixed_size = False
 
     typesize: int | None

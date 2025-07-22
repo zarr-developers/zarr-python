@@ -437,7 +437,6 @@ checks = [
     # Currently broken; see https://github.com/numpy/numpydoc/issues/573
     # "GL09",
     "GL10",
-    "SS02",
     "SS04",
     "PR02",
     "PR03",

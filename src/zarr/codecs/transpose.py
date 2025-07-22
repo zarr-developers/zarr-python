@@ -29,6 +29,8 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
 
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
+    """Transpose codec"""
+
     is_fixed_size = True
 
     order: tuple[int, ...]
