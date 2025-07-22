@@ -58,7 +58,7 @@ the following actions in order:
      vendor the parts of the specific modules that you need.
 
      * ``zarr.attrs`` has gone, with no replacement
-     * ``zarr.codecs`` has gone, use ``numcodecs`` instead
+     * ``zarr.codecs`` has changed, see "Codecs" section below for more information
      * ``zarr.context`` has gone, with no replacement
      * ``zarr.core`` remains but should be considered private API
      * ``zarr.hierarchy`` has gone, with no replacement (use ``zarr.Group`` inplace of ``zarr.hierarchy.Group``)
@@ -177,6 +177,18 @@ At present, the latter five stores in this list do not have an equivalent in Zar
 If you are interested in developing a custom store that targets these backends, see
 :ref:`developing custom stores <user-guide-custom-stores>` or open an
 `issue <https://github.com/zarr-developers/zarr-python/issues>`_ to discuss your use case.
+
+
+Codecs
+~~~~~~
+Codecs defined in ``numcodecs`` (and also imported into the ``zarr.codecs`` namespace in Zarr-Python 2)
+should still be used when creating Zarr format 2 arrays.
+
+Codecs for creating Zarr format 3 arrays are available in two locations:
+
+- `zarr.codecs` contains Zarr format 3 codecs that are defined in the `codecs section of the Zarr format 3 specification <https://zarr-specs.readthedocs.io/en/latest/v3/codecs/index.html>`_.
+- `numcodecs.zarr3` contains codecs from ``numcodecs`` that can be used to create Zarr format 3 arrays, but are not necessarily part of the Zarr format 3 specification.
+
 
 Dependencies
 ~~~~~~~~~~~~
