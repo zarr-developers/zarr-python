@@ -231,7 +231,7 @@ def parse_dtype(
     zarr_format: ZarrFormat,
 ) -> ZDType[TBaseDType, TBaseScalar]:
     """
-    Interpret the input as a ZDType.
+    Convert the input as a ZDType.
 
     Parameters
     ----------
