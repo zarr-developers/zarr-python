@@ -232,7 +232,9 @@ def parse_dtype(
         directly, or a JSON representation of a ZDType, or a native dtype, or a python object that
         can be converted into a native dtype.
     zarr_format : ZarrFormat
-        The Zarr format version.
+        The Zarr format version. This parameter is required because this function will attempt to
+        parse the JSON representation of a data type, and the JSON representation of data types
+        is different between Zarr 2 and Zarr 3.
 
     Returns
     -------
@@ -241,6 +243,14 @@ def parse_dtype(
 
     Examples
     --------
+    >>> from zarr.dtype import parse_dtype
+    >>> import numpy as np
+    >>> parse_dtype("int32", zarr_format=2)
+    Int32(endianness='little')
+    >>> parse_dtype(np.dtype('S10'), zarr_format=2)
+    NullTerminatedBytes(length=10)
+    >>> parse_dtype({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
+    DateTime64(endianness='little', scale_factor=10, unit='s')
     >>> parse_dtype("int32", zarr_format=2)
     Int32(endianness="little")
     """
