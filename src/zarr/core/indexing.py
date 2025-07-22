@@ -964,7 +964,7 @@ class OIndex:
 class AsyncOIndex:
     array: AsyncArray
 
-    async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
+    async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
