@@ -122,16 +122,17 @@ def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.asyncio
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
-def test_basic_indexing_async(data: st.DataObject) -> None:
+async def test_basic_indexing_async(data: st.DataObject) -> None:
     zarray = data.draw(simple_arrays())
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
     async_zarray = zarray._async_array
     
-    actual = asyncio.run(async_zarray.getitem(indexer))
+    actual = await async_zarray.getitem(indexer)
     assert_array_equal(nparray[indexer], actual)
 
     # TODO test async setitem
@@ -164,16 +165,17 @@ def test_oindex(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-def test_oindex_async(data: st.DataObject) -> None:
+async def test_oindex_async(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
     async_zarray = zarray._async_array
 
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
-    actual = asyncio.run(async_zarray.oindex.getitem(zindexer))
+    actual =  await async_zarray.oindex.getitem(zindexer)
     assert_array_equal(nparray[npindexer], actual)
 
     # note: async oindex setting not yet implemented
@@ -203,9 +205,10 @@ def test_vindex(data: st.DataObject) -> None:
     # assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-def test_vindex_async(data: st.DataObject) -> None:
+async def test_vindex_async(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
@@ -216,7 +219,7 @@ def test_vindex_async(data: st.DataObject) -> None:
             shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
         )
     )
-    actual = asyncio.run(async_zarray.vindex.getitem(indexer))
+    actual = await async_zarray.vindex.getitem(indexer)
     assert_array_equal(nparray[indexer], actual)
 
 
