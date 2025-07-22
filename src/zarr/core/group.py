@@ -336,7 +336,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), indent=json_indent, allow_nan=False).encode()
+                    json.dumps(self.to_dict(), indent=json_indent, allow_nan=True).encode()
                 )
             }
         else:
@@ -345,7 +345,7 @@ class GroupMetadata(Metadata):
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
                 ZATTRS_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.attributes, indent=json_indent, allow_nan=False).encode()
+                    json.dumps(self.attributes, indent=json_indent, allow_nan=True).encode()
                 ),
             }
             if self.consolidated_metadata:
@@ -373,7 +373,7 @@ class GroupMetadata(Metadata):
 
                 items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
                     json.dumps(
-                        {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=False
+                        {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=True
                     ).encode()
                 )
 
