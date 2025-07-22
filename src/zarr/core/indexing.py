@@ -76,7 +76,9 @@ def err_too_many_indices(selection: Any, shape: ChunkCoords) -> None:
     raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
 
 
-def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
+def _zarr_array_to_int_or_bool_array(
+    arr: Array,
+) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
     if arr.dtype.kind in ("i", "b"):
         return np.asarray(arr)
     else:
@@ -1193,7 +1195,7 @@ class CoordinateIndexer(Indexer):
             stop = self.chunk_nitems_cumsum[chunk_rix]
             out_selection: slice | npt.NDArray[np.intp]
             if self.sel_sort is None:
-                out_selection = np.arange(start, stop)
+                out_selection = slice(start, stop)
             else:
                 out_selection = self.sel_sort[start:stop]
 
@@ -1318,7 +1320,8 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
         fields = fields[0] if len(fields) == 1 else fields
         selection_tuple = tuple(s for s in selection if not isinstance(s, str))
         selection = cast(
-            "Selection", selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
+            "Selection",
+            selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple,
         )
         return fields, selection
 
