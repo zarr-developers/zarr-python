@@ -141,7 +141,13 @@ class ConsolidatedMetadata:
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
-            "metadata": {k: v.to_dict() for k, v in self.flattened_metadata.items()},
+            "metadata": {
+                k: v.to_dict()
+                for k, v in sorted(
+                    self.flattened_metadata.items(),
+                    key=lambda item: (item[0].count("/"), item[0]),
+                )
+            },
         }
 
     @classmethod
