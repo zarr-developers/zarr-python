@@ -50,5 +50,8 @@ Under the hood, `enable_gpu()` selects the GPU-backed buffer classes
 `ndbuffer` configuration keys. See [Custom array buffers](extending.md#custom-array-buffers)
 for more on Zarr's buffer classes, including how to implement your own.
 
-For Zstd compressed buffers, zarr will use the [nvcomp](https://docs.nvidia.com/cuda/nvcomp/samples/python_samples.html)
-library to compress and decompress data on the GPU.
+For supported codecs, data will be decoded using the GPU via the
+[nvcomp](https://docs.nvidia.com/cuda/nvcomp/samples/python_samples.html) library.
+See [Runtime configuration](config.md) for more. Issues and feature requests for
+NVIDIA nvCOMP can be reported in the
+[nvcomp issue tracker](https://github.com/NVIDIA/CUDALibrarySamples/issues).
