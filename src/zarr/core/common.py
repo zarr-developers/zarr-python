@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import math
 import operator
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
@@ -67,6 +68,12 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
 
 def product(tup: ChunkCoords) -> int:
     return functools.reduce(operator.mul, tup, 1)
+
+
+def ceildiv(a: float, b: float) -> int:
+    if a == 0:
+        return 0
+    return math.ceil(a / b)
 
 
 T = TypeVar("T", bound=tuple[Any, ...])

@@ -26,14 +26,15 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.common import product
+from zarr.core.common import ceildiv, product
+from zarr.core.metadata import T_ArrayMetadata
 
 if TYPE_CHECKING:
     from zarr.core.array import Array, AsyncArray
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
-    from zarr.core.metadata import T_ArrayMetadata
+
 
 IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
@@ -93,12 +94,6 @@ class Indexer(Protocol):
     drop_axes: ChunkCoords
 
     def __iter__(self) -> Iterator[ChunkProjection]: ...
-
-
-def ceildiv(a: float, b: float) -> int:
-    if a == 0:
-        return 0
-    return math.ceil(a / b)
 
 
 _ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
