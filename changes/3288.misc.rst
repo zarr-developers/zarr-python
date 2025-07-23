@@ -1,0 +1,1 @@
+Sort dictionary keys before returning consolidated metadata to ensure deterministic output.
