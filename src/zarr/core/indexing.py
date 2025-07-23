@@ -33,8 +33,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
-
-from zarr.core.metadata import T_ArrayMetadata
+    from zarr.core.metadata import T_ArrayMetadata
 
 IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
