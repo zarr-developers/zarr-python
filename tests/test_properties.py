@@ -1,7 +1,6 @@
 import json
 import numbers
 from typing import Any
-import asyncio
 
 import numpy as np
 import pytest
@@ -131,7 +130,7 @@ async def test_basic_indexing_async(data: st.DataObject) -> None:
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
     async_zarray = zarray._async_array
-    
+
     actual = await async_zarray.getitem(indexer)
     assert_array_equal(nparray[indexer], actual)
 
@@ -175,7 +174,7 @@ async def test_oindex_async(data: st.DataObject) -> None:
     async_zarray = zarray._async_array
 
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
-    actual =  await async_zarray.oindex.getitem(zindexer)
+    actual = await async_zarray.oindex.getitem(zindexer)
     assert_array_equal(nparray[npindexer], actual)
 
     # note: async oindex setting not yet implemented
