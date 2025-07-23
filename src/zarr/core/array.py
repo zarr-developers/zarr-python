@@ -1601,6 +1601,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @property
     def vindex(self) -> AsyncVIndex[T_ArrayMetadata]:
+        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
+        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
+        :func:`set_mask_selection` for documentation and examples."""
         return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
