@@ -10,7 +10,7 @@ from zarr.core.array import init_array
 from zarr.storage._common import StorePath
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
     from zarr.abc.codec import Codec
@@ -1257,7 +1257,7 @@ def test_api_exports() -> None:
     assert zarr.api.asynchronous.__all__ == zarr.api.synchronous.__all__
 
 
-@gpu_test
+@gpu_test  # type: ignore[misc]
 @pytest.mark.parametrize(
     "store",
     ["local", "memory", "zip"],
@@ -1293,6 +1293,46 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None, codec: str | Co
         # assert_array_equal doesn't check the type
         assert isinstance(result, type(src))
         cp.testing.assert_array_equal(result, src[:10, :10])
+
+
+@gpu_test  # type: ignore[misc]
+@pytest.mark.parametrize("host_encode", [True, False])
+def test_gpu_codec_compatibility(host_encode: bool) -> None:
+    # Ensure that the we can decode CPU-encoded data with the GPU
+    # and GPU-encoded data with the CPU
+    import cupy as cp
+
+    @contextlib.contextmanager
+    def gpu_context() -> Iterator[None]:
+        with zarr.config.enable_gpu():
+            yield
+
+    if host_encode:
+        write_ctx: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
+        read_ctx: contextlib.AbstractContextManager[None] = gpu_context()
+        write_data = np.arange(16, dtype="int32").reshape(4, 4)
+        read_data = cp.array(write_data)
+        xp = cp
+    else:
+        write_ctx = gpu_context()
+        read_ctx = contextlib.nullcontext()
+        write_data = cp.arange(16, dtype="int32").reshape(4, 4)
+        read_data = write_data.get()
+        xp = np
+
+    with write_ctx:
+        z = zarr.create_array(
+            store=zarr.storage.MemoryStore(),
+            shape=write_data.shape,
+            chunks=(4, 4),
+            dtype=write_data.dtype,
+        )
+        z[:] = write_data
+
+    with read_ctx:
+        result = z[:]
+        assert isinstance(result, type(read_data))
+        xp.testing.assert_array_equal(result, read_data)
 
 
 def test_v2_without_compressor() -> None:
@@ -1414,3 +1454,5 @@ def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
     kwargs = {kwarg_name: 1}
     with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
         zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
+
+
