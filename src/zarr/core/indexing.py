@@ -12,6 +12,7 @@ from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
     Any,
+    Generic,
     Literal,
     NamedTuple,
     Protocol,
@@ -32,8 +33,8 @@ if TYPE_CHECKING:
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
-    from zarr.core.metadata import T_ArrayMetadata
 
+from zarr.core.metadata import T_ArrayMetadata
 
 IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
@@ -963,7 +964,7 @@ class OIndex:
 
 
 @dataclass(frozen=True)
-class AsyncOIndex:
+class AsyncOIndex(Generic[T_ArrayMetadata]):
     array: AsyncArray[T_ArrayMetadata]
 
     async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
@@ -1290,7 +1291,7 @@ class VIndex:
 
 
 @dataclass(frozen=True)
-class AsyncVIndex:
+class AsyncVIndex(Generic[T_ArrayMetadata]):
     array: AsyncArray[T_ArrayMetadata]
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool

@@ -1594,13 +1594,13 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return await self._set_selection(indexer, value, prototype=prototype)
 
     @property
-    def oindex(self) -> AsyncOIndex:
+    def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:
         """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
         :func:`set_orthogonal_selection` for documentation and examples."""
         return AsyncOIndex(self)
 
     @property
-    def vindex(self) -> AsyncVIndex:
+    def vindex(self) -> AsyncVIndex[T_ArrayMetadata]:
         return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
