@@ -3,7 +3,7 @@ from typing import Annotated, Literal, cast
 
 import typer
 
-from zarr.core.metadata.converter.converter_v2_v3 import convert_v2_to_v3, remove_metadata
+import zarr.core.metadata.converter.migrate_to_v3 as migrate_metadata
 from zarr.core.sync import sync
 
 app = typer.Typer()
@@ -25,7 +25,15 @@ def _set_verbose_level() -> None:
 
 
 @app.command()  # type: ignore[misc]
-def convert(
+def migrate(
+    zarr_format: Annotated[
+        int,
+        typer.Argument(
+            help="Zarr format to migrate to. Currently only 'v3' is supported.",
+            min=3,
+            max=3,
+        ),
+    ],
     store: Annotated[
         str,
         typer.Argument(
@@ -40,7 +48,7 @@ def convert(
         ),
     ] = False,
 ) -> None:
-    """Convert all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
+    """Migrate all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
     (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
     """
     if dry_run:
@@ -49,11 +57,11 @@ def convert(
             "Dry run enabled - no new files will be created. Log of files that would be created on a real run:"
         )
 
-    convert_v2_to_v3(store=store, path=path, dry_run=dry_run)
+    migrate_metadata.migrate_to_v3(store=store, path=path, dry_run=dry_run)
 
 
 @app.command()  # type: ignore[misc]
-def clear(
+def remove_metadata(
     store: Annotated[
         str,
         typer.Argument(
@@ -86,7 +94,7 @@ def clear(
         )
 
     sync(
-        remove_metadata(
+        migrate_metadata.remove_metadata(
             store=store, zarr_format=cast(Literal[2, 3], zarr_format), path=path, dry_run=dry_run
         )
     )
@@ -102,8 +110,8 @@ def main(
     ] = False,
 ) -> None:
     """
-    Convert metadata from v2 to v3. See available commands below - access help for individual commands with
-    zarr-converter COMMAND --help.
+    Migrate metadata from v2 to v3. See available commands below - access help for individual commands with
+    zarr COMMAND --help.
     """
     _set_logging_config(verbose)
 

@@ -34,13 +34,13 @@ from zarr.storage._common import make_store_path
 logger = logging.getLogger(__name__)
 
 
-def convert_v2_to_v3(
+def migrate_to_v3(
     store: StoreLike,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     dry_run: bool = False,
 ) -> None:
-    """Convert all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
+    """Migrate all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
     (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
 
     Parameters
@@ -57,11 +57,11 @@ def convert_v2_to_v3(
     """
 
     zarr_v2 = zarr.open(store=store, mode="r+", path=path, storage_options=storage_options)
-    convert_array_or_group(zarr_v2, dry_run=dry_run)
+    migrate_array_or_group(zarr_v2, dry_run=dry_run)
 
 
-def convert_array_or_group(zarr_v2: Array | Group, dry_run: bool = False) -> None:
-    """Convert all v2 metadata in a zarr array/group to v3. Note - if a group is provided, then
+def migrate_array_or_group(zarr_v2: Array | Group, dry_run: bool = False) -> None:
+    """Migrate all v2 metadata in a zarr array/group to v3. Note - if a group is provided, then
     all arrays / groups within this group will also be converted. A zarr.json file will be created
     at each level, with any V2 files (.zarray, .zattrs etc.) left as-is.
 
@@ -78,7 +78,7 @@ def convert_array_or_group(zarr_v2: Array | Group, dry_run: bool = False) -> Non
     if isinstance(zarr_v2.metadata, GroupMetadata):
         # process members of the group
         for key in zarr_v2:
-            convert_array_or_group(zarr_v2[key], dry_run=dry_run)
+            migrate_array_or_group(zarr_v2[key], dry_run=dry_run)
 
         # write group's converted metadata
         group_metadata_v3 = GroupMetadata(
