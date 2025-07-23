@@ -1307,7 +1307,13 @@ class AsyncGroup:
         # check if we can use consolidated metadata, which requires that we have non-None
         # consolidated metadata at all points in the hierarchy.
         if self.metadata.consolidated_metadata is not None:
-            return len([x for x in self.metadata.consolidated_metadata.flattened_metadata if x.count("/") <= max_depth])
+            if max_depth is not None and max_depth < 0:
+                raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
+            if max_depth is None:
+                return len(self.metadata.consolidated_metadata.flattened_metadata)
+            else:
+                return len([x for x in self.metadata.consolidated_metadata.flattened_metadata if x.count("/") <= max_depth])
+            
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0
