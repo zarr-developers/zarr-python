@@ -1313,7 +1313,6 @@ class AsyncGroup:
                 return len(self.metadata.consolidated_metadata.flattened_metadata)
             else:
                 return len([x for x in self.metadata.consolidated_metadata.flattened_metadata if x.count("/") <= max_depth])
-            
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0
