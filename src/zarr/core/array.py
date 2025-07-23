@@ -1442,6 +1442,21 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             indexer=indexer, out=out, fields=fields, prototype=prototype
         )
 
+    async def get_mask_selection(
+        self,
+        mask: MaskSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
     async def get_coordinate_selection(
         self,
         selection: CoordinateSelection,

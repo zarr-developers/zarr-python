@@ -1309,7 +1309,7 @@ class AsyncVIndex(Generic[T_ArrayMetadata]):
         if is_coordinate_selection(new_selection, self.array.shape):
             return await self.array.get_coordinate_selection(new_selection, fields=fields)
         elif is_mask_selection(new_selection, self.array.shape):
-            return self.array.get_mask_selection(new_selection, fields=fields)
+            return await self.array.get_mask_selection(new_selection, fields=fields)
         else:
             raise VindexInvalidSelectionError(new_selection)
 
