@@ -40,7 +40,6 @@ def migrate(
             help="Store or path to directory in file system or name of zip file e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
         ),
     ],
-    path: Annotated[str | None, typer.Option(help="The path within the store to open")] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -57,7 +56,7 @@ def migrate(
             "Dry run enabled - no new files will be created. Log of files that would be created on a real run:"
         )
 
-    migrate_metadata.migrate_to_v3(store=store, path=path, dry_run=dry_run)
+    migrate_metadata.migrate_to_v3(store=store, dry_run=dry_run)
 
 
 @app.command()  # type: ignore[misc]
@@ -76,7 +75,6 @@ def remove_metadata(
             max=3,
         ),
     ],
-    path: Annotated[str | None, typer.Option(help="The path within the store to open")] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -95,7 +93,7 @@ def remove_metadata(
 
     sync(
         migrate_metadata.remove_metadata(
-            store=store, zarr_format=cast(Literal[2, 3], zarr_format), path=path, dry_run=dry_run
+            store=store, zarr_format=cast(Literal[2, 3], zarr_format), dry_run=dry_run
         )
     )
 

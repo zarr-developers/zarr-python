@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 def migrate_to_v3(
     store: StoreLike,
-    path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     dry_run: bool = False,
 ) -> None:
@@ -47,8 +46,6 @@ def migrate_to_v3(
     ----------
     store : StoreLike
         Store or path to directory in file system or name of zip file.
-    path : str | None, optional
-        The path within the store to open, by default None
     storage_options : dict | None, optional
         If the store is backed by an fsspec-based implementation, then this dict will be passed to
         the Store constructor for that implementation. Ignored otherwise.
@@ -56,7 +53,7 @@ def migrate_to_v3(
         Enable a 'dry run' - files that would be created are logged, but no files are actually created.
     """
 
-    zarr_v2 = zarr.open(store=store, mode="r+", path=path, storage_options=storage_options)
+    zarr_v2 = zarr.open(store=store, mode="r+", storage_options=storage_options)
     migrate_array_or_group(zarr_v2, dry_run=dry_run)
 
 
@@ -95,7 +92,6 @@ def migrate_array_or_group(zarr_v2: Array | Group, dry_run: bool = False) -> Non
 async def remove_metadata(
     store: StoreLike,
     zarr_format: ZarrFormat,
-    path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     dry_run: bool = False,
 ) -> None:
@@ -108,8 +104,6 @@ async def remove_metadata(
         Store or path to directory in file system or name of zip file.
     zarr_format : ZarrFormat
         Which format's metadata to remove - 2 or 3.
-    path : str | None, optional
-        The path within the store to open, by default None
     storage_options : dict | None, optional
         If the store is backed by an fsspec-based implementation, then this dict will be passed to
         the Store constructor for that implementation. Ignored otherwise.
@@ -120,18 +114,13 @@ async def remove_metadata(
     if not store_path.store.supports_deletes:
         raise ValueError("Store must support deletes to remove metadata")
 
-    if path is None:
-        prefix = ""
-    else:
-        prefix = path
-
     if zarr_format == 2:
         metadata_files = [ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ZMETADATA_V2_JSON]
     else:
         metadata_files = [ZARR_JSON]
 
     awaitables = []
-    async for file_path in store_path.store.list_prefix(prefix):
+    async for file_path in store_path.store.list_prefix(""):
         if file_path.split("/")[-1] in metadata_files:
             logger.info("Deleting metadata at %s", store_path / file_path)
 
