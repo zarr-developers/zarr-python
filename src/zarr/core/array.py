@@ -1434,7 +1434,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayLikeOrScalar:
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
