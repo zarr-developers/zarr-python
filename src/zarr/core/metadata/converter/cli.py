@@ -105,7 +105,7 @@ def migrate(
     if overwrite:
         sync(migrate_metadata.remove_metadata(write_store, 3, force=force, dry_run=dry_run))
 
-    migrate_metadata.migrate_to_v3(
+    migrate_metadata.migrate_v2_to_v3(
         input_store=input_store, output_store=output_store, dry_run=dry_run
     )
 

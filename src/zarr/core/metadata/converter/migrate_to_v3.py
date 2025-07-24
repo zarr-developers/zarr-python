@@ -34,7 +34,7 @@ from zarr.storage._common import StorePath, make_store_path
 logger = logging.getLogger(__name__)
 
 
-def migrate_to_v3(
+def migrate_v2_to_v3(
     input_store: StoreLike,
     output_store: StoreLike | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -70,12 +70,10 @@ def migrate_to_v3(
     else:
         output_path = zarr_v2.store_path
 
-    migrate_array_or_group(zarr_v2, output_path, dry_run=dry_run)
+    migrate_to_v3(zarr_v2, output_path, dry_run=dry_run)
 
 
-def migrate_array_or_group(
-    zarr_v2: Array | Group, output_path: StorePath, dry_run: bool = False
-) -> None:
+def migrate_to_v3(zarr_v2: Array | Group, output_path: StorePath, dry_run: bool = False) -> None:
     """Migrate all v2 metadata in a zarr array/group to v3.
 
     Note - if a group is provided, then all arrays / groups within this group will also be converted.
@@ -95,20 +93,9 @@ def migrate_array_or_group(
         raise TypeError("Only arrays / groups with zarr v2 metadata can be converted")
 
     if isinstance(zarr_v2.metadata, GroupMetadata):
-        # process members of the group
-        for key in zarr_v2:
-            migrate_array_or_group(zarr_v2[key], output_path=output_path / key, dry_run=dry_run)
-
-        # write group's converted metadata
-        group_metadata_v3 = GroupMetadata(
-            attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
-        )
-        sync(_save_v3_metadata(group_metadata_v3, output_path, dry_run=dry_run))
-
+        _convert_group(zarr_v2, output_path, dry_run)
     else:
-        # write array's converted metadata
-        array_metadata_v3 = _convert_array_metadata(zarr_v2.metadata)
-        sync(_save_v3_metadata(array_metadata_v3, output_path, dry_run=dry_run))
+        _convert_array(zarr_v2, output_path, dry_run)
 
 
 async def remove_metadata(
@@ -172,6 +159,23 @@ async def remove_metadata(
             )
 
     await asyncio.gather(*awaitables)
+
+
+def _convert_group(zarr_v2: Group, output_path: StorePath, dry_run: bool) -> None:
+    # process members of the group
+    for key in zarr_v2:
+        migrate_to_v3(zarr_v2[key], output_path=output_path / key, dry_run=dry_run)
+
+    # write group's converted metadata
+    group_metadata_v3 = GroupMetadata(
+        attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
+    )
+    sync(_save_v3_metadata(group_metadata_v3, output_path, dry_run=dry_run))
+
+
+def _convert_array(zarr_v2: Array, output_path: StorePath, dry_run: bool) -> None:
+    array_metadata_v3 = _convert_array_metadata(cast(ArrayV2Metadata, zarr_v2.metadata))
+    sync(_save_v3_metadata(array_metadata_v3, output_path, dry_run=dry_run))
 
 
 async def _metadata_exists(zarr_format: ZarrFormat, store_path: StorePath) -> bool:
