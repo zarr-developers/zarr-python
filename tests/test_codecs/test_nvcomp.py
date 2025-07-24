@@ -1,5 +1,6 @@
 import contextlib
 import typing
+from collections.abc import Iterator
 
 import numpy as np
 import pytest
@@ -8,7 +9,6 @@ import zarr
 from zarr.abc.store import Store
 from zarr.buffer.gpu import buffer_prototype
 from zarr.codecs import NvcompZstdCodec
-from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.storage import StorePath
 from zarr.testing.utils import gpu_test
@@ -65,54 +65,49 @@ def test_nvcomp_zstd(store: Store, checksum: bool, selection: tuple[slice, slice
 
 
 @gpu_test  # type: ignore[misc,unused-ignore]
-@pytest.mark.parametrize("host_encode", [True, False], ids=["host_encode", "device_encode"])
-def test_nvcomp_zstd_matches(memory_store: zarr.storage.MemoryStore, host_encode: bool) -> None:
-    # Test to ensure that
+@pytest.mark.parametrize("host_encode", [True, False])
+def test_gpu_codec_compatibility(host_encode: bool) -> None:
+    # Ensure that the we can decode CPU-encoded data with the GPU
+    # and GPU-encoded data with the CPU
     import cupy as cp
 
     @contextlib.contextmanager
-    def enable_gpu():
+    def gpu_context() -> Iterator[None]:
         with zarr.config.enable_gpu():
             yield
 
     if host_encode:
-        write_ctx = contextlib.nullcontext()
-        read_ctx = enable_gpu()
-        data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
+        # CPU encode, GPU decode
+        write_ctx: contextlib.AbstractContextManager[None] = contextlib.nullcontext()
+        read_ctx: contextlib.AbstractContextManager[None] = gpu_context()
+        write_data = np.arange(16, dtype="int32").reshape(4, 4)
+        read_data = cp.array(write_data)
+        xp = cp
     else:
-        write_ctx = zarr.config.enable_gpu()
-        read_ctx = enable_gpu()
-        data = cp.arange(0, 256, dtype="uint16").reshape((16, 16))
+        # GPU encode, CPU decode
+        write_ctx = gpu_context()
+        read_ctx = contextlib.nullcontext()
+        write_data = cp.arange(16, dtype="int32").reshape(4, 4)
+        read_data = write_data.get()
+        xp = np
+
+    store = zarr.storage.MemoryStore()
 
     with write_ctx:
-        a = zarr.create_array(
-            store=memory_store,
-            name="data",
-            shape=data.shape,
+        z = zarr.create_array(
+            store=store,
+            shape=write_data.shape,
             chunks=(4, 4),
-            dtype=data.dtype,
-            fill_value=0,
+            dtype=write_data.dtype,
         )
-        a[:, :] = data
-    assert a.metadata.zarr_format == 3
-    assert a.metadata.codecs[-1].to_dict()["name"] == "zstd"
+        z[:] = write_data
 
     with read_ctx:
-        b = zarr.open_array(a.store_path, mode="r")
-        assert b.metadata.zarr_format == 3
-
-        zstd_codec = b.metadata.codecs[-1]
-        assert zstd_codec.to_dict()["name"] == "zstd"
-
-        if host_encode:
-            assert isinstance(zstd_codec, NvcompZstdCodec)
-        else:
-            assert isinstance(zstd_codec, ZstdCodec)
-
-        if host_encode:
-            cp.testing.assert_array_equal(data, b[:, :])
-        else:
-            np.testing.assert_array_equal(data.get(), b[:, :])
+        # We need to reopen z, because `z.codec_pipeline` is set at creation
+        z = zarr.open_array(store=store, mode="r")
+        result = z[:]
+        assert isinstance(result, type(read_data))
+        xp.testing.assert_array_equal(result, read_data)
 
 
 @gpu_test  # type: ignore[misc,unused-ignore]

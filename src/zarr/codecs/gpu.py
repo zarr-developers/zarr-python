@@ -96,7 +96,7 @@ class NvcompZstdCodec(BytesBytesCodec):
         chunks_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
     ) -> Iterable[Buffer | None]:
         return [
-            spec.prototype.buffer.from_array_like(cp.array(a, dtype=np.dtype("b"), copy=False))
+            spec.prototype.buffer.from_array_like(cp.array(a, dtype=np.dtype("B"), copy=False))
             if a
             else None
             for a, (_, spec) in zip(arrays, chunks_and_specs, strict=True)
