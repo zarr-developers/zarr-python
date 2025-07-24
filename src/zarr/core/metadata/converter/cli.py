@@ -116,15 +116,15 @@ def migrate(
 
 @app.command()  # type: ignore[misc]
 def remove_metadata(
+    zarr_format: Annotated[
+        ZarrFormat,
+        typer.Argument(help="Which format's metadata to remove - v2 or v3."),
+    ],
     store: Annotated[
         str,
         typer.Argument(
             help="Store or path to directory in file system or name of zip file e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
         ),
-    ],
-    zarr_format: Annotated[
-        ZarrFormat,
-        typer.Argument(help="Which format's metadata to remove - v2 or v3."),
     ],
     force: Annotated[
         bool,
