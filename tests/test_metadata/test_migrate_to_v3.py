@@ -17,6 +17,7 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
+from zarr.core.common import ZarrFormat
 from zarr.core.dtype.npy.int import BaseInt, UInt8, UInt16
 
 typer_testing = pytest.importorskip(
@@ -29,11 +30,13 @@ cli = pytest.importorskip(
 runner = typer_testing.CliRunner()
 
 
-def create_nested_zarr(store: Store, attributes: dict[str, Any], separator: str) -> list[str]:
+def create_nested_zarr(
+    store: Store, attributes: dict[str, Any], separator: str, zarr_format: ZarrFormat = 2
+) -> list[str]:
     """Create a zarr with nested groups / arrays for testing, returning the paths to all."""
 
     # 3 levels of nested groups
-    group_0 = zarr.create_group(store=store, zarr_format=2, attributes=attributes)
+    group_0 = zarr.create_group(store=store, zarr_format=zarr_format, attributes=attributes)
     group_1 = group_0.create_group(name="group_1", attributes=attributes)
     group_2 = group_1.create_group(name="group_2", attributes=attributes)
     paths = [group_0.path, group_1.path, group_2.path]
@@ -474,18 +477,34 @@ def test_convert_incorrect_compressor(local_store: Store) -> None:
     )
 
 
-def test_remove_metadata_v2(local_store: Store, expected_paths_no_metadata: list[Path]) -> None:
-    """Test all v2 metadata can be removed (leaving all groups / arrays as-is)"""
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_remove_metadata_fails_without_force(local_store: Store, zarr_format: ZarrFormat) -> None:
+    """Test removing metadata (when no alternate metadata is present) fails without --force."""
 
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".")
+    create_nested_zarr(local_store, attributes, ".", zarr_format=zarr_format)
 
-    result = runner.invoke(cli.app, ["remove-metadata", "v2", str(local_store.root)])
+    result = runner.invoke(cli.app, ["remove-metadata", f"v{zarr_format}", str(local_store.root)])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, ValueError)
+    assert str(result.exception).startswith(f"Cannot remove v{zarr_format} metadata at file")
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_remove_metadata_succeeds_with_force(
+    local_store: Store, zarr_format: ZarrFormat, expected_paths_no_metadata: list[Path]
+) -> None:
+    """Test removing metadata (when no alternate metadata is present) succeeds with --force."""
+
+    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
+    create_nested_zarr(local_store, attributes, ".", zarr_format=zarr_format)
+
+    result = runner.invoke(
+        cli.app, ["remove-metadata", f"v{zarr_format}", str(local_store.root), "--force"]
+    )
     assert result.exit_code == 0
 
-    # check metadata files removed, but all groups / arrays still remain
     paths = sorted(local_store.root.rglob("*"))
-
     expected_paths = [local_store.root / p for p in expected_paths_no_metadata]
     assert paths == expected_paths
 
