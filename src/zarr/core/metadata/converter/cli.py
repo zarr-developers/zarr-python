@@ -53,6 +53,14 @@ def migrate(
             )
         ),
     ] = None,
+    overwrite: Annotated[
+        bool,
+        typer.Option(help="Overwrite any existing v3 metadata at the output location."),
+    ] = False,
+    remove_v2_metadata: Annotated[
+        bool,
+        typer.Option(help="Remove v2 metadata (if any) from the output location."),
+    ] = False,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -69,9 +77,17 @@ def migrate(
             "Dry run enabled - no new files will be created. Log of files that would be created on a real run:"
         )
 
+    write_store = output_store if output_store is not None else input_store
+
+    if overwrite:
+        sync(migrate_metadata.remove_metadata(write_store, 3, dry_run=dry_run))
+
     migrate_metadata.migrate_to_v3(
         input_store=input_store, output_store=output_store, dry_run=dry_run
     )
+
+    if remove_v2_metadata:
+        sync(migrate_metadata.remove_metadata(write_store, 2, dry_run=dry_run))
 
 
 @app.command()  # type: ignore[misc]
