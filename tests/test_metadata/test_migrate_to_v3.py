@@ -218,17 +218,16 @@ def test_convert_nested_groups_and_arrays(
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-def test_convert_nested_with_path(
+def test_convert_sub_group(
     local_store: Store, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that only arrays/groups within group_1 are converted (+ no other files in store)"""
 
     create_nested_zarr(local_store, {}, separator)
-
-    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root), "--path", "group_1"])
-    assert result.exit_code == 0
-
     group_path = local_store.root / "group_1"
+
+    result = runner.invoke(cli.app, ["migrate", "v3", str(group_path)])
+    assert result.exit_code == 0
 
     zarr_json_paths = sorted(local_store.root.rglob("zarr.json"))
     expected_zarr_json_paths = [
@@ -491,16 +490,16 @@ def test_remove_metadata_v2(local_store: Store, expected_paths_no_metadata: list
     assert paths == expected_paths
 
 
-def test_remove_metadata_v2_with_path(
+def test_remove_metadata_sub_group(
     local_store: Store, expected_paths_no_metadata: list[Path]
 ) -> None:
-    """Test only v2 metadata within the given path (group_1) is removed"""
+    """Test only v2 metadata within group_1 is removed and rest remains un-changed."""
 
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
     create_nested_zarr(local_store, attributes, ".")
 
     result = runner.invoke(
-        cli.app, ["remove-metadata", "v2", str(local_store.root), "--path", "group_1"]
+        cli.app, ["remove-metadata", "v2", str(local_store.root / "group_1"), "--force"]
     )
     assert result.exit_code == 0
 
@@ -553,7 +552,7 @@ def test_dry_run(
         result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root), "--dry-run"])
     else:
         result = runner.invoke(
-            cli.app, ["remove-metadata", "v2", str(local_store.root), "--dry-run"]
+            cli.app, ["remove-metadata", "v2", str(local_store.root), "--force", "--dry-run"]
         )
 
     assert result.exit_code == 0
