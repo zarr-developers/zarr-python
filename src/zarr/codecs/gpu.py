@@ -20,12 +20,12 @@ if TYPE_CHECKING:
 
 try:
     import cupy as cp
-except ImportError:
+except ImportError:  # pragma: no cover
     cp = None
 
 try:
     from nvidia import nvcomp
-except ImportError:
+except ImportError:  # pragma: no cover
     nvcomp = None
 
 
