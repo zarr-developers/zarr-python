@@ -29,13 +29,14 @@ from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.registry import get_codec_class
 from zarr.storage import StoreLike
-from zarr.storage._common import make_store_path
+from zarr.storage._common import StorePath, make_store_path
 
 logger = logging.getLogger(__name__)
 
 
 def migrate_to_v3(
-    store: StoreLike,
+    input_store: StoreLike,
+    output_store: StoreLike | None = None,
     storage_options: dict[str, Any] | None = None,
     dry_run: bool = False,
 ) -> None:
@@ -44,28 +45,47 @@ def migrate_to_v3(
 
     Parameters
     ----------
-    store : StoreLike
-        Store or path to directory in file system or name of zip file.
+    input_store : StoreLike
+        Input Zarr to migrate - should be a store, path to directory in file system or name of zip file.
+    output_store : StoreLike
+        Output location to write v3 metadata (no chunks will be copied). If not provided, v3 metadata will be
+        written to input_store. Should be a store, path to directory in file system or name of zip file.
     storage_options : dict | None, optional
         If the store is backed by an fsspec-based implementation, then this dict will be passed to
-        the Store constructor for that implementation. Ignored otherwise.
+        the Store constructor for that implementation. Ignored otherwise. Note - the same storage_options will
+        be passed to both input_store and output_store (if provided).
     dry_run : bool, optional
         Enable a 'dry run' - files that would be created are logged, but no files are actually created.
     """
 
-    zarr_v2 = zarr.open(store=store, mode="r+", storage_options=storage_options)
-    migrate_array_or_group(zarr_v2, dry_run=dry_run)
+    zarr_v2 = zarr.open(store=input_store, mode="r+", storage_options=storage_options)
+
+    if output_store is not None:
+        # w- access to not allow overwrite of existing data
+        output_path = sync(
+            make_store_path(output_store, mode="w-", storage_options=storage_options)
+        )
+    else:
+        output_path = zarr_v2.store_path
+
+    migrate_array_or_group(zarr_v2, output_path, dry_run=dry_run)
 
 
-def migrate_array_or_group(zarr_v2: Array | Group, dry_run: bool = False) -> None:
-    """Migrate all v2 metadata in a zarr array/group to v3. Note - if a group is provided, then
-    all arrays / groups within this group will also be converted. A zarr.json file will be created
-    at each level, with any V2 files (.zarray, .zattrs etc.) left as-is.
+def migrate_array_or_group(
+    zarr_v2: Array | Group, output_path: StorePath, dry_run: bool = False
+) -> None:
+    """Migrate all v2 metadata in a zarr array/group to v3.
+
+    Note - if a group is provided, then all arrays / groups within this group will also be converted.
+    A zarr.json file will be created for each level and written to output_path, with any V2 files
+    (.zarray, .zattrs etc.) left as-is.
 
     Parameters
     ----------
     zarr_v2 : Array | Group
         An array or group with zarr_format = 2
+    output_path : StorePath
+        The store path to write generated v3 metadata to.
     dry_run : bool, optional
         Enable a 'dry run' - files that would be created are logged, but no files are actually created.
     """
@@ -75,18 +95,18 @@ def migrate_array_or_group(zarr_v2: Array | Group, dry_run: bool = False) -> Non
     if isinstance(zarr_v2.metadata, GroupMetadata):
         # process members of the group
         for key in zarr_v2:
-            migrate_array_or_group(zarr_v2[key], dry_run=dry_run)
+            migrate_array_or_group(zarr_v2[key], output_path=output_path / key, dry_run=dry_run)
 
         # write group's converted metadata
         group_metadata_v3 = GroupMetadata(
             attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
         )
-        sync(_save_v3_metadata(zarr_v2, group_metadata_v3, dry_run=dry_run))
+        sync(_save_v3_metadata(group_metadata_v3, output_path, dry_run=dry_run))
 
     else:
         # write array's converted metadata
         array_metadata_v3 = _convert_array_metadata(zarr_v2.metadata)
-        sync(_save_v3_metadata(zarr_v2, array_metadata_v3, dry_run=dry_run))
+        sync(_save_v3_metadata(array_metadata_v3, output_path, dry_run=dry_run))
 
 
 async def remove_metadata(
@@ -232,11 +252,11 @@ def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
 
 
 async def _save_v3_metadata(
-    zarr_v2: Array | Group, metadata_v3: ArrayV3Metadata | GroupMetadata, dry_run: bool = False
+    metadata_v3: ArrayV3Metadata | GroupMetadata, output_path: StorePath, dry_run: bool = False
 ) -> None:
-    zarr_json_path = zarr_v2.store_path / ZARR_JSON
+    zarr_json_path = output_path / ZARR_JSON
     if await zarr_json_path.exists():
-        raise ValueError(f"{ZARR_JSON} already exists at {zarr_v2.store_path}")
+        raise ValueError(f"{ZARR_JSON} already exists at {zarr_json_path}")
 
     logger.info("Saving metadata to %s", zarr_json_path)
     to_save = metadata_v3.to_buffer_dict(default_buffer_prototype())

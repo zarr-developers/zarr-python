@@ -34,12 +34,25 @@ def migrate(
             max=3,
         ),
     ],
-    store: Annotated[
+    input_store: Annotated[
         str,
         typer.Argument(
-            help="Store or path to directory in file system or name of zip file e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
+            help=(
+                "Input Zarr to migrate - should be a store, path to directory in file system or name of zip file "
+                "e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
+            )
         ),
     ],
+    output_store: Annotated[
+        str | None,
+        typer.Argument(
+            help=(
+                "Output location to write generated metadata (no chunks will be copied). If not provided, "
+                "metadata will be written to input_store. Should be a store, path to directory in file system "
+                "or name of zip file e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
+            )
+        ),
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -47,8 +60,8 @@ def migrate(
         ),
     ] = False,
 ) -> None:
-    """Migrate all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
-    (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
+    """Migrate all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file for each level
+    (every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
     """
     if dry_run:
         _set_verbose_level()
@@ -56,7 +69,9 @@ def migrate(
             "Dry run enabled - no new files will be created. Log of files that would be created on a real run:"
         )
 
-    migrate_metadata.migrate_to_v3(store=store, dry_run=dry_run)
+    migrate_metadata.migrate_to_v3(
+        input_store=input_store, output_store=output_store, dry_run=dry_run
+    )
 
 
 @app.command()  # type: ignore[misc]
