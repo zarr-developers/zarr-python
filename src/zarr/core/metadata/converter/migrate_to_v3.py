@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numcodecs.abc
 
@@ -40,8 +40,10 @@ def migrate_to_v3(
     storage_options: dict[str, Any] | None = None,
     dry_run: bool = False,
 ) -> None:
-    """Migrate all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
-    (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
+    """Migrate all v2 metadata in a zarr hierarchy to v3.
+
+    This will create a zarr.json file at each level (for every group / array). V2 files (.zarray, .zattrs etc.)
+    will be left as-is.
 
     Parameters
     ----------
@@ -113,9 +115,11 @@ async def remove_metadata(
     store: StoreLike,
     zarr_format: ZarrFormat,
     storage_options: dict[str, Any] | None = None,
+    force: bool = False,
     dry_run: bool = False,
 ) -> None:
     """Remove all v2 (.zarray, .zattrs, .zgroup, .zmetadata) or v3 (zarr.json) metadata files from the given Zarr.
+
     Note - this will remove metadata files at all levels of the hierarchy (every group and array).
 
     Parameters
@@ -127,6 +131,10 @@ async def remove_metadata(
     storage_options : dict | None, optional
         If the store is backed by an fsspec-based implementation, then this dict will be passed to
         the Store constructor for that implementation. Ignored otherwise.
+    force : bool, optional
+        When False, metadata can only be removed if a valid alternative exists e.g. deletion of v2 metadata will
+        only be allowed when v3 metadata is also present. When True, metadata can be removed when there is no
+        alternative.
     dry_run : bool, optional
         Enable a 'dry run' - files that would be deleted are logged, but no files are actually removed.
     """
@@ -134,20 +142,46 @@ async def remove_metadata(
     if not store_path.store.supports_deletes:
         raise ValueError("Store must support deletes to remove metadata")
 
+    metadata_files_all = {
+        2: [ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ZMETADATA_V2_JSON],
+        3: [ZARR_JSON],
+    }
+
     if zarr_format == 2:
-        metadata_files = [ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ZMETADATA_V2_JSON]
+        alternative_metadata = 3
     else:
-        metadata_files = [ZARR_JSON]
+        alternative_metadata = 2
 
     awaitables = []
-    async for file_path in store_path.store.list_prefix(""):
-        if file_path.split("/")[-1] in metadata_files:
-            logger.info("Deleting metadata at %s", store_path / file_path)
+    async for file_path in store_path.store.list():
+        parent_path, _, file_name = file_path.rpartition("/")
 
+        if file_name not in metadata_files_all[zarr_format]:
+            continue
+
+        if force or await _metadata_exists(
+            cast(Literal[2, 3], alternative_metadata), store_path / parent_path
+        ):
+            logger.info("Deleting metadata at %s", store_path / file_path)
             if not dry_run:
                 awaitables.append((store_path / file_path).delete())
+        else:
+            raise ValueError(
+                f"Cannot remove v{zarr_format} metadata at {store_path / file_path} - no v{alternative_metadata} "
+                "metadata exists. To delete anyway, use the 'force' option."
+            )
 
     await asyncio.gather(*awaitables)
+
+
+async def _metadata_exists(zarr_format: ZarrFormat, store_path: StorePath) -> bool:
+    metadata_files_required = {2: [ZARRAY_JSON, ZGROUP_JSON], 3: [ZARR_JSON]}
+
+    for metadata_file in metadata_files_required[zarr_format]:
+        if await (store_path / metadata_file).exists():
+            return True
+
+    return False
 
 
 def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:

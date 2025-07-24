@@ -53,18 +53,31 @@ def migrate(
             )
         ),
     ] = None,
-    overwrite: Annotated[
-        bool,
-        typer.Option(help="Overwrite any existing v3 metadata at the output location."),
-    ] = False,
-    remove_v2_metadata: Annotated[
-        bool,
-        typer.Option(help="Remove v2 metadata (if any) from the output location."),
-    ] = False,
     dry_run: Annotated[
         bool,
         typer.Option(
             help="Enable a dry-run: files that would be converted are logged, but no new files are actually created."
+        ),
+    ] = False,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            help="Remove any existing v3 metadata at the output location, before migration starts."
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            help=(
+                "Only used when --overwrite is given. Allows v3 metadata to be removed when no valid "
+                "v2 metadata exists at the output location."
+            )
+        ),
+    ] = False,
+    remove_v2_metadata: Annotated[
+        bool,
+        typer.Option(
+            help="Remove v2 metadata (if any) from the output location, after migration is complete."
         ),
     ] = False,
 ) -> None:
@@ -80,14 +93,15 @@ def migrate(
     write_store = output_store if output_store is not None else input_store
 
     if overwrite:
-        sync(migrate_metadata.remove_metadata(write_store, 3, dry_run=dry_run))
+        sync(migrate_metadata.remove_metadata(write_store, 3, force=force, dry_run=dry_run))
 
     migrate_metadata.migrate_to_v3(
         input_store=input_store, output_store=output_store, dry_run=dry_run
     )
 
     if remove_v2_metadata:
-        sync(migrate_metadata.remove_metadata(write_store, 2, dry_run=dry_run))
+        # There should always be valid v3 metadata at the output location after migration, so force=False
+        sync(migrate_metadata.remove_metadata(write_store, 2, force=False, dry_run=dry_run))
 
 
 @app.command()  # type: ignore[misc]
@@ -106,6 +120,15 @@ def remove_metadata(
             max=3,
         ),
     ],
+    force: Annotated[
+        bool,
+        typer.Option(
+            help=(
+                "Allow metadata to be deleted when no valid alternative exists e.g. allow deletion of v2 metadata, "
+                "when no v3 metadata is present."
+            )
+        ),
+    ] = False,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -124,7 +147,7 @@ def remove_metadata(
 
     sync(
         migrate_metadata.remove_metadata(
-            store=store, zarr_format=cast(Literal[2, 3], zarr_format), dry_run=dry_run
+            store=store, zarr_format=cast(Literal[2, 3], zarr_format), force=force, dry_run=dry_run
         )
     )
 
