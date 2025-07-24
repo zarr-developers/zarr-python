@@ -1,4 +1,5 @@
 import logging
+from enum import Enum
 from typing import Annotated, Literal, cast
 
 import typer
@@ -24,14 +25,23 @@ def _set_verbose_level() -> None:
     logging.getLogger().setLevel(logging.INFO)
 
 
+class ZarrFormat(str, Enum):
+    v2 = "v2"
+    v3 = "v3"
+
+
+class ZarrFormatV3(str, Enum):
+    """Limit CLI choice to only V3"""
+
+    v3 = "v3"
+
+
 @app.command()  # type: ignore[misc]
 def migrate(
     zarr_format: Annotated[
-        int,
+        ZarrFormatV3,
         typer.Argument(
             help="Zarr format to migrate to. Currently only 'v3' is supported.",
-            min=3,
-            max=3,
         ),
     ],
     input_store: Annotated[
@@ -113,12 +123,8 @@ def remove_metadata(
         ),
     ],
     zarr_format: Annotated[
-        int,
-        typer.Argument(
-            help="Which format's metadata to remove - 2 or 3.",
-            min=2,
-            max=3,
-        ),
+        ZarrFormat,
+        typer.Argument(help="Which format's metadata to remove - v2 or v3."),
     ],
     force: Annotated[
         bool,
@@ -147,7 +153,10 @@ def remove_metadata(
 
     sync(
         migrate_metadata.remove_metadata(
-            store=store, zarr_format=cast(Literal[2, 3], zarr_format), force=force, dry_run=dry_run
+            store=store,
+            zarr_format=cast(Literal[2, 3], int(zarr_format[1:])),
+            force=force,
+            dry_run=dry_run,
         )
     )
 
@@ -162,8 +171,7 @@ def main(
     ] = False,
 ) -> None:
     """
-    Migrate metadata from v2 to v3. See available commands below - access help for individual commands with
-    zarr COMMAND --help.
+    See available commands below - access help for individual commands with zarr COMMAND --help.
     """
     _set_logging_config(verbose)
 
