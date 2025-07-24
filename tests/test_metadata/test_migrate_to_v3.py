@@ -19,6 +19,7 @@ from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.common import ZarrFormat
 from zarr.core.dtype.npy.int import BaseInt, UInt8, UInt16
+from zarr.storage._local import LocalStore
 
 typer_testing = pytest.importorskip(
     "typer.testing", reason="optional cli dependencies aren't installed"
@@ -31,9 +32,15 @@ runner = typer_testing.CliRunner()
 
 
 def create_nested_zarr(
-    store: Store, attributes: dict[str, Any], separator: str, zarr_format: ZarrFormat = 2
+    store: Store,
+    attributes: dict[str, Any] | None = None,
+    separator: str = ".",
+    zarr_format: ZarrFormat = 2,
 ) -> list[str]:
     """Create a zarr with nested groups / arrays for testing, returning the paths to all."""
+
+    if attributes is None:
+        attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
 
     # 3 levels of nested groups
     group_0 = zarr.create_group(store=store, zarr_format=zarr_format, attributes=attributes)
@@ -195,14 +202,14 @@ def test_convert_group(local_store: Store) -> None:
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-def test_convert_nested_groups_and_arrays(
+def test_convert_nested_groups_and_arrays_in_place(
     local_store: Store, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that zarr.json are made at the correct points in a hierarchy of groups and arrays
     (including when there are additional dirs due to using a / separator)"""
 
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    paths = create_nested_zarr(local_store, attributes, separator)
+    paths = create_nested_zarr(local_store, attributes=attributes, separator=separator)
 
     result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
@@ -221,12 +228,48 @@ def test_convert_nested_groups_and_arrays(
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
+async def test_convert_nested_groups_and_arrays_separate_location(
+    tmp_path: Path,
+    separator: str,
+    expected_v2_metadata: list[Path],
+    expected_v3_metadata: list[Path],
+) -> None:
+    """Test that zarr.json are made at the correct paths, when saving to a separate output location."""
+
+    input_zarr_path = tmp_path / "input.zarr"
+    output_zarr_path = tmp_path / "output.zarr"
+
+    local_store = await LocalStore.open(str(input_zarr_path))
+    paths = create_nested_zarr(local_store, separator=separator)
+
+    result = runner.invoke(cli.app, ["migrate", "v3", str(input_zarr_path), str(output_zarr_path)])
+    assert result.exit_code == 0
+
+    # Files in input zarr should be unchanged i.e. still v2 only
+    zarr_json_paths = sorted(input_zarr_path.rglob("zarr.json"))
+    assert len(zarr_json_paths) == 0
+
+    paths = [
+        path
+        for path in input_zarr_path.rglob("*")
+        if path.stem in [".zarray", ".zgroup", ".zattrs"]
+    ]
+    expected_paths = [input_zarr_path / p for p in expected_v2_metadata]
+    assert sorted(paths) == expected_paths
+
+    # Files in output zarr should only contain v3 metadata
+    zarr_json_paths = sorted(output_zarr_path.rglob("zarr.json"))
+    expected_zarr_json_paths = [output_zarr_path / p for p in expected_v3_metadata]
+    assert zarr_json_paths == expected_zarr_json_paths
+
+
+@pytest.mark.parametrize("separator", [".", "/"])
 def test_convert_sub_group(
     local_store: Store, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that only arrays/groups within group_1 are converted (+ no other files in store)"""
 
-    create_nested_zarr(local_store, {}, separator)
+    create_nested_zarr(local_store, separator=separator)
     group_path = local_store.root / "group_1"
 
     result = runner.invoke(cli.app, ["migrate", "v3", str(group_path)])
@@ -481,8 +524,7 @@ def test_convert_incorrect_compressor(local_store: Store) -> None:
 def test_remove_metadata_fails_without_force(local_store: Store, zarr_format: ZarrFormat) -> None:
     """Test removing metadata (when no alternate metadata is present) fails without --force."""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".", zarr_format=zarr_format)
+    create_nested_zarr(local_store, zarr_format=zarr_format)
 
     result = runner.invoke(cli.app, ["remove-metadata", f"v{zarr_format}", str(local_store.root)])
     assert result.exit_code == 1
@@ -496,8 +538,7 @@ def test_remove_metadata_succeeds_with_force(
 ) -> None:
     """Test removing metadata (when no alternate metadata is present) succeeds with --force."""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".", zarr_format=zarr_format)
+    create_nested_zarr(local_store, zarr_format=zarr_format)
 
     result = runner.invoke(
         cli.app, ["remove-metadata", f"v{zarr_format}", str(local_store.root), "--force"]
@@ -514,8 +555,7 @@ def test_remove_metadata_sub_group(
 ) -> None:
     """Test only v2 metadata within group_1 is removed and rest remains un-changed."""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".")
+    create_nested_zarr(local_store)
 
     result = runner.invoke(
         cli.app, ["remove-metadata", "v2", str(local_store.root / "group_1"), "--force"]
@@ -544,8 +584,7 @@ def test_remove_metadata_after_conversion(
     """Test all v2/v3 metadata can be removed after metadata conversion (all groups / arrays /
     metadata of other versions should remain as-is)"""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".")
+    create_nested_zarr(local_store)
 
     # convert v2 metadata to v3 (so now both v2 and v3 metadata present!), then remove either the v2 or v3 metadata
     result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
@@ -564,8 +603,7 @@ def test_dry_run(
 ) -> None:
     """Test that all files are un-changed after a dry run"""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".")
+    create_nested_zarr(local_store)
 
     if cli_command == "migrate":
         result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root), "--dry-run"])
