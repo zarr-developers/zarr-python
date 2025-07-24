@@ -52,7 +52,7 @@ class Buffer(core.Buffer):
 
     def __init__(self, array_like: ArrayLike) -> None:
         if cp is None:
-            raise ImportError(
+            raise ImportError(  # pragma: no cover
                 "Cannot use zarr.buffer.gpu.Buffer without cupy. Please install cupy."
             )
 
@@ -141,7 +141,7 @@ class NDBuffer(core.NDBuffer):
 
     def __init__(self, array: NDArrayLike) -> None:
         if cp is None:
-            raise ImportError(
+            raise ImportError(  # pragma: no cover
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."
             )
 
