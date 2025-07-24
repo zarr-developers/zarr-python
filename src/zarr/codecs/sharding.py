@@ -423,8 +423,8 @@ class ShardingCodec(
             )
         if not isinstance(chunk_grid, RegularChunkGrid):
             raise TypeError("Sharding is only compatible with regular chunk grids.")
-        if not all(
-            s % c == 0
+        if any(
+            s % c != 0
             for s, c in zip(
                 chunk_grid.chunk_shape,
                 self.chunk_shape,
