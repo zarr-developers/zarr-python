@@ -70,7 +70,7 @@ gpu = [
 ]
 # Development extras
 test = [
-    "coverage",
+    "coverage>=7.10",
     # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
     "pytest<8.4",
     "pytest-asyncio",
@@ -128,11 +128,8 @@ dev = [
 ]
 
 [tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING:",
-    "pragma: ${PY_MAJOR_VERSION} no cover",
-    '.*\.\.\.' # Ignore "..." lines
+exclude_also = [
+    'if TYPE_CHECKING:',
 ]
 
 [tool.coverage.run]
