@@ -698,7 +698,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 overwrite=overwrite,
             )
         else:
-            raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
         if data is not None:
             # insert user-provided data
