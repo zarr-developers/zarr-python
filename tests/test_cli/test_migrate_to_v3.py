@@ -1,6 +1,5 @@
 import lzma
 from pathlib import Path
-from typing import Any
 
 import numcodecs
 import numcodecs.abc
@@ -8,6 +7,7 @@ import pytest
 from numcodecs.zarr3 import LZMA, Delta
 
 import zarr
+from tests.test_cli.conftest import create_nested_zarr
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs.blosc import BloscCodec
@@ -29,119 +29,6 @@ cli = pytest.importorskip(
 )
 
 runner = typer_testing.CliRunner()
-
-
-def create_nested_zarr(
-    store: Store,
-    attributes: dict[str, Any] | None = None,
-    separator: str = ".",
-    zarr_format: ZarrFormat = 2,
-) -> list[str]:
-    """Create a zarr with nested groups / arrays for testing, returning the paths to all."""
-
-    if attributes is None:
-        attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-
-    # 3 levels of nested groups
-    group_0 = zarr.create_group(store=store, zarr_format=zarr_format, attributes=attributes)
-    group_1 = group_0.create_group(name="group_1", attributes=attributes)
-    group_2 = group_1.create_group(name="group_2", attributes=attributes)
-    paths = [group_0.path, group_1.path, group_2.path]
-
-    # 1 array per group
-    for i, group in enumerate([group_0, group_1, group_2]):
-        array = group.create_array(
-            name=f"array_{i}",
-            shape=(10, 10),
-            chunks=(5, 5),
-            dtype="uint16",
-            attributes=attributes,
-            chunk_key_encoding={"name": "v2", "separator": separator},
-        )
-        array[:] = 1
-        paths.append(array.path)
-
-    return paths
-
-
-@pytest.fixture
-def expected_paths_no_metadata() -> list[Path]:
-    """Expected paths from create_nested_zarr, with no metadata files"""
-    return [
-        Path("array_0"),
-        Path("array_0/0.0"),
-        Path("array_0/0.1"),
-        Path("array_0/1.0"),
-        Path("array_0/1.1"),
-        Path("group_1"),
-        Path("group_1/array_1"),
-        Path("group_1/array_1/0.0"),
-        Path("group_1/array_1/0.1"),
-        Path("group_1/array_1/1.0"),
-        Path("group_1/array_1/1.1"),
-        Path("group_1/group_2"),
-        Path("group_1/group_2/array_2"),
-        Path("group_1/group_2/array_2/0.0"),
-        Path("group_1/group_2/array_2/0.1"),
-        Path("group_1/group_2/array_2/1.0"),
-        Path("group_1/group_2/array_2/1.1"),
-    ]
-
-
-@pytest.fixture
-def expected_v3_metadata() -> list[Path]:
-    """Expected v3 metadata for create_nested_zarr"""
-    return sorted(
-        [
-            Path("zarr.json"),
-            Path("array_0/zarr.json"),
-            Path("group_1/zarr.json"),
-            Path("group_1/array_1/zarr.json"),
-            Path("group_1/group_2/zarr.json"),
-            Path("group_1/group_2/array_2/zarr.json"),
-        ]
-    )
-
-
-@pytest.fixture
-def expected_v2_metadata() -> list[Path]:
-    """Expected v2 metadata for create_nested_zarr"""
-    return sorted(
-        [
-            Path(".zgroup"),
-            Path(".zattrs"),
-            Path("array_0/.zarray"),
-            Path("array_0/.zattrs"),
-            Path("group_1/.zgroup"),
-            Path("group_1/.zattrs"),
-            Path("group_1/array_1/.zarray"),
-            Path("group_1/array_1/.zattrs"),
-            Path("group_1/group_2/.zgroup"),
-            Path("group_1/group_2/.zattrs"),
-            Path("group_1/group_2/array_2/.zarray"),
-            Path("group_1/group_2/array_2/.zattrs"),
-        ]
-    )
-
-
-@pytest.fixture
-def expected_paths_v3_metadata(
-    expected_paths_no_metadata: list[Path], expected_v3_metadata: list[Path]
-) -> list[Path]:
-    """Expected paths from create_nested_zarr + v3 metadata files"""
-    expected_paths_no_metadata.extend(expected_v3_metadata)
-
-    return sorted(expected_paths_no_metadata)
-
-
-@pytest.fixture
-def expected_paths_v2_metadata(
-    expected_paths_no_metadata: list[Path], expected_v2_metadata: list[Path]
-) -> list[Path]:
-    """Expected paths from create_nested_zarr + v2 metadata files"""
-    expected_paths_no_metadata.extend(expected_v2_metadata)
-
-    return sorted(expected_paths_no_metadata)
 
 
 def test_migrate_array(local_store: Store) -> None:
@@ -300,6 +187,24 @@ async def test_remove_v2_metadata_option_separate_location(
     # input image should be unchanged
     paths = sorted(input_zarr_path.rglob("*"))
     expected_paths = [input_zarr_path / p for p in expected_paths_v2_metadata]
+    assert paths == expected_paths
+
+
+def test_overwrite_option_in_place(
+    local_store: Store, expected_paths_v2_v3_metadata: list[Path]
+) -> None:
+    create_nested_zarr(local_store)
+
+    # add v3 metadata in place
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    assert result.exit_code == 0
+
+    # check that v3 metadata can be overwritten with --overwrite
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root), "--overwrite"])
+    assert result.exit_code == 0
+
+    paths = sorted(local_store.root.rglob("*"))
+    expected_paths = [local_store.root / p for p in expected_paths_v2_v3_metadata]
     assert paths == expected_paths
 
 
@@ -615,11 +520,14 @@ def test_remove_metadata_sub_group(
 
 
 @pytest.mark.parametrize(
-    ("zarr_format", "expected_paths"),
+    ("zarr_format", "expected_output_paths"),
     [("v2", "expected_paths_v3_metadata"), ("v3", "expected_paths_v2_metadata")],
 )
 def test_remove_metadata_after_conversion(
-    local_store: Store, request: pytest.FixtureRequest, zarr_format: str, expected_paths: list[Path]
+    local_store: Store,
+    request: pytest.FixtureRequest,
+    zarr_format: str,
+    expected_output_paths: str,
 ) -> None:
     """Test all v2/v3 metadata can be removed after metadata conversion (all groups / arrays /
     metadata of other versions should remain as-is)"""
@@ -633,7 +541,8 @@ def test_remove_metadata_after_conversion(
     assert result.exit_code == 0
 
     paths = sorted(local_store.root.rglob("*"))
-    expected_paths = [local_store.root / p for p in request.getfixturevalue(expected_paths)]
+    expected_paths = request.getfixturevalue(expected_output_paths)
+    expected_paths = [local_store.root / p for p in expected_paths]
     assert paths == expected_paths
 
 
