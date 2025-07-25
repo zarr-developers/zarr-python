@@ -1950,6 +1950,10 @@ def test_iter_shard_keys(
     assert observed == expected
     assert observed == tuple(arr._iter_shard_keys())
     assert observed == tuple(arr._async_array._iter_shard_keys())
+    with pytest.warns(DeprecationWarning, match="Use _iter_shard_keys instead"):
+        assert observed == tuple(arr._iter_chunk_keys())
+    with pytest.warns(DeprecationWarning, match="Use _iter_shard_keys instead"):
+        assert observed == tuple(arr._async_array._iter_chunk_keys())
 
 
 @pytest.mark.parametrize(
