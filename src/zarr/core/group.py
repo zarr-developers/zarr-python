@@ -4,6 +4,7 @@ import asyncio
 import itertools
 import json
 import logging
+import unicodedata
 import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
@@ -145,7 +146,7 @@ class ConsolidatedMetadata:
                 k: v.to_dict()
                 for k, v in sorted(
                     self.flattened_metadata.items(),
-                    key=lambda item: (item[0].count("/"), item[0]),
+                    key=lambda item: (item[0].count("/"), unicodedata.normalize("NFKC", item[0])),
                 )
             },
         }
