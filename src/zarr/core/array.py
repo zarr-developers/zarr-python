@@ -1217,7 +1217,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         tuple[int, ...]
             The shape of the shard grid for this array.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.shards, strict=True)))
+        if self.shards is None:
+            shard_shape = self.chunks
+        else:
+            shard_shape = self.shards
+        return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
 
     @property
     def nchunks(self) -> int:
