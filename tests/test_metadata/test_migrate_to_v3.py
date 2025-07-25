@@ -240,7 +240,7 @@ async def test_migrate_nested_groups_and_arrays_separate_location(
     output_zarr_path = tmp_path / "output.zarr"
 
     local_store = await LocalStore.open(str(input_zarr_path))
-    paths = create_nested_zarr(local_store, separator=separator)
+    create_nested_zarr(local_store, separator=separator)
 
     result = runner.invoke(cli.app, ["migrate", "v3", str(input_zarr_path), str(output_zarr_path)])
     assert result.exit_code == 0
@@ -263,7 +263,7 @@ async def test_migrate_nested_groups_and_arrays_separate_location(
     assert zarr_json_paths == expected_zarr_json_paths
 
 
-def test_remove_v2_metadata_option(
+def test_remove_v2_metadata_option_in_place(
     local_store: Store, expected_paths_v3_metadata: list[Path]
 ) -> None:
     create_nested_zarr(local_store)
@@ -276,6 +276,30 @@ def test_remove_v2_metadata_option(
 
     paths = sorted(local_store.root.rglob("*"))
     expected_paths = [local_store.root / p for p in expected_paths_v3_metadata]
+    assert paths == expected_paths
+
+
+async def test_remove_v2_metadata_option_separate_location(
+    tmp_path: Path, expected_paths_v2_metadata: list[Path]
+) -> None:
+    """Check that when using --remove-v2-metadata with a separate output location, no v2 metadata is removed from
+    the input location."""
+
+    input_zarr_path = tmp_path / "input.zarr"
+    output_zarr_path = tmp_path / "output.zarr"
+
+    local_store = await LocalStore.open(str(input_zarr_path))
+    create_nested_zarr(local_store)
+
+    result = runner.invoke(
+        cli.app,
+        ["migrate", "v3", str(input_zarr_path), str(output_zarr_path), "--remove-v2-metadata"],
+    )
+    assert result.exit_code == 0
+
+    # input image should be unchanged
+    paths = sorted(input_zarr_path.rglob("*"))
+    expected_paths = [input_zarr_path / p for p in expected_paths_v2_metadata]
     assert paths == expected_paths
 
 
