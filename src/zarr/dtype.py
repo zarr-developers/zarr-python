@@ -38,6 +38,9 @@ from zarr.core.dtype import (
     VariableLengthUTF8JSON_V2,
     ZDType,
     data_type_registry,
+    # Import for backwards compatibility, but not included in __all__
+    # so it doesn't show up in the docs
+    parse_data_type,  # noqa: F401
     parse_dtype,
 )
 
