@@ -112,42 +112,28 @@ def expected_v2_metadata() -> list[Path]:
 def expected_paths_no_metadata(
     expected_paths: list[Path], expected_chunks: list[Path]
 ) -> list[Path]:
-    """Expected paths from create_nested_zarr + chunks"""
-    expected_paths.extend(expected_chunks)
-
-    return sorted(expected_paths)
+    return sorted(expected_paths + expected_chunks)
 
 
 @pytest.fixture
 def expected_paths_v3_metadata(
     expected_paths: list[Path], expected_chunks: list[Path], expected_v3_metadata: list[Path]
 ) -> list[Path]:
-    """Expected paths from create_nested_zarr + chunks + v3 metadata files"""
-    expected_paths.extend(expected_chunks)
-    expected_paths.extend(expected_v3_metadata)
-
-    return sorted(expected_paths)
+    return sorted(expected_paths + expected_chunks + expected_v3_metadata)
 
 
 @pytest.fixture
 def expected_paths_v3_metadata_no_chunks(
     expected_paths: list[Path], expected_v3_metadata: list[Path]
 ) -> list[Path]:
-    """Expected paths from create_nested_zarr + v3 metadata files (with no chunks)"""
-    expected_paths.extend(expected_v3_metadata)
-
-    return sorted(expected_paths)
+    return sorted(expected_paths + expected_v3_metadata)
 
 
 @pytest.fixture
 def expected_paths_v2_metadata(
     expected_paths: list[Path], expected_chunks: list[Path], expected_v2_metadata: list[Path]
 ) -> list[Path]:
-    """Expected paths from create_nested_zarr + chunks + v2 metadata files"""
-    expected_paths.extend(expected_chunks)
-    expected_paths.extend(expected_v2_metadata)
-
-    return sorted(expected_paths)
+    return sorted(expected_paths + expected_chunks + expected_v2_metadata)
 
 
 @pytest.fixture
@@ -157,9 +143,4 @@ def expected_paths_v2_v3_metadata(
     expected_v2_metadata: list[Path],
     expected_v3_metadata: list[Path],
 ) -> list[Path]:
-    """Expected paths from create_nested_zarr + chunks + v2 metadata files + v3 metadata files"""
-    expected_paths.extend(expected_chunks)
-    expected_paths.extend(expected_v2_metadata)
-    expected_paths.extend(expected_v3_metadata)
-
-    return sorted(expected_paths)
+    return sorted(expected_paths + expected_chunks + expected_v2_metadata + expected_v3_metadata)
