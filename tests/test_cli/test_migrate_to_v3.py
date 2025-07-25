@@ -167,7 +167,9 @@ def test_remove_v2_metadata_option_in_place(
 
 
 async def test_remove_v2_metadata_option_separate_location(
-    tmp_path: Path, expected_paths_v2_metadata: list[Path]
+    tmp_path: Path,
+    expected_paths_v2_metadata: list[Path],
+    expected_paths_v3_metadata_no_chunks: list[Path],
 ) -> None:
     """Check that when using --remove-v2-metadata with a separate output location, no v2 metadata is removed from
     the input location."""
@@ -187,6 +189,11 @@ async def test_remove_v2_metadata_option_separate_location(
     # input image should be unchanged
     paths = sorted(input_zarr_path.rglob("*"))
     expected_paths = [input_zarr_path / p for p in expected_paths_v2_metadata]
+    assert paths == expected_paths
+
+    # output image should be only v3 metadata
+    paths = sorted(output_zarr_path.rglob("*"))
+    expected_paths = [output_zarr_path / p for p in expected_paths_v3_metadata_no_chunks]
     assert paths == expected_paths
 
 
@@ -591,7 +598,9 @@ def test_dry_run(
     create_nested_zarr(local_store)
 
     if cli_command == "migrate":
-        result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root), "--dry-run"])
+        result = runner.invoke(
+            cli.app, ["migrate", "v3", str(local_store.root), "--overwrite", "--force", "--dry-run"]
+        )
     else:
         result = runner.invoke(
             cli.app, ["remove-metadata", "v2", str(local_store.root), "--force", "--dry-run"]
