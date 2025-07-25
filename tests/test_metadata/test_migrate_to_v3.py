@@ -144,7 +144,7 @@ def expected_paths_v2_metadata(
     return sorted(expected_paths_no_metadata)
 
 
-def test_convert_array(local_store: Store) -> None:
+def test_migrate_array(local_store: Store) -> None:
     shape = (10, 10)
     chunks = (10, 10)
     dtype = "uint16"
@@ -185,7 +185,7 @@ def test_convert_array(local_store: Store) -> None:
     assert metadata.storage_transformers == ()
 
 
-def test_convert_group(local_store: Store) -> None:
+def test_migrate_group(local_store: Store) -> None:
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
     zarr.create_group(store=local_store, zarr_format=2, attributes=attributes)
 
@@ -202,7 +202,7 @@ def test_convert_group(local_store: Store) -> None:
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-def test_convert_nested_groups_and_arrays_in_place(
+def test_migrate_nested_groups_and_arrays_in_place(
     local_store: Store, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that zarr.json are made at the correct points in a hierarchy of groups and arrays
@@ -228,7 +228,7 @@ def test_convert_nested_groups_and_arrays_in_place(
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-async def test_convert_nested_groups_and_arrays_separate_location(
+async def test_migrate_nested_groups_and_arrays_separate_location(
     tmp_path: Path,
     separator: str,
     expected_v2_metadata: list[Path],
@@ -280,7 +280,7 @@ def test_remove_v2_metadata_option(
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-def test_convert_sub_group(
+def test_migrate_sub_group(
     local_store: Store, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that only arrays/groups within group_1 are converted (+ no other files in store)"""
@@ -332,7 +332,7 @@ def test_convert_sub_group(
     ],
     ids=["blosc", "zstd", "gzip", "numcodecs-compressor"],
 )
-def test_convert_compressor(
+def test_migrate_compressor(
     local_store: Store, compressor_v2: numcodecs.abc.Codec, compressor_v3: Codec
 ) -> None:
     zarr_array = zarr.create_array(
@@ -360,7 +360,7 @@ def test_convert_compressor(
     assert (zarr_array[:] == 1).all()
 
 
-def test_convert_filter(local_store: Store) -> None:
+def test_migrate_filter(local_store: Store) -> None:
     filter_v2 = numcodecs.Delta(dtype="<u2", astype="<u2")
     filter_v3 = Delta(dtype="<u2", astype="<u2")
 
@@ -395,7 +395,7 @@ def test_convert_filter(local_store: Store) -> None:
         ("F", (TransposeCodec(order=(1, 0)), BytesCodec(endian="little"))),
     ],
 )
-def test_convert_C_vs_F_order(
+def test_migrate_C_vs_F_order(
     local_store: Store, order: str, expected_codecs: tuple[Codec]
 ) -> None:
     zarr_array = zarr.create_array(
@@ -429,7 +429,7 @@ def test_convert_C_vs_F_order(
     ],
     ids=["single_byte", "multi_byte"],
 )
-def test_convert_endian(
+def test_migrate_endian(
     local_store: Store, dtype: str, expected_data_type: BaseInt, expected_codecs: tuple[Codec]
 ) -> None:
     zarr_array = zarr.create_array(
@@ -456,7 +456,7 @@ def test_convert_endian(
 
 
 @pytest.mark.parametrize("node_type", ["array", "group"])
-def test_convert_v3(local_store: Store, node_type: str) -> None:
+def test_migrate_v3(local_store: Store, node_type: str) -> None:
     """Attempting to convert a v3 array/group should always fail"""
 
     if node_type == "array":
@@ -472,7 +472,7 @@ def test_convert_v3(local_store: Store, node_type: str) -> None:
     assert str(result.exception) == "Only arrays / groups with zarr v2 metadata can be converted"
 
 
-def test_convert_unknown_codec(local_store: Store) -> None:
+def test_migrate_unknown_codec(local_store: Store) -> None:
     """Attempting to convert a codec without a v3 equivalent should always fail"""
 
     zarr.create_array(
@@ -493,7 +493,7 @@ def test_convert_unknown_codec(local_store: Store) -> None:
     )
 
 
-def test_convert_incorrect_filter(local_store: Store) -> None:
+def test_migrate_incorrect_filter(local_store: Store) -> None:
     """Attempting to convert a filter (which is the wrong type of codec) should always fail"""
 
     zarr.create_array(
@@ -514,7 +514,7 @@ def test_convert_incorrect_filter(local_store: Store) -> None:
     )
 
 
-def test_convert_incorrect_compressor(local_store: Store) -> None:
+def test_migrate_incorrect_compressor(local_store: Store) -> None:
     """Attempting to convert a compressor (which is the wrong type of codec) should always fail"""
 
     zarr.create_array(
