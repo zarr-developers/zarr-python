@@ -1118,12 +1118,22 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
             "consolidated_metadata",
             None,
         )
+        # test depth=0
+        nmembers = await group.nmembers(max_depth=0)
+        assert nmembers == 2
+        # test depth=1
+        nmembers = await group.nmembers(max_depth=1)
+        assert nmembers == 4
+        # test depth=None
         all_children = sorted(
             [x async for x in group.members(max_depth=None)], key=operator.itemgetter(0)
         )
         assert len(all_children) == 4
         nmembers = await group.nmembers(max_depth=None)
         assert nmembers == 4
+        # test depth<0
+        with pytest.raises(ValueError, match="max_depth"):
+            await group.nmembers(max_depth=-1)
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
