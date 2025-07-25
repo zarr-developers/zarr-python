@@ -93,12 +93,12 @@ def expected_v3_metadata() -> list[Path]:
     """Expected v3 metadata for create_nested_zarr"""
     return sorted(
         [
-            Path("array_0/zarr.json"),
-            Path("group_1/array_1/zarr.json"),
-            Path("group_1/group_2/array_2/zarr.json"),
             Path("zarr.json"),
+            Path("array_0/zarr.json"),
             Path("group_1/zarr.json"),
+            Path("group_1/array_1/zarr.json"),
             Path("group_1/group_2/zarr.json"),
+            Path("group_1/group_2/array_2/zarr.json"),
         ]
     )
 
@@ -108,18 +108,18 @@ def expected_v2_metadata() -> list[Path]:
     """Expected v2 metadata for create_nested_zarr"""
     return sorted(
         [
-            Path("array_0/.zarray"),
-            Path("array_0/.zattrs"),
-            Path("group_1/array_1/.zarray"),
-            Path("group_1/array_1/.zattrs"),
-            Path("group_1/group_2/array_2/.zarray"),
-            Path("group_1/group_2/array_2/.zattrs"),
             Path(".zgroup"),
             Path(".zattrs"),
+            Path("array_0/.zarray"),
+            Path("array_0/.zattrs"),
             Path("group_1/.zgroup"),
             Path("group_1/.zattrs"),
+            Path("group_1/array_1/.zarray"),
+            Path("group_1/array_1/.zattrs"),
             Path("group_1/group_2/.zgroup"),
             Path("group_1/group_2/.zattrs"),
+            Path("group_1/group_2/array_2/.zarray"),
+            Path("group_1/group_2/array_2/.zattrs"),
         ]
     )
 
@@ -261,6 +261,22 @@ async def test_convert_nested_groups_and_arrays_separate_location(
     zarr_json_paths = sorted(output_zarr_path.rglob("zarr.json"))
     expected_zarr_json_paths = [output_zarr_path / p for p in expected_v3_metadata]
     assert zarr_json_paths == expected_zarr_json_paths
+
+
+def test_remove_v2_metadata_option(
+    local_store: Store, expected_paths_v3_metadata: list[Path]
+) -> None:
+    create_nested_zarr(local_store)
+
+    # convert v2 metadata to v3, then remove v2 metadata
+    result = runner.invoke(
+        cli.app, ["migrate", "v3", str(local_store.root), "--remove-v2-metadata"]
+    )
+    assert result.exit_code == 0
+
+    paths = sorted(local_store.root.rglob("*"))
+    expected_paths = [local_store.root / p for p in expected_paths_v3_metadata]
+    assert paths == expected_paths
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
