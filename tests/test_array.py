@@ -6,7 +6,7 @@ import multiprocessing as mp
 import pickle
 import re
 import sys
-from itertools import accumulate
+from itertools import accumulate, starmap
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
@@ -37,6 +37,7 @@ from zarr.core.array import (
     create_array,
     default_filters_v2,
     default_serializer_v3,
+    iter_chunk_keys,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
@@ -59,7 +60,7 @@ from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
 from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
-from zarr.core.indexing import BasicIndexer, ceildiv
+from zarr.core.indexing import BasicIndexer, _iter_grid, ceildiv
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
@@ -1835,3 +1836,35 @@ def test_unknown_object_codec_default_filters_v2() -> None:
     msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
     with pytest.raises(ValueError, match=re.escape(msg)):
         default_filters_v2(dtype)
+
+
+@pytest.mark.parametrize(
+    ("shard_size", "chunk_size"),
+    [
+        ((8,), (8,)),
+        ((8,), (2,)),
+        (
+            (
+                8,
+                10,
+            ),
+            (2, 2),
+        ),
+    ],
+)
+def test_iter_chunk_keys(shard_size: tuple[int, ...], chunk_size: tuple[int, ...]) -> None:
+    store = {}
+    arr = zarr.create_array(
+        store,
+        dtype="uint8",
+        shape=tuple(2 * x for x in shard_size),
+        chunks=chunk_size,
+        shards=shard_size,
+        zarr_format=3,
+    )
+    shard_grid_shape = tuple(starmap(ceildiv, zip(arr.shape, arr.shards, strict=True)))
+    expected_keys = tuple(
+        arr.metadata.chunk_key_encoding.encode_chunk_key(region)
+        for region in _iter_grid(shard_grid_shape)
+    )
+    assert tuple(iter_chunk_keys(arr)) == expected_keys
