@@ -45,7 +45,7 @@ that can be used.:
    >>> consolidated = zarr.open_group(store=store)
    >>> consolidated_metadata = consolidated.metadata.consolidated_metadata.metadata
    >>> from pprint import pprint
-   >>> pprint(dict(sorted(consolidated_metadata.items())))
+   >>> pprint(dict(consolidated_metadata.items()))
    {'a': ArrayV3Metadata(shape=(1,),
                           data_type=Float64(endianness='little'),
                           chunk_grid=RegularChunkGrid(chunk_shape=(1,)),
