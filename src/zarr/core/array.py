@@ -1192,7 +1192,31 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Tuple[int]
             The shape of the chunk grid for this array.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
+        return self.chunk_grid_shape
+
+    @property
+    def chunk_grid_shape(self) -> ChunkCoords:
+        """
+        The shape of the chunk grid for this array.
+
+        Returns
+        -------
+        Tuple[int]
+            The shape of the chunk grid for this array.
+        """
+        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
+
+    @property
+    def shard_grid_shape(self) -> ChunkCoords:
+        """
+        The shape of the shard grid for this array.
+
+        Returns
+        -------
+        Tuple[int]
+            The shape of the shard grid for this array.
+        """
+        return tuple(starmap(ceildiv, zip(self.shape, self.shards, strict=True)))
 
     @property
     def nchunks(self) -> int:
@@ -2199,9 +2223,24 @@ class Array:
     @property
     def cdata_shape(self) -> ChunkCoords:
         """
+        The shape of the chunk grid for this array. This property exists for backwards compatibility.
+        See :func:`chunk_grid_shape` for the preferred method.
+        """
+        return self._async_array.chunk_grid_shape
+
+    @property
+    def chunk_grid_shape(self) -> ChunkCoords:
+        """
         The shape of the chunk grid for this array.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
+        return self._async_array.chunk_grid_shape
+
+    @property
+    def shard_grid_shape(self) -> ChunkCoords:
+        """
+        The shape of the shard grid for this array.
+        """
+        return self._async_array.shard_grid_shape
 
     @property
     def nchunks(self) -> int:
