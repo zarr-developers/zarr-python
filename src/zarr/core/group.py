@@ -146,7 +146,10 @@ class ConsolidatedMetadata:
                 k: v.to_dict()
                 for k, v in sorted(
                     self.flattened_metadata.items(),
-                    key=lambda item: (item[0].count("/"), unicodedata.normalize("NFKC", item[0])),
+                    key=lambda item: (
+                        item[0].count("/"),
+                        unicodedata.normalize("NFKC", item[0]).casefold(),
+                    ),
                 )
             },
         }
