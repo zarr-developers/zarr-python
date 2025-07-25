@@ -1,0 +1,1 @@
+Added support for async vectorized and orthogonal indexing.

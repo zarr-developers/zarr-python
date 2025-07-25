@@ -105,33 +105,52 @@ def test_array_creates_implicit_groups(array):
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
 
 
+@pytest.mark.asyncio
 @settings(deadline=None)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
-def test_basic_indexing(data: st.DataObject) -> None:
+async def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(simple_arrays())
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
+
+    # sync get
     actual = zarray[indexer]
     assert_array_equal(nparray[indexer], actual)
 
+    # async get
+    async_zarray = zarray._async_array
+    actual = await async_zarray.getitem(indexer)
+    assert_array_equal(nparray[indexer], actual)
+
+    # sync set
     new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     zarray[indexer] = new_data
     nparray[indexer] = new_data
     assert_array_equal(nparray, zarray[:])
 
+    # TODO test async setitem?
 
+
+@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-def test_oindex(data: st.DataObject) -> None:
+async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
-
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
+
+    # sync get
     actual = zarray.oindex[zindexer]
     assert_array_equal(nparray[npindexer], actual)
 
+    # async get
+    async_zarray = zarray._async_array
+    actual = await async_zarray.oindex.getitem(zindexer)
+    assert_array_equal(nparray[npindexer], actual)
+
+    # sync get
     assume(zarray.shards is None)  # GH2834
     for idxr in npindexer:
         if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
@@ -142,22 +161,32 @@ def test_oindex(data: st.DataObject) -> None:
     zarray.oindex[zindexer] = new_data
     assert_array_equal(nparray, zarray[:])
 
+    # note: async oindex setitem not yet implemented
 
+
+@pytest.mark.asyncio
 @given(data=st.data())
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-def test_vindex(data: st.DataObject) -> None:
+async def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
-
     indexer = data.draw(
         npst.integer_array_indices(
             shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
         )
     )
+
+    # sync get
     actual = zarray.vindex[indexer]
     assert_array_equal(nparray[indexer], actual)
 
+    # async get
+    async_zarray = zarray._async_array
+    actual = await async_zarray.vindex.getitem(indexer)
+    assert_array_equal(nparray[indexer], actual)
+
+    # sync set
     # FIXME!
     # when the indexer is such that a value gets overwritten multiple times,
     # I think the output depends on chunking.
@@ -165,6 +194,8 @@ def test_vindex(data: st.DataObject) -> None:
     # nparray[indexer] = new_data
     # zarray.vindex[indexer] = new_data
     # assert_array_equal(nparray, zarray[:])
+
+    # note: async vindex setitem not yet implemented
 
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
