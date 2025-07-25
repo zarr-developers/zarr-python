@@ -208,6 +208,42 @@ def test_overwrite_option_in_place(
     assert paths == expected_paths
 
 
+async def test_overwrite_option_separate_location(
+    tmp_path: Path,
+    expected_paths_v2_metadata: list[Path],
+    expected_paths_v3_metadata_no_chunks: list[Path],
+) -> None:
+    input_zarr_path = tmp_path / "input.zarr"
+    output_zarr_path = tmp_path / "output.zarr"
+
+    local_store = await LocalStore.open(str(input_zarr_path))
+    create_nested_zarr(local_store)
+
+    # create v3 metadata at output_zarr_path
+    result = runner.invoke(
+        cli.app,
+        ["migrate", "v3", str(input_zarr_path), str(output_zarr_path)],
+    )
+    assert result.exit_code == 0
+
+    # re-run with --overwrite option
+    result = runner.invoke(
+        cli.app,
+        ["migrate", "v3", str(input_zarr_path), str(output_zarr_path), "--overwrite", "--force"],
+    )
+    assert result.exit_code == 0
+
+    # original image should be un-changed
+    paths = sorted(input_zarr_path.rglob("*"))
+    expected_paths = [input_zarr_path / p for p in expected_paths_v2_metadata]
+    assert paths == expected_paths
+
+    # output image is only v3 metadata
+    paths = sorted(output_zarr_path.rglob("*"))
+    expected_paths = [output_zarr_path / p for p in expected_paths_v3_metadata_no_chunks]
+    assert paths == expected_paths
+
+
 @pytest.mark.parametrize("separator", [".", "/"])
 def test_migrate_sub_group(
     local_store: Store, separator: str, expected_v3_metadata: list[Path]
