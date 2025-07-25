@@ -6,7 +6,7 @@ import multiprocessing as mp
 import pickle
 import re
 import sys
-from itertools import accumulate, starmap
+from itertools import accumulate
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
@@ -37,7 +37,11 @@ from zarr.core.array import (
     create_array,
     default_filters_v2,
     default_serializer_v3,
-    iter_chunk_keys,
+    iter_chunk_coords,
+    iter_chunk_regions,
+    iter_shard_coords,
+    iter_shard_keys,
+    iter_shard_regions,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
@@ -60,7 +64,7 @@ from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
 from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
-from zarr.core.indexing import BasicIndexer, _iter_grid, ceildiv
+from zarr.core.indexing import BasicIndexer, ceildiv, iter_grid, iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
@@ -371,15 +375,23 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+@pytest.mark.parametrize(
+    ("shape", "shard_shape", "chunk_shape"), [((10,), (1,), (1,)), ((40,), (20,), (5,))]
+)
+async def test_nchunks_initialized(
+    test_cls: type[Array] | type[AsyncArray[Any]],
+    shape: tuple[int, ...],
+    shard_shape: tuple[int, ...],
+    chunk_shape: tuple[int, ...],
+) -> None:
     """
-    Test that nchunks_initialized accurately returns the number of stored chunks.
+    Test that nchunks_initialized accurately returns the number of stored partitions.
     """
     store = MemoryStore()
-    arr = zarr.create_array(store, shape=(100,), chunks=(10,), dtype="i4")
+    arr = zarr.create_array(store, shape=shape, shards=shard_shape, chunks=chunk_shape, dtype="i1")
 
     # write chunks one at a time
-    for idx, region in enumerate(arr._iter_chunk_regions()):
+    for idx, region in enumerate(arr._iter_shard_regions()):
         arr[region] = 1
         expected = idx + 1
         if test_cls == Array:
@@ -389,7 +401,7 @@ async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]
         assert observed == expected
 
     # delete chunks
-    for idx, key in enumerate(arr._iter_chunk_keys()):
+    for idx, key in enumerate(arr._iter_shard_keys()):
         sync(arr.store_path.store.delete(key))
         if test_cls == Array:
             observed = arr.nchunks_initialized
@@ -400,17 +412,24 @@ async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]
 
 
 @pytest.mark.parametrize("path", ["", "foo"])
-async def test_chunks_initialized(path: str) -> None:
+@pytest.mark.parametrize(
+    ("shape", "shard_shape", "chunk_shape"), [((10,), (1,), (1,)), ((40,), (20,), (5,))]
+)
+async def test_chunks_initialized(
+    path: str, shape: tuple[int, ...], shard_shape: tuple[int, ...], chunk_shape: tuple[int, ...]
+) -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
     store = MemoryStore()
-    arr = zarr.create_array(store, name=path, shape=(100,), chunks=(10,), dtype="i4")
+    arr = zarr.create_array(
+        store, name=path, shape=shape, shards=shard_shape, chunks=chunk_shape, dtype="i1"
+    )
 
     chunks_accumulated = tuple(
-        accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_chunk_keys()))
+        accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_shard_keys()))
     )
-    for keys, region in zip(chunks_accumulated, arr._iter_chunk_regions(), strict=False):
+    for keys, region in zip(chunks_accumulated, arr._iter_shard_regions(), strict=False):
         arr[region] = 1
         observed = sorted(await chunks_initialized(arr._async_array))
         expected = sorted(keys)
@@ -1839,32 +1858,160 @@ def test_unknown_object_codec_default_filters_v2() -> None:
 
 
 @pytest.mark.parametrize(
-    ("shard_size", "chunk_size"),
-    [
-        ((8,), (8,)),
-        ((8,), (2,)),
-        (
-            (
-                8,
-                10,
-            ),
-            (2, 2),
-        ),
-    ],
+    ("array_shape", "shard_shape", "chunk_shape"), [((10,), None, (1,)), ((30, 10), None, (2, 5))]
 )
-def test_iter_chunk_keys(shard_size: tuple[int, ...], chunk_size: tuple[int, ...]) -> None:
-    store = {}
+def test_iter_chunk_coords(
+    array_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...] | None,
+    chunk_shape: tuple[int, ...],
+    zarr_format: ZarrFormat,
+) -> None:
+    """
+    Test that we can use the various invocations of iter_chunk_coords to iterate over the coordinates
+    of the origin of each chunk.
+    """
+
     arr = zarr.create_array(
-        store,
+        {},
         dtype="uint8",
-        shape=tuple(2 * x for x in shard_size),
-        chunks=chunk_size,
-        shards=shard_size,
-        zarr_format=3,
+        shape=array_shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        zarr_format=zarr_format,
     )
-    shard_grid_shape = tuple(starmap(ceildiv, zip(arr.shape, arr.shards, strict=True)))
-    expected_keys = tuple(
-        arr.metadata.chunk_key_encoding.encode_chunk_key(region)
-        for region in _iter_grid(shard_grid_shape)
+    expected = tuple(iter_grid(arr.shard_grid_shape))
+    observed = tuple(iter_chunk_coords(arr))
+    assert observed == expected
+    assert observed == tuple(arr._iter_chunk_coords())
+    assert observed == tuple(arr._async_array._iter_chunk_coords())
+
+
+@pytest.mark.parametrize(
+    ("array_shape", "shard_shape", "chunk_shape"),
+    [((10,), (1,), (1,)), ((10,), None, (1,)), ((30, 10), (10, 5), (2, 5))],
+)
+def test_iter_shard_coords(
+    array_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...] | None,
+    chunk_shape: tuple[int, ...],
+    zarr_format: ZarrFormat,
+) -> None:
+    """
+    Test that we can use the various invocations of iter_shard_coords to iterate over the coordinates
+    of the origin of each shard.
+    """
+
+    if zarr_format == 2 and shard_shape is not None:
+        pytest.skip("Zarr format 2 does not support shard shape.")
+
+    arr = zarr.create_array(
+        {},
+        dtype="uint8",
+        shape=array_shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        zarr_format=zarr_format,
     )
-    assert tuple(iter_chunk_keys(arr)) == expected_keys
+    expected = tuple(iter_grid(arr.shard_grid_shape))
+    observed = tuple(iter_shard_coords(arr))
+    assert observed == expected
+    assert observed == tuple(arr._iter_shard_coords())
+    assert observed == tuple(arr._async_array._iter_shard_coords())
+
+
+@pytest.mark.parametrize(
+    ("array_shape", "shard_shape", "chunk_shape"),
+    [((10,), (1,), (1,)), ((10,), None, (1,)), ((30, 10), (10, 5), (2, 5))],
+)
+def test_iter_shard_keys(
+    array_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...] | None,
+    chunk_shape: tuple[int, ...],
+    zarr_format: ZarrFormat,
+) -> None:
+    """
+    Test that we can use the various invocations of iter_shard_keys to iterate over the stored
+    keys of the shards of an array.
+    """
+
+    if zarr_format == 2 and shard_shape is not None:
+        pytest.skip("Zarr format 2 does not support shard shape.")
+
+    arr = zarr.create_array(
+        {},
+        dtype="uint8",
+        shape=array_shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        zarr_format=zarr_format,
+    )
+    expected = tuple(arr.metadata.encode_chunk_key(key) for key in iter_grid(arr.shard_grid_shape))
+    observed = tuple(iter_shard_keys(arr))
+    assert observed == expected
+    assert observed == tuple(arr._iter_shard_keys())
+    assert observed == tuple(arr._async_array._iter_shard_keys())
+
+
+@pytest.mark.parametrize(
+    ("array_shape", "shard_shape", "chunk_shape"),
+    [((10,), None, (1,)), ((10,), (1,), (1,)), ((30, 10), (10, 5), (2, 5))],
+)
+def test_iter_shard_regions(
+    array_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...] | None,
+    chunk_shape: tuple[int, ...],
+    zarr_format: ZarrFormat,
+) -> None:
+    """
+    Test that we can use the various invocations of iter_shard_regions to iterate over the regions
+    spanned by the shards of an array.
+    """
+    if zarr_format == 2 and shard_shape is not None:
+        pytest.skip("Zarr format 2 does not support shard shape.")
+
+    arr = zarr.create_array(
+        {},
+        dtype="uint8",
+        shape=array_shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        zarr_format=zarr_format,
+    )
+    if shard_shape is None:
+        _shard_shape = chunk_shape
+    else:
+        _shard_shape = shard_shape
+    expected = tuple(iter_regions(arr.shape, _shard_shape))
+    observed = tuple(iter_shard_regions(arr))
+    assert observed == expected
+    assert observed == tuple(arr._iter_shard_regions())
+    assert observed == tuple(arr._async_array._iter_shard_regions())
+
+
+@pytest.mark.parametrize(
+    ("array_shape", "shard_shape", "chunk_shape"), [((10,), None, (1,)), ((30, 10), None, (2, 5))]
+)
+def test_iter_chunk_regions(
+    array_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...] | None,
+    chunk_shape: tuple[int, ...],
+    zarr_format: ZarrFormat,
+) -> None:
+    """
+    Test that we can use the various invocations of iter_chunk_regions to iterate over the regions
+    spanned by the chunks of an array.
+    """
+    arr = zarr.create_array(
+        {},
+        dtype="uint8",
+        shape=array_shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        zarr_format=zarr_format,
+    )
+
+    expected = tuple(iter_regions(arr.shape, chunk_shape))
+    observed = tuple(iter_chunk_regions(arr))
+    assert observed == expected
+    assert observed == tuple(arr._iter_chunk_regions())
+    assert observed == tuple(arr._async_array._iter_chunk_regions())
