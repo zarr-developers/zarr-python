@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
+from zarr.codecs.numcodec import NumcodecsWrapper
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.codec_pipeline import codecs_from_list
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
 
@@ -30,13 +32,12 @@ from zarr.core.common import (
     ZARR_JSON,
     ChunkCoords,
     DimensionNames,
-    parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
-from zarr.registry import get_codec_class
+from zarr.registry import get_codec
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -63,8 +64,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
-            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-            out += (get_codec_class(name_parsed).from_dict(c),)
+            out += (get_codec(c, zarr_format=3),)
 
     return out
 
@@ -84,7 +84,10 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     """Check that the codecs are valid for the given dtype"""
     from zarr.codecs.sharding import ShardingCodec
 
-    abc = validate_array_bytes_codec(codecs)
+    array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
+    _codecs = (*array_array_codecs, array_bytes_codec, *bytes_bytes_codecs)
+
+    abc = validate_array_bytes_codec(_codecs)
 
     # Recursively resolve array-bytes codecs within sharding codecs
     while isinstance(abc, ShardingCodec):
@@ -334,6 +337,13 @@ class ArrayV3Metadata(Metadata):
         # the metadata document
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
+
+        out_dict["codecs"] = ()
+        for codec in self.codecs:
+            if isinstance(codec, NumcodecsWrapper):
+                out_dict["codecs"] += (codec.to_json(zarr_format=3),)
+            else:
+                out_dict["codecs"] += (codec.to_dict(),)
 
         # TODO: replace the `to_dict` / `from_dict` on the `Metadata`` class with
         # to_json, from_json, and have ZDType inherit from `Metadata`
