@@ -1185,11 +1185,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def cdata_shape(self) -> ChunkCoords:
         """
-        The shape of the chunk grid for this array.
+        The shape of the chunk grid for this array. This property exists for backwards compatibility.
+        See :func:`chunk_grid_shape` for the preferred method.
 
         Returns
         -------
-        Tuple[int]
+        tuple[int, ...]
             The shape of the chunk grid for this array.
         """
         return self.chunk_grid_shape
@@ -1201,7 +1202,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        Tuple[int]
+        tuple[int, ...]
             The shape of the chunk grid for this array.
         """
         return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
@@ -1213,7 +1214,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        Tuple[int]
+        tuple[int, ...]
             The shape of the shard grid for this array.
         """
         return tuple(starmap(ceildiv, zip(self.shape, self.shards, strict=True)))
