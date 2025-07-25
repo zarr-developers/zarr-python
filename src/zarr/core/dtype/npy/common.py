@@ -384,9 +384,7 @@ def check_json_float_v2(data: JSON) -> TypeGuard[JSONFloatV2]:
     Bool
         True if the data is a float, False otherwise.
     """
-    if data == "NaN" or data == "Infinity" or data == "-Infinity":
-        return True
-    return isinstance(data, float | int)
+    return data in ("NaN", "Infinity", "-Infinity") or isinstance(data, float | int)
 
 
 def check_json_float_v3(data: JSON) -> TypeGuard[JSONFloatV3]:
