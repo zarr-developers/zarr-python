@@ -174,7 +174,7 @@ def iter_grid(
 
     else:
         msg = f"Indexing order {order} is not supported at this time."  # type: ignore[unreachable] # pragma: no cover
-        raise NotImplementedError(msg) # pragma: no cover
+        raise NotImplementedError(msg)  # pragma: no cover
 
 
 def iter_regions(
