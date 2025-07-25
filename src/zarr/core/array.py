@@ -1233,7 +1233,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         int
             The total number of chunks in the array.
         """
-        return product(self.cdata_shape)
+        return product(self.shard_grid_shape)
 
     async def nchunks_initialized(self) -> int:
         """
