@@ -1327,7 +1327,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             selection_shape=selection_shape,
         )
 
-    @deprecated("Use _iter_chunk_keys instead")
+    @deprecated("Use _iter_shard_keys instead")
     def _iter_chunk_keys(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[str]:
