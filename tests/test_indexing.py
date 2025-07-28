@@ -2015,7 +2015,7 @@ class TestAsync:
             ((0, ...), np.array([1, 2])),
             ((..., 0), np.array([1, 3])),
             ((0, 1, ...), np.array(2)),
-            # TODO combined
+            # combined
             ((0, slice(None)), np.array([1, 2])),
             ((slice(None), 0), np.array([1, 3])),
             ((slice(None), slice(None)), np.array([[1, 2], [3, 4]])),
@@ -2025,7 +2025,11 @@ class TestAsync:
             (([0], [1]), np.array(2)), 
             (([0, 1], [0]), np.array([[1], [3]])),
             (([0, 1], [0, 1]), np.array([[1, 2], [3, 4]])),
-            # TODO boolean array
+            # boolean array
+            (np.array([True, True]), np.array([[1, 2], [3, 4]])),
+            (np.array([True, False]), np.array([[1, 2]])),
+            (np.array([False, True]), np.array([[3, 4]])),
+            (np.array([False, False]), np.empty(shape=(0, 2), dtype="i8")),
         ],
     )
     @pytest.mark.asyncio
