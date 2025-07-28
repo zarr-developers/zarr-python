@@ -75,6 +75,7 @@ from zarr.errors import (
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath
 from zarr.storage._logging import LoggingStore
+from zarr.types import AnyArray
 
 from .test_dtype.conftest import zdtype_examples
 
@@ -363,9 +364,9 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             Array.from_dict(StorePath(store), data=metadata_dict)
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
+@pytest.mark.parametrize("test_cls", [AnyArray, AsyncArray[Any]])
 @pytest.mark.parametrize("nchunks", [2, 5, 10])
-def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) -> None:
+def test_nchunks(test_cls: type[AnyArray] | type[AsyncArray[Any]], nchunks: int) -> None:
     """
     Test that nchunks returns the number of chunks defined for the array.
     """
@@ -380,13 +381,13 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
     assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
 @pytest.mark.parametrize(
     ("shape", "shard_shape", "chunk_shape"),
     [((10,), None, (1,)), ((10,), (1,), (1,)), ((40,), (20,), (5,))],
 )
 async def test_nchunks_initialized(
-    test_cls: type[Array] | type[AsyncArray[Any]],
+    test_cls: type[AnyArray] | type[AsyncArray[Any]],
     shape: tuple[int, ...],
     shard_shape: tuple[int, ...] | None,
     chunk_shape: tuple[int, ...],
@@ -1460,7 +1461,7 @@ class TestCreateArray:
         """
         data = np.arange(10)
         name = "foo"
-        arr: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array
+        arr: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AnyArray
         if impl == "sync":
             arr = sync_api.create_array(store, name=name, data=data)
             stored = arr[:]
@@ -1681,7 +1682,7 @@ async def test_from_array_arraylike(
     store: Store,
     chunks: Literal["auto", "keep"] | tuple[int, int],
     write_data: bool,
-    src: Array | npt.ArrayLike,
+    src: AnyArray | npt.ArrayLike,
 ) -> None:
     fill_value = 42
     result = zarr.from_array(
@@ -1766,7 +1767,7 @@ def test_roundtrip_numcodecs() -> None:
     assert metadata["codecs"] == expected
 
 
-def _index_array(arr: Array, index: Any) -> Any:
+def _index_array(arr: AnyArray, index: Any) -> Any:
     return arr[index]
 
 
@@ -2143,7 +2144,7 @@ def test_create_array_with_data_num_gets(
     chunk_shape = (1,)
     shard_shape = (100,)
     shape = (shard_shape[0] * num_shards,)
-    data: Array | npt.NDArray[np.int64]
+    data: AnyArray | npt.NDArray[np.int64]
     if array_type == "numpy":
         data = np.zeros(shape[0], dtype="int64")
     else:
