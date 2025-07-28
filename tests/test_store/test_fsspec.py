@@ -532,25 +532,10 @@ class TestLockableFSSPECFileSystem:
         results = []
         async for k, v in self.store_sync._get_many(requests):
             results.append((k, v.to_bytes() if v else None))
-        # Results should already be in the same order as requests
+        # In the synchronous case, results should be in the same order as requests
 
         assert results == true_results
 
-    async def test_get_many_ordered_synchronous_fs(self):
-        requests, true_results = self.get_requests_and_true_results()
-
-        results = await self.store_sync._get_many_ordered(requests)
-        results = [value.to_bytes() if value else None for value in results]
-
-        assert results == [value[1] for value in true_results]
-
-    async def test_get_many_ordered_asynchronous_fs(self):
-        requests, true_results = self.get_requests_and_true_results()
-
-        results = await self.store_async._get_many_ordered(requests)
-        results = [value.to_bytes() if value else None for value in results]
-
-        assert results == [value[1] for value in true_results]
 
     async def test_asynchronous_locked_fs_raises(self):
         store = LockableFileSystem(asynchronous=True, lock=True).get_store(path="root")
@@ -559,6 +544,3 @@ class TestLockableFSSPECFileSystem:
         with pytest.raises(RuntimeError, match="Concurrent requests!"):
             async for _, _ in store._get_many(requests):
                 pass
-
-        with pytest.raises(RuntimeError, match="Concurrent requests!"):
-            await store._get_many_ordered(requests)

@@ -513,19 +513,23 @@ class AsyncGroup:
             consolidated_key = use_consolidated
 
         if zarr_format == 2:
-            paths = [store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
+            requests = [
+                (key, default_buffer_prototype(), None) for key in [ZGROUP_JSON, ZATTRS_JSON]
+            ]
             if use_consolidated or use_consolidated is None:
-                paths.append(store_path / consolidated_key)
+                requests.append((consolidated_key, default_buffer_prototype(), None))
 
-            zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
-                *[path.get() for path in paths]
+            retrieved_buffers = {key: value async for key, value in store_path.get_many(requests)}
+            zgroup_bytes, zattrs_bytes = (
+                retrieved_buffers[ZGROUP_JSON],
+                retrieved_buffers[ZATTRS_JSON],
             )
+
             if zgroup_bytes is None:
                 raise FileNotFoundError(store_path)
 
             if use_consolidated or use_consolidated is None:
-                maybe_consolidated_metadata_bytes = rest[0]
-
+                maybe_consolidated_metadata_bytes = retrieved_buffers[consolidated_key]
             else:
                 maybe_consolidated_metadata_bytes = None
 
@@ -534,17 +538,18 @@ class AsyncGroup:
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)
         elif zarr_format is None:
+            requests = [
+                (key, default_buffer_prototype(), None)
+                for key in [ZARR_JSON, ZGROUP_JSON, ZATTRS_JSON, consolidated_key]
+            ]
+            retrieved_buffers = {key: value async for key, value in store_path.get_many(requests)}
             (
                 zarr_json_bytes,
                 zgroup_bytes,
                 zattrs_bytes,
                 maybe_consolidated_metadata_bytes,
-            ) = await store_path.get_many_ordered(
-                ZARR_JSON,
-                ZGROUP_JSON,
-                ZATTRS_JSON,
-                consolidated_key,
-            )
+            ) = tuple(retrieved_buffers.get(req[0]) for req in requests)
+
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
                 msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
@@ -3476,12 +3481,14 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
     """
     # TODO: consider first fetching array metadata, and only fetching group metadata when we don't
     # find an array
-    zarray_bytes, zgroup_bytes, zattrs_bytes = await store._get_many_ordered(
-        [
-            (_join_paths([path, ZARRAY_JSON]), default_buffer_prototype(), None),
-            (_join_paths([path, ZGROUP_JSON]), default_buffer_prototype(), None),
-            (_join_paths([path, ZATTRS_JSON]), default_buffer_prototype(), None),
-        ]
+    requests = [
+        (_join_paths([path, ZARRAY_JSON]), default_buffer_prototype(), None),
+        (_join_paths([path, ZGROUP_JSON]), default_buffer_prototype(), None),
+        (_join_paths([path, ZATTRS_JSON]), default_buffer_prototype(), None),
+    ]
+    retrieved_buffers = {key: value async for key, value in store._get_many(requests)}
+    zarray_bytes, zgroup_bytes, zattrs_bytes = tuple(
+        retrieved_buffers.get(req[0]) for req in requests
     )
 
     if zattrs_bytes is None:

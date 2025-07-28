@@ -331,24 +331,12 @@ class FsspecStore(Store):
         self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
     ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
         if getattr(self.fs, "asynchronous", True):
-            async for key, value in super()._get_many(requests):
-                yield (key, value)
+            async for result in super()._get_many(requests):
+                yield result
         else:
             for key, prototype, byte_range in requests:
                 value = await self.get(key, prototype, byte_range)
                 yield (key, value)
-    
-    async def _get_many_ordered(
-        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
-    ) -> tuple[Buffer | None, ...]:
-        if getattr(self.fs, "asynchronous", True):
-            return await super()._get_many_ordered(requests)
-        else:
-            results = []
-            for key, prototype, byte_range in requests:
-                value = await self.get(key, prototype, byte_range)
-                results.append(value)
-            return tuple(results)
 
     async def set(
         self,

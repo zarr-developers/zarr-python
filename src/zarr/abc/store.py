@@ -426,16 +426,6 @@ class Store(ABC):
             task = await completed
             yield task
 
-    async def _get_many_ordered(
-        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
-    ) -> tuple[Buffer | None, ...]:
-        """
-        Retrieve a collection of objects from storage in the order they were requested.
-        """
-        tasks = [self.get(*req) for req in requests]
-
-        return tuple(await gather(*tasks))
-
     async def getsize(self, key: str) -> int:
         """
         Return the size, in bytes, of a value in a Store.

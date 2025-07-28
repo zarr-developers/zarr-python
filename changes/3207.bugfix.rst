@@ -2,17 +2,14 @@
   opening Zarr v3 arrays on synchronous fsspec filesystems, by implementing a
   fallback to sequential reads for non-concurrency-safe filesystems, ensuring
   robust metadata retrieval without sacrificing performance for safe
-  filesystems. Furthermore ``Store.get_many`` was modified to retrieve objects
+  filesystems. Furthermore ``Store._get_many`` was modified to retrieve objects
   concurrently from storage. The previous implementation was sequential,
-  awaiting each ``self.get(*req)`` before proceeding, contrary to the docstring.
-- Introduced ``Store.get_many_ordered`` and ``StorePath.get_many_ordered`` to
-  retrieve multiple metadata files in a single call, optimizing the retrieval
-  process and reducing overhead. ``StorePath.get_many_ordered`` is used in
-  ``get_array_metadata``. ``Store._get_many_ordered`` is used in
-  ``_read_metadata_v2``.
-- Modified ``FsspecStore._get_many`` and ``FsspecStore._get_many_ordered``
-  to conditionally use ``asyncio.gather`` based on the concurrency safety
-  of the underlying file system, enhancing compatibility with
-  synchronous file systems by avoiding deadlocks when accessing metadata
-  concurrently. Adding tests ``LockableFileSystem`` to test with
-  async/sync behavior.
+  awaiting each ``self.get(*req)`` before proceeding, contrary to the
+  docstring.
+- Introduced ``StorePath.get_many``, mimicing the behaviour of `StorePath.get`.
+- Use ``Store._get_many`` and ``StorePath.get_many`` in ``get_array_metadata``.
+- Implemented ``FsspecStore._get_many`` to conditionally use ``asyncio.gather``
+  based on the concurrency safety of the underlying file system, enhancing
+  compatibility with synchronous file systems by avoiding deadlocks when
+  accessing metadata concurrently. Adding tests ``LockableFileSystem`` to test
+  with async/sync behavior.

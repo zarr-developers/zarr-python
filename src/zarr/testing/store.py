@@ -265,30 +265,6 @@ class StoreTests(Generic[S, B]):
         expected_kvs = sorted(((k, b) for k, b in zip(keys, values, strict=False)))
         assert observed_kvs == expected_kvs
 
-    async def test_get_many_ordered(self, store: S) -> None:
-        """
-        Ensure that multiple keys can be retrieved at once with the _get_many method,
-        preserving the order of keys.
-        """
-        keys = tuple(map(str, range(10)))
-        values = tuple(f"{k}".encode() for k in keys)
-
-        for k, v in zip(keys, values, strict=False):
-            await self.set(store, k, self.buffer_cls.from_bytes(v))
-
-        observed_buffers = await store._get_many_ordered(
-            tuple(
-                zip(
-                    keys,
-                    (default_buffer_prototype(),) * len(keys),
-                    (None,) * len(keys),
-                    strict=False,
-                )
-            )
-        )
-        observed_bytes = tuple(b.to_bytes() for b in observed_buffers if b is not None)
-        assert observed_bytes == values, f"Expected {values}, got {observed_bytes}"
-
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_getsize(self, store: S, key: str, data: bytes) -> None:
