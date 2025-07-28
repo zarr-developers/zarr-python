@@ -144,6 +144,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
+    from zarr.types import AnyArray
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -1997,12 +1998,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
 @dataclass(frozen=False)
-class Array:
+class Array(Generic[T_ArrayMetadata]):
     """
     A Zarr array.
     """
 
-    _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
+    _async_array: AsyncArray[T_ArrayMetadata]
 
     @classmethod
     @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
@@ -2035,7 +2036,7 @@ class Array:
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
-    ) -> Array:
+    ) -> AnyArray:
         """Creates a new Array instance from an initialized store.
 
         .. deprecated:: 3.0.0
@@ -2164,7 +2165,7 @@ class Array:
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
-    ) -> Array:
+    ) -> AnyArray:
         """Creates a new Array instance from an initialized store.
         See :func:`Array.create` for more details.
         Deprecated in favor of :func:`zarr.create_array`.
@@ -2190,14 +2191,14 @@ class Array:
                 config=config,
             ),
         )
-        return cls(async_array)
+        return Array(async_array)
 
     @classmethod
     def from_dict(
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
-    ) -> Array:
+    ) -> AnyArray:
         """
         Create a Zarr array from a dictionary.
 
@@ -2221,13 +2222,13 @@ class Array:
             If the dictionary data is invalid or missing required fields for array creation.
         """
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
-        return cls(async_array)
+        return Array(async_array)
 
     @classmethod
     def open(
         cls,
         store: StoreLike,
-    ) -> Array:
+    ) -> AnyArray:
         """Opens an existing Array from a store.
 
         Parameters
@@ -2241,7 +2242,7 @@ class Array:
             Array opened from the store.
         """
         async_array = sync(AsyncArray.open(store))
-        return cls(async_array)
+        return Array(async_array)
 
     @property
     def store(self) -> Store:
@@ -3982,7 +3983,7 @@ class Array:
         """
         return sync(self._async_array.append(data, axis=axis))
 
-    def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
+    def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
         Update the array's attributes.
 
@@ -4007,11 +4008,8 @@ class Array:
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        # TODO: remove this cast when type inference improves
         new_array = sync(self._async_array.update_attributes(new_attributes))
-        # TODO: remove this cast when type inference improves
-        _new_array = cast("AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]", new_array)
-        return type(self)(_new_array)
+        return type(self)(new_array)
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -4166,7 +4164,7 @@ ShardsLike: TypeAlias = tuple[int, ...] | ShardsConfigParam | Literal["auto"]
 async def from_array(
     store: str | StoreLike,
     *,
-    data: Array | npt.ArrayLike,
+    data: AnyArray | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
     chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
@@ -4403,7 +4401,7 @@ async def from_array(
         if isinstance(data, Array):
 
             async def _copy_array_region(
-                chunk_coords: tuple[int, ...] | slice, _data: Array
+                chunk_coords: tuple[int, ...] | slice, _data: AnyArray
             ) -> None:
                 arr = await _data._async_array.getitem(chunk_coords)
                 await result.setitem(chunk_coords, arr)
@@ -4833,7 +4831,7 @@ async def create_array(
 
 
 def _parse_keep_array_attr(
-    data: Array | npt.ArrayLike,
+    data: AnyArray | npt.ArrayLike,
     chunks: Literal["auto", "keep"] | tuple[int, ...],
     shards: ShardsLike | None | Literal["keep"],
     filters: FiltersLike | Literal["keep"],
@@ -5234,7 +5232,7 @@ def _parse_data_params(
 
 
 def _iter_chunk_coords(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AsyncArray[Any],
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
@@ -5265,7 +5263,7 @@ def _iter_chunk_coords(
 
 
 def _iter_shard_coords(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AsyncArray[Any],
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
@@ -5296,7 +5294,7 @@ def _iter_shard_coords(
 
 
 def _iter_shard_keys(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AsyncArray[Any],
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
@@ -5325,7 +5323,7 @@ def _iter_shard_keys(
 
 
 def _iter_shard_regions(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AsyncArray[Any],
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
@@ -5360,7 +5358,7 @@ def _iter_shard_regions(
 
 
 def _iter_chunk_regions(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AsyncArray[Any],
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
