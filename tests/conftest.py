@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 import os
 import pathlib
 import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -465,3 +467,21 @@ def skip_object_dtype(dtype: ZDType[Any, Any]) -> None:
             "type resolution"
         )
         pytest.skip(msg)
+
+
+def nan_equal(a: object, b: object) -> bool:
+    """
+    Convenience function for equality comparison between two values ``a`` and ``b``, that might both
+    be NaN. Returns True if both ``a`` and ``b`` are NaN, otherwise returns a == b
+    """
+    if math.isnan(a) and math.isnan(b):  # type: ignore[arg-type]
+        return True
+    return a == b
+
+
+def deep_nan_equal(a: object, b: object) -> bool:
+    if isinstance(a, Mapping) and isinstance(b, Mapping):
+        return all(deep_nan_equal(a[k], b[k]) for k in a)
+    if isinstance(a, Sequence) and isinstance(b, Sequence):
+        return all(deep_nan_equal(a[i], b[i]) for i in range(len(a)))
+    return nan_equal(a, b)

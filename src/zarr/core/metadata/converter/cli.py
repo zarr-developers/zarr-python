@@ -1,9 +1,10 @@
 import logging
+from enum import Enum
 from typing import Annotated, Literal, cast
 
 import typer
 
-from zarr.core.metadata.converter.converter_v2_v3 import convert_v2_to_v3, remove_metadata
+import zarr.core.metadata.converter.migrate_to_v3 as migrate_metadata
 from zarr.core.sync import sync
 
 app = typer.Typer()
@@ -24,24 +25,74 @@ def _set_verbose_level() -> None:
     logging.getLogger().setLevel(logging.INFO)
 
 
+class ZarrFormat(str, Enum):
+    v2 = "v2"
+    v3 = "v3"
+
+
+class ZarrFormatV3(str, Enum):
+    """Limit CLI choice to only V3"""
+
+    v3 = "v3"
+
+
 @app.command()  # type: ignore[misc]
-def convert(
-    store: Annotated[
-        str,
+def migrate(
+    zarr_format: Annotated[
+        ZarrFormatV3,
         typer.Argument(
-            help="Store or path to directory in file system or name of zip file e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
+            help="Zarr format to migrate to. Currently only 'v3' is supported.",
         ),
     ],
-    path: Annotated[str | None, typer.Option(help="The path within the store to open")] = None,
+    input_store: Annotated[
+        str,
+        typer.Argument(
+            help=(
+                "Input Zarr to migrate - should be a store, path to directory in file system or name of zip file "
+                "e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
+            )
+        ),
+    ],
+    output_store: Annotated[
+        str | None,
+        typer.Argument(
+            help=(
+                "Output location to write generated metadata (no chunks will be copied). If not provided, "
+                "metadata will be written to input_store. Should be a store, path to directory in file system "
+                "or name of zip file e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
+            )
+        ),
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option(
             help="Enable a dry-run: files that would be converted are logged, but no new files are actually created."
         ),
     ] = False,
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            help="Remove any existing v3 metadata at the output location, before migration starts."
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            help=(
+                "Only used when --overwrite is given. Allows v3 metadata to be removed when no valid "
+                "v2 metadata exists at the output location."
+            )
+        ),
+    ] = False,
+    remove_v2_metadata: Annotated[
+        bool,
+        typer.Option(
+            help="Remove v2 metadata (if any) from the output location, after migration is complete."
+        ),
+    ] = False,
 ) -> None:
-    """Convert all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file at each level
-    (for every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
+    """Migrate all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file for each level
+    (every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
     """
     if dry_run:
         _set_verbose_level()
@@ -49,26 +100,41 @@ def convert(
             "Dry run enabled - no new files will be created. Log of files that would be created on a real run:"
         )
 
-    convert_v2_to_v3(store=store, path=path, dry_run=dry_run)
+    write_store = output_store if output_store is not None else input_store
+
+    if overwrite:
+        sync(migrate_metadata.remove_metadata(write_store, 3, force=force, dry_run=dry_run))
+
+    migrate_metadata.migrate_v2_to_v3(
+        input_store=input_store, output_store=output_store, dry_run=dry_run
+    )
+
+    if remove_v2_metadata:
+        # There should always be valid v3 metadata at the output location after migration, so force=False
+        sync(migrate_metadata.remove_metadata(write_store, 2, force=False, dry_run=dry_run))
 
 
 @app.command()  # type: ignore[misc]
-def clear(
+def remove_metadata(
+    zarr_format: Annotated[
+        ZarrFormat,
+        typer.Argument(help="Which format's metadata to remove - v2 or v3."),
+    ],
     store: Annotated[
         str,
         typer.Argument(
             help="Store or path to directory in file system or name of zip file e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
         ),
     ],
-    zarr_format: Annotated[
-        int,
-        typer.Argument(
-            help="Which format's metadata to remove - 2 or 3.",
-            min=2,
-            max=3,
+    force: Annotated[
+        bool,
+        typer.Option(
+            help=(
+                "Allow metadata to be deleted when no valid alternative exists e.g. allow deletion of v2 metadata, "
+                "when no v3 metadata is present."
+            )
         ),
-    ],
-    path: Annotated[str | None, typer.Option(help="The path within the store to open")] = None,
+    ] = False,
     dry_run: Annotated[
         bool,
         typer.Option(
@@ -86,8 +152,11 @@ def clear(
         )
 
     sync(
-        remove_metadata(
-            store=store, zarr_format=cast(Literal[2, 3], zarr_format), path=path, dry_run=dry_run
+        migrate_metadata.remove_metadata(
+            store=store,
+            zarr_format=cast(Literal[2, 3], int(zarr_format[1:])),
+            force=force,
+            dry_run=dry_run,
         )
     )
 
@@ -102,8 +171,7 @@ def main(
     ] = False,
 ) -> None:
     """
-    Convert metadata from v2 to v3. See available commands below - access help for individual commands with
-    zarr-converter COMMAND --help.
+    See available commands below - access help for individual commands with zarr COMMAND --help.
     """
     _set_logging_config(verbose)
 

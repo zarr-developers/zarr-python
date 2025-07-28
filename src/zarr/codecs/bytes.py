@@ -33,6 +33,8 @@ default_system_endian = Endian(sys.byteorder)
 
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
+    """bytes codec"""
+
     is_fixed_size = True
 
     endian: Endian | None

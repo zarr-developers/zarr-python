@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Crc32cCodec(BytesBytesCodec):
+    """crc32c codec"""
+
     is_fixed_size = True
 
     @classmethod

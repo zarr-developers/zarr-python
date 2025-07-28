@@ -1,6 +1,5 @@
 import lzma
 from pathlib import Path
-from typing import Any
 
 import numcodecs
 import numcodecs.abc
@@ -8,6 +7,7 @@ import pytest
 from numcodecs.zarr3 import LZMA, Delta
 
 import zarr
+from tests.test_cli.conftest import create_nested_zarr
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs.blosc import BloscCodec
@@ -17,7 +17,9 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
+from zarr.core.common import ZarrFormat
 from zarr.core.dtype.npy.int import BaseInt, UInt8, UInt16
+from zarr.storage._local import LocalStore
 
 typer_testing = pytest.importorskip(
     "typer.testing", reason="optional cli dependencies aren't installed"
@@ -29,112 +31,7 @@ cli = pytest.importorskip(
 runner = typer_testing.CliRunner()
 
 
-def create_nested_zarr(store: Store, attributes: dict[str, Any], separator: str) -> list[str]:
-    """Create a zarr with nested groups / arrays for testing, returning the paths to all."""
-
-    # 3 levels of nested groups
-    group_0 = zarr.create_group(store=store, zarr_format=2, attributes=attributes)
-    group_1 = group_0.create_group(name="group_1", attributes=attributes)
-    group_2 = group_1.create_group(name="group_2", attributes=attributes)
-    paths = [group_0.path, group_1.path, group_2.path]
-
-    # 1 array per group
-    for i, group in enumerate([group_0, group_1, group_2]):
-        array = group.create_array(
-            name=f"array_{i}",
-            shape=(10, 10),
-            chunks=(5, 5),
-            dtype="uint16",
-            attributes=attributes,
-            chunk_key_encoding={"name": "v2", "separator": separator},
-        )
-        array[:] = 1
-        paths.append(array.path)
-
-    return paths
-
-
-@pytest.fixture
-def expected_paths_no_metadata() -> list[Path]:
-    """Expected paths from create_nested_zarr, with no metadata files"""
-    return [
-        Path("array_0"),
-        Path("array_0/0.0"),
-        Path("array_0/0.1"),
-        Path("array_0/1.0"),
-        Path("array_0/1.1"),
-        Path("group_1"),
-        Path("group_1/array_1"),
-        Path("group_1/array_1/0.0"),
-        Path("group_1/array_1/0.1"),
-        Path("group_1/array_1/1.0"),
-        Path("group_1/array_1/1.1"),
-        Path("group_1/group_2"),
-        Path("group_1/group_2/array_2"),
-        Path("group_1/group_2/array_2/0.0"),
-        Path("group_1/group_2/array_2/0.1"),
-        Path("group_1/group_2/array_2/1.0"),
-        Path("group_1/group_2/array_2/1.1"),
-    ]
-
-
-@pytest.fixture
-def expected_v3_metadata() -> list[Path]:
-    """Expected v3 metadata for create_nested_zarr"""
-    return sorted(
-        [
-            Path("array_0/zarr.json"),
-            Path("group_1/array_1/zarr.json"),
-            Path("group_1/group_2/array_2/zarr.json"),
-            Path("zarr.json"),
-            Path("group_1/zarr.json"),
-            Path("group_1/group_2/zarr.json"),
-        ]
-    )
-
-
-@pytest.fixture
-def expected_v2_metadata() -> list[Path]:
-    """Expected v2 metadata for create_nested_zarr"""
-    return sorted(
-        [
-            Path("array_0/.zarray"),
-            Path("array_0/.zattrs"),
-            Path("group_1/array_1/.zarray"),
-            Path("group_1/array_1/.zattrs"),
-            Path("group_1/group_2/array_2/.zarray"),
-            Path("group_1/group_2/array_2/.zattrs"),
-            Path(".zgroup"),
-            Path(".zattrs"),
-            Path("group_1/.zgroup"),
-            Path("group_1/.zattrs"),
-            Path("group_1/group_2/.zgroup"),
-            Path("group_1/group_2/.zattrs"),
-        ]
-    )
-
-
-@pytest.fixture
-def expected_paths_v3_metadata(
-    expected_paths_no_metadata: list[Path], expected_v3_metadata: list[Path]
-) -> list[Path]:
-    """Expected paths from create_nested_zarr + v3 metadata files"""
-    expected_paths_no_metadata.extend(expected_v3_metadata)
-
-    return sorted(expected_paths_no_metadata)
-
-
-@pytest.fixture
-def expected_paths_v2_metadata(
-    expected_paths_no_metadata: list[Path], expected_v2_metadata: list[Path]
-) -> list[Path]:
-    """Expected paths from create_nested_zarr + v2 metadata files"""
-    expected_paths_no_metadata.extend(expected_v2_metadata)
-
-    return sorted(expected_paths_no_metadata)
-
-
-def test_convert_array(local_store: Store) -> None:
+def test_migrate_array(local_store: Store) -> None:
     shape = (10, 10)
     chunks = (10, 10)
     dtype = "uint16"
@@ -153,7 +50,7 @@ def test_convert_array(local_store: Store) -> None:
         attributes=attributes,
     )
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -175,11 +72,11 @@ def test_convert_array(local_store: Store) -> None:
     assert metadata.storage_transformers == ()
 
 
-def test_convert_group(local_store: Store) -> None:
+def test_migrate_group(local_store: Store) -> None:
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
     zarr.create_group(store=local_store, zarr_format=2, attributes=attributes)
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -192,16 +89,16 @@ def test_convert_group(local_store: Store) -> None:
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-def test_convert_nested_groups_and_arrays(
+def test_migrate_nested_groups_and_arrays_in_place(
     local_store: Store, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that zarr.json are made at the correct points in a hierarchy of groups and arrays
     (including when there are additional dirs due to using a / separator)"""
 
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    paths = create_nested_zarr(local_store, attributes, separator)
+    paths = create_nested_zarr(local_store, attributes=attributes, separator=separator)
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
 
     zarr_json_paths = sorted(local_store.root.rglob("zarr.json"))
@@ -218,17 +115,153 @@ def test_convert_nested_groups_and_arrays(
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
-def test_convert_nested_with_path(
+async def test_migrate_nested_groups_and_arrays_separate_location(
+    tmp_path: Path,
+    separator: str,
+    expected_v2_metadata: list[Path],
+    expected_v3_metadata: list[Path],
+) -> None:
+    """Test that zarr.json are made at the correct paths, when saving to a separate output location."""
+
+    input_zarr_path = tmp_path / "input.zarr"
+    output_zarr_path = tmp_path / "output.zarr"
+
+    local_store = await LocalStore.open(str(input_zarr_path))
+    create_nested_zarr(local_store, separator=separator)
+
+    result = runner.invoke(cli.app, ["migrate", "v3", str(input_zarr_path), str(output_zarr_path)])
+    assert result.exit_code == 0
+
+    # Files in input zarr should be unchanged i.e. still v2 only
+    zarr_json_paths = sorted(input_zarr_path.rglob("zarr.json"))
+    assert len(zarr_json_paths) == 0
+
+    paths = [
+        path
+        for path in input_zarr_path.rglob("*")
+        if path.stem in [".zarray", ".zgroup", ".zattrs"]
+    ]
+    expected_paths = [input_zarr_path / p for p in expected_v2_metadata]
+    assert sorted(paths) == expected_paths
+
+    # Files in output zarr should only contain v3 metadata
+    zarr_json_paths = sorted(output_zarr_path.rglob("zarr.json"))
+    expected_zarr_json_paths = [output_zarr_path / p for p in expected_v3_metadata]
+    assert zarr_json_paths == expected_zarr_json_paths
+
+
+def test_remove_v2_metadata_option_in_place(
+    local_store: Store, expected_paths_v3_metadata: list[Path]
+) -> None:
+    create_nested_zarr(local_store)
+
+    # convert v2 metadata to v3, then remove v2 metadata
+    result = runner.invoke(
+        cli.app, ["migrate", "v3", str(local_store.root), "--remove-v2-metadata"]
+    )
+    assert result.exit_code == 0
+
+    paths = sorted(local_store.root.rglob("*"))
+    expected_paths = [local_store.root / p for p in expected_paths_v3_metadata]
+    assert paths == expected_paths
+
+
+async def test_remove_v2_metadata_option_separate_location(
+    tmp_path: Path,
+    expected_paths_v2_metadata: list[Path],
+    expected_paths_v3_metadata_no_chunks: list[Path],
+) -> None:
+    """Check that when using --remove-v2-metadata with a separate output location, no v2 metadata is removed from
+    the input location."""
+
+    input_zarr_path = tmp_path / "input.zarr"
+    output_zarr_path = tmp_path / "output.zarr"
+
+    local_store = await LocalStore.open(str(input_zarr_path))
+    create_nested_zarr(local_store)
+
+    result = runner.invoke(
+        cli.app,
+        ["migrate", "v3", str(input_zarr_path), str(output_zarr_path), "--remove-v2-metadata"],
+    )
+    assert result.exit_code == 0
+
+    # input image should be unchanged
+    paths = sorted(input_zarr_path.rglob("*"))
+    expected_paths = [input_zarr_path / p for p in expected_paths_v2_metadata]
+    assert paths == expected_paths
+
+    # output image should be only v3 metadata
+    paths = sorted(output_zarr_path.rglob("*"))
+    expected_paths = [output_zarr_path / p for p in expected_paths_v3_metadata_no_chunks]
+    assert paths == expected_paths
+
+
+def test_overwrite_option_in_place(
+    local_store: Store, expected_paths_v2_v3_metadata: list[Path]
+) -> None:
+    create_nested_zarr(local_store)
+
+    # add v3 metadata in place
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    assert result.exit_code == 0
+
+    # check that v3 metadata can be overwritten with --overwrite
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root), "--overwrite"])
+    assert result.exit_code == 0
+
+    paths = sorted(local_store.root.rglob("*"))
+    expected_paths = [local_store.root / p for p in expected_paths_v2_v3_metadata]
+    assert paths == expected_paths
+
+
+async def test_overwrite_option_separate_location(
+    tmp_path: Path,
+    expected_paths_v2_metadata: list[Path],
+    expected_paths_v3_metadata_no_chunks: list[Path],
+) -> None:
+    input_zarr_path = tmp_path / "input.zarr"
+    output_zarr_path = tmp_path / "output.zarr"
+
+    local_store = await LocalStore.open(str(input_zarr_path))
+    create_nested_zarr(local_store)
+
+    # create v3 metadata at output_zarr_path
+    result = runner.invoke(
+        cli.app,
+        ["migrate", "v3", str(input_zarr_path), str(output_zarr_path)],
+    )
+    assert result.exit_code == 0
+
+    # re-run with --overwrite option
+    result = runner.invoke(
+        cli.app,
+        ["migrate", "v3", str(input_zarr_path), str(output_zarr_path), "--overwrite", "--force"],
+    )
+    assert result.exit_code == 0
+
+    # original image should be un-changed
+    paths = sorted(input_zarr_path.rglob("*"))
+    expected_paths = [input_zarr_path / p for p in expected_paths_v2_metadata]
+    assert paths == expected_paths
+
+    # output image is only v3 metadata
+    paths = sorted(output_zarr_path.rglob("*"))
+    expected_paths = [output_zarr_path / p for p in expected_paths_v3_metadata_no_chunks]
+    assert paths == expected_paths
+
+
+@pytest.mark.parametrize("separator", [".", "/"])
+def test_migrate_sub_group(
     local_store: Store, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that only arrays/groups within group_1 are converted (+ no other files in store)"""
 
-    create_nested_zarr(local_store, {}, separator)
-
-    result = runner.invoke(cli.app, ["convert", str(local_store.root), "--path", "group_1"])
-    assert result.exit_code == 0
-
+    create_nested_zarr(local_store, separator=separator)
     group_path = local_store.root / "group_1"
+
+    result = runner.invoke(cli.app, ["migrate", "v3", str(group_path)])
+    assert result.exit_code == 0
 
     zarr_json_paths = sorted(local_store.root.rglob("zarr.json"))
     expected_zarr_json_paths = [
@@ -271,7 +304,7 @@ def test_convert_nested_with_path(
     ],
     ids=["blosc", "zstd", "gzip", "numcodecs-compressor"],
 )
-def test_convert_compressor(
+def test_migrate_compressor(
     local_store: Store, compressor_v2: numcodecs.abc.Codec, compressor_v3: Codec
 ) -> None:
     zarr_array = zarr.create_array(
@@ -285,7 +318,7 @@ def test_convert_compressor(
     )
     zarr_array[:] = 1
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -299,7 +332,7 @@ def test_convert_compressor(
     assert (zarr_array[:] == 1).all()
 
 
-def test_convert_filter(local_store: Store) -> None:
+def test_migrate_filter(local_store: Store) -> None:
     filter_v2 = numcodecs.Delta(dtype="<u2", astype="<u2")
     filter_v3 = Delta(dtype="<u2", astype="<u2")
 
@@ -314,7 +347,7 @@ def test_convert_filter(local_store: Store) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -334,7 +367,7 @@ def test_convert_filter(local_store: Store) -> None:
         ("F", (TransposeCodec(order=(1, 0)), BytesCodec(endian="little"))),
     ],
 )
-def test_convert_C_vs_F_order(
+def test_migrate_C_vs_F_order(
     local_store: Store, order: str, expected_codecs: tuple[Codec]
 ) -> None:
     zarr_array = zarr.create_array(
@@ -349,7 +382,7 @@ def test_convert_C_vs_F_order(
     )
     zarr_array[:] = 1
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -368,7 +401,7 @@ def test_convert_C_vs_F_order(
     ],
     ids=["single_byte", "multi_byte"],
 )
-def test_convert_endian(
+def test_migrate_endian(
     local_store: Store, dtype: str, expected_data_type: BaseInt, expected_codecs: tuple[Codec]
 ) -> None:
     zarr_array = zarr.create_array(
@@ -382,7 +415,7 @@ def test_convert_endian(
     )
     zarr_array[:] = 1
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
@@ -395,7 +428,7 @@ def test_convert_endian(
 
 
 @pytest.mark.parametrize("node_type", ["array", "group"])
-def test_convert_v3(local_store: Store, node_type: str) -> None:
+def test_migrate_v3(local_store: Store, node_type: str) -> None:
     """Attempting to convert a v3 array/group should always fail"""
 
     if node_type == "array":
@@ -405,13 +438,13 @@ def test_convert_v3(local_store: Store, node_type: str) -> None:
     else:
         zarr.create_group(store=local_store, zarr_format=3)
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert str(result.exception) == "Only arrays / groups with zarr v2 metadata can be converted"
 
 
-def test_convert_unknown_codec(local_store: Store) -> None:
+def test_migrate_unknown_codec(local_store: Store) -> None:
     """Attempting to convert a codec without a v3 equivalent should always fail"""
 
     zarr.create_array(
@@ -424,7 +457,7 @@ def test_convert_unknown_codec(local_store: Store) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 1
     assert isinstance(result.exception, ValueError)
     assert (
@@ -432,7 +465,7 @@ def test_convert_unknown_codec(local_store: Store) -> None:
     )
 
 
-def test_convert_incorrect_filter(local_store: Store) -> None:
+def test_migrate_incorrect_filter(local_store: Store) -> None:
     """Attempting to convert a filter (which is the wrong type of codec) should always fail"""
 
     zarr.create_array(
@@ -445,7 +478,7 @@ def test_convert_incorrect_filter(local_store: Store) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert (
@@ -453,7 +486,7 @@ def test_convert_incorrect_filter(local_store: Store) -> None:
     )
 
 
-def test_convert_incorrect_compressor(local_store: Store) -> None:
+def test_migrate_incorrect_compressor(local_store: Store) -> None:
     """Attempting to convert a compressor (which is the wrong type of codec) should always fail"""
 
     zarr.create_array(
@@ -466,7 +499,7 @@ def test_convert_incorrect_compressor(local_store: Store) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert (
@@ -475,31 +508,46 @@ def test_convert_incorrect_compressor(local_store: Store) -> None:
     )
 
 
-def test_remove_metadata_v2(local_store: Store, expected_paths_no_metadata: list[Path]) -> None:
-    """Test all v2 metadata can be removed (leaving all groups / arrays as-is)"""
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_remove_metadata_fails_without_force(local_store: Store, zarr_format: ZarrFormat) -> None:
+    """Test removing metadata (when no alternate metadata is present) fails without --force."""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".")
+    create_nested_zarr(local_store, zarr_format=zarr_format)
 
-    result = runner.invoke(cli.app, ["clear", str(local_store.root), "2"])
+    result = runner.invoke(cli.app, ["remove-metadata", f"v{zarr_format}", str(local_store.root)])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, ValueError)
+    assert str(result.exception).startswith(f"Cannot remove v{zarr_format} metadata at file")
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_remove_metadata_succeeds_with_force(
+    local_store: Store, zarr_format: ZarrFormat, expected_paths_no_metadata: list[Path]
+) -> None:
+    """Test removing metadata (when no alternate metadata is present) succeeds with --force."""
+
+    create_nested_zarr(local_store, zarr_format=zarr_format)
+
+    result = runner.invoke(
+        cli.app, ["remove-metadata", f"v{zarr_format}", str(local_store.root), "--force"]
+    )
     assert result.exit_code == 0
 
-    # check metadata files removed, but all groups / arrays still remain
     paths = sorted(local_store.root.rglob("*"))
-
     expected_paths = [local_store.root / p for p in expected_paths_no_metadata]
     assert paths == expected_paths
 
 
-def test_remove_metadata_v2_with_path(
+def test_remove_metadata_sub_group(
     local_store: Store, expected_paths_no_metadata: list[Path]
 ) -> None:
-    """Test only v2 metadata within the given path (group_1) is removed"""
+    """Test only v2 metadata within group_1 is removed and rest remains un-changed."""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".")
+    create_nested_zarr(local_store)
 
-    result = runner.invoke(cli.app, ["clear", str(local_store.root), "2", "--path", "group_1"])
+    result = runner.invoke(
+        cli.app, ["remove-metadata", "v2", str(local_store.root / "group_1"), "--force"]
+    )
     assert result.exit_code == 0
 
     # check all metadata files inside group_1 are removed (.zattrs / .zgroup / .zarray should remain only inside the top
@@ -515,42 +563,48 @@ def test_remove_metadata_v2_with_path(
 
 
 @pytest.mark.parametrize(
-    ("zarr_format", "expected_paths"),
-    [("2", "expected_paths_v3_metadata"), ("3", "expected_paths_v2_metadata")],
+    ("zarr_format", "expected_output_paths"),
+    [("v2", "expected_paths_v3_metadata"), ("v3", "expected_paths_v2_metadata")],
 )
 def test_remove_metadata_after_conversion(
-    local_store: Store, request: pytest.FixtureRequest, zarr_format: str, expected_paths: list[Path]
+    local_store: Store,
+    request: pytest.FixtureRequest,
+    zarr_format: str,
+    expected_output_paths: str,
 ) -> None:
     """Test all v2/v3 metadata can be removed after metadata conversion (all groups / arrays /
     metadata of other versions should remain as-is)"""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".")
+    create_nested_zarr(local_store)
 
     # convert v2 metadata to v3 (so now both v2 and v3 metadata present!), then remove either the v2 or v3 metadata
-    result = runner.invoke(cli.app, ["convert", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 0
-    result = runner.invoke(cli.app, ["clear", str(local_store.root), zarr_format])
+    result = runner.invoke(cli.app, ["remove-metadata", zarr_format, str(local_store.root)])
     assert result.exit_code == 0
 
     paths = sorted(local_store.root.rglob("*"))
-    expected_paths = [local_store.root / p for p in request.getfixturevalue(expected_paths)]
+    expected_paths = request.getfixturevalue(expected_output_paths)
+    expected_paths = [local_store.root / p for p in expected_paths]
     assert paths == expected_paths
 
 
-@pytest.mark.parametrize("cli_command", ["convert", "clear"])
+@pytest.mark.parametrize("cli_command", ["migrate", "remove-metadata"])
 def test_dry_run(
     local_store: Store, cli_command: str, expected_paths_v2_metadata: list[Path]
 ) -> None:
     """Test that all files are un-changed after a dry run"""
 
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
-    create_nested_zarr(local_store, attributes, ".")
+    create_nested_zarr(local_store)
 
-    if cli_command == "convert":
-        result = runner.invoke(cli.app, ["convert", str(local_store.root), "--dry-run"])
+    if cli_command == "migrate":
+        result = runner.invoke(
+            cli.app, ["migrate", "v3", str(local_store.root), "--overwrite", "--force", "--dry-run"]
+        )
     else:
-        result = runner.invoke(cli.app, ["clear", str(local_store.root), "2", "--dry-run"])
+        result = runner.invoke(
+            cli.app, ["remove-metadata", "v2", str(local_store.root), "--force", "--dry-run"]
+        )
 
     assert result.exit_code == 0
 
