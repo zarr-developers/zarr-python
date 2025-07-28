@@ -336,7 +336,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), indent=json_indent, allow_nan=False).encode()
+                    json.dumps(self.to_dict(), indent=json_indent, allow_nan=True).encode()
                 )
             }
         else:
@@ -345,7 +345,7 @@ class GroupMetadata(Metadata):
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
                 ZATTRS_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.attributes, indent=json_indent, allow_nan=False).encode()
+                    json.dumps(self.attributes, indent=json_indent, allow_nan=True).encode()
                 ),
             }
             if self.consolidated_metadata:
@@ -373,7 +373,7 @@ class GroupMetadata(Metadata):
 
                 items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
                     json.dumps(
-                        {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=False
+                        {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=True
                     ).encode()
                 )
 
@@ -1307,7 +1307,18 @@ class AsyncGroup:
         # check if we can use consolidated metadata, which requires that we have non-None
         # consolidated metadata at all points in the hierarchy.
         if self.metadata.consolidated_metadata is not None:
-            return len(self.metadata.consolidated_metadata.flattened_metadata)
+            if max_depth is not None and max_depth < 0:
+                raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
+            if max_depth is None:
+                return len(self.metadata.consolidated_metadata.flattened_metadata)
+            else:
+                return len(
+                    [
+                        x
+                        for x in self.metadata.consolidated_metadata.flattened_metadata
+                        if x.count("/") <= max_depth
+                    ]
+                )
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0

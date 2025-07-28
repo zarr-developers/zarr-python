@@ -648,7 +648,7 @@ def test_group_create_array(
         array = group.create_array(name=name, shape=shape, dtype=dtype)
         array[:] = data
     elif method == "array":
-        with pytest.warns(DeprecationWarning):
+        with pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."):
             array = group.array(name=name, data=data, shape=shape, dtype=dtype)
     else:
         raise AssertionError
@@ -660,7 +660,7 @@ def test_group_create_array(
                 a[:] = data
         elif method == "array":
             with pytest.raises(ContainsArrayError):  # noqa: PT012
-                with pytest.warns(DeprecationWarning):
+                with pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."):
                     a = group.array(name=name, shape=shape, dtype=dtype)
                 a[:] = data
 
@@ -1118,12 +1118,22 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
             "consolidated_metadata",
             None,
         )
+        # test depth=0
+        nmembers = await group.nmembers(max_depth=0)
+        assert nmembers == 2
+        # test depth=1
+        nmembers = await group.nmembers(max_depth=1)
+        assert nmembers == 4
+        # test depth=None
         all_children = sorted(
             [x async for x in group.members(max_depth=None)], key=operator.itemgetter(0)
         )
         assert len(all_children) == 4
         nmembers = await group.nmembers(max_depth=None)
         assert nmembers == 4
+        # test depth<0
+        with pytest.raises(ValueError, match="max_depth"):
+            await group.nmembers(max_depth=-1)
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
@@ -1184,22 +1194,28 @@ def test_create_dataset_with_data(store: Store, zarr_format: ZarrFormat) -> None
     """
     root = Group.from_store(store=store, zarr_format=zarr_format)
     arr = np.random.random((5, 5))
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."):
         data = root.create_dataset("random", data=arr, shape=arr.shape)
     np.testing.assert_array_equal(np.asarray(data), arr)
 
 
 async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."):
         foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
     assert foo.shape == (10,)
 
-    with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
+    with (
+        pytest.raises(ContainsArrayError),
+        pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."),
+    ):
         await root.create_dataset("foo", shape=(100,), dtype="int8")
 
     _ = await root.create_group("bar")
-    with pytest.raises(ContainsGroupError), pytest.warns(DeprecationWarning):
+    with (
+        pytest.raises(ContainsGroupError),
+        pytest.warns(DeprecationWarning, match=r"Group\.create_array instead\."),
+    ):
         await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 

@@ -18,7 +18,7 @@ from zarr.api.asynchronous import (
     open_consolidated,
 )
 from zarr.core.buffer import cpu, default_buffer_prototype
-from zarr.core.dtype import parse_data_type
+from zarr.core.dtype import parse_dtype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -504,7 +504,7 @@ class TestConsolidated:
     async def test_consolidated_metadata_v2(self):
         store = zarr.storage.MemoryStore()
         g = await AsyncGroup.from_store(store, attributes={"key": "root"}, zarr_format=2)
-        dtype = parse_data_type("uint8", zarr_format=2)
+        dtype = parse_dtype("uint8", zarr_format=2)
         await g.create_array(name="a", shape=(1,), attributes={"key": "a"}, dtype=dtype)
         g1 = await g.create_group(name="g1", attributes={"key": "g1"})
         await g1.create_group(name="g2", attributes={"key": "g2"})

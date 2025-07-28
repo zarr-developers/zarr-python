@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling>=1.27.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
@@ -47,7 +47,6 @@ classifiers = [
     'Intended Audience :: Developers',
     'Intended Audience :: Information Technology',
     'Intended Audience :: Science/Research',
-    'License :: OSI Approved :: MIT License',
     'Programming Language :: Python',
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
@@ -56,7 +55,8 @@ classifiers = [
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
 ]
-license = {text = "MIT License"}
+license = "MIT"
+license-files = ["LICENSE.txt"]
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
@@ -71,7 +71,7 @@ gpu = [
 ]
 # Development extras
 test = [
-    "coverage",
+    "coverage>=7.10",
     # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
     "pytest<8.4",
     "pytest-asyncio",
@@ -129,11 +129,8 @@ dev = [
 ]
 
 [tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING:",
-    "pragma: ${PY_MAJOR_VERSION} no cover",
-    '.*\.\.\.' # Ignore "..." lines
+exclude_also = [
+    'if TYPE_CHECKING:',
 ]
 
 [tool.coverage.run]
@@ -325,7 +322,6 @@ extend-select = [
 ignore = [
     "ANN401",
     "PT011",  # TODO: apply this rule
-    "PT030",  # TODO: apply this rule
     "RET505",
     "RET506",
     "RUF005",
@@ -439,7 +435,6 @@ checks = [
     # Currently broken; see https://github.com/numpy/numpydoc/issues/573
     # "GL09",
     "GL10",
-    "SS02",
     "SS04",
     "PR02",
     "PR03",
