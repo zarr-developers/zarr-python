@@ -1998,7 +1998,7 @@ def test_iter_chunk_regions():
 
 class TestAsync:
     @pytest.mark.parametrize(
-        ("indexer", "expected"), 
+        ("indexer", "expected"),
         [
             # int
             ((0,), np.array([1, 2])),
@@ -2022,7 +2022,7 @@ class TestAsync:
             # array of ints
             (([0]), np.array([[1, 2]])),
             (([1]), np.array([[3, 4]])),
-            (([0], [1]), np.array(2)), 
+            (([0], [1]), np.array(2)),
             (([0, 1], [0]), np.array([[1], [3]])),
             (([0, 1], [0, 1]), np.array([[1, 2], [3, 4]])),
             # boolean array
@@ -2042,7 +2042,7 @@ class TestAsync:
         assert_array_equal(result, expected)
 
     @pytest.mark.parametrize(
-        "indexer,expected", 
+        ("indexer", "expected"),
         [
             (([0], [0]), np.array(1)),
             (([0, 1], [0, 1]), np.array([1, 4])),
