@@ -1998,7 +1998,7 @@ def test_iter_chunk_regions():
 
 class TestAsync:
     @pytest.mark.parametrize(
-        "indexer,expected", 
+        ("indexer", "expected"), 
         [
             # int
             ((0,), np.array([1, 2])),
