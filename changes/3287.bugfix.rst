@@ -1,0 +1,1 @@
+Fixes Group.nmembers() ignoring depth when using consolidated metadata.
