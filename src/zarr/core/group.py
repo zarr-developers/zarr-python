@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
     from zarr.core.dtype import ZDTypeLike
+    from zarr.types import AnyArray, ArrayV2, ArrayV3
 
 logger = logging.getLogger("zarr.group")
 
@@ -113,7 +114,11 @@ def parse_attributes(data: Any) -> dict[str, Any]:
 
 
 @overload
-def _parse_async_node(node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]) -> Array: ...
+def _parse_async_node(node: AsyncArray[ArrayV3Metadata]) -> ArrayV3: ...
+
+
+@overload
+def _parse_async_node(node: AsyncArray[ArrayV2Metadata]) -> ArrayV2: ...
 
 
 @overload
@@ -122,7 +127,7 @@ def _parse_async_node(node: AsyncGroup) -> Group: ...
 
 def _parse_async_node(
     node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
-) -> Array | Group:
+) -> AnyArray | Group:
     """Wrap an AsyncArray in an Array, or an AsyncGroup in a Group."""
     if isinstance(node, AsyncArray):
         return Array(node)
@@ -1879,7 +1884,7 @@ class Group(SyncMixin):
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
-    def __getitem__(self, path: str) -> Array | Group:
+    def __getitem__(self, path: str) -> AnyArray | Group:
         """Obtain a group member.
 
         Parameters
@@ -1912,7 +1917,7 @@ class Group(SyncMixin):
         else:
             return Group(obj)
 
-    def get(self, path: str, default: DefaultT | None = None) -> Array | Group | DefaultT | None:
+    def get(self, path: str, default: DefaultT | None = None) -> AnyArray | Group | DefaultT | None:
         """Obtain a group member, returning default if not found.
 
         Parameters
@@ -2148,7 +2153,7 @@ class Group(SyncMixin):
 
     def members(
         self, max_depth: int | None = 0, *, use_consolidated_for_children: bool = True
-    ) -> tuple[tuple[str, Array | Group], ...]:
+    ) -> tuple[tuple[str, AnyArray | Group], ...]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
@@ -2184,7 +2189,7 @@ class Group(SyncMixin):
         nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
         *,
         overwrite: bool = False,
-    ) -> Iterator[tuple[str, Group | Array]]:
+    ) -> Iterator[tuple[str, Group | AnyArray]]:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
@@ -2323,7 +2328,7 @@ class Group(SyncMixin):
         for _, group in self.groups():
             yield group
 
-    def arrays(self) -> Generator[tuple[str, Array], None]:
+    def arrays(self) -> Generator[tuple[str, AnyArray], None]:
         """Return the sub-arrays of this group as a generator of (name, array) pairs
 
         Examples
@@ -2354,7 +2359,7 @@ class Group(SyncMixin):
         for name, _ in self.arrays():
             yield name
 
-    def array_values(self) -> Generator[Array, None]:
+    def array_values(self) -> Generator[AnyArray, None]:
         """Return an iterator over group members.
 
         Examples
@@ -2462,7 +2467,7 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
-    ) -> Array:
+    ) -> AnyArray:
         """Create an array within this group.
 
         This method lightly wraps [`zarr.core.array.create_array`][].
@@ -2606,7 +2611,7 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
-    ) -> Array:
+    ) -> AnyArray:
         """Create an array within this group.
 
         This method lightly wraps [zarr.core.array.create_array][].
@@ -2735,7 +2740,7 @@ class Group(SyncMixin):
         )
 
     @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
-    def create_dataset(self, name: str, **kwargs: Any) -> Array:
+    def create_dataset(self, name: str, **kwargs: Any) -> AnyArray:
         """Create an array.
 
         !!! warning "Deprecated"
@@ -2760,7 +2765,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.", category=ZarrDeprecationWarning)
-    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
+    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
         """Obtain an array, creating if it doesn't exist.
 
         !!! warning "Deprecated"
@@ -2785,7 +2790,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
+    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per [zarr.Group.create_array][].
@@ -2803,7 +2808,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
+    def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
         the array's fill value or zeros if no fill value is provided.
 
@@ -2824,7 +2829,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
-    def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
+    def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2843,7 +2848,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
-    def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
+    def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2864,7 +2869,7 @@ class Group(SyncMixin):
 
     def full(
         self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
-    ) -> Array:
+    ) -> AnyArray:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2889,7 +2894,7 @@ class Group(SyncMixin):
             )
         )
 
-    def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+    def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create an empty sub-array like `data`. The contents will be filled
         with the array's fill value or zeros if no fill value is provided.
 
@@ -2915,7 +2920,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
-    def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+    def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array of zeros like `data`.
 
         Parameters
@@ -2935,7 +2940,7 @@ class Group(SyncMixin):
 
         return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
-    def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+    def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array of ones like `data`.
 
         Parameters
@@ -2954,7 +2959,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
-    def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+    def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array like `data` filled with the `fill_value` of `data` .
 
         Parameters
@@ -3004,7 +3009,7 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         data: npt.ArrayLike | None = None,
-    ) -> Array:
+    ) -> AnyArray:
         """Create an array within this group.
 
         !!! warning "Deprecated"
