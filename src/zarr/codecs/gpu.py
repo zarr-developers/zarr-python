@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover
     nvcomp = None
 
 
-def parse_zstd_level(data: JSON) -> int:
+def _parse_zstd_level(data: JSON) -> int:
     if isinstance(data, int):
         if data >= 23:
             raise ValueError(f"Value must be less than or equal to 22. Got {data} instead.")
@@ -37,7 +37,7 @@ def parse_zstd_level(data: JSON) -> int:
     raise TypeError(f"Got value with type {type(data)}, but expected an int.")
 
 
-def parse_checksum(data: JSON) -> bool:
+def _parse_checksum(data: JSON) -> bool:
     if isinstance(data, bool):
         return data
     raise TypeError(f"Expected bool. Got {type(data)}.")
@@ -53,8 +53,8 @@ class NvcompZstdCodec(BytesBytesCodec):
     def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
         # TODO: Set CUDA device appropriately here and also set CUDA stream
 
-        level_parsed = parse_zstd_level(level)
-        checksum_parsed = parse_checksum(checksum)
+        level_parsed = _parse_zstd_level(level)
+        checksum_parsed = _parse_checksum(checksum)
 
         object.__setattr__(self, "level", level_parsed)
         object.__setattr__(self, "checksum", checksum_parsed)
