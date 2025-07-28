@@ -30,9 +30,10 @@ from zarr.core.common import ceildiv, product
 from zarr.core.metadata import T_ArrayMetadata
 
 if TYPE_CHECKING:
-    from zarr.core.array import Array, AsyncArray
+    from zarr.core.array import AsyncArray
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
+    from zarr.types import AnyArray
 
 
 IntSequence = list[int] | npt.NDArray[np.intp]
@@ -78,7 +79,7 @@ def err_too_many_indices(selection: Any, shape: tuple[int, ...]) -> None:
     raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
 
 
-def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
+def _zarr_array_to_int_or_bool_array(arr: AnyArray) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
     if arr.dtype.kind in ("i", "b"):
         return np.asarray(arr)
     else:
@@ -990,10 +991,10 @@ class OrthogonalIndexer(Indexer):
 
 @dataclass(frozen=True)
 class OIndex:
-    array: Array
+    array: AnyArray
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
+    def __getitem__(self, selection: OrthogonalSelection | AnyArray) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -1020,7 +1021,7 @@ class OIndex:
 class AsyncOIndex(Generic[T_ArrayMetadata]):
     array: AsyncArray[T_ArrayMetadata]
 
-    async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
+    async def getitem(self, selection: OrthogonalSelection | AnyArray) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -1119,7 +1120,7 @@ class BlockIndexer(Indexer):
 
 @dataclass(frozen=True)
 class BlockIndex:
-    array: Array
+    array: AnyArray
 
     def __getitem__(self, selection: BasicSelection) -> NDArrayLikeOrScalar:
         fields, new_selection = pop_fields(selection)
@@ -1310,11 +1311,11 @@ class MaskIndexer(CoordinateIndexer):
 
 @dataclass(frozen=True)
 class VIndex:
-    array: Array
+    array: AnyArray
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
     def __getitem__(
-        self, selection: CoordinateSelection | MaskSelection | Array
+        self, selection: CoordinateSelection | MaskSelection | AnyArray
     ) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
@@ -1351,7 +1352,7 @@ class AsyncVIndex(Generic[T_ArrayMetadata]):
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
     async def getitem(
-        self, selection: CoordinateSelection | MaskSelection | Array
+        self, selection: CoordinateSelection | MaskSelection | AnyArray
     ) -> NDArrayLikeOrScalar:
         # TODO deduplicate these internals with the sync version of getitem
         # TODO requires solving this circular sync issue: https://github.com/zarr-developers/zarr-python/pull/3083#discussion_r2230737448
