@@ -395,19 +395,27 @@ async def test_nchunks_initialized(
         arr[region] = 1
         expected = idx + 1
         if test_cls == Array:
-            observed = arr.nchunks_initialized
+            with pytest.warns(DeprecationWarning, match="Use nshards_initialized instead"):
+                observed = arr.nchunks_initialized
+            assert observed == arr.nshards_initialized
         else:
-            observed = await arr._async_array.nchunks_initialized()
+            with pytest.warns(DeprecationWarning, match="Use nshards_initialized instead"):
+                observed = await arr._async_array.nchunks_initialized()
+            assert observed == await arr._async_array.nshards_initialized()
         assert observed == expected
 
     # delete chunks
     for idx, key in enumerate(arr._iter_shard_keys()):
         sync(arr.store_path.store.delete(key))
         if test_cls == Array:
-            observed = arr.nchunks_initialized
+            with pytest.warns(DeprecationWarning, match="Use nshards_initialized instead"):
+                observed = arr.nchunks_initialized
+            assert observed == arr.nshards_initialized
         else:
-            observed = await arr._async_array.nchunks_initialized()
-        expected = arr.nchunks - idx - 1
+            with pytest.warns(DeprecationWarning, match="Use nshards_initialized instead"):
+                observed = await arr._async_array.nchunks_initialized()
+            assert observed == await arr._async_array.nshards_initialized()
+        expected = arr.nshards - idx - 1
         assert observed == expected
 
 
@@ -876,14 +884,14 @@ def test_write_empty_chunks_behavior(
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
-    assert arr.nchunks_initialized == arr.nchunks
+    assert arr.nshards_initialized == arr.nshards
 
     arr[:] = fill_value
 
     if not write_empty_chunks:
-        assert arr.nchunks_initialized == 0
+        assert arr.nshards_initialized == 0
     else:
-        assert arr.nchunks_initialized == arr.nchunks
+        assert arr.nshards_initialized == arr.nshards
 
 
 @pytest.mark.parametrize(

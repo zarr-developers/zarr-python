@@ -1227,15 +1227,32 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def nchunks(self) -> int:
         """
-        The number of chunks in the stored representation of this array.
+        The number of chunks in this array.
+
+        Note that if a sharding codec is used, then the number of chunks may exceed the number of
+        stored objects supporting this array. To find out the number of stored objects that support
+        this array, see :func:`nshards`.
 
         Returns
         -------
         int
             The total number of chunks in the array.
         """
+        return product(self.chunk_grid_shape)
+
+    @property
+    def nshards(self) -> int:
+        """
+        The number of shards in this array.
+
+        Returns
+        -------
+        int
+            The total number of shards in the array.
+        """
         return product(self.shard_grid_shape)
 
+    @deprecated("Use nshards_initialized instead")
     async def nchunks_initialized(self) -> int:
         """
         Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
@@ -1258,6 +1275,32 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         0
         >>> await arr.setitem(slice(5), 1)
         >>> await arr.nchunks_initialized()
+        3
+        """
+        return len(await shards_initialized(self))
+
+    async def nshards_initialized(self) -> int:
+        """
+        Calculate the number of shards that have been initialized, i.e. the number of shards that have
+        been persisted to the storage backend.
+
+        Returns
+        -------
+        nshards_initialized : int
+            The number of shards that have been initialized.
+
+        Notes
+        -----
+        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
+        property :attr:`Array.nshards_initialized`.
+
+        Examples
+        --------
+        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
+        >>> await arr.nshards_initialized()
+        0
+        >>> await arr.setitem(slice(5), 1)
+        >>> await arr.nshards_initialized()
         3
         """
         return len(await shards_initialized(self))
@@ -1860,7 +1903,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             A property giving just the statically known information about an array.
         """
         return self._info(
-            await self.nchunks_initialized(),
+            await self.nshards_initialized(),
             await self.store_path.store.getsize_prefix(self.store_path.path),
         )
 
@@ -2327,9 +2370,20 @@ class Array:
     @property
     def nchunks(self) -> int:
         """
-        The number of chunks in the stored representation of this array.
+        The number of chunks in this array.
+
+        Note that if a sharding codec is used, then the number of chunks may exceed the number of
+        stored objects supporting this array. To find out the number of stored objects that support
+        this array, see :func:`nshards`.
         """
         return self._async_array.nchunks
+
+    @property
+    def nshards(self) -> int:
+        """
+        The number of shards in the stored representation of this array.
+        """
+        return self._async_array.nshards
 
     @property
     def nbytes(self) -> int:
@@ -2347,6 +2401,7 @@ class Array:
         return self._async_array.nbytes
 
     @property
+    @deprecated("Use nshards_initialized instead.")
     def nchunks_initialized(self) -> int:
         """
         Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
@@ -2372,6 +2427,28 @@ class Array:
         3
         """
         return sync(self._async_array.nchunks_initialized())
+
+    @property
+    def nshards_initialized(self) -> int:
+        """
+        Calculate the number of shards that have been initialized, i.e. the number of shards that have
+        been persisted to the storage backend.
+
+        Returns
+        -------
+        nshards_initialized : int
+            The number of shards that have been initialized.
+
+        Examples
+        --------
+        >>> arr = await zarr.create(shape=(10,), chunks=(2,))
+        >>> arr.nshards_initialized
+        0
+        >>> arr[:5] = 1
+        >>> arr.nshard_initialized
+        3
+        """
+        return sync(self._async_array.nshards_initialized())
 
     def nbytes_stored(self) -> int:
         """
