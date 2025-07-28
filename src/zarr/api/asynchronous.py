@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypeAlias, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -58,9 +58,12 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.metadata.v2 import CompressorLikev2
     from zarr.storage import StoreLike
+    from zarr.types import AnyArray
 
     # TODO: this type could use some more thought
-    ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
+    ArrayLike: TypeAlias = (
+        AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AnyArray | npt.NDArray[Any]
+    )
     PathLike = str
 
 __all__ = [
@@ -602,7 +605,7 @@ async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = 
 
 
 async def array(
-    data: npt.ArrayLike | Array, **kwargs: Any
+    data: npt.ArrayLike | AnyArray, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array filled with `data`.
 
