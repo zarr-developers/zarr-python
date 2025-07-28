@@ -1994,3 +1994,44 @@ def test_iter_chunk_regions():
         assert_array_equal(a[region], np.ones_like(a[region]))
         a[region] = 0
         assert_array_equal(a[region], np.zeros_like(a[region]))
+
+
+import asyncio
+
+
+class TestAsync:
+    @pytest.mark.parametrize(
+        "indexer,expected", 
+        [
+            # int
+            ((0,), np.array([[1, 2]])),
+            ((1,), np.array([[3, 4]])),
+            ((0, 1), np.array(2)),
+            # slice
+            ((slice(None),), np.array([[1, 2], [3, 4]])),
+            ((slice(0, 1),), np.array([[1, 2]])),
+            ((slice(1, 2),), np.array([[3, 4]])),
+            ((slice(0, 2),), np.array([[1, 2], [3, 4]])),
+            ((slice(0, 0),), np.empty(shape=(0, 2), dtype="i8")),
+            # TODO ellipsis
+
+            # TODO combined
+            ((0, slice(None)), np.array([[1, 2]])),
+            ((slice(None), 0), np.array([[1, 3]])),
+            ((slice(None), slice(None)), np.array([[1, 2], [3, 4]])),
+            # TODO array of ints
+            # TODO boolean array
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_async_oindex(self, store, indexer, expected):
+        z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
+        z[...] = np.array([[1, 2], [3, 4]])
+        async_zarr = z._async_array
+        
+        result = await async_zarr.oindex.getitem(indexer)
+        assert_array_equal(result, expected)
+
+    @pytest.mark.asyncio
+    async def test_async_vindex(self):
+        ...
