@@ -140,7 +140,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
-    from zarr.types import AnyArray, AnyAsyncArray
+    from zarr.types import AnyArray, AnyAsyncArray, AsyncArrayV2, AsyncArrayV3
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -294,7 +294,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @overload
     def __init__(
-        self: AsyncArray[ArrayV2Metadata],
+        self: AsyncArrayV2,
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
@@ -302,7 +302,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @overload
     def __init__(
-        self: AsyncArray[ArrayV3Metadata],
+        self: AsyncArrayV3,
         metadata: ArrayV3Metadata | ArrayV3MetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
@@ -348,7 +348,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata]: ...
+    ) -> AsyncArrayV2: ...
 
     # this overload defines the function signature when zarr_format is 3
     @overload
@@ -377,7 +377,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]: ...
+    ) -> AsyncArrayV3: ...
 
     @overload
     @classmethod
@@ -405,7 +405,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]: ...
+    ) -> AsyncArrayV3: ...
 
     @overload
     @classmethod
@@ -780,7 +780,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_names: DimensionNames = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
-    ) -> AsyncArray[ArrayV3Metadata]:
+    ) -> AsyncArrayV3:
         if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
@@ -861,7 +861,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
-    ) -> AsyncArray[ArrayV2Metadata]:
+    ) -> AsyncArrayV2:
         if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
@@ -921,7 +921,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        AsyncArray[ArrayV3Metadata] or AsyncArray[ArrayV2Metadata]
+        AsyncArrayV3 or AsyncArrayV2
             The created Zarr array, either using Zarr format 2 or 3 metadata based on the provided data.
 
         Raises
