@@ -140,7 +140,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
-    from zarr.types import AnyArray
+    from zarr.types import AnyArray, AnyAsyncArray
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -439,7 +439,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
+    ) -> AnyAsyncArray: ...
 
     @classmethod
     @deprecated("Use zarr.api.asynchronous.create_array instead.", category=ZarrDeprecationWarning)
@@ -473,7 +473,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Method to create a new asynchronous array instance.
 
         .. deprecated:: 3.0.0
@@ -614,7 +614,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Method to create a new asynchronous array instance.
         See :func:`AsyncArray.create` for more details.
         Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
@@ -636,7 +636,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _chunks = normalize_chunks(chunk_shape, shape, item_size)
         config_parsed = parse_array_config(config)
 
-        result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
+        result: AnyAsyncArray
         if zarr_format == 3:
             if dimension_separator is not None:
                 raise ValueError(
@@ -905,7 +905,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    ) -> AnyAsyncArray:
         """
         Create a Zarr array from a dictionary, with support for both Zarr format 2 and 3 metadata.
 
@@ -937,7 +937,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
 
@@ -3833,7 +3833,7 @@ class Array(Generic[T_ArrayMetadata]):
 
 
 async def chunks_initialized(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    array: AnyAsyncArray,
 ) -> tuple[str, ...]:
     """
     Return the keys of the chunks that have been persisted to the storage backend.
@@ -3865,7 +3865,7 @@ async def chunks_initialized(
 
 
 def _build_parents(
-    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
+    node: AnyAsyncArray | AsyncGroup,
 ) -> list[AsyncGroup]:
     from zarr.core.group import AsyncGroup, GroupMetadata
 
@@ -3947,7 +3947,7 @@ async def from_array(
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigLike | None = None,
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> AnyAsyncArray:
     """Create an array from an existing array or array-like.
 
     Parameters
@@ -4210,7 +4210,7 @@ async def init_array(
     dimension_names: DimensionNames = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None,
-) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+) -> AnyAsyncArray:
     """Create and persist an array metadata document.
 
     Parameters
@@ -4431,7 +4431,7 @@ async def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> AnyAsyncArray:
     """Create an array.
 
     Parameters
