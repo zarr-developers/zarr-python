@@ -26,11 +26,12 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.buffer.core import NDArrayLikeOrScalar
     from zarr.core.common import ChunkCoords, MemoryOrder
+    from zarr.types import AnyAsyncArray
 
 
 @dataclass(frozen=True)
 class _AsyncArrayProxy:
-    array: AsyncArray[Any]
+    array: AnyAsyncArray
 
     def __getitem__(self, selection: BasicSelection) -> _AsyncArraySelectionProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
@@ -38,7 +39,7 @@ class _AsyncArrayProxy:
 
 @dataclass(frozen=True)
 class _AsyncArraySelectionProxy:
-    array: AsyncArray[Any]
+    array: AnyAsyncArray
     selection: BasicSelection
 
     async def get(self) -> NDArrayLikeOrScalar:
