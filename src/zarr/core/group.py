@@ -79,7 +79,7 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
     from zarr.core.dtype import ZDTypeLike
-    from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3
+    from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
 logger = logging.getLogger("zarr.group")
 
@@ -114,11 +114,11 @@ def parse_attributes(data: Any) -> dict[str, Any]:
 
 
 @overload
-def _parse_async_node(node: AsyncArray[ArrayV3Metadata]) -> ArrayV3: ...
+def _parse_async_node(node: AsyncArrayV3) -> ArrayV3: ...
 
 
 @overload
-def _parse_async_node(node: AsyncArray[ArrayV2Metadata]) -> ArrayV2: ...
+def _parse_async_node(node: AsyncArrayV2) -> ArrayV2: ...
 
 
 @overload
@@ -3719,15 +3719,11 @@ def _build_metadata_v2(
 
 
 @overload
-def _build_node(
-    *, store: Store, path: str, metadata: ArrayV2Metadata
-) -> AsyncArray[ArrayV2Metadata]: ...
+def _build_node(*, store: Store, path: str, metadata: ArrayV2Metadata) -> AsyncArrayV2: ...
 
 
 @overload
-def _build_node(
-    *, store: Store, path: str, metadata: ArrayV3Metadata
-) -> AsyncArray[ArrayV3Metadata]: ...
+def _build_node(*, store: Store, path: str, metadata: ArrayV3Metadata) -> AsyncArrayV3: ...
 
 
 @overload
@@ -3750,7 +3746,7 @@ def _build_node(
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
-async def _get_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
+async def _get_node_v2(store: Store, path: str) -> AsyncArrayV2 | AsyncGroup:
     """
     Read a Zarr v2 AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3769,7 +3765,7 @@ async def _get_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] |
     return _build_node(store=store, path=path, metadata=metadata)
 
 
-async def _get_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] | AsyncGroup:
+async def _get_node_v3(store: Store, path: str) -> AsyncArrayV3 | AsyncGroup:
     """
     Read a Zarr v3 AsyncArray or AsyncGroup from a path in a Store.
 
