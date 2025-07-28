@@ -1260,7 +1260,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         >>> await arr.nchunks_initialized()
         3
         """
-        return len(await chunks_initialized(self))
+        return len(await shards_initialized(self))
 
     async def nbytes_stored(self) -> int:
         return await self.store_path.store.getsize_prefix(self.store_path.path)
@@ -3953,7 +3953,7 @@ class Array:
         return sync(self._async_array.info_complete())
 
 
-async def chunks_initialized(
+async def shards_initialized(
     array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
 ) -> tuple[str, ...]:
     """

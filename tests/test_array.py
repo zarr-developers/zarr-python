@@ -33,7 +33,6 @@ from zarr.core.array import (
     FiltersLike,
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
-    chunks_initialized,
     create_array,
     default_filters_v2,
     default_serializer_v3,
@@ -42,6 +41,7 @@ from zarr.core.array import (
     iter_shard_coords,
     iter_shard_keys,
     iter_shard_regions,
+    shards_initialized,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
@@ -431,7 +431,7 @@ async def test_chunks_initialized(
     )
     for keys, region in zip(chunks_accumulated, arr._iter_shard_regions(), strict=False):
         arr[region] = 1
-        observed = sorted(await chunks_initialized(arr._async_array))
+        observed = sorted(await shards_initialized(arr._async_array))
         expected = sorted(keys)
         assert observed == expected
 
