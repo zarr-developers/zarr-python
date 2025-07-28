@@ -1,8 +1,12 @@
 from typing import Any, TypeAlias
 
-from zarr.core.array import Array
+from zarr.core.array import Array, AsyncArray
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
+
+AnyAsyncArray: TypeAlias = AsyncArray[Any]
+"""A Zarr format 2 or 3 `AsyncArray`"""
+
 
 AnyArray: TypeAlias = Array[Any]
 """A Zarr format 2 or 3 `Array`"""
