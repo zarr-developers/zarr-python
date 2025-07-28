@@ -19,7 +19,7 @@ from packaging.version import Version
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
 from tests.conftest import skip_object_dtype
-from zarr import Array, AsyncArray, Group
+from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
@@ -29,6 +29,7 @@ from zarr.codecs import (
 )
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
+    AsyncArray,
     CompressorsLike,
     FiltersLike,
     _iter_chunk_coords,
@@ -66,7 +67,6 @@ from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, _iter_grid, _iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import (
     ContainsArrayError,
@@ -75,13 +75,12 @@ from zarr.errors import (
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath
 from zarr.storage._logging import LoggingStore
-from zarr.types import AnyArray
+from zarr.types import AnyArray, AnyAsyncArray
 
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
     from zarr.abc.codec import CodecJSON_V3
-    from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -364,9 +363,9 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             Array.from_dict(StorePath(store), data=metadata_dict)
 
 
-@pytest.mark.parametrize("test_cls", [AnyArray, AsyncArray[Any]])
+@pytest.mark.parametrize("test_cls", [AnyArray, AnyAsyncArray])
 @pytest.mark.parametrize("nchunks", [2, 5, 10])
-def test_nchunks(test_cls: type[AnyArray] | type[AsyncArray[Any]], nchunks: int) -> None:
+def test_nchunks(test_cls: type[AnyArray] | type[AnyAsyncArray], nchunks: int) -> None:
     """
     Test that nchunks returns the number of chunks defined for the array.
     """
@@ -387,7 +386,7 @@ def test_nchunks(test_cls: type[AnyArray] | type[AsyncArray[Any]], nchunks: int)
     [((10,), None, (1,)), ((10,), (1,), (1,)), ((40,), (20,), (5,))],
 )
 async def test_nchunks_initialized(
-    test_cls: type[AnyArray] | type[AsyncArray[Any]],
+    test_cls: type[AnyArray] | type[AnyAsyncArray],
     shape: tuple[int, ...],
     shard_shape: tuple[int, ...] | None,
     chunk_shape: tuple[int, ...],
@@ -1364,7 +1363,7 @@ class TestCreateArray:
     ) -> None:
         if dtype == "str" and filters != "auto":
             pytest.skip("Only the auto filters are compatible with str dtype in this test.")
-        arr = await create_array(
+        arr: AsyncArray[ArrayV2Metadata] = await create_array(
             store=store,
             dtype=dtype,
             shape=(10,),
@@ -1461,7 +1460,7 @@ class TestCreateArray:
         """
         data = np.arange(10)
         name = "foo"
-        arr: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AnyArray
+        arr: AnyAsyncArray | AnyArray
         if impl == "sync":
             arr = sync_api.create_array(store, name=name, data=data)
             stored = arr[:]
