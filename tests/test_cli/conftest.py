@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 
@@ -11,7 +11,7 @@ from zarr.core.common import ZarrFormat
 def create_nested_zarr(
     store: Store,
     attributes: dict[str, Any] | None = None,
-    separator: str = ".",
+    separator: Literal[".", "/"] = ".",
     zarr_format: ZarrFormat = 2,
 ) -> list[str]:
     """Create a zarr with nested groups / arrays for testing, returning the paths to all."""

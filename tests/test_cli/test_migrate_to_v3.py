@@ -1,24 +1,27 @@
 import lzma
 from pathlib import Path
+from typing import Literal, cast
 
 import numcodecs
 import numcodecs.abc
+import numpy as np
 import pytest
 from numcodecs.zarr3 import LZMA, Delta
 
 import zarr
 from tests.test_cli.conftest import create_nested_zarr
 from zarr.abc.codec import Codec
-from zarr.abc.store import Store
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
+from zarr.core.array import Array
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
-from zarr.core.common import ZarrFormat
-from zarr.core.dtype.npy.int import BaseInt, UInt8, UInt16
+from zarr.core.common import JSON, ZarrFormat
+from zarr.core.dtype.npy.int import UInt8, UInt16
+from zarr.core.group import Group
 from zarr.storage._local import LocalStore
 
 typer_testing = pytest.importorskip(
@@ -31,13 +34,13 @@ cli = pytest.importorskip(
 runner = typer_testing.CliRunner()
 
 
-def test_migrate_array(local_store: Store) -> None:
+def test_migrate_array(local_store: LocalStore) -> None:
     shape = (10, 10)
     chunks = (10, 10)
     dtype = "uint16"
     compressors = numcodecs.Blosc(cname="zstd", clevel=3, shuffle=1)
     fill_value = 2
-    attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
+    attributes = cast(dict[str, JSON], {"baz": 42, "qux": [1, 4, 7, 12]})
 
     zarr.create_array(
         store=local_store,
@@ -72,7 +75,7 @@ def test_migrate_array(local_store: Store) -> None:
     assert metadata.storage_transformers == ()
 
 
-def test_migrate_group(local_store: Store) -> None:
+def test_migrate_group(local_store: LocalStore) -> None:
     attributes = {"baz": 42, "qux": [1, 4, 7, 12]}
     zarr.create_group(store=local_store, zarr_format=2, attributes=attributes)
 
@@ -90,7 +93,7 @@ def test_migrate_group(local_store: Store) -> None:
 
 @pytest.mark.parametrize("separator", [".", "/"])
 def test_migrate_nested_groups_and_arrays_in_place(
-    local_store: Store, separator: str, expected_v3_metadata: list[Path]
+    local_store: LocalStore, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that zarr.json are made at the correct points in a hierarchy of groups and arrays
     (including when there are additional dirs due to using a / separator)"""
@@ -108,7 +111,7 @@ def test_migrate_nested_groups_and_arrays_in_place(
     # Check converted zarr can be opened + metadata accessed at all levels
     zarr_array = zarr.open(local_store.root, zarr_format=3)
     for path in paths:
-        zarr_v3 = zarr_array[path]
+        zarr_v3 = cast(Array | Group, zarr_array[path])
         metadata = zarr_v3.metadata
         assert metadata.zarr_format == 3
         assert metadata.attributes == attributes
@@ -151,7 +154,7 @@ async def test_migrate_nested_groups_and_arrays_separate_location(
 
 
 def test_remove_v2_metadata_option_in_place(
-    local_store: Store, expected_paths_v3_metadata: list[Path]
+    local_store: LocalStore, expected_paths_v3_metadata: list[Path]
 ) -> None:
     create_nested_zarr(local_store)
 
@@ -198,7 +201,7 @@ async def test_remove_v2_metadata_option_separate_location(
 
 
 def test_overwrite_option_in_place(
-    local_store: Store, expected_paths_v2_v3_metadata: list[Path]
+    local_store: LocalStore, expected_paths_v2_v3_metadata: list[Path]
 ) -> None:
     create_nested_zarr(local_store)
 
@@ -253,7 +256,7 @@ async def test_overwrite_option_separate_location(
 
 @pytest.mark.parametrize("separator", [".", "/"])
 def test_migrate_sub_group(
-    local_store: Store, separator: str, expected_v3_metadata: list[Path]
+    local_store: LocalStore, separator: str, expected_v3_metadata: list[Path]
 ) -> None:
     """Test that only arrays/groups within group_1 are converted (+ no other files in store)"""
 
@@ -305,7 +308,7 @@ def test_migrate_sub_group(
     ids=["blosc", "zstd", "gzip", "numcodecs-compressor"],
 )
 def test_migrate_compressor(
-    local_store: Store, compressor_v2: numcodecs.abc.Codec, compressor_v3: Codec
+    local_store: LocalStore, compressor_v2: numcodecs.abc.Codec, compressor_v3: Codec
 ) -> None:
     zarr_array = zarr.create_array(
         store=local_store,
@@ -322,17 +325,17 @@ def test_migrate_compressor(
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
-    zarr_array = zarr.open(local_store.root, zarr_format=3)
+    zarr_array = zarr.open_array(local_store.root, zarr_format=3)
     metadata = zarr_array.metadata
     assert metadata.zarr_format == 3
     assert metadata.codecs == (
         BytesCodec(endian="little"),
         compressor_v3,
     )
-    assert (zarr_array[:] == 1).all()
+    assert np.all(zarr_array[:] == 1)
 
 
-def test_migrate_filter(local_store: Store) -> None:
+def test_migrate_filter(local_store: LocalStore) -> None:
     filter_v2 = numcodecs.Delta(dtype="<u2", astype="<u2")
     filter_v3 = Delta(dtype="<u2", astype="<u2")
 
@@ -351,7 +354,7 @@ def test_migrate_filter(local_store: Store) -> None:
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
-    zarr_array = zarr.open(local_store.root, zarr_format=3)
+    zarr_array = zarr.open_array(local_store.root, zarr_format=3)
     metadata = zarr_array.metadata
     assert metadata.zarr_format == 3
     assert metadata.codecs == (
@@ -368,7 +371,7 @@ def test_migrate_filter(local_store: Store) -> None:
     ],
 )
 def test_migrate_C_vs_F_order(
-    local_store: Store, order: str, expected_codecs: tuple[Codec]
+    local_store: LocalStore, order: Literal["C", "F"], expected_codecs: tuple[Codec]
 ) -> None:
     zarr_array = zarr.create_array(
         store=local_store,
@@ -386,11 +389,11 @@ def test_migrate_C_vs_F_order(
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
-    zarr_array = zarr.open(local_store.root, zarr_format=3)
+    zarr_array = zarr.open_array(local_store.root, zarr_format=3)
     metadata = zarr_array.metadata
     assert metadata.zarr_format == 3
     assert metadata.codecs == expected_codecs
-    assert (zarr_array[:] == 1).all()
+    assert np.all(zarr_array[:] == 1)
 
 
 @pytest.mark.parametrize(
@@ -402,7 +405,10 @@ def test_migrate_C_vs_F_order(
     ids=["single_byte", "multi_byte"],
 )
 def test_migrate_endian(
-    local_store: Store, dtype: str, expected_data_type: BaseInt, expected_codecs: tuple[Codec]
+    local_store: LocalStore,
+    dtype: str,
+    expected_data_type: UInt8 | UInt16,
+    expected_codecs: tuple[Codec],
 ) -> None:
     zarr_array = zarr.create_array(
         store=local_store,
@@ -419,16 +425,16 @@ def test_migrate_endian(
     assert result.exit_code == 0
     assert (local_store.root / "zarr.json").exists()
 
-    zarr_array = zarr.open(local_store.root, zarr_format=3)
+    zarr_array = zarr.open_array(local_store.root, zarr_format=3)
     metadata = zarr_array.metadata
     assert metadata.zarr_format == 3
     assert metadata.data_type == expected_data_type
     assert metadata.codecs == expected_codecs
-    assert (zarr_array[:] == 1).all()
+    assert np.all(zarr_array[:] == 1)
 
 
 @pytest.mark.parametrize("node_type", ["array", "group"])
-def test_migrate_v3(local_store: Store, node_type: str) -> None:
+def test_migrate_v3(local_store: LocalStore, node_type: str) -> None:
     """Attempting to convert a v3 array/group should always fail"""
 
     if node_type == "array":
@@ -444,7 +450,7 @@ def test_migrate_v3(local_store: Store, node_type: str) -> None:
     assert str(result.exception) == "Only arrays / groups with zarr v2 metadata can be converted"
 
 
-def test_migrate_unknown_codec(local_store: Store) -> None:
+def test_migrate_unknown_codec(local_store: LocalStore) -> None:
     """Attempting to convert a codec without a v3 equivalent should always fail"""
 
     zarr.create_array(
@@ -465,7 +471,7 @@ def test_migrate_unknown_codec(local_store: Store) -> None:
     )
 
 
-def test_migrate_incorrect_filter(local_store: Store) -> None:
+def test_migrate_incorrect_filter(local_store: LocalStore) -> None:
     """Attempting to convert a filter (which is the wrong type of codec) should always fail"""
 
     zarr.create_array(
@@ -486,7 +492,7 @@ def test_migrate_incorrect_filter(local_store: Store) -> None:
     )
 
 
-def test_migrate_incorrect_compressor(local_store: Store) -> None:
+def test_migrate_incorrect_compressor(local_store: LocalStore) -> None:
     """Attempting to convert a compressor (which is the wrong type of codec) should always fail"""
 
     zarr.create_array(
@@ -509,7 +515,9 @@ def test_migrate_incorrect_compressor(local_store: Store) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_remove_metadata_fails_without_force(local_store: Store, zarr_format: ZarrFormat) -> None:
+def test_remove_metadata_fails_without_force(
+    local_store: LocalStore, zarr_format: ZarrFormat
+) -> None:
     """Test removing metadata (when no alternate metadata is present) fails without --force."""
 
     create_nested_zarr(local_store, zarr_format=zarr_format)
@@ -522,7 +530,7 @@ def test_remove_metadata_fails_without_force(local_store: Store, zarr_format: Za
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_remove_metadata_succeeds_with_force(
-    local_store: Store, zarr_format: ZarrFormat, expected_paths_no_metadata: list[Path]
+    local_store: LocalStore, zarr_format: ZarrFormat, expected_paths_no_metadata: list[Path]
 ) -> None:
     """Test removing metadata (when no alternate metadata is present) succeeds with --force."""
 
@@ -539,7 +547,7 @@ def test_remove_metadata_succeeds_with_force(
 
 
 def test_remove_metadata_sub_group(
-    local_store: Store, expected_paths_no_metadata: list[Path]
+    local_store: LocalStore, expected_paths_no_metadata: list[Path]
 ) -> None:
     """Test only v2 metadata within group_1 is removed and rest remains un-changed."""
 
@@ -567,7 +575,7 @@ def test_remove_metadata_sub_group(
     [("v2", "expected_paths_v3_metadata"), ("v3", "expected_paths_v2_metadata")],
 )
 def test_remove_metadata_after_conversion(
-    local_store: Store,
+    local_store: LocalStore,
     request: pytest.FixtureRequest,
     zarr_format: str,
     expected_output_paths: str,
@@ -591,7 +599,7 @@ def test_remove_metadata_after_conversion(
 
 @pytest.mark.parametrize("cli_command", ["migrate", "remove-metadata"])
 def test_dry_run(
-    local_store: Store, cli_command: str, expected_paths_v2_metadata: list[Path]
+    local_store: LocalStore, cli_command: str, expected_paths_v2_metadata: list[Path]
 ) -> None:
     """Test that all files are un-changed after a dry run"""
 
