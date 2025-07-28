@@ -59,7 +59,7 @@ class Buffer(core.Buffer):
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
         if array_like.dtype.itemsize != 1:
-            raise ValueError("array_like: only byte dtype allowed")
+            raise ValueError("array_like: only dtypes with itemsize=1 allowed")
 
         if not hasattr(array_like, "__cuda_array_interface__"):
             # Slow copy based path for arrays that don't support the __cuda_array_interface__

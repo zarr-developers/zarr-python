@@ -195,7 +195,7 @@ def test_gpu_buffer_raises() -> None:
         gpu.Buffer(arr)
 
     arr = cp.arange(12, dtype="int32")
-    with pytest.raises(ValueError, match="array_like: only byte dtype allowed"):
+    with pytest.raises(ValueError, match="array_like: only dtypes"):
         gpu.Buffer(arr)
 
 
