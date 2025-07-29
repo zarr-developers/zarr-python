@@ -358,7 +358,7 @@ async def make_store_path(
 
     elif isinstance(store_like, Path):
         # Create a new LocalStore
-        store = await LocalStore.open(root=store_like, read_only=_read_only)
+        store = await LocalStore.open(root=store_like, mode=mode)
 
     elif isinstance(store_like, str):
         # Either a FSSpec URI or a local filesystem path
