@@ -440,3 +440,9 @@ async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
 
     store_w = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
     _ = store_w.with_read_only()
+
+def test_swift_store() -> None:
+    """
+    Test creating an FsspecStore with a SWIFT URL.
+    """
+    store = FsspecStore.from_url("swift://swift.dkrz.de/dkrz_xxx/testcontainer/test.zarr")
