@@ -5,7 +5,7 @@ import io
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import (
     ByteRequest,
@@ -16,7 +16,7 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.common import concurrent_map
+from zarr.core.common import AccessModeLiteral, concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -102,16 +102,50 @@ class LocalStore(Store):
             )
         self.root = root
 
-    def with_read_only(self, read_only: bool = False) -> LocalStore:
+    def with_read_only(self, read_only: bool = False) -> Self:
         # docstring inherited
         return type(self)(
             root=self.root,
             read_only=read_only,
         )
 
-    async def _open(self) -> None:
+    @classmethod
+    async def open(
+        cls, root: Path | str, *, read_only: bool = False, mode: AccessModeLiteral | None = None
+    ) -> Self:
+        """
+        Create and open the store.
+
+        Parameters
+        ----------
+        root : str or Path
+            Directory to use as root of store.
+        read_only : bool
+            Whether the store is read-only
+        mode :
+            Mode in which to create the store. This only affects opening the store,
+            and the final read-only state of the store is controlled through the
+            read_only parameter.
+
+        Returns
+        -------
+        Store
+            The opened store instance.
+        """
+        if mode is not None:
+            read_only_creation = mode in ["r", "r+"]
+        else:
+            read_only_creation = read_only
+        store = cls(root, read_only=read_only_creation)
+        await store._open()
+        return store.with_read_only(read_only)
+
+    async def _open(self, *, mode: AccessModeLiteral | None = None) -> None:
         if not self.read_only:
             self.root.mkdir(parents=True, exist_ok=True)
+
+        if not self.root.exists():
+            raise FileNotFoundError(f"{self.root} does not exist")
         return await super()._open()
 
     async def clear(self) -> None:
