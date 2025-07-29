@@ -387,6 +387,7 @@ async def test_nchunks_initialized(
     """
     Test that nchunks_initialized accurately returns the number of stored partitions.
     """
+    chunks_per_shard = np.prod(np.array(shard_shape) // np.array(chunk_shape))
     store = MemoryStore()
     arr = zarr.create_array(store, shape=shape, shards=shard_shape, chunks=chunk_shape, dtype="i1")
 
@@ -395,26 +396,22 @@ async def test_nchunks_initialized(
         arr[region] = 1
         expected = idx + 1
         if test_cls == Array:
-            with pytest.warns(DeprecationWarning, match="Use nshards_initialized instead"):
-                observed = arr.nchunks_initialized
-            assert observed == arr.nshards_initialized
+            observed = arr.nshards_initialized
+            assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
-            with pytest.warns(DeprecationWarning, match="Use nshards_initialized instead"):
-                observed = await arr._async_array.nchunks_initialized()
-            assert observed == await arr._async_array.nshards_initialized()
+            observed = await arr._async_array.nshards_initialized()
+            assert observed == await arr._async_array.nchunks_initialized() // chunks_per_shard
         assert observed == expected
 
     # delete chunks
     for idx, key in enumerate(arr._iter_shard_keys()):
         sync(arr.store_path.store.delete(key))
         if test_cls == Array:
-            with pytest.warns(DeprecationWarning, match="Use nshards_initialized instead"):
-                observed = arr.nchunks_initialized
-            assert observed == arr.nshards_initialized
+            observed = arr.nshards_initialized
+            assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
-            with pytest.warns(DeprecationWarning, match="Use nshards_initialized instead"):
-                observed = await arr._async_array.nchunks_initialized()
-            assert observed == await arr._async_array.nshards_initialized()
+            observed = await arr._async_array.nshards_initialized()
+            assert observed == await arr._async_array.nchunks_initialized() // chunks_per_shard
         expected = arr.nshards - idx - 1
         assert observed == expected
 
