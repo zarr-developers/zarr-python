@@ -1370,28 +1370,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             selection_shape=selection_shape,
         )
 
-    @deprecated("Use _iter_shard_keys instead")
-    def _iter_chunk_keys(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
-    ) -> Iterator[str]:
-        """
-        Iterate over the keys of the stored objects supporting this array.
-
-        Parameters
-        ----------
-        origin : Sequence[int] | None, default=None
-            The origin of the selection relative to the array's shard grid.
-        selection_shape : Sequence[int] | None, default=None
-            The shape of the selection in shard grid coordinates.
-
-        Yields
-        ------
-        key: str
-            The storage key of each shard in the selection.
-        """
-        # Iterate over the coordinates of chunks in chunk grid space.
-        return self._iter_shard_keys(origin=origin, selection_shape=selection_shape)
-
     def _iter_shard_keys(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[str]:
@@ -2459,28 +2437,6 @@ class Array:
         size : int
         """
         return sync(self._async_array.nbytes_stored())
-
-    @deprecated("Use _iter_shard_keys instead.")
-    def _iter_chunk_keys(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
-    ) -> Iterator[str]:
-        """
-        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
-        limited to a contiguous region in chunk grid coordinates.
-
-        Parameters
-        ----------
-        origin : Sequence[int] | None, default=None
-            The origin of the selection relative to the array's chunk grid.
-        selection_shape : Sequence[int] | None, default=None
-            The shape of the selection in chunk grid coordinates.
-
-        Yields
-        ------
-        key: str
-            The storage key of each chunk in the selection.
-        """
-        return self._async_array._iter_shard_keys(origin=origin, selection_shape=selection_shape)
 
     def _iter_shard_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
