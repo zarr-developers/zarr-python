@@ -2075,10 +2075,13 @@ class TestAsync:
         assert_array_equal(result, expected)
 
     @pytest.mark.asyncio
-    async def test_async_vindex_invalid_indexer(self, store):
+    async def test_async_invalid_indexer(self, store):
         z = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
         z[...] = np.array([[1, 2], [3, 4]])
         async_zarr = z._async_array
 
         with pytest.raises(IndexError):
             await async_zarr.vindex.getitem("invalid_indexer")
+
+        with pytest.raises(IndexError):
+            await async_zarr.oindex.getitem("invalid_indexer")
