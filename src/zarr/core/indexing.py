@@ -1292,6 +1292,8 @@ class AsyncVIndex(Generic[T_ArrayMetadata]):
     async def getitem(
         self, selection: CoordinateSelection | MaskSelection | Array
     ) -> NDArrayLikeOrScalar:
+        # TODO deduplicate these internals with the sync version of getitem
+        # TODO requires solving this circular sync issue: https://github.com/zarr-developers/zarr-python/pull/3083#discussion_r2230737448
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
