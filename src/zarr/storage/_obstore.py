@@ -13,6 +13,7 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -195,6 +196,15 @@ class ObjectStore(Store):
         # stores. This is also in line with the behavior of the other Zarr store adapters.
         with contextlib.suppress(FileNotFoundError):
             await obs.delete_async(self.store, key)
+
+    async def delete_dir(self, prefix: str) -> None:
+        # docstring inherited
+        self._check_writable()
+        if prefix != "" and not prefix.endswith("/"):
+            prefix += "/"
+
+        keys = [(k,) async for k in self.list_prefix(prefix)]
+        await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
 
     @property
     def supports_partial_writes(self) -> bool:
