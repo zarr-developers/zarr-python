@@ -19,6 +19,7 @@ from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, Contains
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
+from zarr.storage._zip import ZipStore
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -281,7 +282,8 @@ async def make_store_path(
     `StoreLike` object can be a `Store`, `StorePath`, `Path`, `str`, or `dict[str, Buffer]`.
     If the `StoreLike` object is a Store or `StorePath`, it is converted to a
     `StorePath` object.  If the `StoreLike` object is a Path or str, it is converted
-    to a LocalStore object and then to a `StorePath` object.  If the `StoreLike`
+    to a LocalStore object and then to a `StorePath` object, unless it has a .zip suffix,
+    in which case a ZipStore object is used to create the `StorePath`.  If the `StoreLike`
     object is a dict[str, Buffer], it is converted to a `MemoryStore` object and
     then to a `StorePath` object.
 
@@ -330,11 +332,15 @@ async def make_store_path(
     else:
         assert mode in (None, "r", "r+", "a", "w", "w-")
         # if mode 'r' was provided, we'll open any new stores as read-only
+        if mode is None:
+            mode = "r"
         _read_only = mode == "r"
         if isinstance(store_like, Store):
             store = store_like
         elif store_like is None:
             store = await MemoryStore.open(read_only=_read_only)
+        elif isinstance(store_like, Path) and store_like.suffix == ".zip":
+            store = await ZipStore.open(path=store_like, mode=mode)
         elif isinstance(store_like, Path):
             store = await LocalStore.open(root=store_like, read_only=_read_only)
         elif isinstance(store_like, str):
@@ -345,6 +351,8 @@ async def make_store_path(
                 store = FsspecStore.from_url(
                     store_like, storage_options=storage_options, read_only=_read_only
                 )
+            elif store_like.endswith(".zip"):
+                store = await ZipStore.open(path=Path(store_like), mode=mode)
             else:
                 store = await LocalStore.open(root=Path(store_like), read_only=_read_only)
         elif isinstance(store_like, dict):
