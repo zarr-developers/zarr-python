@@ -15,8 +15,6 @@ from zarr.core.sync import (
     loop,
     sync,
 )
-from zarr.errors import ZarrFutureWarning
-from zarr.storage import MemoryStore
 
 
 @pytest.fixture(params=[True, False])
@@ -142,12 +140,6 @@ def test_sync_mixin(sync_loop) -> None:
     foo = SyncFoo(async_foo)
     assert foo.foo() == "foo"
     assert foo.bar() == list(range(10))
-
-
-def test_open_positional_args_deprecate():
-    store = MemoryStore()
-    with pytest.warns(ZarrFutureWarning, match="pass"):
-        zarr.open(store, "w", shape=(1,))
 
 
 @pytest.mark.parametrize("workers", [None, 1, 2])

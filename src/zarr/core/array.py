@@ -25,7 +25,6 @@ import numpy as np
 from typing_extensions import deprecated
 
 import zarr
-from zarr._compat import _deprecate_positional_args
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
@@ -62,8 +61,8 @@ from zarr.core.common import (
     ZarrFormat,
     _default_zarr_format,
     _warn_order_kwarg,
+    ceildiv,
     concurrent_map,
-    parse_order,
     parse_shapelike,
     product,
 )
@@ -74,10 +73,12 @@ from zarr.core.dtype import (
     VariableLengthUTF8,
     ZDType,
     ZDTypeLike,
-    parse_data_type,
+    parse_dtype,
 )
 from zarr.core.dtype.common import HasEndianness, HasItemSize, HasObjectCodec
 from zarr.core.indexing import (
+    AsyncOIndex,
+    AsyncVIndex,
     BasicIndexer,
     BasicSelection,
     BlockIndex,
@@ -94,7 +95,6 @@ from zarr.core.indexing import (
     Selection,
     VIndex,
     _iter_grid,
-    ceildiv,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
@@ -192,7 +192,15 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     raise TypeError  # pragma: no cover
 
 
-def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
+def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None) -> CodecPipeline:
+    if store is not None:
+        try:
+            return get_pipeline_class().from_array_metadata_and_store(
+                array_metadata=metadata, store=store
+            )
+        except NotImplementedError:
+            pass
+
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
@@ -311,7 +319,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
         object.__setattr__(self, "_config", config_parsed)
-        object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
+        object.__setattr__(
+            self,
+            "codec_pipeline",
+            create_codec_pipeline(metadata=metadata_parsed, store=store_path.store),
+        )
 
     # this overload defines the function signature when zarr_format is 2
     @overload
@@ -429,8 +441,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
-    @deprecated("Use zarr.api.asynchronous.create_array instead.", category=ZarrDeprecationWarning)
-    @_deprecate_positional_args
+    @deprecated("Use zarr.api.asynchronous.create_array instead.")
     async def create(
         cls,
         store: StoreLike,
@@ -608,7 +619,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
         """
 
-        dtype_parsed = parse_data_type(dtype, zarr_format=zarr_format)
+        dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
         store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
@@ -641,7 +652,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
             if order is not None:
                 _warn_order_kwarg()
-                config_parsed = replace(config_parsed, order=order)
 
             result = await cls._create_v3(
                 store_path,
@@ -669,9 +679,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
 
             if order is None:
-                order_parsed = parse_order(zarr_config.get("array.order"))
+                order_parsed = config_parsed.order
             else:
                 order_parsed = order
+                config_parsed = replace(config_parsed, order=order)
 
             result = await cls._create_v2(
                 store_path,
@@ -1416,6 +1427,56 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
         return await self._get_selection(indexer, prototype=prototype)
 
+    async def get_orthogonal_selection(
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def get_mask_selection(
+        self,
+        mask: MaskSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def get_coordinate_selection(
+        self,
+        selection: CoordinateSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
+        out_array = await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+        if hasattr(out_array, "shape"):
+            # restore shape
+            out_array = np.array(out_array).reshape(indexer.sel_shape)
+        return out_array
+
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
         Asynchronously save the array metadata.
@@ -1546,6 +1607,19 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             chunk_grid=self.metadata.chunk_grid,
         )
         return await self._set_selection(indexer, value, prototype=prototype)
+
+    @property
+    def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:
+        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
+        :func:`set_orthogonal_selection` for documentation and examples."""
+        return AsyncOIndex(self)
+
+    @property
+    def vindex(self) -> AsyncVIndex[T_ArrayMetadata]:
+        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
+        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
+        :func:`set_mask_selection` for documentation and examples."""
+        return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
         """
@@ -1781,8 +1855,7 @@ class Array:
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     @classmethod
-    @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
-    @_deprecate_positional_args
+    @deprecated("Use zarr.create_array instead.")
     def create(
         cls,
         store: StoreLike,
@@ -2595,7 +2668,6 @@ class Array:
         else:
             self.set_basic_selection(cast("BasicSelection", pure_selection), value, fields=fields)
 
-    @_deprecate_positional_args
     def get_basic_selection(
         self,
         selection: BasicSelection = Ellipsis,
@@ -2719,7 +2791,6 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_basic_selection(
         self,
         selection: BasicSelection,
@@ -2815,7 +2886,6 @@ class Array:
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -2940,7 +3010,6 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -3051,7 +3120,6 @@ class Array:
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
         )
 
-    @_deprecate_positional_args
     def get_mask_selection(
         self,
         mask: MaskSelection,
@@ -3134,7 +3202,6 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_mask_selection(
         self,
         mask: MaskSelection,
@@ -3213,7 +3280,6 @@ class Array:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -3303,7 +3369,6 @@ class Array:
             out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
 
-    @_deprecate_positional_args
     def set_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -3401,7 +3466,6 @@ class Array:
 
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
-    @_deprecate_positional_args
     def get_block_selection(
         self,
         selection: BasicSelection,
@@ -3500,7 +3564,6 @@ class Array:
             )
         )
 
-    @_deprecate_positional_args
     def set_block_selection(
         self,
         selection: BasicSelection,
@@ -4240,7 +4303,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
+    zdtype = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
@@ -4327,10 +4390,8 @@ async def init_array(
             chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
 
-        if config is None:
-            config = {}
-        if order is not None and isinstance(config, dict):
-            config["order"] = config.get("order", order)
+        if order is not None:
+            _warn_order_kwarg()
 
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
@@ -4581,8 +4642,18 @@ def _parse_keep_array_attr(
                 serializer = "auto"
         if fill_value is None:
             fill_value = data.fill_value
-        if order is None:
+
+        if data.metadata.zarr_format == 2 and zarr_format == 3 and data.order == "F":
+            # Can't set order="F" for v3 arrays
+            warnings.warn(
+                "The 'order' attribute of a Zarr format 2 array does not have a direct analogue in Zarr format 3. "
+                "The existing order='F' of the source Zarr format 2 array will be ignored.",
+                UserWarning,
+                stacklevel=2,
+            )
+        elif order is None and zarr_format == 2:
             order = data.order
+
         if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
             if isinstance(data.metadata, ArrayV2Metadata):
                 chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
