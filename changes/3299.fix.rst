@@ -1,0 +1,6 @@
+Fix a bug in ``create_array`` caused by iterating over chunk-aligned regions instead of
+shard-aligned regions when writing data. To make the distinction between chunks and shards more
+obvious in the ``Array`` API, new properties ``chunk_grid_shape``,
+``shard_grid_shape``, ``nshards``, ``nshards_initialized`` were added to the ``Array`` class.
+Additionally, the behavior of ``nchunks_initialized`` has been adjusted. This function consistently
+reports the number of chunks present in stored objects, even when the array uses the sharding codec.
