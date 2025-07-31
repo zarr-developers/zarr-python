@@ -261,8 +261,11 @@ Pull requests submitted by an external contributor should be reviewed and approv
 one core developer before being merged. Ideally, pull requests submitted by a core developer
 should be reviewed and approved by at least one other core developer before being merged.
 
-Pull requests should not be merged until all CI checks have passed (GitHub Actions
+Pull requests should not be merged until all CI checks have passed (GitHub Actions,
 Codecov) against code that has had the latest main merged in.
+
+Before merging the milestone must be set either to decide whether a PR will be in the next
+patch, minor, or major release. The next section explains which types of changes go in each release.
 
 Compatibility and versioning policies
 -------------------------------------
