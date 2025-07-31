@@ -15,12 +15,12 @@ from zarr.errors import ZarrDeprecationWarning
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    import numcodecs.abc
     import numpy as np
     import numpy.typing as npt
 
     from zarr.abc.codec import Codec
     from zarr.api.asynchronous import ArrayLike, PathLike
+    from zarr.codecs._v2 import Numcodec
     from zarr.core.array import (
         CompressorsLike,
         FiltersLike,
@@ -610,7 +610,7 @@ def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,

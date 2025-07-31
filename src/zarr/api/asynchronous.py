@@ -52,9 +52,8 @@ from zarr.storage._common import make_store_path
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    import numcodecs.abc
-
     from zarr.abc.codec import Codec
+    from zarr.codecs._v2 import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
@@ -877,7 +876,7 @@ async def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
