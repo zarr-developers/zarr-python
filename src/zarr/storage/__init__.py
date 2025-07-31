@@ -4,6 +4,7 @@ from types import ModuleType
 from typing import Any
 
 from zarr.errors import ZarrDeprecationWarning
+from zarr.storage._cache import LRUStoreCache
 from zarr.storage._common import StoreLike, StorePath
 from zarr.storage._fsspec import FsspecStore
 from zarr.storage._local import LocalStore
