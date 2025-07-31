@@ -18,10 +18,10 @@ from zarr.core.common import (
     ChunkCoords,
     ChunkCoordsLike,
     ShapeLike,
+    ceildiv,
     parse_named_configuration,
     parse_shapelike,
 )
-from zarr.core.indexing import ceildiv
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
