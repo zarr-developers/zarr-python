@@ -1,0 +1,2 @@
+Define Zarr-specific warning classes ``ZarrDeprecationWarning`` and ``ZarrFutureWarning``, that
+subclass ``DeprecationWarning`` and ``FutureWarning``, respectively.
