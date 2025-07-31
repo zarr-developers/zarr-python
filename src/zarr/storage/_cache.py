@@ -149,6 +149,7 @@ class LRUStoreCache(Store):
     def __init__(self, store: Store, max_size: int):
         super().__init__(read_only=store.read_only)  # Initialize parent with store's read_only state
         self._store = store
+        self.root = getattr(store, 'root', None)  # Add this line to inherit root from underlying store
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
@@ -340,6 +341,19 @@ class LRUStoreCache(Store):
         # docstring inherited
         path = self.root / key
         return await asyncio.to_thread(path.is_file)
+    
+    async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
+        if not self._is_open:
+            await self._open()
+        self._check_writable()
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
+        path = self.root / key
+        await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
+
         
     async def get(
         self,
@@ -400,6 +414,10 @@ class LRUStoreCache(Store):
     
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
+        # Delegate to the underlying store
+        async for key in self._store.list_prefix(prefix):
+            yield key
+        
         to_strip = self.root.as_posix() + "/"
         prefix = prefix.rstrip("/")
         for p in (self.root / prefix).rglob("*"):
