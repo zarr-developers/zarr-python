@@ -199,11 +199,14 @@ class ObjectStore(Store):
 
     async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
+        import obstore as obs
+
         self._check_writable()
         if prefix != "" and not prefix.endswith("/"):
             prefix += "/"
 
-        keys = [(k,) async for k in self.list_prefix(prefix)]
+        metas = await obs.list(self.store, prefix).collect_async()
+        keys = [(m["path"],) for m in metas]
         await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
 
     @property
