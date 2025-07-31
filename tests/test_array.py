@@ -46,7 +46,7 @@ from zarr.core.array import (
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
-from zarr.core.common import JSON, ZarrFormat
+from zarr.core.common import JSON, ZarrFormat, ceildiv
 from zarr.core.dtype import (
     DateTime64,
     Float32,
@@ -64,7 +64,7 @@ from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
 from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
-from zarr.core.indexing import BasicIndexer, ceildiv, iter_grid, iter_regions
+from zarr.core.indexing import BasicIndexer, iter_grid, iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
