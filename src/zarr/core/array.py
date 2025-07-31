@@ -27,7 +27,7 @@ from typing_extensions import deprecated
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
-from zarr.codecs._v2 import V2Codec
+from zarr.codecs._v2 import Numcodec, V2Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
@@ -607,7 +607,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
-        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
         compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
@@ -818,7 +818,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
-        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
         compressor: CompressorLikev2 = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV2Metadata:
@@ -856,7 +856,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
-        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
         compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
@@ -3898,7 +3898,7 @@ def _build_parents(
 
 
 FiltersLike: TypeAlias = (
-    Iterable[dict[str, JSON] | ArrayArrayCodec | numcodecs.abc.Codec]
+    Iterable[dict[str, JSON] | ArrayArrayCodec | Numcodec]
     | ArrayArrayCodec
     | Iterable[numcodecs.abc.Codec]
     | numcodecs.abc.Codec
@@ -3911,10 +3911,10 @@ CompressorLike: TypeAlias = (
 )
 
 CompressorsLike: TypeAlias = (
-    Iterable[dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec]
+    Iterable[dict[str, JSON] | BytesBytesCodec | Numcodec]
     | dict[str, JSON]
     | BytesBytesCodec
-    | numcodecs.abc.Codec
+    | Numcodec
     | Literal["auto"]
     | None
 )
@@ -4944,7 +4944,7 @@ def _parse_deprecated_compressor(
             # "no compression"
             compressors = ()
         else:
-            compressors = (compressor,)
+            compressors = (compressor,)  # type: ignore[assignment]
     elif zarr_format == 2 and compressor == compressors == "auto":
         compressors = ({"id": "blosc"},)
     return compressors

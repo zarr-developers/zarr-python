@@ -1684,7 +1684,7 @@ def test_roundtrip_numcodecs() -> None:
         shape=(720, 1440),
         chunks=(720, 1440),
         dtype="float64",
-        compressors=compressors,
+        compressors=compressors,  # type: ignore[arg-type]
         filters=filters,
         fill_value=-9.99,
         dimension_names=["lat", "lon"],
