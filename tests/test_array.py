@@ -1892,6 +1892,7 @@ def test_chunk_grid_shape(
     assert arr.chunk_grid_shape == chunk_grid_shape
     assert arr.cdata_shape == chunk_grid_shape
     assert arr.shard_grid_shape == shard_grid_shape
+    assert arr.nshards == np.prod(shard_grid_shape)
 
 
 @pytest.mark.parametrize(
