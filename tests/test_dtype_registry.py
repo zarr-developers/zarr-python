@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 import re
-import sys
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import numpy as np
 import pytest
 
-import zarr
 from tests.conftest import skip_object_dtype
-from zarr.core.config import config
 from zarr.core.dtype import (
     AnyDType,
     DataTypeRegistry,
@@ -29,8 +25,6 @@ from zarr.dtype import (  # type: ignore[attr-defined]
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
-
     from zarr.core.common import ZarrFormat
 
 from .test_dtype.conftest import zdtype_examples
@@ -145,22 +139,6 @@ class TestRegistry:
         msg = f"No Zarr data type found that matches {instance_dict!r}"
         with pytest.raises(ValueError, match=re.escape(msg)):
             data_type_registry_fixture.match_json(instance_dict, zarr_format=zarr_format)
-
-
-# this is copied from the registry tests -- we should deduplicate
-here = str(Path(__file__).parent.absolute())
-
-
-@pytest.fixture
-def set_path() -> Generator[None, None, None]:
-    sys.path.append(here)
-    zarr.registry._collect_entrypoints()
-    yield
-    sys.path.remove(here)
-    registries = zarr.registry._collect_entrypoints()
-    for registry in registries:
-        registry.lazy_load_list.clear()
-    config.reset()
 
 
 @pytest.mark.usefixtures("set_path")
