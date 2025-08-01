@@ -8,9 +8,6 @@ from typing import (
     cast,
 )
 
-import numpy as np
-import numpy.typing as npt
-
 from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
 from zarr.registry import (
@@ -21,6 +18,8 @@ from zarr.registry import (
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
+
+    import numpy.typing as npt
 
     from zarr.core.common import BytesLike, ChunkCoords
 
@@ -53,14 +52,14 @@ class Buffer(core.Buffer):
 
     def __init__(self, array_like: ArrayLike) -> None:
         if cp is None:
-            raise ImportError(
+            raise ImportError(  # pragma: no cover
                 "Cannot use zarr.buffer.gpu.Buffer without cupy. Please install cupy."
             )
 
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
-        if array_like.dtype != np.dtype("B"):
-            raise ValueError("array_like: only byte dtype allowed")
+        if array_like.dtype.itemsize != 1:
+            raise ValueError("array_like: only dtypes with itemsize=1 allowed")
 
         if not hasattr(array_like, "__cuda_array_interface__"):
             # Slow copy based path for arrays that don't support the __cuda_array_interface__
@@ -106,13 +105,13 @@ class Buffer(core.Buffer):
         return cast("npt.NDArray[Any]", cp.asnumpy(self._data))
 
     def __add__(self, other: core.Buffer) -> Self:
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("B")
-        gpu_other = Buffer(other_array)
-        gpu_other_array = gpu_other.as_array_like()
-        return self.__class__(
-            cp.concatenate((cp.asanyarray(self._data), cp.asanyarray(gpu_other_array)))
-        )
+        other_array = cp.asanyarray(other.as_array_like())
+        left = self._data
+        if left.dtype != other_array.dtype:
+            other_array = other_array.view(left.dtype)
+
+        buffer = cp.concatenate([left, other_array])
+        return type(self)(buffer)
 
 
 class NDBuffer(core.NDBuffer):
@@ -142,7 +141,7 @@ class NDBuffer(core.NDBuffer):
 
     def __init__(self, array: NDArrayLike) -> None:
         if cp is None:
-            raise ImportError(
+            raise ImportError(  # pragma: no cover
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."
             )
 
