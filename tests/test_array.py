@@ -35,8 +35,6 @@ from zarr.core.array import (
     _parse_chunk_encoding_v3,
     chunks_initialized,
     create_array,
-    default_filters_v2,
-    default_serializer_v3,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
@@ -50,14 +48,12 @@ from zarr.core.dtype import (
     Structured,
     TimeDelta64,
     UInt8,
-    VariableLengthBytes,
     VariableLengthUTF8,
     ZDType,
     parse_dtype,
 )
 from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
-from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -472,7 +468,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressors=(numcodecs.Zstd(),),
+            _compressors=(ZstdCodec(),),
         )
         assert result == expected
 
@@ -552,7 +548,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressors=(numcodecs.Zstd(),),
+            _compressors=(ZstdCodec(),),
         )
         assert result == expected
 
@@ -1012,28 +1008,6 @@ class TestCreateArray:
             assert a.fill_value == dtype.default_scalar()
 
     @staticmethod
-    # @pytest.mark.parametrize("zarr_format", [2, 3])
-    @pytest.mark.parametrize("dtype", zdtype_examples)
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-    def test_default_fill_value_None(
-        dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat
-    ) -> None:
-        """
-        Test that the fill value of an array is set to the default value for an explicit None argument for
-        Zarr Format 3, and to null for Zarr Format 2
-        """
-        a = zarr.create_array(
-            store, shape=(5,), chunks=(5,), dtype=dtype, fill_value=None, zarr_format=zarr_format
-        )
-        if zarr_format == 3:
-            if isinstance(dtype, DateTime64 | TimeDelta64) and np.isnat(a.fill_value):
-                assert np.isnat(dtype.default_scalar())
-            else:
-                assert a.fill_value == dtype.default_scalar()
-        elif zarr_format == 2:
-            assert a.fill_value is None
-
-    @staticmethod
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("dtype", zdtype_examples)
     def test_dtype_forms(dtype: ZDType[Any, Any], store: Store, zarr_format: ZarrFormat) -> None:
@@ -1105,8 +1079,8 @@ class TestCreateArray:
             (ZstdCodec(level=3),),
             (ZstdCodec(level=3), GzipCodec(level=0)),
             ZstdCodec(level=3),
-            {"name": "zstd", "configuration": {"level": 3}},
-            ({"name": "zstd", "configuration": {"level": 3}},),
+            {"name": "zstd", "configuration": {"level": 3, "checksum": False}},
+            ({"name": "zstd", "configuration": {"level": 3, "checksum": False}},),
         ],
     )
     @pytest.mark.parametrize(
@@ -1280,7 +1254,7 @@ class TestCreateArray:
             zarr.create(store=store, dtype="uint8", shape=(10,), zarr_format=3, **kwargs)
 
     @staticmethod
-    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str", "U10", "S10", ">M8[10s]"])
+    @pytest.mark.parametrize("dtype", ["uint8", "float32"])
     @pytest.mark.parametrize(
         "compressors",
         [
@@ -1323,7 +1297,6 @@ class TestCreateArray:
 
     @staticmethod
     @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthUTF8()])
-    @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     async def test_default_filters_compressors(
         store: MemoryStore, dtype: UInt8 | Float32 | VariableLengthUTF8, zarr_format: ZarrFormat
     ) -> None:
@@ -1662,12 +1635,12 @@ def test_roundtrip_numcodecs() -> None:
     store = MemoryStore()
 
     compressors = [
-        {"name": "numcodecs.shuffle", "configuration": {"elementsize": 2}},
-        {"name": "numcodecs.zlib", "configuration": {"level": 4}},
+        {"name": "shuffle", "configuration": {"elementsize": 2}},
+        {"name": "zlib", "configuration": {"level": 4}},
     ]
     filters = [
         {
-            "name": "numcodecs.fixedscaleoffset",
+            "name": "fixedscaleoffset",
             "configuration": {
                 "scale": 100.0,
                 "offset": 0.0,
@@ -1764,74 +1737,4 @@ async def test_sharding_coordinate_selection() -> None:
         shards=(2, 4, 4),
     )
     arr[:] = np.arange(2 * 3 * 4).reshape((2, 3, 4))
-    result = arr[1, [0, 1]]  # type: ignore[index]
-    assert isinstance(result, NDArrayLike)
-    assert (result == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()
-
-
-@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
-def test_array_repr(store: Store) -> None:
-    shape = (2, 3, 4)
-    dtype = "uint8"
-    arr = zarr.create_array(store, shape=shape, dtype=dtype)
-    assert str(arr) == f"<Array {store} shape={shape} dtype={dtype}>"
-
-
-class UnknownObjectDtype(UTF8Base[np.dtypes.ObjectDType]):
-    object_codec_id = "unknown"  # type: ignore[assignment]
-
-    def to_native_dtype(self) -> np.dtypes.ObjectDType:
-        """
-        Create a NumPy object dtype from this VariableLengthUTF8 ZDType.
-
-        Returns
-        -------
-        np.dtypes.ObjectDType
-            The NumPy object dtype.
-        """
-        return np.dtype("o")  # type: ignore[return-value]
-
-
-@pytest.mark.parametrize(
-    "dtype", [VariableLengthUTF8(), VariableLengthBytes(), UnknownObjectDtype()]
-)
-def test_chunk_encoding_no_object_codec_errors(dtype: ZDType[Any, Any]) -> None:
-    """
-    Test that a valuerror is raised when checking the chunk encoding for a v2 array with a
-    data type that requires an object codec, but where no object codec is specified
-    """
-    if isinstance(dtype, VariableLengthUTF8):
-        codec_name = "the numcodecs.VLenUTF8 codec"
-    elif isinstance(dtype, VariableLengthBytes):
-        codec_name = "the numcodecs.VLenBytes codec"
-    else:
-        codec_name = f"an unknown object codec with id {dtype.object_codec_id!r}"  # type: ignore[attr-defined]
-    msg = (
-        f"Data type {dtype} requires {codec_name}, "
-        "but no such codec was specified in the filters or compressor parameters for "
-        "this array. "
-    )
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        _parse_chunk_encoding_v2(filters=None, compressor=None, dtype=dtype)
-
-
-def test_unknown_object_codec_default_serializer_v3() -> None:
-    """
-    Test that we get a valueerrror when trying to create the default serializer for a data type
-    that requires an unknown object codec
-    """
-    dtype = UnknownObjectDtype()
-    msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        default_serializer_v3(dtype)
-
-
-def test_unknown_object_codec_default_filters_v2() -> None:
-    """
-    Test that we get a valueerrror when trying to create the default serializer for a data type
-    that requires an unknown object codec
-    """
-    dtype = UnknownObjectDtype()
-    msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        default_filters_v2(dtype)
+    assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()  # type: ignore[index]

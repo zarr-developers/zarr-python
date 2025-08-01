@@ -82,7 +82,8 @@ test = [
     "pytest-xdist",
     "packaging",
     "tomlkit",
-    "uv"
+    "uv",
+    "imagecodecs"
 ]
 remote_tests = [
     'zarr[remote]',
@@ -383,6 +384,7 @@ module = [
     "tests.test_indexing",
     "tests.test_properties",
     "tests.test_sync",
+    "tests.test_v2",
     "tests.test_regression.scripts.*"
 ]
 ignore_errors = true
