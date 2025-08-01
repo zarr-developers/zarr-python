@@ -1866,6 +1866,37 @@ def test_unknown_object_codec_default_filters_v2() -> None:
 @pytest.mark.parametrize(
     ("array_shape", "shard_shape", "chunk_shape"), [((10,), None, (1,)), ((30, 10), None, (2, 5))]
 )
+def test_chunk_grid_shape(
+    array_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...] | None,
+    chunk_shape: tuple[int, ...],
+    zarr_format: ZarrFormat,
+) -> None:
+    """
+    Test that the shape of the chunk grid and the shard grid are correctly indicated
+    """
+    arr = zarr.create_array(
+        {},
+        dtype="uint8",
+        shape=array_shape,
+        chunks=chunk_shape,
+        shards=shard_shape,
+        zarr_format=zarr_format,
+    )
+    chunk_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, chunk_shape, strict=True))
+    if shard_shape is None:
+        _shard_shape = chunk_shape
+    else:
+        _shard_shape = shard_shape
+    shard_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, _shard_shape, strict=True))
+    assert arr.chunk_grid_shape == chunk_grid_shape
+    assert arr.cdata_shape == chunk_grid_shape
+    assert arr.shard_grid_shape == shard_grid_shape
+
+
+@pytest.mark.parametrize(
+    ("array_shape", "shard_shape", "chunk_shape"), [((10,), None, (1,)), ((30, 10), None, (2, 5))]
+)
 def test_iter_chunk_coords(
     array_shape: tuple[int, ...],
     shard_shape: tuple[int, ...] | None,
