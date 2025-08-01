@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+from asyncio import gather
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
@@ -27,6 +28,8 @@ else:
     FSMap = None
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Iterable
+
     from zarr.core.buffer import BufferPrototype
 
 
@@ -162,6 +165,25 @@ class StorePath:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
+
+    async def get_many(
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
+    ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
+        """
+        Read multiple bytes from the store in order of the provided path_components.
+
+        Parameters
+        ----------
+        requests : Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
+
+        Yields
+        -------
+        tuple[str, Buffer | None]
+        """
+        path_component_dict = {(self / req[0]).path: req[0] for req in requests}
+        complete_requests = [((self / req[0]).path, *req[1:]) for req in requests]
+        async for result in self.store._get_many(complete_requests):
+            yield (path_component_dict[result[0]], *result[1:])
 
     async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
         """
