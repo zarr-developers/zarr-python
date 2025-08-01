@@ -146,7 +146,10 @@ async def test_codecs_use_of_gpu_prototype() -> None:
             value=expect[:],
             prototype=gpu.buffer_prototype,
         )
-    got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype)
+    with pytest.warns(ZarrUserWarning, match=msg):
+        got = await a.getitem(
+            selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
+        )
     assert isinstance(got, cp.ndarray)
     assert cp.array_equal(expect, got)
 
@@ -173,9 +176,10 @@ async def test_sharding_use_of_gpu_prototype() -> None:
                 value=expect[:],
                 prototype=gpu.buffer_prototype,
             )
-        got = await a.getitem(
-            selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
-        )
+        with pytest.warns(ZarrUserWarning, match=msg):
+            got = await a.getitem(
+                selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
+            )
         assert isinstance(got, cp.ndarray)
         assert cp.array_equal(expect, got)
 
