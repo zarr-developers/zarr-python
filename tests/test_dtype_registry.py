@@ -13,18 +13,20 @@ from tests.conftest import skip_object_dtype
 from zarr.core.config import config
 from zarr.core.dtype import (
     AnyDType,
-    Bool,
     DataTypeRegistry,
-    FixedLengthUTF32,
     TBaseDType,
     TBaseScalar,
+    get_data_type_from_json,
+)
+from zarr.core.dtype.common import unpack_dtype_json
+from zarr.dtype import (  # type: ignore[attr-defined]
+    Bool,
+    FixedLengthUTF32,
     ZDType,
     data_type_registry,
-    get_data_type_from_json,
     parse_data_type,
     parse_dtype,
 )
-from zarr.core.dtype.common import unpack_dtype_json
 
 if TYPE_CHECKING:
     from collections.abc import Generator
