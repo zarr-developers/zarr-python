@@ -388,7 +388,7 @@ async def test_nchunks_initialized(
     """
     Test that nchunks_initialized accurately returns the number of stored partitions.
     """
-    store = {}
+    store = MemoryStore()
     if shard_shape is None:
         chunks_per_shard = 1
     else:
