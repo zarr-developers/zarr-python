@@ -441,7 +441,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
-    @deprecated("Use zarr.api.asynchronous.create_array instead.")
+    @deprecated("Use zarr.api.asynchronous.create_array instead.", category=ZarrDeprecationWarning)
     async def create(
         cls,
         store: StoreLike,
@@ -1855,7 +1855,7 @@ class Array:
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     @classmethod
-    @deprecated("Use zarr.create_array instead.")
+    @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
     def create(
         cls,
         store: StoreLike,

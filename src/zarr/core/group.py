@@ -2828,7 +2828,7 @@ class Group(SyncMixin):
         """
         return self._sync(self._async_group.move(source, dest))
 
-    @deprecated("Use Group.create_array instead.")
+    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
     def array(
         self,
         name: str,
