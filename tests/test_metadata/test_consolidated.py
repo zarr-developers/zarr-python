@@ -497,7 +497,14 @@ class TestConsolidated:
             await child.create_array("d", shape=(1,), dtype=dtype)
 
             # Consolidate metadata and re-open store
-            await zarr.api.asynchronous.consolidate_metadata(memory_store)
+            if zarr_format == 3:
+                with pytest.warns(
+                    ZarrUserWarning,
+                    match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+                ):
+                    await zarr.api.asynchronous.consolidate_metadata(memory_store)
+            else:
+                await zarr.api.asynchronous.consolidate_metadata(memory_store)
             g2 = await zarr.api.asynchronous.open_group(store=memory_store)
 
             assert list(g2.metadata.consolidated_metadata.metadata) == ["a", "b", "c"]
