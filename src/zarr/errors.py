@@ -8,6 +8,8 @@ __all__ = [
     "GroupNotFoundError",
     "MetadataValidationError",
     "NodeTypeValidationError",
+    "ZarrDeprecationWarning",
+    "ZarrFutureWarning",
 ]
 
 
@@ -61,14 +63,20 @@ class MetadataValidationError(BaseZarrError):
 
 class NodeTypeValidationError(MetadataValidationError):
     """
-    Specialized exception when the node_type of the metadata document is incorrect..
+    Specialized exception when the node_type of the metadata document is incorrect.
 
     This can be raised when the value is invalid or unexpected given the context,
     for example an 'array' node when we expected a 'group'.
     """
 
 
-class ZarrFutureWarning(FutureWarning): ...
+class ZarrFutureWarning(FutureWarning):
+    """
+    A warning raised to indicate when a construct will change semantically in the future.
+    """
 
 
-class ZarrDeprecationWarning(DeprecationWarning): ...
+class ZarrDeprecationWarning(DeprecationWarning):
+    """
+    A warning raised to indicate that a construct will be removed in a future release.
+    """
