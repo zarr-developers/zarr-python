@@ -5,8 +5,8 @@ import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype import FixedLengthUTF32
-from zarr.core.dtype.common import UnstableSpecificationWarning
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING, VariableLengthUTF8
+from zarr.errors import UnstableSpecificationWarning
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
 

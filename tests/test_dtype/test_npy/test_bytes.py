@@ -2,8 +2,8 @@ import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
-from zarr.core.dtype.common import UnstableSpecificationWarning
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
+from zarr.errors import UnstableSpecificationWarning
 
 
 class TestNullTerminatedBytes(BaseTestZDType):

@@ -92,3 +92,6 @@ class ZarrRuntimeWarning(RuntimeWarning):
     """
     A warning for dubious runtime behavior.
     """
+
+
+class UnstableSpecificationWarning(ZarrFutureWarning): ...
