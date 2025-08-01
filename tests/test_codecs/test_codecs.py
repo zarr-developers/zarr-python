@@ -304,11 +304,11 @@ def test_invalid_metadata(codecs: tuple[Codec, ...]) -> None:
     shape = (16,)
     chunks = (16,)
     data_type = UInt8()
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="The `order` tuple must have as many entries"):
         ArrayV3Metadata(
             shape=shape,
             chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
-            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},  # type: ignore[arg-type]
             fill_value=0,
             data_type=data_type,
             codecs=codecs,
