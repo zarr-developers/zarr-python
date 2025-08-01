@@ -2,26 +2,77 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar, Self, TypeGuard
 
-import numcodecs
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
+from typing_extensions import Protocol
 
-from zarr.abc.codec import ArrayBytesCodec
+from zarr.abc.codec import ArrayBytesCodec, CodecJSON_V2
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
-    import numcodecs.abc
-
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
 
 
+class Numcodec(Protocol):
+    """
+    A protocol that models the ``numcodecs.abc.Codec`` interface.
+    """
+
+    codec_id: ClassVar[str]
+
+    def encode(self, buf: Buffer | NDBuffer) -> Buffer | NDBuffer: ...
+
+    def decode(
+        self, buf: Buffer | NDBuffer, out: Buffer | NDBuffer | None = None
+    ) -> Buffer | NDBuffer: ...
+
+    def get_config(self) -> CodecJSON_V2[str]: ...
+
+    @classmethod
+    def from_config(cls, config: CodecJSON_V2[str]) -> Self: ...
+
+
+def _is_numcodec(obj: object) -> TypeGuard[Numcodec]:
+    """
+    Check if the given object implements the Numcodec protocol.
+
+    The @runtime_checkable decorator does not allow issubclass checks for protocols with non-method
+    members (i.e., attributes), so we use this function to manually check for the presence of the
+    required attributes and methods on a given object.
+    """
+    return _is_numcodec_cls(type(obj))
+
+
+def _is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:
+    """
+    Check if the given object is a class implements the Numcodec protocol.
+
+    The @runtime_checkable decorator does not allow issubclass checks for protocols with non-method
+    members (i.e., attributes), so we use this function to manually check for the presence of the
+    required attributes and methods on a given object.
+    """
+    return (
+        isinstance(obj, type)
+        and hasattr(obj, "codec_id")
+        and isinstance(obj.codec_id, str)
+        and hasattr(obj, "encode")
+        and callable(obj.encode)
+        and hasattr(obj, "decode")
+        and callable(obj.decode)
+        and hasattr(obj, "get_config")
+        and callable(obj.get_config)
+        and hasattr(obj, "from_config")
+        and callable(obj.from_config)
+    )
+
+
 @dataclass(frozen=True)
 class V2Codec(ArrayBytesCodec):
-    filters: tuple[numcodecs.abc.Codec, ...] | None
-    compressor: numcodecs.abc.Codec | None
+    filters: tuple[Numcodec, ...] | None
+    compressor: Numcodec | None
 
     is_fixed_size = False
 
@@ -33,9 +84,9 @@ class V2Codec(ArrayBytesCodec):
         cdata = chunk_bytes.as_array_like()
         # decompress
         if self.compressor:
-            chunk = await asyncio.to_thread(self.compressor.decode, cdata)
+            chunk = await asyncio.to_thread(self.compressor.decode, cdata)  # type: ignore[arg-type]
         else:
-            chunk = cdata
+            chunk = cdata  # type: ignore[assignment]
 
         # apply filters
         if self.filters:
@@ -56,7 +107,7 @@ class V2Codec(ArrayBytesCodec):
                 # is an object array. In this case, we need to convert the object
                 # array to the correct dtype.
 
-                chunk = np.array(chunk).astype(chunk_spec.dtype.to_native_dtype())
+                chunk = np.array(chunk).astype(chunk_spec.dtype.to_native_dtype())  # type: ignore[assignment]
 
         elif chunk.dtype != object:
             # If we end up here, someone must have hacked around with the filters.
@@ -85,7 +136,7 @@ class V2Codec(ArrayBytesCodec):
         # apply filters
         if self.filters:
             for f in self.filters:
-                chunk = await asyncio.to_thread(f.encode, chunk)
+                chunk = await asyncio.to_thread(f.encode, chunk)  # type: ignore[arg-type]
 
         # check object encoding
         if ensure_ndarray_like(chunk).dtype == object:
@@ -93,9 +144,9 @@ class V2Codec(ArrayBytesCodec):
 
         # compress
         if self.compressor:
-            cdata = await asyncio.to_thread(self.compressor.encode, chunk)
+            cdata = await asyncio.to_thread(self.compressor.encode, chunk)  # type: ignore[arg-type]
         else:
-            cdata = chunk
+            cdata = chunk  # type: ignore[assignment]
 
         cdata = ensure_bytes(cdata)
         return chunk_spec.prototype.buffer.from_bytes(cdata)
