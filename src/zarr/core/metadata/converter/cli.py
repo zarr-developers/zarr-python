@@ -6,6 +6,7 @@ import typer
 
 import zarr.core.metadata.converter.migrate_to_v3 as migrate_metadata
 from zarr.core.sync import sync
+from zarr.storage._common import make_store
 
 app = typer.Typer()
 
@@ -100,13 +101,19 @@ def migrate(
             "Dry run enabled - no new files will be created or changed. Log of files that would be created on a real run:"
         )
 
-    write_store = input_store if output_store is None else output_store
+    input_zarr_store = sync(make_store(input_store, mode="r+"))
+
+    if output_store is not None:
+        output_zarr_store = sync(make_store(output_store, mode="w-"))
+        write_store = output_zarr_store
+    else:
+        write_store = input_zarr_store
 
     if overwrite:
         sync(migrate_metadata.remove_metadata(write_store, 3, force=force, dry_run=dry_run))
 
     migrate_metadata.migrate_v2_to_v3(
-        input_store=input_store, output_store=output_store, dry_run=dry_run
+        input_store=input_zarr_store, output_store=output_zarr_store, dry_run=dry_run
     )
 
     if remove_v2_metadata:
@@ -150,10 +157,11 @@ def remove_metadata(
         logger.info(
             "Dry run enabled - no files will be deleted or changed. Log of files that would be deleted on a real run:"
         )
+    input_zarr_store = sync(make_store(store, mode="r+"))
 
     sync(
         migrate_metadata.remove_metadata(
-            store=store,
+            store=input_zarr_store,
             zarr_format=cast(Literal[2, 3], int(zarr_format[1:])),
             force=force,
             dry_run=dry_run,

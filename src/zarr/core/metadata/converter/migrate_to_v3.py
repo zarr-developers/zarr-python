@@ -1,11 +1,12 @@
 import asyncio
 import logging
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 import numcodecs.abc
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, BytesBytesCodec, Codec
+from zarr.abc.store import Store
 from zarr.codecs.blosc import BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
@@ -29,17 +30,15 @@ from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.registry import get_codec_class
-from zarr.storage import StoreLike
-from zarr.storage._common import StorePath, make_store_path
+from zarr.storage import StorePath
 
 logger = logging.getLogger(__name__)
 
 
 def migrate_v2_to_v3(
     *,
-    input_store: StoreLike,
-    output_store: StoreLike | None = None,
-    storage_options: dict[str, Any] | None = None,
+    input_store: Store,
+    output_store: Store | None = None,
     dry_run: bool = False,
 ) -> None:
     """Migrate all v2 metadata in a zarr hierarchy to v3.
@@ -49,26 +48,20 @@ def migrate_v2_to_v3(
 
     Parameters
     ----------
-    input_store : StoreLike
-        Input Zarr to migrate - should be a store, path to directory in file system or name of zip file.
-    output_store : StoreLike
+    input_store : Store
+        Input Zarr to migrate.
+    output_store : Store, optional
         Output location to write v3 metadata (no array data will be copied). If not provided, v3 metadata will be
-        written to input_store. Should be a store, path to directory in file system or name of zip file.
-    storage_options : dict | None, optional
-        If the store is backed by an fsspec-based implementation, then this dict will be passed to
-        the Store constructor for that implementation. Ignored otherwise. Note - the same storage_options will
-        be passed to both input_store and output_store (if provided).
+        written to input_store.
     dry_run : bool, optional
         Enable a 'dry run' - files that would be created are logged, but no files are created or changed.
     """
 
-    zarr_v2 = zarr.open(store=input_store, mode="r+", storage_options=storage_options)
+    zarr_v2 = zarr.open(store=input_store, mode="r+")
 
     if output_store is not None:
         # w- access to not allow overwrite of existing data
-        output_path = sync(
-            make_store_path(output_store, mode="w-", storage_options=storage_options)
-        )
+        output_path = sync(StorePath.open(output_store, path="", mode="w-"))
     else:
         output_path = zarr_v2.store_path
 
@@ -101,9 +94,8 @@ def migrate_to_v3(zarr_v2: Array | Group, output_path: StorePath, dry_run: bool 
 
 
 async def remove_metadata(
-    store: StoreLike,
+    store: Store,
     zarr_format: ZarrFormat,
-    storage_options: dict[str, Any] | None = None,
     force: bool = False,
     dry_run: bool = False,
 ) -> None:
@@ -113,13 +105,10 @@ async def remove_metadata(
 
     Parameters
     ----------
-    store : StoreLike
-        Store or path to directory in file system or name of zip file.
+    store : Store
+        Zarr to remove metadata from.
     zarr_format : ZarrFormat
         Which format's metadata to remove - 2 or 3.
-    storage_options : dict | None, optional
-        If the store is backed by an fsspec-based implementation, then this dict will be passed to
-        the Store constructor for that implementation. Ignored otherwise.
     force : bool, optional
         When False, metadata can only be removed if a valid alternative exists e.g. deletion of v2 metadata will
         only be allowed when v3 metadata is also present. When True, metadata can be removed when there is no
@@ -127,9 +116,10 @@ async def remove_metadata(
     dry_run : bool, optional
         Enable a 'dry run' - files that would be deleted are logged, but no files are removed or changed.
     """
-    store_path = await make_store_path(store, mode="r+", storage_options=storage_options)
-    if not store_path.store.supports_deletes:
+
+    if not store.supports_deletes:
         raise ValueError("Store must support deletes to remove metadata")
+    store_path = await StorePath.open(store, path="", mode="r+")
 
     metadata_files_all = {
         2: [ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ZMETADATA_V2_JSON],
@@ -142,7 +132,7 @@ async def remove_metadata(
         alternative_metadata = 2
 
     awaitables = []
-    async for file_path in store_path.store.list():
+    async for file_path in store.list():
         parent_path, _, file_name = file_path.rpartition("/")
 
         if file_name not in metadata_files_all[zarr_format]:
