@@ -525,11 +525,12 @@ class NDBuffer:
             return False
         # Handle positive and negative zero by comparing bit patterns:
         if (
-            np.array(other).dtype.kind == "f"
+            np.asarray(other).dtype.kind == "f"
             and other == 0.0
             and self._data.dtype.kind not in ("U", "S", "T", "O", "V")
         ):
-            return np.array_equiv(np.array(self._data).view("V"), np.array(other).view("V"))
+            _data, other = np.broadcast_arrays(self._data, other)
+            return np.array_equal(_data.view("V"), other.view("V"))
         # use array_equal to obtain equal_nan=True functionality
         # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value
         # every single time we have to write data?
