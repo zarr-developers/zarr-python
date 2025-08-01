@@ -56,7 +56,6 @@ classifiers = [
     'Programming Language :: Python :: 3.13',
 ]
 license = "MIT"
-license-files = ["LICENSE.txt"]
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
