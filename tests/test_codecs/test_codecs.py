@@ -293,80 +293,75 @@ async def test_dimension_names(store: Store) -> None:
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_invalid_metadata(store: Store) -> None:
     spath2 = StorePath(store, "invalid_codec_order")
-    with pytest.raises(TypeError):
-        Array.create(
+    with pytest.raises(TypeError, match="Expected a BytesBytesCodec"):
+        zarr.create_array(
             spath2,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
-            codecs=[
+            compressors=[
                 BytesCodec(),
                 TransposeCodec(order=order_from_dim("F", 2)),
             ],
         )
     spath3 = StorePath(store, "invalid_order")
     with pytest.raises(TypeError):
-        Array.create(
+        zarr.create_array(
             spath3,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
-            codecs=[
+            compressors=[
                 TransposeCodec(order="F"),  # type: ignore[arg-type]
                 BytesCodec(),
             ],
         )
     spath4 = StorePath(store, "invalid_missing_bytes_codec")
-    with pytest.raises(ValueError):
-        Array.create(
+    with pytest.raises(TypeError, match="Expected a BytesBytesCodec"):
+        zarr.create_array(
             spath4,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
-            codecs=[
+            compressors=[
                 TransposeCodec(order=order_from_dim("F", 2)),
             ],
         )
     spath5 = StorePath(store, "invalid_inner_chunk_shape")
     with pytest.raises(ValueError):
-        Array.create(
+        zarr.create_array(
             spath5,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8,)),
-            ],
+            serializer=ShardingCodec(chunk_shape=(8,)),
         )
     spath6 = StorePath(store, "invalid_inner_chunk_shape")
     with pytest.raises(ValueError):
-        Array.create(
+        zarr.create_array(
             spath6,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8, 7)),
-            ],
+            serializer=ShardingCodec(chunk_shape=(8, 7)),
         )
     spath7 = StorePath(store, "warning_inefficient_codecs")
     with pytest.warns(
-        UserWarning,
-        match="Combining a `sharding_indexed` codec disables partial reads and writes, which may lead to inefficient performance",
+        UserWarning, match="Combining a `sharding_indexed` codec disables partial reads and writes"
     ):
-        Array.create(
+        zarr.create_array(
             spath7,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8, 8)),
+            serializer=ShardingCodec(chunk_shape=(8, 8)),
+            compressors=[
                 GzipCodec(),
             ],
         )
