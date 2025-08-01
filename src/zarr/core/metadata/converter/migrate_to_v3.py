@@ -23,6 +23,7 @@ from zarr.core.common import (
     ZarrFormat,
 )
 from zarr.core.dtype.common import HasEndianness
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 from zarr.core.group import Group, GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 def migrate_v2_to_v3(
+    *,
     input_store: StoreLike,
     output_store: StoreLike | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -197,7 +199,9 @@ def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     if metadata_v2.order == "F":
         # F is equivalent to order: n-1, ... 1, 0
         codecs.append(TransposeCodec(order=list(range(len(metadata_v2.shape) - 1, -1, -1))))
-    codecs.extend(_convert_filters(metadata_v2))
+
+    if metadata_v2.filters is not None:
+        codecs.extend(_convert_filters(metadata_v2.filters))
 
     # array-bytes codecs
     if not isinstance(metadata_v2.dtype, HasEndianness):
@@ -206,8 +210,8 @@ def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
         codecs.append(BytesCodec(endian=metadata_v2.dtype.endianness))
 
     # bytes-bytes codecs
-    bytes_bytes_codec = _convert_compressor(metadata_v2)
-    if bytes_bytes_codec is not None:
+    if metadata_v2.compressor is not None:
+        bytes_bytes_codec = _convert_compressor(metadata_v2.compressor, metadata_v2.dtype)
         codecs.append(bytes_bytes_codec)
 
     return ArrayV3Metadata(
@@ -223,11 +227,8 @@ def _convert_array_metadata(metadata_v2: ArrayV2Metadata) -> ArrayV3Metadata:
     )
 
 
-def _convert_filters(metadata_v2: ArrayV2Metadata) -> list[ArrayArrayCodec]:
-    if metadata_v2.filters is None:
-        return []
-
-    filters_codecs = [_find_numcodecs_zarr3(filter) for filter in metadata_v2.filters]
+def _convert_filters(filters: tuple[numcodecs.abc.Codec, ...]) -> list[ArrayArrayCodec]:
+    filters_codecs = [_find_numcodecs_zarr3(filter) for filter in filters]
     for codec in filters_codecs:
         if not isinstance(codec, ArrayArrayCodec):
             raise TypeError(f"Filter {type(codec)} is not an ArrayArrayCodec")
@@ -235,34 +236,31 @@ def _convert_filters(metadata_v2: ArrayV2Metadata) -> list[ArrayArrayCodec]:
     return cast(list[ArrayArrayCodec], filters_codecs)
 
 
-def _convert_compressor(metadata_v2: ArrayV2Metadata) -> BytesBytesCodec | None:
-    if metadata_v2.compressor is None:
-        return None
-
-    compressor_name = metadata_v2.compressor.codec_id
-
-    match compressor_name:
+def _convert_compressor(
+    compressor: numcodecs.abc.Codec, dtype: ZDType[TBaseDType, TBaseScalar]
+) -> BytesBytesCodec:
+    match compressor.codec_id:
         case "blosc":
             return BloscCodec(
-                typesize=metadata_v2.dtype.to_native_dtype().itemsize,
-                cname=metadata_v2.compressor.cname,
-                clevel=metadata_v2.compressor.clevel,
-                shuffle=BloscShuffle.from_int(metadata_v2.compressor.shuffle),
-                blocksize=metadata_v2.compressor.blocksize,
+                typesize=dtype.to_native_dtype().itemsize,
+                cname=compressor.cname,
+                clevel=compressor.clevel,
+                shuffle=BloscShuffle.from_int(compressor.shuffle),
+                blocksize=compressor.blocksize,
             )
 
         case "zstd":
             return ZstdCodec(
-                level=metadata_v2.compressor.level,
-                checksum=metadata_v2.compressor.checksum,
+                level=compressor.level,
+                checksum=compressor.checksum,
             )
 
         case "gzip":
-            return GzipCodec(level=metadata_v2.compressor.level)
+            return GzipCodec(level=compressor.level)
 
         case _:
             # If possible, find matching numcodecs.zarr3 codec
-            compressor_codec = _find_numcodecs_zarr3(metadata_v2.compressor)
+            compressor_codec = _find_numcodecs_zarr3(compressor)
 
             if not isinstance(compressor_codec, BytesBytesCodec):
                 raise TypeError(f"Compressor {type(compressor_codec)} is not a BytesBytesCodec")
