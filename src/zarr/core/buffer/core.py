@@ -529,8 +529,9 @@ class NDBuffer:
             and other == 0.0
             and self._data.dtype.kind not in ("U", "S", "T", "O", "V")
         ):
-            _data, other = np.broadcast_arrays(self._data, other)
-            return np.array_equal(_data.view("V"), other.view("V"))
+            _data, other = np.broadcast_arrays(self._data, np.asarray(other, self._data.dtype))
+            void_dtype = "V" + str(_data.dtype.itemsize)
+            return np.array_equal(_data.view(void_dtype), other.view(void_dtype))
         # use array_equal to obtain equal_nan=True functionality
         # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value
         # every single time we have to write data?
