@@ -27,9 +27,7 @@ from zarr.storage._local import LocalStore
 typer_testing = pytest.importorskip(
     "typer.testing", reason="optional cli dependencies aren't installed"
 )
-cli = pytest.importorskip(
-    "zarr.core.metadata.converter.cli", reason="optional cli dependencies aren't installed"
-)
+cli = pytest.importorskip("zarr._cli.cli", reason="optional cli dependencies aren't installed")
 
 runner = typer_testing.CliRunner()
 

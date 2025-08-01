@@ -4,7 +4,7 @@ from typing import Annotated, Literal, cast
 
 import typer
 
-import zarr.core.metadata.converter.migrate_to_v3 as migrate_metadata
+import zarr.metadata.migrate_v3 as migrate_metadata
 from zarr.core.sync import sync
 from zarr.storage._common import make_store
 
@@ -107,6 +107,7 @@ def migrate(
         output_zarr_store = sync(make_store(output_store, mode="w-"))
         write_store = output_zarr_store
     else:
+        output_zarr_store = None
         write_store = input_zarr_store
 
     if overwrite:

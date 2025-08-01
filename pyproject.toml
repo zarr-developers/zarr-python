@@ -115,7 +115,7 @@ docs = [
 ]
 
 [project.scripts]
-zarr = "zarr.core.metadata.converter.cli:app"
+zarr = "zarr._cli.cli:app"
 
 
 [project.urls]
