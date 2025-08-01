@@ -8,8 +8,10 @@ __all__ = [
     "GroupNotFoundError",
     "MetadataValidationError",
     "NodeTypeValidationError",
+    "UnstableSpecificationWarning",
     "ZarrDeprecationWarning",
     "ZarrFutureWarning",
+    "ZarrRuntimeWarning",
 ]
 
 
@@ -76,6 +78,12 @@ class ZarrFutureWarning(FutureWarning):
     """
 
 
+class UnstableSpecificationWarning(ZarrFutureWarning):
+    """
+    A warning raised to indicate that a feature is outside the Zarr specification.
+    """
+
+
 class ZarrDeprecationWarning(DeprecationWarning):
     """
     A warning raised to indicate that a construct will be removed in a future release.
@@ -92,6 +100,3 @@ class ZarrRuntimeWarning(RuntimeWarning):
     """
     A warning for dubious runtime behavior.
     """
-
-
-class UnstableSpecificationWarning(ZarrFutureWarning): ...
