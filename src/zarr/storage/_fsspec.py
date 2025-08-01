@@ -139,8 +139,8 @@ class FsspecStore(Store):
                 f"fs ({fs}) was not created with `asynchronous=True`, this may lead to surprising behavior",
                 stacklevel=2,
             )
-        if "://" in path and not path.startswith("http"):
-            # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
+        if "://" in path and not path.startswith("http") and not path.startswith("swift"):
+            # special cases for the http(s) and swift filesystem, which need the protocol leaving in the path.
             scheme, _ = path.split("://", maxsplit=1)
             raise ValueError(f"path argument to FsspecStore must not include scheme ({scheme}://)")
 
@@ -247,11 +247,7 @@ class FsspecStore(Store):
         if not fs.async_impl:
             fs = _make_async(fs)
 
-        # fsspec is not consistent about removing the scheme from the path, so check and strip it here
-        # https://github.com/fsspec/filesystem_spec/issues/1722
-        if "://" in path and not path.startswith("http"):
-            # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
-            path = fs._strip_protocol(path)
+        path = fs._strip_protocol(path)
 
         return cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
 
