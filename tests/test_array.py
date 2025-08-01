@@ -418,7 +418,8 @@ async def test_nchunks_initialized(
 
 @pytest.mark.parametrize("path", ["", "foo"])
 @pytest.mark.parametrize(
-    ("shape", "shard_shape", "chunk_shape"), [((10,), (1,), (1,)), ((40,), (20,), (5,))]
+    ("shape", "shard_shape", "chunk_shape"),
+    [((10,), None, (1,)), ((10,), (1,), (1,)), ((40,), (20,), (5,))],
 )
 async def test_chunks_initialized(
     path: str, shape: tuple[int, ...], shard_shape: tuple[int, ...], chunk_shape: tuple[int, ...]
