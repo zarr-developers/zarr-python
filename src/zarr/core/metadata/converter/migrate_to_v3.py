@@ -42,7 +42,7 @@ def migrate_v2_to_v3(
 ) -> None:
     """Migrate all v2 metadata in a zarr hierarchy to v3.
 
-    This will create a zarr.json file at each level (for every group / array). V2 files (.zarray, .zattrs etc.)
+    This will create a zarr.json file at each level (for every group / array). v2 files (.zarray, .zattrs etc.)
     will be left as-is.
 
     Parameters
@@ -50,14 +50,14 @@ def migrate_v2_to_v3(
     input_store : StoreLike
         Input Zarr to migrate - should be a store, path to directory in file system or name of zip file.
     output_store : StoreLike
-        Output location to write v3 metadata (no chunks will be copied). If not provided, v3 metadata will be
+        Output location to write v3 metadata (no array data will be copied). If not provided, v3 metadata will be
         written to input_store. Should be a store, path to directory in file system or name of zip file.
     storage_options : dict | None, optional
         If the store is backed by an fsspec-based implementation, then this dict will be passed to
         the Store constructor for that implementation. Ignored otherwise. Note - the same storage_options will
         be passed to both input_store and output_store (if provided).
     dry_run : bool, optional
-        Enable a 'dry run' - files that would be created are logged, but no files are actually created.
+        Enable a 'dry run' - files that would be created are logged, but no files are created or changed.
     """
 
     zarr_v2 = zarr.open(store=input_store, mode="r+", storage_options=storage_options)
@@ -77,7 +77,7 @@ def migrate_to_v3(zarr_v2: Array | Group, output_path: StorePath, dry_run: bool 
     """Migrate all v2 metadata in a zarr array/group to v3.
 
     Note - if a group is provided, then all arrays / groups within this group will also be converted.
-    A zarr.json file will be created for each level and written to output_path, with any V2 files
+    A zarr.json file will be created for each level and written to output_path, with any v2 files
     (.zarray, .zattrs etc.) left as-is.
 
     Parameters
@@ -87,7 +87,7 @@ def migrate_to_v3(zarr_v2: Array | Group, output_path: StorePath, dry_run: bool 
     output_path : StorePath
         The store path to write generated v3 metadata to.
     dry_run : bool, optional
-        Enable a 'dry run' - files that would be created are logged, but no files are actually created.
+        Enable a 'dry run' - files that would be created are logged, but no files are created or changed.
     """
     if not zarr_v2.metadata.zarr_format == 2:
         raise TypeError("Only arrays / groups with zarr v2 metadata can be converted")
@@ -123,7 +123,7 @@ async def remove_metadata(
         only be allowed when v3 metadata is also present. When True, metadata can be removed when there is no
         alternative.
     dry_run : bool, optional
-        Enable a 'dry run' - files that would be deleted are logged, but no files are actually removed.
+        Enable a 'dry run' - files that would be deleted are logged, but no files are removed or changed.
     """
     store_path = await make_store_path(store, mode="r+", storage_options=storage_options)
     if not store_path.store.supports_deletes:

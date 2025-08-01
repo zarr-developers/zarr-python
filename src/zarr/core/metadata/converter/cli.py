@@ -12,7 +12,7 @@ app = typer.Typer()
 logger = logging.getLogger(__name__)
 
 
-def _set_logging_config(verbose: bool) -> None:
+def _set_logging_config(*, verbose: bool) -> None:
     if verbose:
         lvl = logging.INFO
     else:
@@ -31,7 +31,7 @@ class ZarrFormat(str, Enum):
 
 
 class ZarrFormatV3(str, Enum):
-    """Limit CLI choice to only V3"""
+    """Limit CLI choice to only v3"""
 
     v3 = "v3"
 
@@ -57,7 +57,7 @@ def migrate(
         str | None,
         typer.Argument(
             help=(
-                "Output location to write generated metadata (no chunks will be copied). If not provided, "
+                "Output location to write generated metadata (no array data will be copied). If not provided, "
                 "metadata will be written to input_store. Should be a store, path to directory in file system "
                 "or name of zip file e.g. 'data/example-1.zarr', 's3://example-bucket/example'..."
             )
@@ -66,7 +66,7 @@ def migrate(
     dry_run: Annotated[
         bool,
         typer.Option(
-            help="Enable a dry-run: files that would be converted are logged, but no new files are actually created."
+            help="Enable a dry-run: files that would be converted are logged, but no new files are created or changed."
         ),
     ] = False,
     overwrite: Annotated[
@@ -92,15 +92,15 @@ def migrate(
     ] = False,
 ) -> None:
     """Migrate all v2 metadata in a zarr hierarchy to v3. This will create a zarr.json file for each level
-    (every group / array). V2 files (.zarray, .zattrs etc.) will be left as-is.
+    (every group / array). v2 files (.zarray, .zattrs etc.) will be left as-is.
     """
     if dry_run:
         _set_verbose_level()
         logger.info(
-            "Dry run enabled - no new files will be created. Log of files that would be created on a real run:"
+            "Dry run enabled - no new files will be created or changed. Log of files that would be created on a real run:"
         )
 
-    write_store = output_store if output_store is not None else input_store
+    write_store = input_store if output_store is None else output_store
 
     if overwrite:
         sync(migrate_metadata.remove_metadata(write_store, 3, force=force, dry_run=dry_run))
@@ -138,7 +138,7 @@ def remove_metadata(
     dry_run: Annotated[
         bool,
         typer.Option(
-            help="Enable a dry-run: files that would be deleted are logged, but no files are actually removed."
+            help="Enable a dry-run: files that would be deleted are logged, but no files are removed or changed."
         ),
     ] = False,
 ) -> None:
@@ -148,7 +148,7 @@ def remove_metadata(
     if dry_run:
         _set_verbose_level()
         logger.info(
-            "Dry run enabled - no files will be deleted. Log of files that would be deleted on a real run:"
+            "Dry run enabled - no files will be deleted or changed. Log of files that would be deleted on a real run:"
         )
 
     sync(
@@ -173,7 +173,7 @@ def main(
     """
     See available commands below - access help for individual commands with zarr COMMAND --help.
     """
-    _set_logging_config(verbose)
+    _set_logging_config(verbose=verbose)
 
 
 if __name__ == "__main__":
