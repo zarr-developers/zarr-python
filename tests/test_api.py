@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING
 import zarr.codecs
 import zarr.storage
 from zarr.core.array import init_array
+from zarr.storage import LocalStore, ZipStore
 from zarr.storage._common import StorePath
-from zarr.storage._local import LocalStore
-from zarr.storage._zip import ZipStore
 
 if TYPE_CHECKING:
     from collections.abc import Callable
