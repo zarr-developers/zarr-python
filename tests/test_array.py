@@ -376,19 +376,24 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
 @pytest.mark.parametrize(
-    ("shape", "shard_shape", "chunk_shape"), [((10,), (1,), (1,)), ((40,), (20,), (5,))]
+    ("shape", "shard_shape", "chunk_shape"),
+    [((10,), None, (1,)), ((10,), (1,), (1,)), ((40,), (20,), (5,))],
 )
 async def test_nchunks_initialized(
     test_cls: type[Array] | type[AsyncArray[Any]],
     shape: tuple[int, ...],
-    shard_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...] | None,
     chunk_shape: tuple[int, ...],
 ) -> None:
     """
     Test that nchunks_initialized accurately returns the number of stored partitions.
     """
-    chunks_per_shard = np.prod(np.array(shard_shape) // np.array(chunk_shape))
-    store = MemoryStore()
+    store = {}
+    if shard_shape is None:
+        chunks_per_shard = 1
+    else:
+        chunks_per_shard = np.prod(np.array(shard_shape) // np.array(chunk_shape))
+
     arr = zarr.create_array(store, shape=shape, shards=shard_shape, chunks=chunk_shape, dtype="i1")
 
     # write chunks one at a time
