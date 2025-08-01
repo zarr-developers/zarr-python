@@ -5,9 +5,9 @@ name: Test
 
 on:
   push:
-    branches: [ main, 3.0.x ]
+    branches: [ main, 3.1.x ]
   pull_request:
-    branches: [ main, 3.0.x ]
+    branches: [ main, 3.1.x ]
   workflow_dispatch:
 
 concurrency:
