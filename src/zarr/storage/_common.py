@@ -323,54 +323,65 @@ async def make_store_path(
     """
     from zarr.storage._fsspec import FsspecStore  # circular import
 
-    used_storage_options = False
     path_normalized = normalize_path(path)
+
+    if (
+        not (isinstance(store_like, str) and _is_fsspec_uri(store_like))
+        and storage_options is not None
+    ):
+        raise TypeError(
+            "'storage_options' was provided but unused. "
+            "'storage_options' is only used when the store is passed as a FSSpec URI string.",
+        )
+
+    assert mode in (None, "r", "r+", "a", "w", "w-")
+    _read_only = mode == "r"
+
     if isinstance(store_like, StorePath):
-        result = store_like / path_normalized
-    else:
-        assert mode in (None, "r", "r+", "a", "w", "w-")
-        # if mode 'r' was provided, we'll open any new stores as read-only
-        _read_only = mode == "r"
-        if isinstance(store_like, Store):
-            store = store_like
-        elif store_like is None:
-            store = await MemoryStore.open(read_only=_read_only)
-        elif isinstance(store_like, Path):
-            store = await LocalStore.open(root=store_like, read_only=_read_only)
-        elif isinstance(store_like, str):
-            storage_options = storage_options or {}
+        # Already a StorePath
+        return store_like / path_normalized
 
-            if _is_fsspec_uri(store_like):
-                used_storage_options = True
-                store = FsspecStore.from_url(
-                    store_like, storage_options=storage_options, read_only=_read_only
-                )
-            else:
-                store = await LocalStore.open(root=Path(store_like), read_only=_read_only)
-        elif isinstance(store_like, dict):
-            # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
-            # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-            store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
-        elif _has_fsspec and isinstance(store_like, FSMap):
-            if path:
-                raise ValueError(
-                    "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
-                )
-            if storage_options:
-                raise ValueError(
-                    "'storage_options was provided but is not used for FSMap store_like objects. Specify the storage options when creating the FSMap instance instead."
-                )
-            store = FsspecStore.from_mapper(store_like, read_only=_read_only)
+    elif isinstance(store_like, Store):
+        # Already a Store
+        store = store_like
+
+    elif isinstance(store_like, dict):
+        # Already a dictionary that can be a MemoryStore
+        #
+        # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
+        # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
+        store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
+
+    elif store_like is None:
+        # Create a new in-memory store
+        return await make_store_path({}, path=path, mode=mode, storage_options=storage_options)
+
+    elif isinstance(store_like, Path):
+        # Create a new LocalStore
+        store = await LocalStore.open(root=store_like, read_only=_read_only)
+
+    elif isinstance(store_like, str):
+        # Either a FSSpec URI or a local filesystem path
+        if _is_fsspec_uri(store_like):
+            store = FsspecStore.from_url(
+                store_like, storage_options=storage_options, read_only=_read_only
+            )
         else:
-            raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
+            # Assume a filesystem path
+            return await make_store_path(
+                Path(store_like), path=path, mode=mode, storage_options=storage_options
+            )
 
-        result = await StorePath.open(store, path=path_normalized, mode=mode)
+    elif _has_fsspec and isinstance(store_like, FSMap):
+        if path:
+            raise ValueError(
+                "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
+            )
+        store = FsspecStore.from_mapper(store_like, read_only=_read_only)
+    else:
+        raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
 
-    if storage_options and not used_storage_options:
-        msg = "'storage_options' was provided but unused. 'storage_options' is only used for fsspec filesystem stores."
-        raise TypeError(msg)
-
-    return result
+    return await StorePath.open(store, path=path_normalized, mode=mode)
 
 
 def _is_fsspec_uri(uri: str) -> bool:
