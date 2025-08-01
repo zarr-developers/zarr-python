@@ -55,6 +55,7 @@ from zarr.errors import (
     ContainsGroupError,
     MetadataValidationError,
     ZarrDeprecationWarning,
+    ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
@@ -553,7 +554,7 @@ class AsyncGroup:
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
                 msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
-                warnings.warn(msg, stacklevel=1)
+                warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
             if zarr_json_bytes is None and zgroup_bytes is None:
                 raise FileNotFoundError(
                     f"could not find zarr.json or .zgroup objects in {store_path}"
@@ -3380,7 +3381,7 @@ async def _iter_members(
             # in which case `key` cannot be the name of a sub-array or sub-group.
             warnings.warn(
                 f"Object at {e.args[0]} is not recognized as a component of a Zarr hierarchy.",
-                UserWarning,
+                ZarrUserWarning,
                 stacklevel=1,
             )
             continue

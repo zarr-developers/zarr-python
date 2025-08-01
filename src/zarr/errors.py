@@ -80,3 +80,15 @@ class ZarrDeprecationWarning(DeprecationWarning):
     """
     A warning raised to indicate that a construct will be removed in a future release.
     """
+
+
+class ZarrUserWarning(UserWarning):
+    """
+    A warning raised to report problems with user code.
+    """
+
+
+class ZarrRuntimeWarning(RuntimeWarning):
+    """
+    A warning for dubious runtime behavior.
+    """

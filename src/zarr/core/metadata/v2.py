@@ -11,6 +11,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
+from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -188,7 +189,7 @@ class ArrayV2Metadata(Metadata):
                 "This is contrary to the Zarr V2 specification, and will cause an error in the future. "
                 "Use None (or Null in a JSON document) instead of an empty list of filters."
             )
-            warnings.warn(msg, UserWarning, stacklevel=1)
+            warnings.warn(msg, ZarrUserWarning, stacklevel=1)
             _data["filters"] = None
 
         _data = {k: v for k, v in _data.items() if k in expected}
