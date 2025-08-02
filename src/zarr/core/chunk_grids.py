@@ -22,6 +22,7 @@ from zarr.core.common import (
     parse_named_configuration,
     parse_shapelike,
 )
+from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -233,7 +234,7 @@ def _auto_partition(
         if shard_shape == "auto":
             warnings.warn(
                 "Automatic shard shape inference is experimental and may change without notice.",
-                UserWarning,
+                ZarrUserWarning,
                 stacklevel=2,
             )
             _shards_out = ()
