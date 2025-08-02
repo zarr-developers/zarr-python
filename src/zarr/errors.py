@@ -86,7 +86,7 @@ class UnstableSpecificationWarning(ZarrFutureWarning):
 
 class ZarrDeprecationWarning(DeprecationWarning):
     """
-    A warning raised to indicate that a construct will be removed in a future release.
+    A warning raised to indicate that a feature will be removed in a future release.
     """
 
 
