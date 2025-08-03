@@ -315,7 +315,7 @@ class BatchedCodecPipeline(CodecPipeline):
             # TODO: For the last chunk, we could have is_complete_chunk=True
             #       that is smaller than the chunk_spec.shape but this throws
             #       an error in the _decode_single
-            return chunk_value
+            return chunk_value.copy()  # make a writable copy
         if existing_chunk_array is None:
             chunk_array = chunk_spec.prototype.nd_buffer.create(
                 shape=chunk_spec.shape,
