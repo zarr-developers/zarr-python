@@ -2,37 +2,17 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Self, TypeGuard
+from typing import TYPE_CHECKING, TypeGuard
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
-from typing_extensions import Protocol
 
-from zarr.abc.codec import ArrayBytesCodec, CodecJSON_V2
+from zarr.abc.codec import ArrayBytesCodec, Numcodec
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
-
-
-class Numcodec(Protocol):
-    """
-    A protocol that models the ``numcodecs.abc.Codec`` interface.
-    """
-
-    codec_id: ClassVar[str]
-
-    def encode(self, buf: Buffer | NDBuffer) -> Buffer | NDBuffer: ...
-
-    def decode(
-        self, buf: Buffer | NDBuffer, out: Buffer | NDBuffer | None = None
-    ) -> Buffer | NDBuffer: ...
-
-    def get_config(self) -> CodecJSON_V2[str]: ...
-
-    @classmethod
-    def from_config(cls, config: CodecJSON_V2[str]) -> Self: ...
 
 
 def _is_numcodec(obj: object) -> TypeGuard[Numcodec]:

@@ -4,9 +4,9 @@ import dataclasses
 import textwrap
 from typing import TYPE_CHECKING, Literal
 
-if TYPE_CHECKING:
-    import numcodecs.abc
+from zarr.abc.codec import Numcodec
 
+if TYPE_CHECKING:
     from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
     from zarr.core.common import ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -88,9 +88,9 @@ class ArrayInfo:
     _order: Literal["C", "F"]
     _read_only: bool
     _store_type: str
-    _filters: tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...] = ()
+    _filters: tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...] = ()
     _serializer: ArrayBytesCodec | None = None
-    _compressors: tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...] = ()
+    _compressors: tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...] = ()
     _count_bytes: int | None = None
     _count_bytes_stored: int | None = None
     _count_chunks_initialized: int | None = None

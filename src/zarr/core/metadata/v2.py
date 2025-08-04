@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 import numcodecs.abc
 
+from zarr.abc.codec import Numcodec
 from zarr.abc.metadata import Metadata
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
@@ -56,7 +57,7 @@ class ArrayV2MetadataDict(TypedDict):
 
 
 # Union of acceptable types for v2 compressors
-CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
+CompressorLikev2: TypeAlias = dict[str, JSON] | Numcodec | None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -66,9 +67,9 @@ class ArrayV2Metadata(Metadata):
     dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: int | float | str | bytes | None = None
     order: MemoryOrder = "C"
-    filters: tuple[numcodecs.abc.Codec, ...] | None = None
+    filters: tuple[Numcodec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: numcodecs.abc.Codec | None
+    compressor: Numcodec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
@@ -82,7 +83,7 @@ class ArrayV2Metadata(Metadata):
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
         compressor: CompressorLikev2 = None,
-        filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
+        filters: Iterable[Numcodec | dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> None:
         """
@@ -262,11 +263,11 @@ def parse_zarr_format(data: object) -> Literal[2]:
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
+def parse_filters(data: object) -> tuple[Numcodec, ...] | None:
     """
     Parse a potential tuple of filters
     """
-    out: list[numcodecs.abc.Codec] = []
+    out: list[Numcodec] = []
 
     if data is None:
         return data
@@ -291,7 +292,7 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
     raise TypeError(msg)
 
 
-def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
+def parse_compressor(data: object) -> Numcodec | None:
     """
     Parse a potential compressor.
     """

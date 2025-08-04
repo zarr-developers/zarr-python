@@ -11,17 +11,16 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
-from numcodecs import Blosc
 
 import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
-from zarr.core.array import default_compressor_v2, default_compressors_v3, default_serializer_v3
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core import sync_group
 from zarr.core._info import GroupInfo
+from zarr.core.array import default_compressor_v2, default_compressors_v3, default_serializer_v3
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype.common import unpack_dtype_json
@@ -524,7 +523,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                     "chunks": (1,),
                     "order": "C",
                     "filters": None,
-                    "compressor":  default_compressor_v2(dtype).to_json(zarr_format=zarr_format),
+                    "compressor": default_compressor_v2(dtype).to_json(zarr_format=zarr_format),
                     "zarr_format": zarr_format,
                 },
                 "subgroup": {

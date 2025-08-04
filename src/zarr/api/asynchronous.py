@@ -46,8 +46,7 @@ from zarr.storage._common import make_store_path
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from zarr.abc.codec import Codec
-    from zarr.codecs._v2 import Numcodec
+    from zarr.abc.codec import Codec, Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
