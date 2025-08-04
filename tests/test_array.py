@@ -1105,8 +1105,8 @@ class TestCreateArray:
             (ZstdCodec(level=3),),
             (ZstdCodec(level=3), GzipCodec(level=0)),
             ZstdCodec(level=3),
-            {"name": "zstd", "configuration": {"level": 3}},
-            ({"name": "zstd", "configuration": {"level": 3}},),
+            {"name": "zstd", "configuration": {"level": 3, "checksum": True}},
+            ({"name": "zstd", "configuration": {"level": 3, "checksum": True}},),
         ],
     )
     @pytest.mark.parametrize(

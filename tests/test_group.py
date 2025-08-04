@@ -16,6 +16,7 @@ from numcodecs import Blosc
 import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
+from zarr.core.array import default_compressor_v2, default_compressors_v3, default_serializer_v3
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
@@ -523,7 +524,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                     "chunks": (1,),
                     "order": "C",
                     "filters": None,
-                    "compressor": Blosc(),
+                    "compressor":  default_compressor_v2(dtype).to_json(zarr_format=zarr_format),
                     "zarr_format": zarr_format,
                 },
                 "subgroup": {
@@ -550,8 +551,11 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                         "name": "default",
                     },
                     "codecs": (
-                        {"configuration": {"endian": "little"}, "name": "bytes"},
-                        {"configuration": {}, "name": "zstd"},
+                        default_serializer_v3(dtype).to_json(zarr_format=zarr_format),
+                        *[
+                            c.to_json(zarr_format=zarr_format)
+                            for c in default_compressors_v3(dtype)
+                        ],
                     ),
                     "data_type": unpack_dtype_json(dtype.to_json(zarr_format=zarr_format)),
                     "fill_value": fill_value,
