@@ -1,23 +1,16 @@
-import asyncio
-import inspect
 import io
-import logging
-import shutil
-import time
 import warnings
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Generator, Iterable
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterable
 from pathlib import Path
 from threading import Lock
-from typing import Any, Optional, TypeAlias
+from typing import Any, TypeAlias
 
 import numpy as np
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, Store, SuffixByteRequest
 from zarr.core.buffer import Buffer, BufferPrototype
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.common import concurrent_map
 from zarr.storage._utils import normalize_path
 
 ByteRequest: TypeAlias = RangeByteRequest | OffsetByteRequest | SuffixByteRequest
@@ -36,7 +29,7 @@ def buffer_size(v) -> int:
         # Fallback to numpy
         return np.asarray(v).nbytes
 
-def _path_to_prefix(path: Optional[str]) -> str:
+def _path_to_prefix(path: str | None) -> str:
     # assume path already normalized
     if path:
         prefix = path + "/"
@@ -44,7 +37,7 @@ def _path_to_prefix(path: Optional[str]) -> str:
         prefix = ""
     return prefix
 
-def _listdir_from_keys(store: Store, path: Optional[str] = None) -> list[str]:
+def _listdir_from_keys(store: Store, path: str | None = None) -> list[str]:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     children = set()
@@ -149,21 +142,21 @@ class LRUStoreCache(Store):
         0.0009490990014455747
 
     """
-    
+
     supports_writes: bool = True
     supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
-    
+
     root: Path
 
     def __init__(self, store: Store, max_size: int, **kwargs):
         # Extract and handle known parameters
         read_only = kwargs.get('read_only', getattr(store, 'read_only', False))
-        
+
         # Call parent constructor with read_only parameter
         super().__init__(read_only=read_only)
-        
+
         self._store = store
         self._max_size = max_size
         self._current_size = 0
@@ -173,7 +166,7 @@ class LRUStoreCache(Store):
         self._values_cache: dict[str, Any] = OrderedDict()
         self._mutex = Lock()
         self.hits = self.misses = 0
-        
+
         # Handle root attribute if present in underlying store
         if hasattr(store, 'root'):
             self.root = store.root
@@ -274,7 +267,7 @@ class LRUStoreCache(Store):
     async def clear(self):
         # Check if store is writable
         self._check_writable()
-        
+
         await self._store.clear()
         self.invalidate()
 
@@ -322,7 +315,7 @@ class LRUStoreCache(Store):
             cache_value = value.to_bytes()
         else:
             cache_value = value
-            
+
         value_size = buffer_size(cache_value)
         # check size of the value against max size, as if the value itself exceeds max
         # size then we are never going to cache it
@@ -398,10 +391,10 @@ class LRUStoreCache(Store):
             self._invalidate_keys()
             cache_key = self._normalize_key(key)
             self._invalidate_value(cache_key)
-            
+
     def __eq__(self, value: object) -> bool:
         return type(self) is type(value) and self._store.__eq__(value._store)  # type: ignore[attr-defined]
-        
+
     async def delete(self, key: str) -> None:
         """
         Remove a key from the store.
@@ -417,21 +410,21 @@ class LRUStoreCache(Store):
         """
         # Check if store is writable
         self._check_writable()
-        
+
         # Delegate to the underlying store for actual deletion
         if hasattr(self._store, 'delete'):
             await self._store.delete(key)
         else:
             # Fallback for stores that don't have async delete
             del self._store[key]
-        
+
         # Invalidate cache entries
         with self._mutex:
             self._invalidate_keys()
             cache_key = self._normalize_key(key)
             self._invalidate_value(cache_key)
-        
-        
+
+
     async def exists(self, key: str) -> bool:
         # Delegate to the underlying store
         if hasattr(self._store, 'exists'):
@@ -439,11 +432,11 @@ class LRUStoreCache(Store):
         else:
             # Fallback for stores that don't have async exists
             return key in self._store
-    
+
     async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
         # Check if store is writable
         self._check_writable()
-        
+
         # Delegate to the underlying store
         if hasattr(self._store, 'set'):
             await self._store.set(key, value)
@@ -454,7 +447,7 @@ class LRUStoreCache(Store):
                 self._store[key] = value.to_bytes()
             else:
                 self._store[key] = value
-        
+
         # Update cache
         with self._mutex:
             self._invalidate_keys()
@@ -462,7 +455,7 @@ class LRUStoreCache(Store):
             self._invalidate_value(cache_key)
             self._cache_value(cache_key, value)
 
-        
+
     async def get(
         self,
         key: str,
@@ -471,7 +464,7 @@ class LRUStoreCache(Store):
     ) -> Buffer | None:
         # Use the cache for get operations
         cache_key = self._normalize_key(key)
-        
+
         # For byte_range requests, don't use cache for now (could be optimized later)
         if byte_range is not None:
             if hasattr(self._store, 'get') and callable(self._store.get):
@@ -497,7 +490,7 @@ class LRUStoreCache(Store):
                     return prototype.buffer.from_bytes(full_value)
                 except KeyError:
                     return None
-        
+
         try:
             # Try cache first
             with self._mutex:
@@ -534,7 +527,7 @@ class LRUStoreCache(Store):
                     result = prototype.buffer.from_bytes(value)
                 except KeyError:
                     result = None
-            
+
             # Cache the result if we got one
             if result is not None:
                 with self._mutex:
@@ -545,9 +538,9 @@ class LRUStoreCache(Store):
                 # Still count as a miss even if result is None
                 with self._mutex:
                     self.misses += 1
-            
+
             return result
-    
+
 
     async def get_partial_values(
         self,
@@ -565,7 +558,7 @@ class LRUStoreCache(Store):
                 results.append(result)
             return results
 
-        
+
     async def list(self) -> AsyncIterator[str]:
         # Delegate to the underlying store
         if hasattr(self._store, 'list'):
@@ -575,7 +568,7 @@ class LRUStoreCache(Store):
             # Fallback for stores that don't have async list
             for key in list(self._store.keys()):
                 yield key
-        
+
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # Delegate to the underlying store
         if hasattr(self._store, 'list_dir'):
@@ -589,7 +582,7 @@ class LRUStoreCache(Store):
                     yield item
             except (FileNotFoundError, NotADirectoryError, KeyError):
                 pass
-    
+
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # Delegate to the underlying store
         if hasattr(self._store, 'list_prefix'):
@@ -600,17 +593,17 @@ class LRUStoreCache(Store):
             for key in list(self._store.keys()):
                 if key.startswith(prefix):
                     yield key
-    
+
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
         return await self._set(key, value)
-        
+
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
     ) -> None:
         # Check if store is writable
         self._check_writable()
-        
+
         # Delegate to the underlying store
         if hasattr(self._store, 'set_partial_values'):
             await self._store.set_partial_values(key_start_values)

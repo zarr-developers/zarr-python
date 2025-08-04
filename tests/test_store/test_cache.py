@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import pytest
 from collections import Counter
 from typing import Any
+
+import pytest
 
 from zarr.core.buffer import cpu
 from zarr.storage import LRUStoreCache, MemoryStore
@@ -11,27 +12,27 @@ from zarr.testing.store import StoreTests
 
 class CountingDict(dict):
     """A dictionary that counts operations for testing purposes."""
-    
+
     def __init__(self):
         super().__init__()
         self.counter = Counter()
-    
+
     def __getitem__(self, key):
         self.counter["__getitem__", key] += 1
         return super().__getitem__(key)
-    
+
     def __setitem__(self, key, value):
         self.counter["__setitem__", key] += 1
         return super().__setitem__(key, value)
-    
+
     def __contains__(self, key):
         self.counter["__contains__", key] += 1
         return super().__contains__(key)
-    
+
     def __iter__(self):
         self.counter["__iter__"] += 1
         return super().__iter__()
-    
+
     def keys(self):
         self.counter["keys"] += 1
         return super().keys()
