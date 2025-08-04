@@ -154,6 +154,9 @@ async def remove_metadata(
 
 
 def _convert_group(zarr_v2: Group, output_path: StorePath, dry_run: bool) -> None:
+    if zarr_v2.metadata.consolidated_metadata is not None:
+        raise NotImplementedError("Migration of consolidated metadata isn't supported.")
+
     # process members of the group
     for key in zarr_v2:
         migrate_to_v3(zarr_v2[key], output_path=output_path / key, dry_run=dry_run)

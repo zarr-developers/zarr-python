@@ -448,6 +448,19 @@ def test_migrate_v3(local_store: LocalStore, node_type: str) -> None:
     assert str(result.exception) == "Only arrays / groups with zarr v2 metadata can be converted"
 
 
+def test_migrate_consolidated_metadata(local_store: LocalStore) -> None:
+    """Attempting to convert a group with consolidated metadata should always fail"""
+
+    group = zarr.create_group(store=local_store, zarr_format=2)
+    group.create_array(shape=(1,), name="a", dtype="uint8")
+    zarr.consolidate_metadata(local_store)
+
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, NotImplementedError)
+    assert str(result.exception) == "Migration of consolidated metadata isn't supported."
+
+
 def test_migrate_unknown_codec(local_store: LocalStore) -> None:
     """Attempting to convert a codec without a v3 equivalent should always fail"""
 
