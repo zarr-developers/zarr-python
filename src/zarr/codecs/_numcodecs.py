@@ -1,5 +1,5 @@
 from zarr.abc.codec import CodecJSON_V2
-from zarr.codecs._v2 import Numcodec
+from zarr.abc.codec import Numcodec
 
 
 def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:

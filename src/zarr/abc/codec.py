@@ -4,14 +4,16 @@ from abc import abstractmethod
 from collections.abc import Mapping
 from typing import (
     TYPE_CHECKING,
+    ClassVar,
     Generic,
     Literal,
+    Self,
     TypedDict,
     TypeVar,
     overload,
 )
 
-from typing_extensions import ReadOnly
+from typing_extensions import Protocol, ReadOnly
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
@@ -504,3 +506,22 @@ def _noop_for_none(
 
 # Raised when a codec JSON data is invalid
 class CodecValidationError(ValueError): ...
+
+
+class Numcodec(Protocol):
+    """
+    A protocol that models the ``numcodecs.abc.Codec`` interface.
+    """
+
+    codec_id: ClassVar[str]
+
+    def encode(self, buf: Buffer | NDBuffer) -> Buffer | NDBuffer: ...
+
+    def decode(
+        self, buf: Buffer | NDBuffer, out: Buffer | NDBuffer | None = None
+    ) -> Buffer | NDBuffer: ...
+
+    def get_config(self) -> CodecJSON_V2[str]: ...
+
+    @classmethod
+    def from_config(cls, config: CodecJSON_V2[str]) -> Self: ...
