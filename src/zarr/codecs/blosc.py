@@ -20,7 +20,6 @@ from packaging.version import Version
 from typing_extensions import ReadOnly
 
 from zarr.abc.codec import BytesBytesCodec, CodecJSON
-from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import (
     JSON,
     NamedRequiredConfig,
@@ -266,6 +265,7 @@ class BloscCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
+        from zarr.core.buffer.cpu import as_numpy_array_wrapper
         return await asyncio.to_thread(
             as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes, chunk_spec.prototype
         )

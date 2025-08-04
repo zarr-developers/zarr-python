@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeGuard
+from typing import TYPE_CHECKING, Self, TypeGuard, overload
+from typing_extensions import Literal
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
-from zarr.abc.codec import ArrayBytesCodec, Numcodec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BaseCodec, BytesBytesCodec, CodecJSON, CodecJSON_V2, Numcodec
+from zarr.core.buffer.core import BufferPrototype
+from zarr.core.common import BaseConfig, NamedConfig, ZarrFormat
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
@@ -133,3 +136,100 @@ class V2Codec(ArrayBytesCodec):
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
+
+
+@dataclass(frozen=True, kw_only=True)
+class NumcodecsWrapper:
+    codec: Numcodec
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, BaseConfig]: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> CodecJSON_V2[str] | NamedConfig[str, BaseConfig]:
+        if zarr_format == 2:
+            return self.codec.get_config()
+        elif zarr_format == 3:
+            config = self.codec.get_config()
+            config_no_id = {k: v for k, v in config.items() if k != "id"}
+            return {"name": config["id"], "configuration": config_no_id}
+        raise ValueError(f"Unsupported zarr format: {zarr_format}")  # pragma: no cover
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        raise NotADirectoryError(
+            "This class does not support creating instances from JSON data for Zarr format 2."
+            )
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        raise NotImplementedError(
+            "This class does not support creating instances from JSON data for Zarr format 3."
+        )
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        raise NotImplementedError
+
+    def to_array_array(self) -> NumcodecsArrayArrayCodec:
+        """
+        Use the ``_codec`` attribute to create a NumcodecsArrayArrayCodec.
+        """
+        return NumcodecsArrayArrayCodec(codec=self.codec)
+
+    def to_bytes_bytes(self) -> NumcodecsBytesBytesCodec:
+        """
+        Use the ``_codec`` attribute to create a NumcodecsBytesBytesCodec.
+        """
+        return NumcodecsBytesBytesCodec(codec=self.codec)
+
+    def to_array_bytes(self) -> NumcodecsArrayBytesCodec:
+        """
+        Use the ``_codec`` attribute to create a NumcodecsArrayBytesCodec.
+        """
+        return NumcodecsArrayBytesCodec(codec=self.codec)
+
+
+class NumcodecsBytesBytesCodec(NumcodecsWrapper, BytesBytesCodec):
+    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
+        return await asyncio.to_thread(
+            as_numpy_array_wrapper,
+            self.codec.decode,
+            chunk_data,
+            chunk_spec.prototype,
+        )
+
+    def _encode(self, chunk_bytes: Buffer, prototype: BufferPrototype) -> Buffer:
+        encoded = self.codec.encode(chunk_bytes.as_array_like())
+        if isinstance(encoded, np.ndarray):  # Required for checksum codecs
+            return prototype.buffer.from_bytes(encoded.tobytes())
+        return prototype.buffer.from_bytes(encoded)
+
+    async def _encode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
+        return await asyncio.to_thread(self._encode, chunk_data, chunk_spec.prototype)
+
+
+@dataclass(kw_only=True, frozen=True)
+class NumcodecsArrayArrayCodec(NumcodecsWrapper, ArrayArrayCodec):
+    async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        chunk_ndarray = chunk_data.as_ndarray_like()
+        out = await asyncio.to_thread(self.codec.decode, chunk_ndarray)
+        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))  # type: ignore[union-attr]
+
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+        chunk_ndarray = chunk_data.as_ndarray_like()
+        out = await asyncio.to_thread(self.codec.encode, chunk_ndarray)
+        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)  # type: ignore[arg-type]
+
+
+@dataclass(kw_only=True, frozen=True)
+class NumcodecsArrayBytesCodec(NumcodecsWrapper, ArrayBytesCodec):
+    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        chunk_bytes = chunk_data.to_bytes()
+        out = await asyncio.to_thread(self.codec.decode, chunk_bytes)
+        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
+
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer:
+        chunk_ndarray = chunk_data.as_ndarray_like()
+        out = await asyncio.to_thread(self.codec.encode, chunk_ndarray)
+        return chunk_spec.prototype.buffer.from_bytes(out)

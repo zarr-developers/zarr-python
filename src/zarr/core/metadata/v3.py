@@ -30,13 +30,12 @@ from zarr.core.common import (
     ZARR_JSON,
     ChunkCoords,
     DimensionNames,
-    parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
-from zarr.registry import get_codec_class
+from zarr.registry import get_codec
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -63,8 +62,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
-            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-            out += (get_codec_class(name_parsed).from_dict(c),)
+            out += (get_codec(c, zarr_format=3),)
 
     return out
 
@@ -82,9 +80,13 @@ def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
 
 def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
     """Check that the codecs are valid for the given dtype"""
+    # avoid circular import
     from zarr.codecs.sharding import ShardingCodec
+    from zarr.core.codec_pipeline import codecs_from_list
+    array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
+    _codecs = (*array_array_codecs, array_bytes_codec, *bytes_bytes_codecs)
 
-    abc = validate_array_bytes_codec(codecs)
+    abc = validate_array_bytes_codec(_codecs)
 
     # Recursively resolve array-bytes codecs within sharding codecs
     while isinstance(abc, ShardingCodec):
@@ -288,7 +290,7 @@ class ArrayV3Metadata(Metadata):
         d = self.to_dict()
         return {
             ZARR_JSON: prototype.buffer.from_bytes(
-                json.dumps(d, allow_nan=True, indent=json_indent).encode()
+                json.dumps(d, allow_nan=False, indent=json_indent).encode()
             )
         }
 
@@ -334,6 +336,10 @@ class ArrayV3Metadata(Metadata):
         # the metadata document
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
+
+        out_dict["codecs"] = ()
+        for codec in self.codecs:
+            out_dict["codecs"] += (codec.to_json(zarr_format=3),)
 
         # TODO: replace the `to_dict` / `from_dict` on the `Metadata`` class with
         # to_json, from_json, and have ZDType inherit from `Metadata`

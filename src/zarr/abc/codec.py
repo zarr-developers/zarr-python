@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     ClassVar,
@@ -525,3 +526,5 @@ class Numcodec(Protocol):
 
     @classmethod
     def from_config(cls, config: CodecJSON_V2[str]) -> Self: ...
+
+

@@ -48,7 +48,8 @@ ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
 
 TName = TypeVar("TName", bound=str)
-TConfig = TypeVar("TConfig", bound=Mapping[str, object])
+BaseConfig = Mapping[str, object]
+TConfig = TypeVar("TConfig", bound=BaseConfig)
 
 
 class NamedConfig(TypedDict, Generic[TName, TConfig]):

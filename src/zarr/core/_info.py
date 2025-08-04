@@ -4,10 +4,8 @@ import dataclasses
 import textwrap
 from typing import TYPE_CHECKING, Literal
 
-from zarr.abc.codec import Numcodec
-
 if TYPE_CHECKING:
-    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Numcodec
     from zarr.core.common import ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
