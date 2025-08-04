@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
 import typing_extensions
 from crc32c import crc32c
 
-from zarr.abc.codec import BytesBytesCodec
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2, CodecValidationError
+from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -18,19 +19,76 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer
 
 
+class Crc32Config(TypedDict): ...
+
+
+class Crc32cJSON_V2(CodecJSON_V2[Literal["crc32c"]]): ...
+
+
+class Crc32cJSON_V3(NamedConfig[Literal["crc32c"], Crc32Config]): ...
+
+
+def check_json_v2(data: CodecJSON) -> TypeGuard[Crc32cJSON_V2]:
+    return isinstance(data, Mapping) and set(data.keys()) == {"id"} and data["id"] == "crc32c"
+
+
+def check_json_v3(data: CodecJSON) -> TypeGuard[Crc32cJSON_V3]:
+    return (
+        isinstance(data, Mapping)
+        and set(data.keys()) in ({"name", "configuration"}, {"name"})
+        and data["name"] == "crc32c"
+        and data.get("configuration") in ({}, None)
+    )
+
+
 @dataclass(frozen=True)
 class Crc32cCodec(BytesBytesCodec):
-    """crc32c codec"""
-
     is_fixed_size = True
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
+        return cls.from_json(data, zarr_format=3)
         parse_named_configuration(data, "crc32c", require_configuration=False)
         return cls()
 
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        if check_json_v2(data):
+            return cls()
+        msg = (
+            "Invalid Zarr V2 JSON representation of the crc32c codec. "
+            f"Got {data!r}, expected a Mapping with keys ('id')"
+        )
+        raise CodecValidationError(msg)
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        if check_json_v3(data):
+            return cls()
+        msg = (
+            "Invalid Zarr V3 JSON representation of the crc32c codec. "
+            f"Got {data!r}, expected a Mapping with keys ('name')"
+        )
+        raise CodecValidationError(msg)
+
     def to_dict(self) -> dict[str, JSON]:
+        return self.to_json(zarr_format=3)
         return {"name": "crc32c"}
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> Crc32cJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> Crc32cJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> CodecJSON:
+        if zarr_format == 2:
+            return {"id": "crc32c"}
+        elif zarr_format == 3:
+            return {"name": "crc32c"}
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
 
     async def _decode_single(
         self,
