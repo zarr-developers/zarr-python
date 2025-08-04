@@ -132,13 +132,19 @@ class LocalStore(Store):
         Store
             The opened store instance.
         """
+        # If mode = 'r+', want to open in read only mode (fail if exists),
+        # but return a writeable store
         if mode is not None:
             read_only_creation = mode in ["r", "r+"]
         else:
             read_only_creation = read_only
         store = cls(root, read_only=read_only_creation)
         await store._open()
-        return store.with_read_only(read_only)
+
+        # Set read_only state
+        store = store.with_read_only(read_only)
+        await store._open()
+        return store
 
     async def _open(self, *, mode: AccessModeLiteral | None = None) -> None:
         if not self.read_only:
