@@ -1869,7 +1869,8 @@ def test_unknown_object_codec_default_filters_v2() -> None:
 
 
 @pytest.mark.parametrize(
-    ("array_shape", "shard_shape", "chunk_shape"), [((10,), None, (1,)), ((30, 10), None, (2, 5))]
+    ("array_shape", "shard_shape", "chunk_shape"),
+    [((10,), None, (1,)), ((10,), 1, (1,)), ((30, 10), None, (2, 5)), ((30, 10), (4, 10), (2, 5))],
 )
 def test_chunk_grid_shape(
     array_shape: tuple[int, ...],
