@@ -71,4 +71,4 @@ class NodeTypeValidationError(MetadataValidationError):
 class CodecValidationError(BaseZarrError):
     """Raised when the Zarr codec metadata is invalid in some way"""
 
-    _msg = "Invalid value for '{}'. Expected '{}'. Got '{}'."
+    _msg = "{}"
