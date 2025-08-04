@@ -43,6 +43,8 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[Crc32cJSON_V3]:
 
 @dataclass(frozen=True)
 class Crc32cCodec(BytesBytesCodec):
+    """crc32c codec"""
+
     is_fixed_size = True
 
     @classmethod

@@ -74,6 +74,8 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[BytesJSON_V3]:
 
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
+    """bytes codec"""
+
     is_fixed_size = True
 
     endian: EndiannessStr | None

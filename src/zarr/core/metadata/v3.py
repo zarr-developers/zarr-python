@@ -291,7 +291,7 @@ class ArrayV3Metadata(Metadata):
         d = self.to_dict()
         return {
             ZARR_JSON: prototype.buffer.from_bytes(
-                json.dumps(d, allow_nan=False, indent=json_indent).encode()
+                json.dumps(d, allow_nan=True, indent=json_indent).encode()
             )
         }
 

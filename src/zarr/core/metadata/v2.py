@@ -151,10 +151,10 @@ class ArrayV2Metadata(Metadata):
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, indent=json_indent, allow_nan=False).encode()
+                json.dumps(zarray_dict, indent=json_indent, allow_nan=True).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
+                json.dumps(zattrs_dict, indent=json_indent, allow_nan=True).encode()
             ),
         }
 

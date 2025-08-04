@@ -70,6 +70,8 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[TransposeJSON_V3]:
 
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
+    """Transpose codec"""
+
     is_fixed_size = True
 
     order: tuple[int, ...]

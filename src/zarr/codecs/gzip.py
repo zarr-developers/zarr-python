@@ -51,6 +51,8 @@ class GZipJSON_V3(NamedRequiredConfig[Literal["gzip"], GZipConfig]):
 
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
+    """gzip codec"""
+
     is_fixed_size = False
 
     level: int = 5

@@ -122,6 +122,8 @@ def parse_shuffle(data: object) -> BloscShuffle:
 
 @dataclass(frozen=True)
 class BloscCodec(BytesBytesCodec):
+    """blosc codec"""
+
     is_fixed_size = False
 
     typesize: int | None

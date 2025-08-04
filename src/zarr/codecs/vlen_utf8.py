@@ -42,6 +42,8 @@ VLenBytesJSON_V3 = NamedConfig[Literal["vlen-bytes"], VLenBytesConfig] | Literal
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
+    """Variable-length UTF8 codec"""
+
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         return cls.from_json(data, zarr_format=3)

@@ -18,7 +18,7 @@ from zarr.api.asynchronous import (
 )
 from zarr.core.array import default_compressor_v2
 from zarr.core.buffer import cpu, default_buffer_prototype
-from zarr.core.dtype import parse_data_type
+from zarr.core.dtype import parse_dtype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -468,6 +468,35 @@ class TestConsolidated:
         assert result == expected
 
     @pytest.mark.parametrize("zarr_format", [2, 3])
+    async def test_to_dict_order(
+        self, memory_store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
+    ) -> None:
+        with zarr.config.set(default_zarr_format=zarr_format):
+            g = await group(store=memory_store)
+
+            # Create groups in non-lexicographix order
+            dtype = "float32"
+            await g.create_array(name="b", shape=(1,), dtype=dtype)
+            child = await g.create_group("c", attributes={"key": "child"})
+            await g.create_array(name="a", shape=(1,), dtype=dtype)
+
+            await child.create_array("e", shape=(1,), dtype=dtype)
+            await child.create_array("d", shape=(1,), dtype=dtype)
+
+            # Consolidate metadata and re-open store
+            await zarr.api.asynchronous.consolidate_metadata(memory_store)
+            g2 = await zarr.api.asynchronous.open_group(store=memory_store)
+
+            assert list(g2.metadata.consolidated_metadata.metadata) == ["a", "b", "c"]
+            assert list(g2.metadata.consolidated_metadata.flattened_metadata) == [
+                "a",
+                "b",
+                "c",
+                "c/d",
+                "c/e",
+            ]
+
+    @pytest.mark.parametrize("zarr_format", [2, 3])
     async def test_open_consolidated_raises_async(self, zarr_format: ZarrFormat):
         store = zarr.storage.MemoryStore()
         await AsyncGroup.from_store(store, zarr_format=zarr_format)
@@ -504,7 +533,7 @@ class TestConsolidated:
     async def test_consolidated_metadata_v2(self):
         store = zarr.storage.MemoryStore()
         g = await AsyncGroup.from_store(store, attributes={"key": "root"}, zarr_format=2)
-        dtype = parse_data_type("uint8", zarr_format=2)
+        dtype = parse_dtype("uint8", zarr_format=2)
         await g.create_array(name="a", shape=(1,), attributes={"key": "a"}, dtype=dtype)
         g1 = await g.create_group(name="g1", attributes={"key": "g1"})
         await g1.create_group(name="g2", attributes={"key": "g2"})
