@@ -8,10 +8,10 @@ import numpy as np
 import typing_extensions
 from crc32c import crc32c
 
-from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2, CodecValidationError
+from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2
 from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.registry import register_codec
-
+from zarr.errors import CodecValidationError
 if TYPE_CHECKING:
     from typing import Self
 

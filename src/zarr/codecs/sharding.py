@@ -17,7 +17,7 @@ from typing import (
     cast,
     overload,
 )
-
+from typing_extensions import ReadOnly
 import numpy as np
 import numpy.typing as npt
 
@@ -30,8 +30,8 @@ from zarr.abc.codec import (
     CodecJSON_V2,
     CodecJSON_V3,
     CodecPipeline,
-    CodecValidationError,
 )
+from zarr.errors import CodecValidationError
 from zarr.abc.store import (
     ByteGetter,
     ByteRequest,
@@ -97,8 +97,11 @@ class ShardingConfigV3(TypedDict):
     index_location: NotRequired[Literal["start", "end"]]
 
 
-class ShardingJSON_V2(CodecJSON_V2[Literal["sharding_indexed"]], ShardingConfigV2): ...
-
+class ShardingJSON_V2(ShardingConfigV2):
+    """
+    The JSON form of the sharding codec in Zarr V2.
+    """
+    id: ReadOnly[Literal["sharding_indexed"]]
 
 class ShardingJSON_V3(NamedRequiredConfig[Literal["sharding_indexed"], ShardingConfigV3]): ...
 

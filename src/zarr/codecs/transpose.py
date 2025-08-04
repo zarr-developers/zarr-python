@@ -5,8 +5,8 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
-
-from zarr.abc.codec import ArrayArrayCodec, CodecJSON, CodecJSON_V2, CodecValidationError
+from typing_extensions import ReadOnly
+from zarr.abc.codec import ArrayArrayCodec, CodecJSON, CodecJSON_V2
 from zarr.core.array_spec import ArraySpec
 from zarr.core.common import (
     JSON,
@@ -14,6 +14,7 @@ from zarr.core.common import (
     NamedRequiredConfig,
     ZarrFormat,
 )
+from zarr.errors import CodecValidationError
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -36,11 +37,11 @@ class TransposeConfig(TypedDict):
     order: tuple[int, ...]
 
 
-class TransposeJSON_V2(CodecJSON_V2[Literal["transpose"]], TransposeConfig):
+class TransposeJSON_V2(TransposeConfig):
     """
     The JSON form of the Transpose codec in Zarr V2.
     """
-
+    id: ReadOnly[Literal["transpose"]]
 
 class TransposeJSON_V3(NamedRequiredConfig[Literal["transpose"], TransposeConfig]):
     """

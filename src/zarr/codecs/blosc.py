@@ -4,13 +4,23 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict, TypeGuard, overload
+from typing import (
+    TYPE_CHECKING,
+    Final,
+    Literal,
+    NotRequired,
+    TypedDict,
+    TypeGuard,
+    overload,
+)
+
+from typing_extensions import ReadOnly
 
 import numcodecs
 from numcodecs.blosc import Blosc
 from packaging.version import Version
 
-from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2, CodecValidationError
+from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import (
     JSON,
@@ -18,6 +28,7 @@ from zarr.core.common import (
     ZarrFormat,
 )
 from zarr.core.dtype.common import HasItemSize
+from zarr.errors import CodecValidationError
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -49,11 +60,11 @@ class BloscConfigV3(TypedDict):
     typesize: int
 
 
-class BloscJSON_V2(CodecJSON_V2[Literal["blosc"]], BloscConfigV2):
+class BloscJSON_V2(BloscConfigV2):
     """
     The JSON form of the Blosc codec in Zarr V2.
     """
-
+    id: ReadOnly[Literal["blosc"]]
 
 class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):
     """

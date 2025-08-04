@@ -9,8 +9,9 @@ from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
 import numcodecs
 from numcodecs.zstd import Zstd
 from packaging.version import Version
-
-from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2, CodecValidationError
+from zarr.errors import CodecValidationError
+from typing_extensions import ReadOnly
+from zarr.abc.codec import BytesBytesCodec, CodecJSON
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import (
     JSON,
@@ -35,10 +36,11 @@ class ZstdConfig_V3(TypedDict):
     checksum: bool
 
 
-class ZstdJSON_V2(CodecJSON_V2[Literal["zstd"]], ZstdConfig_V2):
+class ZstdJSON_V2(ZstdConfig_V2):
     """
     The JSON form of the ZStandard codec in Zarr v2.
     """
+    id: ReadOnly[Literal["zstd"]]
 
 
 class ZstdJSON_V3(NamedRequiredConfig[Literal["zstd"], ZstdConfig_V3]):

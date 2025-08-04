@@ -7,8 +7,9 @@ from enum import Enum
 from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict, TypeGuard, overload
 
 import numpy as np
+from typing_extensions import ReadOnly
 
-from zarr.abc.codec import ArrayBytesCodec, CodecJSON, CodecJSON_V2
+from zarr.abc.codec import ArrayBytesCodec, CodecJSON
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import HasEndianness
@@ -40,7 +41,11 @@ class BytesConfig(TypedDict):
     endian: NotRequired[EndiannessStr]
 
 
-class BytesJSON_V2(CodecJSON_V2[Literal["bytes"]], BytesConfig): ...
+class BytesJSON_V2(BytesConfig):
+    """
+    JSON representation of the bytes codec for zarr v2.
+    """
+    id: ReadOnly[Literal["bytes"]]
 
 
 BytesJSON_V3 = NamedConfig[Literal["bytes"], BytesConfig] | Literal["bytes"]
