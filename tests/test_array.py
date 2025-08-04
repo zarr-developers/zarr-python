@@ -1870,7 +1870,12 @@ def test_unknown_object_codec_default_filters_v2() -> None:
 
 @pytest.mark.parametrize(
     ("array_shape", "shard_shape", "chunk_shape"),
-    [((10,), None, (1,)), ((10,), 1, (1,)), ((30, 10), None, (2, 5)), ((30, 10), (4, 10), (2, 5))],
+    [
+        ((10,), None, (1,)),
+        ((10,), (1,), (1,)),
+        ((30, 10), None, (2, 5)),
+        ((30, 10), (4, 10), (2, 5)),
+    ],
 )
 def test_chunk_grid_shape(
     array_shape: tuple[int, ...],
@@ -1881,14 +1886,30 @@ def test_chunk_grid_shape(
     """
     Test that the shape of the chunk grid and the shard grid are correctly indicated
     """
-    arr = zarr.create_array(
-        {},
-        dtype="uint8",
-        shape=array_shape,
-        chunks=chunk_shape,
-        shards=shard_shape,
-        zarr_format=zarr_format,
-    )
+    if zarr_format == 2 and shard_shape is not None:
+        with pytest.raises(
+            ValueError,
+            match="Zarr format 2 arrays can only be created with `shard_shape` set to `None`.",
+        ):
+            arr = zarr.create_array(
+                {},
+                dtype="uint8",
+                shape=array_shape,
+                chunks=chunk_shape,
+                shards=shard_shape,
+                zarr_format=zarr_format,
+            )
+        pytest.skip("Zarr format 2 arrays can only be created with `shard_shape` set to `None`.")
+    else:
+        arr = zarr.create_array(
+            {},
+            dtype="uint8",
+            shape=array_shape,
+            chunks=chunk_shape,
+            shards=shard_shape,
+            zarr_format=zarr_format,
+        )
+
     chunk_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, chunk_shape, strict=True))
     if shard_shape is None:
         _shard_shape = chunk_shape
