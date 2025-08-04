@@ -1918,6 +1918,7 @@ def test_chunk_grid_shape(
     shard_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, _shard_shape, strict=True))
     assert arr.chunk_grid_shape == chunk_grid_shape
     assert arr.cdata_shape == chunk_grid_shape
+    assert arr._async_array.cdata_shape == chunk_grid_shape
     assert arr.shard_grid_shape == shard_grid_shape
     assert arr.nshards == np.prod(shard_grid_shape)
 
