@@ -8,6 +8,7 @@ from zarr import Array
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
+from zarr.codecs.vlen_utf8 import VLenUTF8Codec, VLenUTF8JSON_V2, VLenUTF8JSON_V3
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.metadata.v3 import ArrayV3Metadata
@@ -20,6 +21,16 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
     expected_array_string_dtype = np.dtypes.StringDType()
 else:
     expected_array_string_dtype = np.dtype("O")
+
+def test_vlen_utf8_to_json() -> None:
+    codec = VLenUTF8Codec()
+    expected_v2: VLenUTF8JSON_V2 = {
+        "id": "vlen-utf8"}
+    expected_v3: VLenUTF8JSON_V3 = {
+        "name": "vlen-utf8",
+    }
+    assert codec.to_json(zarr_format=2) == expected_v2
+    assert codec.to_json(zarr_format=3) == expected_v3
 
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")

@@ -5,11 +5,23 @@ import zarr
 from zarr import AsyncArray, config
 from zarr.abc.store import Store
 from zarr.codecs import TransposeCodec
+from zarr.codecs.transpose import TransposeJSON_V2, TransposeJSON_V3
 from zarr.core.common import MemoryOrder
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
 
+
+@pytest.mark.parametrize("order", [(1,2,3), (2,1,0)])
+def test_transpose_to_json(order: tuple[int, ...]) -> None:
+    codec = TransposeCodec(order=order)
+    expected_v2: TransposeJSON_V2 = {"id": "transpose", "order": order}
+    expected_v3: TransposeJSON_V3 = {
+        "name": "transpose",
+        "configuration": {"order": order},
+    }
+    assert codec.to_json(zarr_format=2) == expected_v2
+    assert codec.to_json(zarr_format=3) == expected_v3
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])

@@ -8,7 +8,7 @@ from packaging.version import Version
 import zarr
 from zarr.abc.store import Store
 from zarr.codecs import BloscCodec
-from zarr.codecs.blosc import BLOSC_CNAME, BLOSC_SHUFFLE, BloscCname, BloscJSON_V2, BloscShuffle
+from zarr.codecs.blosc import BLOSC_CNAME, BLOSC_SHUFFLE, BloscCname, BloscJSON_V2, BloscJSON_V3, BloscShuffle
 from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import StorePath
 
