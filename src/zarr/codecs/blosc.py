@@ -14,13 +14,12 @@ from typing import (
     overload,
 )
 
-from typing_extensions import ReadOnly
-
 import numcodecs
 from numcodecs.blosc import Blosc
 from packaging.version import Version
+from typing_extensions import ReadOnly
 
-from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2
+from zarr.abc.codec import BytesBytesCodec, CodecJSON
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import (
     JSON,
@@ -64,7 +63,9 @@ class BloscJSON_V2(BloscConfigV2):
     """
     The JSON form of the Blosc codec in Zarr V2.
     """
+
     id: ReadOnly[Literal["blosc"]]
+
 
 class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):
     """

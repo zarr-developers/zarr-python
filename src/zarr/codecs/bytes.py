@@ -45,6 +45,7 @@ class BytesJSON_V2(BytesConfig):
     """
     JSON representation of the bytes codec for zarr v2.
     """
+
     id: ReadOnly[Literal["bytes"]]
 
 

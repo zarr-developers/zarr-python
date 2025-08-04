@@ -13,17 +13,37 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import StorePath
 
 
-@pytest.mark.parametrize('shuffle', BLOSC_SHUFFLE)
-@pytest.mark.parametrize('cname', BLOSC_CNAME)
-@pytest.mark.parametrize('clevel', [1,2])
-@pytest.mark.parametrize('blocksize', [1,2])
-@pytest.mark.parametrize('typesize', [1,2])
-def test_to_json_v2(cname: BloscCname, shuffle: BloscShuffle, clevel: int, blocksize: int, typesize: int) -> None:
-    codec=  BloscCodec(shuffle=shuffle, cname=cname, clevel=clevel, blocksize=blocksize, typesize=typesize)
-    expected_v2: BloscJSON_V2 = {"id": "blosc", "cname": cname, "clevel": clevel, "shuffle": BLOSC_SHUFFLE.index(shuffle), "blocksize": blocksize}
-    expected_v3: BloscJSON_V3 = {"name": "blosc", "configuration": {"cname": cname, "clevel": clevel, "shuffle": shuffle, "blocksize": blocksize, "typesize": typesize}}
+@pytest.mark.parametrize("shuffle", BLOSC_SHUFFLE)
+@pytest.mark.parametrize("cname", BLOSC_CNAME)
+@pytest.mark.parametrize("clevel", [1, 2])
+@pytest.mark.parametrize("blocksize", [1, 2])
+@pytest.mark.parametrize("typesize", [1, 2])
+def test_to_json_v2(
+    cname: BloscCname, shuffle: BloscShuffle, clevel: int, blocksize: int, typesize: int
+) -> None:
+    codec = BloscCodec(
+        shuffle=shuffle, cname=cname, clevel=clevel, blocksize=blocksize, typesize=typesize
+    )
+    expected_v2: BloscJSON_V2 = {
+        "id": "blosc",
+        "cname": cname,
+        "clevel": clevel,
+        "shuffle": BLOSC_SHUFFLE.index(shuffle),
+        "blocksize": blocksize,
+    }
+    expected_v3: BloscJSON_V3 = {
+        "name": "blosc",
+        "configuration": {
+            "cname": cname,
+            "clevel": clevel,
+            "shuffle": shuffle,
+            "blocksize": blocksize,
+            "typesize": typesize,
+        },
+    }
     assert codec.to_json(zarr_format=2) == expected_v2
     assert codec.to_json(zarr_format=3) == expected_v3
+
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("dtype", ["uint8", "uint16"])

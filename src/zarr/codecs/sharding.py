@@ -17,9 +17,10 @@ from typing import (
     cast,
     overload,
 )
-from typing_extensions import ReadOnly
+
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import ReadOnly
 
 from zarr.abc.codec import (
     ArrayBytesCodec,
@@ -31,7 +32,6 @@ from zarr.abc.codec import (
     CodecJSON_V3,
     CodecPipeline,
 )
-from zarr.errors import CodecValidationError
 from zarr.abc.store import (
     ByteGetter,
     ByteRequest,
@@ -67,6 +67,7 @@ from zarr.core.indexing import (
     morton_order_iter,
 )
 from zarr.core.metadata.v3 import parse_codecs
+from zarr.errors import CodecValidationError
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
@@ -101,7 +102,9 @@ class ShardingJSON_V2(ShardingConfigV2):
     """
     The JSON form of the sharding codec in Zarr V2.
     """
+
     id: ReadOnly[Literal["sharding_indexed"]]
+
 
 class ShardingJSON_V3(NamedRequiredConfig[Literal["sharding_indexed"], ShardingConfigV3]): ...
 

@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, cast, ove
 
 import numpy as np
 from typing_extensions import ReadOnly
-from zarr.abc.codec import ArrayArrayCodec, CodecJSON, CodecJSON_V2
+
+from zarr.abc.codec import ArrayArrayCodec, CodecJSON
 from zarr.core.array_spec import ArraySpec
 from zarr.core.common import (
     JSON,
@@ -41,7 +42,9 @@ class TransposeJSON_V2(TransposeConfig):
     """
     The JSON form of the Transpose codec in Zarr V2.
     """
+
     id: ReadOnly[Literal["transpose"]]
+
 
 class TransposeJSON_V3(NamedRequiredConfig[Literal["transpose"], TransposeConfig]):
     """

@@ -67,6 +67,7 @@ class NodeTypeValidationError(MetadataValidationError):
     for example an 'array' node when we expected a 'group'.
     """
 
+
 class CodecValidationError(BaseZarrError):
     """Raised when the Zarr codec metadata is invalid in some way"""
 

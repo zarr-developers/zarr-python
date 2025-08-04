@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, overload
 
 from numcodecs.gzip import GZip
 from typing_extensions import ReadOnly
-from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2
+
+from zarr.abc.codec import BytesBytesCodec, CodecJSON
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import (
     JSON,
@@ -41,6 +42,7 @@ class GZipJSON_V2(GZipConfig):
     """
     The JSON form of the GZip codec in Zarr V2.
     """
+
     id: ReadOnly[Literal["gzip"]]
 
 
