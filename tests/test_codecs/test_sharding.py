@@ -257,22 +257,23 @@ def test_nested_sharding(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    a = Array.create(
-        spath,
-        shape=data.shape,
-        chunk_shape=(64, 64, 64),
-        dtype=data.dtype,
-        fill_value=0,
-        codecs=[
-            ShardingCodec(
+    with pytest.warns(
+        UserWarning, match="Combining a `sharding_indexed` codec disables partial reads and writes"
+    ):
+        a = zarr.create_array(
+            spath,
+            shape=data.shape,
+            chunks=(64, 64, 64),
+            dtype=data.dtype,
+            fill_value=0,
+            serializer=ShardingCodec(
                 chunk_shape=(32, 32, 32),
                 codecs=[
                     ShardingCodec(chunk_shape=(16, 16, 16), index_location=inner_index_location)
                 ],
                 index_location=outer_index_location,
-            )
-        ],
-    )
+            ),
+        )
 
     a[:, :, :] = data
 

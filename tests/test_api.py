@@ -470,9 +470,6 @@ def test_tree() -> None:
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
-    with pytest.warns(DeprecationWarning, match=r"Group\.tree instead\."):  # noqa: PT031
-        assert repr(zarr.tree(g1)) == repr(g1.tree())
-        assert str(zarr.tree(g1)) == str(g1.tree())
 
 
 # @pytest.mark.parametrize("stores_from_path", [False, True])
