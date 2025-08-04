@@ -1,11 +1,16 @@
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 
 import zarr
 from zarr.abc.store import Store
 from zarr.codecs import GzipCodec
-from zarr.codecs.gzip import GZipJSON_V2, GZipJSON_V3
 from zarr.storage import StorePath
+
+if TYPE_CHECKING:
+    from zarr.codecs.gzip import GZipJSON_V2, GZipJSON_V3
+
 
 @pytest.mark.parametrize("level", [1, 5, 9])
 def test_json(level: int) -> None:

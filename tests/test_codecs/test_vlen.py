@@ -22,10 +22,10 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 else:
     expected_array_string_dtype = np.dtype("O")
 
+
 def test_vlen_utf8_to_json() -> None:
     codec = VLenUTF8Codec()
-    expected_v2: VLenUTF8JSON_V2 = {
-        "id": "vlen-utf8"}
+    expected_v2: VLenUTF8JSON_V2 = {"id": "vlen-utf8"}
     expected_v3: VLenUTF8JSON_V3 = {
         "name": "vlen-utf8",
     }

@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
@@ -6,10 +6,13 @@ import pytest
 import zarr
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
-from zarr.codecs.bytes import BytesJSON_V2, BytesJSON_V3
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
+
+if TYPE_CHECKING:
+    from zarr.codecs.bytes import BytesJSON_V2, BytesJSON_V3
+
 
 @pytest.mark.parametrize("endian", ["big", "little"])
 def test_bytescodec_to_json(endian: Literal["big", "little"]) -> None:
