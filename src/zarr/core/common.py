@@ -14,6 +14,7 @@ from typing import (
     Final,
     Generic,
     Literal,
+    NotRequired,
     TypedDict,
     TypeVar,
     cast,
@@ -52,8 +53,26 @@ TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 
 class NamedConfig(TypedDict, Generic[TName, TConfig]):
     """
-    A typed dictionary representing an object with a name and configuration, where the configuration
-    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+    A typed dictionary representing an object with a `"name"` and `"configuration"` keys.
+
+    The configuration key is not required.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+    """
+
+    name: ReadOnly[TName]
+    """The name of the object."""
+
+    configuration: NotRequired[ReadOnly[TConfig]]
+    """The configuration of the object."""
+
+
+class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
+    """
+    A typed dictionary representing an object with a `"name"` and `"configuration"` keys.
+
+    The configuration is required.
 
     This class is generic with two type parameters: the type of the name (``TName``) and the type of
     the configuration (``TConfig``).
