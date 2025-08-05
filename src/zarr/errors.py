@@ -74,7 +74,7 @@ class NodeTypeValidationError(MetadataValidationError):
 
 class ZarrFutureWarning(FutureWarning):
     """
-    A warning raised to indicate when a construct will change semantically in the future.
+    A warning intended for end users raised to indicate deprecated features.
     """
 
 
