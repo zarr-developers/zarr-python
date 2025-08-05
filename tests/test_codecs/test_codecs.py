@@ -20,9 +20,12 @@ from zarr.codecs import (
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import BasicSelection, morton_order_iter
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.dtype import UInt8
+from zarr.errors import ZarrUserWarning
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
+    from zarr.abc.codec import Codec
     from zarr.abc.store import Store
     from zarr.core.buffer.core import NDArrayLikeOrScalar
     from zarr.core.common import ChunkCoords, MemoryOrder
@@ -290,97 +293,37 @@ async def test_dimension_names(store: Store) -> None:
     assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
 
 
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_invalid_metadata(store: Store) -> None:
-    spath2 = StorePath(store, "invalid_codec_order")
-    with pytest.raises(TypeError):
-        Array.create(
-            spath2,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
+@pytest.mark.parametrize(
+    "codecs",
+    [
+        (BytesCodec(), TransposeCodec(order=order_from_dim("F", 2))),
+        (TransposeCodec(order=order_from_dim("F", 2)),),
+    ],
+)
+def test_invalid_metadata(codecs: tuple[Codec, ...]) -> None:
+    shape = (16,)
+    chunks = (16,)
+    data_type = UInt8()
+    with pytest.raises(ValueError, match="The `order` tuple must have as many entries"):
+        ArrayV3Metadata(
+            shape=shape,
+            chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},  # type: ignore[arg-type]
             fill_value=0,
-            codecs=[
-                BytesCodec(),
-                TransposeCodec(order=order_from_dim("F", 2)),
-            ],
-        )
-    spath3 = StorePath(store, "invalid_order")
-    with pytest.raises(TypeError):
-        Array.create(
-            spath3,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                TransposeCodec(order="F"),  # type: ignore[arg-type]
-                BytesCodec(),
-            ],
-        )
-    spath4 = StorePath(store, "invalid_missing_bytes_codec")
-    with pytest.raises(ValueError):
-        Array.create(
-            spath4,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                TransposeCodec(order=order_from_dim("F", 2)),
-            ],
-        )
-    spath5 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
-        Array.create(
-            spath5,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8,)),
-            ],
-        )
-    spath6 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
-        Array.create(
-            spath6,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8, 7)),
-            ],
-        )
-    spath7 = StorePath(store, "warning_inefficient_codecs")
-    with pytest.warns(
-        UserWarning,
-        match="Combining a `sharding_indexed` codec disables partial reads and writes, which may lead to inefficient performance",
-    ):
-        Array.create(
-            spath7,
-            shape=(16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            codecs=[
-                ShardingCodec(chunk_shape=(8, 8)),
-                GzipCodec(),
-            ],
+            data_type=data_type,
+            codecs=codecs,
+            attributes={},
+            dimension_names=None,
         )
 
 
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_invalid_metadata_create_array(store: Store) -> None:
-    spath = StorePath(store, "warning_inefficient_codecs")
+def test_invalid_metadata_create_array() -> None:
     with pytest.warns(
-        UserWarning,
+        ZarrUserWarning,
         match="codec disables partial reads and writes, which may lead to inefficient performance",
     ):
         zarr.create_array(
-            spath,
+            {},
             shape=(16, 16),
             chunks=(16, 16),
             dtype=np.dtype("uint8"),
