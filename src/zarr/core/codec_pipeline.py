@@ -17,6 +17,7 @@ from zarr.abc.codec import (
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
+from zarr.errors import ZarrUserWarning
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -501,6 +502,7 @@ def codecs_from_list(
         warn(
             "Combining a `sharding_indexed` codec disables partial reads and "
             "writes, which may lead to inefficient performance.",
+            category=ZarrUserWarning,
             stacklevel=3,
         )
 

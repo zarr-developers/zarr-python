@@ -17,7 +17,8 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
-from zarr.storage import StorePath
+from zarr.errors import ZarrUserWarning
+from zarr.storage import StorePath, ZipStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
@@ -228,7 +229,11 @@ def test_sharding_partial_overwrite(
     assert np.array_equal(data, read_data)
 
     data += 10
-    a[:10, :10, :10] = data
+    if isinstance(store, ZipStore):
+        with pytest.warns(UserWarning, match="Duplicate name: "):
+            a[:10, :10, :10] = data
+    else:
+        a[:10, :10, :10] = data
     read_data = a[0:10, 0:10, 0:10]
     assert np.array_equal(data, read_data)
 
@@ -257,22 +262,22 @@ def test_nested_sharding(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    a = Array.create(
-        spath,
-        shape=data.shape,
-        chunk_shape=(64, 64, 64),
-        dtype=data.dtype,
-        fill_value=0,
-        codecs=[
-            ShardingCodec(
+    msg = "Combining a `sharding_indexed` codec disables partial reads and writes, which may lead to inefficient performance."
+    with pytest.warns(ZarrUserWarning, match=msg):
+        a = zarr.create_array(
+            spath,
+            shape=data.shape,
+            chunks=(64, 64, 64),
+            dtype=data.dtype,
+            fill_value=0,
+            serializer=ShardingCodec(
                 chunk_shape=(32, 32, 32),
                 codecs=[
                     ShardingCodec(chunk_shape=(16, 16, 16), index_location=inner_index_location)
                 ],
                 index_location=outer_index_location,
-            )
-        ],
-    )
+            ),
+        )
 
     a[:, :, :] = data
 

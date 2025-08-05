@@ -15,6 +15,7 @@ from zarr.core.dtype.npy.int import Int16
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
 from zarr.core.metadata.v2 import parse_zarr_format
+from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from typing import Any
@@ -93,7 +94,7 @@ def test_filters_empty_tuple_warns() -> None:
         "fill_value": 0,
     }
     with pytest.warns(
-        UserWarning, match="Found an empty list of filters in the array metadata document."
+        ZarrUserWarning, match="Found an empty list of filters in the array metadata document."
     ):
         meta = ArrayV2Metadata.from_dict(metadata_dict)
     assert meta.filters is None

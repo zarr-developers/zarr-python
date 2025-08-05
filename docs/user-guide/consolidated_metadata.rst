@@ -27,6 +27,8 @@ In Python, the consolidated metadata is available on the ``.consolidated_metadat
 attribute of the ``GroupMetadata`` object.
 
    >>> import zarr
+   >>> import warnings
+   >>> warnings.filterwarnings("ignore", category=UserWarning)
    >>>
    >>> store = zarr.storage.MemoryStore()
    >>> group = zarr.create_group(store=store)
