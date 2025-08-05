@@ -4849,12 +4849,12 @@ def _parse_chunk_encoding_v2(
             if _compressor is None:
                 object_codec_id = None
             else:
-                object_codec_id = get_object_codec_id((_compressor.get_config(),))  # type: ignore[arg-type]
+                object_codec_id = get_object_codec_id((_compressor.get_config(),))
         else:
             object_codec_id = get_object_codec_id(
                 (
-                    *[f.get_config() for f in _filters],  # type: ignore[arg-type]
-                    _compressor.get_config() if _compressor is not None else None,  # type: ignore[arg-type]
+                    *[f.get_config() for f in _filters],
+                    _compressor.get_config() if _compressor is not None else None,
                 )
             )
         if object_codec_id is None:

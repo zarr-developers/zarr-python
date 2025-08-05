@@ -200,8 +200,8 @@ class ArrayV2Metadata(Metadata):
             codec_config = zarray_dict["compressor"].get_config()
             # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
             if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
-                codec_config.pop("checksum")  # type: ignore[typeddict-item]
-            zarray_dict["compressor"] = codec_config  # type: ignore[assignment]
+                codec_config.pop("checksum")
+            zarray_dict["compressor"] = codec_config
 
         if zarray_dict["filters"] is not None:
             raw_filters = zarray_dict["filters"]
@@ -215,7 +215,7 @@ class ArrayV2Metadata(Metadata):
                     new_filters.append(f.get_config())
                 else:
                     new_filters.append(f)
-            zarray_dict["filters"] = new_filters  # type: ignore[assignment]
+            zarray_dict["filters"] = new_filters
 
         # serialize the fill value after dtype-specific JSON encoding
         if self.fill_value is not None:

@@ -1,8 +1,6 @@
-from typing import Self, TypeGuard
+from typing import Any, Self, TypeGuard
 
-from typing_extensions import Buffer, Protocol
-
-from zarr.abc.codec import CodecJSON_V2
+from typing_extensions import Protocol
 
 
 class Numcodec(Protocol):
@@ -12,14 +10,14 @@ class Numcodec(Protocol):
 
     codec_id: str
 
-    def encode(self, buf: Buffer) -> Buffer: ...
+    def encode(self, buf: Any) -> Any: ...
 
-    def decode(self, buf: Buffer, out: Buffer | None = None) -> Buffer: ...
+    def decode(self, buf: Any, out: Any | None = None) -> Any: ...
 
-    def get_config(self) -> CodecJSON_V2[str]: ...
+    def get_config(self) -> Any: ...
 
     @classmethod
-    def from_config(cls, config: CodecJSON_V2[str]) -> Self: ...
+    def from_config(cls, config: Any) -> Self: ...
 
 
 def _is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:

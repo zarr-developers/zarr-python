@@ -31,9 +31,9 @@ class V2Codec(ArrayBytesCodec):
         cdata = chunk_bytes.as_array_like()
         # decompress
         if self.compressor:
-            chunk = await asyncio.to_thread(self.compressor.decode, cdata)  # type: ignore[arg-type]
+            chunk = await asyncio.to_thread(self.compressor.decode, cdata)
         else:
-            chunk = cdata  # type: ignore[assignment]
+            chunk = cdata
 
         # apply filters
         if self.filters:
@@ -54,7 +54,7 @@ class V2Codec(ArrayBytesCodec):
                 # is an object array. In this case, we need to convert the object
                 # array to the correct dtype.
 
-                chunk = np.array(chunk).astype(chunk_spec.dtype.to_native_dtype())  # type: ignore[assignment]
+                chunk = np.array(chunk).astype(chunk_spec.dtype.to_native_dtype())
 
         elif chunk.dtype != object:
             # If we end up here, someone must have hacked around with the filters.
@@ -83,18 +83,16 @@ class V2Codec(ArrayBytesCodec):
         # apply filters
         if self.filters:
             for f in self.filters:
-                chunk = await asyncio.to_thread(f.encode, chunk)  # type: ignore[arg-type]
-
+                chunk = await asyncio.to_thread(f.encode, chunk)
         # check object encoding
         if ensure_ndarray_like(chunk).dtype == object:
             raise RuntimeError("cannot write object array without object codec")
 
         # compress
         if self.compressor:
-            cdata = await asyncio.to_thread(self.compressor.encode, chunk)  # type: ignore[arg-type]
+            cdata = await asyncio.to_thread(self.compressor.encode, chunk)
         else:
-            cdata = chunk  # type: ignore[assignment]
-
+            cdata = chunk
         cdata = ensure_bytes(cdata)
         return chunk_spec.prototype.buffer.from_bytes(cdata)
 
