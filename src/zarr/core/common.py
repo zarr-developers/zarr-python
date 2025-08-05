@@ -14,6 +14,8 @@ from typing import (
     Final,
     Generic,
     Literal,
+    NotRequired,
+    Required,
     TypedDict,
     TypeVar,
     cast,
@@ -46,23 +48,45 @@ AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
 
-TName = TypeVar("TName", bound=str)
-TConfig = TypeVar("TConfig", bound=Mapping[str, object])
+BaseConfig = Mapping[str, object]
+
+TName_co = TypeVar("TName_co", bound=str, covariant=True)
+TConfig_co = TypeVar("TConfig_co", bound=BaseConfig, covariant=True)
 
 
-class NamedConfig(TypedDict, Generic[TName, TConfig]):
+class NamedConfig(TypedDict, Generic[TName_co, TConfig_co]):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
     is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
 
     This class is generic with two type parameters: the type of the name (``TName``) and the type of
     the configuration (``TConfig``).
+
+    The configuration key is not required.
     """
 
-    name: ReadOnly[TName]
+    name: ReadOnly[TName_co]
     """The name of the object."""
 
-    configuration: ReadOnly[TConfig]
+    configuration: NotRequired[ReadOnly[TConfig_co]]
+    """The configuration of the object."""
+
+
+class NamedRequiredConfig(TypedDict, Generic[TName_co, TConfig_co]):
+    """
+    A typed dictionary representing an object with a name and configuration, where the configuration
+    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+
+    The configuration key is required.
+    """
+
+    name: ReadOnly[TName_co]
+    """The name of the object."""
+
+    configuration: Required[ReadOnly[TConfig_co]]
     """The configuration of the object."""
 
 

@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class V2Codec(ArrayBytesCodec):
+class _V2Codec(ArrayBytesCodec):
     filters: tuple[numcodecs.abc.Codec, ...] | None
     compressor: numcodecs.abc.Codec | None
 

@@ -180,7 +180,7 @@ def test_config_codec_implementation(store: Store) -> None:
             chunks=(10,),
             zarr_format=3,
             dtype="i4",
-            compressors=[{"name": "blosc", "configuration": {}}],
+            compressors=[BloscCodec(typesize=1, shuffle="bitshuffle").to_json(zarr_format=3)],
         )
         arr[:] = range(100)
         _mock.call.assert_called()
