@@ -141,7 +141,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
         else:
             # TODO: Remove type: ignore statement when type inference improves.
             # mypy cannot correctly infer the type of a.metadata here for some reason.
-            new["codecs"] = a.metadata.codecs  # type: ignore[unreachable]
+            new["codecs"] = a.metadata.codecs
 
     else:
         # TODO: set default values compressor/codecs
