@@ -56,7 +56,7 @@ class TransposeCodec(ArrayArrayCodec):
     ) -> None:
         if len(self.order) != len(shape):
             raise ValueError(
-                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
+                f"The `order` tuple must have as many entries as there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
@@ -71,7 +71,7 @@ class TransposeCodec(ArrayArrayCodec):
         ndim = array_spec.ndim
         if len(self.order) != ndim:
             raise ValueError(
-                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
+                f"The `order` tuple must have as many entries as there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
