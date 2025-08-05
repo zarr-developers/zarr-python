@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import inspect
+import json
 import operator
 import pickle
 import re
@@ -58,6 +59,7 @@ if TYPE_CHECKING:
 
     from _pytest.compat import LEGACY_PATH
 
+    from zarr.core.buffer.core import Buffer
     from zarr.core.common import JSON, ZarrFormat
 
 
@@ -1398,6 +1400,21 @@ def test_open_mutable_mapping_sync():
         store={},
     )
     assert isinstance(group.store_path.store, MemoryStore)
+
+
+async def test_open_ambiguous_node():
+    zarr_json_bytes = default_buffer_prototype().buffer.from_bytes(
+        json.dumps({"zarr_format": 3, "node_type": "group"}).encode("utf-8")
+    )
+    zgroup_bytes = default_buffer_prototype().buffer.from_bytes(
+        json.dumps({"zarr_format": 2}).encode("utf-8")
+    )
+    store: dict[str, Buffer] = {"zarr.json": zarr_json_bytes, ".zgroup": zgroup_bytes}
+    with pytest.warns(
+        ZarrUserWarning,
+        match=r"Both zarr\.json \(Zarr format 3\) and \.zgroup \(Zarr format 2\) metadata objects exist at",
+    ):
+        await AsyncGroup.open(store, zarr_format=None)
 
 
 class TestConsolidated:
