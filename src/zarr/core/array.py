@@ -119,7 +119,7 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
-from zarr.errors import MetadataValidationError
+from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
@@ -232,7 +232,7 @@ async def get_array_metadata(
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
             msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
-            warnings.warn(msg, stacklevel=1)
+            warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
         if zarr_json_bytes is None and zarray_bytes is None:
             raise FileNotFoundError(store_path)
         # set zarr_format based on which keys were found
@@ -441,7 +441,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
-    @deprecated("Use zarr.api.asynchronous.create_array instead.")
+    @deprecated("Use zarr.api.asynchronous.create_array instead.", category=ZarrDeprecationWarning)
     async def create(
         cls,
         store: StoreLike,
@@ -1061,7 +1061,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     @property
-    @deprecated("Use AsyncArray.compressors instead.")
+    @deprecated("Use AsyncArray.compressors instead.", category=ZarrDeprecationWarning)
     def compressor(self) -> numcodecs.abc.Codec | None:
         """
         Compressor that is applied to each chunk of the array.
@@ -1855,7 +1855,7 @@ class Array:
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     @classmethod
-    @deprecated("Use zarr.create_array instead.")
+    @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
     def create(
         cls,
         store: StoreLike,
@@ -2242,7 +2242,7 @@ class Array:
         return self._async_array.serializer
 
     @property
-    @deprecated("Use Array.compressors instead.")
+    @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
     def compressor(self) -> numcodecs.abc.Codec | None:
         """
         Compressor that is applied to each chunk of the array.
@@ -4648,7 +4648,7 @@ def _parse_keep_array_attr(
             warnings.warn(
                 "The 'order' attribute of a Zarr format 2 array does not have a direct analogue in Zarr format 3. "
                 "The existing order='F' of the source Zarr format 2 array will be ignored.",
-                UserWarning,
+                ZarrUserWarning,
                 stacklevel=2,
             )
         elif order is None and zarr_format == 2:
@@ -4937,7 +4937,7 @@ def _parse_deprecated_compressor(
         if zarr_format == 3:
             warn(
                 "The `compressor` argument is deprecated. Use `compressors` instead.",
-                category=UserWarning,
+                category=ZarrUserWarning,
                 stacklevel=2,
             )
         if compressor is None:
