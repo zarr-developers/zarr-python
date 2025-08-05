@@ -155,7 +155,7 @@ class NDBuffer(core.NDBuffer):
         fill_value: Any | None = None,
     ) -> Self:
         # np.zeros is much faster than np.full, and therefore using it when possible is better.
-        if fill_value is None or (isinstance(fill_value, int) and fill_value == 0):
+        if fill_value is None or (np.isscalar(fill_value) and fill_value == 0):
             return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
         else:
             return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
