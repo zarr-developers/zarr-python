@@ -7,7 +7,7 @@ import pickle
 import re
 import sys
 from itertools import accumulate
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 from unittest import mock
 
 import numcodecs
@@ -19,7 +19,7 @@ from packaging.version import Version
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
 from tests.conftest import skip_object_dtype
-from zarr import Array, AsyncArray, Group
+from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
@@ -61,15 +61,12 @@ from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
+from zarr.types import AnyArray, AnyAsyncArray
 
 from .test_dtype.conftest import zdtype_examples
-
-if TYPE_CHECKING:
-    from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -352,9 +349,9 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             Array.from_dict(StorePath(store), data=metadata_dict)
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
+@pytest.mark.parametrize("test_cls", [AnyArray, AnyAsyncArray])
 @pytest.mark.parametrize("nchunks", [2, 5, 10])
-def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) -> None:
+def test_nchunks(test_cls: type[AnyArray] | type[AnyAsyncArray], nchunks: int) -> None:
     """
     Test that nchunks returns the number of chunks defined for the array.
     """
@@ -369,8 +366,8 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
     assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+@pytest.mark.parametrize("test_cls", [AnyArray, AnyAsyncArray])
+async def test_nchunks_initialized(test_cls: type[AnyArray] | type[AnyAsyncArray]) -> None:
     """
     Test that nchunks_initialized accurately returns the number of stored chunks.
     """
@@ -1316,7 +1313,7 @@ class TestCreateArray:
 
         # Normalize for property getters
         compressor_expected = () if compressor_expected is None else (compressor_expected,)
-        filters_expected = () if filters_expected is None else filters_expected
+        filters_expected = () if filters_expected is None else filters_expected  # type: ignore[redundant-expr]
 
         assert arr.compressors == compressor_expected
         assert arr.filters == filters_expected
@@ -1395,7 +1392,7 @@ class TestCreateArray:
         """
         data = np.arange(10)
         name = "foo"
-        arr: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array
+        arr: AnyAsyncArray | AnyArray
         if impl == "sync":
             arr = sync_api.create_array(store, name=name, data=data)
             stored = arr[:]
@@ -1616,7 +1613,7 @@ async def test_from_array_arraylike(
     store: Store,
     chunks: Literal["auto", "keep"] | tuple[int, int],
     write_data: bool,
-    src: Array | npt.ArrayLike,
+    src: AnyArray | npt.ArrayLike,
 ) -> None:
     fill_value = 42
     result = zarr.from_array(
@@ -1698,7 +1695,7 @@ def test_roundtrip_numcodecs() -> None:
     assert metadata["codecs"] == expected
 
 
-def _index_array(arr: Array, index: Any) -> Any:
+def _index_array(arr: AnyArray, index: Any) -> Any:
     return arr[index]
 
 
