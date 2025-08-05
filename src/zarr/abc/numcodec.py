@@ -1,9 +1,8 @@
 from typing import Self, TypeGuard
 
-from typing_extensions import Protocol
+from typing_extensions import Buffer, Protocol
 
 from zarr.abc.codec import CodecJSON_V2
-from zarr.core.buffer import Buffer, NDBuffer
 
 
 class Numcodec(Protocol):
@@ -13,11 +12,9 @@ class Numcodec(Protocol):
 
     codec_id: str
 
-    def encode(self, buf: Buffer | NDBuffer) -> Buffer | NDBuffer: ...
+    def encode(self, buf: Buffer) -> Buffer: ...
 
-    def decode(
-        self, buf: Buffer | NDBuffer, out: Buffer | NDBuffer | None = None
-    ) -> Buffer | NDBuffer: ...
+    def decode(self, buf: Buffer, out: Buffer | None = None) -> Buffer: ...
 
     def get_config(self) -> CodecJSON_V2[str]: ...
 
