@@ -46,7 +46,6 @@ from zarr.core.common import (
     NodeType,
     ShapeLike,
     ZarrFormat,
-    parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -444,9 +443,8 @@ class AsyncGroup:
 
     metadata: GroupMetadata
     store_path: StorePath
-
-    # TODO: make this correct and work
-    # TODO: ensure that this can be bound properly to subclass of AsyncGroup
+    _sync: Any = field(default=None, init=False)
+    _async_group: Any = field(default=None, init=False)
 
     @classmethod
     async def from_store(
@@ -1006,6 +1004,53 @@ class AsyncGroup:
             return ()
         return tuple(await asyncio.gather(*(self.require_group(name) for name in names)))
 
+    async def _require_array_async(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Obtain an array, creating if it doesn't exist.
+
+        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_array`.
+
+        Parameters
+        ----------
+        name : str
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : str or dtype, optional
+            NumPy dtype. If None, the dtype will be inferred from the existing array.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If False, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : AsyncArray
+        """
+        try:
+            item = await self.getitem(name)
+        except KeyError:
+            # If it doesn't exist, create it
+            return await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
+        else:
+            # Existing item must be an AsyncArray with matching dtype/shape
+            if not isinstance(item, AsyncArray):
+                raise TypeError(f"Incompatible object ({item.__class__.__name__}) already exists")
+            assert isinstance(item, AsyncArray)  # mypy
+            if exact and dtype is not None and item.dtype != np.dtype(dtype):
+                raise TypeError("Incompatible dtype")
+            if not exact and dtype is not None and not np.can_cast(item.dtype, dtype):
+                raise TypeError("Incompatible dtype")
+            if item.shape != shape:
+                raise TypeError("Incompatible shape")
+            return item
+
     async def create_array(
         self,
         name: str,
@@ -1179,52 +1224,18 @@ class AsyncGroup:
         # create_dataset in zarr 2.x requires shape but not dtype if data is
         # provided. Allow this configuration by inferring dtype from data if
         # necessary and passing it to create_array
-        if "dtype" not in kwargs and data is not None:
-            kwargs["dtype"] = data.dtype
+        if "dtype" not in kwargs:
+            if data is not None:
+                kwargs["dtype"] = data.dtype
+            else:
+                raise ValueError("dtype must be provided if data is None")
         array = await self.create_array(name, shape=shape, **kwargs)
         if data is not None:
             await array.setitem(slice(None), data)
         return array
 
-    @deprecated("Use AsyncGroup.require_array instead.")
-    async def require_dataset(
-        self,
-        name: str,
-        *,
-        shape: ChunkCoords,
-        dtype: npt.DTypeLike = None,
-        exact: bool = False,
-        **kwargs: Any,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        """Obtain an array, creating if it doesn't exist.
-
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.require_dataset` instead.
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
-
-        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        shape : int or tuple of ints
-            Array shape.
-        dtype : str or dtype, optional
-            NumPy dtype.
-        exact : bool, optional
-            If True, require `dtype` to match exactly. If false, require
-            `dtype` can be cast from array dtype.
-
-        Returns
-        -------
-        a : AsyncArray
-        """
-        return await self.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
-
-    async def require_array(
+    @deprecated("Use Group.require_array instead.")
+    def require_dataset(
         self,
         name: str,
         *,
@@ -1232,10 +1243,16 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
-        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
+
+        Other `kwargs` are as per :func:`zarr.Group.create_array`.
 
         Parameters
         ----------
@@ -1244,35 +1261,59 @@ class AsyncGroup:
         shape : int or tuple of ints
             Array shape.
         dtype : str or dtype, optional
-            NumPy dtype.
+            NumPy dtype. If None, the dtype will be inferred from the existing array.
         exact : bool, optional
-            If True, require `dtype` to match exactly. If false, require
+            If True, require `dtype` to match exactly. If False, require
             `dtype` can be cast from array dtype.
 
         Returns
         -------
-        a : AsyncArray
+        a : Array
         """
-        try:
-            ds = await self.getitem(name)
-            if not isinstance(ds, AsyncArray):
-                raise TypeError(f"Incompatible object ({ds.__class__.__name__}) already exists")
+        return Array(
+            self._sync(
+                self._async_group._require_array_async(
+                    name, shape=shape, dtype=dtype, exact=exact, **kwargs
+                )
+            )
+        )
 
-            shape = parse_shapelike(shape)
-            if shape != ds.shape:
-                raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
+    def require_array(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> Array:
+        """Obtain an array, creating if it doesn't exist.
 
-            dtype = np.dtype(dtype)
-            if exact:
-                if ds.dtype != dtype:
-                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
-            else:
-                if not np.can_cast(ds.dtype, dtype):
-                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
-        except KeyError:
-            ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
+        Other `kwargs` are as per :func:`zarr.Group.create_array`.
 
-        return ds
+        Parameters
+        ----------
+        name : str
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : str or dtype, optional
+            NumPy dtype. If None, the dtype will be inferred from the existing array.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If False, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : Array
+        """
+        return Array(
+            self._sync(
+                self._async_group._require_array_async(
+                    name, shape=shape, dtype=dtype, exact=exact, **kwargs
+                )
+            )
+        )
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         """Update group attributes.
@@ -2594,49 +2635,75 @@ class Group(SyncMixin):
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `Group.create_array` instead.
 
-
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the :func:`zarr.Group.require_dataset` method.
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.require_dataset` method.
 
         Parameters
         ----------
         name : str
             Array name.
         **kwargs : dict
-            Additional arguments passed to :func:`zarr.Group.create_array`
+            Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
 
         Returns
         -------
-        a : Array
+        a : AsyncArray
         """
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.")
-    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
+    def require_dataset(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the :func:`zarr.Group.create_dataset` method.
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
 
-        Other `kwargs` are as per :func:`zarr.Group.create_dataset`.
+        Other `kwargs` are as per :func:`zarr.Group.create_array`.
 
         Parameters
         ----------
         name : str
             Array name.
-        **kwargs :
-            See :func:`zarr.Group.create_dataset`.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : str or dtype, optional
+            NumPy dtype. If None, the dtype will be inferred from the existing array.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If False, require
+            `dtype` can be cast from array dtype.
 
         Returns
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array(
+            self._sync(
+                self._async_group._require_array_async(
+                    name, shape=shape, dtype=dtype, exact=exact, **kwargs
+                )
+            )
+        )
 
-    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
+    def require_array(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per :func:`zarr.Group.create_array`.
@@ -2645,14 +2712,25 @@ class Group(SyncMixin):
         ----------
         name : str
             Array name.
-        **kwargs :
-            See :func:`zarr.Group.create_array`.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : str or dtype, optional
+            NumPy dtype. If None, the dtype will be inferred from the existing array.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If False, require
+            `dtype` can be cast from array dtype.
 
         Returns
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array(
+            self._sync(
+                self._async_group._require_array_async(
+                    name, shape=shape, dtype=dtype, exact=exact, **kwargs
+                )
+            )
+        )
 
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
@@ -2992,7 +3070,7 @@ async def create_hierarchy(
     This function will parse its input to ensure that the hierarchy is complete. Any implicit groups
     will be inserted as needed. For example, an input like
     ```{'a/b': GroupMetadata}``` will be parsed to
-    ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```
+    ```{'': GroupMetadata, 'a': GroupMetadata, 'b': Groupmetadata}```.
 
     After input parsing, this function then creates all the nodes in the hierarchy concurrently.
 

@@ -1,0 +1,1 @@
+- Fixed potential error in `AsyncGroup.create_dataset()` where `dtype` argument could be missing when calling `create_array()`
