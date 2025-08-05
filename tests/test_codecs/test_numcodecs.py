@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from numcodecs import GZip
 
-from zarr.codecs._numcodecs import get_numcodec
-from zarr.codecs._v2 import _is_numcodec, _is_numcodec_cls
+from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
+from zarr.registry import get_numcodec
 
 
 def test_get_numcodec() -> None:
