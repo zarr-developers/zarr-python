@@ -19,8 +19,8 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.abc.codec import Codec
+    from zarr.abc.numcodec import Numcodec
     from zarr.api.asynchronous import ArrayLike, PathLike
-    from zarr.codecs._v2 import Numcodec
     from zarr.core.array import (
         CompressorsLike,
         FiltersLike,
