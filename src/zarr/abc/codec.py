@@ -114,7 +114,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         """
 
     async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def decode(
         self,
@@ -137,7 +137,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
     async def _encode_single(
         self, chunk_data: CodecInput, chunk_spec: ArraySpec
     ) -> CodecOutput | None:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def encode(
         self,
@@ -218,7 +218,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         selection: SelectorTuple,
         chunk_spec: ArraySpec,
     ) -> None:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def encode_partial(
         self,
