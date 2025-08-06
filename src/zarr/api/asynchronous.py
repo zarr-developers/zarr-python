@@ -363,6 +363,7 @@ async def open(
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     except (KeyError, NodeTypeValidationError):
