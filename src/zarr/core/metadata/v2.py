@@ -265,11 +265,10 @@ def parse_filters(data: object) -> tuple[Numcodec, ...] | None:
     """
     Parse a potential tuple of filters
     """
-    out: list[Numcodec] = []
-
     if data is None:
         return data
     if isinstance(data, Iterable):
+        out: list[Numcodec] = []
         for idx, val in enumerate(data):
             if _is_numcodec(val):
                 out.append(val)
