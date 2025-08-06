@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from zarr.abc.store import Store
-    from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+    from zarr.core.types import JSON, MemoryOrder, ZarrFormat
 
 import contextlib
 from typing import Literal

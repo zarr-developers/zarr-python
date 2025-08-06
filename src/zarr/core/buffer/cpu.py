@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer.core import ArrayLike, NDArrayLike
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.types import BytesLike, ChunkCoords
 
 
 class Buffer(core.Buffer):

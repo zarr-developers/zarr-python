@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING
 
-from zarr.core.common import JSON
+from zarr.core.types import JSON
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

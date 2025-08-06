@@ -5,66 +5,29 @@ import functools
 import math
 import operator
 import warnings
-from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
 from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
-    Final,
-    Generic,
     Literal,
-    TypedDict,
     TypeVar,
     cast,
     overload,
 )
 
-from typing_extensions import ReadOnly
-
 from zarr.core.config import config as zarr_config
+
+# This JSON import must be outside the type-checking block to avoid breaking numcodecs. see
+# https://github.com/zarr-developers/numcodecs/issues/773.
+# This can be changed when the circular dependency between zarr python and numcodecs is resolved.
+from zarr.core.types import JSON, MEMORY_ORDER, MemoryOrder
 from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterator
+    from collections.abc import Awaitable, Callable, Iterable, Iterator
 
-
-ZARR_JSON = "zarr.json"
-ZARRAY_JSON = ".zarray"
-ZGROUP_JSON = ".zgroup"
-ZATTRS_JSON = ".zattrs"
-ZMETADATA_V2_JSON = ".zmetadata"
-
-BytesLike = bytes | bytearray | memoryview
-ShapeLike = tuple[int, ...] | int
-ChunkCoords = tuple[int, ...]
-ChunkCoordsLike = Iterable[int]
-ZarrFormat = Literal[2, 3]
-NodeType = Literal["array", "group"]
-JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
-MemoryOrder = Literal["C", "F"]
-AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
-ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
-DimensionNames = Iterable[str | None] | None
-
-TName = TypeVar("TName", bound=str)
-TConfig = TypeVar("TConfig", bound=Mapping[str, object])
-
-
-class NamedConfig(TypedDict, Generic[TName, TConfig]):
-    """
-    A typed dictionary representing an object with a name and configuration, where the configuration
-    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
-
-    This class is generic with two type parameters: the type of the name (``TName``) and the type of
-    the configuration (``TConfig``).
-    """
-
-    name: ReadOnly[TName]
-    """The name of the object."""
-
-    configuration: ReadOnly[TConfig]
-    """The configuration of the object."""
+    from zarr.core.types import ChunkCoords, ZarrFormat
 
 
 def product(tup: ChunkCoords) -> int:
@@ -186,10 +149,10 @@ def parse_fill_value(data: Any) -> Any:
     return data
 
 
-def parse_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
+def parse_order(data: Any) -> MemoryOrder:
+    if data in MEMORY_ORDER:
         return cast("Literal['C', 'F']", data)
-    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+    raise ValueError(f"Expected one of {MEMORY_ORDER}, got {data} instead.")
 
 
 def parse_bool(data: Any) -> bool:

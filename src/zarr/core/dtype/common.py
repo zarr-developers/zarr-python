@@ -15,7 +15,7 @@ from typing import (
 
 from typing_extensions import ReadOnly
 
-from zarr.core.common import NamedConfig
+from zarr.core.types import NamedConfig
 from zarr.errors import UnstableSpecificationWarning
 
 EndiannessStr = Literal["little", "big"]

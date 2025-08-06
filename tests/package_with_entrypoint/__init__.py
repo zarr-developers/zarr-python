@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from typing import Any, ClassVar, Literal, Self
 
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.common import ZarrFormat
+    from zarr.core.types import ZarrFormat
 
 
 class TestEntrypointCodec(ArrayBytesCodec):

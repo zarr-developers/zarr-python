@@ -22,12 +22,6 @@ from zarr.core.array import (
 from zarr.core.array_spec import ArrayConfigLike, parse_array_config
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
-    JSON,
-    AccessModeLiteral,
-    ChunkCoords,
-    DimensionNames,
-    MemoryOrder,
-    ZarrFormat,
     _default_zarr_format,
     _warn_write_empty_chunks_kwarg,
 )
@@ -57,6 +51,14 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.core.types import (
+        JSON,
+        AccessModeLiteral,
+        ChunkCoords,
+        DimensionNames,
+        MemoryOrder,
+        ZarrFormat,
+    )
     from zarr.storage import StoreLike
 
     # TODO: this type could use some more thought

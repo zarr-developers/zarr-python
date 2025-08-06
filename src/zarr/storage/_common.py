@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.common import (
-    ANY_ACCESS_MODE,
+from zarr.core.types import (
+    ACCESS_MODE_LITERAL,
     ZARR_JSON,
     ZARRAY_JSON,
     ZGROUP_JSON,
@@ -103,8 +103,8 @@ class StorePath:
         if mode is None:
             return await cls._create_open_instance(store, path)
 
-        if mode not in ANY_ACCESS_MODE:
-            raise ValueError(f"Invalid mode: {mode}, expected one of {ANY_ACCESS_MODE}")
+        if mode not in ACCESS_MODE_LITERAL:
+            raise ValueError(f"Invalid mode: {mode}, expected one of {ACCESS_MODE_LITERAL}")
 
         if store.read_only:
             # Don't allow write operations on a read-only store

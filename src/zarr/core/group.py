@@ -35,6 +35,12 @@ from zarr.core.array import (
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
+    parse_shapelike,
+)
+from zarr.core.config import config
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.sync import SyncMixin, sync
+from zarr.core.types import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
@@ -46,11 +52,7 @@ from zarr.core.common import (
     NodeType,
     ShapeLike,
     ZarrFormat,
-    parse_shapelike,
 )
-from zarr.core.config import config
-from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
@@ -77,8 +79,8 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
-    from zarr.core.common import MemoryOrder
     from zarr.core.dtype import ZDTypeLike
+    from zarr.core.types import MemoryOrder
 
 logger = logging.getLogger("zarr.group")
 

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Self
 
-    from zarr.core.common import JSON
+    from zarr.core.types import JSON
 
 from dataclasses import dataclass, fields
 

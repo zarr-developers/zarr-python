@@ -32,14 +32,13 @@ from zarr.core.dtype.npy.time import (
 )
 
 if TYPE_CHECKING:
-    from zarr.core.common import ZarrFormat
+    from zarr.core.types import ZarrFormat
 
 from collections.abc import Mapping
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.common import JSON
 from zarr.core.dtype.npy.string import (
     FixedLengthUTF32,
     FixedLengthUTF32JSON_V2,
@@ -49,6 +48,7 @@ from zarr.core.dtype.npy.string import (
 )
 from zarr.core.dtype.registry import DataTypeRegistry
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+from zarr.core.types import JSON
 
 __all__ = [
     "Bool",

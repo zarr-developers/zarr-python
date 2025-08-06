@@ -6,7 +6,7 @@ from _pytest.compat import LEGACY_PATH
 
 import zarr
 from zarr import Group
-from zarr.core.common import AccessModeLiteral, ZarrFormat
+from zarr.core.types import AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, ZipStore
 from zarr.storage._common import contains_array, contains_group, make_store_path
 from zarr.storage._utils import (

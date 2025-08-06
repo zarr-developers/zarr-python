@@ -15,7 +15,7 @@ from zarr.core.dtype.common import (
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 if TYPE_CHECKING:
-    from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.types import JSON, ZarrFormat
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)

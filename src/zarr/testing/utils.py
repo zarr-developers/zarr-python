@@ -7,7 +7,7 @@ import pytest
 from zarr.core.buffer import Buffer
 
 if TYPE_CHECKING:
-    from zarr.core.common import BytesLike
+    from zarr.core.types import BytesLike
 
 __all__ = ["assert_bytes_equal"]
 

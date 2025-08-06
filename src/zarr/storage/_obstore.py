@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
+    from zarr.core.types import BytesLike
 
 __all__ = ["ObjectStore"]
 
