@@ -37,6 +37,8 @@ def parse_checksum(data: JSON) -> bool:
 
 @dataclass(frozen=True)
 class ZstdCodec(BytesBytesCodec):
+    """zstd codec"""
+
     is_fixed_size = True
 
     level: int = 0

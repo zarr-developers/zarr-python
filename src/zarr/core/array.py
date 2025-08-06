@@ -61,6 +61,7 @@ from zarr.core.common import (
     ZarrFormat,
     _default_zarr_format,
     _warn_order_kwarg,
+    ceildiv,
     concurrent_map,
     parse_shapelike,
     product,
@@ -72,10 +73,12 @@ from zarr.core.dtype import (
     VariableLengthUTF8,
     ZDType,
     ZDTypeLike,
-    parse_data_type,
+    parse_dtype,
 )
 from zarr.core.dtype.common import HasEndianness, HasItemSize, HasObjectCodec
 from zarr.core.indexing import (
+    AsyncOIndex,
+    AsyncVIndex,
     BasicIndexer,
     BasicSelection,
     BlockIndex,
@@ -92,7 +95,6 @@ from zarr.core.indexing import (
     Selection,
     VIndex,
     _iter_grid,
-    ceildiv,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
@@ -117,7 +119,7 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
-from zarr.errors import MetadataValidationError
+from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
@@ -230,7 +232,7 @@ async def get_array_metadata(
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
             msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
-            warnings.warn(msg, stacklevel=1)
+            warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
         if zarr_json_bytes is None and zarray_bytes is None:
             raise FileNotFoundError(store_path)
         # set zarr_format based on which keys were found
@@ -439,7 +441,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
-    @deprecated("Use zarr.api.asynchronous.create_array instead.")
+    @deprecated("Use zarr.api.asynchronous.create_array instead.", category=ZarrDeprecationWarning)
     async def create(
         cls,
         store: StoreLike,
@@ -617,7 +619,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
         """
 
-        dtype_parsed = parse_data_type(dtype, zarr_format=zarr_format)
+        dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
         store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
@@ -697,7 +699,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 overwrite=overwrite,
             )
         else:
-            raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
+            raise ValueError(f"Unsupported zarr_format. Got: {zarr_format}")
 
         if data is not None:
             # insert user-provided data
@@ -1059,7 +1061,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     @property
-    @deprecated("Use AsyncArray.compressors instead.")
+    @deprecated("Use AsyncArray.compressors instead.", category=ZarrDeprecationWarning)
     def compressor(self) -> numcodecs.abc.Codec | None:
         """
         Compressor that is applied to each chunk of the array.
@@ -1425,6 +1427,56 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
         return await self._get_selection(indexer, prototype=prototype)
 
+    async def get_orthogonal_selection(
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def get_mask_selection(
+        self,
+        mask: MaskSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
+        return await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+    async def get_coordinate_selection(
+        self,
+        selection: CoordinateSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
+    ) -> NDArrayLikeOrScalar:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
+        out_array = await self._get_selection(
+            indexer=indexer, out=out, fields=fields, prototype=prototype
+        )
+
+        if hasattr(out_array, "shape"):
+            # restore shape
+            out_array = np.array(out_array).reshape(indexer.sel_shape)
+        return out_array
+
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
         Asynchronously save the array metadata.
@@ -1555,6 +1607,19 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             chunk_grid=self.metadata.chunk_grid,
         )
         return await self._set_selection(indexer, value, prototype=prototype)
+
+    @property
+    def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:
+        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
+        :func:`set_orthogonal_selection` for documentation and examples."""
+        return AsyncOIndex(self)
+
+    @property
+    def vindex(self) -> AsyncVIndex[T_ArrayMetadata]:
+        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
+        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
+        :func:`set_mask_selection` for documentation and examples."""
+        return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
         """
@@ -1790,7 +1855,7 @@ class Array:
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     @classmethod
-    @deprecated("Use zarr.create_array instead.")
+    @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
     def create(
         cls,
         store: StoreLike,
@@ -2177,7 +2242,7 @@ class Array:
         return self._async_array.serializer
 
     @property
-    @deprecated("Use Array.compressors instead.")
+    @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
     def compressor(self) -> numcodecs.abc.Codec | None:
         """
         Compressor that is applied to each chunk of the array.
@@ -4238,7 +4303,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
+    zdtype = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
@@ -4583,7 +4648,7 @@ def _parse_keep_array_attr(
             warnings.warn(
                 "The 'order' attribute of a Zarr format 2 array does not have a direct analogue in Zarr format 3. "
                 "The existing order='F' of the source Zarr format 2 array will be ignored.",
-                UserWarning,
+                ZarrUserWarning,
                 stacklevel=2,
             )
         elif order is None and zarr_format == 2:
@@ -4872,7 +4937,7 @@ def _parse_deprecated_compressor(
         if zarr_format == 3:
             warn(
                 "The `compressor` argument is deprecated. Use `compressors` instead.",
-                category=UserWarning,
+                category=ZarrUserWarning,
                 stacklevel=2,
             )
         if compressor is None:

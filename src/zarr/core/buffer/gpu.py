@@ -13,6 +13,7 @@ import numpy.typing as npt
 
 from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.errors import ZarrUserWarning
 from zarr.registry import (
     register_buffer,
     register_ndbuffer,
@@ -72,6 +73,7 @@ class Buffer(core.Buffer):
             )
             warnings.warn(
                 msg,
+                category=ZarrUserWarning,
                 stacklevel=2,
             )
         self._data = cp.asarray(array_like)

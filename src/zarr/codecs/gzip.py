@@ -30,6 +30,8 @@ def parse_gzip_level(data: JSON) -> int:
 
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
+    """gzip codec"""
+
     is_fixed_size = False
 
     level: int = 5
