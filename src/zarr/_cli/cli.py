@@ -4,6 +4,7 @@ from typing import Annotated, Literal, cast
 
 import typer
 
+import zarr
 import zarr.metadata.migrate_v3 as migrate_metadata
 from zarr.core.sync import sync
 from zarr.storage._common import make_store
@@ -13,17 +14,13 @@ app = typer.Typer()
 logger = logging.getLogger(__name__)
 
 
-def _set_logging_config(*, verbose: bool) -> None:
+def _set_logging_level(*, verbose: bool) -> None:
     if verbose:
-        lvl = logging.INFO
+        lvl = "INFO"
     else:
-        lvl = logging.WARNING
-    fmt = "%(message)s"
-    logging.basicConfig(level=lvl, format=fmt)
-
-
-def _set_verbose_level() -> None:
-    logging.getLogger().setLevel(logging.INFO)
+        lvl = "WARNING"
+    zarr.set_log_level(cast(Literal["INFO", "WARNING"], lvl))
+    zarr.set_format("%(message)s")
 
 
 class ZarrFormat(str, Enum):
@@ -96,7 +93,7 @@ def migrate(
     (every group / array). v2 files (.zarray, .zattrs etc.) will be left as-is.
     """
     if dry_run:
-        _set_verbose_level()
+        _set_logging_level(verbose=True)
         logger.info(
             "Dry run enabled - no new files will be created or changed. Log of files that would be created on a real run:"
         )
@@ -154,7 +151,7 @@ def remove_metadata(
     Note - this will remove metadata files at all levels of the hierarchy (every group and array).
     """
     if dry_run:
-        _set_verbose_level()
+        _set_logging_level(verbose=True)
         logger.info(
             "Dry run enabled - no files will be deleted or changed. Log of files that would be deleted on a real run:"
         )
@@ -182,7 +179,7 @@ def main(
     """
     See available commands below - access help for individual commands with zarr COMMAND --help.
     """
-    _set_logging_config(verbose=verbose)
+    _set_logging_level(verbose=verbose)
 
 
 if __name__ == "__main__":
