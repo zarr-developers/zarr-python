@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.abc.store import Store
     from zarr.core.buffer.core import NDArrayLikeOrScalar
-    from zarr.core.common import ChunkCoords, MemoryOrder
+    from zarr.core.types import ChunkCoords, MemoryOrder
 
 
 @dataclass(frozen=True)

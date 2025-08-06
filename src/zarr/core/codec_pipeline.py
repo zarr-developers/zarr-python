@@ -14,7 +14,7 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
 from zarr.errors import ZarrUserWarning
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.types import ChunkCoords
 
 T = TypeVar("T")
 U = TypeVar("U")

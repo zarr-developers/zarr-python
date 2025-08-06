@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from typing import Any, Self, TypeAlias
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
+    from zarr.core.types import BytesLike
 
 __all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 

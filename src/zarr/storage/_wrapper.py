@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
+    from zarr.core.types import BytesLike
 
 from zarr.abc.store import Store
 

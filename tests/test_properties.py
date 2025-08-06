@@ -7,6 +7,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.types import ZARR_JSON, ZARRAY_JSON
 
 pytest.importorskip("hypothesis")
 
@@ -15,9 +16,9 @@ import hypothesis.strategies as st
 from hypothesis import assume, given, settings
 
 from zarr.abc.store import Store
-from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
+from zarr.core.types import ZATTRS_JSON
 from zarr.testing.strategies import (
     array_metadata,
     arrays,

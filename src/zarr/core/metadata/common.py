@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from zarr.core.common import JSON
+    from zarr.core.types import JSON
 
 
 def parse_attributes(data: dict[str, JSON] | None) -> dict[str, JSON]:

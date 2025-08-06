@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
     from zarr.core.metadata import ArrayMetadata
+    from zarr.core.types import ChunkCoords
 
 __all__ = [
     "ArrayArrayCodec",

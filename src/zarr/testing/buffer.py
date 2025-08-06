@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
-    from zarr.core.common import ChunkCoords
+    from zarr.core.types import ChunkCoords
 
 
 __all__ = [

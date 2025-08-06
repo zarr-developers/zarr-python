@@ -8,7 +8,7 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
+from zarr.core.common import parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.types import JSON, ChunkCoordsLike
 
 
 def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:

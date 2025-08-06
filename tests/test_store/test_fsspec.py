@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     import botocore.client
     import s3fs
 
-    from zarr.core.common import JSON
+    from zarr.core.types import JSON
 
 
 # Warning filter due to https://github.com/boto/boto3/issues/3889

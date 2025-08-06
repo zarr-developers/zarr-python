@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.codecs.bytes import Endian
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.types import BytesLike, ChunkCoords
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
 __all__: list[str] = []

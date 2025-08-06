@@ -30,7 +30,8 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
-    from zarr.core.common import (
+    from zarr.core.dtype import ZDTypeLike
+    from zarr.core.types import (
         JSON,
         AccessModeLiteral,
         ChunkCoords,
@@ -39,7 +40,6 @@ if TYPE_CHECKING:
         ShapeLike,
         ZarrFormat,
     )
-    from zarr.core.dtype import ZDTypeLike
     from zarr.storage import StoreLike
 
 __all__ = [

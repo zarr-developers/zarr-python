@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from zarr.core.array import Array, AsyncArray
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import ChunkCoords
+    from zarr.core.types import ChunkCoords
 
 
 IntSequence = list[int] | npt.NDArray[np.intp]

@@ -31,7 +31,7 @@ from zarr.dtype import (  # type: ignore[attr-defined]
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-    from zarr.core.common import ZarrFormat
+    from zarr.core.types import ZarrFormat
 
 from .test_dtype.conftest import zdtype_examples
 

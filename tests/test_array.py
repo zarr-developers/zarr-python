@@ -41,7 +41,7 @@ from zarr.core.array import (
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
-from zarr.core.common import JSON, ZarrFormat, ceildiv
+from zarr.core.common import ceildiv
 from zarr.core.dtype import (
     DateTime64,
     Float32,
@@ -63,6 +63,7 @@ from zarr.core.indexing import BasicIndexer
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
+from zarr.core.types import JSON, ZarrFormat
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,

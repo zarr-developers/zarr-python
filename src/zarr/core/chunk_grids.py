@@ -14,10 +14,6 @@ import numpy as np
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
-    JSON,
-    ChunkCoords,
-    ChunkCoordsLike,
-    ShapeLike,
     ceildiv,
     parse_named_configuration,
     parse_shapelike,
@@ -29,6 +25,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array import ShardsLike
+    from zarr.core.types import JSON, ChunkCoords, ChunkCoordsLike, ShapeLike
 
 
 def _guess_chunks(

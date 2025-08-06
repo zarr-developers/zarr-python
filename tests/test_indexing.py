@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
-    from zarr.core.common import ChunkCoords
+    from zarr.core.types import ChunkCoords
 
 
 @pytest.fixture
