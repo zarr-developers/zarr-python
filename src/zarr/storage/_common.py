@@ -321,7 +321,7 @@ async def make_store(
     _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):
-        # Already a StorePath
+        # Get underlying store
         return store_like.store
 
     elif isinstance(store_like, Store):

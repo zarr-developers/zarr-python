@@ -21,7 +21,8 @@ from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype.npy.int import UInt8, UInt16
-from zarr.core.group import Group
+from zarr.core.group import Group, GroupMetadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage._local import LocalStore
 
 typer_testing = pytest.importorskip(
@@ -56,21 +57,22 @@ def test_migrate_array(local_store: LocalStore) -> None:
     assert (local_store.root / "zarr.json").exists()
 
     zarr_array = zarr.open(local_store.root, zarr_format=3)
-    metadata = zarr_array.metadata
-    assert metadata.zarr_format == 3
-    assert metadata.node_type == "array"
-    assert metadata.shape == shape
-    assert metadata.chunk_grid == RegularChunkGrid(chunk_shape=chunks)
-    assert metadata.chunk_key_encoding == V2ChunkKeyEncoding(separator=".")
-    assert metadata.data_type == UInt16(endianness="little")
-    assert metadata.codecs == (
-        BytesCodec(endian="little"),
-        BloscCodec(typesize=2, cname="zstd", clevel=3, shuffle="shuffle", blocksize=0),
+
+    expected_metadata = ArrayV3Metadata(
+        shape=shape,
+        data_type=UInt16(endianness="little"),
+        chunk_grid=RegularChunkGrid(chunk_shape=chunks),
+        chunk_key_encoding=V2ChunkKeyEncoding(separator="."),
+        fill_value=fill_value,
+        codecs=(
+            BytesCodec(endian="little"),
+            BloscCodec(typesize=2, cname="zstd", clevel=3, shuffle="shuffle", blocksize=0),
+        ),
+        attributes=attributes,
+        dimension_names=None,
+        storage_transformers=None,
     )
-    assert metadata.fill_value == fill_value
-    assert metadata.attributes == attributes
-    assert metadata.dimension_names is None
-    assert metadata.storage_transformers == ()
+    assert zarr_array.metadata == expected_metadata
 
 
 def test_migrate_group(local_store: LocalStore) -> None:
@@ -82,11 +84,10 @@ def test_migrate_group(local_store: LocalStore) -> None:
     assert (local_store.root / "zarr.json").exists()
 
     zarr_array = zarr.open(local_store.root, zarr_format=3)
-    metadata = zarr_array.metadata
-    assert metadata.zarr_format == 3
-    assert metadata.node_type == "group"
-    assert metadata.attributes == attributes
-    assert metadata.consolidated_metadata is None
+    expected_metadata = GroupMetadata(
+        attributes=attributes, zarr_format=3, consolidated_metadata=None
+    )
+    assert zarr_array.metadata == expected_metadata
 
 
 @pytest.mark.parametrize("separator", [".", "/"])
