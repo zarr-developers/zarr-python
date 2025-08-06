@@ -5,6 +5,7 @@ from typing import Literal, cast
 import numcodecs.abc
 
 import zarr
+from zarr import Array, Group
 from zarr.abc.codec import ArrayArrayCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store
 from zarr.codecs.blosc import BloscCodec, BloscShuffle
@@ -12,7 +13,6 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.array import Array
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.common import (
@@ -25,14 +25,14 @@ from zarr.core.common import (
 )
 from zarr.core.dtype.common import HasEndianness
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.core.group import Group, GroupMetadata
+from zarr.core.group import GroupMetadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.registry import get_codec_class
 from zarr.storage import StorePath
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 def migrate_v2_to_v3(
@@ -41,10 +41,10 @@ def migrate_v2_to_v3(
     output_store: Store | None = None,
     dry_run: bool = False,
 ) -> None:
-    """Migrate all v2 metadata in a zarr hierarchy to v3.
+    """Migrate all v2 metadata in a Zarr store to v3.
 
-    This will create a zarr.json file at each level (for every group / array). v2 files (.zarray, .zattrs etc.)
-    will be left as-is.
+    This will create a zarr.json file at each level of a Zarr hierarchy (for every group / array).
+    v2 files (.zarray, .zattrs etc.) will be left as-is.
 
     Parameters
     ----------
@@ -69,7 +69,7 @@ def migrate_v2_to_v3(
 
 
 def migrate_to_v3(zarr_v2: Array | Group, output_path: StorePath, dry_run: bool = False) -> None:
-    """Migrate all v2 metadata in a zarr array/group to v3.
+    """Migrate all v2 metadata in a Zarr array/group to v3.
 
     Note - if a group is provided, then all arrays / groups within this group will also be converted.
     A zarr.json file will be created for each level and written to output_path, with any v2 files
@@ -141,7 +141,7 @@ async def remove_metadata(
         if force or await _metadata_exists(
             cast(Literal[2, 3], alternative_metadata), store_path / parent_path
         ):
-            logger.info("Deleting metadata at %s", store_path / file_path)
+            _logger.info("Deleting metadata at %s", store_path / file_path)
             if not dry_run:
                 awaitables.append((store_path / file_path).delete())
         else:
@@ -287,7 +287,7 @@ async def _save_v3_metadata(
     if await zarr_json_path.exists():
         raise ValueError(f"{ZARR_JSON} already exists at {zarr_json_path}")
 
-    logger.info("Saving metadata to %s", zarr_json_path)
+    _logger.info("Saving metadata to %s", zarr_json_path)
     to_save = metadata_v3.to_buffer_dict(default_buffer_prototype())
 
     if not dry_run:
