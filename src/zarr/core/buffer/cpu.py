@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import numbers
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -155,7 +156,10 @@ class NDBuffer(core.NDBuffer):
         fill_value: Any | None = None,
     ) -> Self:
         # np.zeros is much faster than np.full, and therefore using it when possible is better.
-        if fill_value is None or (np.isscalar(fill_value) and fill_value == 0):
+        # See https://numpy.org/doc/stable/reference/generated/numpy.isscalar.html#numpy-isscalar
+        # notes for why we use `numbers.Number`.
+        # Tehcnically `numbers.Number` need not support __eq__ hence the `ignore`.
+        if fill_value is None or (isinstance(fill_value, numbers.Number) and fill_value == 0):  # type: ignore[comparison-overlap]
             return cls(np.zeros(shape=tuple(shape), dtype=dtype, order=order))
         else:
             return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
