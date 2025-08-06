@@ -2,13 +2,22 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
 from zarr import create_array
-from zarr.api.asynchronous import ArrayLike, _get_shape_chunks, _like_args, open
+from zarr.api.asynchronous import _get_shape_chunks, _like_args, open
 from zarr.core.buffer.core import default_buffer_prototype
+
+if TYPE_CHECKING:
+    from typing import Any
+
+    import numpy.typing as npt
+
+    from zarr.core.array import Array, AsyncArray
+    from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 
 
 @dataclass
@@ -70,7 +79,10 @@ def test_get_shape_chunks(
         ),
     ],
 )
-def test_like_args(observed: ArrayLike, expected: object) -> None:
+def test_like_args(
+    observed: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any],
+    expected: object,
+) -> None:
     """
     Test the like_args function
     """
