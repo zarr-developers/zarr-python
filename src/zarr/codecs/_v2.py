@@ -4,7 +4,6 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import numcodecs
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
@@ -12,16 +11,15 @@ from zarr.abc.codec import ArrayBytesCodec
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
-    import numcodecs.abc
-
+    from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
 
 
 @dataclass(frozen=True)
 class V2Codec(ArrayBytesCodec):
-    filters: tuple[numcodecs.abc.Codec, ...] | None
-    compressor: numcodecs.abc.Codec | None
+    filters: tuple[Numcodec, ...] | None
+    compressor: Numcodec | None
 
     is_fixed_size = False
 
@@ -86,7 +84,6 @@ class V2Codec(ArrayBytesCodec):
         if self.filters:
             for f in self.filters:
                 chunk = await asyncio.to_thread(f.encode, chunk)
-
         # check object encoding
         if ensure_ndarray_like(chunk).dtype == object:
             raise RuntimeError("cannot write object array without object codec")
@@ -96,7 +93,6 @@ class V2Codec(ArrayBytesCodec):
             cdata = await asyncio.to_thread(self.compressor.encode, chunk)
         else:
             cdata = chunk
-
         cdata = ensure_bytes(cdata)
         return chunk_spec.prototype.buffer.from_bytes(cdata)
 

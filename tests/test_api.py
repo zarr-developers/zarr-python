@@ -1283,7 +1283,7 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
             dtype=src.dtype,
             overwrite=True,
             zarr_format=zarr_format,
-            compressors=compressors,
+            compressors=compressors,  # type: ignore[arg-type]
         )
         z[:10, :10] = src[:10, :10]
 
