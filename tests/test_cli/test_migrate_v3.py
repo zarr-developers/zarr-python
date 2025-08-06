@@ -6,7 +6,6 @@ import numcodecs
 import numcodecs.abc
 import numpy as np
 import pytest
-from numcodecs.zarr3 import LZMA, Delta
 
 import zarr
 from tests.test_cli.conftest import create_nested_zarr
@@ -31,6 +30,8 @@ typer_testing = pytest.importorskip(
 cli = pytest.importorskip("zarr._cli.cli", reason="optional cli dependencies aren't installed")
 
 runner = typer_testing.CliRunner()
+
+NUMCODECS_USER_WARNING = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
 
 
 def test_migrate_array(local_store: LocalStore) -> None:
@@ -283,28 +284,8 @@ def test_migrate_sub_group(
         ),
         (numcodecs.Zstd(level=3), ZstdCodec(level=3)),
         (numcodecs.GZip(level=3), GzipCodec(level=3)),
-        (
-            numcodecs.LZMA(
-                format=lzma.FORMAT_RAW,
-                check=-1,
-                preset=None,
-                filters=[
-                    {"id": lzma.FILTER_DELTA, "dist": 4},
-                    {"id": lzma.FILTER_LZMA2, "preset": 1},
-                ],
-            ),
-            LZMA(
-                format=lzma.FORMAT_RAW,
-                check=-1,
-                preset=None,
-                filters=[
-                    {"id": lzma.FILTER_DELTA, "dist": 4},
-                    {"id": lzma.FILTER_LZMA2, "preset": 1},
-                ],
-            ),
-        ),
     ],
-    ids=["blosc", "zstd", "gzip", "numcodecs-compressor"],
+    ids=["blosc", "zstd", "gzip"],
 )
 def test_migrate_compressor(
     local_store: LocalStore, compressor_v2: numcodecs.abc.Codec, compressor_v3: Codec
@@ -334,9 +315,54 @@ def test_migrate_compressor(
     assert np.all(zarr_array[:] == 1)
 
 
+@pytest.mark.filterwarnings(f"ignore:{NUMCODECS_USER_WARNING}:UserWarning")
+def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
+    """Test migration of a numcodecs compressor without a zarr.codecs equivalent."""
+
+    lzma_settings = {
+        "format": lzma.FORMAT_RAW,
+        "check": -1,
+        "preset": None,
+        "filters": [
+            {"id": lzma.FILTER_DELTA, "dist": 4},
+            {"id": lzma.FILTER_LZMA2, "preset": 1},
+        ],
+    }
+
+    zarr_array = zarr.create_array(
+        store=local_store,
+        shape=(10, 10),
+        chunks=(10, 10),
+        dtype="uint16",
+        compressors=numcodecs.LZMA.from_config(lzma_settings),
+        zarr_format=2,
+        fill_value=0,
+    )
+    zarr_array[:] = 1
+
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    assert result.exit_code == 0
+    assert (local_store.root / "zarr.json").exists()
+
+    zarr_array = zarr.open_array(local_store.root, zarr_format=3)
+    metadata = zarr_array.metadata
+    assert metadata.zarr_format == 3
+    assert metadata.codecs == (
+        BytesCodec(endian="little"),
+        numcodecs.zarr3.LZMA(
+            format=lzma_settings["format"],
+            check=lzma_settings["check"],
+            preset=lzma_settings["preset"],
+            filters=lzma_settings["filters"],
+        ),
+    )
+    assert np.all(zarr_array[:] == 1)
+
+
+@pytest.mark.filterwarnings(f"ignore:{NUMCODECS_USER_WARNING}:UserWarning")
 def test_migrate_filter(local_store: LocalStore) -> None:
     filter_v2 = numcodecs.Delta(dtype="<u2", astype="<u2")
-    filter_v3 = Delta(dtype="<u2", astype="<u2")
+    filter_v3 = numcodecs.zarr3.Delta(dtype="<u2", astype="<u2")
 
     zarr.create_array(
         store=local_store,
@@ -496,7 +522,9 @@ def test_migrate_incorrect_filter(local_store: LocalStore) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    with pytest.warns(UserWarning, match=NUMCODECS_USER_WARNING):
+        result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert (
@@ -517,7 +545,9 @@ def test_migrate_incorrect_compressor(local_store: LocalStore) -> None:
         fill_value=0,
     )
 
-    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    with pytest.warns(UserWarning, match=NUMCODECS_USER_WARNING):
+        result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert (
