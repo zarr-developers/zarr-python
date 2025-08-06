@@ -870,6 +870,30 @@ def test_write_empty_chunks_behavior(
         assert arr.nchunks_initialized == arr.nchunks
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("fill_value", [0.0, -0.0])
+@pytest.mark.parametrize("dtype", ["f4", "f2"])
+def test_write_empty_chunks_negative_zero(
+    zarr_format: ZarrFormat, store: MemoryStore, fill_value: float, dtype: str
+) -> None:
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/3144
+
+    arr = zarr.create_array(
+        store=store,
+        shape=(2,),
+        zarr_format=zarr_format,
+        dtype=dtype,
+        fill_value=fill_value,
+        chunks=(1,),
+        config={"write_empty_chunks": False},
+    )
+    assert arr.nchunks_initialized == 0
+
+    # initialize the with the negated fill value (-0.0 for +0.0, +0.0 for -0.0)
+    arr[:] = -fill_value
+    assert arr.nchunks_initialized == arr.nchunks
+
+
 @pytest.mark.parametrize(
     ("fill_value", "expected"),
     [
