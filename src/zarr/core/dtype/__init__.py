@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 from zarr.core.dtype.common import (
@@ -94,6 +95,7 @@ __all__ = [
     "ZDType",
     "data_type_registry",
     "parse_data_type",
+    "parse_dtype",
 ]
 
 data_type_registry = DataTypeRegistry()
@@ -188,17 +190,89 @@ def parse_data_type(
     zarr_format: ZarrFormat,
 ) -> ZDType[TBaseDType, TBaseScalar]:
     """
-    Interpret the input as a ZDType instance.
+    Interpret the input as a ZDType.
+
+    This function wraps ``parse_dtype``. The only difference is the function name. This function may
+    be deprecated in a future version of Zarr Python in favor of ``parse_dtype``.
+
+    Parameters
+    ----------
+    dtype_spec : ZDTypeLike
+        The input to be interpreted as a ZDType. This could be a ZDType, which will be returned
+        directly, or a JSON representation of a ZDType, or a native dtype, or a python object that
+        can be converted into a native dtype.
+    zarr_format : ZarrFormat
+        The Zarr format version. This parameter is required because this function will attempt to
+        parse the JSON representation of a data type, and the JSON representation of data types
+        varies between Zarr 2 and Zarr 3.
+
+    Returns
+    -------
+    ZDType[TBaseDType, TBaseScalar]
+        The ZDType corresponding to the input.
+
+    Examples
+    --------
+    >>> from zarr.dtype import parse_data_type
+    >>> import numpy as np
+    >>> parse_data_type("int32", zarr_format=2)
+    Int32(endianness='little')
+    >>> parse_data_type(np.dtype('S10'), zarr_format=2)
+    NullTerminatedBytes(length=10)
+    >>> parse_data_type({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
+    DateTime64(endianness='little', scale_factor=10, unit='s')
+    """
+    return parse_dtype(dtype_spec, zarr_format=zarr_format)
+
+
+def parse_dtype(
+    dtype_spec: ZDTypeLike,
+    *,
+    zarr_format: ZarrFormat,
+) -> ZDType[TBaseDType, TBaseScalar]:
+    """
+    Convert the input as a ZDType.
+
+    Parameters
+    ----------
+    dtype_spec : ZDTypeLike
+        The input to be converted to a ZDType. This could be a ZDType, which will be returned
+        directly, or a JSON representation of a ZDType, or a numpy dtype, or a python object that
+        can be converted into a native dtype.
+    zarr_format : ZarrFormat
+        The Zarr format version. This parameter is required because this function will attempt to
+        parse the JSON representation of a data type, and the JSON representation of data types
+        varies between Zarr 2 and Zarr 3.
+
+    Returns
+    -------
+    ZDType[TBaseDType, TBaseScalar]
+        The ZDType corresponding to the input.
+
+    Examples
+    --------
+    >>> from zarr.dtype import parse_dtype
+    >>> import numpy as np
+    >>> parse_dtype("int32", zarr_format=2)
+    Int32(endianness='little')
+    >>> parse_dtype(np.dtype('S10'), zarr_format=2)
+    NullTerminatedBytes(length=10)
+    >>> parse_dtype({"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}, zarr_format=3)
+    DateTime64(endianness='little', scale_factor=10, unit='s')
     """
     if isinstance(dtype_spec, ZDType):
         return dtype_spec
-    # dict and zarr_format 3 means that we have a JSON object representation of the dtype
-    if zarr_format == 3 and isinstance(dtype_spec, Mapping):
-        return get_data_type_from_json(dtype_spec, zarr_format=3)
+    # First attempt to interpret the input as JSON
+    if isinstance(dtype_spec, Mapping | str | Sequence):
+        try:
+            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)  # type: ignore[arg-type]
+        except ValueError:
+            # no data type matched this JSON-like input
+            pass
     if dtype_spec in VLEN_UTF8_ALIAS:
         # If the dtype request is one of the aliases for variable-length UTF-8 strings,
         # return that dtype.
         return VariableLengthUTF8()  # type: ignore[return-value]
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
-    # we can create a numpy dtype from it, and do the dtype inference from that
+    # we can create a native dtype from it, and do the dtype inference from that
     return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]

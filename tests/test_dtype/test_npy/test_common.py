@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import math
 import re
 import sys
 from typing import TYPE_CHECKING, Any, get_args
@@ -9,6 +8,7 @@ from typing import TYPE_CHECKING, Any, get_args
 import numpy as np
 import pytest
 
+from tests.conftest import nan_equal
 from zarr.core.dtype.common import ENDIANNESS_STR, JSONFloatV2, SpecialFloatStrings
 from zarr.core.dtype.npy.common import (
     NumpyEndiannessStr,
@@ -33,16 +33,6 @@ from zarr.core.dtype.npy.common import (
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
-
-
-def nan_equal(a: object, b: object) -> bool:
-    """
-    Convenience function for equality comparison between two values ``a`` and ``b``, that might both
-    be NaN. Returns True if both ``a`` and ``b`` are NaN, otherwise returns a == b
-    """
-    if math.isnan(a) and math.isnan(b):  # type: ignore[arg-type]
-        return True
-    return a == b
 
 
 json_float_v2_roundtrip_cases: tuple[tuple[JSONFloatV2, float | np.floating[Any]], ...] = (
