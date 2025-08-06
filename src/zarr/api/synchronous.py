@@ -6,15 +6,16 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 import zarr.core.array
-from zarr._compat import _deprecate_positional_args
 from zarr.core.array import DEFAULT_FILL_VALUE, Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
+from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    import numcodecs.abc
     import numpy as np
     import numpy.typing as npt
 
@@ -159,7 +160,6 @@ def load(
     )
 
 
-@_deprecate_positional_args
 def open(
     store: StoreLike | None = None,
     *,
@@ -254,7 +254,6 @@ def save(
     )
 
 
-@_deprecate_positional_args
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
@@ -341,7 +340,7 @@ def save_group(
     )
 
 
-@deprecated("Use Group.tree instead.")
+@deprecated("Use Group.tree instead.", category=ZarrDeprecationWarning)
 def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
@@ -386,7 +385,6 @@ def array(data: npt.ArrayLike | Array, **kwargs: Any) -> Array:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
-@_deprecate_positional_args
 def group(
     store: StoreLike | None = None,
     *,
@@ -454,7 +452,6 @@ def group(
     )
 
 
-@_deprecate_positional_args
 def open_group(
     store: StoreLike | None = None,
     *,
@@ -613,7 +610,7 @@ def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,

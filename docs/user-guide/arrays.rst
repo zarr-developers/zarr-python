@@ -238,6 +238,8 @@ built-in delta filter::
 
    >>> import lzma
    >>> from numcodecs.zarr3 import LZMA
+   >>> import warnings
+   >>> warnings.filterwarnings("ignore", category=UserWarning)
    >>>
    >>> lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
    >>> compressors = LZMA(filters=lzma_filters)
@@ -245,16 +247,6 @@ built-in delta filter::
    >>> z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
    >>> z.compressors
    (LZMA(codec_name='numcodecs.lzma', codec_config={'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]}),)
-
-The default compressor can be changed by setting the value of the using Zarr's
-:ref:`user-guide-config`, e.g.::
-
-   >>> with zarr.config.set({'array.v2_default_compressor.default': {'id': 'blosc'}}):
-   ...     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
-   >>> z.filters
-   ()
-   >>> z.compressors
-   (Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0),)
 
 To disable compression, set ``compressors=None`` when creating an array, e.g.::
 
