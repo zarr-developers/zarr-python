@@ -3,6 +3,7 @@ import warnings
 from types import ModuleType
 from typing import Any
 
+from zarr.errors import ZarrDeprecationWarning
 from zarr.storage._common import StoreLike, StorePath
 from zarr.storage._fsspec import FsspecStore
 from zarr.storage._local import LocalStore
@@ -33,7 +34,7 @@ class VerboseModule(ModuleType):
                 "setting zarr.storage.default_compressor is deprecated, use "
                 "zarr.config to configure array.v2_default_compressor "
                 "e.g. config.set({'codecs.zstd':'numcodecs.Zstd', 'array.v2_default_compressor.numeric': 'zstd'})",
-                DeprecationWarning,
+                ZarrDeprecationWarning,
                 stacklevel=1,
             )
         else:

@@ -2,54 +2,26 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Self, TypeGuard, overload
-from typing_extensions import Literal
+from typing import TYPE_CHECKING, Literal, Self, overload
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BaseCodec, BytesBytesCodec, CodecJSON, CodecJSON_V2, Numcodec
-from zarr.core.buffer.core import BufferPrototype
-from zarr.core.common import BaseConfig, NamedConfig, ZarrFormat
+from zarr.abc.codec import (
+    ArrayArrayCodec,
+    ArrayBytesCodec,
+    BytesBytesCodec,
+    CodecJSON,
+    CodecJSON_V2,
+)
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
+    from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
-
-
-def _is_numcodec(obj: object) -> TypeGuard[Numcodec]:
-    """
-    Check if the given object implements the Numcodec protocol.
-
-    The @runtime_checkable decorator does not allow issubclass checks for protocols with non-method
-    members (i.e., attributes), so we use this function to manually check for the presence of the
-    required attributes and methods on a given object.
-    """
-    return _is_numcodec_cls(type(obj))
-
-
-def _is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:
-    """
-    Check if the given object is a class implements the Numcodec protocol.
-
-    The @runtime_checkable decorator does not allow issubclass checks for protocols with non-method
-    members (i.e., attributes), so we use this function to manually check for the presence of the
-    required attributes and methods on a given object.
-    """
-    return (
-        isinstance(obj, type)
-        and hasattr(obj, "codec_id")
-        and isinstance(obj.codec_id, str)
-        and hasattr(obj, "encode")
-        and callable(obj.encode)
-        and hasattr(obj, "decode")
-        and callable(obj.decode)
-        and hasattr(obj, "get_config")
-        and callable(obj.get_config)
-        and hasattr(obj, "from_config")
-        and callable(obj.from_config)
-    )
+    from zarr.core.buffer.core import BufferPrototype
+    from zarr.core.common import BaseConfig, NamedConfig, ZarrFormat
 
 
 @dataclass(frozen=True)
@@ -67,9 +39,9 @@ class V2Codec(ArrayBytesCodec):
         cdata = chunk_bytes.as_array_like()
         # decompress
         if self.compressor:
-            chunk = await asyncio.to_thread(self.compressor.decode, cdata)  # type: ignore[arg-type]
+            chunk = await asyncio.to_thread(self.compressor.decode, cdata)
         else:
-            chunk = cdata  # type: ignore[assignment]
+            chunk = cdata
 
         # apply filters
         if self.filters:
@@ -90,7 +62,7 @@ class V2Codec(ArrayBytesCodec):
                 # is an object array. In this case, we need to convert the object
                 # array to the correct dtype.
 
-                chunk = np.array(chunk).astype(chunk_spec.dtype.to_native_dtype())  # type: ignore[assignment]
+                chunk = np.array(chunk).astype(chunk_spec.dtype.to_native_dtype())
 
         elif chunk.dtype != object:
             # If we end up here, someone must have hacked around with the filters.
@@ -119,18 +91,16 @@ class V2Codec(ArrayBytesCodec):
         # apply filters
         if self.filters:
             for f in self.filters:
-                chunk = await asyncio.to_thread(f.encode, chunk)  # type: ignore[arg-type]
-
+                chunk = await asyncio.to_thread(f.encode, chunk)
         # check object encoding
         if ensure_ndarray_like(chunk).dtype == object:
             raise RuntimeError("cannot write object array without object codec")
 
         # compress
         if self.compressor:
-            cdata = await asyncio.to_thread(self.compressor.encode, chunk)  # type: ignore[arg-type]
+            cdata = await asyncio.to_thread(self.compressor.encode, chunk)
         else:
-            cdata = chunk  # type: ignore[assignment]
-
+            cdata = chunk
         cdata = ensure_bytes(cdata)
         return chunk_spec.prototype.buffer.from_bytes(cdata)
 
@@ -160,7 +130,7 @@ class NumcodecsWrapper:
     def _from_json_v2(cls, data: CodecJSON) -> Self:
         raise NotADirectoryError(
             "This class does not support creating instances from JSON data for Zarr format 2."
-            )
+        )
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON) -> Self:
@@ -192,6 +162,8 @@ class NumcodecsWrapper:
 
 class NumcodecsBytesBytesCodec(NumcodecsWrapper, BytesBytesCodec):
     async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
+        from zarr.core.buffer.cpu import as_numpy_array_wrapper
+
         return await asyncio.to_thread(
             as_numpy_array_wrapper,
             self.codec.decode,

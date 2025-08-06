@@ -39,14 +39,21 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.errors import GroupNotFoundError, NodeTypeValidationError
+from zarr.errors import (
+    GroupNotFoundError,
+    NodeTypeValidationError,
+    ZarrDeprecationWarning,
+    ZarrRuntimeWarning,
+    ZarrUserWarning,
+)
 from zarr.storage import StorePath
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from zarr.abc.codec import Codec, Numcodec
+    from zarr.abc.codec import Codec
+    from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
@@ -139,7 +146,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
         else:
             # TODO: Remove type: ignore statement when type inference improves.
             # mypy cannot correctly infer the type of a.metadata here for some reason.
-            new["codecs"] = a.metadata.codecs  # type: ignore[unreachable]
+            new["codecs"] = a.metadata.codecs
 
     else:
         # TODO: set default values compressor/codecs
@@ -160,7 +167,7 @@ def _handle_zarr_version_or_format(
         )
     if zarr_version is not None:
         warnings.warn(
-            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+            "zarr_version is deprecated, use zarr_format", ZarrDeprecationWarning, stacklevel=2
         )
         return zarr_version
     return zarr_format
@@ -226,7 +233,7 @@ async def consolidate_metadata(
         warnings.warn(
             "Consolidated metadata is currently not part in the Zarr format 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
-            category=UserWarning,
+            category=ZarrUserWarning,
             stacklevel=1,
         )
 
@@ -534,7 +541,7 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
-@deprecated("Use AsyncGroup.tree instead.")
+@deprecated("Use AsyncGroup.tree instead.", category=ZarrDeprecationWarning)
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
@@ -672,13 +679,13 @@ async def group(
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
 
     if attributes is None:
         attributes = {}
@@ -825,13 +832,13 @@ async def open_group(
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
     if attributes is None:
@@ -1009,19 +1016,19 @@ async def create(
     )
 
     if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if cache_metadata is not None:
-        warnings.warn("cache_metadata is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_metadata is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if object_codec is not None:
-        warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("object_codec is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if read_only is not None:
-        warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("read_only is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
 
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
@@ -1040,7 +1047,7 @@ async def create(
                 "This is redundant. When both are set, write_empty_chunks will be used instead "
                 "of the value in config."
             )
-            warnings.warn(UserWarning(msg), stacklevel=1)
+            warnings.warn(ZarrUserWarning(msg), stacklevel=1)
         config_parsed = dataclasses.replace(config_parsed, write_empty_chunks=write_empty_chunks)
 
     return await AsyncArray._create(

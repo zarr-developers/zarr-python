@@ -7,10 +7,13 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 from zarr.abc.codec import ArrayArrayCodec, Codec, Numcodec
 from zarr.abc.metadata import Metadata
+from zarr.abc.numcodec import _is_numcodec
+from zarr.codecs._v2 import NumcodecsWrapper
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS
+from zarr.errors import ZarrUserWarning
 from zarr.registry import get_codec
 
 if TYPE_CHECKING:
@@ -207,7 +210,7 @@ class ArrayV2Metadata(Metadata):
                 "This is contrary to the Zarr V2 specification, and will cause an error in the future. "
                 "Use None (or Null in a JSON document) instead of an empty list of filters."
             )
-            warnings.warn(msg, UserWarning, stacklevel=1)
+            warnings.warn(msg, ZarrUserWarning, stacklevel=1)
             _data["filters"] = None
 
         _data = {k: v for k, v in _data.items() if k in expected}
@@ -271,7 +274,7 @@ def parse_zarr_format(data: object) -> Literal[2]:
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_filters(data: object) -> tuple[ArrayArrayCodec, ...] | None:
+def parse_filters(data: object) -> tuple[ArrayArrayCodec | NumcodecsWrapper, ...] | None:
     """
     Parse a potential tuple of filters
     """
@@ -283,7 +286,7 @@ def parse_filters(data: object) -> tuple[ArrayArrayCodec, ...] | None:
         for idx, val in enumerate(data):
             if isinstance(val, (Codec, NumcodecsWrapper)):
                 out.append(val)
-            elif isinstance(val, Numcodec):
+            elif _is_numcodec(val):
                 out.append(NumcodecsWrapper(codec=val))
             elif isinstance(val, dict):
                 codec = get_codec(val, zarr_format=2)
@@ -297,7 +300,7 @@ def parse_filters(data: object) -> tuple[ArrayArrayCodec, ...] | None:
         else:
             return tuple(out)
     # take a single codec instance and wrap it in a tuple
-    if isinstance(data, Numcodec):
+    if _is_numcodec(data):
         return (NumcodecsWrapper(codec=data),)
     elif isinstance(data, Codec):
         return (data,)
@@ -313,7 +316,7 @@ def parse_compressor(data: object) -> Codec | NumcodecsWrapper | None:
     # and again when constructing metadata
     if data is None or isinstance(data, Codec | NumcodecsWrapper):
         return data
-    if isinstance(data, Numcodec):
+    if _is_numcodec(data):
         try:
             return get_codec(data.get_config(), zarr_format=2)
         except KeyError:

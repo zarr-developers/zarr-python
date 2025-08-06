@@ -24,6 +24,7 @@ from typing import (
 from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
+from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -225,7 +226,7 @@ def _warn_write_empty_chunks_kwarg() -> None:
         "argument, as in `config={'write_empty_chunks': True}`,"
         "or change the global 'array.write_empty_chunks' configuration variable."
     )
-    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+    warnings.warn(msg, ZarrRuntimeWarning, stacklevel=2)
 
 
 def _warn_order_kwarg() -> None:
@@ -236,7 +237,7 @@ def _warn_order_kwarg() -> None:
         "argument, as in `config={'order': 'C'}`,"
         "or change the global 'array.order' configuration variable."
     )
-    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+    warnings.warn(msg, ZarrRuntimeWarning, stacklevel=2)
 
 
 def _default_zarr_format() -> ZarrFormat:

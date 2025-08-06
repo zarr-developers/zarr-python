@@ -5,9 +5,9 @@ from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from zarr.codecs._v2 import NumcodecsWrapper
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
+from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
@@ -18,8 +18,11 @@ if TYPE_CHECKING:
         BytesBytesCodec,
         Codec,
         CodecJSON,
+        CodecJSON_V2,
         CodecPipeline,
     )
+    from zarr.abc.numcodec import Numcodec
+    from zarr.codecs._v2 import NumcodecsWrapper
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON, ZarrFormat
 
@@ -165,6 +168,7 @@ def _get_codec_class(
         warnings.warn(
             f"Codec '{key}' not configured in config. Selecting any implementation.",
             stacklevel=2,
+            category=ZarrUserWarning,
         )
         return list(codec_classes.values())[-1]
     selected_codec_cls = codec_classes[config_entry]
@@ -174,12 +178,11 @@ def _get_codec_class(
     raise KeyError(key)
 
 
-def get_codec(request: CodecJSON, *, zarr_format: ZarrFormat) -> Codec:
+def get_codec(request: CodecJSON, *, zarr_format: ZarrFormat) -> Codec | NumcodecsWrapper:
     """
     Get an instance of a codec from a name and a configuration
     """
-    # avoid circular import
-    from zarr.codecs._numcodecs import get_numcodec
+    from zarr.codecs._v2 import NumcodecsWrapper
 
     codec_name: str
     if zarr_format == 2:
@@ -189,19 +192,15 @@ def get_codec(request: CodecJSON, *, zarr_format: ZarrFormat) -> Codec:
             )
         else:
             codec_name = request["id"]
-            codec_config = {k: v for k, v in request.items() if k != "id"}
     elif zarr_format == 3:
         if isinstance(request, str):
             codec_name = request
-            codec_config = {}
         else:
             codec_name = request["name"]
-            codec_config = request.get("configuration", {})
     else:
         raise ValueError(
             f"Invalid zarr format. Must be 2 or 3, got {zarr_format!r}"
         )  # pragma: no cover
-
     try:
         codec_cls = get_codec_class(codec_name)
         return codec_cls.from_json(request, zarr_format=zarr_format)
@@ -233,7 +232,7 @@ def _parse_bytes_bytes_codec(
     """
     # avoid circular import, AKA a sign that this function is in the wrong place
     from zarr.abc.codec import BytesBytesCodec
-    from zarr.codecs.numcodec import Numcodec, NumcodecsBytesBytesCodec, NumcodecsWrapper
+    from zarr.codecs._v2 import Numcodec, NumcodecsBytesBytesCodec, NumcodecsWrapper
 
     result: BytesBytesCodec
     if isinstance(data, dict):
@@ -347,3 +346,31 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
 
 
 _collect_entrypoints()
+
+
+def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
+    """
+    Resolve a numcodec codec from the numcodecs registry.
+
+    This requires the Numcodecs package to be installed.
+
+    Parameters
+    ----------
+    data : CodecJSON_V2
+        The JSON metadata for the codec.
+
+    Returns
+    -------
+    codec : Numcodec
+
+    Examples
+    --------
+
+    >>> codec = get_codec({'id': 'zlib', 'level': 1})
+    >>> codec
+    Zlib(level=1)
+    """
+
+    from numcodecs.registry import get_codec
+
+    return get_codec(data)  # type: ignore[no-any-return]

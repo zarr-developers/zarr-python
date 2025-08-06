@@ -63,12 +63,17 @@ from zarr.core.indexing import BasicIndexer
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
-from zarr.errors import ContainsArrayError, ContainsGroupError
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    ZarrUserWarning,
+)
 from zarr.storage import LocalStore, MemoryStore, StorePath
 
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
+    from zarr.abc.codec import CodecJSON_V3
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
@@ -866,6 +871,30 @@ def test_write_empty_chunks_behavior(
         assert arr.nchunks_initialized == arr.nchunks
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("fill_value", [0.0, -0.0])
+@pytest.mark.parametrize("dtype", ["f4", "f2"])
+def test_write_empty_chunks_negative_zero(
+    zarr_format: ZarrFormat, store: MemoryStore, fill_value: float, dtype: str
+) -> None:
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/3144
+
+    arr = zarr.create_array(
+        store=store,
+        shape=(2,),
+        zarr_format=zarr_format,
+        dtype=dtype,
+        fill_value=fill_value,
+        chunks=(1,),
+        config={"write_empty_chunks": False},
+    )
+    assert arr.nchunks_initialized == 0
+
+    # initialize the with the negated fill value (-0.0 for +0.0, +0.0 for -0.0)
+    arr[:] = -fill_value
+    assert arr.nchunks_initialized == arr.nchunks
+
+
 @pytest.mark.parametrize(
     ("fill_value", "expected"),
     [
@@ -922,13 +951,16 @@ def test_auto_partition_auto_shards(
             expected_shards += (2 * cs,)
         else:
             expected_shards += (cs,)
-
-    auto_shards, _ = _auto_partition(
-        array_shape=array_shape,
-        chunk_shape=chunk_shape,
-        shard_shape="auto",
-        item_size=dtype.itemsize,
-    )
+    with pytest.warns(
+        ZarrUserWarning,
+        match="Automatic shard shape inference is experimental and may change without notice.",
+    ):
+        auto_shards, _ = _auto_partition(
+            array_shape=array_shape,
+            chunk_shape=chunk_shape,
+            shard_shape="auto",
+            item_size=dtype.itemsize,
+        )
     assert auto_shards == expected_shards
 
 
@@ -1315,11 +1347,11 @@ class TestCreateArray:
         assert arr.metadata.filters == filters_expected
 
         # Normalize for property getters
-        compressor_expected = () if compressor_expected is None else (compressor_expected,)
-        filters_expected = () if filters_expected is None else filters_expected
+        arr_compressors_expected = () if compressor_expected is None else (compressor_expected,)
+        arr_filters_expected = () if filters_expected is None else filters_expected
 
-        assert arr.compressors == compressor_expected
-        assert arr.filters == filters_expected
+        assert arr.compressors == arr_compressors_expected
+        assert arr.filters == arr_filters_expected
 
     @staticmethod
     @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthUTF8()])
@@ -1357,11 +1389,12 @@ class TestCreateArray:
             if default_filters is None:
                 expected_filters = ()
             else:
-                expected_filters = default_filters
+                expected_filters = default_filters  # type: ignore[assignment]
+
             if default_compressors is None:
                 expected_compressors = ()
             else:
-                expected_compressors = (default_compressors,)
+                expected_compressors = (default_compressors,)  # type: ignore[assignment]
             expected_serializer = None
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}")
@@ -1631,7 +1664,7 @@ async def test_from_array_arraylike(
 def test_from_array_F_order() -> None:
     arr = zarr.create_array(store={}, data=np.array([1]), order="F", zarr_format=2)
     with pytest.warns(
-        UserWarning,
+        ZarrUserWarning,
         match="The existing order='F' of the source Zarr format 2 array will be ignored.",
     ):
         zarr.from_array(store={}, data=arr, zarr_format=3)
@@ -1665,7 +1698,7 @@ def test_roundtrip_numcodecs() -> None:
         {"name": "numcodecs.shuffle", "configuration": {"elementsize": 2}},
         {"name": "numcodecs.zlib", "configuration": {"level": 4}},
     ]
-    filters = [
+    filters: list[CodecJSON_V3] = [
         {
             "name": "numcodecs.fixedscaleoffset",
             "configuration": {
@@ -1679,21 +1712,24 @@ def test_roundtrip_numcodecs() -> None:
 
     # Create the array with the correct codecs
     root = zarr.group(store)
-    root.create_array(
-        "test",
-        shape=(720, 1440),
-        chunks=(720, 1440),
-        dtype="float64",
-        compressors=compressors,  # type: ignore[arg-type]
-        filters=filters,
-        fill_value=-9.99,
-        dimension_names=["lat", "lon"],
-    )
+    warn_msg = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
+    with pytest.warns(UserWarning, match=warn_msg):
+        root.create_array(
+            "test",
+            shape=(720, 1440),
+            chunks=(720, 1440),
+            dtype="float64",
+            compressors=compressors,  # type: ignore[arg-type]
+            filters=filters,  # type: ignore[arg-type]
+            fill_value=-9.99,
+            dimension_names=["lat", "lon"],
+        )
 
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
     root = zarr.open_group(store)
-    metadata = root["test"].metadata.to_dict()
+    with pytest.warns(UserWarning, match=warn_msg):
+        metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
 

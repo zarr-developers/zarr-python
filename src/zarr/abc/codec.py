@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     ClassVar,
@@ -10,6 +9,7 @@ from typing import (
     Literal,
     Self,
     TypedDict,
+    TypeGuard,
     TypeVar,
     overload,
 )
@@ -51,7 +51,13 @@ TName = TypeVar("TName", bound=str, covariant=True)
 
 
 class CodecJSON_V2(TypedDict, Generic[TName]):
+    """The JSON representation of a codec for Zarr V2"""
+
     id: ReadOnly[TName]
+
+
+def _check_codecjson_v2(data: object) -> TypeGuard[CodecJSON_V2[str]]:
+    return isinstance(data, Mapping) and "id" in data and isinstance(data["id"], str)
 
 
 CodecConfig_V3 = NamedConfig[str, Mapping[str, object]]
@@ -505,10 +511,6 @@ def _noop_for_none(
     return wrap
 
 
-# Raised when a codec JSON data is invalid
-class CodecValidationError(ValueError): ...
-
-
 class Numcodec(Protocol):
     """
     A protocol that models the ``numcodecs.abc.Codec`` interface.
@@ -526,5 +528,3 @@ class Numcodec(Protocol):
 
     @classmethod
     def from_config(cls, config: CodecJSON_V2[str]) -> Self: ...
-
-

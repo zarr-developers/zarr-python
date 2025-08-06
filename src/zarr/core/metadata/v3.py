@@ -83,6 +83,7 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     # avoid circular import
     from zarr.codecs.sharding import ShardingCodec
     from zarr.core.codec_pipeline import codecs_from_list
+
     array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
     _codecs = (*array_array_codecs, array_bytes_codec, *bytes_bytes_codecs)
 

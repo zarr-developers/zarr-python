@@ -51,7 +51,13 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import SyncMixin, sync
-from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    MetadataValidationError,
+    ZarrDeprecationWarning,
+    ZarrUserWarning,
+)
 from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
 from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
@@ -558,7 +564,7 @@ class AsyncGroup:
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
                 msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
-                warnings.warn(msg, stacklevel=1)
+                warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
             if zarr_json_bytes is None and zgroup_bytes is None:
                 raise FileNotFoundError(
                     f"could not find zarr.json or .zgroup objects in {store_path}"
@@ -1152,7 +1158,7 @@ class AsyncGroup:
             write_data=write_data,
         )
 
-    @deprecated("Use AsyncGroup.create_array instead.")
+    @deprecated("Use AsyncGroup.create_array instead.", category=ZarrDeprecationWarning)
     async def create_dataset(
         self, name: str, *, shape: ShapeLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
@@ -1186,7 +1192,7 @@ class AsyncGroup:
             await array.setitem(slice(None), data)
         return array
 
-    @deprecated("Use AsyncGroup.require_array instead.")
+    @deprecated("Use AsyncGroup.require_array instead.", category=ZarrDeprecationWarning)
     async def require_dataset(
         self,
         name: str,
@@ -2587,7 +2593,7 @@ class Group(SyncMixin):
             )
         )
 
-    @deprecated("Use Group.create_array instead.")
+    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
     def create_dataset(self, name: str, **kwargs: Any) -> Array:
         """Create an array.
 
@@ -2611,7 +2617,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
-    @deprecated("Use Group.require_array instead.")
+    @deprecated("Use Group.require_array instead.", category=ZarrDeprecationWarning)
     def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
@@ -2833,7 +2839,7 @@ class Group(SyncMixin):
         """
         return self._sync(self._async_group.move(source, dest))
 
-    @deprecated("Use Group.create_array instead.")
+    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
     def array(
         self,
         name: str,
@@ -3385,7 +3391,7 @@ async def _iter_members(
             # in which case `key` cannot be the name of a sub-array or sub-group.
             warnings.warn(
                 f"Object at {e.args[0]} is not recognized as a component of a Zarr hierarchy.",
-                UserWarning,
+                ZarrUserWarning,
                 stacklevel=1,
             )
             continue

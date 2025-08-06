@@ -431,10 +431,12 @@ class Store(ABC):
         FileNotFoundError
             When the given key does not exist in the store.
         """
-        from zarr.core.buffer.core import default_buffer_prototype
+
         # Note to implementers: this default implementation is very inefficient since
         # it requires reading the entire object. Many systems will have ways to get the
         # size of an object without reading it.
+        from zarr.core.buffer.core import default_buffer_prototype
+
         value = await self.get(key, prototype=default_buffer_prototype())
         if value is None:
             raise FileNotFoundError(key)
@@ -475,6 +477,7 @@ class Store(ABC):
         # would be in memory at once).
         from zarr.core.common import concurrent_map
         from zarr.core.config import config
+
         keys = [(x,) async for x in self.list_prefix(prefix)]
         limit = config.get("async.concurrency")
         sizes = await concurrent_map(keys, self.getsize, limit=limit)
