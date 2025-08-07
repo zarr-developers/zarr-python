@@ -42,6 +42,7 @@ def skip_if_nested_chunks(**kwargs):
     if kwargs.get("dimension_separator") == "/":
         pytest.skip("nested chunks are unsupported")
 
+
 class TestLRUStoreCache(StoreTests[LRUStoreCache, cpu.Buffer]):
     store_cls = LRUStoreCache
     buffer_cls = cpu.buffer_prototype.buffer
@@ -312,5 +313,3 @@ class TestLRUStoreCache(StoreTests[LRUStoreCache, cpu.Buffer]):
         assert 3 == store.counter["__contains__", foo_key]
         assert keys == sorted(store)
         assert 1 == store.counter["__iter__"]
-
-

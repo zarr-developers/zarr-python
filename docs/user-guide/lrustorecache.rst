@@ -35,7 +35,7 @@ Creating an LRUStoreCache is straightforward - simply wrap any existing store wi
    >>>
    >>> # Create an array using the cached store
    >>> zarr_array = zarr.zeros((100, 100), chunks=(10, 10), dtype='f8', store=cache, mode='w')
-   >>> 
+   >>>
    >>> # Write some data to force chunk creation
    >>> zarr_array[:] = np.random.random((100, 100))
 
