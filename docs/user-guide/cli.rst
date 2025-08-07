@@ -70,18 +70,6 @@ Note there is also a shortcut to migrate and remove v2 metadata in one step:
     $ zarr migrate v3 path/to/input.zarr --remove-v2-metadata
 
 
-Dry run
---------
-All commands provide a ``--dry-run`` option that will log changes that would be made on a real run, without creating
-or modifying any files.
-
-.. code-block:: bash
-
-    $ zarr migrate v3 path/to/input.zarr --dry-run
-
-    Dry run enabled - no new files will be created or changed. Log of files that would be created on a real run:
-    Saving metadata to path/to/input.zarr/zarr.json
-
 Remove metadata
 ----------------
 
@@ -105,6 +93,31 @@ To override this behaviour use ``--force``:
 .. code-block:: bash
 
     $ zarr remove-metadata v3 path/to/input.zarr --force
+
+
+Dry run
+--------
+All commands provide a ``--dry-run`` option that will log changes that would be made on a real run, without creating
+or modifying any files.
+
+.. code-block:: bash
+
+    $ zarr migrate v3 path/to/input.zarr --dry-run
+
+    Dry run enabled - no new files will be created or changed. Log of files that would be created on a real run:
+    Saving metadata to path/to/input.zarr/zarr.json
+
+
+Verbose
+--------
+You can also add ``--verbose`` **before** any command, to see a full log of its actions:
+
+.. code-block:: bash
+
+    $ zarr --verbose migrate v3 path/to/input.zarr
+
+    $ zarr --verbose remove-metadata v2 path/to/input.zarr
+
 
 Equivalent functions
 --------------------
