@@ -47,10 +47,9 @@ from zarr.errors import (
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
-from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
+from zarr.storage import LatencyStore, LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, normalize_path
-from zarr.storage import LatencyStore
 
 from .conftest import meta_from_array, parse_store
 

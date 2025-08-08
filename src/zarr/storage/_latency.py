@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 
-from zarr.storage._wrapper import WrapperStore
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.storage._wrapper import WrapperStore
 
 
 class LatencyStore(WrapperStore[Store]):
@@ -13,11 +13,11 @@ class LatencyStore(WrapperStore[Store]):
     adds latency to the `set` and `get` methods. This can be used for
     performance testing.
 
-    Particularly useful for testing downstream applications which will 
-    interact with a high-latency zarr store implementation, 
-    such as one which read from or writes to remote object storage. 
-    For example, by using this class to wrap a ``MemoryStore`` instance, 
-    you can (crudely) simulate the latency of reading and writing from S3 
+    Particularly useful for testing downstream applications which will
+    interact with a high-latency zarr store implementation,
+    such as one which read from or writes to remote object storage.
+    For example, by using this class to wrap a ``MemoryStore`` instance,
+    you can (crudely) simulate the latency of reading and writing from S3
     without having to actually use the network, or a mock like MinIO.
 
     Parameters

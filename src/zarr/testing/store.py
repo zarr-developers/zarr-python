@@ -4,7 +4,6 @@ import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-
 if TYPE_CHECKING:
     from typing import Any
 
