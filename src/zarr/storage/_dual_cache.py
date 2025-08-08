@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import ByteRequest, Store
-from zarr.core.buffer.core import Buffer, BufferPrototype
 from zarr.storage._wrapper import WrapperStore
+
+if TYPE_CHECKING:
+    from zarr.core.buffer.core import Buffer, BufferPrototype
 
 
 class CacheStore(WrapperStore[Store]):
@@ -63,10 +65,7 @@ class CacheStore(WrapperStore[Store]):
         return elapsed < self.max_age_seconds
 
     async def _get_try_cache(
-        self,
-        key: str,
-        prototype: BufferPrototype,
-        byte_range: ByteRequest | None = None
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         """Try to get data from cache first, falling back to source store."""
         maybe_cached_result = await self._cache.get(key, prototype, byte_range)
@@ -92,10 +91,7 @@ class CacheStore(WrapperStore[Store]):
         return maybe_fresh_result
 
     async def _get_no_cache(
-        self,
-        key: str,
-        prototype: BufferPrototype,
-        byte_range: ByteRequest | None = None
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         """Get data directly from source store and update cache."""
         maybe_fresh_result = await super().get(key, prototype, byte_range)
@@ -199,15 +195,14 @@ class CacheStore(WrapperStore[Store]):
         """Asynchronously clear all cached data and timing information."""
         # Clear timing tracking
         self.key_insert_times.clear()
-        
+
         # Clear the cache store - we need to list and delete all keys
         # since Store doesn't have a clear() method
         try:
-            cache_keys = []
-            async for key in self._cache.list_dir(""):
-                cache_keys.append(key)
+            cache_keys = [key async for key in self._cache.list_dir("")]
 
             for key in cache_keys:
+                await self._cache.delete(key)
                 await self._cache.delete(key)
         except Exception:
             # If listing/clearing fails, just reset timing info

@@ -8,8 +8,8 @@ import time
 import pytest
 
 from zarr.abc.store import Store
-from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.storage import MemoryStore
 from zarr.storage._dual_cache import CacheStore
 
@@ -47,7 +47,9 @@ class TestCacheStore:
         assert result is not None
         assert result.to_bytes() == b"test data"
 
-    async def test_cache_miss_and_population(self, cached_store: CacheStore, source_store: Store) -> None:
+    async def test_cache_miss_and_population(
+        self, cached_store: CacheStore, source_store: Store
+    ) -> None:
         """Test cache miss and subsequent population."""
         # Put data directly in source store (bypassing cache)
         test_data = CPUBuffer.from_bytes(b"source data")
@@ -68,7 +70,7 @@ class TestCacheStore:
         cached_store = CacheStore(
             source_store,
             cache_store=cache_store,
-            max_age_seconds=1  # 1 second expiration
+            max_age_seconds=1,  # 1 second expiration
         )
 
         # Store data
@@ -86,11 +88,7 @@ class TestCacheStore:
 
     async def test_cache_set_data_false(self, source_store: Store, cache_store: Store) -> None:
         """Test behavior when cache_set_data=False."""
-        cached_store = CacheStore(
-            source_store,
-            cache_store=cache_store,
-            cache_set_data=False
-        )
+        cached_store = CacheStore(source_store, cache_store=cache_store, cache_set_data=False)
 
         test_data = CPUBuffer.from_bytes(b"no cache data")
         await cached_store.set("no_cache_key", test_data)
@@ -115,7 +113,9 @@ class TestCacheStore:
         assert not await cached_store._store.exists("delete_key")
         assert not await cached_store._cache.exists("delete_key")
 
-    async def test_exists_checks_source_store(self, cached_store: CacheStore, source_store: Store) -> None:
+    async def test_exists_checks_source_store(
+        self, cached_store: CacheStore, source_store: Store
+    ) -> None:
         """Test that exists() checks the source store (source of truth)."""
         # Put data directly in source
         test_data = CPUBuffer.from_bytes(b"exists test")
@@ -133,26 +133,22 @@ class TestCacheStore:
         await cached_store.set("other/item3", test_data)
 
         # Test list_dir
-        list_items = []
-        async for key in cached_store.list_dir("list/"):
-            list_items.append(key)
+        list_items = [key async for key in cached_store.list_dir("list/")]
         assert len(list_items) >= 2  # Should include our items
 
         # Test list_prefix
-        prefix_items = []
-        async for key in cached_store.list_prefix("list/"):
-            prefix_items.append(key)
+        prefix_items = [key async for key in cached_store.list_prefix("list/")]
         assert len(prefix_items) >= 2
 
     async def test_cache_info(self, cached_store: CacheStore) -> None:
         """Test cache info reporting."""
         info = cached_store.cache_info()
-        
+
         assert "cache_store_type" in info
         assert "max_age_seconds" in info
         assert "cache_set_data" in info
         assert "tracked_keys" in info
-        
+
         assert info["cache_store_type"] == "MemoryStore"
         assert info["max_age_seconds"] == "infinity"
         assert info["cache_set_data"] is True
@@ -161,7 +157,7 @@ class TestCacheStore:
         # Add some data and check tracking
         test_data = CPUBuffer.from_bytes(b"info test")
         await cached_store.set("info_key", test_data)
-        
+
         updated_info = cached_store.cache_info()
         assert updated_info["tracked_keys"] == 1
 
@@ -185,11 +181,7 @@ class TestCacheStore:
         """Test that stale cache entries are refreshed from source."""
         source_store = MemoryStore()
         cache_store = MemoryStore()
-        cached_store = CacheStore(
-            source_store,
-            cache_store=cache_store,
-            max_age_seconds=1
-        )
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_age_seconds=1)
 
         # Store initial data
         old_data = CPUBuffer.from_bytes(b"old data")
@@ -214,7 +206,7 @@ class TestCacheStore:
 
         # Should always be fresh
         assert cached_store._is_key_fresh("eternal_key")
-        
+
         # Even after time passes
         await asyncio.sleep(0.1)
         assert cached_store._is_key_fresh("eternal_key")
