@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import ByteRequest, Store
-from zarr.core.buffer import Buffer, BufferPrototype
 from zarr.storage._wrapper import WrapperStore
+
+if TYPE_CHECKING:
+    from zarr.core.buffer import Buffer, BufferPrototype
 
 
 class LatencyStore(WrapperStore[Store]):
