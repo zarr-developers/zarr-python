@@ -71,7 +71,14 @@ class CacheStore(WrapperStore[Store]):
         """Try to get data from cache first, falling back to source store."""
         maybe_cached_result = await self._cache.get(key, prototype, byte_range)
         if maybe_cached_result is not None:
-            return maybe_cached_result
+            # Found in cache, but verify it still exists in source
+            if await super().exists(key):
+                return maybe_cached_result
+            else:
+                # Key doesn't exist in source anymore, clean up cache
+                await self._cache.delete(key)
+                self.key_insert_times.pop(key, None)
+                return None
 
         # Not in cache, fetch from source store
         maybe_fresh_result = await super().get(key, prototype, byte_range)

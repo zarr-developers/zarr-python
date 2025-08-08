@@ -133,11 +133,15 @@ class TestCacheStore:
         await cached_store.set("other/item3", test_data)
 
         # Test list_dir
-        list_items = await cached_store.list_dir("list/")
+        list_items = []
+        async for key in cached_store.list_dir("list/"):
+            list_items.append(key)
         assert len(list_items) >= 2  # Should include our items
 
         # Test list_prefix
-        prefix_items = await cached_store.list_prefix("list/")
+        prefix_items = []
+        async for key in cached_store.list_prefix("list/"):
+            prefix_items.append(key)
         assert len(prefix_items) >= 2
 
     async def test_cache_info(self, cached_store: CacheStore) -> None:
