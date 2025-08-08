@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 import zarr.codecs
 import zarr.storage
 from zarr.core.array import init_array
+from zarr.storage import LocalStore, ZipStore
 from zarr.storage._common import StorePath
 
 if TYPE_CHECKING:
@@ -41,8 +42,8 @@ from zarr.api.synchronous import (
     save_group,
 )
 from zarr.core.buffer import NDArrayLike
-from zarr.errors import MetadataValidationError
-from zarr.storage import LocalStore, MemoryStore, ZipStore
+from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
+from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
 
@@ -169,7 +170,7 @@ def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)
     zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=2)
     msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store}. Zarr v3 will be used."
-    with pytest.warns(UserWarning, match=re.escape(msg)):
+    with pytest.warns(ZarrUserWarning, match=re.escape(msg)):
         zarr.open(store=store)
 
 
@@ -470,7 +471,7 @@ def test_tree() -> None:
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
-    with pytest.warns(DeprecationWarning, match=r"Group\.tree instead\."):  # noqa: PT031
+    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.tree instead\."):  # noqa: PT031
         assert repr(zarr.tree(g1)) == repr(g1.tree())
         assert str(zarr.tree(g1)) == str(g1.tree())
 
@@ -1350,7 +1351,7 @@ def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> No
     existing_fpath = add_empty_file(tmp_path)
 
     assert existing_fpath.exists()
-    with contextlib.suppress(FileExistsError, FileNotFoundError, UserWarning):
+    with contextlib.suppress(FileExistsError, FileNotFoundError, ZarrUserWarning):
         open_func(store=store, mode=mode)
     if mode == "w":
         assert not existing_fpath.exists()

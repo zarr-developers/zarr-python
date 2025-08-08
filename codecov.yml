@@ -3,6 +3,7 @@ coverage:
     patch:
       default:
         target: auto
+        informational: true
     project:
       default:
         target: auto
