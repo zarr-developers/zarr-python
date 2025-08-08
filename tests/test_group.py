@@ -50,7 +50,7 @@ from zarr.errors import (
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.storage._utils import _join_paths, normalize_path
-from zarr.testing.store import LatencyStore
+from zarr.storage import LatencyStore
 
 from .conftest import meta_from_array, parse_store
 
