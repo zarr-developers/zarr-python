@@ -15,6 +15,7 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer
+from zarr.errors import ZarrUserWarning
 from zarr.storage._common import _dereference_path
 
 if TYPE_CHECKING:
@@ -101,7 +102,7 @@ class FsspecStore(Store):
 
     Warns
     -----
-    UserWarning
+    ZarrUserWarning
         If the file system (fs) was not created with `asynchronous=True`.
 
     See Also
@@ -137,6 +138,7 @@ class FsspecStore(Store):
         if not self.fs.asynchronous:
             warnings.warn(
                 f"fs ({fs}) was not created with `asynchronous=True`, this may lead to surprising behavior",
+                category=ZarrUserWarning,
                 stacklevel=2,
             )
         if "://" in path and not path.startswith("http"):

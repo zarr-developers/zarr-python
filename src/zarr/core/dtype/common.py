@@ -16,6 +16,7 @@ from typing import (
 from typing_extensions import ReadOnly
 
 from zarr.core.common import NamedConfig
+from zarr.errors import UnstableSpecificationWarning
 
 EndiannessStr = Literal["little", "big"]
 ENDIANNESS_STR: Final = "little", "big"
@@ -214,9 +215,6 @@ class HasObjectCodec:
     """
 
     object_codec_id: ClassVar[str]
-
-
-class UnstableSpecificationWarning(FutureWarning): ...
 
 
 def v3_unstable_dtype_warning(dtype: object) -> None:

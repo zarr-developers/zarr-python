@@ -24,6 +24,7 @@ from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
+from zarr.errors import ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -287,7 +288,9 @@ def test_warning_on_missing_codec_config() -> None:
 
     # warning because multiple implementations are available but none is selected in the config
     register_codec("new_codec", NewCodec2)
-    with pytest.warns(UserWarning, match="not configured in config. Selecting any implementation"):
+    with pytest.warns(
+        ZarrUserWarning, match="not configured in config. Selecting any implementation"
+    ):
         get_codec_class("new_codec")
 
     # no warning if multiple implementations are available and one is selected in the config

@@ -9,6 +9,7 @@ import pytest
 
 import zarr
 from zarr.core.buffer import Buffer, cpu, gpu
+from zarr.errors import ZarrUserWarning
 from zarr.storage import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
@@ -130,6 +131,8 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
             "a": gpu.Buffer.from_bytes(b"aaaa"),
             "b": cpu.Buffer.from_bytes(b"bbbb"),
         }
-        result = GpuMemoryStore.from_dict(d)
+        msg = "Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__ for zero-copy transfers, falling back to slow copy based path"
+        with pytest.warns(ZarrUserWarning, match=msg):
+            result = GpuMemoryStore.from_dict(d)
         for v in result._store_dict.values():
             assert type(v) is gpu.Buffer
