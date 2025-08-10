@@ -49,6 +49,11 @@ class Numcodec(Protocol):
         """
 
     def get_config(self) -> Any: ...
+        """
+        Return a dictionary holding configuration parameters for this
+        codec. Must include an 'id' field with the codec identifier. All
+        values must be compatible with JSON encoding.
+        """
 
     @classmethod
     def from_config(cls, config: Any) -> Self: ...
