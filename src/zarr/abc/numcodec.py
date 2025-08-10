@@ -18,6 +18,9 @@ class Numcodec(Protocol):
 
     @classmethod
     def from_config(cls, config: Any) -> Self: ...
+        """
+        Instantiate codec from a configuration object.
+        """
 
 
 def _is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:
