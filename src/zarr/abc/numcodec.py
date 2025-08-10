@@ -13,6 +13,20 @@ class Numcodec(Protocol):
     codec_id: str
 
     def encode(self, buf: Any) -> Any: ...
+        """Encode data in `buf`.
+
+        Parameters
+        ----------
+        buf
+            Data to be encoded. May be any object supporting the new-style
+            buffer protocol.
+
+        Returns
+        -------
+        enc
+            Encoded data. May be any object supporting the new-style buffer
+            protocol.
+        """
 
     def decode(self, buf: Any, out: Any | None = None) -> Any: ...
         """
