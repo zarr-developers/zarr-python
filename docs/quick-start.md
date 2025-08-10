@@ -11,7 +11,13 @@ shutil.rmtree('data', ignore_errors=True)
 import numpy as np
 from pprint import pprint
 import io
+import warnings
 
+warnings.filterwarnings(
+  "ignore",
+  message="Numcodecs codecs are not in the Zarr version 3 specification*",
+  category=UserWarning
+)
 np.random.seed(0)
 ```
 
