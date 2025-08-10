@@ -15,6 +15,24 @@ class Numcodec(Protocol):
     def encode(self, buf: Any) -> Any: ...
 
     def decode(self, buf: Any, out: Any | None = None) -> Any: ...
+        """
+        Decode data in `buf`.
+
+        Parameters
+        ----------
+        buf : Any
+            Encoded data. May be any object supporting the new-style buffer
+            protocol.
+        out : Any
+            Writeable buffer to store decoded data. N.B. if provided, this buffer must
+            be exactly the right size to store the decoded data.
+
+        Returns
+        -------
+        dec : Any
+            Decoded data. May be any object supporting the new-style
+            buffer protocol.
+        """
 
     def get_config(self) -> Any: ...
 
