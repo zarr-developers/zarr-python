@@ -6,6 +6,8 @@ from typing_extensions import Protocol
 class Numcodec(Protocol):
     """
     A protocol that models the ``numcodecs.abc.Codec`` interface.
+
+	This protocol should be considered experimental; expect the typing for `buf`, and `out` to become stricter.
     """
 
     codec_id: str
