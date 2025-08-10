@@ -1,0 +1,18 @@
+name: Check changelog entries
+
+on:
+  pull_request:
+
+jobs:
+  check-changelogs:
+    name: Check changelog entries
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
+
+      - name: Check changelog entries
+        run: uv run --no-sync python ci/check_changelog_entries.py

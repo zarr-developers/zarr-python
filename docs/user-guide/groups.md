@@ -138,7 +138,7 @@ bar.info_complete()
 # Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
 # Compressors        : (ZstdCodec(level=0, checksum=False),)
 # No. bytes          : 8000000 (7.6M)
-# No. bytes stored   : 1614
+# No. bytes stored   : 1614 (1.6K)
 # Storage ratio      : 4956.6
 # Chunks Initialized : 10
 baz.info

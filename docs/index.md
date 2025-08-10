@@ -82,7 +82,7 @@ If you are using Zarr-Python, we would [love to hear about it](https://github.co
 ### Funding and Support
 The project is fiscally sponsored by [NumFOCUS](https://numfocus.org/), a US
 501(c)(3) public charity, and development has been supported by the
-[MRC Centre for Genomics and Global Health](https://www.sanger.ac.uk/collaboration/mrc-centre-genomics-and-global-health-cggh/)
+[MRC Centre for Genomics and Global Health](https://github.com/cggh/)
 and the [Chan Zuckerberg Initiative](https://chanzuckerberg.com/).
 
 [Donate to Zarr](https://numfocus.org/donate-to-zarr) to support the project!

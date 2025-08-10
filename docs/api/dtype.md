@@ -2,4 +2,4 @@
 title: dtype
 ---
 
-::: zarr.dtype.ZDType
+::: zarr.dtype

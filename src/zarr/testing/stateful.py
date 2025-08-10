@@ -1,5 +1,7 @@
 import builtins
-from typing import Any
+import functools
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -24,14 +26,42 @@ from zarr.storage import LocalStore, MemoryStore
 from zarr.testing.strategies import (
     basic_indices,
     chunk_paths,
+    dimension_names,
     key_ranges,
     node_names,
     np_array_and_chunks,
-    numpy_arrays,
+    orthogonal_indices,
 )
 from zarr.testing.strategies import keys as zarr_keys
 
 MAX_BINARY_SIZE = 100
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def with_frequency(frequency: float) -> Callable[[F], F]:
+    """This needs to be deterministic for hypothesis replaying"""
+
+    def decorator(func: F) -> F:
+        counter_attr = f"__{func.__name__}_counter"
+
+        @functools.wraps(func)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            return func(*args, **kwargs)
+
+        @precondition
+        def frequency_check(f: Any) -> Any:
+            if not hasattr(f, counter_attr):
+                setattr(f, counter_attr, 0)
+
+            current_count = getattr(f, counter_attr) + 1
+            setattr(f, counter_attr, current_count)
+
+            return (current_count * frequency) % 1.0 >= (1.0 - frequency)
+
+        return cast(F, frequency_check(wrapper))
+
+    return decorator
 
 
 def split_prefix_name(path: str) -> tuple[str, str]:
@@ -90,11 +120,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         zarr.group(store=self.store, path=path)
         zarr.group(store=self.model, path=path)
 
-    @rule(
-        data=st.data(),
-        name=node_names,
-        array_and_chunks=np_array_and_chunks(arrays=numpy_arrays(zarr_formats=st.just(3))),
-    )
+    @rule(data=st.data(), name=node_names, array_and_chunks=np_array_and_chunks())
     def add_array(
         self,
         data: DataObject,
@@ -122,12 +148,17 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
                 path=path,
                 store=store,
                 fill_value=fill_value,
+                zarr_format=3,
+                dimension_names=data.draw(
+                    dimension_names(ndim=array.ndim), label="dimension names"
+                ),
                 # Chose bytes codec to avoid wasting time compressing the data being written
                 codecs=[BytesCodec()],
             )
         self.all_arrays.add(path)
 
     @rule()
+    @with_frequency(0.25)
     def clear(self) -> None:
         note("clearing")
         import zarr
@@ -194,6 +225,14 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
 
     @precondition(lambda self: bool(self.all_arrays))
     @rule(data=st.data())
+    def check_array(self, data: DataObject) -> None:
+        path = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        actual = zarr.open_array(self.store, path=path)[:]
+        expected = zarr.open_array(self.model, path=path)[:]
+        np.testing.assert_equal(actual, expected)
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
     def overwrite_array_basic_indexing(self, data: DataObject) -> None:
         array = data.draw(st.sampled_from(sorted(self.all_arrays)))
         model_array = zarr.open_array(path=array, store=self.model)
@@ -205,6 +244,20 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         )
         model_array[slicer] = new_data
         store_array[slicer] = new_data
+
+    @precondition(lambda self: bool(self.all_arrays))
+    @rule(data=st.data())
+    def overwrite_array_orthogonal_indexing(self, data: DataObject) -> None:
+        array = data.draw(st.sampled_from(sorted(self.all_arrays)))
+        model_array = zarr.open_array(path=array, store=self.model)
+        store_array = zarr.open_array(path=array, store=self.store)
+        indexer, _ = data.draw(orthogonal_indices(shape=model_array.shape))
+        note(f"overwriting array orthogonal {indexer=}")
+        new_data = data.draw(
+            npst.arrays(shape=model_array.oindex[indexer].shape, dtype=model_array.dtype)  # type: ignore[union-attr]
+        )
+        model_array.oindex[indexer] = new_data
+        store_array.oindex[indexer] = new_data
 
     @precondition(lambda self: bool(self.all_arrays))
     @rule(data=st.data())
@@ -248,7 +301,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     #     array_path = data.draw(st.sampled_from(self.all_arrays), label="Array move source")
     #     to_group = data.draw(st.sampled_from(self.all_groups), label="Array move destination")
 
-    #     # fixme renaiming to self?
+    #     # fixme renaming to self?
     #     array_name = os.path.basename(array_path)
     #     assume(self.model.can_add(to_group, array_name))
     #     new_path = f"{to_group}/{array_name}".lstrip("/")
@@ -265,7 +318,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
 
     #     from_group_name = os.path.basename(from_group)
     #     assume(self.model.can_add(to_group, from_group_name))
-    #     # fixme renaiming to self?
+    #     # fixme renaming to self?
     #     new_path = f"{to_group}/{from_group_name}".lstrip("/")
     #     note(f"moving group '{from_group}' -> '{new_path}'")
     #     self.model.rename(from_group, new_path)
@@ -290,9 +343,10 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     @precondition(lambda self: len(self.all_groups) >= 2)  # fixme don't delete root
     @rule(data=st.data())
     def delete_group_using_del(self, data: DataObject) -> None:
-        group_path = data.draw(
-            st.sampled_from(sorted(self.all_groups)), label="Group deletion target"
-        )
+        # ensure that we don't include the root group in the list of member names that we try
+        # to delete
+        member_names = tuple(filter(lambda v: "/" in v, sorted(self.all_groups)))
+        group_path = data.draw(st.sampled_from(member_names), label="Group deletion target")
         prefix, group_name = split_prefix_name(group_path)
         note(f"Deleting group '{group_path=!r}', {prefix=!r}, {group_name=!r} using delete")
         members = zarr.open_group(store=self.model, path=group_path).members(max_depth=None)

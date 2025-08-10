@@ -23,7 +23,9 @@ The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total). The data is written to a
 `zarr.storage.MemoryStore` (e.g. an in-memory dict). See
-[Persistent arrays](#persistent-arrays) for details on storing arrays in other stores.
+[Persistent arrays](#persistent-arrays) for details on storing arrays in other stores,
+and see [Data types](data_types.md) for an in-depth look at the data types supported
+by Zarr.
 
 For a complete list of array creation routines see the `zarr`
 module documentation.
@@ -220,16 +222,6 @@ z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.
 print(f"Compressors: {z.compressors}")
 ```
 
-The default compressor can be changed by setting the value of the using Zarr's
-configuration system, e.g.:
-
-```python exec="true" session="arrays" source="material-block" result="ansi"
-with zarr.config.set({'array.v2_default_compressor.default': {'id': 'blosc'}}):
-    z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
-print(f"Filter: {z.filters}")
-print(f"Compressors: {z.compressors}")
-```
-
 To disable compression, set `compressors=None` when creating an array, e.g.:
 
 ```python exec="true" session="arrays" source="material-block" result="ansi"
@@ -265,7 +257,7 @@ filters = [Delta(dtype='int32')]
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle=zarr.codecs.BloscShuffle.shuffle)
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
 z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
-print(z.info)
+print(z.info_complete())
 ```
 
 For more information about available filter codecs, see the [Numcodecs](https://numcodecs.readthedocs.io/) documentation.
@@ -573,18 +565,6 @@ Without the `shards` argument, there would be 10,000 chunks stored as individual
 ## Missing features in 3.0
 
 The following features have not been ported to 3.0 yet.
-
-### Object arrays
-
-See the Zarr-Python 2 documentation on [Object arrays](https://zarr.readthedocs.io/en/support-v2/tutorial.html#object-arrays) for more details.
-
-### Fixed-length string arrays
-
-See the Zarr-Python 2 documentation on [Fixed-length string arrays](https://zarr.readthedocs.io/en/support-v2/tutorial.html#string-arrays) for more details.
-
-### Datetime and Timedelta arrays
-
-See the Zarr-Python 2 documentation on [Datetime and Timedelta](https://zarr.readthedocs.io/en/support-v2/tutorial.html#datetimes-and-timedeltas) for more details.
 
 ### Copying and migrating data
 

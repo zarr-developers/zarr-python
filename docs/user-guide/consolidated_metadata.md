@@ -24,7 +24,9 @@ attribute of the `GroupMetadata` object.
 
 ```python
 import zarr
+import warnings
 
+warnings.filterwarnings("ignore", category=UserWarning)
 store = zarr.storage.MemoryStore()
 group = zarr.create_group(store=store)
 group.create_array(shape=(1,), name='a', dtype='float64')
@@ -44,7 +46,7 @@ that can be used.:
 consolidated = zarr.open_group(store=store)
 consolidated_metadata = consolidated.metadata.consolidated_metadata.metadata
 from pprint import pprint
-pprint(dict(sorted(consolidated_metadata.items())))
+pprint(dict(consolidated_metadata.items()))
 # {'a': ArrayV3Metadata(shape=(1,),
 #                        data_type=Float64(endianness='little'),
 #                        chunk_grid=RegularChunkGrid(chunk_shape=(1,)),
@@ -103,6 +105,14 @@ consolidated = zarr.consolidate_metadata(store)
 consolidated['child'].metadata.consolidated_metadata
 # ConsolidatedMetadata(metadata={'child': GroupMetadata(attributes={'kind': 'grandchild'}, zarr_format=3, consolidated_metadata=ConsolidatedMetadata(metadata={}, kind='inline', must_understand=False), node_type='group')}, kind='inline', must_understand=False)
 ```
+
+!!! info "Added in version 3.1.1"
+
+  The keys in the consolidated metadata are sorted prior to writing. Keys are
+  sorted in ascending order by path depth, where a path is defined as a sequence
+  of strings joined by `"/"`. For keys with the same path length, lexicographic
+  order is used to break the tie. This behaviour ensures deterministic metadata
+  output for a given group.
 
 ## Synchronization and Concurrency
 

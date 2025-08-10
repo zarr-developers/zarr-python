@@ -13,12 +13,12 @@ nav:
   - User Guide:
       - user-guide/installation.md
       - user-guide/arrays.md
-      - user-guide/data_types.md
       - user-guide/groups.md
       - user-guide/attributes.md
       - user-guide/storage.md
       - user-guide/config.md
       - user-guide/v3_migration.md
+      - user-guide/data_types.md
       - user-guide/performance.md
       - user-guide/extending.md
       - user-guide/gpu.md
@@ -95,6 +95,13 @@ theme:
     - navigation.tracking
     - search.suggest
     - search.share
+
+extra:
+  social:
+    - icon: fontawesome/brands/mastodon
+      link: https://fosstodon.org/@zarr
+    - icon: fontawesome/brands/bluesky
+      link: https://bsky.app/profile/zarr.dev
 
 extra_css:
   - overrides/stylesheets/extra.css

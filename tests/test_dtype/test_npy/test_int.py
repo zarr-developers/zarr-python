@@ -34,6 +34,7 @@ class TestInt8(BaseTestZDType):
         (Int8(), 1, np.int8(1)),
         (Int8(), -1, np.int8(-1)),
     )
+    invalid_scalar_params = ((Int8(), {"set!"}), (Int8(), ("tuple",)))
     item_size_params = (Int8(),)
 
 
@@ -68,14 +69,17 @@ class TestInt16(BaseTestZDType):
         (Int16(), 1, np.int16(1)),
         (Int16(), -1, np.int16(-1)),
     )
-
+    invalid_scalar_params = ((Int16(), {"set!"}), (Int16(), ("tuple",)))
     item_size_params = (Int16(),)
 
 
 class TestInt32(BaseTestZDType):
     test_cls = Int32
     scalar_type = np.int32
-    valid_dtype = (np.dtype(">i4"), np.dtype("<i4"))
+    # The behavior of some tests associated with this class variable are
+    # order-dependent -- np.dtype('i') correctly fails certain tests only if it's not
+    # in the last position of the tuple. I have no idea how this is possible!
+    valid_dtype = (np.dtype("i"), np.dtype(">i4"), np.dtype("<i4"))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.uint16),
@@ -103,6 +107,7 @@ class TestInt32(BaseTestZDType):
         (Int32(), 1, np.int32(1)),
         (Int32(), -1, np.int32(-1)),
     )
+    invalid_scalar_params = ((Int32(), {"set!"}), (Int32(), ("tuple",)))
     item_size_params = (Int32(),)
 
 
@@ -137,6 +142,7 @@ class TestInt64(BaseTestZDType):
         (Int64(), 1, np.int64(1)),
         (Int64(), -1, np.int64(-1)),
     )
+    invalid_scalar_params = ((Int64(), {"set!"}), (Int64(), ("tuple",)))
     item_size_params = (Int64(),)
 
 
@@ -168,6 +174,7 @@ class TestUInt8(BaseTestZDType):
         (UInt8(), 1, np.uint8(1)),
         (UInt8(), 0, np.uint8(0)),
     )
+    invalid_scalar_params = ((UInt8(), {"set!"}), (UInt8(), ("tuple",)))
     item_size_params = (UInt8(),)
 
 
@@ -202,6 +209,7 @@ class TestUInt16(BaseTestZDType):
         (UInt16(), 1, np.uint16(1)),
         (UInt16(), 0, np.uint16(0)),
     )
+    invalid_scalar_params = ((UInt16(), {"set!"}), (UInt16(), ("tuple",)))
     item_size_params = (UInt16(),)
 
 
@@ -236,6 +244,7 @@ class TestUInt32(BaseTestZDType):
         (UInt32(), 1, np.uint32(1)),
         (UInt32(), 0, np.uint32(0)),
     )
+    invalid_scalar_params = ((UInt32(), {"set!"}), (UInt32(), ("tuple",)))
     item_size_params = (UInt32(),)
 
 
@@ -270,4 +279,5 @@ class TestUInt64(BaseTestZDType):
         (UInt64(), 1, np.uint64(1)),
         (UInt64(), 0, np.uint64(0)),
     )
+    invalid_scalar_params = ((UInt64(), {"set!"}), (UInt64(), ("tuple",)))
     item_size_params = (UInt64(),)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, get_args
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import numpy as np
 import pytest
@@ -13,19 +13,19 @@ from tests.conftest import skip_object_dtype
 from zarr.core.config import config
 from zarr.core.dtype import (
     AnyDType,
-    Bool,
     DataTypeRegistry,
-    DateTime64,
-    FixedLengthUTF32,
-    Int8,
-    Int16,
     TBaseDType,
     TBaseScalar,
-    VariableLengthUTF8,
+    get_data_type_from_json,
+)
+from zarr.core.dtype.common import unpack_dtype_json
+from zarr.dtype import (  # type: ignore[attr-defined]
+    Bool,
+    FixedLengthUTF32,
     ZDType,
     data_type_registry,
-    get_data_type_from_json,
     parse_data_type,
+    parse_dtype,
 )
 
 if TYPE_CHECKING:
@@ -167,35 +167,63 @@ def set_path() -> Generator[None, None, None]:
 def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
     from package_with_entrypoint import TestDataType
 
-    data_type_registry.lazy_load()
+    data_type_registry._lazy_load()
     instance = TestDataType()
     dtype_json = instance.to_json(zarr_format=zarr_format)
     assert get_data_type_from_json(dtype_json, zarr_format=zarr_format) == instance
     data_type_registry.unregister(TestDataType._zarr_v3_name)
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@pytest.mark.parametrize("data_type", zdtype_examples, ids=str)
+@pytest.mark.parametrize("json_style", [(2, "internal"), (2, "metadata"), (3, None)], ids=str)
 @pytest.mark.parametrize(
-    ("dtype_params", "expected", "zarr_format"),
-    [
-        ("str", VariableLengthUTF8(), 2),
-        ("str", VariableLengthUTF8(), 3),
-        ("int8", Int8(), 3),
-        (Int8(), Int8(), 3),
-        (">i2", Int16(endianness="big"), 2),
-        ("datetime64[10s]", DateTime64(unit="s", scale_factor=10), 2),
-        (
-            {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}},
-            DateTime64(unit="s", scale_factor=10),
-            3,
-        ),
-    ],
+    "dtype_parser_func", [parse_dtype, parse_data_type], ids=["parse_dtype", "parse_data_type"]
 )
 def test_parse_data_type(
-    dtype_params: Any, expected: ZDType[Any, Any], zarr_format: ZarrFormat
+    data_type: ZDType[Any, Any],
+    json_style: tuple[ZarrFormat, None | Literal["internal", "metadata"]],
+    dtype_parser_func: Any,
 ) -> None:
     """
-    Test that parse_data_type accepts alternative representations of ZDType instances, and resolves
-    those inputs to the expected ZDType instance.
+    Test the parsing of data types into ZDType instances.
+
+    This function tests the ability of `dtype_parser_func` to correctly
+    interpret and parse data type specifications into `ZDType` instances
+    according to the specified Zarr format and JSON style.
+
+    Parameters
+    ----------
+    data_type : ZDType[Any, Any]
+        The data type to be tested for parsing.
+    json_style : tuple[ZarrFormat, None or Literal["internal", "metadata"]]
+        A tuple specifying the Zarr format version and the JSON style
+        for Zarr V2 2. For Zarr V2 there are 2 JSON styles: "internal", and
+        "metadata". The internal style takes the form {"name": <data type identifier>, "object_codec_id": <object codec id>},
+        while the metadata style is just <data type identifier>.
+    dtype_parser_func : Any
+        The function to be tested for parsing the data type. This is necessary for compatibility
+        reasons, as we support multiple functions that perform the same data type parsing operation.
     """
-    observed = parse_data_type(dtype_params, zarr_format=zarr_format)
-    assert observed == expected
+    zarr_format, style = json_style
+    dtype_spec: Any
+
+    if zarr_format == 2:
+        dtype_spec = data_type.to_json(zarr_format=zarr_format)
+        if style == "internal":
+            pass
+        elif style == "metadata":
+            dtype_spec = unpack_dtype_json(dtype_spec)
+        else:
+            raise ValueError(f"Invalid zarr v2 json style: {style}")
+    else:
+        dtype_spec = data_type.to_json(zarr_format=zarr_format)
+
+    if dtype_spec == "|O":
+        # The object data type on its own is ambiguous and should fail to resolve.
+        msg = "Zarr data type resolution from object failed."
+        with pytest.raises(ValueError, match=msg):
+            dtype_parser_func(dtype_spec, zarr_format=zarr_format)
+    else:
+        observed = dtype_parser_func(dtype_spec, zarr_format=zarr_format)
+        assert observed == data_type

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
+from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
@@ -93,8 +94,8 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
     __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
 
-    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
-    data_type_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
+    data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
+    data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
 
     __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     __pipeline_registry.lazy_load_list.extend(
@@ -160,6 +161,7 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
         warnings.warn(
             f"Codec '{key}' not configured in config. Selecting any implementation.",
             stacklevel=2,
+            category=ZarrUserWarning,
         )
         return list(codec_classes.values())[-1]
     selected_codec_cls = codec_classes[config_entry]

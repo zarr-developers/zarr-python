@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
@@ -59,6 +60,16 @@ class BaseTestZDType:
         A tuple of invalid JSON representations for Zarr format version 3.
     cast_value_params : ClassVar[tuple[tuple[Any, Any, Any], ...]]
         A tuple of (dtype, value, expected) tuples for testing ZDType.cast_value.
+    scalar_v2_params : ClassVar[tuple[Any, ...]]
+        A tuple of (dtype, scalar json) tuples for testing
+        ZDType.from_json_scalar / ZDType.to_json_scalar for zarr v2
+    scalar_v3_params : ClassVar[tuple[Any, ...]]
+        A tuple of (dtype, scalar json) tuples for testing
+        ZDType.from_json_scalar / ZDType.to_json_scalar for zarr v3
+    invalid_scalar_params : ClassVar[tuple[Any, ...]]
+        A tuple of (dtype, value) tuples, where each value is expected to fail ZDType.cast_value.
+    item_size_params : ClassVar[tuple[Any, ...]]
+        A tuple of (dtype, expected) tuples for testing ZDType.item_size
     """
 
     test_cls: type[ZDType[TBaseDType, TBaseScalar]]
@@ -76,10 +87,13 @@ class BaseTestZDType:
     # pairs. the first element of the pair is used to create a dtype instance, and the second
     # element is the json serialization of the scalar that we want to round-trip.
 
-    scalar_v2_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
+    scalar_v2_params: ClassVar[tuple[tuple[ZDType[Any, Any], Any], ...]] = ()
     scalar_v3_params: ClassVar[tuple[tuple[Any, Any], ...]] = ()
-    cast_value_params: ClassVar[tuple[tuple[Any, Any, Any], ...]]
-    item_size_params: ClassVar[tuple[ZDType[Any, Any], ...]]
+    cast_value_params: ClassVar[tuple[tuple[ZDType[Any, Any], Any, Any], ...]] = ()
+    # Some data types, like bool and string, can consume any python object as a scalar.
+    # So we allow passing None in to this test to indicate that it should be skipped.
+    invalid_scalar_params: ClassVar[tuple[tuple[ZDType[Any, Any], Any], ...] | tuple[None]] = ()
+    item_size_params: ClassVar[tuple[ZDType[Any, Any], ...]] = ()
 
     def json_scalar_equals(self, scalar1: object, scalar2: object) -> bool:
         # An equality check for json-encoded scalars. This defaults to regular equality,
@@ -124,6 +138,21 @@ class BaseTestZDType:
         zdtype, value, expected = cast_value_params
         observed = zdtype.cast_scalar(value)
         assert self.scalar_equals(expected, observed)
+        # check that casting is idempotent
+        assert self.scalar_equals(zdtype.cast_scalar(observed), observed)
+
+    def test_invalid_scalar(
+        self, invalid_scalar_params: tuple[ZDType[Any, Any], Any] | None
+    ) -> None:
+        if invalid_scalar_params is None:
+            pytest.skip(f"No test data provided for {self}.{__name__}")
+        zdtype, data = invalid_scalar_params
+        msg = (
+            f"Cannot convert object {data!r} with type {type(data)} to a scalar compatible with the "
+            f"data type {zdtype}."
+        )
+        with pytest.raises(TypeError, match=re.escape(msg)):
+            zdtype.cast_scalar(data)
 
     def test_item_size(self, item_size_params: ZDType[Any, Any]) -> None:
         """
@@ -133,4 +162,4 @@ class BaseTestZDType:
         if isinstance(item_size_params, HasItemSize):
             assert item_size_params.item_size == item_size_params.to_native_dtype().itemsize
         else:
-            pytest.skip(f"Dtype {item_size_params} does not implement HasItemSize")
+            pytest.skip(f"Data type {item_size_params} does not implement HasItemSize")

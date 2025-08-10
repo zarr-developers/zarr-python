@@ -11,6 +11,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
+from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -68,7 +69,7 @@ class ArrayV2Metadata(Metadata):
     order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: CompressorLikev2
+    compressor: numcodecs.abc.Codec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
@@ -132,10 +133,10 @@ class ArrayV2Metadata(Metadata):
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, indent=json_indent, allow_nan=False).encode()
+                json.dumps(zarray_dict, indent=json_indent, allow_nan=True).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
+                json.dumps(zattrs_dict, indent=json_indent, allow_nan=True).encode()
             ),
         }
 
@@ -188,7 +189,7 @@ class ArrayV2Metadata(Metadata):
                 "This is contrary to the Zarr V2 specification, and will cause an error in the future. "
                 "Use None (or Null in a JSON document) instead of an empty list of filters."
             )
-            warnings.warn(msg, UserWarning, stacklevel=1)
+            warnings.warn(msg, ZarrUserWarning, stacklevel=1)
             _data["filters"] = None
 
         _data = {k: v for k, v in _data.items() if k in expected}
