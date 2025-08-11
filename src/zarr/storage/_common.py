@@ -19,6 +19,7 @@ from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, Contains
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
+from zarr.storage._zep8 import URLStoreResolver, is_zep8_url
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -325,6 +326,23 @@ async def make_store_path(
 
     path_normalized = normalize_path(path)
 
+    # Check if store_like is a ZEP 8 URL
+    if isinstance(store_like, str) and is_zep8_url(store_like):
+        resolver = URLStoreResolver()
+        store_kwargs: dict[str, Any] = {}
+        if mode:
+            store_kwargs["mode"] = mode
+        if storage_options:
+            store_kwargs["storage_options"] = storage_options
+
+        # Extract path from URL and combine with provided path
+        url_path = resolver.extract_path(store_like)
+        combined_path = _combine_paths(url_path, path_normalized)
+
+        # Resolve the ZEP 8 URL to a store
+        store = await resolver.resolve_url(store_like, **store_kwargs)
+        return await StorePath.open(store, path=combined_path, mode=mode)
+
     if (
         not (isinstance(store_like, str) and _is_fsspec_uri(store_like))
         and storage_options is not None
@@ -398,6 +416,32 @@ def _is_fsspec_uri(uri: str) -> bool:
     False
     """
     return "://" in uri or ("::" in uri and "local://" not in uri)
+
+
+def _combine_paths(url_path: str, additional_path: str) -> str:
+    """
+    Combine paths from URL resolution and additional path parameter.
+
+    Parameters
+    ----------
+    url_path : str
+        Path extracted from URL.
+    additional_path : str
+        Additional path to append.
+
+    Returns
+    -------
+    str
+        Combined path.
+    """
+    if not url_path and not additional_path:
+        return ""
+    elif not url_path:
+        return additional_path
+    elif not additional_path:
+        return url_path
+    else:
+        return f"{url_path.rstrip('/')}/{additional_path.lstrip('/')}"
 
 
 async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
