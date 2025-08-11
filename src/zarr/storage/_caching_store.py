@@ -82,7 +82,15 @@ class CacheStore(WrapperStore[Store]):
         maybe_cached_result = await self._cache.get(key, prototype, byte_range)
         if maybe_cached_result is not None:
             logger.info('_get_try_cache: key %s found in cache', key)
-            return maybe_cached_result
+            # Verify the key still exists in source store before returning cached data
+            if await super().exists(key):
+                return maybe_cached_result
+            else:
+                # Key no longer exists in source, clean up cache
+                logger.info('_get_try_cache: key %s no longer exists in source, cleaning up cache', key)
+                await self._cache.delete(key)
+                self.key_insert_times.pop(key, None)
+                return None
         else:
             logger.info('_get_try_cache: key %s not found in cache, fetching from store', key)
             maybe_fresh_result = await super().get(key, prototype, byte_range)
@@ -90,6 +98,7 @@ class CacheStore(WrapperStore[Store]):
                 await self._cache.delete(key)
             else:
                 await self._cache.set(key, maybe_fresh_result)
+                self.key_insert_times[key] = time.monotonic()
             return maybe_fresh_result
 
     async def _get_no_cache(
@@ -130,7 +139,7 @@ class CacheStore(WrapperStore[Store]):
         Buffer | None
             The retrieved data, or None if not found
         """
-        if self._is_key_fresh(key):
+        if not self._is_key_fresh(key):
             logger.info('get: key %s is not fresh, fetching from store', key)
             return await self._get_no_cache(key, prototype, byte_range)
         else:
