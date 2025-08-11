@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from typing_extensions import deprecated
-
 import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr.core.array import DEFAULT_FILL_VALUE, Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
-from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -68,7 +65,6 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
-    "tree",
     "zeros",
     "zeros_like",
 ]
@@ -360,31 +356,6 @@ def save_group(
             **kwargs,
         )
     )
-
-
-@deprecated("Use Group.tree instead.", category=ZarrDeprecationWarning)
-def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
-    """Provide a rich display of the hierarchy.
-
-    !!! warning "Deprecated"
-        `zarr.tree()` is deprecated since v3.0.0 and will be removed in a future release.
-        Use `group.tree()` instead.
-
-    Parameters
-    ----------
-    grp : Group
-        Zarr or h5py group.
-    expand : bool, optional
-        Only relevant for HTML representation. If True, tree will be fully expanded.
-    level : int, optional
-        Maximum depth to descend into hierarchy.
-
-    Returns
-    -------
-    TreeRepr
-        A pretty-printable object displaying the hierarchy.
-    """
-    return sync(async_api.tree(grp._async_group, expand=expand, level=level))
 
 
 # TODO: add type annotations for kwargs
