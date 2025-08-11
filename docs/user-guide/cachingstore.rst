@@ -36,8 +36,8 @@ can be any Store implementation, providing flexibility in cache persistence:
    >>> source_store = zarr.storage.LocalStore('test.zarr')
    >>> cache_store = zarr.storage.MemoryStore()  # In-memory cache
    >>> cached_store = zarr.storage.CacheStore(
-   ...     store=source_store, 
-   ...     cache_store=cache_store, 
+   ...     store=source_store,
+   ...     cache_store=cache_store,
    ...     max_size=256*1024*1024  # 256MB cache
    ... )
    >>>
@@ -83,21 +83,21 @@ is a significant factor. You can use different store types for source and cache:
 
    >>> from zarr.storage import FsspecStore, LocalStore
    >>>
-   >>> # Create a remote store (S3 example)
-   >>> remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})
-   >>> 
-   >>> # Use a local store for persistent caching
-   >>> local_cache_store = LocalStore('cache_data')
-   >>> 
+   >>> # Create a remote store (S3 example) - for demonstration only
+   >>> remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})  # doctest: +SKIP
+   >>>
+   >>> # Use a local store for persistent caching  
+   >>> local_cache_store = LocalStore('cache_data')  # doctest: +SKIP
+   >>>
    >>> # Create cached store with persistent local cache
-   >>> cached_store = zarr.storage.CacheStore(
+   >>> cached_store = zarr.storage.CacheStore(  # doctest: +SKIP
    ...     store=remote_store,
    ...     cache_store=local_cache_store,
    ...     max_size=512*1024*1024  # 512MB cache
    ... )
    >>>
-   >>> # Open array through cached store
-   >>> z = zarr.open(cached_store)
+   >>> # Open array through cached store  
+   >>> z = zarr.open(cached_store)  # doctest: +SKIP
 
 The first access to any chunk will be slow (network retrieval), but subsequent accesses
 to the same chunk will be served from the local cache, providing dramatic speedup.
@@ -177,7 +177,7 @@ The CacheStore provides statistics to monitor cache performance and state:
    True
    >>> info['tracked_keys'] >= 0
    True
-   >>> info['cached_keys'] >= 0  
+   >>> info['cached_keys'] >= 0
    True
    >>> isinstance(info['cache_set_data'], bool)
    True
@@ -193,14 +193,14 @@ The CacheStore provides methods for manual cache management:
    >>> import asyncio
    >>> asyncio.run(cached_store.clear_cache())  # doctest: +SKIP
    >>>
-   >>> # Check cache info after clearing  
+   >>> # Check cache info after clearing
    >>> info = cached_store.cache_info()  # doctest: +SKIP
    >>> info['tracked_keys'] == 0  # doctest: +SKIP
    True
-   >>> info['current_size'] == 0  # doctest: +SKIP  
+   >>> info['current_size'] == 0  # doctest: +SKIP
    True
 
-The `clear_cache()` method is an async method that clears both the cache store 
+The `clear_cache()` method is an async method that clears both the cache store
 (if it supports the `clear` method) and all internal tracking data.
 
 Best Practices
@@ -235,9 +235,9 @@ Remote Store with Local Cache
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
    >>> from zarr.storage import FsspecStore, LocalStore
-   >>> remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})
-   >>> local_cache = LocalStore('local_cache')
-   >>> cached_store = zarr.storage.CacheStore(
+   >>> remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})  # doctest: +SKIP
+   >>> local_cache = LocalStore('local_cache')  # doctest: +SKIP
+   >>> cached_store = zarr.storage.CacheStore(  # doctest: +SKIP
    ...     store=remote_store,
    ...     cache_store=local_cache,
    ...     max_size=1024*1024*1024,
@@ -286,7 +286,7 @@ Here's a complete example demonstrating cache effectiveness:
    >>> first_access = time.time() - start
    >>>
    >>> start = time.time()
-   >>> data = zarr_array[20:30, 20:30]  # Second access (cache hit)  
+   >>> data = zarr_array[20:30, 20:30]  # Second access (cache hit)
    >>> second_access = time.time() - start
    >>>
    >>> # Check cache statistics
