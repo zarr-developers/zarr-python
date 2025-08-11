@@ -1,6 +1,7 @@
 from typing import Any
 
 __all__ = [
+    "ArrayNotFoundError",
     "BaseZarrError",
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
@@ -32,6 +33,10 @@ class GroupNotFoundError(BaseZarrError, FileNotFoundError):
     """
 
     _msg = "No group found in store {!r} at path {!r}"
+
+
+class ArrayNotFoundError(BaseZarrError):
+    _msg = "array not found at path %r' {0!r}"
 
 
 class ContainsGroupError(BaseZarrError):
