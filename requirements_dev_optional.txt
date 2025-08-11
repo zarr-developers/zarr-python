@@ -5,10 +5,10 @@ lmdb==1.7.3; sys_platform != 'win32'
 ipytree==0.2.2
 ipywidgets==8.1.7
 azure-storage-blob==12.24.1
-redis==6.2.0
+redis==6.4.0
 types-redis
 types-setuptools
-pymongo==4.13.2
+pymongo==4.14.0
 # optional test requirements
 coverage
 pytest-cov==6.2.1
