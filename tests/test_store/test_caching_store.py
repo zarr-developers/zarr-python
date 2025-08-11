@@ -4,19 +4,7 @@ Tests for the dual-store cache implementation.
 
 import asyncio
 import time
-
-import pytest
-
-"""
-Tests for the dual-store cache implementation.
-"""
-
-"""
-Tests for the dual-store cache implementation.
-"""
-
-import asyncio
-import time
+from typing import Any
 
 import pytest
 
@@ -92,7 +80,7 @@ class TestCacheStore:
         await cached_store.set("expire_key", test_data)
 
         # Should be fresh initially (if _is_key_fresh method exists)
-        if hasattr(cached_store, '_is_key_fresh'):
+        if hasattr(cached_store, "_is_key_fresh"):
             assert cached_store._is_key_fresh("expire_key")
 
             # Wait for expiration
@@ -109,7 +97,9 @@ class TestCacheStore:
 
     async def test_cache_set_data_false(self, source_store: Store, cache_store: Store) -> None:
         """Test behavior when cache_set_data=False."""
-        cached_store = CacheStore(source_store, cache_store=cache_store, cache_set_data=False, key_insert_times={})
+        cached_store = CacheStore(
+            source_store, cache_store=cache_store, cache_set_data=False, key_insert_times={}
+        )
 
         test_data = CPUBuffer.from_bytes(b"no cache data")
         await cached_store.set("no_cache_key", test_data)
@@ -165,7 +155,9 @@ class TestCacheStore:
         """Test that stale cache entries are refreshed from source."""
         source_store = MemoryStore()
         cache_store = MemoryStore()
-        cached_store = CacheStore(source_store, cache_store=cache_store, max_age_seconds=1, key_insert_times={})
+        cached_store = CacheStore(
+            source_store, cache_store=cache_store, max_age_seconds=1, key_insert_times={}
+        )
 
         # Store initial data
         old_data = CPUBuffer.from_bytes(b"old data")
@@ -186,9 +178,9 @@ class TestCacheStore:
     async def test_infinity_max_age(self, cached_store: CacheStore) -> None:
         """Test that 'infinity' max_age means cache never expires."""
         # Skip test if _is_key_fresh method doesn't exist
-        if not hasattr(cached_store, '_is_key_fresh'):
+        if not hasattr(cached_store, "_is_key_fresh"):
             pytest.skip("_is_key_fresh method not implemented")
-            
+
         test_data = CPUBuffer.from_bytes(b"eternal data")
         await cached_store.set("eternal_key", test_data)
 
@@ -202,9 +194,9 @@ class TestCacheStore:
     async def test_missing_key_cleanup(self, cached_store: CacheStore, source_store: Store) -> None:
         """Test that accessing non-existent keys cleans up cache."""
         # Skip test if key_insert_times attribute doesn't exist
-        if not hasattr(cached_store, 'key_insert_times'):
+        if not hasattr(cached_store, "key_insert_times"):
             pytest.skip("key_insert_times attribute not implemented")
-            
+
         # Put data in cache but not source
         test_data = CPUBuffer.from_bytes(b"orphaned data")
         await cached_store._cache.set("orphan_key", test_data)
@@ -220,14 +212,19 @@ class TestCacheStore:
         """Test cache_info method returns correct information."""
         # Test initial state
         info = cached_store.cache_info()
-        
+
         # Check all expected keys are present
         expected_keys = {
-            "cache_store_type", "max_age_seconds", "max_size", "current_size",
-            "cache_set_data", "tracked_keys", "cached_keys"
+            "cache_store_type",
+            "max_age_seconds",
+            "max_size",
+            "current_size",
+            "cache_set_data",
+            "tracked_keys",
+            "cached_keys",
         }
         assert set(info.keys()) == expected_keys
-        
+
         # Check initial values
         assert info["cache_store_type"] == "MemoryStore"
         assert info["max_age_seconds"] == "infinity"
@@ -251,16 +248,16 @@ class TestCacheStore:
         """Test cache_info with max_size configuration."""
         source_store = MemoryStore()
         cache_store = MemoryStore()
-        
+
         # Create cache with specific max_size and max_age
         cached_store = CacheStore(
             source_store,
             cache_store=cache_store,
             max_size=1024,
             max_age_seconds=300,
-            key_insert_times={}
+            key_insert_times={},
         )
-        
+
         info = cached_store.cache_info()
         assert info["max_size"] == 1024
         assert info["max_age_seconds"] == 300
@@ -271,76 +268,72 @@ class TestCacheStore:
         # Add some test data
         test_data1 = CPUBuffer.from_bytes(b"test data 1")
         test_data2 = CPUBuffer.from_bytes(b"test data 2")
-        
+
         await cached_store.set("clear_test_1", test_data1)
         await cached_store.set("clear_test_2", test_data2)
-        
+
         # Verify data is cached
         info_before = cached_store.cache_info()
         assert info_before["tracked_keys"] == 2
         assert info_before["cached_keys"] == 2
         assert info_before["current_size"] > 0
-        
+
         # Verify data exists in cache
         assert await cached_store._cache.exists("clear_test_1")
         assert await cached_store._cache.exists("clear_test_2")
-        
+
         # Clear the cache
         await cached_store.clear_cache()
-        
+
         # Verify cache is cleared
         info_after = cached_store.cache_info()
         assert info_after["tracked_keys"] == 0
         assert info_after["cached_keys"] == 0
         assert info_after["current_size"] == 0
-        
+
         # Verify data is removed from cache store (if it supports clear)
-        if hasattr(cached_store._cache, 'clear'):
+        if hasattr(cached_store._cache, "clear"):
             # If cache store supports clear, all data should be gone
             assert not await cached_store._cache.exists("clear_test_1")
             assert not await cached_store._cache.exists("clear_test_2")
-        
+
         # Verify data still exists in source store
         assert await cached_store._store.exists("clear_test_1")
         assert await cached_store._store.exists("clear_test_2")
 
     async def test_clear_cache_with_cache_store_without_clear(self) -> None:
         """Test clear_cache when cache store doesn't support clear method."""
-        # Create a simple mock cache store without clear method
-        from typing import Any
-        
-        class MockCacheStore(MemoryStore):
-            def __init__(self) -> None:
-                super().__init__()
-            
-            # Override to not have clear method
-            def __getattribute__(self, name: str) -> Any:
-                if name == 'clear':
+
+        # Create a mock cache store that wraps MemoryStore but doesn't expose clear
+        memory_store = MemoryStore()
+
+        class MockCacheStore:
+            def __init__(self, wrapped_store: MemoryStore) -> None:
+                self._wrapped = wrapped_store
+
+            def __getattr__(self, name: str) -> Any:
+                if name == "clear":
                     raise AttributeError("'MockCacheStore' object has no attribute 'clear'")
-                return super().__getattribute__(name)
-        
+                return getattr(self._wrapped, name)
+
         source_store = MemoryStore()
-        mock_cache_store = MockCacheStore()
-        
+        mock_cache_store = MockCacheStore(memory_store)
+
         # Verify mock doesn't have clear
-        assert not hasattr(mock_cache_store, 'clear')
-        
-        cached_store = CacheStore(
-            source_store,
-            cache_store=mock_cache_store,
-            key_insert_times={}
-        )
-        
+        assert not hasattr(mock_cache_store, "clear")
+
+        cached_store = CacheStore(source_store, cache_store=mock_cache_store, key_insert_times={})
+
         # Add test data
         test_data = CPUBuffer.from_bytes(b"test data")
         await cached_store.set("mock_test", test_data)
-        
+
         # Verify tracking before clear
         assert cached_store.cache_info()["tracked_keys"] == 1
-        
+
         # Clear cache (should only clear tracking, not the cache store since it has no clear method)
         await cached_store.clear_cache()
-        
+
         # Verify tracking is cleared
         info = cached_store.cache_info()
         assert info["tracked_keys"] == 0

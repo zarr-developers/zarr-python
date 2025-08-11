@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import logging
 import time
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.storage._wrapper import WrapperStore
-import logging
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,11 @@ def buffer_size(v: Any) -> int:
         # Fallback to numpy if available
         try:
             import numpy as np
+
             return int(np.asarray(v).nbytes)
         except ImportError:
             # If numpy not available, estimate size
-            return len(str(v).encode('utf-8'))
+            return len(str(v).encode("utf-8"))
 
 
 class CacheStore(WrapperStore[Store]):
@@ -85,11 +87,17 @@ class CacheStore(WrapperStore[Store]):
         max_age_seconds: int | str = "infinity",
         max_size: int | None = None,
         key_insert_times: dict[str, float] | None = None,
-        cache_set_data: bool = True
+        cache_set_data: bool = True,
     ) -> None:
         super().__init__(store)
         self._cache = cache_store
-        self.max_age_seconds = max_age_seconds
+        # Validate and convert max_age_seconds
+        if isinstance(max_age_seconds, str):
+            if max_age_seconds != "infinity":
+                raise ValueError("max_age_seconds string value must be 'infinity'")
+            self.max_age_seconds = "infinity"
+        else:
+            self.max_age_seconds = max_age_seconds
         self.max_size = max_size
         if key_insert_times is None:
             self.key_insert_times = {}
@@ -110,16 +118,8 @@ class CacheStore(WrapperStore[Store]):
 
     def _get_cache_size(self, key: str) -> int:
         """Get the size of a cached item."""
-        try:
-            # Try to get the size from the cache store if it supports getsize
-            if hasattr(self._cache, 'getsize'):
-                # This would be async, but we need sync here
-                # For now, estimate size by getting the data
-                pass
-            # For now, we'll estimate by getting the data when we cache it
-            return 0  # Will be properly set when caching
-        except Exception:
-            return 0
+        # For now, we'll estimate by getting the data when we cache it
+        return 0  # Will be properly set when caching
 
     def _accommodate_value(self, value_size: int) -> None:
         """Ensure there is enough space in the cache for a new value."""
@@ -142,9 +142,9 @@ class CacheStore(WrapperStore[Store]):
             if key in self.key_insert_times:
                 del self.key_insert_times[key]
             # Note: Actual size reduction will happen when we get the item size
-            logger.info('_evict_key: evicted key %s from cache', key)
+            logger.info("_evict_key: evicted key %s from cache", key)
         except Exception as e:
-            logger.warning('_evict_key: failed to evict key %s: %s', key, e)
+            logger.warning("_evict_key: failed to evict key %s: %s", key, e)
 
     def _cache_value(self, key: str, value: Any) -> None:
         """Cache a value with size tracking."""
@@ -152,7 +152,11 @@ class CacheStore(WrapperStore[Store]):
 
         # Check if value exceeds max size
         if self.max_size is not None and value_size > self.max_size:
-            logger.warning('_cache_value: value size %d exceeds max_size %d, not caching', value_size, self.max_size)
+            logger.warning(
+                "_cache_value: value size %d exceeds max_size %d, not caching",
+                value_size,
+                self.max_size,
+            )
             return
 
         # Make room for the new value
@@ -163,7 +167,7 @@ class CacheStore(WrapperStore[Store]):
         self._current_size += value_size
         self.key_insert_times[key] = time.monotonic()
 
-        logger.info('_cache_value: cached key %s with size %d bytes', key, value_size)
+        logger.info("_cache_value: cached key %s with size %d bytes", key, value_size)
 
     def _update_access_order(self, key: str) -> None:
         """Update the access order for LRU tracking."""
@@ -184,7 +188,7 @@ class CacheStore(WrapperStore[Store]):
         """Try to get data from cache first, falling back to source store."""
         maybe_cached_result = await self._cache.get(key, prototype, byte_range)
         if maybe_cached_result is not None:
-            logger.info('_get_try_cache: key %s found in cache', key)
+            logger.info("_get_try_cache: key %s found in cache", key)
             # Update access order for LRU
             self._update_access_order(key)
             # Verify the key still exists in source store before returning cached data
@@ -192,12 +196,14 @@ class CacheStore(WrapperStore[Store]):
                 return maybe_cached_result
             else:
                 # Key no longer exists in source, clean up cache
-                logger.info('_get_try_cache: key %s no longer exists in source, cleaning up cache', key)
+                logger.info(
+                    "_get_try_cache: key %s no longer exists in source, cleaning up cache", key
+                )
                 await self._cache.delete(key)
                 self._remove_from_tracking(key)
                 return None
         else:
-            logger.info('_get_try_cache: key %s not found in cache, fetching from store', key)
+            logger.info("_get_try_cache: key %s not found in cache, fetching from store", key)
             maybe_fresh_result = await super().get(key, prototype, byte_range)
             if maybe_fresh_result is None:
                 await self._cache.delete(key)
@@ -217,7 +223,7 @@ class CacheStore(WrapperStore[Store]):
             await self._cache.delete(key)
             self._remove_from_tracking(key)
         else:
-            logger.info('_get_no_cache: key %s found in store, setting in cache', key)
+            logger.info("_get_no_cache: key %s found in store, setting in cache", key)
             await self._cache.set(key, maybe_fresh_result)
             self._cache_value(key, maybe_fresh_result)
         return maybe_fresh_result
@@ -246,10 +252,10 @@ class CacheStore(WrapperStore[Store]):
             The retrieved data, or None if not found
         """
         if not self._is_key_fresh(key):
-            logger.info('get: key %s is not fresh, fetching from store', key)
+            logger.info("get: key %s is not fresh, fetching from store", key)
             return await self._get_no_cache(key, prototype, byte_range)
         else:
-            logger.info('get: key %s is fresh, trying cache', key)
+            logger.info("get: key %s is fresh, trying cache", key)
             return await self._get_try_cache(key, prototype, byte_range)
 
     async def set(self, key: str, value: Buffer) -> None:
@@ -263,14 +269,14 @@ class CacheStore(WrapperStore[Store]):
         value : Buffer
             The data to store
         """
-        logger.info('set: setting key %s in store', key)
+        logger.info("set: setting key %s in store", key)
         await super().set(key, value)
         if self.cache_set_data:
-            logger.info('set: setting key %s in cache', key)
+            logger.info("set: setting key %s in cache", key)
             await self._cache.set(key, value)
             self._cache_value(key, value)
         else:
-            logger.info('set: deleting key %s from cache', key)
+            logger.info("set: deleting key %s from cache", key)
             await self._cache.delete(key)
             self._remove_from_tracking(key)
 
@@ -283,9 +289,9 @@ class CacheStore(WrapperStore[Store]):
         key : str
             The key to delete
         """
-        logger.info('delete: deleting key %s from store', key)
+        logger.info("delete: deleting key %s from store", key)
         await super().delete(key)
-        logger.info('delete: deleting key %s from cache', key)
+        logger.info("delete: deleting key %s from cache", key)
         await self._cache.delete(key)
         self._remove_from_tracking(key)
 
@@ -293,22 +299,24 @@ class CacheStore(WrapperStore[Store]):
         """Return information about the cache state."""
         return {
             "cache_store_type": type(self._cache).__name__,
-            "max_age_seconds": "infinity" if self.max_age_seconds == "infinity" else self.max_age_seconds,
+            "max_age_seconds": "infinity"
+            if self.max_age_seconds == "infinity"
+            else self.max_age_seconds,
             "max_size": self.max_size,
             "current_size": self._current_size,
             "cache_set_data": self.cache_set_data,
             "tracked_keys": len(self.key_insert_times),
-            "cached_keys": len(self._cache_order)
+            "cached_keys": len(self._cache_order),
         }
 
     async def clear_cache(self) -> None:
         """Clear all cached data and tracking information."""
         # Clear the cache store if it supports clear
-        if hasattr(self._cache, 'clear'):
+        if hasattr(self._cache, "clear"):
             await self._cache.clear()
 
         # Reset tracking
         self.key_insert_times.clear()
         self._cache_order.clear()
         self._current_size = 0
-        logger.info('clear_cache: cleared all cache data')
+        logger.info("clear_cache: cleared all cache data")
