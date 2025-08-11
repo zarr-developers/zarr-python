@@ -299,3 +299,295 @@ class TestCacheStore:
         # Verify data still exists in source store
         assert await cached_store._store.exists("clear_test_1")
         assert await cached_store._store.exists("clear_test_2")
+
+    async def test_max_age_infinity(self) -> None:
+        """Test cache with infinite max age."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            max_age_seconds="infinity"
+        )
+        
+        # Add data and verify it never expires
+        test_data = CPUBuffer.from_bytes(b"test data")
+        await cached_store.set("test_key", test_data)
+        
+        # Even after time passes, key should be fresh
+        assert cached_store._is_key_fresh("test_key")
+
+    async def test_max_age_numeric(self) -> None:
+        """Test cache with numeric max age."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            max_age_seconds=1  # 1 second
+        )
+        
+        # Add data
+        test_data = CPUBuffer.from_bytes(b"test data")
+        await cached_store.set("test_key", test_data)
+        
+        # Key should be fresh initially
+        assert cached_store._is_key_fresh("test_key")
+        
+        # Manually set old timestamp to test expiration
+        cached_store.key_insert_times["test_key"] = time.monotonic() - 2  # 2 seconds ago
+        
+        # Key should now be stale
+        assert not cached_store._is_key_fresh("test_key")
+
+    async def test_cache_set_data_disabled(self) -> None:
+        """Test cache behavior when cache_set_data is False."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            cache_set_data=False
+        )
+
+        # Set data
+        test_data = CPUBuffer.from_bytes(b"test data")
+        await cached_store.set("test_key", test_data)
+
+        # Data should be in source but not in cache
+        assert await source_store.exists("test_key")
+        assert not await cache_store.exists("test_key")
+
+        # Cache info should show no cached data
+        info = cached_store.cache_info()
+        assert info["cache_set_data"] is False
+        assert info["cached_keys"] == 0
+
+    async def test_eviction_with_max_size(self) -> None:
+        """Test LRU eviction when max_size is exceeded."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            max_size=100  # Small cache size
+        )
+
+        # Add data that exceeds cache size
+        small_data = CPUBuffer.from_bytes(b"a" * 40)  # 40 bytes
+        medium_data = CPUBuffer.from_bytes(b"b" * 40)  # 40 bytes
+        large_data = CPUBuffer.from_bytes(b"c" * 40)  # 40 bytes (would exceed 100 byte limit)
+
+        # Set first two items
+        await cached_store.set("key1", small_data)
+        await cached_store.set("key2", medium_data)
+
+        # Cache should have 2 items
+        info = cached_store.cache_info()
+        assert info["cached_keys"] == 2
+        assert info["current_size"] == 80
+
+        # Add third item - should trigger eviction of first item
+        await cached_store.set("key3", large_data)
+
+        # Cache should still have items but first one may be evicted
+        info = cached_store.cache_info()
+        assert info["current_size"] <= 100
+
+    async def test_value_exceeds_max_size(self) -> None:
+        """Test behavior when a single value exceeds max_size."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            max_size=50  # Small cache size
+        )
+
+        # Try to cache data larger than max_size
+        large_data = CPUBuffer.from_bytes(b"x" * 100)  # 100 bytes > 50 byte limit
+        await cached_store.set("large_key", large_data)
+
+        # Data should be in source but not cached
+        assert await source_store.exists("large_key")
+        info = cached_store.cache_info()
+        assert info["cached_keys"] == 0
+        assert info["current_size"] == 0
+
+    async def test_get_nonexistent_key(self) -> None:
+        """Test getting a key that doesn't exist in either store."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store)
+
+        # Try to get nonexistent key
+        result = await cached_store.get("nonexistent", default_buffer_prototype())
+        assert result is None
+
+        # Should not create any cache entries
+        info = cached_store.cache_info()
+        assert info["cached_keys"] == 0
+
+    async def test_delete_both_stores(self) -> None:
+        """Test that delete removes from both source and cache stores."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store)
+
+        # Add data
+        test_data = CPUBuffer.from_bytes(b"test data")
+        await cached_store.set("test_key", test_data)
+
+        # Verify it's in both stores
+        assert await source_store.exists("test_key")
+        assert await cache_store.exists("test_key")
+
+        # Delete
+        await cached_store.delete("test_key")
+
+        # Verify it's removed from both
+        assert not await source_store.exists("test_key")
+        assert not await cache_store.exists("test_key")
+
+        # Verify tracking is updated
+        info = cached_store.cache_info()
+        assert info["cached_keys"] == 0
+
+    async def test_invalid_max_age_seconds(self) -> None:
+        """Test that invalid max_age_seconds values raise ValueError."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+
+        with pytest.raises(ValueError, match="max_age_seconds string value must be 'infinity'"):
+            CacheStore(
+                source_store,
+                cache_store=cache_store,
+                max_age_seconds="invalid"
+            )
+            
+    async def test_buffer_size_function_coverage(self) -> None:
+        """Test different branches of the buffer_size function."""
+        from zarr.storage._caching_store import buffer_size
+        
+        # Test with Buffer object (nbytes attribute)
+        buffer_data = CPUBuffer.from_bytes(b"test data")
+        size = buffer_size(buffer_data)
+        assert size > 0
+        
+        # Test with bytes
+        bytes_data = b"test bytes"
+        size = buffer_size(bytes_data)
+        assert size == len(bytes_data)
+        
+        # Test with bytearray
+        bytearray_data = bytearray(b"test bytearray")
+        size = buffer_size(bytearray_data)
+        assert size == len(bytearray_data)
+        
+        # Test with memoryview
+        memoryview_data = memoryview(b"test memoryview")
+        size = buffer_size(memoryview_data)
+        assert size == len(memoryview_data)
+        
+        # Test fallback for other types - use a simple object
+        # This will go through the numpy fallback or string encoding
+        size = buffer_size("test string")
+        assert size > 0
+    
+    async def test_unlimited_cache_size(self) -> None:
+        """Test behavior when max_size is None (unlimited)."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            max_size=None  # Unlimited cache
+        )
+        
+        # Add large amounts of data
+        for i in range(10):
+            large_data = CPUBuffer.from_bytes(b"x" * 1000)  # 1KB each
+            await cached_store.set(f"large_key_{i}", large_data)
+        
+        # All should be cached since there's no size limit
+        info = cached_store.cache_info()
+        assert info["cached_keys"] == 10
+        assert info["current_size"] == 10000  # 10 * 1000 bytes
+
+    async def test_evict_key_exception_handling(self) -> None:
+        """Test exception handling in _evict_key method."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            max_size=100
+        )
+        
+        # Add some data
+        test_data = CPUBuffer.from_bytes(b"test data")
+        await cached_store.set("test_key", test_data)
+        
+        # Manually corrupt the tracking to trigger exception
+        # Remove from one structure but not others to create inconsistency
+        del cached_store._cache_order["test_key"]
+        
+        # Try to evict - should handle the KeyError gracefully
+        cached_store._evict_key("test_key")
+        
+        # Should still work and not crash
+        info = cached_store.cache_info()
+        assert isinstance(info, dict)
+        
+    async def test_get_no_cache_delete_tracking(self) -> None:
+        """Test _get_no_cache when key doesn't exist and needs cleanup."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store)
+        
+        # First, add key to cache tracking but not to source
+        test_data = CPUBuffer.from_bytes(b"test data")
+        await cache_store.set("phantom_key", test_data)
+        cached_store._cache_value("phantom_key", test_data)
+        
+        # Verify it's in tracking
+        assert "phantom_key" in cached_store._cache_order
+        assert "phantom_key" in cached_store.key_insert_times
+        
+        # Now try to get it - since it's not in source, should clean up tracking
+        result = await cached_store._get_no_cache("phantom_key", default_buffer_prototype())
+        assert result is None
+        
+        # Should have cleaned up tracking
+        assert "phantom_key" not in cached_store._cache_order
+        assert "phantom_key" not in cached_store.key_insert_times
+        
+    async def test_buffer_size_import_error_fallback(self) -> None:
+        """Test buffer_size ImportError fallback."""
+        from unittest.mock import patch
+
+        from zarr.storage._caching_store import buffer_size
+
+        # Mock numpy import to raise ImportError
+        with patch.dict('sys.modules', {'numpy': None}):
+            with patch('builtins.__import__', side_effect=ImportError("No module named 'numpy'")):
+                # This should trigger the ImportError fallback
+                size = buffer_size("test string")
+                assert size == len(b"test string")
+                
+    async def test_accommodate_value_no_max_size(self) -> None:
+        """Test _accommodate_value early return when max_size is None."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            max_size=None  # No size limit
+        )
+        
+        # This should return early without doing anything
+        cached_store._accommodate_value(1000000)  # Large value
+        
+        # Should not affect anything since max_size is None
+        info = cached_store.cache_info()
+        assert info["current_size"] == 0
