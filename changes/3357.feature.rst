@@ -1,1 +1,1 @@
-Add LRUStoreCache to Zarr 3.0
+Add CacheStore to Zarr 3.0
