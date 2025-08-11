@@ -42,7 +42,12 @@ from zarr.api.synchronous import (
     save_group,
 )
 from zarr.core.buffer import NDArrayLike
-from zarr.errors import ArrayNotFoundError, MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
+from zarr.errors import (
+    ArrayNotFoundError,
+    MetadataValidationError,
+    ZarrDeprecationWarning,
+    ZarrUserWarning,
+)
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
