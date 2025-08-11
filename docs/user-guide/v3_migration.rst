@@ -105,7 +105,7 @@ The Array class
 
 2. Defaulting to ``zarr_format=3`` - newly created arrays will use the version 3 of the
    Zarr specification. To continue using version 2, set ``zarr_format=2`` when creating arrays
-   or set ``default_zarr_version=2`` in Zarr's :ref:`runtime configuration <user-guide-config>`.
+   or set ``default_zarr_format=2`` in Zarr's :ref:`runtime configuration <user-guide-config>`.
 
 The Group class
 ~~~~~~~~~~~~~~~
@@ -207,7 +207,7 @@ Miscellaneous
 
 - The keyword argument ``zarr_version`` available in most creation functions in :mod:`zarr`
   (e.g. :func:`zarr.create`, :func:`zarr.open`, :func:`zarr.group`, :func:`zarr.array`) has
-  been deprecated in favor of ``zarr_format``.
+  been removed in favor of ``zarr_format``.
 
 🚧 Work in Progress 🚧
 ----------------------
