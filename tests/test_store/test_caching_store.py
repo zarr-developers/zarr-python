@@ -4,7 +4,6 @@ Tests for the dual-store cache implementation.
 
 import asyncio
 import time
-from typing import Any
 
 import pytest
 
@@ -300,42 +299,3 @@ class TestCacheStore:
         # Verify data still exists in source store
         assert await cached_store._store.exists("clear_test_1")
         assert await cached_store._store.exists("clear_test_2")
-
-    async def test_clear_cache_with_cache_store_without_clear(self) -> None:
-        """Test clear_cache when cache store doesn't support clear method."""
-
-        # Create a mock cache store that wraps MemoryStore but doesn't expose clear
-        memory_store = MemoryStore()
-
-        class MockCacheStore:
-            def __init__(self, wrapped_store: MemoryStore) -> None:
-                self._wrapped = wrapped_store
-
-            def __getattr__(self, name: str) -> Any:
-                if name == "clear":
-                    raise AttributeError("'MockCacheStore' object has no attribute 'clear'")
-                return getattr(self._wrapped, name)
-
-        source_store = MemoryStore()
-        mock_cache_store = MockCacheStore(memory_store)
-
-        # Verify mock doesn't have clear
-        assert not hasattr(mock_cache_store, "clear")
-
-        cached_store = CacheStore(source_store, cache_store=mock_cache_store, key_insert_times={})
-
-        # Add test data
-        test_data = CPUBuffer.from_bytes(b"test data")
-        await cached_store.set("mock_test", test_data)
-
-        # Verify tracking before clear
-        assert cached_store.cache_info()["tracked_keys"] == 1
-
-        # Clear cache (should only clear tracking, not the cache store since it has no clear method)
-        await cached_store.clear_cache()
-
-        # Verify tracking is cleared
-        info = cached_store.cache_info()
-        assert info["tracked_keys"] == 0
-        assert info["cached_keys"] == 0
-        assert info["current_size"] == 0

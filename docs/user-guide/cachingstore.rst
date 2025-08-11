@@ -51,7 +51,7 @@ The dual-store architecture allows you to use different store types for source a
 such as a remote store for source data and a local store for persistent caching.
 
 Performance Benefits
--------------------
+--------------------
 
 The CacheStore provides significant performance improvements for repeated data access:
 
@@ -70,7 +70,8 @@ The CacheStore provides significant performance improvements for repeated data a
    ...     _ = zarr_array_nocache[:]
    >>> elapsed_nocache = time.time() - start
    >>>
-   >>> print(f"Speedup: {elapsed_nocache/elapsed_cache:.2f}x")
+   >>> # Cache provides speedup for repeated access
+   >>> speedup = elapsed_nocache / elapsed_cache  # doctest: +SKIP
 
 Cache effectiveness is particularly pronounced with repeated access to the same data chunks.
 
@@ -103,7 +104,7 @@ to the same chunk will be served from the local cache, providing dramatic speedu
 The cache persists between sessions when using a LocalStore for the cache backend.
 
 Cache Configuration
-------------------
+-------------------
 
 The CacheStore can be configured with several parameters:
 
@@ -156,7 +157,7 @@ The CacheStore can be configured with several parameters:
    ... )
 
 Cache Statistics
----------------
+----------------
 
 The CacheStore provides statistics to monitor cache performance and state:
 
@@ -166,28 +167,38 @@ The CacheStore provides statistics to monitor cache performance and state:
    >>>
    >>> # Get comprehensive cache information
    >>> info = cached_store.cache_info()
-   >>> print(f"Cache store type: {info['cache_store_type']}")
-   >>> print(f"Max age: {info['max_age_seconds']} seconds")
-   >>> print(f"Max size: {info['max_size']} bytes")
-   >>> print(f"Current size: {info['current_size']} bytes")
-   >>> print(f"Tracked keys: {info['tracked_keys']}")
-   >>> print(f"Cached keys: {info['cached_keys']}")
-   >>> print(f"Cache set data: {info['cache_set_data']}")
+   >>> info['cache_store_type']  # doctest: +SKIP
+   'MemoryStore'
+   >>> isinstance(info['max_age_seconds'], (int, str))
+   True
+   >>> isinstance(info['max_size'], (int, type(None)))
+   True
+   >>> info['current_size'] >= 0
+   True
+   >>> info['tracked_keys'] >= 0
+   True
+   >>> info['cached_keys'] >= 0  
+   True
+   >>> isinstance(info['cache_set_data'], bool)
+   True
 
 The `cache_info()` method returns a dictionary with detailed information about the cache state.
 
 Cache Management
----------------
+----------------
 
 The CacheStore provides methods for manual cache management:
 
    >>> # Clear all cached data and tracking information
-   >>> await cached_store.clear_cache()
+   >>> import asyncio
+   >>> asyncio.run(cached_store.clear_cache())  # doctest: +SKIP
    >>>
-   >>> # Check cache info after clearing
-   >>> info = cached_store.cache_info()
-   >>> print(f"Tracked keys after clear: {info['tracked_keys']}")  # Should be 0
-   >>> print(f"Current size after clear: {info['current_size']}")  # Should be 0
+   >>> # Check cache info after clearing  
+   >>> info = cached_store.cache_info()  # doctest: +SKIP
+   >>> info['tracked_keys'] == 0  # doctest: +SKIP
+   True
+   >>> info['current_size'] == 0  # doctest: +SKIP  
+   True
 
 The `clear_cache()` method is an async method that clears both the cache store 
 (if it supports the `clear` method) and all internal tracking data.
@@ -249,7 +260,7 @@ The dual-store architecture provides flexibility in choosing the best combinatio
 of source and cache stores for your specific use case.
 
 Examples from Real Usage
------------------------
+------------------------
 
 Here's a complete example demonstrating cache effectiveness:
 
@@ -270,24 +281,20 @@ Here's a complete example demonstrating cache effectiveness:
    >>> zarr_array[:] = np.random.random((100, 100))
    >>>
    >>> # Demonstrate cache effectiveness with repeated access
-   >>> print("First access (cache miss):")
    >>> start = time.time()
-   >>> data = zarr_array[20:30, 20:30]
+   >>> data = zarr_array[20:30, 20:30]  # First access (cache miss)
    >>> first_access = time.time() - start
    >>>
-   >>> print("Second access (cache hit):")
    >>> start = time.time()
-   >>> data = zarr_array[20:30, 20:30]  # Same data should be cached
+   >>> data = zarr_array[20:30, 20:30]  # Second access (cache hit)  
    >>> second_access = time.time() - start
-   >>>
-   >>> print(f"First access time: {first_access:.4f} s")
-   >>> print(f"Second access time: {second_access:.4f} s")
-   >>> print(f"Cache speedup: {first_access/second_access:.2f}x")
    >>>
    >>> # Check cache statistics
    >>> info = cached_store.cache_info()
-   >>> print(f"Cached keys: {info['cached_keys']}")
-   >>> print(f"Current cache size: {info['current_size']} bytes")
+   >>> info['cached_keys'] > 0  # Should have cached keys
+   True
+   >>> info['current_size'] > 0  # Should have cached data
+   True
 
 This example shows how the CacheStore can significantly reduce access times for repeated
 data reads, particularly important when working with remote data sources. The dual-store

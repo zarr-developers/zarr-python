@@ -15,6 +15,7 @@ from zarr.storage._wrapper import WrapperStore
 from zarr.storage._zip import ZipStore
 
 __all__ = [
+    "CacheStore",
     "FsspecStore",
     "GpuMemoryStore",
     "LocalStore",

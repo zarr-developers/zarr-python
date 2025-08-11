@@ -23,6 +23,7 @@ Advanced Topics
     data_types
     performance
     consolidated_metadata
+    cachingstore
     extending
     gpu
 
