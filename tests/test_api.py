@@ -42,7 +42,7 @@ from zarr.api.synchronous import (
     save_group,
 )
 from zarr.core.buffer import NDArrayLike
-from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
+from zarr.errors import ArrayNotFoundError, MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
@@ -161,7 +161,7 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     assert z.read_only
 
     # path not found
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ArrayNotFoundError):
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
 
@@ -1200,7 +1200,7 @@ async def test_metadata_validation_error() -> None:
 )
 def test_open_array_with_mode_r_plus(store: Store, zarr_format: ZarrFormat) -> None:
     # 'r+' means read/write (must exist)
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(ArrayNotFoundError):
         zarr.open_array(store=store, mode="r+", zarr_format=zarr_format)
     zarr.ones(store=store, shape=(3, 3), zarr_format=zarr_format)
     z2 = zarr.open_array(store=store, mode="r+")
