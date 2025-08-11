@@ -26,7 +26,6 @@ from zarr.api.synchronous import (
     save,
     save_array,
     save_group,
-    tree,
     zeros,
     zeros_like,
 )
@@ -119,7 +118,6 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
-    "tree",
     "zeros",
     "zeros_like",
 ]
