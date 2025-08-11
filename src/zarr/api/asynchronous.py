@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypeAlias, TypedDic
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import deprecated
 
 from zarr.abc.store import Store
 from zarr.core.array import (
@@ -90,7 +89,6 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
-    "tree",
     "zeros",
     "zeros_like",
 ]
@@ -575,31 +573,6 @@ async def save_group(
     for k, arr in kwargs.items():
         aws.append(save_array(store_path, arr, zarr_format=zarr_format, path=k))
     await asyncio.gather(*aws)
-
-
-@deprecated("Use AsyncGroup.tree instead.", category=ZarrDeprecationWarning)
-async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
-    """Provide a rich display of the hierarchy.
-
-    !!! warning "Deprecated"
-        `zarr.tree()` is deprecated since v3.0.0 and will be removed in a future release.
-        Use `group.tree()` instead.
-
-    Parameters
-    ----------
-    grp : Group
-        Zarr or h5py group.
-    expand : bool, optional
-        Only relevant for HTML representation. If True, tree will be fully expanded.
-    level : int, optional
-        Maximum depth to descend into hierarchy.
-
-    Returns
-    -------
-    TreeRepr
-        A pretty-printable object displaying the hierarchy.
-    """
-    return await grp.tree(expand=expand, level=level)
 
 
 async def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyAsyncArray:

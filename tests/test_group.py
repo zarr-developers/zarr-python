@@ -44,7 +44,6 @@ from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
     MetadataValidationError,
-    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -709,13 +708,11 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
     assert new_group.attrs == new_attrs
 
 
-@pytest.mark.parametrize("method", ["create_array", "array"])
 @pytest.mark.parametrize("name", ["a", "/a"])
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
     overwrite: bool,
-    method: Literal["create_array", "array"],
     name: str,
 ) -> None:
     """
@@ -726,34 +723,12 @@ def test_group_create_array(
     dtype = "uint8"
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
-    if method == "create_array":
-        array = group.create_array(name=name, shape=shape, dtype=dtype)
-        array[:] = data
-    elif method == "array":
-        with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-            with pytest.warns(
-                ZarrUserWarning,
-                match="The `compressor` argument is deprecated. Use `compressors` instead.",
-            ):
-                array = group.array(name=name, data=data, shape=shape, dtype=dtype)
-    else:
-        raise AssertionError
-
+    array = group.create_array(name=name, shape=shape, dtype=dtype)
+    array[:] = data
     if not overwrite:
-        if method == "create_array":
-            with pytest.raises(ContainsArrayError):  # noqa: PT012
-                a = group.create_array(name=name, shape=shape, dtype=dtype)
-                a[:] = data
-        elif method == "array":
-            with pytest.raises(ContainsArrayError):  # noqa: PT012
-                with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-                    with pytest.warns(
-                        ZarrUserWarning,
-                        match="The `compressor` argument is deprecated. Use `compressors` instead.",
-                    ):
-                        a = group.array(name=name, shape=shape, dtype=dtype)
-                a[:] = data
-
+        with pytest.raises(ContainsArrayError):  # noqa: PT012
+            a = group.create_array(name=name, shape=shape, dtype=dtype)
+            a[:] = data
     assert array.path == normalize_path(name)
     assert array.name == "/" + array.path
     assert array.shape == shape
@@ -1365,38 +1340,6 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
     # no names
     no_group = await root.require_groups()
     assert no_group == ()
-
-
-def test_create_dataset_with_data(store: Store, zarr_format: ZarrFormat) -> None:
-    """Check that deprecated create_dataset method allows input data.
-
-    See https://github.com/zarr-developers/zarr-python/issues/2631.
-    """
-    root = Group.from_store(store=store, zarr_format=zarr_format)
-    arr = np.random.random((5, 5))
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-        data = root.create_dataset("random", data=arr, shape=arr.shape)
-    np.testing.assert_array_equal(np.asarray(data), arr)
-
-
-async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."):
-        foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
-    assert foo.shape == (10,)
-
-    with (
-        pytest.raises(ContainsArrayError),
-        pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."),
-    ):
-        await root.create_dataset("foo", shape=(100,), dtype="int8")
-
-    _ = await root.create_group("bar")
-    with (
-        pytest.raises(ContainsGroupError),
-        pytest.warns(ZarrDeprecationWarning, match=r"Group\.create_array instead\."),
-    ):
-        await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
 async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:

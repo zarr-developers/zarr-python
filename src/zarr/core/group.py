@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
@@ -55,7 +54,6 @@ from zarr.errors import (
     ContainsGroupError,
     GroupNotFoundError,
     MetadataValidationError,
-    ZarrDeprecationWarning,
     ZarrUserWarning,
 )
 from zarr.storage import StoreLike, StorePath
@@ -1161,78 +1159,6 @@ class AsyncGroup:
             config=config,
             write_data=write_data,
         )
-
-    @deprecated("Use AsyncGroup.create_array instead.", category=ZarrDeprecationWarning)
-    async def create_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyAsyncArray:
-        """Create an array.
-
-        !!! warning "Deprecated"
-            `AsyncGroup.create_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
-            Use `AsyncGroup.create_array` instead.
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the [zarr.AsyncGroup.require_dataset][] method.
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        **kwargs : dict
-            Additional arguments passed to [zarr.AsyncGroup.create_array][].
-
-        Returns
-        -------
-        a : AsyncArray
-        """
-        data = kwargs.pop("data", None)
-        # create_dataset in zarr 2.x requires shape but not dtype if data is
-        # provided. Allow this configuration by inferring dtype from data if
-        # necessary and passing it to create_array
-        if "dtype" not in kwargs and data is not None:
-            kwargs["dtype"] = data.dtype
-        array = await self.create_array(name, shape=shape, **kwargs)
-        if data is not None:
-            await array.setitem(slice(None), data)
-        return array
-
-    @deprecated("Use AsyncGroup.require_array instead.", category=ZarrDeprecationWarning)
-    async def require_dataset(
-        self,
-        name: str,
-        *,
-        shape: tuple[int, ...],
-        dtype: npt.DTypeLike = None,
-        exact: bool = False,
-        **kwargs: Any,
-    ) -> AnyAsyncArray:
-        """Obtain an array, creating if it doesn't exist.
-
-        !!! warning "Deprecated"
-            `AsyncGroup.require_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
-            Use `AsyncGroup.require_dataset` instead.
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the [zarr.AsyncGroup.create_dataset][] method.
-
-        Other `kwargs` are as per [zarr.AsyncGroup.create_dataset][].
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        shape : int or tuple of ints
-            Array shape.
-        dtype : str or dtype, optional
-            NumPy dtype.
-        exact : bool, optional
-            If True, require `dtype` to match exactly. If false, require
-            `dtype` can be cast from array dtype.
-
-        Returns
-        -------
-        a : AsyncArray
-        """
-        return await self.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
 
     async def require_array(
         self,
@@ -2736,57 +2662,6 @@ class Group(SyncMixin):
             )
         )
 
-    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
-    def create_dataset(self, name: str, **kwargs: Any) -> AnyArray:
-        """Create an array.
-
-        !!! warning "Deprecated"
-            `Group.create_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
-            Use `Group.create_array` instead.
-
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the [zarr.Group.require_dataset][] method.
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        **kwargs : dict
-            Additional arguments passed to [zarr.Group.create_array][]
-
-        Returns
-        -------
-        a : Array
-        """
-        return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
-
-    @deprecated("Use Group.require_array instead.", category=ZarrDeprecationWarning)
-    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
-        """Obtain an array, creating if it doesn't exist.
-
-        !!! warning "Deprecated"
-            `Group.require_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
-            Use `Group.require_array` instead.
-
-        Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the [zarr.Group.create_dataset][] method.
-
-        Other `kwargs` are as per [zarr.Group.create_dataset][].
-
-        Parameters
-        ----------
-        name : str
-            Array name.
-        **kwargs :
-            See [zarr.Group.create_dataset][].
-
-        Returns
-        -------
-        a : Array
-        """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
-
     def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
         """Obtain an array, creating if it doesn't exist.
 
@@ -2983,152 +2858,6 @@ class Group(SyncMixin):
         Not implemented
         """
         return self._sync(self._async_group.move(source, dest))
-
-    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
-    def array(
-        self,
-        name: str,
-        *,
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
-        shards: tuple[int, ...] | Literal["auto"] | None = None,
-        filters: FiltersLike = "auto",
-        compressors: CompressorsLike = "auto",
-        compressor: CompressorLike = None,
-        serializer: SerializerLike = "auto",
-        fill_value: Any | None = DEFAULT_FILL_VALUE,
-        order: MemoryOrder | None = None,
-        attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: DimensionNames = None,
-        storage_options: dict[str, Any] | None = None,
-        overwrite: bool = False,
-        config: ArrayConfigLike | None = None,
-        data: npt.ArrayLike | None = None,
-    ) -> AnyArray:
-        """Create an array within this group.
-
-        !!! warning "Deprecated"
-            `Group.array()` is deprecated since v3.0.0 and will be removed in a future release.
-            Use `Group.create_array` instead.
-
-        This method lightly wraps [zarr.core.array.create_array][].
-
-        Parameters
-        ----------
-        name : str
-            The name of the array relative to the group. If ``path`` is ``None``, the array will be located
-            at the root of the store.
-        shape : tuple[int, ...]
-            Shape of the array.
-        dtype : npt.DTypeLike
-            Data type of the array.
-        chunks : tuple[int, ...], optional
-            Chunk shape of the array.
-            If not specified, default are guessed based on the shape and dtype.
-        shards : tuple[int, ...], optional
-            Shard shape of the array. The default value of ``None`` results in no sharding at all.
-        filters : Iterable[Codec] | Literal["auto"], optional
-            Iterable of filters to apply to each chunk of the array, in order, before serializing that
-            chunk to bytes.
-
-            For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
-            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
-
-            For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
-            the order if your filters is consistent with the behavior of each filter.
-
-            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
-            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
-            data types in Zarr V2, the default filters are empty. The only cases where default filters
-            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
-            the default filters contains a single element which is a codec specific to that particular data type.
-
-            To create an array with no filters, provide an empty iterable or the value ``None``.
-        compressors : Iterable[Codec], optional
-            List of compressors to apply to the array. Compressors are applied in order, and after any
-            filters are applied (if any are specified) and the data is serialized into bytes.
-
-            For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-            returns another bytestream. Multiple compressors my be provided for Zarr format 3.
-            If no ``compressors`` are provided, a default set of compressors will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in [`zarr.config`][zarr.config].
-            Use ``None`` to omit default compressors.
-
-            For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
-            be provided for Zarr format 2.
-            If no ``compressor`` is provided, a default compressor will be used.
-            in [`zarr.config`][zarr.config].
-            Use ``None`` to omit the default compressor.
-        compressor : Codec, optional
-            Deprecated in favor of ``compressors``.
-        serializer : dict[str, JSON] | ArrayBytesCodec, optional
-            Array-to-bytes codec to use for encoding the array data.
-            Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-            If no ``serializer`` is provided, a default serializer will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in [`zarr.config`][zarr.config].
-        fill_value : Any, optional
-            Fill value for the array.
-        order : {"C", "F"}, optional
-            The memory of the array (default is "C").
-            For Zarr format 2, this parameter sets the memory order of the array.
-            For Zarr format 3, this parameter is deprecated, because memory order
-            is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
-            order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-            If no ``order`` is provided, a default order will be used.
-            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
-        attributes : dict, optional
-            Attributes for the array.
-        chunk_key_encoding : ChunkKeyEncoding, optional
-            A specification of how the chunk keys are represented in storage.
-            For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
-            For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
-        dimension_names : Iterable[str], optional
-            The names of the dimensions (default is None).
-            Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
-        storage_options : dict, optional
-            If using an fsspec URL to create the store, these will be passed to the backend implementation.
-            Ignored otherwise.
-        overwrite : bool, default False
-            Whether to overwrite an array with the same name in the store, if one exists.
-        config : ArrayConfig or ArrayConfigLike, optional
-            Runtime configuration for the array.
-        data : array_like
-            The data to fill the array with.
-
-        Returns
-        -------
-        AsyncArray
-        """
-        compressors = _parse_deprecated_compressor(compressor, compressors)
-        return Array(
-            self._sync(
-                self._async_group.create_dataset(
-                    name=name,
-                    shape=shape,
-                    dtype=dtype,
-                    chunks=chunks,
-                    shards=shards,
-                    fill_value=fill_value,
-                    attributes=attributes,
-                    chunk_key_encoding=chunk_key_encoding,
-                    compressors=compressors,
-                    serializer=serializer,
-                    dimension_names=dimension_names,
-                    order=order,
-                    filters=filters,
-                    overwrite=overwrite,
-                    storage_options=storage_options,
-                    config=config,
-                    data=data,
-                )
-            )
-        )
 
 
 async def create_hierarchy(
