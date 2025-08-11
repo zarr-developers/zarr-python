@@ -11,7 +11,7 @@ from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.storage import MemoryStore
-from zarr.storage._dual_cache import CacheStore
+from zarr.storage._caching_store import CacheStore
 
 
 class TestCacheStore:
