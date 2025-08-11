@@ -27,7 +27,7 @@ For more information, see the
 
 Configuration options include the following:
 
-- Default Zarr format `default_zarr_version`
+- Default Zarr format `default_zarr_format`
 - Default array order in memory `array.order`
 - Whether empty chunks are written to storage `array.write_empty_chunks`
 - Async and threading options, e.g. `async.concurrency` and `threading.max_workers`

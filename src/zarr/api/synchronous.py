@@ -134,7 +134,6 @@ def load(
     store: StoreLike,
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
-    zarr_version: ZarrFormat | None = None,
 ) -> NDArrayLikeOrScalar | dict[str, NDArrayLikeOrScalar]:
     """Load data from an array or group into memory.
 
@@ -163,16 +162,13 @@ def load(
     If loading data from a group of arrays, data will not be immediately loaded into
     memory. Rather, arrays will be loaded into memory as they are requested.
     """
-    return sync(
-        async_api.load(store=store, zarr_version=zarr_version, zarr_format=zarr_format, path=path)
-    )
+    return sync(async_api.load(store=store, zarr_format=zarr_format, path=path))
 
 
 def open(
     store: StoreLike | None = None,
     *,
     mode: AccessModeLiteral | None = None,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -212,7 +208,6 @@ def open(
         async_api.open(
             store=store,
             mode=mode,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
@@ -237,7 +232,6 @@ def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwar
 def save(
     store: StoreLike,
     *args: NDArrayLike,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
@@ -259,18 +253,13 @@ def save(
     **kwargs
         NumPy arrays with data to save.
     """
-    return sync(
-        async_api.save(
-            store, *args, zarr_version=zarr_version, zarr_format=zarr_format, path=path, **kwargs
-        )
-    )
+    return sync(async_api.save(store, *args, zarr_format=zarr_format, path=path, **kwargs))
 
 
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
     *,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -303,7 +292,6 @@ def save_array(
         async_api.save_array(
             store=store,
             arr=arr,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
@@ -315,7 +303,6 @@ def save_array(
 def save_group(
     store: StoreLike,
     *args: NDArrayLike,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -348,7 +335,6 @@ def save_group(
         async_api.save_group(
             store,
             *args,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
@@ -385,7 +371,6 @@ def group(
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any | None = None,  # not used
     path: str | None = None,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
@@ -435,7 +420,6 @@ def group(
                 cache_attrs=cache_attrs,
                 synchronizer=synchronizer,
                 path=path,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -454,7 +438,6 @@ def open_group(
     path: str | None = None,
     chunk_store: StoreLike | None = None,  # not used in async api
     storage_options: dict[str, Any] | None = None,  # not used in async api
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
     attributes: dict[str, JSON] | None = None,
@@ -525,7 +508,6 @@ def open_group(
                 path=path,
                 chunk_store=chunk_store,
                 storage_options=storage_options,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -606,7 +588,6 @@ def create(
     object_codec: Codec | None = None,  # TODO: type has changed
     dimension_separator: Literal[".", "/"] | None = None,
     write_empty_chunks: bool | None = None,  # TODO: default has changed
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
@@ -769,7 +750,6 @@ def create(
                 object_codec=object_codec,
                 dimension_separator=dimension_separator,
                 write_empty_chunks=write_empty_chunks,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -1309,7 +1289,6 @@ def ones_like(a: ArrayLike, **kwargs: Any) -> Array:
 def open_array(
     store: StoreLike | None = None,
     *,
-    zarr_version: ZarrFormat | None = None,
     zarr_format: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
@@ -1323,8 +1302,6 @@ def open_array(
         StoreLike object to open. See the
         [storage documentation in the user guide][user-guide-store-like]
         for a description of all valid StoreLike values.
-    zarr_version : {2, 3, None}, optional
-        The zarr format to use when saving. Deprecated in favor of zarr_format.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str, optional
@@ -1345,7 +1322,6 @@ def open_array(
         sync(
             async_api.open_array(
                 store=store,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 path=path,
                 storage_options=storage_options,
