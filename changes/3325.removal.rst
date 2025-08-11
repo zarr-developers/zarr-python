@@ -28,3 +28,6 @@ The following deprecated functions have been removed:
 
 Setting ``zarr.storage.default_compressor`` is deprecated, use `zarr.config` to configure ``array.v2_default_compressor``
 e.g. ``zarr.config.set({'codecs.zstd':'numcodecs.Zstd', 'array.v2_default_compressor.numeric': 'zstd'})``
+
+The ``zarr_version`` argument has been removed throughout the library.
+Use the equivalent ``zarr_format`` argument instead.
