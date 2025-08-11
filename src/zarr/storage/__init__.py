@@ -1,9 +1,3 @@
-import sys
-import warnings
-from types import ModuleType
-from typing import Any
-
-from zarr.errors import ZarrDeprecationWarning
 from zarr.storage._common import StoreLike, StorePath
 from zarr.storage._fsspec import FsspecStore
 from zarr.storage._local import LocalStore
