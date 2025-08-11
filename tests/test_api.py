@@ -42,7 +42,7 @@ from zarr.api.synchronous import (
     save_group,
 )
 from zarr.core.buffer import NDArrayLike
-from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
+from zarr.errors import MetadataValidationError, ZarrUserWarning
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
@@ -471,9 +471,6 @@ def test_tree() -> None:
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.tree instead\."):  # noqa: PT031
-        assert repr(zarr.tree(g1)) == repr(g1.tree())
-        assert str(zarr.tree(g1)) == str(g1.tree())
 
 
 # @pytest.mark.parametrize("stores_from_path", [False, True])
