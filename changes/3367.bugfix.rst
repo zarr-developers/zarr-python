@@ -1,0 +1,1 @@
+Added `~zarr.errors.ArrayNotFoundError`, which is raised when attempting to open a zarr array that does not exist.
