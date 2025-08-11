@@ -78,6 +78,7 @@ class CacheStore(WrapperStore[Store]):
     cache_set_data: bool
     _cache_order: OrderedDict[str, None]  # Track access order for LRU
     _current_size: int  # Track current cache size
+    _key_sizes: dict[str, int]  # Track size of each cached key
 
     def __init__(
         self,
@@ -106,6 +107,7 @@ class CacheStore(WrapperStore[Store]):
         self.cache_set_data = cache_set_data
         self._cache_order = OrderedDict()
         self._current_size = 0
+        self._key_sizes = {}
 
     def _is_key_fresh(self, key: str) -> bool:
         """Check if a cached key is still fresh based on max_age_seconds."""
@@ -135,14 +137,20 @@ class CacheStore(WrapperStore[Store]):
     def _evict_key(self, key: str) -> None:
         """Remove a key from cache and update size tracking."""
         try:
-            # Remove from cache store (async operation, but we'll handle it)
-            # For now, we'll mark it for removal and actual removal happens in async methods
+            # Get the size of the key being evicted
+            key_size = self._key_sizes.get(key, 0)
+
+            # Remove from tracking structures
             if key in self._cache_order:
                 del self._cache_order[key]
             if key in self.key_insert_times:
                 del self.key_insert_times[key]
-            # Note: Actual size reduction will happen when we get the item size
-            logger.info("_evict_key: evicted key %s from cache", key)
+            if key in self._key_sizes:
+                del self._key_sizes[key]
+
+            # Update current size
+            self._current_size = max(0, self._current_size - key_size)
+            logger.info("_evict_key: evicted key %s from cache, size %d", key, key_size)
         except Exception as e:
             logger.warning("_evict_key: failed to evict key %s: %s", key, e)
 
@@ -165,6 +173,7 @@ class CacheStore(WrapperStore[Store]):
         # Update tracking
         self._cache_order[key] = None  # OrderedDict to track access order
         self._current_size += value_size
+        self._key_sizes[key] = value_size
         self.key_insert_times[key] = time.monotonic()
 
         logger.info("_cache_value: cached key %s with size %d bytes", key, value_size)
@@ -181,6 +190,8 @@ class CacheStore(WrapperStore[Store]):
             del self._cache_order[key]
         if key in self.key_insert_times:
             del self.key_insert_times[key]
+        if key in self._key_sizes:
+            del self._key_sizes[key]
 
     async def _get_try_cache(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
@@ -318,5 +329,6 @@ class CacheStore(WrapperStore[Store]):
         # Reset tracking
         self.key_insert_times.clear()
         self._cache_order.clear()
+        self._key_sizes.clear()
         self._current_size = 0
         logger.info("clear_cache: cleared all cache data")
