@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import time
 from typing import TYPE_CHECKING, Any
+from typing_extensions import Literal
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.storage._wrapper import WrapperStore
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from zarr.core.buffer.core import Buffer, BufferPrototype
@@ -32,11 +36,17 @@ class CacheStore(WrapperStore[Store]):
 
     Examples
     --------
-    >>> from zarr.storage import MemoryStore, FSStore
-    >>> base_store = FSStore("/path/to/data")
-    >>> cache_store = MemoryStore()
-    >>> cached_store = CacheStore(base_store, cache_store=cache_store, max_age_seconds=3600)
+    >>> from zarr.storage._memory import MemoryStore
+    >>> store_a = MemoryStore({})
+    >>> store_b = MemoryStore({})
+    >>> cached_store = CacheStore(store=store_a, cache_store=store_b, max_age_seconds=10, key_insert_times={})
+
     """
+
+    _cache: Store
+    max_age_seconds: int | Literal["infinity"]
+    key_insert_times: dict[str, float]
+    cache_set_data: bool
 
     def __init__(
         self,
@@ -44,25 +54,26 @@ class CacheStore(WrapperStore[Store]):
         *,
         cache_store: Store,
         max_age_seconds: int | str = "infinity",
-        cache_set_data: bool = True,
+        key_insert_times: dict[str, float]  | None = None,
+        cache_set_data: bool = True
     ) -> None:
         super().__init__(store)
         self._cache = cache_store
         self.max_age_seconds = max_age_seconds
+        if key_insert_times is None:
+            key_insert_times = {}
+        else:
+            self.key_insert_times = key_insert_times
         self.cache_set_data = cache_set_data
-        self.key_insert_times: dict[str, float] = {}
 
     def _is_key_fresh(self, key: str) -> bool:
         """Check if a cached key is still fresh based on max_age_seconds."""
         if self.max_age_seconds == "infinity":
             return True
-
-        if not isinstance(self.max_age_seconds, (int, float)):
-            return True
-
-        now = time.monotonic()
-        elapsed = now - self.key_insert_times.get(key, 0)
-        return elapsed < self.max_age_seconds
+        else:
+            now = time.monotonic()
+            elapsed = now - self.key_insert_times.get(key, 0)
+            return elapsed < self.max_age_seconds
 
     async def _get_try_cache(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
@@ -70,25 +81,16 @@ class CacheStore(WrapperStore[Store]):
         """Try to get data from cache first, falling back to source store."""
         maybe_cached_result = await self._cache.get(key, prototype, byte_range)
         if maybe_cached_result is not None:
-            # Found in cache, but verify it still exists in source
-            if await super().exists(key):
-                return maybe_cached_result
-            else:
-                # Key doesn't exist in source anymore, clean up cache
-                await self._cache.delete(key)
-                self.key_insert_times.pop(key, None)
-                return None
-
-        # Not in cache, fetch from source store
-        maybe_fresh_result = await super().get(key, prototype, byte_range)
-        if maybe_fresh_result is None:
-            # Key doesn't exist in source, remove from cache if present
-            await self._cache.delete(key)
+            logger.info('_get_try_cache: key %s found in cache', key)
+            return maybe_cached_result
         else:
-            # Cache the result for future use
-            await self._cache.set(key, maybe_fresh_result)
-            self.key_insert_times[key] = time.monotonic()
-        return maybe_fresh_result
+            logger.info('_get_try_cache: key %s not found in cache, fetching from store', key)
+            maybe_fresh_result = await super().get(key, prototype, byte_range)
+            if maybe_fresh_result is None:
+                await self._cache.delete(key)
+            else:
+                await self._cache.set(key, maybe_fresh_result)
+            return maybe_fresh_result
 
     async def _get_no_cache(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
@@ -100,7 +102,7 @@ class CacheStore(WrapperStore[Store]):
             await self._cache.delete(key)
             self.key_insert_times.pop(key, None)
         else:
-            # Update cache with fresh data
+            logger.info('_get_no_cache: key %s found in store, setting in cache', key)
             await self._cache.set(key, maybe_fresh_result)
             self.key_insert_times[key] = time.monotonic()
         return maybe_fresh_result
@@ -129,9 +131,11 @@ class CacheStore(WrapperStore[Store]):
             The retrieved data, or None if not found
         """
         if self._is_key_fresh(key):
-            return await self._get_try_cache(key, prototype, byte_range)
-        else:
+            logger.info('get: key %s is not fresh, fetching from store', key)
             return await self._get_no_cache(key, prototype, byte_range)
+        else:
+            logger.info('get: key %s is fresh, trying cache', key)
+            return await self._get_try_cache(key, prototype, byte_range)
 
     async def set(self, key: str, value: Buffer) -> None:
         """
@@ -144,14 +148,14 @@ class CacheStore(WrapperStore[Store]):
         value : Buffer
             The data to store
         """
+        logger.info('set: setting key %s in store', key)
         await super().set(key, value)
-
         if self.cache_set_data:
-            # Cache the new data
+            logger.info('set: setting key %s in cache', key)
             await self._cache.set(key, value)
             self.key_insert_times[key] = time.monotonic()
         else:
-            # Remove from cache since data changed
+            logger.info('set: deleting key %s from cache', key)
             await self._cache.delete(key)
             self.key_insert_times.pop(key, None)
 
@@ -164,7 +168,9 @@ class CacheStore(WrapperStore[Store]):
         key : str
             The key to delete
         """
+        logger.info('delete: deleting key %s from store', key)
         await super().delete(key)
+        logger.info('delete: deleting key %s from cache', key)
         await self._cache.delete(key)
         self.key_insert_times.pop(key, None)
 
