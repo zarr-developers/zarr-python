@@ -86,7 +86,7 @@ is a significant factor. You can use different store types for source and cache:
    >>> # Create a remote store (S3 example) - for demonstration only
    >>> remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})  # doctest: +SKIP
    >>>
-   >>> # Use a local store for persistent caching  
+   >>> # Use a local store for persistent caching
    >>> local_cache_store = LocalStore('cache_data')  # doctest: +SKIP
    >>>
    >>> # Create cached store with persistent local cache
@@ -96,7 +96,7 @@ is a significant factor. You can use different store types for source and cache:
    ...     max_size=512*1024*1024  # 512MB cache
    ... )
    >>>
-   >>> # Open array through cached store  
+   >>> # Open array through cached store
    >>> z = zarr.open(cached_store)  # doctest: +SKIP
 
 The first access to any chunk will be slow (network retrieval), but subsequent accesses
