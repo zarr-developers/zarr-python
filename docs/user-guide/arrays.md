@@ -12,7 +12,7 @@ import numpy as np
 np.random.seed(0)
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 import zarr
 store = zarr.storage.MemoryStore()
 z = zarr.create_array(store=store, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
@@ -36,13 +36,13 @@ Zarr arrays support a similar interface to [NumPy](https://numpy.org/doc/stable/
 arrays for reading and writing data. For example, the entire array can be filled
 with a scalar value:
 
-```python exec="true" session="arrays" source="material-block"
+```python exec="true" session="arrays" source="above"
 z[:] = 42
 ```
 
 Regions of the array can also be written to, e.g.:
 
-```python exec="true" session="arrays" source="material-block"
+```python exec="true" session="arrays" source="above"
 import numpy as np
 
 z[0, :] = np.arange(10000)
@@ -52,23 +52,23 @@ z[:, 0] = np.arange(10000)
 The contents of the array can be retrieved by slicing, which will load the
 requested region into memory as a NumPy array, e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[0, 0])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[-1, -1])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[0, :])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[:, 0])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[:])
 ```
 
@@ -82,7 +82,7 @@ main memory. Zarr arrays can also be stored on a file system, enabling
 persistence of data between sessions. To do this, we can change the store
 argument to point to a filesystem path:
 
-```python exec="true" session="arrays" source="material-block"
+```python exec="true" session="arrays" source="above"
 z1 = zarr.create_array(store='data/example-1.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
 ```
 
@@ -96,7 +96,7 @@ flushed to disk, and files are automatically closed whenever an array is modifie
 Persistent arrays support the same interface for reading and writing data,
 e.g.:
 
-```python
+```python exec="true" session="arrays" source="above"
 z1[:] = 42
 z1[0, :] = np.arange(10000)
 z1[:, 0] = np.arange(10000)
@@ -104,7 +104,7 @@ z1[:, 0] = np.arange(10000)
 
 Check that the data have been written and can be read again:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z2 = zarr.open_array('data/example-1.zarr', mode='r')
 print(np.all(z1[:] == z2[:]))
 ```
@@ -114,7 +114,7 @@ disk then load back into memory later, the functions
 `zarr.save` and `zarr.load` may be
 useful. E.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 a = np.arange(10)
 zarr.save('data/example-2.zarr', a)
 print(zarr.load('data/example-2.zarr'))
@@ -128,7 +128,7 @@ storage, see the Storage Guide for more details.
 A Zarr array can be resized, which means that any of its dimensions can be
 increased or decreased in length. For example:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z = zarr.create_array(store='data/example-3.zarr', shape=(10000, 10000), dtype='int32',chunks=(1000, 1000))
 z[:] = 42
 print(f"Original shape: {z.shape}")
@@ -143,7 +143,7 @@ new array shape will be deleted from the underlying store.
 `zarr.Array.append` is provided as a convenience function, which can be
 used to append data to any axis. E.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 a = np.arange(10000000, dtype='int32').reshape(10000, 1000)
 z = zarr.create_array(store='data/example-4.zarr', shape=a.shape, dtype=a.dtype, chunks=(1000, 100))
 z[:] = a
@@ -163,7 +163,7 @@ compressor libraries including LZ4, Zlib, BZ2 and LZMA.
 Different compressors can be provided via the `compressors` keyword
 argument accepted by all array creation functions. For example:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle=zarr.codecs.BloscShuffle.bitshuffle)
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
 z = zarr.create_array(store='data/example-5.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
@@ -179,14 +179,14 @@ When using a compressor, it can be useful to get some diagnostics on the
 compression ratio. Zarr arrays provide the `zarr.Array.info` property
 which can be used to print useful diagnostics, e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.info)
 ```
 
 The `zarr.Array.info_complete` method inspects the underlying store and
 prints additional diagnostics, e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.info_complete())
 ```
 
@@ -201,7 +201,7 @@ compressor.
 In addition to Blosc and Zstandard, other compression libraries can also be used. For example,
 here is an array using Gzip compression, level 1:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
 z = zarr.create_array(store='data/example-6.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1))
 z[:] = data
@@ -211,7 +211,7 @@ print(f"Compressors: {z.compressors}")
 Here is an example using LZMA from [NumCodecs](https://numcodecs.readthedocs.io/) with a custom filter pipeline including LZMA's
 built-in delta filter:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 import lzma
 from numcodecs.zarr3 import LZMA
 
@@ -224,7 +224,7 @@ print(f"Compressors: {z.compressors}")
 
 To disable compression, set `compressors=None` when creating an array, e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z = zarr.create_array(
     store='data/example-8.zarr',
     shape=(100000000,),
@@ -250,7 +250,7 @@ mechanism for configuring filters outside of the primary compressor.
 
 Here is an example using a delta filter with the Blosc compressor:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 from numcodecs.zarr3 import Delta
 
 filters = [Delta(dtype='int32')]
@@ -279,7 +279,7 @@ see the documentation for the `zarr.Array` class.
 Items from a Zarr array can be extracted by providing an integer array of
 coordinates. E.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(10) ** 2
 z = zarr.create_array(store='data/example-10.zarr', shape=data.shape, dtype=data.dtype)
 z[:] = data
@@ -289,7 +289,7 @@ print(z.get_coordinate_selection([2, 5]))
 
 Coordinate arrays can also be used to update data, e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z.set_coordinate_selection([2, 5], [-1, -2])
 print(z[:])
 ```
@@ -297,14 +297,14 @@ print(z[:])
 For multidimensional arrays, coordinates must be provided for each dimension,
 e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
 z = zarr.create_array(store='data/example-11.zarr', shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z.get_coordinate_selection(([0, 2], [1, 3])))
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z.set_coordinate_selection(([0, 2], [1, 3]), [-1, -2])
 print(z[:])
 ```
@@ -312,23 +312,23 @@ print(z[:])
 For convenience, coordinate indexing is also available via the `vindex`
 property, as well as the square bracket operator, e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.vindex[[0, 2], [1, 3]])
 z.vindex[[0, 2], [1, 3]] = [-3, -4]
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[:])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[[0, 2], [1, 3]])
 ```
 
 When the indexing arrays have different shapes, they are broadcast together.
 That is, the following two calls are equivalent:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[1, [1, 3]])
 print(z[[1, 1], [1, 3]])
 ```
@@ -337,42 +337,42 @@ print(z[[1, 1], [1, 3]])
 
 Items can also be extracted by providing a Boolean mask. E.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(10) ** 2
 z = zarr.create_array(store='data/example-12.zarr', shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z[:])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 sel = np.zeros_like(z, dtype=bool)
 sel[2] = True
 sel[5] = True
 print(z.get_mask_selection(sel))
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z.set_mask_selection(sel, [-1, -2])
 print(z[:])
 ```
 
 Here's a multidimensional example:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
 z = zarr.create_array(store='data/example-13.zarr', shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z[:])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 sel = np.zeros_like(z, dtype=bool)
 sel[0, 1] = True
 sel[2, 3] = True
 print(z.get_mask_selection(sel))
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z.set_mask_selection(sel, [-1, -2])
 print(z[:])
 ```
@@ -380,11 +380,11 @@ print(z[:])
 For convenience, mask indexing is also available via the `vindex` property,
 e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.vindex[sel])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 
 z.vindex[sel] = [-3, -4]
 print(z[:])
@@ -401,50 +401,50 @@ selections to be made along each dimension of an array independently. For
 example, this allows selecting a subset of rows and/or columns from a
 2-dimensional array. E.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
 z = zarr.create_array(store='data/example-14.zarr', shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z[:])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.get_orthogonal_selection(([0, 2], slice(None))))  # select first and third rows
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.get_orthogonal_selection((slice(None), [1, 3])))  # select second and fourth columns)
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.get_orthogonal_selection(([0, 2], [1, 3])))  # select rows [0, 2] and columns [1, 4]
 ```
 
 Data can also be modified, e.g.:
 
-```python exec="true" session="arrays" source="material-block"
+```python exec="true" session="arrays" source="above"
 z.set_orthogonal_selection(([0, 2], [1, 3]), [[-1, -2], [-3, -4]])
 ```
 
 For convenience, the orthogonal indexing functionality is also available via the
 `oindex` property, e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
 z = zarr.create_array(store='data/example-15.zarr', shape=data.shape, dtype=data.dtype)
 z[:] = data
 print(z.oindex[[0, 2], :])  # select first and third rows
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.oindex[:, [1, 3]])  # select second and fourth columns
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.oindex[[0, 2], [1, 3]])  # select rows [0, 2] and columns [1, 4]
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z.oindex[[0, 2], [1, 3]] = [[-1, -2], [-3, -4]]
 print(z[:])
 ```
@@ -455,7 +455,7 @@ be used for orthogonal indexing.
 If the index contains at most one iterable, and otherwise contains only slices and integers,
 orthogonal indexing is also available directly on the array:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 data = np.arange(15).reshape(3, 5)
 z = zarr.create_array(store='data/example-16.zarr', shape=data.shape, dtype=data.dtype)
 z[:] = data
@@ -468,7 +468,7 @@ Zarr also support block indexing, which allows selections of whole chunks based 
 logical indices along each dimension of an array. For example, this allows selecting
 a subset of chunk aligned rows and/or columns from a 2-dimensional array. E.g.:
 
-```python exec="true" session="arrays" source="material-block"
+```python exec="true" session="arrays" source="above"
 data = np.arange(100).reshape(10, 10)
 z = zarr.create_array(store='data/example-17.zarr', shape=data.shape, dtype=data.dtype, chunks=(3, 3))
 z[:] = data
@@ -476,39 +476,39 @@ z[:] = data
 
 Retrieve items by specifying their block coordinates:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.get_block_selection(1))
 ```
 
 Equivalent slicing:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z[3:6])
 ```
 
 For convenience, the block selection functionality is also available via the
 `blocks` property, e.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.blocks[1])
 ```
 
 Block index arrays may be multidimensional to index multidimensional arrays.
 For example:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.blocks[0, 1:3])
 ```
 
 Data can also be modified. Let's start by a simple 2D array:
 
-```python exec="true" session="arrays" source="material-block"
+```python exec="true" session="arrays" source="above"
 z = zarr.create_array(store='data/example-18.zarr', shape=(6, 6), dtype=int, chunks=(2, 2))
 ```
 
 Set data for a selection of items:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z.set_block_selection((1, 0), 1)
 print(z[...])
 ```
@@ -516,18 +516,18 @@ print(z[...])
 For convenience, this functionality is also available via the `blocks` property.
 E.g.:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 z.blocks[:, 2] = 7
 print(z[...])
 ```
 
 Any combination of integer and slice can be used for block indexing:
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.blocks[2, 1:3])
 ```
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 root = zarr.create_group('data/example-19.zarr')
 foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='float32')
 bar = root.create_array(name='foo/bar', shape=(100,), dtype='int32')
@@ -552,7 +552,7 @@ Users need to configure the chunk and shard shapes accordingly.
 
 Sharded arrays can be created by providing the `shards` parameter to `zarr.create_array`.
 
-```python exec="true" session="arrays" source="material-block" result="ansi"
+```python exec="true" session="arrays" source="above" result="ansi"
 a = zarr.create_array('data/example-20.zarr', shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8')
 a[:] = (np.arange(10000 * 10000) % 256).astype('uint8').reshape(10000, 10000)
 print(a.info_complete())
