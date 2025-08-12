@@ -14,6 +14,7 @@ from zarr import Array
 from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
+from zarr.errors import ZarrUserWarning
 from zarr.storage import FsspecStore
 from zarr.storage._fsspec import _make_async
 from zarr.testing.store import StoreTests
@@ -258,7 +259,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=False
         )
         store_kwargs = {"fs": fs, "path": path}
-        with pytest.warns(UserWarning, match=r".* was not created with `asynchronous=True`.*"):
+        with pytest.warns(ZarrUserWarning, match=r".* was not created with `asynchronous=True`.*"):
             self.store_cls(**store_kwargs)
 
     async def test_empty_nonexistent_path(self, store_kwargs: dict[str, Any]) -> None:
@@ -388,8 +389,8 @@ def test_open_s3map_raises() -> None:
     ):
         zarr.open(store=mapper, path="bar", mode="w", shape=(3, 3))
     with pytest.raises(
-        ValueError,
-        match="'storage_options was provided but is not used for FSMap store_like objects",
+        TypeError,
+        match="'storage_options' is only used when the store is passed as a FSSpec URI string.",
     ):
         zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
 

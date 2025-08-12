@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27.0", "hatch-vcs"]
+requires = ["hatchling>=1.27.0", "hatch-vcs", "setuptools-scm!=9.0.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
@@ -150,6 +150,12 @@ dependencies = [
 ]
 features = ["test"]
 
+[tool.hatch.envs.test.env-vars]
+# Required to test with a pytest plugin; see https://pytest-cov.readthedocs.io/en/latest/plugins.html
+COV_CORE_SOURCE = "src"
+COV_CORE_CONFIG = ".coveragerc"
+COV_CORE_DATAFILE = ".coverage.eager"
+
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
 numpy = ["1.26", "2.2"]
@@ -161,8 +167,9 @@ matrix.deps.dependencies = [
 ]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
 run = "run-coverage --no-cov"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
@@ -170,16 +177,8 @@ run-mypy = "mypy src"
 run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
-[tool.hatch.envs.doctest]
-features = ["test", "optional", "remote", "remote_tests"]
-description = "Test environment for doctests"
-
-[tool.hatch.envs.doctest.scripts]
-run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
-fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
-list-env = "pip list"
-
 [tool.hatch.envs.gputest]
+template = "test"
 dependencies = [
     "numpy~={matrix:numpy}",
     "universal_pathlib",
@@ -191,22 +190,8 @@ python = ["3.11", "3.12", "3.13"]
 numpy = ["1.26", "2.2"]
 version = ["minimal"]
 
-[tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run = "run-coverage --no-cov"
-run-verbose = "run-coverage --verbose"
-run-mypy = "mypy src"
-run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
-list-env = "pip list"
-
-[tool.hatch.envs.docs]
-features = ['docs']
-
-[tool.hatch.envs.docs.scripts]
-build = "cd docs && make html"
-serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
-
 [tool.hatch.envs.upstream]
+template = 'test'
 python = "3.13"
 dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
@@ -226,20 +211,12 @@ PIP_INDEX_URL = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simp
 PIP_EXTRA_INDEX_URL = "https://pypi.org/simple/"
 PIP_PRE = "1"
 
-[tool.hatch.envs.upstream.scripts]
-run = "pytest --verbose"
-run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
-list-env = "pip list"
-
 [tool.hatch.envs.min_deps]
 description = """Test environment for minimum supported dependencies
 
 See Spec 0000 for details and drop schedule: https://scientific-python.org/specs/spec-0000/
 """
+template = "test"
 python = "3.11"
 dependencies = [
     'zarr[remote]',
@@ -257,13 +234,22 @@ dependencies = [
     'zarr[remote_tests]',
 ]
 
-[tool.hatch.envs.min_deps.scripts]
-run = "pytest --verbose"
-run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+
+[tool.hatch.envs.doctest]
+features = ["test", "optional", "remote", "remote_tests"]
+description = "Test environment for doctests"
+
+[tool.hatch.envs.doctest.scripts]
+run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
+fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
 list-env = "pip list"
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
+
+[tool.hatch.envs.docs]
+features = ['docs']
+
+[tool.hatch.envs.docs.scripts]
+build = "cd docs && make html"
+serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
@@ -403,16 +389,6 @@ addopts = [
 ]
 filterwarnings = [
     "error",
-    # TODO: explicitly filter or catch the warnings below where we expect them to be emitted in the tests
-    "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification.*:UserWarning",
-    "ignore:Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__.*:UserWarning",
-    "ignore:Automatic shard shape inference is experimental and may change without notice.*:UserWarning",
-    "ignore:The codec .* is currently not part in the Zarr format 3 specification.*:UserWarning",
-    "ignore:The dtype .* is currently not part in the Zarr format 3 specification.*:UserWarning",
-    "ignore:Use zarr.create_array instead.:DeprecationWarning",
-    "ignore:Duplicate name.*:UserWarning",
-    "ignore:The `compressor` argument is deprecated. Use `compressors` instead.:UserWarning",
-    "ignore:Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations.:UserWarning",
     "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
 ]
 markers = [

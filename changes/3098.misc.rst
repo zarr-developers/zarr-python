@@ -1,0 +1,3 @@
+Define Zarr-specific warning classes that subclass the Python built-in warnings.
+These classes makes it easier to control the visibility of warnings emitted by Zarr Python.
+See `zarr.errors` for these warning classes.

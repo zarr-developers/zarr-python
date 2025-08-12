@@ -5,9 +5,9 @@ name: GPU Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 3.1.x ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 3.1.x ]
   workflow_dispatch:
 
 env:
@@ -63,7 +63,7 @@ jobs:
         hatch env run -e gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
       run: |
-        hatch env run --env gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
+        hatch env run --env gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage-gpu
 
     - name: Upload coverage
       uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
