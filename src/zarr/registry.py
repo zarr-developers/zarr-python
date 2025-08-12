@@ -57,11 +57,23 @@ class Registry(dict[str, type[T]], Generic[T]):
         self[qualname] = cls
 
 
+class StoreAdapterRegistry(Registry["StoreAdapter"]):
+    """Registry for store adapters that uses adapter_name for entry point loading."""
+
+    def lazy_load(self) -> None:
+        for e in self.lazy_load_list:
+            adapter_cls = e.load()
+            # Use adapter_name instead of fully_qualified_name for store adapters
+            self.register(adapter_cls, adapter_cls.adapter_name)
+
+        self.lazy_load_list.clear()
+
+
 __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
-__store_adapter_registry: Registry[StoreAdapter] = Registry()
+__store_adapter_registry: StoreAdapterRegistry = StoreAdapterRegistry()
 
 """
 The registry module is responsible for managing implementations of codecs,
