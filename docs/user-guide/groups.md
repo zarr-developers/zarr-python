@@ -4,99 +4,100 @@ Zarr supports hierarchical organization of arrays via groups. As with arrays,
 groups can be stored in memory, on disk, or via other storage systems that
 support a similar interface.
 
-To create a group, use the `zarr.group` function:
+To create a group, use the [`zarr.group`][] function:
 
-```python
+```python exec="true" session="groups" source="above" result="ansi"
 import zarr
 store = zarr.storage.MemoryStore()
 root = zarr.create_group(store=store)
-root
-# <Group memory://...>
+print(root)
 ```
 
 Groups have a similar API to the Group class from [h5py](https://www.h5py.org/).  For example, groups can contain other groups:
 
-```python
+```python exec="true" session="groups" source="above"
 foo = root.create_group('foo')
 bar = foo.create_group('bar')
 ```
 
 Groups can also contain arrays, e.g.:
 
-```python
+```python exec="true" session="groups" source="above" result="ansi"
 z1 = bar.create_array(name='baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
-z1
-# <Array memory://.../foo/bar/baz shape=(10000, 10000) dtype=int32>
+print(z1)
 ```
 
 Members of a group can be accessed via the suffix notation, e.g.:
 
-```python
-root['foo']
-# <Group memory://.../foo>
+```python exec="true" session="groups" source="above" result="ansi"
+print(root['foo'])
 ```
 
 The '/' character can be used to access multiple levels of the hierarchy in one
 call, e.g.:
 
-```python
-root['foo/bar']
-# <Group memory://.../foo/bar>
-root['foo/bar/baz']
-# <Array memory://.../foo/bar/baz shape=(10000, 10000) dtype=int32>
+```python exec="true" session="groups" source="above" result="ansi"
+print(root['foo/bar'])
 ```
 
-The `zarr.Group.tree` method can be used to print a tree
+```python exec="true" session="groups" source="above" result="ansi"
+print(root['foo/bar/baz'])
+```
+
+The [`zarr.Group.tree`][] method can be used to print a tree
 representation of the hierarchy, e.g.:
 
-```python
-root.tree()
-# /
-# └── foo
-#     └── bar
-#         └── baz (10000, 10000) int32
+```python exec="true" session="groups" source="above" result="ansi"
+print(root.tree())
 ```
 
-The `zarr.open_group` function provides a convenient way to create or
+The [`zarr.open_group`][] function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
 sub-directories, e.g.:
 
-```python
+```python exec="true" session="groups" source="above" result="ansi"
 root = zarr.open_group('data/group.zarr', mode='w')
-root
-# <Group file://data/group.zarr>
-
-z = root.create_array(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
-z
-# <Array file://data/group.zarr/foo/bar/baz shape=(10000, 10000) dtype=int32>
+print(root)
 ```
 
-For more information on groups see the `zarr.Group` API docs.
+```python exec="true" session="groups" source="above" result="ansi"
+z = root.create_array(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
+print(z)
+```
+
+For more information on groups see the [`zarr.Group` API docs](../api/group.md).
 
 ## Batch Group Creation
 
-You can also create multiple groups concurrently with a single function call. `zarr.create_hierarchy` takes
-a `zarr.storage.Store` instance and a dict of `key : metadata` pairs, parses that dict, and
+You can also create multiple groups concurrently with a single function call. [`zarr.create_hierarchy`][] takes
+a [`zarr Storage instance`](../api/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
 writes metadata documents to storage:
 
-```python
+```python exec="true" session="groups" source="above" result="ansi"
 from zarr import create_hierarchy
 from zarr.core.group import GroupMetadata
 from zarr.storage import LocalStore
+
+from pprint import pprint
+import io
+
 node_spec = {'a/b/c': GroupMetadata()}
 nodes_created = dict(create_hierarchy(store=LocalStore(root='data'), nodes=node_spec))
-print(sorted(nodes_created.items(), key=lambda kv: len(kv[0])))
-# [('', <Group file://data>), ('a', <Group file://data/a>), ('a/b', <Group file://data/a/b>), ('a/b/c', <Group file://data/a/b/c>)]
+# Report nodes (pprint is used for cleaner rendering in the docs)
+output = io.StringIO()
+pprint(nodes_created, stream=output, width=60, depth=3)
+result = output.getvalue()
+print(result)
 ```
 
 Note that we only specified a single group named `a/b/c`, but 4 groups were created. These additional groups
 were created to ensure that the desired node `a/b/c` is connected to the root group `''` by a sequence
-of intermediate groups. `zarr.create_hierarchy` normalizes the `nodes` keyword argument to
+of intermediate groups. [`zarr.create_hierarchy`][] normalizes the `nodes` keyword argument to
 ensure that the resulting hierarchy is complete, i.e. all groups or arrays are connected to the root
 of the hierarchy via intermediate groups.
 
-Because `zarr.create_hierarchy` concurrently creates metadata documents, it's more efficient
-than repeated calls to `create_group` or `create_array`, provided you can statically define
+Because [`zarr.create_hierarchy`][] concurrently creates metadata documents, it's more efficient
+than repeated calls to [`create_group`][zarr.create_group] or [`create_array`][zarr.create_array], provided you can statically define
 the metadata for the groups and arrays you want to create.
 
 ## Array and group diagnostics
@@ -104,7 +105,7 @@ the metadata for the groups and arrays you want to create.
 Diagnostic information about arrays and groups is available via the `info`
 property. E.g.:
 
-```python
+```python exec="true" session="groups" source="above" result="ansi"
 store = zarr.storage.MemoryStore()
 root = zarr.group(store=store)
 foo = root.create_group('foo')
@@ -112,61 +113,26 @@ bar = foo.create_array(name='bar', shape=1000000, chunks=100000, dtype='int64')
 bar[:] = 42
 baz = foo.create_array(name='baz', shape=(1000, 1000), chunks=(100, 100), dtype='float32')
 baz[:] = 4.2
-root.info
-# Name        :
-# Type        : Group
-# Zarr format : 3
-# Read-only   : False
-# Store type  : MemoryStore
-foo.info
-# Name        : foo
-# Type        : Group
-# Zarr format : 3
-# Read-only   : False
-# Store type  : MemoryStore
-bar.info_complete()
-# Type               : Array
-# Zarr format        : 3
-# Data type          : Int64(endianness='little')
-# Fill value         : 0
-# Shape              : (1000000,)
-# Chunk shape        : (100000,)
-# Order              : C
-# Read-only          : False
-# Store type         : MemoryStore
-# Filters            : ()
-# Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
-# Compressors        : (ZstdCodec(level=0, checksum=False),)
-# No. bytes          : 8000000 (7.6M)
-# No. bytes stored   : 1614 (1.6K)
-# Storage ratio      : 4956.6
-# Chunks Initialized : 10
-baz.info
-# Type               : Array
-# Zarr format        : 3
-# Data type          : Float32(endianness='little')
-# Fill value         : 0.0
-# Shape              : (1000, 1000)
-# Chunk shape        : (100, 100)
-# Order              : C
-# Read-only          : False
-# Store type         : MemoryStore
-# Filters            : ()
-# Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
-# Compressors        : (ZstdCodec(level=0, checksum=False),)
-# No. bytes          : 4000000 (3.8M)
+print(root.info)
 ```
 
-Groups also have the `zarr.Group.tree` method, e.g.:
+```python exec="true" session="groups" source="above" result="ansi"
+print(foo.info)
+```
 
-```python
-root.tree()
-# /
-# └── foo
-#     ├── bar (1000000,) int64
-#     └── baz (1000, 1000) float32
+```python exec="true" session="groups" source="above" result="ansi"
+print(bar.info_complete())
+```
+
+```python exec="true" session="groups" source="above" result="ansi"
+print(baz.info)
+```
+
+Groups also have the [`zarr.Group.tree`][] method, e.g.:
+
+```python exec="true" session="groups" source="above" result="ansi"
+print(root.tree())
 ```
 
 !!! note
-   `zarr.Group.tree` requires the optional [rich](https://rich.readthedocs.io/en/stable/)
-   dependency. It can be installed with the `[tree]` extra.
+    [`zarr.Group.tree`][] requires the optional [rich](https://rich.readthedocs.io/en/stable/) dependency. It can be installed with the `[tree]` extra.
