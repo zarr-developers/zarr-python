@@ -252,7 +252,7 @@ fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
 list-env = "pip list"
 
 [tool.hatch.envs.docs]
-features = ['docs']
+features = ['docs', 'remote']
 
 [tool.hatch.envs.docs.scripts]
 serve = "mkdocs serve"
