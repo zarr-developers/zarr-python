@@ -11,6 +11,7 @@ nav:
   - "index.md"
   - "quick-start.md"
   - User Guide:
+      - user-guide/index.md
       - user-guide/installation.md
       - user-guide/arrays.md
       - user-guide/groups.md
@@ -24,6 +25,7 @@ nav:
       - user-guide/gpu.md
       - user-guide/consolidated_metadata.md
   - API Reference:
+      - api/index.md
       - api/array.md
       - api/group.md
       - api/create.md
@@ -38,16 +40,15 @@ nav:
       - api/registry.md
       - api/storage.md
       - api/testing.md
-      - API:
-        - api/api_async.md
-        - api/api_sync.md
+      - Async API: api/api_async.md
+      - Sync API: api/api_sync.md
       - ABC:
         - api/abc/codec.md
         - api/abc/metadata.md
         - api/abc/store.md
       - deprecated:
-        - api/deprecated/convenience.md
-        - api/deprecated/creation.md
+        - Convenience sub-module: api/deprecated/convenience.md
+        - Creation sub-module: api/deprecated/creation.md
   - release-notes.md
   - contributing.md
 watch:
@@ -141,7 +142,6 @@ plugins:
         'getting-started.md': 'quick-start.md'
         'roadmap.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
         'installation.md': 'user-guide/installation.md'
-        'api.md': 'api/open.md'
         'release.md': 'release-notes.md'
 
 # https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
