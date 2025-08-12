@@ -1,19 +1,21 @@
 # Runtime configuration
 
-`zarr.config` is responsible for managing the configuration of zarr and
+[`zarr.config`][] is responsible for managing the configuration of zarr and
 is based on the [donfig](https://github.com/pytroll/donfig) Python library.
 
 Configuration values can be set using code like the following:
 
-```python
+```python exec="true" session="config" source="above" result="ansi"
+
 import zarr
 
-zarr.config.set({'array.order': 'F'})
-# <donfig.config_obj.ConfigSet object at ...>
+print(zarr.config.get('array.order'))
+```
 
-# revert this change so it doesn't impact the rest of the docs
-zarr.config.set({'array.order': 'C'})
-# <donfig.config_obj.ConfigSet object at ...>
+```python exec="true" session="config" source="above" result="ansi"
+zarr.config.set({'array.order': 'F'})
+
+print(zarr.config.get('array.order'))
 ```
 
 Alternatively, configuration values can be set using environment variables, e.g.
