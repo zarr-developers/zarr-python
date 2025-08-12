@@ -22,13 +22,13 @@ print(z)
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total). The data is written to a
-`zarr.storage.MemoryStore` (e.g. an in-memory dict). See
+[`zarr.storage.MemoryStore`][] (e.g. an in-memory dict). See
 [Persistent arrays](#persistent-arrays) for details on storing arrays in other stores,
 and see [Data types](data_types.md) for an in-depth look at the data types supported
 by Zarr.
 
-For a complete list of array creation routines see the `zarr`
-module documentation.
+See the [creation API documentation][/api/create.md] for more detailed information about
+creating arrays.
 
 ## Reading and writing data
 
@@ -88,7 +88,7 @@ z1 = zarr.create_array(store='data/example-1.zarr', shape=(10000, 10000), chunks
 
 The array above will store its configuration metadata and all compressed chunk
 data in a directory called `'data/example-1.zarr'` relative to the current working
-directory. The `zarr.create_array` function provides a convenient way
+directory. The [`zarr.create_array`][] function provides a convenient way
 to create a new persistent array or continue working with an existing
 array. Note, there is no need to close an array: data are automatically
 flushed to disk, and files are automatically closed whenever an array is modified.
@@ -111,7 +111,7 @@ print(np.all(z1[:] == z2[:]))
 
 If you are just looking for a fast and convenient way to save NumPy arrays to
 disk then load back into memory later, the functions
-`zarr.save` and `zarr.load` may be
+[`zarr.save`][] and [`zarr.load`][] may be
 useful. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -121,7 +121,7 @@ print(zarr.load('data/example-2.zarr'))
 ```
 
 Please note that there are a number of other options for persistent array
-storage, see the Storage Guide for more details.
+storage, see the [Storage Guide](storage.md) for more details.
 
 ## Resizing and appending
 
@@ -140,7 +140,7 @@ Note that when an array is resized, the underlying data are not rearranged in
 any way. If one or more dimensions are shrunk, any chunks falling outside the
 new array shape will be deleted from the underlying store.
 
-`zarr.Array.append` is provided as a convenience function, which can be
+[`zarr.Array.append`][] is provided as a convenience function, which can be
 used to append data to any axis. E.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -176,14 +176,14 @@ algorithm (compression level 3) internally within Blosc, and with the
 bit-shuffle filter applied.
 
 When using a compressor, it can be useful to get some diagnostics on the
-compression ratio. Zarr arrays provide the `zarr.Array.info` property
+compression ratio. Zarr arrays provide the [`zarr.Array.info`][] property
 which can be used to print useful diagnostics, e.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 print(z.info)
 ```
 
-The `zarr.Array.info_complete` method inspects the underlying store and
+The [`zarr.Array.info_complete`][] method inspects the underlying store and
 prints additional diagnostics, e.g.:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
@@ -191,8 +191,8 @@ print(z.info_complete())
 ```
 
 !!! note
-    `zarr.Array.info_complete` will inspect the underlying store and may
-    be slow for large arrays. Use `zarr.Array.info` if detailed storage
+    [`zarr.Array.info_complete`][] will inspect the underlying store and may
+    be slow for large arrays. Use [`zarr.Array.info`][] if detailed storage
     statistics are not needed.
 
 If you don't specify a compressor, by default Zarr uses the Zstandard
@@ -272,7 +272,7 @@ Note that although this functionality is similar to some of the advanced
 indexing capabilities available on NumPy arrays and on h5py datasets, **the Zarr
 API for advanced indexing is different from both NumPy and h5py**, so please
 read this section carefully.  For a complete description of the indexing API,
-see the documentation for the `zarr.Array` class.
+see the documentation for the [`zarr.Array`][] class.
 
 ### Indexing with coordinate arrays
 
@@ -301,6 +301,10 @@ e.g.:
 data = np.arange(15).reshape(3, 5)
 z = zarr.create_array(store='data/example-11.zarr', shape=data.shape, dtype=data.dtype)
 z[:] = data
+print(z[:])
+```
+
+```python exec="true" session="arrays" source="above" result="ansi"
 print(z.get_coordinate_selection(([0, 2], [1, 3])))
 ```
 
@@ -550,7 +554,7 @@ performance and to avoid concurrency issues.
 That means that shards are the units of writing and chunks are the units of reading.
 Users need to configure the chunk and shard shapes accordingly.
 
-Sharded arrays can be created by providing the `shards` parameter to `zarr.create_array`.
+Sharded arrays can be created by providing the `shards` parameter to [`zarr.create_array`][].
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 a = zarr.create_array('data/example-20.zarr', shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8')
@@ -559,7 +563,7 @@ print(a.info_complete())
 ```
 
 In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is used.
-This means that 10*10 chunks are stored in each shard, and there are 10*10 shards in total.
+This means that `10*10` chunks are stored in each shard, and there are `10*10` shards in total.
 Without the `shards` argument, there would be 10,000 chunks stored as individual files.
 
 ## Missing features in 3.0
