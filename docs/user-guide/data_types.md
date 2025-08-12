@@ -45,19 +45,20 @@ Version 2 of the Zarr format defined its data types relative to
 and added a few non-NumPy data types as well. With one exception ([structured data types](#structured-data-type)), the Zarr
 V2 JSON identifier for a data type is just the NumPy `str` attribute of that data type:
 
-```python
->>> import zarr
->>> import numpy as np
->>> import json
->>>
->>> store = {}
->>> np_dtype = np.dtype('int64')
->>> np_dtype.str
-'<i8'
->>> z = zarr.create_array(store=store, shape=(1,), dtype=np_dtype, zarr_format=2)
->>> dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
->>> dtype_meta
-'<i8'
+```python exec="true" session="data_types" source="above" result="ansi"
+import zarr
+import numpy as np
+import json
+
+store = {}
+np_dtype = np.dtype('int64')
+print(np_dtype.str)
+```
+
+```python exec="true" session="data_types" source="above" result="ansi"
+z = zarr.create_array(store=store, shape=(1,), dtype=np_dtype, zarr_format=2)
+dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
+print(dtype_meta)
 ```
 
 !!! note
@@ -88,15 +89,16 @@ element is a Zarr V2 data type specification. This representation supports recur
 
 For example:
 
-```python
->>> store = {}
->>> np_dtype = np.dtype([('field_a', '>i2'), ('field_b', [('subfield_c', '>f4'), ('subfield_d', 'i2')])])
->>> np_dtype.str
-'|V8'
->>> z = zarr.create_array(store=store, shape=(1,), dtype=np_dtype, zarr_format=2)
->>> dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
->>> dtype_meta
-[['field_a', '>i2'], ['field_b', [['subfield_c', '>f4'], ['subfield_d', '<i2']]]]
+```python exec="true" session="data_types" source="above" result="ansi"
+store = {}
+np_dtype = np.dtype([('field_a', '>i2'), ('field_b', [('subfield_c', '>f4'), ('subfield_d', 'i2')])])
+print(np_dtype.str)
+```
+
+```python exec="true" session="data_types" source="above" result="ansi"
+z = zarr.create_array(store=store, shape=(1,), dtype=np_dtype, zarr_format=2)
+dtype_meta = json.loads(store['.zarray'].to_bytes())["dtype"]
+print(dtype_meta)
 ```
 
 ### Object Data Type
@@ -169,7 +171,7 @@ We do this with an abstract Zarr data type class: [ZDType][zarr.dtype.ZDType]
 which provides Zarr V2 and Zarr V3 compatibility routines for "native" data types.
 
 In this context, a "native" data type is a Python class, typically defined in another library, that
-models an array's data type. For example, `np.dtypes.UInt8DType` is a native data type defined in NumPy.
+models an array's data type. For example, [`numpy.dtypes.UInt8DType`][] is a native data type defined in NumPy.
 Zarr Python wraps the NumPy `uint8` with a [ZDType][zarr.dtype.ZDType] instance called
 [UInt8][zarr.dtype.UInt8].
 
@@ -233,31 +235,31 @@ This section will demonstrates the basic usage of Zarr data types.
 
 Create a `ZDType` from a native data type:
 
-```python
->>> from zarr.core.dtype import Int8
->>> import numpy as np
->>> int8 = Int8.from_native_dtype(np.dtype('int8'))
+```python exec="true" session="data_types" source="above"
+from zarr.core.dtype import Int8
+import numpy as np
+int8 = Int8.from_native_dtype(np.dtype('int8'))
 ```
 
 Convert back to a native data type:
 
-```python
->>> native_dtype = int8.to_native_dtype()
->>> assert native_dtype == np.dtype('int8')
+```python exec="true" session="data_types" source="above"
+native_dtype = int8.to_native_dtype()
+assert native_dtype == np.dtype('int8')
 ```
 
 Get the default scalar value for the data type:
 
-```python
->>> default_value = int8.default_scalar()
->>> assert default_value == np.int8(0)
+```python exec="true" session="data_types" source="above"
+default_value = int8.default_scalar()
+assert default_value == np.int8(0)
 ```
 
 Serialize to JSON for Zarr V2:
 
-```python
->>> json_v2 = int8.to_json(zarr_format=2)
->>> json_v2
+```python exec="true" session="data_types" source="above" result="ansi"
+json_v2 = int8.to_json(zarr_format=2)
+print(json_v2)
 {'name': '|i1', 'object_codec_id': None}
 ```
 
@@ -272,25 +274,23 @@ Serialize to JSON for Zarr V2:
 
 And for V3:
 
-```python
->>> json_v3 = int8.to_json(zarr_format=3)
->>> json_v3
-'int8'
+```python exec="true" session="data_types" source="above" result="ansi"
+json_v3 = int8.to_json(zarr_format=3)
+print(json_v3)
 ```
 
 Serialize a scalar value to JSON:
 
-```python
->>> json_value = int8.to_json_scalar(42, zarr_format=3)
->>> json_value
-42
+```python exec="true" session="data_types" source="above" result="ansi"
+json_value = int8.to_json_scalar(42, zarr_format=3)
+print(json_value)
 ```
 
 Deserialize a scalar value from JSON:
 
-```python
->>> scalar_value = int8.from_json_scalar(42, zarr_format=3)
->>> assert scalar_value == np.int8(42)
+```python exec="true" session="data_types" source="above"
+scalar_value = int8.from_json_scalar(42, zarr_format=3)
+assert scalar_value == np.int8(42)
 ```
 
 ### Adding New Data Types
@@ -312,34 +312,31 @@ Python project directory.
 Although Zarr Python uses a different data type model from NumPy, you can still define a Zarr array
 with a NumPy data type object:
 
-```python
->>> from zarr import create_array
->>> import numpy as np
->>> a = create_array({}, shape=(10,), dtype=np.dtype('int'))
->>> a
-<Array memory:... shape=(10,) dtype=int64>
+```python exec="true" session="data_types" source="above" result="ansi"
+from zarr import create_array
+import numpy as np
+a = create_array({}, shape=(10,), dtype=np.dtype('int'))
+print(a)
 ```
 
 Or a string representation of a NumPy data type:
 
-```python
->>> a = create_array({}, shape=(10,), dtype='<i8')
->>> a
-<Array memory:... shape=(10,) dtype=int64>
+```python exec="true" session="data_types" source="above" result="ansi"
+a = create_array({}, shape=(10,), dtype='<i8')
+print(a)
 ```
 
 The `Array` object presents itself like a NumPy array, including exposing a NumPy
 data type as its `dtype` attribute:
 
-```python
->>> type(a.dtype)
-<class 'numpy.dtypes.Int64DType'>
+```python exec="true" session="data_types" source="above" result="ansi"
+print(type(a.dtype))
 ```
 
 But if we inspect the metadata for the array, we can see the Zarr data type object:
 
 ```python
->>> type(a.metadata.data_type)
+type(a.metadata.data_type)
 <class 'zarr.core.dtype.npy.int.Int64'>
 ```
 
@@ -353,16 +350,17 @@ For simple data types like `int`, the solution could be extremely simple: just
 maintain a lookup table that maps a NumPy data type to the Zarr data type equivalent. But not all
 data types are so simple. Consider this case:
 
-```python
->>> from zarr import create_array
->>> import warnings
->>> import numpy as np
->>> warnings.simplefilter("ignore", category=FutureWarning)
->>> a = create_array({}, shape=(10,), dtype=[('a', 'f8'), ('b', 'i8')])
->>> a.dtype # this is the NumPy data type
-dtype([('a', '<f8'), ('b', '<i8')])
->>> a.metadata.data_type # this is the Zarr data type
-Structured(fields=(('a', Float64(endianness='little')), ('b', Int64(endianness='little'))))
+```python exec="true" session="data_types" source="above"
+from zarr import create_array
+import warnings
+import numpy as np
+warnings.simplefilter("ignore", category=FutureWarning)
+a = create_array({}, shape=(10,), dtype=[('a', 'f8'), ('b', 'i8')])
+print(a.dtype) # this is the NumPy data type
+```
+
+```python exec="true" session="data_types" source="above"
+print(a.metadata.data_type) # this is the Zarr data type
 ```
 
 In this example, we created a
@@ -394,38 +392,36 @@ handles a range of input types:
 
 - NumPy data types:
 
-  ```python
-  >>> import numpy as np
-  >>> from zarr.dtype import parse_dtype
-  >>> my_dtype = np.dtype('>M8[10s]')
-  >>> parse_dtype(my_dtype, zarr_format=2)
-  DateTime64(endianness='big', scale_factor=10, unit='s')
+  ```python exec="true" session="data_types" source="above" result="ansi"
+  import numpy as np
+  from zarr.dtype import parse_dtype
+  my_dtype = np.dtype('>M8[10s]')
+  print(parse_dtype(my_dtype, zarr_format=2))
   ```
 
 - NumPy data type-compatible strings:
 
-  ```python
-  >>> dtype_str = '>M8[10s]'
-  >>> parse_dtype(dtype_str, zarr_format=2)
-  DateTime64(endianness='big', scale_factor=10, unit='s')
+  ```python exec="true" session="data_types" source="above" result="ansi"
+  dtype_str = '>M8[10s]'
+  print(parse_dtype(dtype_str, zarr_format=2))
   ```
 
 - `ZDType` instances:
 
-  ```python
-  >>> from zarr.dtype import DateTime64
-  >>> zdt = DateTime64(endianness='big', scale_factor=10, unit='s')
-  >>> parse_dtype(zdt, zarr_format=2) # Use a ZDType (this is a no-op)
-  DateTime64(endianness='big', scale_factor=10, unit='s')
+  ```python exec="true" session="data_types" source="above" result="ansi"
+  from zarr.dtype import DateTime64
+  zdt = DateTime64(endianness='big', scale_factor=10, unit='s')
+  print(parse_dtype(zdt, zarr_format=2)) # Use a ZDType (this is a no-op)
   ```
 
 - Python dictionaries (requires `zarr_format=3`). These dictionaries must be consistent with the
   `JSON` form of the data type:
 
-  ```python
-  >>> dt_dict = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}
-  >>> parse_dtype(dt_dict, zarr_format=3)
-  DateTime64(endianness='little', scale_factor=10, unit='s')
-  >>> parse_dtype(dt_dict, zarr_format=3).to_json(zarr_format=3)
-  {'name': 'numpy.datetime64', 'configuration': {'unit': 's', 'scale_factor': 10}}
+  ```python exec="true" session="data_types" source="above" result="ansi"
+  dt_dict = {"name": "numpy.datetime64", "configuration": {"unit": "s", "scale_factor": 10}}
+  print(parse_dtype(dt_dict, zarr_format=3))
+  ```
+
+  ```python exec="true" session="data_types" source="above" result="ansi"
+  print(parse_dtype(dt_dict, zarr_format=3).to_json(zarr_format=3))
   ```
