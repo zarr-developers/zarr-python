@@ -16,7 +16,7 @@ Required dependencies include:
 Zarr is available on [PyPI](https://pypi.org/project/zarr/). Install it using `pip`:
 
 ```console
-$ pip install zarr
+pip install zarr
 ```
 
 There are a number of optional dependency groups you can install for extra functionality.
@@ -32,7 +32,7 @@ Additional optional dependencies include `rich`, `universal_pathlib`. These must
 Zarr is also published to [conda-forge](https://conda-forge.org). Install it using `conda`:
 
 ```console
-$ conda install -c conda-forge zarr
+conda install -c conda-forge zarr
 ```
 
 Conda does not support optional dependencies, so you will have to manually install any packages
