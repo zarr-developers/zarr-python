@@ -20,9 +20,9 @@ so we can improve this guide.
 
 The goals described above necessitated some breaking changes to the API (hence the
 major version update), but where possible we have maintained backwards compatibility
-in the most widely used parts of the API. This in the `zarr.Array` and
-`zarr.Group` classes and the "top-level API" (e.g. `zarr.open_array` and
-`zarr.open_group`).
+in the most widely used parts of the API. This in the [`zarr.Array`][] and
+[`zarr.Group`][] classes and the "top-level API" (e.g. [`zarr.open_array`][] and
+[`zarr.open_group`][]).
 
 ## Getting ready for 3.0
 
@@ -92,8 +92,8 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 ### The Array class
 
 1. Disallow direct construction - the signature for initializing the `Array` class has changed
-   significantly. Please use `zarr.create_array` or `zarr.open_array` instead of
-   directly constructing the `zarr.Array` class.
+   significantly. Please use [`zarr.create_array`][] or [`zarr.open_array`][] instead of
+   directly constructing the [`zarr.Array`][] class.
 
 2. Defaulting to `zarr_format=3` - newly created arrays will use the version 3 of the
    Zarr specification. To continue using version 2, set `zarr_format=2` when creating arrays
@@ -101,13 +101,13 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 
 ### The Group class
 
-1. Disallow direct construction - use `zarr.open_group` or `zarr.create_group`
+1. Disallow direct construction - use [`zarr.open_group`][] or [`zarr.create_group`][]
    instead of directly constructing the `zarr.Group` class.
 2. Most of the h5py compatibility methods are deprecated and will issue warnings if used.
    The following functions are drop in replacements that have the same signature and functionality:
 
-   - Use `zarr.Group.create_array` in place of `zarr.Group.create_dataset`
-   - Use `zarr.Group.require_array` in place of `zarr.Group.require_dataset`
+   - Use [`zarr.Group.create_array`][] in place of `zarr.Group.create_dataset`
+   - Use [`zarr.Group.require_array`][] in place of `zarr.Group.require_dataset`
 3. Disallow "." syntax for getting group members. To get a member of a group named `foo`,
    use `group["foo"]` in place of `group.foo`.
 
@@ -129,14 +129,13 @@ Several store implementations have moved from the top-level module to `zarr.stor
 Common replacements:
 
 | v2 Import               | v3 Import                          |
-|=========================|====================================|
-| `zarr.MemoryStore`      | `zarr.storage.MemoryStore`        |
-| `zarr.DirectoryStore`   | `zarr.storage.LocalStore`         |
-| `zarr.TempStore`        | Use `tempfile.TemporaryDirectory`  |
-|                         | with `LocalStore`                  |
+|-------------------------|------------------------------------|
+| `zarr.MemoryStore`      | [`zarr.storage.MemoryStore`][]         |
+| `zarr.DirectoryStore`   | [`zarr.storage.LocalStore`][]         |
+| `zarr.TempStore`        | Use [`tempfile.TemporaryDirectory`][] with [`LocalStore`][zarr.storage.LocalStore]  |
 
 1. Replaced the `MutableMapping` base class in favor of a custom abstract base class
-   (`zarr.abc.store.Store`).
+   ([`zarr.abc.store.Store`][]).
 2. Switched to an asynchronous interface for all store methods that result in IO. This
    change ensures that all store methods are non-blocking and are as performant as
    possible.
@@ -146,7 +145,7 @@ Zarr-Python 3. See issue #1274 for more details on the removal of these stores.
 
 - `N5Store` - see https://github.com/zarr-developers/n5py for an alternative interface to
   N5 formatted data.
-- `ABSStore` - use the `zarr.storage.FsspecStore` instead along with fsspec's
+- `ABSStore` - use the [`zarr.storage.FsspecStore`][] instead along with fsspec's
   [adlfs backend](https://github.com/fsspec/adlfs).
 
 The following stores have been removed altogether. Users who need these stores will have to
@@ -160,7 +159,7 @@ implement their own version in zarr-python v3.
 
 At present, the latter five stores in this list do not have an equivalent in Zarr-Python 3.
 If you are interested in developing a custom store that targets these backends, see
-developing custom stores or open an
+[developing custom stores](storage.md/#developing-custom-stores) or open an
 [issue](https://github.com/zarr-developers/zarr-python/issues) to discuss your use case.
 
 ### Codecs
@@ -187,7 +186,7 @@ When installing using `pip`:
 ### Miscellaneous
 
 - The keyword argument `zarr_version` available in most creation functions in `zarr`
-  (e.g. `zarr.create`, `zarr.open`, `zarr.group`, `zarr.array`) has
+  (e.g. [`zarr.create`][], [`zarr.open`][], [`zarr.group`][], [`zarr.array`][]) has
   been deprecated in favor of `zarr_format`.
 
 ## 🚧 Work in Progress 🚧
@@ -200,10 +199,10 @@ of Zarr-Python, please open (or comment on) a
 
 - The following functions / methods have not been ported to Zarr-Python 3 yet:
 
-  * `zarr.copy` (issue #2407)
-  * `zarr.copy_all` (issue #2407)
-  * `zarr.copy_store` (issue #2407)
-  * `zarr.Group.move` (issue #2108)
+  * `zarr.copy` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
+  * `zarr.copy_all` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
+  * `zarr.copy_store` ([issue #2407](https://github.com/zarr-developers/zarr-python/issues/2407))
+  * `zarr.Group.move` ([issue #2108](https://github.com/zarr-developers/zarr-python/issues/2108))
 
 - The following features (corresponding to function arguments to functions in
   `zarr`) have not been ported to Zarr-Python 3 yet. Using these features
@@ -211,20 +210,19 @@ of Zarr-Python, please open (or comment on) a
 
   * `cache_attrs`
   * `cache_metadata`
-  * `chunk_store` (issue #2495)
+  * `chunk_store` ([issue #2495](https://github.com/zarr-developers/zarr-python/issues/2495))
   * `meta_array`
-  * `object_codec` (issue #2617)
-  * `synchronizer` (issue #1596)
+  * `object_codec` ([issue #2617](https://github.com/zarr-developers/zarr-python/issues/2617))
+  * `synchronizer` ([issue #1596](https://github.com/zarr-developers/zarr-python/issues/1596))
   * `dimension_separator`
 
 - The following features that were supported by Zarr-Python 2 have not been ported
   to Zarr-Python 3 yet:
 
-  * Structured arrays / dtypes (issue #2134)
-  * Fixed-length string dtypes (issue #2347)
-  * Datetime and timedelta dtypes (issue #2616)
-  * Object dtypes (issue #2617)
-  * Ragged arrays (issue #2618)
-  * Groups and Arrays do not implement `__enter__` and `__exit__` protocols (issue #2619)
-  * Big Endian dtypes (issue #2324)
-  * Default filters for object dtypes for Zarr format 2 arrays (issue #2627)
+  * Structured arrays / dtypes ([issue #2134](https://github.com/zarr-developers/zarr-python/issues/2134))
+  * Fixed-length string dtypes ([issue #2347](https://github.com/zarr-developers/zarr-python/issues/2347))
+  * Datetime and timedelta dtypes ([issue #2616](https://github.com/zarr-developers/zarr-python/issues/2616))
+  * Object dtypes ([issue #2616](https://github.com/zarr-developers/zarr-python/issues/2616))
+  * Ragged arrays ([issue #2618](https://github.com/zarr-developers/zarr-python/issues/2618))
+  * Groups and Arrays do not implement `__enter__` and `__exit__` protocols ([issue #2619](https://github.com/zarr-developers/zarr-python/issues/2619))
+  * Default filters for object dtypes for Zarr format 2 arrays ([issue #2627](https://github.com/zarr-developers/zarr-python/issues/2627))
