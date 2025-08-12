@@ -119,13 +119,13 @@ new_root = new_nodes['']
 assert new_root.attrs == root.attrs
 ```
 
-Note that `zarr.create_hierarchy` will only initialize arrays and groups -- copying array data must
+Note that [`zarr.create_hierarchy`][] will only initialize arrays and groups -- copying array data must
 be done in a separate step.
 
 ### Persistent Storage
 
 Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
-utilized a `zarr.storage.LocalStore`, a number of other storage options are available.
+utilized a [`zarr.storage.LocalStore`][], a number of other storage options are available.
 
 Zarr integrates seamlessly with cloud object storage such as Amazon S3 and Google Cloud Storage
 using external libraries like [s3fs](https://s3fs.readthedocs.io) or
@@ -139,7 +139,7 @@ z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chu
 z[:, :] = np.random.random((100, 100))
 ```
 
-A single-file store can also be created using the `zarr.storage.ZipStore`:
+A single-file store can also be created using the [`zarr.storage.ZipStore`][]:
 
 ```python exec="true" session="quickstart" source="above"
 
@@ -173,4 +173,4 @@ z = zarr.open_array(store, mode='r')
 print(z[:])
 ```
 
-Read more about Zarr's storage options in the [User Guide](user-guide/storage.md).
+Read more about Zarr's storage options in the [User Guide](user-guide/index.md).
