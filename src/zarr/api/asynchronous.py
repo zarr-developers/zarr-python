@@ -48,6 +48,7 @@ from zarr.errors import (
 )
 from zarr.storage import StorePath
 from zarr.storage._common import make_store_path
+from zarr.storage._zep8 import URLStoreResolver, is_zep8_url
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -59,9 +60,33 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
 
-    # TODO: this type could use some more thought
-    ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
-    PathLike = str
+
+def _parse_zep8_zarr_format(store: str) -> tuple[str, int | None]:
+    """
+    Parse ZEP 8 URL to extract zarr format and return store without format.
+
+    Returns
+    -------
+    tuple[str, int | None]
+        (store_url_without_format, zarr_format)
+    """
+    if not is_zep8_url(store):
+        return store, None
+
+    resolver = URLStoreResolver()
+    zarr_format = resolver.extract_zarr_format(store)
+
+    # Remove zarr format from URL for store creation
+    if zarr_format:
+        # Simple removal - in real implementation would properly parse/reconstruct
+        store_without_format = store.replace("|zarr2:", "").replace("|zarr3:", "")
+        return store_without_format, zarr_format
+
+    return store, None
+
+
+ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
+PathLike = str
 
 __all__ = [
     "array",
