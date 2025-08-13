@@ -6,18 +6,60 @@ from typing_extensions import Protocol
 class Numcodec(Protocol):
     """
     A protocol that models the ``numcodecs.abc.Codec`` interface.
+
+	This protocol should be considered experimental; expect the typing for `buf`, and `out` to become stricter.
     """
 
     codec_id: str
 
     def encode(self, buf: Any) -> Any: ...
+        """Encode data in `buf`.
+
+        Parameters
+        ----------
+        buf
+            Data to be encoded. May be any object supporting the new-style
+            buffer protocol.
+
+        Returns
+        -------
+        enc
+            Encoded data. May be any object supporting the new-style buffer
+            protocol.
+        """
 
     def decode(self, buf: Any, out: Any | None = None) -> Any: ...
+        """
+        Decode data in `buf`.
+
+        Parameters
+        ----------
+        buf : Any
+            Encoded data. May be any object supporting the new-style buffer
+            protocol.
+        out : Any
+            Writeable buffer to store decoded data. N.B. if provided, this buffer must
+            be exactly the right size to store the decoded data.
+
+        Returns
+        -------
+        dec : Any
+            Decoded data. May be any object supporting the new-style
+            buffer protocol.
+        """
 
     def get_config(self) -> Any: ...
+        """
+        Return a dictionary holding configuration parameters for this
+        codec. Must include an 'id' field with the codec identifier. All
+        values must be compatible with JSON encoding.
+        """
 
     @classmethod
     def from_config(cls, config: Any) -> Self: ...
+        """
+        Instantiate codec from a configuration object.
+        """
 
 
 def _is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:
