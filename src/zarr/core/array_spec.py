@@ -4,7 +4,6 @@ from dataclasses import dataclass, fields
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast
 
 from zarr.core.common import (
-    MemoryOrder,
     parse_bool,
     parse_fill_value,
     parse_order,
@@ -16,8 +15,8 @@ if TYPE_CHECKING:
     from typing import NotRequired
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import ChunkCoords
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.types import ChunkCoords, MemoryOrder
 
 
 class ArrayConfigParams(TypedDict):

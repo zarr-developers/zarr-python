@@ -36,8 +36,6 @@ from zarr.core.buffer import (
 )
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.common import (
-    ChunkCoords,
-    ChunkCoordsLike,
     parse_enum,
     parse_named_configuration,
     parse_shapelike,
@@ -52,14 +50,15 @@ from zarr.core.indexing import (
     morton_order_iter,
 )
 from zarr.core.metadata.v3 import parse_codecs
+from zarr.core.types import ChunkCoords, ChunkCoordsLike
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
     from typing import Self
 
-    from zarr.core.common import JSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.types import JSON
 
 MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, Buffer]

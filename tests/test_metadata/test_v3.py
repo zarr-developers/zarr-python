@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
-    from zarr.core.common import JSON
+    from zarr.core.types import JSON
 
 
 from zarr.core.metadata.v3 import (

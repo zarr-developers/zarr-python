@@ -8,7 +8,7 @@ import zarr.core
 import zarr.core.attributes
 import zarr.storage
 from tests.conftest import deep_nan_equal
-from zarr.core.common import ZarrFormat
+from zarr.types import ZarrFormat
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])

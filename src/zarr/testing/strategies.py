@@ -16,13 +16,14 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import Array
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
-from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
+from zarr.core.types import JSON
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
 from zarr.storage._utils import normalize_path
+from zarr.types import ZarrFormat
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)

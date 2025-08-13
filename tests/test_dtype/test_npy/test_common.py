@@ -32,7 +32,8 @@ from zarr.core.dtype.npy.common import (
 )
 
 if TYPE_CHECKING:
-    from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 
 json_float_v2_roundtrip_cases: tuple[tuple[JSONFloatV2, float | np.floating[Any]], ...] = (

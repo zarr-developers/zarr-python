@@ -3,11 +3,10 @@ from __future__ import annotations
 import base64
 import re
 from dataclasses import dataclass
-from typing import ClassVar, Literal, Self, TypedDict, TypeGuard, cast, overload
+from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
 
-from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     DTypeConfig_V2,
@@ -20,6 +19,10 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.core.types import JSON, NamedConfig
+
+if TYPE_CHECKING:
+    from zarr.types import ZarrFormat
 
 BytesLike = np.bytes_ | str | bytes | int
 

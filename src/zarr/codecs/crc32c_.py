@@ -8,7 +8,7 @@ import typing_extensions
 from crc32c import crc32c
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
+    from zarr.core.types import JSON
 
 
 @dataclass(frozen=True)

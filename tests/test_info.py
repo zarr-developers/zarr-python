@@ -4,8 +4,8 @@ import pytest
 
 from zarr.codecs.bytes import BytesCodec
 from zarr.core._info import ArrayInfo, GroupInfo, human_readable_size
-from zarr.core.common import ZarrFormat
 from zarr.core.dtype.npy.int import Int32
+from zarr.types import ZarrFormat
 
 ZARR_FORMATS = [2, 3]
 

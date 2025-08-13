@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
 from zarr.core.dtype.common import check_dtype_spec_v3
+from zarr.core.types import JSON, ZARR_JSON, ChunkCoords, DimensionNames
 
 if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import JSON, ChunkCoords
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
+    from zarr.core.types import ChunkCoords
 
 
 import json
@@ -26,10 +27,6 @@ from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
 from zarr.core.common import (
-    JSON,
-    ZARR_JSON,
-    ChunkCoords,
-    DimensionNames,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -125,15 +122,6 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     raise TypeError(
         f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
     )
-
-
-class ArrayV3MetadataDict(TypedDict):
-    """
-    A typed dictionary model for zarr v3 metadata.
-    """
-
-    zarr_format: Literal[3]
-    attributes: dict[str, JSON]
 
 
 @dataclass(frozen=True, kw_only=True)

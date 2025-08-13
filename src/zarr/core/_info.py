@@ -8,8 +8,8 @@ if TYPE_CHECKING:
     import numcodecs.abc
 
     from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-    from zarr.core.common import ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.types import ZarrFormat
 
 
 @dataclasses.dataclass(kw_only=True)

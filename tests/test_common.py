@@ -6,13 +6,12 @@ import numpy as np
 import pytest
 
 from zarr.core.common import (
-    ANY_ACCESS_MODE,
-    AccessModeLiteral,
     parse_name,
     parse_shapelike,
     product,
 )
 from zarr.core.config import parse_indexing_order
+from zarr.core.types import ACCESS_MODE_LITERAL, AccessModeLiteral
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -28,7 +27,7 @@ def test_access_modes() -> None:
     """
     Test that the access modes type and variable for run-time checking are equivalent.
     """
-    assert set(ANY_ACCESS_MODE) == set(get_args(AccessModeLiteral))
+    assert set(ACCESS_MODE_LITERAL) == set(get_args(AccessModeLiteral))
 
 
 # todo: test

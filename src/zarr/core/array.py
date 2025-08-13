@@ -50,15 +50,6 @@ from zarr.core.chunk_key_encodings import (
     V2ChunkKeyEncoding,
 )
 from zarr.core.common import (
-    JSON,
-    ZARR_JSON,
-    ZARRAY_JSON,
-    ZATTRS_JSON,
-    ChunkCoords,
-    DimensionNames,
-    MemoryOrder,
-    ShapeLike,
-    ZarrFormat,
     _default_zarr_format,
     _warn_order_kwarg,
     ceildiv,
@@ -106,9 +97,7 @@ from zarr.core.metadata import (
     ArrayMetadata,
     ArrayMetadataDict,
     ArrayV2Metadata,
-    ArrayV2MetadataDict,
     ArrayV3Metadata,
-    ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
 from zarr.core.metadata.v2 import (
@@ -119,6 +108,18 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
+from zarr.core.types import (
+    JSON,
+    ZARR_JSON,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
+    ArrayMetadataJSON_V2,
+    ArrayMetadataJSON_V3,
+    ChunkCoords,
+    DimensionNames,
+    MemoryOrder,
+    ShapeLike,
+)
 from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
 from zarr.registry import (
     _parse_array_array_codec,
@@ -140,6 +141,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
+    from zarr.types import ZarrFormat
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -294,7 +296,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @overload
     def __init__(
         self: AsyncArray[ArrayV2Metadata],
-        metadata: ArrayV2Metadata | ArrayV2MetadataDict,
+        metadata: ArrayV2Metadata | ArrayMetadataJSON_V2,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None: ...
@@ -302,7 +304,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @overload
     def __init__(
         self: AsyncArray[ArrayV3Metadata],
-        metadata: ArrayV3Metadata | ArrayV3MetadataDict,
+        metadata: ArrayV3Metadata | ArrayMetadataJSON_V3,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None: ...
@@ -962,7 +964,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast("ArrayV3MetadataDict", metadata_dict)
+        _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
         return cls(store_path=store_path, metadata=_metadata_dict)
 
     @property

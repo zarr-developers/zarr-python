@@ -8,13 +8,14 @@ from numcodecs.vlen import VLenBytes, VLenUTF8
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.types import JSON
 
 
 # can use a global because there are no parameters

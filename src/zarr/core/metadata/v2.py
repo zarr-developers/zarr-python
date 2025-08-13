@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 import numcodecs.abc
 
@@ -11,6 +11,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
+from zarr.core.types import JSON, ZARRAY_JSON, ZATTRS_JSON, MemoryOrder
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import ChunkCoords
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         TScalar_co,
         ZDType,
     )
+    from zarr.core.types import ChunkCoords
 
 import json
 from dataclasses import dataclass, field, fields, replace
@@ -37,24 +38,10 @@ import numpy as np
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import (
-    JSON,
-    ZARRAY_JSON,
-    ZATTRS_JSON,
-    MemoryOrder,
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
-
-
-class ArrayV2MetadataDict(TypedDict):
-    """
-    A typed dictionary model for Zarr format 2 metadata.
-    """
-
-    zarr_format: Literal[2]
-    attributes: dict[str, JSON]
-
 
 # Union of acceptable types for v2 compressors
 CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None

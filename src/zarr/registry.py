@@ -20,7 +20,7 @@ if TYPE_CHECKING:
         CodecPipeline,
     )
     from zarr.core.buffer import Buffer, NDBuffer
-    from zarr.core.common import JSON
+    from zarr.core.types import JSON
 
 __all__ = [
     "Registry",

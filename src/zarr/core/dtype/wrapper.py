@@ -39,8 +39,9 @@ from typing import (
 import numpy as np
 
 if TYPE_CHECKING:
-    from zarr.core.common import JSON, ZarrFormat
     from zarr.core.dtype.common import DTypeJSON, DTypeSpec_V2, DTypeSpec_V3
+    from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 # This the upper bound for the scalar types we support. It's numpy scalars + str,
 # because the new variable-length string dtype in numpy does not have a corresponding scalar type

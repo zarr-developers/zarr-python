@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.types import BytesLike, ChunkCoords
 
 try:
     import cupy as cp

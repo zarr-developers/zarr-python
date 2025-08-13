@@ -29,7 +29,8 @@ from zarr.core.dtype.npy.common import (
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
 
 if TYPE_CHECKING:
-    from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 
 @dataclass(frozen=True)

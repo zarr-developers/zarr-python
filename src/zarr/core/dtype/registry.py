@@ -14,8 +14,8 @@ from zarr.core.dtype.common import (
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
 
-    from zarr.core.common import ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.types import ZarrFormat
 
 
 # This class is different from the other registry classes, which inherit from

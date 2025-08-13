@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, over
 
 import numpy as np
 
-from zarr.core.common import NamedConfig
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     DTypeConfig_V2,
@@ -23,9 +22,11 @@ from zarr.core.dtype.npy.common import (
     check_json_str,
 )
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+from zarr.core.types import NamedConfig
 
 if TYPE_CHECKING:
-    from zarr.core.common import JSON, ZarrFormat
+    from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
 

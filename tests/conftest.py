@@ -21,7 +21,7 @@ from zarr.core.array import (
     _parse_chunk_key_encoding,
 )
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
-from zarr.core.common import JSON, DimensionNames, parse_shapelike
+from zarr.core.common import parse_shapelike
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     get_data_type_from_native_dtype,
@@ -41,8 +41,15 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
-    from zarr.core.common import ChunkCoords, MemoryOrder, ShapeLike, ZarrFormat
     from zarr.core.dtype.wrapper import ZDType
+    from zarr.core.types import (
+        JSON,
+        ChunkCoords,
+        DimensionNames,
+        MemoryOrder,
+        ShapeLike,
+    )
+    from zarr.types import ZarrFormat
 
 
 async def parse_store(
