@@ -60,13 +60,13 @@ def _check_codecjson_v2(data: object) -> TypeGuard[CodecJSON_V2[str]]:
     return isinstance(data, Mapping) and "id" in data and isinstance(data["id"], str)
 
 
-CodecConfig_V3 = NamedConfig[str, Mapping[str, object]]
+CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
+"""The JSON representation of a codec for Zarr V3."""
 
-CodecJSON_V3 = str | CodecConfig_V3
-
-# The widest type we will accept for a codec JSON
+# The widest type we will *accept* for a codec JSON
 # This covers v2 and v3
 CodecJSON = str | Mapping[str, object]
+"""The widest type of JSON-like input that could specify a codec."""
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):

@@ -6,18 +6,65 @@ from typing_extensions import Protocol
 class Numcodec(Protocol):
     """
     A protocol that models the ``numcodecs.abc.Codec`` interface.
+
+    This protocol should be considered experimental. Expect the type annotations for ``buf`` and
+    ``out`` to narrow in the future.
     """
 
     codec_id: str
 
-    def encode(self, buf: Any) -> Any: ...
+    def encode(self, buf: Any) -> Any:
+        """Encode data from ``buf``.
 
-    def decode(self, buf: Any, out: Any | None = None) -> Any: ...
+        Parameters
+        ----------
+        buf : Any
+            Data to be encoded.
 
-    def get_config(self) -> Any: ...
+        Returns
+        -------
+        enc: Any
+            Encoded data.
+        """
+        ...
+
+    def decode(self, buf: Any, out: Any | None = None) -> Any:
+        """
+        Decode data in ``buf``.
+
+        Parameters
+        ----------
+        buf : Any
+            Encoded data.
+        out : Any
+            Writeable buffer to store decoded data. If provided, this buffer must
+            be exactly the right size to store the decoded data.
+
+        Returns
+        -------
+        dec : Any
+            Decoded data.
+        """
+        ...
+
+    def get_config(self) -> Any:
+        """
+        Return a JSON-serializable configuration dictionary for this
+        codec. Must include an ``'id'`` field with the codec identifier.
+        """
+        ...
 
     @classmethod
-    def from_config(cls, config: Any) -> Self: ...
+    def from_config(cls, config: Any) -> Self:
+        """
+        Instantiate a codec from a configuration dictionary.
+
+        Parameters
+        ----------
+        config : Any
+            A configuration dictionary for this codec.
+        """
+        ...
 
 
 def _is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:

@@ -435,6 +435,7 @@ class Store(ABC):
         # Note to implementers: this default implementation is very inefficient since
         # it requires reading the entire object. Many systems will have ways to get the
         # size of an object without reading it.
+        # avoid circular import
         from zarr.core.buffer.core import default_buffer_prototype
 
         value = await self.get(key, prototype=default_buffer_prototype())
@@ -475,6 +476,8 @@ class Store(ABC):
         # on to getting sizes. Ideally we would overlap those two, which should
         # improve tail latency and might reduce memory pressure (since not all keys
         # would be in memory at once).
+
+        # avoid circular import
         from zarr.core.common import concurrent_map
         from zarr.core.config import config
 
