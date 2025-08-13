@@ -1,7 +1,6 @@
 # Using GPUs with Zarr
 
-Zarr can use GPUs to accelerate your workload by running
-[`zarr.config.enable_gpu`][].
+Zarr can use GPUs to accelerate your workload by running `zarr.Config.enable_gpu`.
 
 !!! note
     `zarr-python` currently supports reading the ndarray data into device (GPU)

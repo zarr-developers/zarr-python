@@ -22,9 +22,12 @@ g = zarr.group()
 
 3. Information about the version of Zarr, along with versions of dependencies and the Python interpreter, and installation information. The version of Zarr can be obtained from the `zarr.__version__` property. Please also state how Zarr was installed, e.g., "installed via pip into a virtual environment", or "installed using conda". Information about other packages installed can be obtained by executing `pip freeze` (if using pip to install packages) or `conda env export` (if using conda to install packages) from the operating system command prompt. The version of the Python interpreter can be obtained by running a Python interactive session, e.g.:
 
+```console
+python
 ```
-$ python
-  Python 3.12.7 | packaged by conda-forge | (main, Oct  4 2024, 15:57:01) [Clang 17.0.6 ] on darwin
+
+```ansi
+Python 3.12.7 | packaged by conda-forge | (main, Oct  4 2024, 15:57:01) [Clang 17.0.6 ] on darwin
 ```
 
 ## Enhancement proposals
@@ -44,9 +47,9 @@ The Zarr source code is hosted on GitHub at the following location:
 You will need your own fork to work on the code. Go to the link above and hit the ["Fork"](https://github.com/zarr-developers/zarr-python/fork) button. Then clone your fork to your local machine:
 
 ```bash
-$ git clone git@github.com:your-user-name/zarr-python.git
-$ cd zarr-python
-$ git remote add upstream git@github.com:zarr-developers/zarr-python.git
+git clone git@github.com:your-user-name/zarr-python.git
+cd zarr-python
+git remote add upstream git@github.com:zarr-developers/zarr-python.git
 ```
 
 ### Creating a development environment
@@ -54,14 +57,14 @@ $ git remote add upstream git@github.com:zarr-developers/zarr-python.git
 To work with the Zarr source code, it is recommended to use [hatch](https://hatch.pypa.io/latest/index.html) to create and manage development environments. Hatch will automatically install all Zarr dependencies using the same versions as are used by the core developers and continuous integration services. Assuming you have a Python 3 interpreter already installed, and you have cloned the Zarr source code and your current working directory is the root of the repository, you can do something like the following:
 
 ```bash
-$ pip install hatch
-$ hatch env show  # list all available environments
+pip install hatch
+hatch env show  # list all available environments
 ```
 
 To verify that your development environment is working, you can run the unit tests for one of the test environments, e.g.:
 
 ```bash
-$ hatch env run --env test.py3.12-2.2-optional run-pytest
+hatch env run --env test.py3.12-2.2-optional run-pytest
 ```
 
 ### Creating a branch
@@ -99,7 +102,7 @@ Again, any conflicts need to be resolved before submitting a pull request.
 Zarr includes a suite of unit tests. The simplest way to run the unit tests is to activate your development environment (see [creating a development environment](#creating-a-development-environment) above) and invoke:
 
 ```bash
-$ hatch env run --env test.py3.12-2.2-optional run-pytest
+hatch env run --env test.py3.12-2.2-optional run-pytest
 ```
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
@@ -113,19 +116,19 @@ All code must conform to the PEP8 standard. Regarding line length, lines up to 1
 `Zarr` uses a set of `pre-commit` hooks and the `pre-commit` bot to format, type-check, and prettify the codebase. `pre-commit` can be installed locally by running:
 
 ```bash
-$ python -m pip install pre-commit
+python -m pip install pre-commit
 ```
 
 The hooks can be installed locally by running:
 
 ```bash
-$ pre-commit install
+pre-commit install
 ```
 
 This would run the checks every time a commit is created locally. These checks will also run on every commit pushed to an open PR, resulting in some automatic styling fixes by the `pre-commit` bot. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
 
 ```bash
-$ pre-commit run --all-files
+pre-commit run --all-files
 ```
 
 If you would like to skip the failing checks and push the code for further discussion, use the `--no-verify` option with `git commit`.
@@ -137,7 +140,7 @@ If you would like to skip the failing checks and push the code for further discu
 Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. Running:
 
 ```bash
-$ hatch env run --env test.py3.12-2.2-optional run-coverage
+hatch env run --env test.py3.12-2.2-optional run-coverage
 ```
 
 will automatically run the test suite with coverage and produce a XML coverage report. This should be 100% before code can be accepted into the main code base.
@@ -145,7 +148,7 @@ will automatically run the test suite with coverage and produce a XML coverage r
 You can also generate an HTML coverage report by running:
 
 ```bash
-$ hatch env run --env test.py3.12-2.2-optional run-coverage-html
+hatch env run --env test.py3.12-2.2-optional run-coverage-html
 ```
 
 When submitting a pull request, coverage will also be collected across all supported Python versions via the Codecov service, and will be reported back within the pull request. Codecov coverage must also be 100% before code can be accepted.
@@ -159,7 +162,7 @@ Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is 
 The documentation can be built locally by running:
 
 ```bash
-$ hatch --env docs run build
+hatch --env docs run build
 ```
 
 The resulting built documentation will be available in the `docs/_build/html` folder.
@@ -167,7 +170,7 @@ The resulting built documentation will be available in the `docs/_build/html` fo
 Hatch can also be used to serve continuously updating version of the documentation during development at [http://0.0.0.0:8000/](http://0.0.0.0:8000/). This can be done by running:
 
 ```bash
-$ hatch --env docs run serve
+hatch --env docs run serve
 ```
 
 ### Changelog
