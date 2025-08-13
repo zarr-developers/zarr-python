@@ -1,7 +1,7 @@
 # Using GPUs with Zarr
 
 Zarr can use GPUs to accelerate your workload by running
-`zarr.config.enable_gpu`.
+[`zarr.config.enable_gpu`][].
 
 !!! note
     `zarr-python` currently supports reading the ndarray data into device (GPU)
@@ -14,18 +14,18 @@ Zarr can use GPUs to accelerate your workload by running
 
 ## Reading data into device memory
 
-`zarr.config.enable_gpu` configures Zarr to use GPU memory for the data
-buffers used internally by Zarr.
+[`zarr.config`][] configures Zarr to use GPU memory for the data
+buffers used internally by Zarr via the `enable_gpu`.
 
 ```python
 import zarr
-import cupy as cp  # doctest: +SKIP
-zarr.config.enable_gpu()  # doctest: +SKIP
-store = zarr.storage.MemoryStore()  # doctest: +SKIP
-z = zarr.create_array(  # doctest: +SKIP
+import cupy as cp
+zarr.config.enable_gpu()
+store = zarr.storage.MemoryStore()
+z = zarr.create_array(
     store=store, shape=(100, 100), chunks=(10, 10), dtype="float32",
 )
-type(z[:10, :10])  # doctest: +SKIP
+type(z[:10, :10])
 # cupy.ndarray
 ```
 
