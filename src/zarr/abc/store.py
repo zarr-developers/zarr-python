@@ -6,6 +6,10 @@ from dataclasses import dataclass
 from itertools import starmap
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.common import concurrent_map
+from zarr.core.config import config
+
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
     from types import TracebackType
@@ -434,7 +438,6 @@ class Store(ABC):
         # Note to implementers: this default implementation is very inefficient since
         # it requires reading the entire object. Many systems will have ways to get the
         # size of an object without reading it.
-        from zarr.core.buffer.core import default_buffer_prototype
 
         value = await self.get(key, prototype=default_buffer_prototype())
         if value is None:
@@ -474,8 +477,6 @@ class Store(ABC):
         # on to getting sizes. Ideally we would overlap those two, which should
         # improve tail latency and might reduce memory pressure (since not all keys
         # would be in memory at once).
-        from zarr.core.common import concurrent_map
-        from zarr.core.config import config
 
         keys = [(x,) async for x in self.list_prefix(prefix)]
         limit = config.get("async.concurrency")
