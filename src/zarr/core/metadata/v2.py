@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import ChunkCoords
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
@@ -62,8 +61,8 @@ CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
 
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
-    shape: ChunkCoords
-    chunks: ChunkCoords
+    shape: tuple[int, ...]
+    chunks: tuple[int, ...]
     dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: int | float | str | bytes | None = None
     order: MemoryOrder = "C"
@@ -76,9 +75,9 @@ class ArrayV2Metadata(Metadata):
     def __init__(
         self,
         *,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDType[TDType_co, TScalar_co],
-        chunks: ChunkCoords,
+        chunks: tuple[int, ...],
         fill_value: Any,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
@@ -124,7 +123,7 @@ class ArrayV2Metadata(Metadata):
         return RegularChunkGrid(chunk_shape=self.chunks)
 
     @property
-    def shards(self) -> ChunkCoords | None:
+    def shards(self) -> tuple[int, ...] | None:
         return None
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
@@ -230,7 +229,7 @@ class ArrayV2Metadata(Metadata):
         return zarray_dict
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
+        self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunks,
@@ -240,11 +239,11 @@ class ArrayV2Metadata(Metadata):
             prototype=prototype,
         )
 
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+    def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         chunk_identifier = self.dimension_separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
 
-    def update_shape(self, shape: ChunkCoords) -> Self:
+    def update_shape(self, shape: tuple[int, ...]) -> Self:
         return replace(self, shape=shape)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
