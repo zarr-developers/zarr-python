@@ -155,7 +155,6 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     codec_classes = __codec_registries[key]
     if not codec_classes:
         raise KeyError(key)
-
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
         if len(codec_classes) == 1:
