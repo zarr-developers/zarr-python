@@ -73,6 +73,7 @@ from zarr.storage import LocalStore, MemoryStore, StorePath
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
+    from zarr.abc.codec import CodecJSON_V3
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
@@ -1346,11 +1347,11 @@ class TestCreateArray:
         assert arr.metadata.filters == filters_expected
 
         # Normalize for property getters
-        compressor_expected = () if compressor_expected is None else (compressor_expected,)
-        filters_expected = () if filters_expected is None else filters_expected
+        arr_compressors_expected = () if compressor_expected is None else (compressor_expected,)
+        arr_filters_expected = () if filters_expected is None else filters_expected
 
-        assert arr.compressors == compressor_expected
-        assert arr.filters == filters_expected
+        assert arr.compressors == arr_compressors_expected
+        assert arr.filters == arr_filters_expected
 
     @staticmethod
     @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthUTF8()])
@@ -1388,11 +1389,12 @@ class TestCreateArray:
             if default_filters is None:
                 expected_filters = ()
             else:
-                expected_filters = default_filters
+                expected_filters = default_filters  # type: ignore[assignment]
+
             if default_compressors is None:
                 expected_compressors = ()
             else:
-                expected_compressors = (default_compressors,)
+                expected_compressors = (default_compressors,)  # type: ignore[assignment]
             expected_serializer = None
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}")
@@ -1696,7 +1698,7 @@ def test_roundtrip_numcodecs() -> None:
         {"name": "numcodecs.shuffle", "configuration": {"elementsize": 2}},
         {"name": "numcodecs.zlib", "configuration": {"level": 4}},
     ]
-    filters = [
+    filters: list[CodecJSON_V3] = [
         {
             "name": "numcodecs.fixedscaleoffset",
             "configuration": {
@@ -1717,8 +1719,8 @@ def test_roundtrip_numcodecs() -> None:
             shape=(720, 1440),
             chunks=(720, 1440),
             dtype="float64",
-            compressors=compressors,
-            filters=filters,
+            compressors=compressors,  # type: ignore[arg-type]
+            filters=filters,  # type: ignore[arg-type]
             fill_value=-9.99,
             dimension_names=["lat", "lon"],
         )
