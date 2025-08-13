@@ -241,22 +241,13 @@ dependencies = [
     'zarr[remote_tests]',
 ]
 
-
-[tool.hatch.envs.doctest]
-features = ["test", "optional", "remote", "remote_tests"]
-description = "Test environment for doctests"
-
-[tool.hatch.envs.doctest.scripts]
-run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
-fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
-list-env = "pip list"
-
 [tool.hatch.envs.docs]
 features = ['docs', 'remote']
 
 [tool.hatch.envs.docs.scripts]
 serve = "mkdocs serve"
 build = "mkdocs build"
+check = "mkdocs build --strict"
 readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
 
 [tool.ruff]
@@ -387,11 +378,6 @@ testpaths = ["tests", "docs/user-guide"]
 log_cli_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
-doctest_optionflags = [
-    "NORMALIZE_WHITESPACE",
-    "ELLIPSIS",
-    "IGNORE_EXCEPTION_DETAIL",
-]
 addopts = [
     "--durations=10", "-ra", "--strict-config", "--strict-markers",
 ]
