@@ -34,10 +34,11 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
-from zarr.core.types import NamedConfig, ZarrFormat
+from zarr.core.types import NamedConfig
 
 if TYPE_CHECKING:
     from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 TimeDeltaLike = str | int | bytes | np.timedelta64 | timedelta | None
 DateTimeLike = str | int | bytes | np.datetime64 | datetime | None

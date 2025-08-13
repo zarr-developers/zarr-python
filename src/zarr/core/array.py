@@ -119,7 +119,6 @@ from zarr.core.types import (
     DimensionNames,
     MemoryOrder,
     ShapeLike,
-    ZarrFormat,
 )
 from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
 from zarr.registry import (
@@ -142,6 +141,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
+    from zarr.types import ZarrFormat
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace

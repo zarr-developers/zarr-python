@@ -38,9 +38,9 @@ if TYPE_CHECKING:
         DimensionNames,
         MemoryOrder,
         ShapeLike,
-        ZarrFormat,
     )
     from zarr.storage import StoreLike
+    from zarr.types import ZarrFormat
 
 __all__ = [
     "array",

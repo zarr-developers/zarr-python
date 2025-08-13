@@ -33,11 +33,12 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TDType_co, ZDType
-from zarr.core.types import NamedConfig, ZarrFormat
+from zarr.core.types import NamedConfig
 
 if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType
     from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 _NUMPY_SUPPORTS_VLEN_STRING = hasattr(np.dtypes, "StringDType")
 

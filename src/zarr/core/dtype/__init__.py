@@ -32,7 +32,7 @@ from zarr.core.dtype.npy.time import (
 )
 
 if TYPE_CHECKING:
-    from zarr.core.types import ZarrFormat
+    from zarr.types import ZarrFormat
 
 from collections.abc import Mapping
 

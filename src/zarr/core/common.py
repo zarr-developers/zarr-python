@@ -27,7 +27,8 @@ from zarr.errors import ZarrRuntimeWarning
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable, Iterator
 
-    from zarr.core.types import ChunkCoords, ZarrFormat
+    from zarr.core.types import ChunkCoords
+    from zarr.types import ZarrFormat
 
 
 def product(tup: ChunkCoords) -> int:

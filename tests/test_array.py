@@ -63,18 +63,19 @@ from zarr.core.indexing import BasicIndexer
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
-from zarr.core.types import JSON, ZarrFormat
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
     ZarrUserWarning,
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath
+from zarr.types import ZarrFormat
 
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
     from zarr.core.metadata.v3 import ArrayV3Metadata
+    from zarr.core.types import JSON
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])

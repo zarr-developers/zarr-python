@@ -51,7 +51,6 @@ from zarr.core.types import (
     DimensionNames,
     NodeType,
     ShapeLike,
-    ZarrFormat,
 )
 from zarr.errors import (
     ContainsArrayError,
@@ -81,6 +80,7 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.dtype import ZDTypeLike
     from zarr.core.types import MemoryOrder
+    from zarr.types import ZarrFormat
 
 logger = logging.getLogger("zarr.group")
 

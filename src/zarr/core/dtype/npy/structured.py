@@ -22,10 +22,11 @@ from zarr.core.dtype.npy.common import (
     check_json_str,
 )
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.core.types import NamedConfig, ZarrFormat
+from zarr.core.types import NamedConfig
 
 if TYPE_CHECKING:
     from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 StructuredScalarLike = list[object] | tuple[object, ...] | bytes | int
 

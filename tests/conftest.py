@@ -48,8 +48,8 @@ if TYPE_CHECKING:
         DimensionNames,
         MemoryOrder,
         ShapeLike,
-        ZarrFormat,
     )
+    from zarr.types import ZarrFormat
 
 
 async def parse_store(

@@ -28,7 +28,8 @@ from zarr.core.dtype.common import (
 )
 
 if TYPE_CHECKING:
-    from zarr.core.types import JSON, ZarrFormat
+    from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 IntLike = SupportsInt | SupportsIndex | bytes | str
 FloatLike = SupportsIndex | SupportsFloat | bytes | str

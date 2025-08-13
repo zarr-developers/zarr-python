@@ -10,8 +10,6 @@ from typing_extensions import ReadOnly, TypedDict
 NodeType = Literal["array", "group"]
 """The names of the nodes in a Zarr hierarchy."""
 
-ZarrFormat = Literal[2, 3]
-"""The versions of Zarr that are supported."""
 
 BytesLike = bytes | bytearray | memoryview
 

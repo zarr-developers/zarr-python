@@ -57,9 +57,9 @@ if TYPE_CHECKING:
         ChunkCoords,
         DimensionNames,
         MemoryOrder,
-        ZarrFormat,
     )
     from zarr.storage import StoreLike
+    from zarr.types import ZarrFormat
 
     # TODO: this type could use some more thought
     ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]

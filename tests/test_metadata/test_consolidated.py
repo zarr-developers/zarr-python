@@ -27,7 +27,7 @@ from zarr.storage import StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
-    from zarr.core.types import ZarrFormat
+    from zarr.types import ZarrFormat
 
 
 @pytest.fixture

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-    from zarr.core.types import ZarrFormat
+    from zarr.types import ZarrFormat
 
 
 @dataclasses.dataclass(kw_only=True)

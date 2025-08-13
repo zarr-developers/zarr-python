@@ -60,7 +60,8 @@ if TYPE_CHECKING:
     from _pytest.compat import LEGACY_PATH
 
     from zarr.core.buffer.core import Buffer
-    from zarr.core.types import JSON, ZarrFormat
+    from zarr.core.types import JSON
+    from zarr.types import ZarrFormat
 
 
 @pytest.fixture(params=["local", "memory", "zip"])

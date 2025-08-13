@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.array import Array
     from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-    from zarr.core.types import ZarrFormat
+    from zarr.types import ZarrFormat
 
 
 def create_nodes(

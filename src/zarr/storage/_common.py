@@ -13,7 +13,6 @@ from zarr.core.types import (
     ZARRAY_JSON,
     ZGROUP_JSON,
     AccessModeLiteral,
-    ZarrFormat,
 )
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
@@ -28,6 +27,7 @@ else:
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
+    from zarr.types import ZarrFormat
 
 
 def _dereference_path(root: str, path: str) -> str:
