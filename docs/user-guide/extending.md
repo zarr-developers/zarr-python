@@ -21,15 +21,15 @@ There are three types of codecs in Zarr:
 Array-to-array codecs are used to transform the array data before serializing
 to bytes. Examples include delta encoding or scaling codecs. Array-to-bytes codecs are used
 for serializing the array data to bytes. In Zarr, the main codec to use for numeric arrays
-is the `zarr.codecs.BytesCodec`. Bytes-to-bytes codecs transform the serialized bytestreams
+is the [`zarr.codecs.BytesCodec`][]. Bytes-to-bytes codecs transform the serialized bytestreams
 of the array data. Examples include compression codecs, such as
-`zarr.codecs.GzipCodec`, `zarr.codecs.BloscCodec` or
-`zarr.codecs.ZstdCodec`, and codecs that add a checksum to the bytestream, such as
-`zarr.codecs.Crc32cCodec`.
+[`zarr.codecs.GzipCodec`][], [`zarr.codecs.BloscCodec`][] or
+[`zarr.codecs.ZstdCodec`][], and codecs that add a checksum to the bytestream, such as
+[`zarr.codecs.Crc32cCodec`][].
 
 Custom codecs for Zarr are implemented by subclassing the relevant base class, see
-`zarr.abc.codec.ArrayArrayCodec`, `zarr.abc.codec.ArrayBytesCodec` and
-`zarr.abc.codec.BytesBytesCodec`. Most custom codecs should implemented the
+[`zarr.abc.codec.ArrayArrayCodec`][], [`zarr.abc.codec.ArrayBytesCodec`][] and
+[`zarr.abc.codec.BytesBytesCodec`][]. Most custom codecs should implemented the
 `_encode_single` and `_decode_single` methods. These methods operate on single chunks
 of the array data. Alternatively, custom codecs can implement the `encode` and `decode`
 methods, which operate on batches of chunks, in case the codec is intended to implement
@@ -69,7 +69,7 @@ the codecs from `numcodecs` are prefixed with `numcodecs.`, e.g. `numcodecs.delt
 
 It is also possible to register codecs as replacements for existing codecs. This might be
 useful for providing specialized implementations, such as GPU-based codecs. In case of
-multiple codecs, the `zarr.core.config` mechanism can be used to select the preferred
+multiple codecs, the [`zarr.config`][] mechanism can be used to select the preferred
 implementation.
 
 ## Custom stores
@@ -79,9 +79,9 @@ Coming soon.
 ## Custom array buffers
 
 Zarr-python provides control over where and how arrays stored in memory through
-:mod:`zarr.buffer`. Currently both CPU (the default) and GPU implementations are
-provided (see :ref:`user-guide-gpu` for more). You can implement your own buffer
-classes by implementing the interface defined in :mod:`zarr.abc.buffer`.
+[`zarr.abc.buffer.Buffer`][]. Currently both CPU (the default) and GPU implementations are
+provided (see [Using GPUs with Zarr](gpu.md) for more information). You can implement your own buffer
+classes by implementing the interface defined in [`zarr.abc.buffer.BufferPrototype`][].
 
 ## Other extensions
 
