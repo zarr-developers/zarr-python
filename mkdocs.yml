@@ -43,6 +43,7 @@ nav:
       - Async API: api/api_async.md
       - Sync API: api/api_sync.md
       - ABC:
+        - api/abc/buffer.md
         - api/abc/codec.md
         - api/abc/metadata.md
         - api/abc/store.md
