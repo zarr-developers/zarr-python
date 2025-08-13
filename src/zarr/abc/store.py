@@ -438,7 +438,6 @@ class Store(ABC):
         # Note to implementers: this default implementation is very inefficient since
         # it requires reading the entire object. Many systems will have ways to get the
         # size of an object without reading it.
-
         value = await self.get(key, prototype=default_buffer_prototype())
         if value is None:
             raise FileNotFoundError(key)
@@ -477,7 +476,6 @@ class Store(ABC):
         # on to getting sizes. Ideally we would overlap those two, which should
         # improve tail latency and might reduce memory pressure (since not all keys
         # would be in memory at once).
-
         keys = [(x,) async for x in self.list_prefix(prefix)]
         limit = config.get("async.concurrency")
         sizes = await concurrent_map(keys, self.getsize, limit=limit)
