@@ -13,49 +13,44 @@ dimension, then chunk across the second dimension. If you know you want to chunk
 across an entire dimension you can use the full size of that dimension within the
 `chunks` argument, e.g.:
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 import zarr
 z1 = zarr.create_array(store={}, shape=(10000, 10000), chunks=(100, 10000), dtype='int32')
-z1.chunks
-# (100, 10000)
+print(z1.chunks)
 ```
 
 Alternatively, if you only ever take slices along the second dimension, then
 chunk across the first dimension, e.g.:
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 z2 = zarr.create_array(store={}, shape=(10000, 10000), chunks=(10000, 100), dtype='int32')
-z2.chunks
-# (10000, 100)
+print(z2.chunks)
 ```
 
 If you require reasonable performance for both access patterns then you need to
 find a compromise, e.g.:
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 z3 = zarr.create_array(store={}, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
-z3.chunks
-# (1000, 1000)
+print(z3.chunks)
 ```
 
 If you are feeling lazy, you can let Zarr guess a chunk shape for your data by
 providing `chunks='auto'`, although please note that the algorithm for guessing
 a chunk shape is based on simple heuristics and may be far from optimal. E.g.:
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 z4 = zarr.create_array(store={}, shape=(10000, 10000), chunks='auto', dtype='int32')
-z4.chunks
-# (625, 625)
+print(z4.chunks)
 ```
 
 If you know you are always going to be loading the entire array into memory, you
 can turn off chunks by providing `chunks` equal to `shape`, in which case there
 will be one single chunk for the array:
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 z5 = zarr.create_array(store={}, shape=(10000, 10000), chunks=(10000, 10000), dtype='int32')
-z5.chunks
-# (10000, 10000)
+print(z5.chunks)
 ```
 
 ### Sharding
@@ -81,23 +76,9 @@ write your data in 1 GB increments.
 
 To use sharding, you need to specify the `shards` parameter when creating the array.
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 z6 = zarr.create_array(store={}, shape=(10000, 10000, 1000), shards=(1000, 1000, 1000), chunks=(100, 100, 100), dtype='uint8')
-z6.info
-# Type               : Array
-# Zarr format        : 3
-# Data type          : UInt8()
-# Fill value         : 0
-# Shape              : (10000, 10000, 1000)
-# Shard shape        : (1000, 1000, 1000)
-# Chunk shape        : (100, 100, 100)
-# Order              : C
-# Read-only          : False
-# Store type         : MemoryStore
-# Filters            : ()
-# Serializer         : BytesCodec(endian=None)
-# Compressors        : (ZstdCodec(level=0, checksum=False),)
-# No. bytes          : 100000000000 (93.1G)
+print(z6.info)
 ```
 
 ### Chunk memory layout
@@ -107,50 +88,21 @@ The order of bytes **within each chunk** of an array can be changed via the
 multi-dimensional arrays, these two layouts may provide different compression
 ratios, depending on the correlation structure within the data. E.g.:
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 import numpy as np
 
 a = np.arange(100000000, dtype='int32').reshape(10000, 10000).T
 c = zarr.create_array(store={}, shape=a.shape, chunks=(1000, 1000), dtype=a.dtype, config={'order': 'C'})
 c[:] = a
-c.info_complete()
-# Type               : Array
-# Zarr format        : 3
-# Data type          : Int32(endianness='little')
-# Fill value         : 0
-# Shape              : (10000, 10000)
-# Chunk shape        : (1000, 1000)
-# Order              : C
-# Read-only          : False
-# Store type         : MemoryStore
-# Filters            : ()
-# Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
-# Compressors        : (ZstdCodec(level=0, checksum=False),)
-# No. bytes          : 400000000 (381.5M)
-# No. bytes stored   : 342588911 (326.7M)
-# Storage ratio      : 1.2
-# Chunks Initialized : 100
+print(c.info_complete())
+```
 
+```python exec="true" session="performance" source="above" result="ansi"
 with zarr.config.set({'array.order': 'F'}):
     f = zarr.create_array(store={}, shape=a.shape, chunks=(1000, 1000), dtype=a.dtype)
     f[:] = a
-f.info_complete()
-# Type               : Array
-# Zarr format        : 3
-# Data type          : Int32(endianness='little')
-# Fill value         : 0
-# Shape              : (10000, 10000)
-# Chunk shape        : (1000, 1000)
-# Order              : F
-# Read-only          : False
-# Store type         : MemoryStore
-# Filters            : ()
-# Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
-# Compressors        : (ZstdCodec(level=0, checksum=False),)
-# No. bytes          : 400000000 (381.5M)
-# No. bytes stored   : 342588911 (326.7M)
-# Storage ratio      : 1.2
-# Chunks Initialized : 100
+print(f.info_complete())
+
 ```
 
 In the above example, Fortran order gives a better compression ratio. This is an
@@ -176,7 +128,7 @@ In this case, creating an array with `write_empty_chunks=True` (the default) wil
 The following example illustrates the effect of the `write_empty_chunks` flag on
 the time required to write an array with different values.:
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 import zarr
 import numpy as np
 import time
@@ -212,13 +164,6 @@ def timed_write(write_empty_chunks):
 for write_empty_chunks in (True, False):
     full, empty = timed_write(write_empty_chunks)
     print(f'\nwrite_empty_chunks={write_empty_chunks}:\n\tRandom Data: {full[0]:.4f}s, {full[1]} objects stored\n\t Empty Data: {empty[0]:.4f}s, {empty[1]} objects stored\n')
-# write_empty_chunks=True:
-# 	Random Data: ..., 1024 objects stored
-# 	 Empty Data: ...s, 1024 objects stored
-#
-# write_empty_chunks=False:
-# 	Random Data: ...s, 1024 objects stored
-# 	 Empty Data: ...s, 0 objects stored
 ```
 
 In this example, writing random data is slightly slower with `write_empty_chunks=True`,
@@ -245,17 +190,15 @@ to re-open any underlying files or databases upon being unpickled.
 
 E.g., pickle/unpickle an local store array:
 
-```python
+```python exec="true" session="performance" source="above" result="ansi"
 import pickle
 data = np.arange(100000)
-z1 = zarr.create_array(store='data/example-2.zarr', shape=data.shape, chunks=data.shape, dtype=data.dtype)
+z1 = zarr.create_array(store='data/perf-example-2.zarr', shape=data.shape, chunks=data.shape, dtype=data.dtype)
 z1[:] = data
 s = pickle.dumps(z1)
 z2 = pickle.loads(s)
-z1 == z2
-# True
-np.all(z1[:] == z2[:])
-# np.True_
+assert z1 == z2
+print(np.all(z1[:] == z2[:]))
 ```
 
 ## Configuring Blosc
