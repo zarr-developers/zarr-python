@@ -15,7 +15,7 @@ Zarr can use GPUs to accelerate your workload by running
 ## Reading data into device memory
 
 [`zarr.config`][] configures Zarr to use GPU memory for the data
-buffers used internally by Zarr via the `enable_gpu`.
+buffers used internally by Zarr via `enable_gpu()`.
 
 ```python
 import zarr
