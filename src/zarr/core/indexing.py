@@ -99,7 +99,7 @@ class Indexer(Protocol):
 _ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
 
 
-def iter_grid(
+def _iter_grid(
     grid_shape: Sequence[int],
     *,
     origin: Sequence[int] | None = None,
@@ -174,7 +174,7 @@ def iter_grid(
         raise NotImplementedError(msg)  # pragma: no cover
 
 
-def iter_regions(
+def _iter_regions(
     domain_shape: Sequence[int],
     region_shape: Sequence[int],
     *,
@@ -221,7 +221,7 @@ def iter_regions(
     ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
     """
     grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
-    for grid_position in iter_grid(
+    for grid_position in _iter_grid(
         grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
     ):
         out: list[slice] = []

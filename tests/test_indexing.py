@@ -19,9 +19,9 @@ from zarr.core.indexing import (
     OrthogonalSelection,
     Selection,
     _ArrayIndexingOrder,
+    _iter_grid,
+    _iter_regions,
     ceildiv,
-    iter_grid,
-    iter_regions,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -1922,7 +1922,7 @@ def test_iter_grid(
         selection_shape = tuple(gs - o for gs, o in zip(grid_shape, origin, strict=False))
 
     observed = tuple(
-        iter_grid(grid_shape, origin=origin_kwarg, selection_shape=selection_shape_kwarg)
+        _iter_grid(grid_shape, origin=origin_kwarg, selection_shape=selection_shape_kwarg)
     )
 
     # generate a numpy array of indices, and index it
@@ -1943,7 +1943,7 @@ def test_iter_grid_invalid() -> None:
     Ensure that a selection_shape that exceeds the grid_shape + origin produces an indexing error.
     """
     with pytest.raises(IndexError):
-        list(iter_grid((5,), origin=(0,), selection_shape=(10,)))
+        list(_iter_grid((5,), origin=(0,), selection_shape=(10,)))
 
 
 def test_indexing_with_zarr_array(store: StorePath) -> None:
@@ -2052,7 +2052,7 @@ def test_iter_regions(
 
     expected = tuple(itertools.product(*expected_slices_by_dim))
     observed = tuple(
-        iter_regions(
+        _iter_regions(
             domain_shape,
             region_shape,
             origin=origin,

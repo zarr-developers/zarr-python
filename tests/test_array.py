@@ -31,17 +31,17 @@ from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsLike,
     FiltersLike,
+    _iter_chunk_coords,
+    _iter_chunk_regions,
+    _iter_shard_coords,
+    _iter_shard_keys,
+    _iter_shard_regions,
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
+    _shards_initialized,
     create_array,
     default_filters_v2,
     default_serializer_v3,
-    iter_chunk_coords,
-    iter_chunk_regions,
-    iter_shard_coords,
-    iter_shard_keys,
-    iter_shard_regions,
-    shards_initialized,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
@@ -64,7 +64,7 @@ from zarr.core.dtype.common import ENDIANNESS_STR, EndiannessStr
 from zarr.core.dtype.npy.common import NUMPY_ENDIANNESS_STR, endianness_from_numpy_str
 from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
-from zarr.core.indexing import BasicIndexer, iter_grid, iter_regions
+from zarr.core.indexing import BasicIndexer, _iter_grid, _iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
@@ -409,7 +409,7 @@ async def test_nchunks_initialized(
             observed = arr.nshards_initialized
             assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
-            observed = await arr._async_array.nshards_initialized()
+            observed = await arr._async_array._nshards_initialized()
             assert observed == await arr._async_array.nchunks_initialized() // chunks_per_shard
         assert observed == expected
 
@@ -420,9 +420,9 @@ async def test_nchunks_initialized(
             observed = arr.nshards_initialized
             assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
-            observed = await arr._async_array.nshards_initialized()
+            observed = await arr._async_array._nshards_initialized()
             assert observed == await arr._async_array.nchunks_initialized() // chunks_per_shard
-        expected = arr.nshards - idx - 1
+        expected = arr._nshards - idx - 1
         assert observed == expected
 
 
@@ -447,7 +447,7 @@ async def test_chunks_initialized(
     )
     for keys, region in zip(chunks_accumulated, arr._iter_shard_regions(), strict=False):
         arr[region] = 1
-        observed = sorted(await shards_initialized(arr._async_array))
+        observed = sorted(await _shards_initialized(arr._async_array))
         expected = sorted(keys)
         assert observed == expected
 
@@ -892,14 +892,14 @@ def test_write_empty_chunks_behavior(
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
-    assert arr.nshards_initialized == arr.nshards
+    assert arr.nshards_initialized == arr._nshards
 
     arr[:] = fill_value
 
     if not write_empty_chunks:
         assert arr.nshards_initialized == 0
     else:
-        assert arr.nshards_initialized == arr.nshards
+        assert arr.nshards_initialized == arr._nshards
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1952,11 +1952,11 @@ def test_chunk_grid_shape(
     else:
         _shard_shape = shard_shape
     shard_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, _shard_shape, strict=True))
-    assert arr.chunk_grid_shape == chunk_grid_shape
+    assert arr._chunk_grid_shape == chunk_grid_shape
     assert arr.cdata_shape == chunk_grid_shape
     assert arr._async_array.cdata_shape == chunk_grid_shape
-    assert arr.shard_grid_shape == shard_grid_shape
-    assert arr.nshards == np.prod(shard_grid_shape)
+    assert arr._shard_grid_shape == shard_grid_shape
+    assert arr._nshards == np.prod(shard_grid_shape)
 
 
 @pytest.mark.parametrize(
@@ -1981,8 +1981,8 @@ def test_iter_chunk_coords(
         shards=shard_shape,
         zarr_format=zarr_format,
     )
-    expected = tuple(iter_grid(arr.shard_grid_shape))
-    observed = tuple(iter_chunk_coords(arr))
+    expected = tuple(_iter_grid(arr._shard_grid_shape))
+    observed = tuple(_iter_chunk_coords(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_chunk_coords())
     assert observed == tuple(arr._async_array._iter_chunk_coords())
@@ -2014,8 +2014,8 @@ def test_iter_shard_coords(
         shards=shard_shape,
         zarr_format=zarr_format,
     )
-    expected = tuple(iter_grid(arr.shard_grid_shape))
-    observed = tuple(iter_shard_coords(arr))
+    expected = tuple(_iter_grid(arr._shard_grid_shape))
+    observed = tuple(_iter_shard_coords(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_coords())
     assert observed == tuple(arr._async_array._iter_shard_coords())
@@ -2047,8 +2047,10 @@ def test_iter_shard_keys(
         shards=shard_shape,
         zarr_format=zarr_format,
     )
-    expected = tuple(arr.metadata.encode_chunk_key(key) for key in iter_grid(arr.shard_grid_shape))
-    observed = tuple(iter_shard_keys(arr))
+    expected = tuple(
+        arr.metadata.encode_chunk_key(key) for key in _iter_grid(arr._shard_grid_shape)
+    )
+    observed = tuple(_iter_shard_keys(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_keys())
     assert observed == tuple(arr._async_array._iter_shard_keys())
@@ -2083,8 +2085,8 @@ def test_iter_shard_regions(
         _shard_shape = chunk_shape
     else:
         _shard_shape = shard_shape
-    expected = tuple(iter_regions(arr.shape, _shard_shape))
-    observed = tuple(iter_shard_regions(arr))
+    expected = tuple(_iter_regions(arr.shape, _shard_shape))
+    observed = tuple(_iter_shard_regions(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_shard_regions())
     assert observed == tuple(arr._async_array._iter_shard_regions())
@@ -2112,8 +2114,8 @@ def test_iter_chunk_regions(
         zarr_format=zarr_format,
     )
 
-    expected = tuple(iter_regions(arr.shape, chunk_shape))
-    observed = tuple(iter_chunk_regions(arr))
+    expected = tuple(_iter_regions(arr.shape, chunk_shape))
+    observed = tuple(_iter_chunk_regions(arr))
     assert observed == expected
     assert observed == tuple(arr._iter_chunk_regions())
     assert observed == tuple(arr._async_array._iter_chunk_regions())
