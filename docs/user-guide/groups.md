@@ -85,9 +85,8 @@ node_spec = {'a/b/c': GroupMetadata()}
 nodes_created = dict(create_hierarchy(store=LocalStore(root='data'), nodes=node_spec))
 # Report nodes (pprint is used for cleaner rendering in the docs)
 output = io.StringIO()
-pprint(nodes_created, stream=output, width=60, depth=3)
-result = output.getvalue()
-print(result)
+pprint(nodes_created, stream=output, width=60)
+print(output.getvalue())
 ```
 
 Note that we only specified a single group named `a/b/c`, but 4 groups were created. These additional groups

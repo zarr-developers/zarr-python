@@ -42,26 +42,10 @@ requires the value of `codecs.bytes.name` to be `'custompackage.NewBytesCodec'`.
 
 This is the current default configuration:
 
-```python
-zarr.config.pprint()
-#    {'array': {'order': 'C',
-#             'write_empty_chunks': False},
-#    'async': {'concurrency': 10, 'timeout': None},
-#    'buffer': 'zarr.buffer.cpu.Buffer',
-#    'codec_pipeline': {'batch_size': 1,
-#                      'path': 'zarr.core.codec_pipeline.BatchedCodecPipeline'},
-#    'codecs': {'blosc': 'zarr.codecs.blosc.BloscCodec',
-#                'bytes': 'zarr.codecs.bytes.BytesCodec',
-#                'crc32c': 'zarr.codecs.crc32c_.Crc32cCodec',
-#                'endian': 'zarr.codecs.bytes.BytesCodec',
-#                'gzip': 'zarr.codecs.gzip.GzipCodec',
-#                'sharding_indexed': 'zarr.codecs.sharding.ShardingCodec',
-#                'transpose': 'zarr.codecs.transpose.TransposeCodec',
-#                'vlen-bytes': 'zarr.codecs.vlen_utf8.VLenBytesCodec',
-#                'vlen-utf8': 'zarr.codecs.vlen_utf8.VLenUTF8Codec',
-#                'zstd': 'zarr.codecs.zstd.ZstdCodec'},
-#    'default_zarr_format': 3,
-#    'json_indent': 2,
-#    'ndbuffer': 'zarr.buffer.cpu.NDBuffer',
-#    'threading': {'max_workers': None}}
+```python exec="true" session="config" source="above" result="ansi"
+from pprint import pprint
+import io
+output = io.StringIO()
+zarr.config.pprint(stream=output, width=60)
+print(output.getvalue())
 ```
