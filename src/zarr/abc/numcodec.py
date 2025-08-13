@@ -7,7 +7,7 @@ class Numcodec(Protocol):
     """
     A protocol that models the ``numcodecs.abc.Codec`` interface.
 
-        This protocol should be considered experimental. Expect the type annotations for ``buf`` and
+    This protocol should be considered experimental. Expect the type annotations for ``buf`` and
     ``out`` to narrow in the future.
     """
 
