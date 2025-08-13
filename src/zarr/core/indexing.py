@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from zarr.core.array import Array, AsyncArray
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import ChunkCoords
 
 
 IntSequence = list[int] | npt.NDArray[np.intp]
@@ -75,7 +74,7 @@ class VindexInvalidSelectionError(IndexError):
     )
 
 
-def err_too_many_indices(selection: Any, shape: ChunkCoords) -> None:
+def err_too_many_indices(selection: Any, shape: tuple[int, ...]) -> None:
     raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
 
 
@@ -90,8 +89,8 @@ def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.N
 
 @runtime_checkable
 class Indexer(Protocol):
-    shape: ChunkCoords
-    drop_axes: ChunkCoords
+    shape: tuple[int, ...]
+    drop_axes: tuple[int, ...]
 
     def __iter__(self) -> Iterator[ChunkProjection]: ...
 
@@ -105,7 +104,7 @@ def _iter_grid(
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
     order: _ArrayIndexingOrder = "lexicographic",
-) -> Iterator[ChunkCoords]:
+) -> Iterator[tuple[int, ...]]:
     """
     Iterate over the elements of grid of integers, with the option to restrict the domain of
     iteration to a contiguous subregion of that grid.
@@ -283,7 +282,7 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
     )
 
 
-def get_chunk_shape(chunk_grid: ChunkGrid) -> ChunkCoords:
+def get_chunk_shape(chunk_grid: ChunkGrid) -> tuple[int, ...]:
     from zarr.core.chunk_grids import RegularChunkGrid
 
     assert isinstance(chunk_grid, RegularChunkGrid), (
@@ -424,12 +423,12 @@ class SliceDimIndexer:
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
-def check_selection_length(selection: SelectionNormalized, shape: ChunkCoords) -> None:
+def check_selection_length(selection: SelectionNormalized, shape: tuple[int, ...]) -> None:
     if len(selection) > len(shape):
         err_too_many_indices(selection, shape)
 
 
-def replace_ellipsis(selection: Any, shape: ChunkCoords) -> SelectionNormalized:
+def replace_ellipsis(selection: Any, shape: tuple[int, ...]) -> SelectionNormalized:
     selection = ensure_tuple(selection)
 
     # count number of ellipsis present
@@ -498,7 +497,7 @@ class ChunkProjection(NamedTuple):
         True if a complete chunk is indexed
     """
 
-    chunk_coords: ChunkCoords
+    chunk_coords: tuple[int, ...]
     chunk_selection: tuple[Selector, ...] | npt.NDArray[np.intp]
     out_selection: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
     is_complete_chunk: bool
@@ -529,13 +528,13 @@ def is_basic_selection(selection: Any) -> TypeGuard[BasicSelection]:
 @dataclass(frozen=True)
 class BasicIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer]
-    shape: ChunkCoords
-    drop_axes: ChunkCoords
+    shape: tuple[int, ...]
+    drop_axes: tuple[int, ...]
 
     def __init__(
         self,
         selection: BasicSelection,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         chunk_grid: ChunkGrid,
     ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
@@ -795,7 +794,7 @@ def slice_to_range(s: slice, length: int) -> range:
     return range(*s.indices(length))
 
 
-def ix_(selection: Any, shape: ChunkCoords) -> npt.NDArray[np.intp]:
+def ix_(selection: Any, shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     """Convert an orthogonal selection to a numpy advanced (fancy) selection, like ``numpy.ix_``
     but with support for slices and single ints."""
 
@@ -845,12 +844,12 @@ def oindex_set(a: npt.NDArray[Any], selection: Selection, value: Any) -> None:
 @dataclass(frozen=True)
 class OrthogonalIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer | IntArrayDimIndexer | BoolArrayDimIndexer]
-    shape: ChunkCoords
-    chunk_shape: ChunkCoords
+    shape: tuple[int, ...]
+    chunk_shape: tuple[int, ...]
     is_advanced: bool
     drop_axes: tuple[int, ...]
 
-    def __init__(self, selection: Selection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
+    def __init__(self, selection: Selection, shape: tuple[int, ...], chunk_grid: ChunkGrid) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
         # handle ellipsis
@@ -979,11 +978,11 @@ class AsyncOIndex(Generic[T_ArrayMetadata]):
 @dataclass(frozen=True)
 class BlockIndexer(Indexer):
     dim_indexers: list[SliceDimIndexer]
-    shape: ChunkCoords
-    drop_axes: ChunkCoords
+    shape: tuple[int, ...]
+    drop_axes: tuple[int, ...]
 
     def __init__(
-        self, selection: BasicSelection, shape: ChunkCoords, chunk_grid: ChunkGrid
+        self, selection: BasicSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
@@ -1078,7 +1077,7 @@ class BlockIndex:
 
 
 def is_coordinate_selection(
-    selection: SelectionNormalized, shape: ChunkCoords
+    selection: SelectionNormalized, shape: tuple[int, ...]
 ) -> TypeGuard[CoordinateSelectionNormalized]:
     return (
         isinstance(selection, tuple)
@@ -1087,7 +1086,7 @@ def is_coordinate_selection(
     )
 
 
-def is_mask_selection(selection: Selection, shape: ChunkCoords) -> TypeGuard[MaskSelection]:
+def is_mask_selection(selection: Selection, shape: tuple[int, ...]) -> TypeGuard[MaskSelection]:
     return (
         isinstance(selection, tuple)
         and len(selection) == 1
@@ -1098,22 +1097,22 @@ def is_mask_selection(selection: Selection, shape: ChunkCoords) -> TypeGuard[Mas
 
 @dataclass(frozen=True)
 class CoordinateIndexer(Indexer):
-    sel_shape: ChunkCoords
+    sel_shape: tuple[int, ...]
     selection: CoordinateSelectionNormalized
     sel_sort: npt.NDArray[np.intp] | None
     chunk_nitems_cumsum: npt.NDArray[np.intp]
     chunk_rixs: npt.NDArray[np.intp]
     chunk_mixs: tuple[npt.NDArray[np.intp], ...]
-    shape: ChunkCoords
-    chunk_shape: ChunkCoords
-    drop_axes: ChunkCoords
+    shape: tuple[int, ...]
+    chunk_shape: tuple[int, ...]
+    drop_axes: tuple[int, ...]
 
     def __init__(
-        self, selection: CoordinateSelection, shape: ChunkCoords, chunk_grid: ChunkGrid
+        self, selection: CoordinateSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
-        cdata_shape: ChunkCoords
+        cdata_shape: tuple[int, ...]
         if shape == ():
             cdata_shape = (1,)
         else:
@@ -1228,7 +1227,9 @@ class CoordinateIndexer(Indexer):
 
 @dataclass(frozen=True)
 class MaskIndexer(CoordinateIndexer):
-    def __init__(self, selection: MaskSelection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
+    def __init__(
+        self, selection: MaskSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
+    ) -> None:
         # some initial normalization
         selection_normalized = cast("tuple[MaskSelection]", ensure_tuple(selection))
         selection_normalized = cast("tuple[MaskSelection]", replace_lists(selection_normalized))
@@ -1380,7 +1381,7 @@ def make_slice_selection(selection: Any) -> list[slice]:
     return ls
 
 
-def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
+def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     # Inspired by compressed morton code as implemented in Neuroglancer
     # https://github.com/google/neuroglancer/blob/master/src/neuroglancer/datasource/precomputed/volume.md#compressed-morton-code
     bits = tuple(math.ceil(math.log2(c)) for c in chunk_shape)
@@ -1398,9 +1399,9 @@ def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
     return tuple(out)
 
 
-def morton_order_iter(chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
+def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
     i = 0
-    order: list[ChunkCoords] = []
+    order: list[tuple[int, ...]] = []
     while len(order) < product(chunk_shape):
         m = decode_morton(i, chunk_shape)
         if m not in order and all(x < y for x, y in zip(m, chunk_shape, strict=False)):
@@ -1410,12 +1411,12 @@ def morton_order_iter(chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
         yield order[j]
 
 
-def c_order_iter(chunks_per_shard: ChunkCoords) -> Iterator[ChunkCoords]:
+def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
     return itertools.product(*(range(x) for x in chunks_per_shard))
 
 
 def get_indexer(
-    selection: SelectionWithFields, shape: ChunkCoords, chunk_grid: ChunkGrid
+    selection: SelectionWithFields, shape: tuple[int, ...], chunk_grid: ChunkGrid
 ) -> Indexer:
     _, pure_selection = pop_fields(selection)
     if is_pure_fancy_indexing(pure_selection, len(shape)):

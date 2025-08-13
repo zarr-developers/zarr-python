@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.common import BytesLike
 
 try:
     import cupy as cp
@@ -182,7 +182,7 @@ class NDBuffer(core.NDBuffer):
 
     @classmethod
     def empty(
-        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
         return cls(cp.empty(shape=shape, dtype=dtype, order=order))
 

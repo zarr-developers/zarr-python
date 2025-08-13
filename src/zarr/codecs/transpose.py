@@ -8,7 +8,7 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
+from zarr.core.common import JSON, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ class TransposeCodec(ArrayArrayCodec):
 
     order: tuple[int, ...]
 
-    def __init__(self, *, order: ChunkCoordsLike) -> None:
+    def __init__(self, *, order: Iterable[int]) -> None:
         order_parsed = parse_transpose_order(order)
 
         object.__setattr__(self, "order", order_parsed)

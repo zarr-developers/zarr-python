@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.codecs.bytes import Endian
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.common import BytesLike
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
 __all__: list[str] = []
@@ -59,7 +59,7 @@ class NDArrayLike(Protocol):
     def size(self) -> int: ...
 
     @property
-    def shape(self) -> ChunkCoords: ...
+    def shape(self) -> tuple[int, ...]: ...
 
     def __len__(self) -> int: ...
 
@@ -70,7 +70,7 @@ class NDArrayLike(Protocol):
     def __array__(self) -> npt.NDArray[Any]: ...
 
     def reshape(
-        self, shape: ChunkCoords | Literal[-1], *, order: Literal["A", "C", "F"] = ...
+        self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = ...
     ) -> Self: ...
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
@@ -376,7 +376,7 @@ class NDBuffer:
 
     @classmethod
     def empty(
-        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
         """
         Create an empty buffer with the given shape, dtype, and order.
@@ -496,7 +496,7 @@ class NDBuffer:
         else:
             return Endian(sys.byteorder)
 
-    def reshape(self, newshape: ChunkCoords | Literal[-1]) -> Self:
+    def reshape(self, newshape: tuple[int, ...] | Literal[-1]) -> Self:
         return self.__class__(self._data.reshape(newshape))
 
     def squeeze(self, axis: tuple[int, ...]) -> Self:
