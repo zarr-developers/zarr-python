@@ -2,15 +2,44 @@
 
 <!-- towncrier release notes start -->
 
+## 3.1.1 (2025-07-28)
+
+### Features
+
+- Add lightweight implementations of `.getsize()` and `.getsize_prefix()` for ObjectStore. ([#3227](https://github.com/zarr-developers/zarr-python/issues/3227))
+
+### Bugfixes
+
+- Creating a Zarr format 2 array with the `order` keyword argument no longer raises a warning. ([#3112](https://github.com/zarr-developers/zarr-python/issues/3112))
+- Fixed the error message when passing both `config` and `write_empty_chunks` arguments to reflect the current behaviour (`write_empty_chunks` takes precedence). ([#3112](https://github.com/zarr-developers/zarr-python/issues/3112))
+- Creating a Zarr format 3 array with the `order` argument now consistently ignores this argument and raises a warning. ([#3112](https://github.com/zarr-developers/zarr-python/issues/3112))
+- When using [`from_array`][zarr.api.asynchronous.from_array] to copy a Zarr format 2 array to a Zarr format 3 array, if the memory order of the input array is `"F"` a warning is raised and the order ignored. This is because Zarr format 3 arrays are always stored in "C" order. ([#3112](https://github.com/zarr-developers/zarr-python/issues/3112))
+- The `config` argument to [`zarr.create`][zarr.create] (and functions that create arrays) is now used - previously it had no effect. ([#3112](https://github.com/zarr-developers/zarr-python/issues/3112))
+- Ensure that all abstract methods of [`ZDType`][zarr.core.dtype.ZDType] raise a `NotImplementedError` when invoked. ([#3251](https://github.com/zarr-developers/zarr-python/issues/3251))
+- Register 'gpu' marker with pytest for downstream StoreTests. ([#3258](https://github.com/zarr-developers/zarr-python/issues/3258))
+- Expand the range of types accepted by `parse_data_type` to include strings and Sequences.
+- Move the functionality of `zarr.core.dtype.parse_data_type` to a new function called `zarr.dtype.parse_dtype`. This change ensures that nomenclature is consistent across the codebase. `zarr.core.dtype.parse_data_type` remains, so this change is not breaking. ([#3264](https://github.com/zarr-developers/zarr-python/issues/3264))
+- Fix a regression introduced in 3.1.0 that prevented `inf`, `-inf`, and `nan` values from being stored in `attributes`. ([#3280](https://github.com/zarr-developers/zarr-python/issues/3280))
+- Fixes [`Group.nmembers()`][zarr.Group.nmembers] ignoring depth when using consolidated metadata. ([#3287](https://github.com/zarr-developers/zarr-python/issues/3287))
+
+### Improved Documentation
+
+- Expand the data type docs to include a demonstration of the `parse_data_type` function. Expand the docstring for the `parse_data_type` function. ([#3249](https://github.com/zarr-developers/zarr-python/issues/3249))
+- Add a section on codecs to the migration guide. ([#3273](https://github.com/zarr-developers/zarr-python/issues/3273))
+
+### Misc
+
+- Remove warnings about vlen-utf8 and vlen-bytes codecs ([#3268](https://github.com/zarr-developers/zarr-python/issues/3268))
+
 ## 3.1.0 (2025-07-14)
 
 ### Features
 
 - Ensure that invocations of `create_array` use consistent keyword arguments, with consistent defaults.
 
-  `zarr.api.synchronous.create_array` now takes a `write_data` keyword argument
+  [`zarr.api.synchronous.create_array`][] now takes a `write_data` keyword argument
   The `Group.create_array` method takes `data` and `write_data` keyword arguments.
-  The functions `api.asynchronous.create`, `api.asynchronous.create_array`
+  The functions [`zarr.api.asynchronous.create`][], [`zarr.api.asynchronous.create_array`]
   and the methods `Group.create_array`, `Group.array`, had the default
   `fill_value` changed from `0` to the `DEFAULT_FILL_VALUE` value, which instructs Zarr to
   use the default scalar value associated with the array's data type as the fill value. These are
