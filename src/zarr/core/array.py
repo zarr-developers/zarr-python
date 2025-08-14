@@ -476,7 +476,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """Method to create a new asynchronous array instance.
 
         .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
+            Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
 
         Parameters
         ----------
@@ -526,7 +526,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         order : Literal["C", "F"], optional
             The memory of the array (default is "C").
             If ``zarr_format`` is 2, this parameter sets the memory order of the array.
-            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
+            If ``zarr_format`` is 3, then this parameter is deprecated, because memory order
             is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
             order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         filters : list[dict[str, JSON]], optional
@@ -615,8 +615,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
-        See :func:`AsyncArray.create` for more details.
-        Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
+        Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
         """
 
         dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
@@ -1610,15 +1609,15 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @property
     def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:
-        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
-        :func:`set_orthogonal_selection` for documentation and examples."""
+        """Shortcut for orthogonal (outer) indexing, see [get_orthogonal_selection][zarr.Array.get_orthogonal_selection] and
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection] for documentation and examples."""
         return AsyncOIndex(self)
 
     @property
     def vindex(self) -> AsyncVIndex[T_ArrayMetadata]:
-        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
-        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
-        :func:`set_mask_selection` for documentation and examples."""
+        """Shortcut for vectorized (inner) indexing, see [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection], [get_mask_selection][zarr.Array.get_mask_selection] and
+        [set_mask_selection][zarr.Array.set_mask_selection] for documentation and examples."""
         return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
@@ -1774,10 +1773,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         ArrayInfo
 
-        See Also
+        Related
         --------
-        AsyncArray.info_complete
-            All information about a group, including dynamic information
+        [zarr.AsyncArray.info_complete][] - All information about a group, including dynamic information
             like the number of bytes and chunks written.
 
         Examples
@@ -1813,10 +1811,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         ArrayInfo
 
-        See Also
+        Related
         --------
-        AsyncArray.info
-            A property giving just the statically known information about an array.
+        [zarr.AsyncArray.info][] - A property giving just the statically known information about an array.
         """
         return self._info(
             await self.nchunks_initialized(),
@@ -1889,7 +1886,7 @@ class Array:
         """Creates a new Array instance from an initialized store.
 
         .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.create_array`.
+            Deprecated in favor of [`zarr.create_array`][].
 
         Parameters
         ----------
@@ -2016,8 +2013,7 @@ class Array:
         config: ArrayConfigLike | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
-        See :func:`Array.create` for more details.
-        Deprecated in favor of :func:`zarr.create_array`.
+        Deprecated in favor of [`zarr.create_array`][].
         """
         async_array = sync(
             AsyncArray._create(
@@ -2538,9 +2534,9 @@ class Array:
         fields
 
         Currently the implementation for __getitem__ is provided by
-        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        [`vindex`][zarr.Array.vindex] if the indexing is pure fancy indexing (ie a
         broadcast-compatible tuple of integer array indices), or by
-        :func:`set_basic_selection` otherwise.
+        [`set_basic_selection`][zarr.Array.set_basic_selection] otherwise.
 
         Effectively, this means that the following indexing modes are supported:
 
@@ -2551,14 +2547,16 @@ class Array:
            - fancy indexing (vectorized list of integers)
 
         For specific indexing options including outer indexing, see the
-        methods listed under See Also.
+        methods listed under Related.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __setitem__
+        [get_basic_selection][zarr.Array.get_basic_selection], [set_basic_selection][zarr.Array.set_basic_selection]
+        [get_mask_selection][zarr.Array.get_mask_selection], [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection], [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection], [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection], [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex], [blocks][zarr.Array.blocks], [__setitem__][zarr.Array.__setitem__]
 
         """
         fields, pure_selection = pop_fields(selection)
@@ -2637,27 +2635,35 @@ class Array:
         fields
 
         Currently the implementation for __setitem__ is provided by
-        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        [`vindex`][zarr.Array.vindex] if the indexing is pure fancy indexing (ie a
         broadcast-compatible tuple of integer array indices), or by
-        :func:`set_basic_selection` otherwise.
+        [`set_basic_selection`][zarr.Array.set_basic_selection] otherwise.
 
         Effectively, this means that the following indexing modes are supported:
 
-           - integer indexing
-           - slice indexing
-           - mixed slice and integer indexing
-           - boolean indexing
-           - fancy indexing (vectorized list of integers)
+            - integer indexing
+            - slice indexing
+            - mixed slice and integer indexing
+            - boolean indexing
+            - fancy indexing (vectorized list of integers)
 
         For specific indexing options including outer indexing, see the
-        methods listed under See Also.
+        methods listed under Related.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__]
 
         """
         fields, pure_selection = pop_fields(selection)
@@ -2768,15 +2774,23 @@ class Array:
         the `fields` parameter.
 
         This method provides the implementation for accessing data via the
-        square bracket notation (__getitem__). See :func:`__getitem__` for examples
+        square bracket notation (__getitem__). See [`__getitem__`][zarr.Array.__getitem__] for examples
         using the alternative notation.
 
-        See Also
+        Related
         --------
-        set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
 
@@ -2870,15 +2884,23 @@ class Array:
         the `fields` parameter.
 
         This method provides the underlying implementation for modifying data via square
-        bracket notation, see :func:`__setitem__` for equivalent examples using the
+        bracket notation, see [`__setitem__`][zarr.Array.__setitem__] for equivalent examples using the
         alternative notation.
 
-        See Also
+        Related
         --------
-        get_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -2993,12 +3015,20 @@ class Array:
 
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, set_orthogonal_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3105,13 +3135,20 @@ class Array:
 
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
-
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
         if prototype is None:
             prototype = default_buffer_prototype()
@@ -3185,12 +3222,20 @@ class Array:
         coordinate indexing. Internally the mask array is converted to coordinate
         arrays by calling `np.nonzero`.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
 
         if prototype is None:
@@ -3267,12 +3312,20 @@ class Array:
         coordinate indexing. Internally the mask array is converted to coordinate
         arrays by calling `np.nonzero`.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3347,12 +3400,20 @@ class Array:
         before being applied. The shape of the output will be the same as the shape of
         each coordinate array after broadcasting.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, set_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3431,12 +3492,20 @@ class Array:
         Slices are not supported. Coordinate arrays must be provided for all dimensions
         of the array.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3547,13 +3616,20 @@ class Array:
                    [13, 14, 15, 16, 17, 18],
                    [23, 24, 25, 26, 27, 28]])
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
-
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
         if prototype is None:
             prototype = default_buffer_prototype()
@@ -3640,12 +3716,20 @@ class Array:
 
         Slices are supported. However, only with a step size of one.
 
-        See Also
+        Related
         --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3655,21 +3739,28 @@ class Array:
 
     @property
     def vindex(self) -> VIndex:
-        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
-        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
-        :func:`set_mask_selection` for documentation and examples."""
+        """Shortcut for vectorized (inner) indexing, see
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection] and
+        [set_mask_selection][zarr.Array.set_mask_selection] for documentation and
+        examples."""
         return VIndex(self)
 
     @property
     def oindex(self) -> OIndex:
-        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
-        :func:`set_orthogonal_selection` for documentation and examples."""
+        """Shortcut for orthogonal (outer) indexing, see
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection] and
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection] for
+        documentation and examples."""
         return OIndex(self)
 
     @property
     def blocks(self) -> BlockIndex:
-        """Shortcut for blocked chunked indexing, see :func:`get_block_selection` and
-        :func:`set_block_selection` for documentation and examples."""
+        """Shortcut for blocked chunked indexing, see
+        [get_block_selection][zarr.Array.get_block_selection] and
+        [set_block_selection][zarr.Array.set_block_selection] for documentation and
+        examples."""
         return BlockIndex(self)
 
     def resize(self, new_shape: ShapeLike) -> None:
@@ -3789,11 +3880,10 @@ class Array:
         -------
         ArrayInfo
 
-        See Also
+        Related
         --------
-        Array.info_complete
-            All information about a group, including dynamic information
-            like the number of bytes and chunks written.
+        [zarr.Array.info_complete][] - All information about a group,
+            including dynamic information like the number of bytes and chunks written.
 
         Examples
         --------
@@ -3826,10 +3916,9 @@ class Array:
         -------
         ArrayInfo
 
-        See Also
+        Related
         --------
-        Array.info
-            The statically known subset of metadata about an array.
+        [zarr.Array.info][] - The statically known subset of metadata about an array.
         """
         return sync(self._async_array.info_complete())
 
@@ -3850,9 +3939,9 @@ async def chunks_initialized(
     chunks_initialized : tuple[str, ...]
         The keys of the chunks that have been initialized.
 
-    See Also
+    Related
     --------
-    nchunks_initialized
+    [nchunks_initialized][zarr.Array.nchunks_initialized]
 
     """
     store_contents = [
