@@ -1,3 +1,7 @@
+import functools
+import logging
+from typing import Literal
+
 from zarr._version import version as __version__
 from zarr.api.synchronous import (
     array,
@@ -36,6 +40,8 @@ from zarr.core.group import AsyncGroup, Group
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")
+
+_logger = logging.getLogger(__name__)
 
 
 def print_debug_info() -> None:
@@ -83,6 +89,58 @@ def print_debug_info() -> None:
     print_packages(required)
     print("\n**Optional dependencies:**")
     print_packages(optional)
+
+
+# The decorator ensures this always returns the same handler (and it is only
+# attached once).
+@functools.cache
+def _ensure_handler() -> logging.Handler:
+    """
+    The first time this function is called, attach a `StreamHandler` using the
+    same format as `logging.basicConfig` to the Zarr-Python root logger.
+
+    Return this handler every time this function is called.
+    """
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+    _logger.addHandler(handler)
+    return handler
+
+
+def set_log_level(
+    level: Literal["NOTSET", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+) -> None:
+    """Set the logging level for Zarr-Python.
+
+    Zarr-Python uses the standard library `logging` framework under the root
+    logger 'zarr'.  This is a helper function to:
+
+    - set Zarr-Python's root logger level
+    - set the root logger handler's level, creating the handler
+      if it does not exist yet
+
+    Parameters
+    ----------
+    level : str
+        The logging level to set.
+    """
+    _logger.setLevel(level)
+    _ensure_handler().setLevel(level)
+
+
+def set_format(log_format: str) -> None:
+    """Set the format of logging messages from Zarr-Python.
+
+    Zarr-Python uses the standard library `logging` framework under the root
+    logger 'zarr'. This sets the format of log messages from the root logger's StreamHandler.
+
+    Parameters
+    ----------
+    log_format : str
+        A string determining the log format (as defined in the standard library's `logging` module
+        for logging.Formatter)
+    """
+    _ensure_handler().setFormatter(logging.Formatter(fmt=log_format))
 
 
 __all__ = [
