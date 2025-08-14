@@ -1,7 +1,7 @@
 Writing a changelog entry
 -------------------------
 
-Please put a new file in this directory named `xxxx.<type>.rst`, where
+Please put a new file in this directory named `xxxx.<type>.md`, where
 
 - `xxxx` is the pull request number associated with this entry
 - `<type>` is one of:

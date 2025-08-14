@@ -25,13 +25,13 @@ if __name__ == "__main__":
     print(f"Found {len(entries)} entries")
     print()
 
-    bad_suffix = [e for e in entries if e.suffix != ".rst"]
+    bad_suffix = [e for e in entries if e.suffix != ".md"]
     bad_issue_no = [e for e in entries if not is_int(e.name.split(".")[0])]
     bad_type = [e for e in entries if e.name.split(".")[1] not in VALID_CHANGELOG_TYPES]
 
     if len(bad_suffix) or len(bad_issue_no) or len(bad_type):
         if len(bad_suffix):
-            print("Changelog entries without .rst suffix")
+            print("Changelog entries without .md suffix")
             print("-------------------------------------")
             print("\n".join([p.name for p in bad_suffix]))
             print()

@@ -218,7 +218,7 @@ class Buffer(ABC):
         Parameters
         ----------
         bytes_like
-           bytes-like object
+            bytes-like object
 
         Returns
         -------
