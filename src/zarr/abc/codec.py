@@ -2,13 +2,23 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    ClassVar,
+    Generic,
+    Literal,
+    Self,
+    TypedDict,
+    TypeGuard,
+    TypeVar,
+    overload,
+)
 
-from typing_extensions import ReadOnly, TypedDict
+from typing_extensions import Protocol, ReadOnly
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import ChunkCoords, NamedConfig, concurrent_map
+from zarr.core.common import ChunkCoords, NamedConfig, ZarrFormat, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -180,6 +190,34 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         Iterable[CodecOutput | None]
         """
         return await _batching_helper(self._encode_single, chunks_and_specs)
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        raise NotImplementedError
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        raise NotImplementedError
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        raise NotImplementedError
+
+    @classmethod
+    def from_json(cls, data: CodecJSON, zarr_format: ZarrFormat) -> Self:
+        if zarr_format == 2:
+            return cls._from_json_v2(data)
+        elif zarr_format == 3:
+            return cls._from_json_v3(data)
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
 
 
 class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
@@ -471,3 +509,22 @@ def _noop_for_none(
         return await func(chunk, chunk_spec)
 
     return wrap
+
+
+class Numcodec(Protocol):
+    """
+    A protocol that models the ``numcodecs.abc.Codec`` interface.
+    """
+
+    codec_id: ClassVar[str]
+
+    def encode(self, buf: Buffer | NDBuffer) -> Buffer | NDBuffer: ...
+
+    def decode(
+        self, buf: Buffer | NDBuffer, out: Buffer | NDBuffer | None = None
+    ) -> Buffer | NDBuffer: ...
+
+    def get_config(self) -> CodecJSON_V2[str]: ...
+
+    @classmethod
+    def from_config(cls, config: CodecJSON_V2[str]) -> Self: ...
