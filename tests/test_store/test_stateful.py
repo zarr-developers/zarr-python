@@ -5,7 +5,7 @@ from hypothesis.stateful import (
 )
 
 from zarr.abc.store import Store
-from zarr.storage import LocalStore, ZipStore
+from zarr.storage import LocalStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachine
 
 pytestmark = [
@@ -20,18 +20,12 @@ def test_zarr_hierarchy(sync_store: Store):
     def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
         return ZarrHierarchyStateMachine(sync_store)
 
-    if isinstance(sync_store, ZipStore):
-        pytest.skip(reason="ZipStore does not support delete")
-
     run_state_machine_as_test(mk_test_instance_sync)
 
 
 def test_zarr_store(sync_store: Store) -> None:
     def mk_test_instance_sync() -> None:
         return ZarrStoreStateMachine(sync_store)
-
-    if isinstance(sync_store, ZipStore):
-        pytest.skip(reason="ZipStore does not support delete")
 
     if isinstance(sync_store, LocalStore):
         # This test uses arbitrary keys, which are passed to `set` and `delete`.
