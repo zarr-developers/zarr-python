@@ -19,13 +19,12 @@ from typing import (
 )
 from warnings import warn
 
-import numcodecs
-import numcodecs.abc
 import numpy as np
 from typing_extensions import deprecated
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
+from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
@@ -607,7 +606,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
-        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
         compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
@@ -817,7 +816,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
-        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
         compressor: CompressorLikev2 = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV2Metadata:
@@ -855,7 +854,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
-        filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
         compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
@@ -1032,7 +1031,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return np.prod(self.metadata.shape).item()
 
     @property
-    def filters(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...]:
+    def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
         """
         Filters that are applied to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -1061,7 +1060,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @property
     @deprecated("Use AsyncArray.compressors instead.", category=ZarrDeprecationWarning)
-    def compressor(self) -> numcodecs.abc.Codec | None:
+    def compressor(self) -> Numcodec | None:
         """
         Compressor that is applied to each chunk of the array.
 
@@ -1074,7 +1073,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         raise TypeError("`compressor` is not available for Zarr format 3 arrays.")
 
     @property
-    def compressors(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...]:
+    def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
         """
         Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
@@ -2223,7 +2222,7 @@ class Array:
         return self.metadata.fill_value
 
     @property
-    def filters(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...]:
+    def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...]:
         """
         Filters that are applied to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -2239,7 +2238,7 @@ class Array:
 
     @property
     @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
-    def compressor(self) -> numcodecs.abc.Codec | None:
+    def compressor(self) -> Numcodec | None:
         """
         Compressor that is applied to each chunk of the array.
 
@@ -2250,7 +2249,7 @@ class Array:
         return self._async_array.compressor
 
     @property
-    def compressors(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...]:
+    def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
         """
         Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
@@ -3987,23 +3986,21 @@ def _build_parents(
 
 
 FiltersLike: TypeAlias = (
-    Iterable[dict[str, JSON] | ArrayArrayCodec | numcodecs.abc.Codec]
+    Iterable[dict[str, JSON] | ArrayArrayCodec | Numcodec]
     | ArrayArrayCodec
-    | Iterable[numcodecs.abc.Codec]
-    | numcodecs.abc.Codec
+    | Iterable[Numcodec]
+    | Numcodec
     | Literal["auto"]
     | None
 )
 # Union of acceptable types for users to pass in for both v2 and v3 compressors
-CompressorLike: TypeAlias = (
-    dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec | Literal["auto"] | None
-)
+CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | Numcodec | Literal["auto"] | None
 
 CompressorsLike: TypeAlias = (
-    Iterable[dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec]
+    Iterable[dict[str, JSON] | BytesBytesCodec | Numcodec]
     | dict[str, JSON]
     | BytesBytesCodec
-    | numcodecs.abc.Codec
+    | Numcodec
     | Literal["auto"]
     | None
 )
@@ -4864,7 +4861,7 @@ def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
     return serializer
 
 
-def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[numcodecs.abc.Codec] | None:
+def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[Numcodec] | None:
     """
     Given a data type, return the default filters for that data type.
 
@@ -4886,7 +4883,7 @@ def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[numcodecs.abc.Codec] | 
     return None
 
 
-def default_compressor_v2(dtype: ZDType[Any, Any]) -> numcodecs.abc.Codec:
+def default_compressor_v2(dtype: ZDType[Any, Any]) -> Numcodec:
     """
     Given a data type, return the default compressors for that data type.
 
@@ -4894,7 +4891,7 @@ def default_compressor_v2(dtype: ZDType[Any, Any]) -> numcodecs.abc.Codec:
     """
     from numcodecs import Zstd
 
-    return Zstd(level=0, checksum=False)
+    return Zstd(level=0, checksum=False)  # type: ignore[no-any-return]
 
 
 def _parse_chunk_encoding_v2(
@@ -4902,12 +4899,12 @@ def _parse_chunk_encoding_v2(
     compressor: CompressorsLike,
     filters: FiltersLike,
     dtype: ZDType[TBaseDType, TBaseScalar],
-) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
+) -> tuple[tuple[Numcodec, ...] | None, Numcodec | None]:
     """
     Generate chunk encoding classes for Zarr format 2 arrays with optional defaults.
     """
-    _filters: tuple[numcodecs.abc.Codec, ...] | None
-    _compressor: numcodecs.abc.Codec | None
+    _filters: tuple[Numcodec, ...] | None
+    _compressor: Numcodec | None
 
     if compressor is None or compressor == ():
         _compressor = None
@@ -4928,7 +4925,7 @@ def _parse_chunk_encoding_v2(
     else:
         if isinstance(filters, Iterable):
             for idx, f in enumerate(filters):
-                if not isinstance(f, numcodecs.abc.Codec):
+                if not _is_numcodec(f):
                     msg = (
                         "For Zarr format 2 arrays, all elements of `filters` must be numcodecs codecs. "
                         f"Element at index {idx} has type {type(f)}, which is not a numcodecs codec."
