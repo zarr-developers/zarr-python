@@ -101,6 +101,7 @@ docs = [
     "mike>=2.1.3",
     "mkdocs-redirects>=1.2.0",
     "markdown-exec[ansi]",
+    "griffe-inherited-docstrings",
     "ruff",
     # Changelog generation
     'towncrier',
@@ -249,6 +250,7 @@ serve = "mkdocs serve"
 build = "mkdocs build"
 check = "mkdocs build --strict"
 readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
+list-env = "pip list"
 
 [tool.ruff]
 line-length = 100
