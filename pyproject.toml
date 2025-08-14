@@ -392,6 +392,7 @@ filterwarnings = [
     "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
 ]
 markers = [
+    "asyncio: mark test as asyncio test",
     "gpu: mark a test as requiring CuPy and GPU",
     "slow_hypothesis: slow hypothesis tests",
 ]
