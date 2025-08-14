@@ -33,6 +33,7 @@ nav:
       - api/open.md
       - api/load.md
       - api/save.md
+      - api/buffer.md
       - api/convenience.md
       - api/config.md
       - api/codecs.md
@@ -117,11 +118,10 @@ plugins:
         python:
           paths: [src/zarr]
           options:
-            # We set allow_inspection: false to ensure that all docstrings come
-            # from the pyi files, not the Rust-facing doc comments.
-            allow_inspection: false
+            allow_inspection: true
             docstring_section_style: list
             docstring_style: numpy
+            inherited_members: true
             line_length: 60
             separate_signature: true
             show_root_heading: true
@@ -129,6 +129,8 @@ plugins:
             show_source: false
             show_symbol_type_toc: true
             signature_crossrefs: true
+            extensions:
+            - griffe_inherited_docstrings
 
           inventories:
             - https://docs.python.org/3/objects.inv
