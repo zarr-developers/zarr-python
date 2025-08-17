@@ -91,7 +91,7 @@ def test_like_args(
 
 async def test_open_no_array() -> None:
     """
-    Test that zarr.api.asynchronous.open attempts to open a group when is no array found, but shape was specified in kwargs.
+    Test that zarr.api.asynchronous.open attempts to open a group when no array is found, but shape was specified in kwargs.
     This behavior makes no sense but we should still test it.
     """
     store = {
