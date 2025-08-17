@@ -1350,11 +1350,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
                 )
         else:
-            out_buffer = prototype.nd_buffer.create(
+            out_buffer = prototype.nd_buffer.empty(
                 shape=indexer.shape,
                 dtype=out_dtype,
                 order=self.order,
-                fill_value=self.metadata.fill_value,
             )
         if product(indexer.shape) > 0:
             # need to use the order from the metadata for v2
