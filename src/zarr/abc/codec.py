@@ -8,7 +8,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import concurrent_map
+from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
