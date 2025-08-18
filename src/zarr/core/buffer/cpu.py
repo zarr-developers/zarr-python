@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.buffer.core import ArrayLike, NDArrayLike
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.common import BytesLike
 
 
 class Buffer(core.Buffer):
@@ -162,7 +162,7 @@ class NDBuffer(core.NDBuffer):
 
     @classmethod
     def empty(
-        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
         return cls(np.empty(shape=shape, dtype=dtype, order=order))
 
