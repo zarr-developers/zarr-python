@@ -1,4 +1,4 @@
 needs release notes:
   - all:
     - changed-files:
-      - all-globs-to-all-files: '!changes/*.rst'
+      - all-globs-to-all-files: '!changes/*.md'
