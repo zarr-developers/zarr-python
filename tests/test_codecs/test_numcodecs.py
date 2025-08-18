@@ -10,7 +10,7 @@ from numcodecs import GZip
 
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
-from zarr.codecs import _numcodecs
+from zarr.codecs import numcodecs as _numcodecs
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
