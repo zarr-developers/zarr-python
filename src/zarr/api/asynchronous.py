@@ -51,9 +51,8 @@ from zarr.storage._common import make_store_path
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    import numcodecs.abc
-
     from zarr.abc.codec import Codec
+    from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
@@ -358,7 +357,9 @@ async def open(
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
-                return AsyncArray(store_path=store_path, metadata=_metadata_dict)
+                return AsyncArray(
+                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
+                )
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
@@ -876,7 +877,7 @@ async def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,

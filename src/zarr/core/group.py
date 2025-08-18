@@ -2474,13 +2474,12 @@ class Group(SyncMixin):
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : tuple[int, ...], optional
-            Shape of the array. Can be ``None`` if ``data`` is provided.
+        shape : ShapeLike, optional
+            Shape of the array. Must be ``None`` if ``data`` is provided.
         dtype : npt.DTypeLike | None
-            Data type of the array. Can be ``None`` if ``data`` is provided.
+            Data type of the array. Must be ``None`` if ``data`` is provided.
         data : Array-like data to use for initializing the array. If this parameter is provided, the
-            ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
-            or ``None``.
+            ``shape`` and ``dtype`` parameters must be ``None``.
         chunks : tuple[int, ...], optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
