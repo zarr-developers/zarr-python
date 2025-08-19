@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+
+from typing_extensions import ReadOnly, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -33,6 +36,27 @@ __all__ = [
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
+
+TName = TypeVar("TName", bound=str, covariant=True)
+
+
+class CodecJSON_V2(TypedDict, Generic[TName]):
+    """The JSON representation of a codec for Zarr V2"""
+
+    id: ReadOnly[TName]
+
+
+def _check_codecjson_v2(data: object) -> TypeGuard[CodecJSON_V2[str]]:
+    return isinstance(data, Mapping) and "id" in data and isinstance(data["id"], str)
+
+
+CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
+"""The JSON representation of a codec for Zarr V3."""
+
+# The widest type we will *accept* for a codec JSON
+# This covers v2 and v3
+CodecJSON = str | Mapping[str, object]
+"""The widest type of JSON-like input that could specify a codec."""
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
@@ -96,7 +120,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
     def validate(
         self,
         *,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGrid,
     ) -> None:
@@ -105,7 +129,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 
         Parameters
         ----------
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             The array shape
         dtype : np.dtype[Any]
             The array data type
@@ -311,14 +335,18 @@ class CodecPipeline:
 
     @abstractmethod
     def validate(
-        self, *, shape: ChunkCoords, dtype: ZDType[TBaseDType, TBaseScalar], chunk_grid: ChunkGrid
+        self,
+        *,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
     ) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
 
         Parameters
         ----------
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             The array shape
         dtype : np.dtype[Any]
             The array data type

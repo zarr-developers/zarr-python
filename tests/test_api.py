@@ -128,6 +128,30 @@ def test_write_empty_chunks_warns(write_empty_chunks: bool, zarr_format: ZarrFor
         )
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) -> None:
+    """Test that zarr.open() respects write_empty_chunks config."""
+    store = MemoryStore()
+
+    _ = zarr.create(
+        store=store,
+        path="test_array",
+        shape=(10,),
+        chunks=(5,),
+        dtype="f8",
+        fill_value=0.0,
+        zarr_format=zarr_format,
+    )
+
+    arr2 = zarr.open(store=store, path="test_array", config={"write_empty_chunks": True})
+    assert isinstance(arr2, zarr.Array)
+
+    assert arr2._async_array._config.write_empty_chunks is True
+
+    arr2[0:5] = np.zeros(5)
+    assert arr2.nchunks_initialized == 1
+
+
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
 @pytest.mark.parametrize("node_type", ["array", "group"])
 def test_open_normalized_path(
@@ -1288,7 +1312,7 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
             dtype=src.dtype,
             overwrite=True,
             zarr_format=zarr_format,
-            compressors=compressors,
+            compressors=compressors,  # type: ignore[arg-type]
         )
         z[:10, :10] = src[:10, :10]
 

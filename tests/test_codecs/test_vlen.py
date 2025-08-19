@@ -40,7 +40,7 @@ def test_vlen_string(
         chunks=data.shape,
         dtype=data.dtype,
         fill_value="",
-        compressors=compressor,
+        compressors=compressor,  # type: ignore[arg-type]
     )
     assert isinstance(a.metadata, ArrayV3Metadata)  # needed for mypy
 

@@ -1,0 +1,2 @@
+Make certain imports in ``zarr.abc.store`` local to method definitions. This minimizes the risk of
+circular imports when adding new classes to ``zarr.abc.store``.

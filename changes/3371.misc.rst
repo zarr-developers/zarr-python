@@ -1,0 +1,1 @@
+Ensure that tests for executable examples are run in a fresh python environment.
