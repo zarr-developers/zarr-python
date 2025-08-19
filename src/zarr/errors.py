@@ -1,5 +1,7 @@
 from typing import Any
 
+from typing_extensions import deprecated
+
 __all__ = [
     "ArrayNotFoundError",
     "BaseZarrError",
@@ -35,8 +37,26 @@ class GroupNotFoundError(BaseZarrError, FileNotFoundError):
     _msg = "No group found in store {!r} at path {!r}"
 
 
-class ArrayNotFoundError(BaseZarrError):
-    _msg = "array not found at path %r' {0!r}"
+class ArrayNotFoundError(BaseZarrError, FileNotFoundError):
+    """
+    Raised when an array isn't found at a certain path.
+    """
+
+    def __init__(self, *args: Any) -> None:
+        if len(args) == 1:
+            # Pre-formatted message
+            super(BaseZarrError, self).__init__(args[0])
+        else:
+            # Store and path arguments - format them
+            _msg = "No array found in store {!r} at path {!r}"
+            super(BaseZarrError, self).__init__(_msg.format(*args))
+
+@deprecated("Use NodeNotFoundError instead.", category=None)
+class PathNotFoundError(BaseZarrError):
+    # Backwards compatibility with v2. Superseded by NodeNotFoundError.
+    ...
+class NodeNotFoundError(PathNotFoundError):
+    """Raised when an array or group does not exist at a certain path."""
 
 
 class ContainsGroupError(BaseZarrError):

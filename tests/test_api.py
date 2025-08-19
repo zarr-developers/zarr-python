@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import zarr.codecs
 import zarr.storage
-from zarr.core.array import init_array
+from zarr.core.array import AsyncArray, init_array
 from zarr.storage import LocalStore, ZipStore
 from zarr.storage._common import StorePath
 
@@ -44,7 +44,9 @@ from zarr.api.synchronous import (
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
+    GroupNotFoundError,
     MetadataValidationError,
+    NodeNotFoundError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
@@ -190,9 +192,23 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     assert z.read_only
 
     # path not found
-    with pytest.raises(ArrayNotFoundError):
+    with pytest.raises((NodeNotFoundError, GroupNotFoundError)):
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
+@pytest.mark.asyncio
+async def test_async_array_open_array_not_found():
+    """Test that AsyncArray.open raises ArrayNotFoundError when array doesn't exist"""
+    store = MemoryStore()
+    # Try to open an array that does not exist
+    with pytest.raises(ArrayNotFoundError):
+        await AsyncArray.open(store, zarr_format=2)
+
+def test_array_open_array_not_found_sync():
+    """Test that Array.open raises ArrayNotFoundError when array doesn't exist"""
+    store = MemoryStore()
+    # Try to open an array that does not exist
+    with pytest.raises(ArrayNotFoundError):
+        Array.open(store)
 
 @pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=True)
 def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
