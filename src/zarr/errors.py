@@ -51,10 +51,13 @@ class ArrayNotFoundError(BaseZarrError, FileNotFoundError):
             _msg = "No array found in store {!r} at path {!r}"
             super(BaseZarrError, self).__init__(_msg.format(*args))
 
+
 @deprecated("Use NodeNotFoundError instead.", category=None)
 class PathNotFoundError(BaseZarrError):
     # Backwards compatibility with v2. Superseded by NodeNotFoundError.
     ...
+
+
 class NodeNotFoundError(PathNotFoundError):
     """Raised when an array or group does not exist at a certain path."""
 

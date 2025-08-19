@@ -77,11 +77,11 @@ def test_create(memory_store: Store) -> None:
 
     # create array with float shape
     with pytest.raises(TypeError):
-        z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore [arg-type]
+        z = create(shape=(400.5, 100), store=store, overwrite=True)
 
     # create array with float chunk shape
     with pytest.raises(TypeError):
-        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
+        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)
 
 
 # TODO: parametrize over everything this function takes
@@ -195,20 +195,23 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     with pytest.raises((NodeNotFoundError, GroupNotFoundError)):
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
+
 @pytest.mark.asyncio
-async def test_async_array_open_array_not_found():
+async def test_async_array_open_array_not_found() -> None:
     """Test that AsyncArray.open raises ArrayNotFoundError when array doesn't exist"""
     store = MemoryStore()
     # Try to open an array that does not exist
     with pytest.raises(ArrayNotFoundError):
         await AsyncArray.open(store, zarr_format=2)
 
-def test_array_open_array_not_found_sync():
+
+def test_array_open_array_not_found_sync() -> None:
     """Test that Array.open raises ArrayNotFoundError when array doesn't exist"""
     store = MemoryStore()
     # Try to open an array that does not exist
     with pytest.raises(ArrayNotFoundError):
         Array.open(store)
+
 
 @pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=True)
 def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
@@ -287,7 +290,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> Non
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
-        save(store, *args, path=path, **kwargs)  # type: ignore [arg-type]
+        save(store, *args, path=path, **kwargs)
         group = zarr.api.synchronous.open(store, path=path)
         assert isinstance(group, Group)
         for array in group.array_values():
@@ -303,7 +306,7 @@ def test_save_errors() -> None:
         save_group("data/group.zarr")
     with pytest.raises(TypeError):
         # no array provided
-        save_array("data/group.zarr")  # type: ignore[call-arg]
+        save_array("data/group.zarr")
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
@@ -1218,9 +1221,9 @@ def test_open_modes_creates_group(tmp_path: Path, mode: str) -> None:
     if mode in ["r", "r+"]:
         # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
         with pytest.raises(FileNotFoundError):
-            zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
+            zarr.open(store=zarr_dir, mode=mode)
     else:
-        group = zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
+        group = zarr.open(store=zarr_dir, mode=mode)
         assert isinstance(group, Group)
 
 
@@ -1229,13 +1232,13 @@ async def test_metadata_validation_error() -> None:
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore [arg-type]
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")
 
     with pytest.raises(
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore [arg-type]
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")
 
 
 @pytest.mark.parametrize(
@@ -1301,7 +1304,7 @@ def test_api_exports() -> None:
     assert zarr.api.asynchronous.__all__ == zarr.api.synchronous.__all__
 
 
-@gpu_test
+@gpu_test  # type: ignore[misc]
 @pytest.mark.parametrize(
     "store",
     ["local", "memory", "zip"],
@@ -1456,4 +1459,4 @@ def test_auto_chunks(f: Callable[..., Array]) -> None:
 def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
     kwargs = {kwarg_name: 1}
     with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
-        zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
+        zarr.create(shape=(1,), **kwargs)

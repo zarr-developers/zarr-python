@@ -223,7 +223,7 @@ async def get_array_metadata(
         if zarray_bytes is None:
             msg = (
                 "A Zarr V2 array metadata document was not found in store "
-                    f"{store_path.store!r} at path {store_path.path!r}."
+                f"{store_path.store!r} at path {store_path.path!r}."
             )
             raise ArrayNotFoundError(msg)
     elif zarr_format == 3:
