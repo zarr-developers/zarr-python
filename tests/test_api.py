@@ -192,7 +192,7 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     assert z.read_only
 
     # path not found
-    with pytest.raises((NodeNotFoundError, GroupNotFoundError)):
+    with pytest.raises(NodeNotFoundError):
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
 
