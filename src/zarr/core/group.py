@@ -1052,24 +1052,25 @@ class AsyncGroup:
             If not specified, default are guessed based on the shape and dtype.
         shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
-        filters : Iterable[Codec], optional
+        filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
-            of ``ArrayArrayCodec``.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+            and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
+            dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            `:class:zarr.dtype.VariableLengthUTF8` or `:class:zarr.dtype.VariableLengthUTF8`. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
@@ -2485,24 +2486,25 @@ class Group(SyncMixin):
             If not specified, default are guessed based on the shape and dtype.
         shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
-        filters : Iterable[Codec], optional
+        filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
-            of ``ArrayArrayCodec``.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+            and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
+            dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            `:class:zarr.dtype.VariableLengthUTF8` or `:class:zarr.dtype.VariableLengthUTF8`. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
@@ -2881,24 +2883,25 @@ class Group(SyncMixin):
             If not specified, default are guessed based on the shape and dtype.
         shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
-        filters : Iterable[Codec], optional
+        filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
-            of ``ArrayArrayCodec``.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+            and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
+            dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            `:class:zarr.dtype.VariableLengthUTF8` or `:class:zarr.dtype.VariableLengthUTF8`. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
