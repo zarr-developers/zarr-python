@@ -126,10 +126,10 @@ def fully_qualified_name(cls: type) -> str:
     return module + "." + cls.__qualname__
 
 
-def register_codec(key: str, codec_cls: type[Codec]) -> None:
+def register_codec(key: str, codec_cls: type[Codec], *, qualname: str | None = None) -> None:
     if key not in __codec_registries:
         __codec_registries[key] = Registry()
-    __codec_registries[key].register(codec_cls)
+    __codec_registries[key].register(codec_cls, qualname=qualname)
 
 
 def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:

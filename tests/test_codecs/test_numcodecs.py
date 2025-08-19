@@ -22,27 +22,27 @@ if TYPE_CHECKING:
 def codec_conf() -> Iterator[Any]:
     base_conf = config.get("codecs")
     new_conf = {
-        "numcodecs.bz2": "zarr.codecs._numcodecs.BZ2",
-        "numcodecs.crc32": "zarr.codecs._numcodecs.CRC32",
-        "numcodecs.crc32c": "zarr.codecs._numcodecs.CRC32C",
-        "numcodecs.lz4": "zarr.codecs._numcodecs.LZ4",
-        "numcodecs.lzma": "zarr.codecs._numcodecs.LZMA",
-        "numcodecs.zfpy": "zarr.codecs._numcodecs.ZFPY",
-        "numcodecs.adler32": "zarr.codecs._numcodecs.Adler32",
-        "numcodecs.astype": "zarr.codecs._numcodecs.AsType",
-        "numcodecs.bitround": "zarr.codecs._numcodecs.BitRound",
-        "numcodecs.blosc": "zarr.codecs._numcodecs.Blosc",
-        "numcodecs.delta": "zarr.codecs._numcodecs.Delta",
-        "numcodecs.fixedscaleoffset": "zarr.codecs._numcodecs.FixedScaleOffset",
-        "numcodecs.fletcher32": "zarr.codecs._numcodecs.Fletcher32",
-        "numcodecs.gZip": "zarr.codecs._numcodecs.GZip",
-        "numcodecs.jenkinslookup3": "zarr.codecs._numcodecs.JenkinsLookup3",
-        "numcodecs.pcodec": "zarr.codecs._numcodecs.PCodec",
-        "numcodecs.packbits": "zarr.codecs._numcodecs.PackBits",
-        "numcodecs.shuffle": "zarr.codecs._numcodecs.Shuffle",
-        "numcodecs.quantize": "zarr.codecs._numcodecs.Quantize",
-        "numcodecs.zlib": "zarr.codecs._numcodecs.Zlib",
-        "numcodecs.zstd": "zarr.codecs._numcodecs.Zstd",
+        "numcodecs.bz2": "zarr.codecs.numcodecs.BZ2",
+        "numcodecs.crc32": "zarr.codecs.numcodecs.CRC32",
+        "numcodecs.crc32c": "zarr.codecs.numcodecs.CRC32C",
+        "numcodecs.lz4": "zarr.codecs.numcodecs.LZ4",
+        "numcodecs.lzma": "zarr.codecs.numcodecs.LZMA",
+        "numcodecs.zfpy": "zarr.codecs.numcodecs.ZFPY",
+        "numcodecs.adler32": "zarr.codecs.numcodecs.Adler32",
+        "numcodecs.astype": "zarr.codecs.numcodecs.AsType",
+        "numcodecs.bitround": "zarr.codecs.numcodecs.BitRound",
+        "numcodecs.blosc": "zarr.codecs.numcodecs.Blosc",
+        "numcodecs.delta": "zarr.codecs.numcodecs.Delta",
+        "numcodecs.fixedscaleoffset": "zarr.codecs.numcodecs.FixedScaleOffset",
+        "numcodecs.fletcher32": "zarr.codecs.numcodecs.Fletcher32",
+        "numcodecs.gZip": "zarr.codecs.numcodecs.GZip",
+        "numcodecs.jenkinslookup3": "zarr.codecs.numcodecs.JenkinsLookup3",
+        "numcodecs.pcodec": "zarr.codecs.numcodecs.PCodec",
+        "numcodecs.packbits": "zarr.codecs.numcodecs.PackBits",
+        "numcodecs.shuffle": "zarr.codecs.numcodecs.Shuffle",
+        "numcodecs.quantize": "zarr.codecs.numcodecs.Quantize",
+        "numcodecs.zlib": "zarr.codecs.numcodecs.Zlib",
+        "numcodecs.zstd": "zarr.codecs.numcodecs.Zstd",
     }
 
     yield config.set({"codecs": new_conf | base_conf})
@@ -72,11 +72,19 @@ def test_is_numcodec_cls() -> None:
 
 EXPECTED_WARNING_STR = "Numcodecs codecs are not in the Zarr version 3.*"
 
-ALL_CODECS = [getattr(_numcodecs, cls_name) for cls_name in _numcodecs.__all__]
+ALL_CODECS = tuple(
+    filter(
+        lambda v: isinstance(v, _numcodecs._NumcodecsCodec),
+        tuple(getattr(_numcodecs, cls_name) for cls_name in _numcodecs.__all__),
+    )
+)
 
 
 @pytest.mark.parametrize("codec_class", ALL_CODECS)
 def test_docstring(codec_class: type[_numcodecs._NumcodecsCodec]) -> None:
+    """
+    Test that the docstring for the zarr.numcodecs codecs references the wrapped numcodecs class.
+    """
     assert "See :class:`numcodecs." in codec_class.__doc__  # type: ignore[operator]
 
 
