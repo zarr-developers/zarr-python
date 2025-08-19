@@ -44,7 +44,6 @@ from zarr.api.synchronous import (
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
-    GroupNotFoundError,
     MetadataValidationError,
     NodeNotFoundError,
     ZarrDeprecationWarning,
