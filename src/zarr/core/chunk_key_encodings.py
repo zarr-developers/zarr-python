@@ -10,7 +10,6 @@ if TYPE_CHECKING:
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
     JSON,
-    ChunkCoords,
     parse_named_configuration,
 )
 
@@ -69,11 +68,11 @@ class ChunkKeyEncoding(Metadata):
         return {"name": self.name, "configuration": {"separator": self.separator}}
 
     @abstractmethod
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
+    def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         pass
 
     @abstractmethod
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+    def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         pass
 
 
@@ -84,12 +83,12 @@ ChunkKeyEncodingLike: TypeAlias = ChunkKeyEncodingParams | ChunkKeyEncoding
 class DefaultChunkKeyEncoding(ChunkKeyEncoding):
     name: Literal["default"] = "default"
 
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
+    def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         if chunk_key == "c":
             return ()
         return tuple(map(int, chunk_key[1:].split(self.separator)))
 
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+    def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         return self.separator.join(map(str, ("c",) + chunk_coords))
 
 
@@ -97,9 +96,9 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
 class V2ChunkKeyEncoding(ChunkKeyEncoding):
     name: Literal["v2"] = "v2"
 
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
+    def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         return tuple(map(int, chunk_key.split(self.separator)))
 
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+    def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         chunk_identifier = self.separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier

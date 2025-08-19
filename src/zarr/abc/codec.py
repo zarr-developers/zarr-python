@@ -8,7 +8,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import ChunkCoords, NamedConfig, concurrent_map
+from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -120,7 +120,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
     def validate(
         self,
         *,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         chunk_grid: ChunkGrid,
     ) -> None:
@@ -129,7 +129,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 
         Parameters
         ----------
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             The array shape
         dtype : np.dtype[Any]
             The array data type
@@ -335,14 +335,18 @@ class CodecPipeline:
 
     @abstractmethod
     def validate(
-        self, *, shape: ChunkCoords, dtype: ZDType[TBaseDType, TBaseScalar], chunk_grid: ChunkGrid
+        self,
+        *,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
     ) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
 
         Parameters
         ----------
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             The array shape
         dtype : np.dtype[Any]
             The array data type
@@ -423,6 +427,11 @@ class CodecPipeline:
             The second slice selection determines where in the output array the chunk data will be written.
             The ByteGetter is used to fetch the necessary bytes.
             The chunk spec contains information about the construction of an array from the bytes.
+
+            If the Store returns ``None`` for a chunk, then the chunk was not
+            written and the implementation must set the values of that chunk (or
+            ``out``) to the fill value for the array.
+
         out : NDBuffer
         """
         ...
