@@ -6,6 +6,7 @@ import pytest
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer
+from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.core.buffer.cpu import buffer_prototype
 from zarr.storage import LocalStore, WrapperStore
 from zarr.testing.store import StoreTests
@@ -29,9 +30,9 @@ class OpenKwargs(TypedDict):
 @pytest.mark.filterwarnings(
     "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
 )
-class TestWrapperStore(StoreTests[WrapperStore[LocalStore], Buffer]):
-    store_cls = WrapperStore[LocalStore]
-    buffer_cls = Buffer
+class TestWrapperStore(StoreTests[WrapperStore[Any], Buffer]):
+    store_cls = WrapperStore
+    buffer_cls = CPUBuffer
 
     async def get(self, store: WrapperStore[LocalStore], key: str) -> Buffer:
         return self.buffer_cls.from_bytes((store._store.root / key).read_bytes())
@@ -99,7 +100,7 @@ async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> 
             await super().set(key, value)
 
     key = "foo"
-    value = Buffer.from_bytes(b"bar")
+    value = CPUBuffer.from_bytes(b"bar")
     store_wrapped = NoisySetter(store)
     await store_wrapped.set(key, value)
     captured = capsys.readouterr()
@@ -119,7 +120,7 @@ async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> 
             await super().get(key, prototype=prototype, byte_range=byte_range)
 
     key = "foo"
-    value = Buffer.from_bytes(b"bar")
+    value = CPUBuffer.from_bytes(b"bar")
     store_wrapped = NoisyGetter(store)
     await store_wrapped.set(key, value)
     await store_wrapped.get(key, buffer_prototype)
