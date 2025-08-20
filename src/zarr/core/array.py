@@ -4444,7 +4444,7 @@ async def init_array(
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: DimensionNames = None,
     overwrite: bool = False,
-    config: ArrayConfigLike | None,
+    config: ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
     """Create and persist an array metadata document.
 
@@ -4525,7 +4525,7 @@ async def init_array(
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
     config : ArrayConfigLike or None, optional
-        Configuration for this array.
+        Configuration for this array (default is None).
 
     Returns
     -------
