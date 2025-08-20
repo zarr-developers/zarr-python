@@ -299,7 +299,7 @@ async def make_store_path(
 
     Parameters
     ----------
-    store_like : StoreLike | None
+    store_like : StoreLike, optional
         The object to convert to a `StorePath` object.
     path : str | None, optional
         The path to use when creating the `StorePath` object.  If None, the

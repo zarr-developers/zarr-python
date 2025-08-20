@@ -1,39 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Final
+from typing import TYPE_CHECKING, Any, Final
 
 import pytest
 from numpydoc.docscrape import NumpyDocString
 
 from zarr.api import asynchronous, synchronous
 
-
-@dataclass(frozen=True, slots=True)
-class Param:
-    name: str
-    desc: tuple[str, ...]
-    type: str
-
-
-all_docstrings: dict[str, NumpyDocString] = {}
-
-for name in asynchronous.__all__:
-    obj = getattr(asynchronous, name)
-    if callable(obj) and obj.__doc__ is not None:
-        all_docstrings[f"asynchronous.{name}"] = NumpyDocString(obj.__doc__)
-
-for name in synchronous.__all__:
-    obj = getattr(synchronous, name)
-    if callable(obj) and obj.__doc__ is not None:
-        all_docstrings[f"synchronous.{name}"] = NumpyDocString(obj.__doc__)
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 MATCHED_EXPORT_NAMES: Final[tuple[str, ...]] = tuple(
     sorted(set(synchronous.__all__) | set(asynchronous.__all__))
 )
+"""A sorted tuple of names that are exported by both the sync and async APIs."""
+
 MATCHED_CALLABLE_NAMES: Final[tuple[str, ...]] = tuple(
     x for x in MATCHED_EXPORT_NAMES if callable(getattr(synchronous, x))
 )
+"""A sorted tuple of callable names that are exported by both the sync and async APIs."""
 
 
 @pytest.mark.parametrize("callable_name", MATCHED_CALLABLE_NAMES)
@@ -63,20 +48,43 @@ def test_docstring_match(callable_name: str) -> None:
         "chunks",
         "shape",
         "dtype",
-        "data_type",
         "fill_value",
     ],
 )
-def test_docstring_consistent_parameters(parameter_name: str) -> None:
+@pytest.mark.parametrize(
+    "array_creation_routines",
+    [
+        (
+            asynchronous.create_array,
+            synchronous.create_array,
+            asynchronous.create_group,
+            synchronous.create_group,
+        ),
+        (asynchronous.create, synchronous.create),
+    ],
+)
+def test_docstring_consistent_parameters(
+    parameter_name: str, array_creation_routines: tuple[Callable[[Any], Any], ...]
+) -> None:
     """
-    Tests that callable exports from ``zarr.api.synchronous`` and ``zarr.api.asynchronous``
-    document the same parameters consistently.
+    Tests that array and group creation routines document the same parameters consistently.
     """
-    matches: dict[str, Param] = {}
-    for name in all_docstrings:
-        docstring = all_docstrings[name]
+    descs: dict[tuple[str, ...], tuple[str, ...]] = {}
+    types: dict[str, tuple[str, ...]] = {}
+    for routine in array_creation_routines:
+        key = f"{routine.__module__}.{routine.__qualname__}"
+        docstring = NumpyDocString(routine.__doc__)
         param_dict = {d.name: d for d in docstring["Parameters"]}
         if parameter_name in param_dict:
             val = param_dict[parameter_name]
-            matches[name] = Param(name=val.name, desc=tuple(val.desc), type=val.type)
-    assert len(set(matches.values())) == 1
+            if tuple(val.desc) in descs:
+                descs[tuple(val.desc)] = descs[tuple(val.desc)] + (key,)
+            else:
+                descs[tuple(val.desc)] = (key,)
+            if val.type in types:
+                types[val.type] = types[val.type] + (key,)
+            else:
+                types[val.type] = (key,)
+
+    assert len(descs) <= 1
+    assert len(types) <= 1

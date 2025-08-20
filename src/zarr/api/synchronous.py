@@ -133,7 +133,7 @@ def load(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     path : str or None, optional
         The path within the store from which to load.
@@ -173,7 +173,7 @@ def open(
 
     Parameters
     ----------
-    store : Store or str, optional
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
@@ -235,7 +235,7 @@ def save(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     *args : ndarray
         NumPy arrays with data to save.
@@ -269,7 +269,7 @@ def save_array(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     arr : ndarray
         NumPy array with data to save.
@@ -312,7 +312,7 @@ def save_group(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     *args : ndarray
         NumPy arrays with data to save.
@@ -403,14 +403,13 @@ def group(
 
     Parameters
     ----------
-    store : Store or str, optional
-        Store or path to directory in file system.
+    store : StoreLike or None, default=None
+        Store or path to directory in file system or name of zip file.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
-    chunk_store : Store, optional
-        Separate storage for chunks. If not provided, `store` will be used
-        for storage of both chunks and metadata.
+    chunk_store : StoreLike or None, default=None
+        Separate storage for chunks. Not implemented.
     cache_attrs : bool, optional
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
@@ -471,7 +470,7 @@ def open_group(
 
     Parameters
     ----------
-    store : Store, str, or mapping, optional
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
 
         Strings are interpreted as paths on the local file system
@@ -496,7 +495,7 @@ def open_group(
         Array synchronizer.
     path : str, optional
         Group path within store.
-    chunk_store : Store or str, optional
+    chunk_store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
@@ -561,8 +560,8 @@ def create_group(
 
     Parameters
     ----------
-    store : Store or str
-        Store or path to directory in file system.
+    store : StoreLike
+        Store or path to directory in file system or name of zip file.
     path : str, optional
         Group path within store.
     overwrite : bool, optional
@@ -605,7 +604,7 @@ def create(
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,  # TODO: need type
     order: MemoryOrder | None = None,
-    store: str | StoreLike | None = None,
+    store: StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
     path: PathLike | None = None,
@@ -656,14 +655,14 @@ def create(
         :class:`zarr.codecs.ZstdCodec`is used.
 
         If ``compressor`` is set to ``None``, no compression is used.
-    fill_value : object
-        Default value to use for uninitialized portions of the array.
+    fill_value : Any, optional
+        Fill value for the array.
     order : {'C', 'F'}, optional
         Deprecated in favor of the ``config`` keyword argument.
         Pass ``{'order': <value>}`` to ``create`` instead of using this parameter.
         Memory layout to be used within each chunk.
         If not specified, the ``array.order`` parameter in the global config will be used.
-    store : Store or str
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
         Array synchronizer.
@@ -672,7 +671,7 @@ def create(
         creating the array.
     path : str, optional
         Path under which array is stored.
-    chunk_store : MutableMapping, optional
+    chunk_store : StoreLike or None, default=None
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
     filters : Iterable[Codec] | Literal["auto"], optional
@@ -795,7 +794,7 @@ def create(
 
 
 def create_array(
-    store: str | StoreLike,
+    store: StoreLike,
     *,
     name: str | None = None,
     shape: ShapeLike | None = None,
@@ -823,7 +822,7 @@ def create_array(
 
     Parameters
     ----------
-    store : str or Store
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
@@ -962,7 +961,7 @@ def create_array(
 
 
 def from_array(
-    store: str | StoreLike,
+    store: StoreLike,
     *,
     data: Array | npt.ArrayLike,
     write_data: bool = True,
@@ -986,8 +985,8 @@ def from_array(
 
     Parameters
     ----------
-    store : str or Store
-        Store or path to directory in file system or name of zip file for the new array.
+    store : StoreLike
+        Store or path to directory in file system or name of zip file.
     data : Array | array-like
         The array to copy.
     write_data : bool, default True
@@ -1323,7 +1322,7 @@ def open_array(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     zarr_version : {2, 3, None}, optional
         The zarr format to use when saving. Deprecated in favor of zarr_format.
@@ -1348,6 +1347,7 @@ def open_array(
             async_api.open_array(
                 store=store,
                 zarr_version=zarr_version,
+                zarr_format=zarr_format,
                 path=path,
                 storage_options=storage_options,
                 **kwargs,

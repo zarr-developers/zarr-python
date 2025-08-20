@@ -2097,7 +2097,7 @@ class Array:
 
         Parameters
         ----------
-        store : Store
+        store : StoreLike
             Store containing the Array.
 
         Returns
@@ -3943,7 +3943,7 @@ ShardsLike: TypeAlias = tuple[int, ...] | ShardsConfigParam | Literal["auto"]
 
 
 async def from_array(
-    store: str | StoreLike,
+    store: StoreLike,
     *,
     data: Array | npt.ArrayLike,
     write_data: bool = True,
@@ -3967,8 +3967,8 @@ async def from_array(
 
     Parameters
     ----------
-    store : str or Store
-        Store or path to directory in file system or name of zip file for the new array.
+    store : StoreLike
+        Store or path to directory in file system or name of zip file.
     data : Array | array-like
         The array to copy.
     write_data : bool, default True
@@ -4422,7 +4422,7 @@ async def init_array(
 
 
 async def create_array(
-    store: str | StoreLike,
+    store: StoreLike,
     *,
     name: str | None = None,
     shape: ShapeLike | None = None,
@@ -4448,7 +4448,7 @@ async def create_array(
 
     Parameters
     ----------
-    store : str or Store
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
