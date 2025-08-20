@@ -1,5 +1,7 @@
 import tempfile
+from collections.abc import Callable, Generator
 from pathlib import Path
+from typing import Any, Literal
 
 import pytest
 from _pytest.compat import LEGACY_PATH
@@ -21,7 +23,9 @@ from zarr.storage._utils import (
 @pytest.fixture(
     params=["none", "temp_dir_str", "temp_dir_path", "store_path", "memory_store", "dict"]
 )
-def store_like(request):
+def store_like(
+    request: pytest.FixtureRequest,
+) -> Generator[None | str | Path | StorePath | MemoryStore | dict[Any, Any], None, None]:
     if request.param == "none":
         yield None
     elif request.param == "temp_dir_str":
@@ -42,7 +46,7 @@ def store_like(request):
 @pytest.mark.parametrize("write_group", [True, False])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_contains_group(
-    local_store, path: str, write_group: bool, zarr_format: ZarrFormat
+    local_store: LocalStore, path: str, write_group: bool, zarr_format: ZarrFormat
 ) -> None:
     """
     Test that the contains_group method correctly reports the existence of a group.
@@ -58,7 +62,7 @@ async def test_contains_group(
 @pytest.mark.parametrize("write_array", [True, False])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_contains_array(
-    local_store, path: str, write_array: bool, zarr_format: ZarrFormat
+    local_store: LocalStore, path: str, write_array: bool, zarr_format: ZarrFormat
 ) -> None:
     """
     Test that the contains array method correctly reports the existence of an array.
@@ -71,13 +75,15 @@ async def test_contains_array(
 
 
 @pytest.mark.parametrize("func", [contains_array, contains_group])
-async def test_contains_invalid_format_raises(local_store, func: callable) -> None:
+async def test_contains_invalid_format_raises(
+    local_store: LocalStore, func: Callable[[Any], Any]
+) -> None:
     """
     Test contains_group and contains_array raise errors for invalid zarr_formats
     """
     store_path = StorePath(local_store)
     with pytest.raises(ValueError):
-        assert await func(store_path, zarr_format="3.0")
+        assert await func(store_path, zarr_format="3.0")  # type: ignore[call-arg]
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -113,29 +119,37 @@ async def test_make_store_path_local(
 @pytest.mark.parametrize("path", [None, "", "bar"])
 @pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_store_path(
-    tmpdir: LEGACY_PATH, path: str, mode: AccessModeLiteral
+    tmp_path: Path, path: str, mode: AccessModeLiteral
 ) -> None:
     """
     Test invoking make_store_path when the input is another store_path. In particular we want to ensure
     that a new path is handled correctly.
     """
     ro = mode == "r"
-    store_like = await StorePath.open(LocalStore(str(tmpdir), read_only=ro), path="root", mode=mode)
+    store_like = await StorePath.open(
+        LocalStore(str(tmp_path), read_only=ro), path="root", mode=mode
+    )
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
-    assert Path(store_path.store.root) == Path(tmpdir)
+    assert Path(store_path.store.root) == tmp_path
     path_normalized = normalize_path(path)
     assert store_path.path == (store_like / path_normalized).path
     assert store_path.read_only == ro
 
 
 @pytest.mark.parametrize("modes", [(True, "w"), (False, "x")])
-async def test_store_path_invalid_mode_raises(tmpdir: LEGACY_PATH, modes: tuple) -> None:
+async def test_store_path_invalid_mode_raises(
+    tmp_path: Path, modes: tuple[bool, Literal["w", "x"]]
+) -> None:
     """
     Test that ValueErrors are raise for invalid mode.
     """
     with pytest.raises(ValueError):
-        await StorePath.open(LocalStore(str(tmpdir), read_only=modes[0]), path=None, mode=modes[1])
+        await StorePath.open(
+            LocalStore(str(tmp_path), read_only=modes[0]),
+            path="",
+            mode=modes[1],  # type:ignore[arg-type]
+        )
 
 
 async def test_make_store_path_invalid() -> None:
@@ -143,10 +157,10 @@ async def test_make_store_path_invalid() -> None:
     Test that invalid types raise TypeError
     """
     with pytest.raises(TypeError):
-        await make_store_path(1)  # type: ignore[arg-type]
+        await make_store_path(1)
 
 
-async def test_make_store_path_fsspec(monkeypatch) -> None:
+async def test_make_store_path_fsspec() -> None:
     pytest.importorskip("fsspec")
     pytest.importorskip("requests")
     pytest.importorskip("aiohttp")
@@ -161,7 +175,7 @@ async def test_make_store_path_storage_options_raises(store_like: StoreLike) -> 
 
 async def test_unsupported() -> None:
     with pytest.raises(TypeError, match="Unsupported type for store_like: 'int'"):
-        await make_store_path(1)  # type: ignore[arg-type]
+        await make_store_path(1)
 
 
 @pytest.mark.parametrize(
@@ -184,12 +198,12 @@ def test_normalize_path_upath() -> None:
     assert normalize_path(upath.UPath("foo/bar")) == "foo/bar"
 
 
-def test_normalize_path_none():
+def test_normalize_path_none() -> None:
     assert normalize_path(None) == ""
 
 
 @pytest.mark.parametrize("path", [".", ".."])
-def test_normalize_path_invalid(path: str):
+def test_normalize_path_invalid(path: str) -> None:
     with pytest.raises(ValueError):
         normalize_path(path)
 
@@ -230,7 +244,7 @@ class TestNormalizePaths:
             _normalize_paths(paths)
 
 
-def test_normalize_path_keys():
+def test_normalize_path_keys() -> None:
     """
     Test that ``_normalize_path_keys`` just applies the normalize_path function to each key of its
     input
@@ -272,10 +286,10 @@ def test_different_open_mode(tmp_path: LEGACY_PATH) -> None:
 
     # Test with a store that doesn't implement .with_read_only()
     zarr_path = tmp_path / "foo.zarr"
-    store = ZipStore(zarr_path, mode="w")
+    zip_store = ZipStore(zarr_path, mode="w")
     zarr.create((100,), store=store, zarr_format=2, path="a")
     with pytest.raises(
         ValueError,
         match="Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. Please use a read-only store or a storage class that implements .with_read_only().",
     ):
-        zarr.open_array(store=store, path="a", zarr_format=2, mode="r")
+        zarr.open_array(store=zip_store, path="a", zarr_format=2, mode="r")
