@@ -920,7 +920,7 @@ async def create(
         Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
 
         If neither ``compressor`` nor ``filters`` are provided, the default compressor
-        :class:`zarr.codecs.ZstdCodec`is used.
+        :class:`zarr.codecs.ZstdCodec` is used.
 
         If ``compressor`` is set to ``None``, no compression is used.
     fill_value : Any, optional
