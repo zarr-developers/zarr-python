@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Final
 import pytest
 from numpydoc.docscrape import NumpyDocString
 
+import zarr
 from zarr.api import asynchronous, synchronous
 
 if TYPE_CHECKING:
@@ -37,37 +38,73 @@ def test_docstring_match(callable_name: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "parameter_name",
-    [
-        "store",
-        "path",
-        "filters",
-        "codecs",
-        "compressors",
-        "compressor",
-        "chunks",
-        "shape",
-        "dtype",
-        "fill_value",
-    ],
-)
-@pytest.mark.parametrize(
-    "array_creation_routines",
+    ("parameter_name", "array_creation_routines"),
     [
         (
-            asynchronous.create_array,
-            synchronous.create_array,
-            asynchronous.create_group,
-            synchronous.create_group,
+            ("store", "path"),
+            (
+                asynchronous.create_array,
+                synchronous.create_array,
+                asynchronous.create_group,
+                synchronous.create_group,
+                zarr.AsyncGroup.create_array,
+                zarr.Group.create_array,
+            ),
         ),
-        (asynchronous.create, synchronous.create),
+        (
+            (
+                "store",
+                "path",
+            ),
+            (
+                asynchronous.create,
+                synchronous.create,
+                zarr.Group.create,
+                zarr.AsyncArray.create,
+                zarr.Array.create,
+            ),
+        ),
+        (
+            (
+                (
+                    "filters",
+                    "codecs",
+                    "compressors",
+                    "compressor",
+                    "chunks",
+                    "shape",
+                    "dtype",
+                    "shardsfill_value",
+                )
+            ),
+            (
+                asynchronous.create,
+                synchronous.create,
+                asynchronous.create_array,
+                synchronous.create_array,
+                zarr.AsyncGroup.create_array,
+                zarr.Group.create_array,
+                zarr.AsyncGroup.create_dataset,
+                zarr.Group.create_dataset,
+            ),
+        ),
     ],
+    ids=str,
 )
 def test_docstring_consistent_parameters(
     parameter_name: str, array_creation_routines: tuple[Callable[[Any], Any], ...]
 ) -> None:
     """
     Tests that array and group creation routines document the same parameters consistently.
+    This test inspecs the docstrings of sets of callables and generates two dicts:
+
+    - a dict where the keys are parameter descriptions and the values are the names of the routines with those
+    descriptions
+    - a dict where the keys are parameter types and the values are the names of the routines with those types
+
+    If each dict has just 1 value, then the parameter description and type in the docstring must be
+    identical across different routines. But if these dicts have multiple values, then there must be
+    routines that use the same parameter but document it differently, which will trigger a test failure.
     """
     descs: dict[tuple[str, ...], tuple[str, ...]] = {}
     types: dict[str, tuple[str, ...]] = {}
@@ -85,6 +122,5 @@ def test_docstring_consistent_parameters(
                 types[val.type] = types[val.type] + (key,)
             else:
                 types[val.type] = (key,)
-
     assert len(descs) <= 1
     assert len(types) <= 1
