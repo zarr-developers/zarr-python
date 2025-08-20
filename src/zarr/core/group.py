@@ -73,7 +73,7 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
-    from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
+    from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
@@ -2999,7 +2999,7 @@ class Group(SyncMixin):
         dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
         data: npt.ArrayLike | None = None,
     ) -> Array:
         """Create an array within this group.
