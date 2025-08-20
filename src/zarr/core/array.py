@@ -4460,9 +4460,9 @@ async def create_array(
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be ``None``.
-    chunks : tuple[int, ...], optional
+    chunks : tuple[int, ...] | Literal["auto"], default="auto"
         Chunk shape of the array.
-        If not specified, default are guessed based on the shape and dtype.
+        If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
     shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional
