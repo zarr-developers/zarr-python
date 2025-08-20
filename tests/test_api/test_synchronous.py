@@ -96,7 +96,7 @@ def test_docstring_consistent_parameters(
 ) -> None:
     """
     Tests that array and group creation routines document the same parameters consistently.
-    This test inspecs the docstrings of sets of callables and generates two dicts:
+    This test inspects the docstrings of sets of callables and generates two dicts:
 
     - a dict where the keys are parameter descriptions and the values are the names of the routines with those
     descriptions
