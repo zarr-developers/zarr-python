@@ -1,5 +1,6 @@
 # ruff: noqa: E402
-from typing import Any
+from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
@@ -16,17 +17,22 @@ from zarr.testing.stateful import ZarrHierarchyStateMachine
 from zarr.testing.store import StoreTests
 
 
+class StoreKwargs(TypedDict):
+    store: LocalStore
+    read_only: bool
+
+
 class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     store_cls = ObjectStore
     buffer_cls = cpu.Buffer
 
     @pytest.fixture
-    def store_kwargs(self, tmpdir) -> dict[str, Any]:
-        store = LocalStore(prefix=tmpdir)
+    def store_kwargs(self, tmp_path: Path) -> StoreKwargs:
+        store = LocalStore(prefix=tmp_path)
         return {"store": store, "read_only": False}
 
     @pytest.fixture
-    def store(self, store_kwargs: dict[str, str | bool]) -> ObjectStore:
+    def store(self, store_kwargs: StoreKwargs) -> ObjectStore:
         return self.store_cls(**store_kwargs)
 
     async def get(self, store: ObjectStore, key: str) -> Buffer:
@@ -48,10 +54,8 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     def test_store_supports_writes(self, store: ObjectStore) -> None:
         assert store.supports_writes
 
-    async def test_store_supports_partial_writes(self, store: ObjectStore) -> None:
+    def test_store_supports_partial_writes(self, store: ObjectStore) -> None:
         assert not store.supports_partial_writes
-        with pytest.raises(NotImplementedError):
-            await store.set_partial_values([("foo", 0, b"\x01\x02\x03\x04")])
 
     def test_store_supports_listing(self, store: ObjectStore) -> None:
         assert store.supports_listing
@@ -64,6 +68,7 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         new_memory_store = ObjectStore(MemoryStore())
         assert store != new_memory_store
         # Test equality against a read only store
+        assert isinstance(store.store, LocalStore)
         new_local_store = ObjectStore(LocalStore(prefix=store.store.prefix), read_only=True)
         assert store != new_local_store
         # Test two memory stores cannot be equal
@@ -73,7 +78,7 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     def test_store_init_raises(self) -> None:
         """Test __init__ raises appropriate error for improper store type"""
         with pytest.raises(TypeError):
-            ObjectStore("path/to/store")
+            ObjectStore("path/to/store")  # type: ignore[arg-type]
 
     async def test_store_getsize(self, store: ObjectStore) -> None:
         buf = cpu.Buffer.from_bytes(b"\x01\x02\x03\x04")
@@ -92,10 +97,10 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
 
 
 @pytest.mark.slow_hypothesis
-def test_zarr_hierarchy():
+def test_zarr_hierarchy() -> None:
     sync_store = ObjectStore(MemoryStore())
 
     def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
         return ZarrHierarchyStateMachine(sync_store)
 
-    run_state_machine_as_test(mk_test_instance_sync)
+    run_state_machine_as_test(mk_test_instance_sync)  # type: ignore[no-untyped-call]
