@@ -35,6 +35,7 @@ from zarr.core.array import (
     _parse_chunk_encoding_v3,
     chunks_initialized,
     create_array,
+    default_compressor_v2,
     default_filters_v2,
     default_serializer_v3,
 )
@@ -470,14 +471,14 @@ class TestInfo:
             _zarr_format=2,
             _data_type=arr._async_array._zdtype,
             _fill_value=arr.fill_value,
-            _shape=(8, 8),
+            _shape=arr.shape,
             _chunk_shape=chunks,
             _shard_shape=None,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressors=(numcodecs.Zstd(),),
+            _compressors=arr.compressors,
         )
         assert result == expected
 
@@ -488,14 +489,14 @@ class TestInfo:
             _zarr_format=3,
             _data_type=arr._async_array._zdtype,
             _fill_value=arr.fill_value,
-            _shape=(8, 8),
+            _shape=arr.shape,
             _chunk_shape=chunks,
             _shard_shape=shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _compressors=(ZstdCodec(),),
-            _serializer=BytesCodec(),
+            _compressors=arr.compressors,
+            _serializer=arr.serializer,
             _count_bytes=512,
         )
         assert result == expected
