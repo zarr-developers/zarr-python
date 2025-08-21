@@ -26,6 +26,14 @@ class BaseZarrError(ValueError):
         super().__init__(self._msg.format(*args))
 
 
+class UnknownCodecError(BaseZarrError):
+    """
+    Raised when a unknown codec was used.
+    """
+
+    _msg = "Unknown codec {!r}."
+
+
 class GroupNotFoundError(BaseZarrError, FileNotFoundError):
     """
     Raised when a group isn't found at a certain path.
