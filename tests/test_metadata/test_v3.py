@@ -326,7 +326,15 @@ async def test_special_float_fill_values(fill_value: str) -> None:
         assert d["fill_value"] == "-Infinity"
 
 
-def test_parse_codecs_unknown_codec_raises() -> None:
+def test_parse_codecs_unknown_codec_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    from collections import defaultdict
+
+    import zarr.registry
+    from zarr.registry import Registry
+
+    # to make sure the codec is always unknown (not sure if that's necessary)
+    monkeypatch.setattr(zarr.registry, "__codec_registries", defaultdict(Registry))
+
     codecs = [{"name": "unknown"}]
     with pytest.raises(UnknownCodecError):
         parse_codecs(codecs)
