@@ -4,7 +4,6 @@ from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-import numcodecs
 import numpy as np
 import pytest
 from numcodecs import LZ4, LZMA, Blosc, GZip, VLenBytes, VLenUTF8, Zstd
@@ -13,6 +12,7 @@ import zarr
 import zarr.abc
 import zarr.abc.codec
 import zarr.codecs as zarrcodecs
+from zarr.abc.numcodec import Numcodec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
@@ -40,12 +40,12 @@ def runner_installed() -> bool:
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
     fill_value: np.generic | str | int | bytes
-    filters: tuple[numcodecs.abc.Codec, ...] = ()
+    filters: tuple[Numcodec, ...] = ()
     serializer: str | None = None
-    compressor: numcodecs.abc.Codec
+    compressor: Numcodec
 
 
-basic_codecs = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
+basic_codecs: tuple[Numcodec, ...] = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
 basic_dtypes = "|b", ">i2", ">i4", ">f4", ">f8", "<f4", "<f8", ">c8", "<c8", ">c16", "<c16"
 datetime_dtypes = "<M8[10ns]", ">M8[10us]", "<m8[2ms]", ">m8[4ps]"
 string_dtypes = "<U1", ">U4"

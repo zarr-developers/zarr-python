@@ -1,0 +1,1 @@
+Added `zarr.errors.ArrayNotFoundError`, which is raised when attempting to open a zarr array that does not exist, and `zarr.errors.NodeNotFoundError`, which is raised when failing to open an array or a group in a context where either an array or a group was expected.

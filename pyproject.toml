@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27.0", "hatch-vcs", "setuptools-scm!=9.0.0"]
+requires = ["hatchling>=1.27.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
@@ -115,11 +115,11 @@ docs = [
 
 
 [project.urls]
-"Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
-Changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
+issues = "https://github.com/zarr-developers/zarr-python/issues"
+changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
 Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
-Documentation = "https://zarr.readthedocs.io/"
-Homepage = "https://github.com/zarr-developers/zarr-python"
+documentation = "https://zarr.readthedocs.io/"
+homepage = "https://github.com/zarr-developers/zarr-python"
 
 [dependency-groups]
 dev = [
@@ -352,6 +352,7 @@ module = [
     "tests.test_store.test_fsspec",
     "tests.test_store.test_memory",
     "tests.test_codecs.test_codecs",
+    "tests.test_metadata.*",
 ]
 strict = false
 
@@ -359,7 +360,6 @@ strict = false
 # and fix the errors
 [[tool.mypy.overrides]]
 module = [
-    "tests.test_metadata.*",
     "tests.test_store.test_core",
     "tests.test_store.test_logging",
     "tests.test_store.test_object",
