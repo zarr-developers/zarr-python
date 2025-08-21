@@ -67,7 +67,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
             try:
                 out += (get_codec_class(name_parsed).from_dict(c),)
             except KeyError as e:
-                raise UnknownCodecError(e.args[0]) from e
+                raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
 
     return out
 

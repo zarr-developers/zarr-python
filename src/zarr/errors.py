@@ -106,7 +106,7 @@ class UnknownCodecError(BaseZarrError):
     Raised when a unknown codec was used.
     """
 
-    _msg = "Unknown codec {!r}."
+    _msg = "{}"
 
 
 class NodeTypeValidationError(MetadataValidationError):
