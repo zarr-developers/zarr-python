@@ -19,7 +19,6 @@ from zarr.core.common import (
     ZarrFormat,
 )
 from zarr.errors import CodecValidationError
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
@@ -175,6 +174,3 @@ class ZstdCodec(BytesBytesCodec):
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
-
-
-register_codec("zstd", ZstdCodec)

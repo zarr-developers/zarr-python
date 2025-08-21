@@ -15,7 +15,6 @@ from zarr.core.common import (
     NamedRequiredConfig,
     ZarrFormat,
 )
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
@@ -140,6 +139,3 @@ class GzipCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
     ) -> int:
         raise NotImplementedError
-
-
-register_codec("gzip", GzipCodec)

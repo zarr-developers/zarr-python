@@ -11,7 +11,6 @@ from crc32c import crc32c
 from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2
 from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.errors import CodecValidationError
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
@@ -124,6 +123,3 @@ class Crc32cCodec(BytesBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4
-
-
-register_codec("crc32c", Crc32cCodec)

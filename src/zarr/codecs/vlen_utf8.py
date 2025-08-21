@@ -9,7 +9,6 @@ from numcodecs.vlen import VLenBytes, VLenUTF8
 from zarr.abc.codec import ArrayBytesCodec, CodecJSON, CodecJSON_V2
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
@@ -193,7 +192,3 @@ class VLenBytesCodec(ArrayBytesCodec):
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         # what is input_byte_length for an object dtype?
         raise NotImplementedError("compute_encoded_size is not implemented for VLen codecs")
-
-
-register_codec("vlen-utf8", VLenUTF8Codec)
-register_codec("vlen-bytes", VLenBytesCodec)
