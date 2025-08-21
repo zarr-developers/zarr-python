@@ -117,7 +117,12 @@ from zarr.core.metadata.v2 import (
 )
 from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
-from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
+from zarr.errors import (
+    ArrayNotFoundError,
+    MetadataValidationError,
+    ZarrDeprecationWarning,
+    ZarrUserWarning,
+)
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
@@ -216,11 +221,19 @@ async def get_array_metadata(
             (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
         )
         if zarray_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                "A Zarr V2 array metadata document was not found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
     elif zarr_format == 3:
         zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
         if zarr_json_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                "A Zarr V3 array metadata document was not found in store "
+                f"{store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
     elif zarr_format is None:
         zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
             (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
@@ -232,7 +245,11 @@ async def get_array_metadata(
             msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
             warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
         if zarr_json_bytes is None and zarray_bytes is None:
-            raise FileNotFoundError(store_path)
+            msg = (
+                f"Neither Zarr V3 nor Zarr V2 array metadata documents "
+                f"were found in store {store_path.store!r} at path {store_path.path!r}."
+            )
+            raise ArrayNotFoundError(msg)
         # set zarr_format based on which keys were found
         if zarr_json_bytes is not None:
             zarr_format = 3
