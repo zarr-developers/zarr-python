@@ -39,6 +39,7 @@ from zarr.core.group import (
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.errors import (
+    ArrayNotFoundError,
     GroupNotFoundError,
     NodeTypeValidationError,
     ZarrDeprecationWarning,
@@ -1257,7 +1258,7 @@ async def open_array(
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
             _zarr_format = zarr_format or _default_zarr_format()
@@ -1267,7 +1268,7 @@ async def open_array(
                 overwrite=overwrite,
                 **kwargs,
             )
-        raise
+        raise ArrayNotFoundError(store_path.store, store_path.path) from err
 
 
 async def open_like(
