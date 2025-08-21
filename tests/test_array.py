@@ -551,14 +551,14 @@ class TestInfo:
             _zarr_format=2,
             _data_type=Float64(),
             _fill_value=arr.metadata.fill_value,
-            _shape=(8, 8),
-            _chunk_shape=(2, 2),
+            _shape=arr.shape,
+            _chunk_shape=arr.chunks,
             _shard_shape=None,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressors=(numcodecs.Zstd(),),
+            _compressors=arr.compressors,
         )
         assert result == expected
 
@@ -583,8 +583,8 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _compressors=(ZstdCodec(),),
-            _serializer=BytesCodec(),
+            _compressors=arr.compressors,
+            _serializer=arr.serializer,
             _count_bytes=512,
         )
         assert result == expected
