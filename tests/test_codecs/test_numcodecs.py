@@ -171,8 +171,7 @@ def test_generic_filter_bitround() -> None:
         )
 
     a[:, :] = data.copy()
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        b = open_array(a.store, mode="r")
+    b = open_array(a.store, mode="r")
     assert np.allclose(data, b[:, :], atol=0.1)
 
 
@@ -190,8 +189,7 @@ def test_generic_filter_quantize() -> None:
         )
 
     a[:, :] = data.copy()
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        b = open_array(a.store, mode="r")
+    b = open_array(a.store, mode="r")
     assert np.allclose(data, b[:, :], atol=0.001)
 
 
@@ -210,8 +208,7 @@ def test_generic_filter_packbits() -> None:
         )
 
     a[:, :] = data.copy()
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        b = open_array(a.store, mode="r")
+    b = open_array(a.store, mode="r")
     np.testing.assert_array_equal(data, b[:, :])
 
     with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
@@ -251,8 +248,7 @@ def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec
 
     a[:, :] = data.copy()
     with codec_conf():
-        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-            b = open_array(a.store, mode="r")
+        b = open_array(a.store, mode="r")
     np.testing.assert_array_equal(data, b[:, :])
 
 
@@ -302,8 +298,7 @@ def test_delta_astype() -> None:
 
     a[:, :] = data.copy()
     with codec_conf():
-        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-            b = open_array(a.store, mode="r")
+        b = open_array(a.store, mode="r")
     np.testing.assert_array_equal(data, b[:, :])
 
 
@@ -316,7 +311,7 @@ def test_repr() -> None:
 def test_to_dict() -> None:
     with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
         codec = _numcodecs.LZ4(level=5)
-    assert codec.to_dict() == {"name": "numcodecs.lz4", "configuration": {"level": 5}}
+    assert codec.to_dict() == {"name": "lz4", "configuration": {"level": 5}}
 
 
 @pytest.mark.parametrize(

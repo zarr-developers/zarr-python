@@ -30,16 +30,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, Final, Literal, Self, overload
-from warnings import warn
 
 import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, CodecJSON_V2
-from zarr.abc.metadata import Metadata
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration, product
 from zarr.dtype import UInt8, ZDType, parse_dtype
-from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
@@ -69,55 +66,12 @@ def _parse_codec_configuration(data: dict[str, JSON]) -> dict[str, JSON]:
 
 
 @dataclass(frozen=True)
-class _NumcodecsCodec(Metadata):
-    codec_name: str
-    codec_config: dict[str, JSON]
-
-    def __init_subclass__(cls, *, codec_name: str | None = None, **kwargs: Any) -> None:
-        """To be used only when creating the actual public-facing codec class."""
-        super().__init_subclass__(**kwargs)
-        if codec_name is not None:
-            namespace = codec_name
-
-            cls_name = f"{CODEC_PREFIX}{namespace}.{cls.__name__}"
-            cls.codec_name = f"{CODEC_PREFIX}{namespace}"
-            cls.__doc__ = f"""
-            See :class:`{cls_name}` for more details and parameters.
-            """
-
-    def __init__(self, **codec_config: JSON) -> None:
-        if not self.codec_name:
-            raise ValueError(
-                "The codec name needs to be supplied through the `codec_name` attribute."
-            )  # pragma: no cover
-        unprefixed_codec_name = _expect_name_prefix(self.codec_name)
-
-        if "id" not in codec_config:
-            codec_config = {"id": unprefixed_codec_name, **codec_config}
-        elif codec_config["id"] != unprefixed_codec_name:
-            raise ValueError(
-                f"Codec id does not match {unprefixed_codec_name}. Got: {codec_config['id']}."
-            )  # pragma: no cover
-
-        object.__setattr__(self, "codec_config", codec_config)
-        warn(
-            "Numcodecs codecs are not in the Zarr version 3 specification and "
-            "may not be supported by other zarr implementations.",
-            category=ZarrUserWarning,
-            stacklevel=2,
-        )
+class _NumcodecsCodec:
+    codec_cls: type[Numcodec]
 
     @cached_property
     def _codec(self) -> Numcodec:
-        return get_numcodec(self.codec_config)  # type: ignore[arg-type]
-
-    @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
-        codec_config = _parse_codec_configuration(data)
-        return cls(**codec_config)
-
-    def to_dict(self) -> dict[str, JSON]:
-        return self.to_json(zarr_format=3)
+        return get_numcodec(self.to_json(zarr_format=2))  # type: ignore[arg-type]
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
@@ -134,20 +88,8 @@ class _NumcodecsCodec(Metadata):
         else:
             return {"name": codec_id, "configuration": codec_config}
 
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError  # pragma: no cover
-
-    # Override __repr__ because dynamically constructed classes don't seem to work otherwise
-    def __repr__(self) -> str:
-        codec_config = self.codec_config.copy()
-        codec_config.pop("id", None)
-        return f"{self.__class__.__name__}(codec_name={self.codec_name!r}, codec_config={codec_config!r})"
-
 
 class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):
-    def __init__(self, **codec_config: JSON) -> None:
-        super().__init__(**codec_config)
-
     async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
         return await asyncio.to_thread(
             as_numpy_array_wrapper,
@@ -167,9 +109,6 @@ class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):
 
 
 class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
-    def __init__(self, **codec_config: JSON) -> None:
-        super().__init__(**codec_config)
-
     async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
         out = await asyncio.to_thread(self._codec.decode, chunk_ndarray)
@@ -197,35 +136,37 @@ class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
 
 
 # bytes-to-bytes codecs
-class Blosc(_NumcodecsBytesBytesCodec, codec_name="blosc"):
-    pass
+class Blosc(_NumcodecsBytesBytesCodec):
+    codec_name = "blosc"
 
 
-class LZ4(_NumcodecsBytesBytesCodec, codec_name="lz4"):
-    pass
+class LZ4(_NumcodecsBytesBytesCodec):
+    codec_name = "lz4"
 
 
-class Zstd(_NumcodecsBytesBytesCodec, codec_name="zstd"):
-    pass
+class Zstd(_NumcodecsBytesBytesCodec):
+    codec_name = "zstd"
 
 
-class Zlib(_NumcodecsBytesBytesCodec, codec_name="zlib"):
-    pass
+class Zlib(_NumcodecsBytesBytesCodec):
+    codec_name = "zlib"
 
 
-class GZip(_NumcodecsBytesBytesCodec, codec_name="gzip"):
-    pass
+class GZip(_NumcodecsBytesBytesCodec):
+    codec_name = "gzip"
 
 
-class BZ2(_NumcodecsBytesBytesCodec, codec_name="bz2"):
-    pass
+class BZ2(_NumcodecsBytesBytesCodec):
+    codec_name = "bz2"
 
 
-class LZMA(_NumcodecsBytesBytesCodec, codec_name="lzma"):
-    pass
+class LZMA(_NumcodecsBytesBytesCodec):
+    codec_name = "lzma"
 
 
-class Shuffle(_NumcodecsBytesBytesCodec, codec_name="shuffle"):
+class Shuffle(_NumcodecsBytesBytesCodec):
+    codec_name = "shuffle"
+
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Shuffle:
         if self.codec_config.get("elementsize") is None:
             dtype = array_spec.dtype.to_native_dtype()
@@ -234,7 +175,9 @@ class Shuffle(_NumcodecsBytesBytesCodec, codec_name="shuffle"):
 
 
 # array-to-array codecs ("filters")
-class Delta(_NumcodecsArrayArrayCodec, codec_name="delta"):
+class Delta(_NumcodecsArrayArrayCodec):
+    codec_name = "delta"
+
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         if astype := self.codec_config.get("astype"):
             dtype = parse_dtype(np.dtype(astype), zarr_format=3)  # type: ignore[call-overload]
@@ -242,11 +185,13 @@ class Delta(_NumcodecsArrayArrayCodec, codec_name="delta"):
         return chunk_spec
 
 
-class BitRound(_NumcodecsArrayArrayCodec, codec_name="bitround"):
-    pass
+class BitRound(_NumcodecsArrayArrayCodec):
+    codec_name = "bitround"
 
 
-class FixedScaleOffset(_NumcodecsArrayArrayCodec, codec_name="fixedscaleoffset"):
+class FixedScaleOffset(_NumcodecsArrayArrayCodec):
+    codec_name = "fixedscaleoffset"
+
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         if astype := self.codec_config.get("astype"):
             dtype = parse_dtype(np.dtype(astype), zarr_format=3)  # type: ignore[call-overload]
@@ -260,18 +205,19 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec, codec_name="fixedscaleoffset")
         return self
 
 
-class Quantize(_NumcodecsArrayArrayCodec, codec_name="quantize"):
-    def __init__(self, **codec_config: JSON) -> None:
-        super().__init__(**codec_config)
+class Quantize(_NumcodecsArrayArrayCodec):
+    codec_name = "quantize"
 
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Quantize:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if self.codec_config.get("dtype") is None:
             dtype = array_spec.dtype.to_native_dtype()
             return Quantize(**{**self.codec_config, "dtype": str(dtype)})
         return self
 
 
-class PackBits(_NumcodecsArrayArrayCodec, codec_name="packbits"):
+class PackBits(_NumcodecsArrayArrayCodec):
+    codec_name = "packbits"
+
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         return replace(
             chunk_spec,
@@ -288,7 +234,9 @@ class PackBits(_NumcodecsArrayArrayCodec, codec_name="packbits"):
             raise ValueError(f"Packbits filter requires bool dtype. Got {dtype}.")
 
 
-class AsType(_NumcodecsArrayArrayCodec, codec_name="astype"):
+class AsType(_NumcodecsArrayArrayCodec):
+    codec_name = "astype"
+
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         dtype = parse_dtype(np.dtype(self.codec_config["encode_dtype"]), zarr_format=3)  # type: ignore[arg-type]
         return replace(chunk_spec, dtype=dtype)
@@ -307,30 +255,30 @@ class _NumcodecsChecksumCodec(_NumcodecsBytesBytesCodec):
         return input_byte_length + 4  # pragma: no cover
 
 
-class CRC32(_NumcodecsChecksumCodec, codec_name="crc32"):
-    pass
+class CRC32(_NumcodecsChecksumCodec):
+    codec_name = "crc32"
 
 
-class CRC32C(_NumcodecsChecksumCodec, codec_name="crc32c"):
-    pass
+class CRC32C(_NumcodecsChecksumCodec):
+    codec_name = "crc32c"
 
 
-class Adler32(_NumcodecsChecksumCodec, codec_name="adler32"):
-    pass
+class Adler32(_NumcodecsChecksumCodec):
+    codec_name = "adler32"
 
 
-class Fletcher32(_NumcodecsChecksumCodec, codec_name="fletcher32"):
-    pass
+class Fletcher32(_NumcodecsChecksumCodec):
+    codec_name = "fletcher32"
 
 
-class JenkinsLookup3(_NumcodecsChecksumCodec, codec_name="jenkins_lookup3"):
-    pass
+class JenkinsLookup3(_NumcodecsChecksumCodec):
+    codec_name = "jenkins_lookup3"
 
 
 # array-to-bytes codecs
-class PCodec(_NumcodecsArrayBytesCodec, codec_name="pcodec"):
-    pass
+class PCodec(_NumcodecsArrayBytesCodec):
+    codec_name = "pcodec"
 
 
-class ZFPY(_NumcodecsArrayBytesCodec, codec_name="zfpy"):
-    pass
+class ZFPY(_NumcodecsArrayBytesCodec):
+    codec_name = "zfpy"

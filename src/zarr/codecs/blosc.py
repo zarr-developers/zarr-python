@@ -134,10 +134,10 @@ def parse_shuffle(data: object) -> BloscShuffle:
 class BloscCodec(BytesBytesCodec):
     is_fixed_size = False
 
-    typesize: int | None
+    typesize: int
     cname: BloscCname
     clevel: int
-    shuffle: BloscShuffle | None
+    shuffle: BloscShuffle
     blocksize: int
 
     def __init__(
@@ -149,10 +149,10 @@ class BloscCodec(BytesBytesCodec):
         shuffle: BloscShuffle | None = None,
         blocksize: int = 0,
     ) -> None:
-        typesize_parsed = parse_typesize(typesize) if typesize is not None else None
+        typesize_parsed = parse_typesize(typesize) if typesize is not None else 1
         cname_parsed = parse_cname(cname)
         clevel_parsed = parse_clevel(clevel)
-        shuffle_parsed = parse_shuffle(shuffle) if shuffle is not None else None
+        shuffle_parsed = parse_shuffle(shuffle) if shuffle is not None else "noshuffle"
         blocksize_parsed = parse_blocksize(blocksize)
 
         object.__setattr__(self, "typesize", typesize_parsed)
@@ -207,8 +207,6 @@ class BloscCodec(BytesBytesCodec):
     def to_json(self, zarr_format: Literal[3]) -> BloscJSON_V3: ...
 
     def to_json(self, zarr_format: ZarrFormat) -> BloscJSON_V2 | BloscJSON_V3:
-        if self.typesize is None or self.shuffle is None:
-            raise ValueError("typesize and blocksize need to be set for encoding.")
         if zarr_format == 2:
             return {
                 "id": "blosc",

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Self, overload
+from functools import cached_property
+from typing import TYPE_CHECKING, ClassVar, Literal, Self, overload
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
@@ -112,7 +114,12 @@ class V2Codec(ArrayBytesCodec):
 
 @dataclass(frozen=True, kw_only=True)
 class NumcodecsWrapper:
-    codec: Numcodec
+    codec_cls: ClassVar[type[Numcodec]]
+    config: Mapping[str, object]
+
+    @cached_property
+    def codec(self) -> Numcodec:
+        return self.codec_cls(**self.config)
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
@@ -121,7 +128,7 @@ class NumcodecsWrapper:
 
     def to_json(self, zarr_format: ZarrFormat) -> CodecJSON_V2[str] | NamedConfig[str, BaseConfig]:
         if zarr_format == 2:
-            return self.codec.get_config()
+            return {"id": self.codec_cls.codec_id, **self.config}
         elif zarr_format == 3:
             config = self.codec.get_config()
             config_no_id = {k: v for k, v in config.items() if k != "id"}
@@ -130,15 +137,11 @@ class NumcodecsWrapper:
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
-        raise NotADirectoryError(
-            "This class does not support creating instances from JSON data for Zarr format 2."
-        )
+        return cls(config=data)
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON) -> Self:
-        raise NotImplementedError(
-            "This class does not support creating instances from JSON data for Zarr format 3."
-        )
+        return cls(config=data.get("configuration", {}))
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
@@ -181,19 +184,19 @@ class NumcodecsWrapper:
         """
         Use the ``_codec`` attribute to create a NumcodecsArrayArrayCodec.
         """
-        return NumcodecsArrayArrayCodec(codec=self.codec)
+        return NumcodecsArrayArrayCodec(config=self.config)
 
     def to_bytes_bytes(self) -> NumcodecsBytesBytesCodec:
         """
         Use the ``_codec`` attribute to create a NumcodecsBytesBytesCodec.
         """
-        return NumcodecsBytesBytesCodec(codec=self.codec)
+        return NumcodecsBytesBytesCodec(config=self.config)
 
     def to_array_bytes(self) -> NumcodecsArrayBytesCodec:
         """
         Use the ``_codec`` attribute to create a NumcodecsArrayBytesCodec.
         """
-        return NumcodecsArrayBytesCodec(codec=self.codec)
+        return NumcodecsArrayBytesCodec(config=self.config)
 
 
 class NumcodecsBytesBytesCodec(NumcodecsWrapper, BytesBytesCodec):
