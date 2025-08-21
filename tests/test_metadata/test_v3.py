@@ -17,10 +17,11 @@ from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
+    parse_codecs,
     parse_dimension_names,
     parse_zarr_format,
 )
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -323,3 +324,9 @@ async def test_special_float_fill_values(fill_value: str) -> None:
     elif fill_value == "-Infinity":
         assert np.isneginf(m.fill_value)
         assert d["fill_value"] == "-Infinity"
+
+
+def test_parse_codecs_unknown_codec_raises() -> None:
+    codecs = [{"name": "unknown"}]
+    with pytest.raises(UnknownCodecError):
+        parse_codecs(codecs)
