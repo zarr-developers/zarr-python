@@ -35,7 +35,6 @@ from zarr.core.array import (
     _parse_chunk_encoding_v3,
     chunks_initialized,
     create_array,
-    default_compressor_v2,
     default_filters_v2,
     default_serializer_v3,
 )
@@ -1729,9 +1728,12 @@ def test_roundtrip_numcodecs() -> None:
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
     root = zarr.open_group(store)
-    with pytest.warns(ZarrUserWarning, match=warn_msg):
-        metadata = root["test"].metadata.to_dict()
-    expected = (*filters, BYTES_CODEC, *compressors)
+    metadata = root["test"].metadata.to_dict()
+    # The names will change because numcodecs.<codec> is an alias for <codec>
+    expected = tuple(
+        {"name": v["name"].removeprefix("numcodecs."), "configuration": v["configuration"]}
+        for v in (*filters, BYTES_CODEC, *compressors)
+    )
     assert metadata["codecs"] == expected
 
 

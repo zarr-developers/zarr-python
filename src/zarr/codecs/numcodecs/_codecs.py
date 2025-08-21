@@ -26,17 +26,18 @@ from __future__ import annotations
 
 import asyncio
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Final, Literal, Self, overload
 from warnings import warn
 
 import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, CodecJSON_V2
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_named_configuration, product
+from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration, product
 from zarr.dtype import UInt8, ZDType, parse_dtype
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
@@ -46,7 +47,7 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
 
-CODEC_PREFIX = "numcodecs."
+CODEC_PREFIX: Final = "numcodecs."
 
 
 def _expect_name_prefix(codec_name: str) -> str:
@@ -116,12 +117,22 @@ class _NumcodecsCodec(Metadata):
         return cls(**codec_config)
 
     def to_dict(self) -> dict[str, JSON]:
-        codec_config = self.codec_config.copy()
-        codec_config.pop("id", None)
-        return {
-            "name": self.codec_name,
-            "configuration": codec_config,
-        }
+        return self.to_json(zarr_format=3)
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        codec_id = self.codec_config["id"]
+        codec_config = {k: v for k, v in self.codec_config.items() if k != "id"}
+        if zarr_format == 2:
+            return {"id": codec_id, **codec_config}
+        else:
+            return {"name": codec_id, "configuration": codec_config}
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         raise NotImplementedError  # pragma: no cover

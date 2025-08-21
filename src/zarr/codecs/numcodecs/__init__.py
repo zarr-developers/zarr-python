@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Final
+
 from zarr.codecs.numcodecs._codecs import (
     BZ2,
     CRC32,
@@ -27,6 +29,31 @@ from zarr.codecs.numcodecs._codecs import (
     _NumcodecsBytesBytesCodec,
     _NumcodecsCodec,
 )
+
+# This is a fixed dictionary of numcodecs codecs for which we have pre-made Zarr V3 wrappers
+numcodecs_wrappers: Final[dict[str, type[_NumcodecsCodec]]] = {
+    "bz2": BZ2,
+    "crc32": CRC32,
+    "crc32c": CRC32C,
+    "lz4": LZ4,
+    "lzma": LZMA,
+    "zfpy": ZFPY,
+    "adler32": Adler32,
+    "astype": AsType,
+    "bitround": BitRound,
+    "blosc": Blosc,
+    "delta": Delta,
+    "fixedscaleoffset": FixedScaleOffset,
+    "fletcher32": Fletcher32,
+    "gzip": GZip,
+    "jenkins_lookup3": JenkinsLookup3,
+    "packbits": PackBits,
+    "pcodec": PCodec,
+    "quantize": Quantize,
+    "shuffle": Shuffle,
+    "zlib": Zlib,
+    "zstd": Zstd,
+}
 
 __all__ = [
     "BZ2",

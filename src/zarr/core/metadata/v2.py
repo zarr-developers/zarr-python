@@ -338,6 +338,10 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
+def is_object_codec(codec: JSON) -> bool:
+    return codec.get("id") in OBJECT_CODEC_IDS
+
+
 def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
     """
     Inspect a sequence of codecs / filters for an "object codec", i.e. a codec

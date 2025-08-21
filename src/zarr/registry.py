@@ -198,7 +198,7 @@ def get_codec(request: CodecJSON, *, zarr_format: ZarrFormat) -> Codec | Numcode
             codec_config = {}
         else:
             codec_name = request["name"]
-            codec_config = request["configuration"]
+            codec_config = request.get("configuration", {})
     else:
         raise ValueError(
             f"Invalid zarr format. Must be 2 or 3, got {zarr_format!r}"
@@ -209,7 +209,7 @@ def get_codec(request: CodecJSON, *, zarr_format: ZarrFormat) -> Codec | Numcode
         return codec_cls.from_json(request, zarr_format=zarr_format)
     except KeyError:
         # if we can't find the codec in the zarr python registry, try the numcodecs registry
-        codec = get_numcodec({'id': codec_name, **codec_config})
+        codec = get_numcodec({"id": codec_name, **codec_config})
         return NumcodecsWrapper(codec=codec)
 
 
@@ -264,7 +264,7 @@ def _parse_array_bytes_codec(
     is converted to a ``ArrayBytesCodec`` instance via the ``_resolve_codec`` function.
     """
     from zarr.abc.codec import ArrayBytesCodec
-    from zarr.abc.numcodec import _is_numcodec 
+    from zarr.abc.numcodec import _is_numcodec
     from zarr.codecs._v2 import NumcodecsArrayBytesCodec, NumcodecsWrapper
 
     if isinstance(data, dict):

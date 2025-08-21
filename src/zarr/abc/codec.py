@@ -4,7 +4,6 @@ from abc import abstractmethod
 from collections.abc import Mapping
 from typing import (
     TYPE_CHECKING,
-    ClassVar,
     Generic,
     Literal,
     Self,
@@ -14,7 +13,7 @@ from typing import (
     overload,
 )
 
-from typing_extensions import Protocol, ReadOnly
+from typing_extensions import ReadOnly
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer

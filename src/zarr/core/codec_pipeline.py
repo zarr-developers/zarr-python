@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import islice, pairwise
+from itertools import islice
 from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
 
@@ -531,6 +531,7 @@ def codecs_from_list(
             category=ZarrUserWarning,
             stacklevel=3,
         )
+
     if len(array_bytes_idcs) == 0:
         # There is no array-bytes codec. Unless we can find a numcodec wrapper to act as an
         # array-bytes codec, this is an error.
@@ -661,50 +662,6 @@ def codecs_from_list(
         raise ValueError("More than one ArrayBytes codec found, that is a big error!")
 
     return array_array, array_bytes_maybe, bytes_bytes
-
-    for prev_codec, cur_codec in pairwise((None, *codecs)):
-        if isinstance(cur_codec, ArrayArrayCodec):
-            if isinstance(prev_codec, ArrayBytesCodec | BytesBytesCodec):
-                msg = (
-                    f"Invalid codec order. ArrayArrayCodec {cur_codec}"
-                    "must be preceded by another ArrayArrayCodec. "
-                    f"Got {type(prev_codec)} instead."
-                )
-                raise TypeError(msg)
-            array_array += (cur_codec,)
-
-        elif isinstance(cur_codec, ArrayBytesCodec):
-            if isinstance(prev_codec, BytesBytesCodec):
-                msg = (
-                    f"Invalid codec order. ArrayBytes codec {cur_codec}"
-                    f" must be preceded by an ArrayArrayCodec. Got {type(prev_codec)} instead."
-                )
-                raise TypeError(msg)
-
-            if array_bytes_maybe is not None:
-                msg = (
-                    f"Got two instances of ArrayBytesCodec: {array_bytes_maybe} and {cur_codec}. "
-                    "Only one array-to-bytes codec is allowed."
-                )
-                raise ValueError(msg)
-
-            array_bytes_maybe = cur_codec
-
-        elif isinstance(cur_codec, BytesBytesCodec):
-            if isinstance(prev_codec, ArrayArrayCodec):
-                msg = (
-                    f"Invalid codec order. BytesBytesCodec {cur_codec}"
-                    "must be preceded by either another BytesBytesCodec, or an ArrayBytesCodec. "
-                    f"Got {type(prev_codec)} instead."
-                )
-            bytes_bytes += (cur_codec,)
-        elif isinstance(cur_codec, NumcodecsWrapper):
-            raise TypeError
-
-    if array_bytes_maybe is None:
-        raise ValueError("Required ArrayBytesCodec was not found.")
-    else:
-        return array_array, array_bytes_maybe, bytes_bytes
 
 
 register_pipeline(BatchedCodecPipeline)

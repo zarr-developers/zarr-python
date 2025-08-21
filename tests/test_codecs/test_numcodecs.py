@@ -153,8 +153,7 @@ def test_generic_filter(
 
     a[:, :] = data.copy()
     with codec_conf():
-        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-            b = open_array(a.store, mode="r")
+        b = open_array(a.store, mode="r")
     np.testing.assert_array_equal(data, b[:, :])
 
 

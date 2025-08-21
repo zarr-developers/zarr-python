@@ -14,6 +14,8 @@ from zarr.abc.codec import (
     CodecJSON,
     CodecJSON_V2,
 )
+from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
@@ -140,6 +142,40 @@ class NumcodecsWrapper:
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
+
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+        """Fills in codec configuration parameters that can be automatically
+        inferred from the array metadata.
+
+        Parameters
+        ----------
+        array_spec : ArraySpec
+
+        Returns
+        -------
+        Self
+        """
+        return self
+
+    def validate(
+        self,
+        *,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
+    ) -> None:
+        """Validates that the codec configuration is compatible with the array metadata.
+        Raises errors when the codec configuration is not compatible.
+
+        Parameters
+        ----------
+        shape : tuple[int, ...]
+            The array shape
+        dtype : np.dtype[Any]
+            The array data type
+        chunk_grid : ChunkGrid
+            The array chunk grid
+        """
 
     def to_array_array(self) -> NumcodecsArrayArrayCodec:
         """
