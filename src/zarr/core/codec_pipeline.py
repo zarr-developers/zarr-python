@@ -14,7 +14,7 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
 from zarr.errors import ZarrUserWarning
@@ -134,7 +134,11 @@ class BatchedCodecPipeline(CodecPipeline):
         yield from self.bytes_bytes_codecs
 
     def validate(
-        self, *, shape: ChunkCoords, dtype: ZDType[TBaseDType, TBaseScalar], chunk_grid: ChunkGrid
+        self,
+        *,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
     ) -> None:
         for codec in self:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)

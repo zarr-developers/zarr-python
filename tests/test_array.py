@@ -406,7 +406,7 @@ async def test_nchunks_initialized(
         arr[region] = 1
         expected = idx + 1
         if test_cls == Array:
-            observed = arr.nshards_initialized
+            observed = arr._nshards_initialized
             assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
             observed = await arr._async_array._nshards_initialized()
@@ -417,7 +417,7 @@ async def test_nchunks_initialized(
     for idx, key in enumerate(arr._iter_shard_keys()):
         sync(arr.store_path.store.delete(key))
         if test_cls == Array:
-            observed = arr.nshards_initialized
+            observed = arr._nshards_initialized
             assert observed == arr.nchunks_initialized // chunks_per_shard
         else:
             observed = await arr._async_array._nshards_initialized()
@@ -892,14 +892,14 @@ def test_write_empty_chunks_behavior(
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
-    assert arr.nshards_initialized == arr._nshards
+    assert arr._nshards_initialized == arr._nshards
 
     arr[:] = fill_value
 
     if not write_empty_chunks:
-        assert arr.nshards_initialized == 0
+        assert arr._nshards_initialized == 0
     else:
-        assert arr.nshards_initialized == arr._nshards
+        assert arr._nshards_initialized == arr._nshards
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

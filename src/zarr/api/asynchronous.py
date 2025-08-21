@@ -24,7 +24,6 @@ from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
-    ChunkCoords,
     DimensionNames,
     MemoryOrder,
     ZarrFormat,
@@ -106,7 +105,7 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
-def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
+def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple[int, ...] | None]:
     """Helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
@@ -358,7 +357,9 @@ async def open(
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
-                return AsyncArray(store_path=store_path, metadata=_metadata_dict)
+                return AsyncArray(
+                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
+                )
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
@@ -864,9 +865,9 @@ async def open_group(
 
 
 async def create(
-    shape: ChunkCoords | int,
+    shape: tuple[int, ...] | int,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | int | bool | None = None,
+    chunks: tuple[int, ...] | int | bool | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,
@@ -888,7 +889,7 @@ async def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: ChunkCoords | int | None = None,
+    chunk_shape: tuple[int, ...] | int | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -1073,7 +1074,7 @@ async def create(
 
 
 async def empty(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an empty array with the specified shape. The contents will be filled with the
     array's fill value or zeros if no fill value is provided.
@@ -1125,7 +1126,7 @@ async def empty_like(
 
 # TODO: add type annotations for fill_value and kwargs
 async def full(
-    shape: ChunkCoords, fill_value: Any, **kwargs: Any
+    shape: tuple[int, ...], fill_value: Any, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with `fill_value` being used as the default value for
     uninitialized portions of the array.
@@ -1172,7 +1173,7 @@ async def full_like(
 
 
 async def ones(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with one being used as the default value for
     uninitialized portions of the array.
@@ -1295,7 +1296,7 @@ async def open_like(
 
 
 async def zeros(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with zero being used as the default value for
     uninitialized portions of the array.

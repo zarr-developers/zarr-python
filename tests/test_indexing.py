@@ -36,7 +36,6 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
-    from zarr.core.common import ChunkCoords
 
 
 @pytest.fixture
@@ -47,7 +46,7 @@ async def store() -> AsyncGenerator[StorePath]:
 def zarr_array_from_numpy_array(
     store: StorePath,
     a: npt.NDArray[Any],
-    chunk_shape: ChunkCoords | None = None,
+    chunk_shape: tuple[int, ...] | None = None,
 ) -> zarr.Array:
     z = zarr.create_array(
         store=store / str(uuid4()),
