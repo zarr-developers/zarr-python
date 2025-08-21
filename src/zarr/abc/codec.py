@@ -202,12 +202,14 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         raise NotImplementedError
 
     @classmethod
-    def _from_json_v2(cls, data: CodecJSON) -> Self:
-        raise NotImplementedError
+    def _from_json_v2(cls, data: CodecJSON_V2[str]) -> Self:
+        return cls(**{k: v for k, v in data.items() if k != "id"})
 
     @classmethod
-    def _from_json_v3(cls, data: CodecJSON) -> Self:
-        raise NotImplementedError
+    def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        if isinstance(data, str):
+            return cls()
+        return cls(**data["configuration"])
 
     @classmethod
     def from_json(cls, data: CodecJSON, zarr_format: ZarrFormat) -> Self:
