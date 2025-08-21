@@ -116,9 +116,11 @@ class ArrayV2Metadata(Metadata):
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         if compressor_parsed is not None:
-            compressor_parsed = compressor_parsed.evolve_from_array_spec(array_spec)
+            pass
+            # compressor_parsed = compressor_parsed.evolve_from_array_spec(array_spec)
         if filters_parsed is not None:
-            filters_parsed = tuple(fp.evolve_from_array_spec(array_spec) for fp in filters_parsed)
+            pass
+            # filters_parsed = tuple(fp.evolve_from_array_spec(array_spec) for fp in filters_parsed)
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
