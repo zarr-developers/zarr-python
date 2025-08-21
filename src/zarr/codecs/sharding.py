@@ -105,7 +105,16 @@ class ShardingJSON_V2(ShardingConfigV2):
     id: ReadOnly[Literal["sharding_indexed"]]
 
 
-class ShardingJSON_V3(NamedRequiredConfig[Literal["sharding_indexed"], ShardingConfigV3]): ...
+class ShardingJSON_V3(NamedRequiredConfig[Literal["sharding_indexed"], ShardingConfigV3]):
+    """
+    The JSON form of sharding codec for Zarr V3.
+
+    Attributes
+    ----------
+    name : Literal["sharding_indexed"]
+        The name of the sharding codec.
+    configuration : ShardingConfigV3
+    """
 
 
 class ShardingCodecIndexLocation(Enum):
