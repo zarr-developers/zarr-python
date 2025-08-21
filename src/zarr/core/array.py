@@ -1275,8 +1275,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         >>> await arr.nchunks_initialized()
         0
         >>> await arr.setitem(slice(5), 1)
-        >>> await arr.nshards_initialized()
-        3
         >>> await arr.nchunks_initialized()
         6
         """
@@ -1302,15 +1300,15 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Notes
         -----
         On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
-        property :attr:`Array.nshards_initialized`.
+        property :attr:`Array._nshards_initialized`.
 
         Examples
         --------
         >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
-        >>> await arr.nshards_initialized()
+        >>> await arr._nshards_initialized()
         0
         >>> await arr.setitem(slice(5), 1)
-        >>> await arr.nshards_initialized()
+        >>> await arr._nshards_initialized()
         3
         """
         return len(await _shards_initialized(self))
@@ -2469,8 +2467,6 @@ class Array:
         >>> arr.nchunks_initialized
         0
         >>> arr[:5] = 1
-        >>> arr.nshards_initialized
-        3
         >>> arr.nchunks_initialized
         6
         """
@@ -2490,10 +2486,10 @@ class Array:
         Examples
         --------
         >>> arr = await zarr.create(shape=(10,), chunks=(2,))
-        >>> arr.nshards_initialized
+        >>> arr._nshards_initialized
         0
         >>> arr[:5] = 1
-        >>> arr.nshard_initialized
+        >>> arr._nshard_initialized
         3
         """
         return sync(self._async_array._nshards_initialized())

@@ -211,7 +211,7 @@ the time required to write an array with different values.::
    ...         start = time.time()
    ...         arr[:] = value
    ...         elapsed = time.time() - start
-   ...         result.append((elapsed, arr.nshards_initialized))
+   ...         result.append((elapsed, arr.nchunks_initialized))
    ...     return result
    ... # log results
    >>> for write_empty_chunks in (True, False):
