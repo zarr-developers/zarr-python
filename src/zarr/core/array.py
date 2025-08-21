@@ -24,7 +24,7 @@ from typing_extensions import deprecated
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
-from zarr.abc.numcodec import Numcodec
+from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.transpose import TransposeCodec
@@ -4716,15 +4716,13 @@ def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[Codec] | None:
     return None
 
 
-def default_compressor_v2(dtype: ZDType[Any, Any]) -> Numcodec:
+def default_compressor_v2(dtype: ZDType[Any, Any]) -> BytesBytesCodec:
     """
     Given a data type, return the default compressors for that data type.
 
     This is just the ``Zstd`` codec.
     """
-    from numcodecs import Zstd
-
-    return Zstd(level=0, checksum=False)  # type: ignore[no-any-return]
+    return ZstdCodec(level=0, checksum=False)  # type: ignore[no-any-return]
 
 
 def _parse_chunk_encoding_v2(
@@ -4823,7 +4821,7 @@ def _parse_chunk_encoding_v3(
         out_bytes_bytes = default_compressors_v3(dtype)
     else:
         maybe_bytes_bytes: Iterable[Codec | dict[str, JSON] | Numcodec]
-        if isinstance(compressors, dict | Codec | Numcodec):
+        if isinstance(compressors, dict | Codec) or _is_numcodec(compressors):
             maybe_bytes_bytes = (compressors,)
         else:
             maybe_bytes_bytes = compressors  # type: ignore[assignment]

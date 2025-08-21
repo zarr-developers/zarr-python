@@ -232,7 +232,8 @@ def _parse_bytes_bytes_codec(
     """
     # avoid circular import, AKA a sign that this function is in the wrong place
     from zarr.abc.codec import BytesBytesCodec
-    from zarr.codecs._v2 import Numcodec, NumcodecsBytesBytesCodec, NumcodecsWrapper
+    from zarr.abc.numcodec import _is_numcodec
+    from zarr.codecs._v2 import NumcodecsBytesBytesCodec, NumcodecsWrapper
 
     result: BytesBytesCodec
     if isinstance(data, dict):
@@ -242,7 +243,7 @@ def _parse_bytes_bytes_codec(
         if not isinstance(result, BytesBytesCodec):
             msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
-    elif isinstance(data, Numcodec):
+    elif _is_numcodec(data):
         return NumcodecsBytesBytesCodec(codec=data)
     else:
         if not isinstance(data, BytesBytesCodec):
@@ -269,7 +270,7 @@ def _parse_array_bytes_codec(
         if not isinstance(result, ArrayBytesCodec):
             msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
-    elif isinstance(data, Numcodec):
+    elif _is_numcodec(data):
         return NumcodecsArrayBytesCodec(codec=data)
     else:
         if not isinstance(data, ArrayBytesCodec):
@@ -287,7 +288,8 @@ def _parse_array_array_codec(
     is converted to a ``ArrayArrayCodec`` instance via the ``_resolve_codec`` function.
     """
     from zarr.abc.codec import ArrayArrayCodec
-    from zarr.codecs.numcodec import Numcodec, NumcodecsArrayArrayCodec, NumcodecsWrapper
+    from zarr.abc.numcodec import _is_numcodec
+    from zarr.codecs._v2 import NumcodecsArrayArrayCodec, NumcodecsWrapper
 
     if isinstance(data, dict):
         result = get_codec(data, zarr_format=zarr_format)
@@ -296,7 +298,7 @@ def _parse_array_array_codec(
         elif not isinstance(result, ArrayArrayCodec):
             msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
-    elif isinstance(data, Numcodec):
+    elif _is_numcodec(data):
         return NumcodecsArrayArrayCodec(codec=data)
     else:
         if not isinstance(data, ArrayArrayCodec):

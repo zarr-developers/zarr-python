@@ -5,9 +5,9 @@ from collections.abc import Iterable, Mapping, Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
-from zarr.abc.codec import ArrayArrayCodec, Codec, Numcodec
+from zarr.abc.codec import ArrayArrayCodec, Codec
 from zarr.abc.metadata import Metadata
-from zarr.abc.numcodec import _is_numcodec
+from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import NumcodecsWrapper
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid
