@@ -33,7 +33,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
 from zarr.registry import get_codec
 
 
@@ -61,7 +61,10 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
-            out += (get_codec(c, zarr_format=3),)
+            try:
+                out += (get_codec(c, zarr_format=3),)
+            except KeyError as e:
+                raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
 
     return out
 

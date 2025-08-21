@@ -101,6 +101,14 @@ class MetadataValidationError(BaseZarrError):
     _msg = "Invalid value for '{}'. Expected '{}'. Got '{}'."
 
 
+class UnknownCodecError(BaseZarrError):
+    """
+    Raised when a unknown codec was used.
+    """
+
+    _msg = "{}"
+
+
 class NodeTypeValidationError(MetadataValidationError):
     """
     Specialized exception when the node_type of the metadata document is incorrect.
