@@ -18,9 +18,11 @@ from zarr.core.metadata.v2 import parse_zarr_format
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from typing import Any
 
     from zarr.abc.codec import Codec
+    from zarr.core.common import JSON
 
 
 def test_parse_zarr_format_valid() -> None:
@@ -105,7 +107,7 @@ class TestConsolidated:
     async def v2_consolidated_metadata(
         self, memory_store: zarr.storage.MemoryStore
     ) -> zarr.storage.MemoryStore:
-        zmetadata = {
+        zmetadata: dict[str, JSON] = {
             "metadata": {
                 ".zattrs": {
                     "Conventions": "COARDS",
@@ -160,8 +162,7 @@ class TestConsolidated:
             },
             "zarr_consolidated_format": 1,
         }
-        store_dict = {}
-        store = zarr.storage.MemoryStore(store_dict=store_dict)
+        store = zarr.storage.MemoryStore()
         await store.set(
             ".zattrs", cpu.Buffer.from_bytes(json.dumps({"Conventions": "COARDS"}).encode())
         )
@@ -169,19 +170,19 @@ class TestConsolidated:
         await store.set(".zmetadata", cpu.Buffer.from_bytes(json.dumps(zmetadata).encode()))
         await store.set(
             "air/.zarray",
-            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zarray"]).encode()),
+            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zarray"]).encode()),  # type: ignore[index, call-overload]
         )
         await store.set(
             "air/.zattrs",
-            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zattrs"]).encode()),
+            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zattrs"]).encode()),  # type: ignore[index, call-overload]
         )
         await store.set(
             "time/.zarray",
-            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zarray"]).encode()),
+            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zarray"]).encode()),  # type: ignore[index, call-overload]
         )
         await store.set(
             "time/.zattrs",
-            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zattrs"]).encode()),
+            cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zattrs"]).encode()),  # type: ignore[index, call-overload]
         )
 
         # and a nested group for fun
@@ -194,13 +195,13 @@ class TestConsolidated:
         await store.set(
             "nested/array/.zarray",
             cpu.Buffer.from_bytes(
-                json.dumps(zmetadata["metadata"]["nested/array/.zarray"]).encode()
+                json.dumps(zmetadata["metadata"]["nested/array/.zarray"]).encode()  # type: ignore[index, call-overload]
             ),
         )
         await store.set(
             "nested/array/.zattrs",
             cpu.Buffer.from_bytes(
-                json.dumps(zmetadata["metadata"]["nested/array/.zattrs"]).encode()
+                json.dumps(zmetadata["metadata"]["nested/array/.zattrs"]).encode()  # type: ignore[index, call-overload]
             ),
         )
 
@@ -208,7 +209,7 @@ class TestConsolidated:
 
     async def test_read_consolidated_metadata(
         self, v2_consolidated_metadata: zarr.storage.MemoryStore
-    ):
+    ) -> None:
         # .zgroup, .zattrs, .metadata
         store = v2_consolidated_metadata
         group = zarr.open_consolidated(store=store, zarr_format=2)
@@ -271,10 +272,13 @@ class TestConsolidated:
         result = group.metadata.consolidated_metadata
         assert result == expected
 
-    async def test_getitem_consolidated(self, v2_consolidated_metadata):
+    async def test_getitem_consolidated(
+        self, v2_consolidated_metadata: zarr.storage.MemoryStore
+    ) -> None:
         store = v2_consolidated_metadata
         group = await zarr.api.asynchronous.open_consolidated(store=store, zarr_format=2)
         air = await group.getitem("air")
+        assert isinstance(air, zarr.AsyncArray)
         assert air.metadata.shape == (730,)
 
 
@@ -320,8 +324,10 @@ def test_zstd_checksum() -> None:
 
 
 @pytest.mark.parametrize("fill_value", [np.void((0, 0), np.dtype([("foo", "i4"), ("bar", "i4")]))])
-def test_structured_dtype_fill_value_serialization(tmp_path, fill_value):
-    zarr_format = 2
+def test_structured_dtype_fill_value_serialization(
+    tmp_path: Path, fill_value: np.void | np.dtype[Any]
+) -> None:
+    zarr_format: Literal[2] = 2
     group_path = tmp_path / "test.zarr"
     root_group = zarr.open_group(group_path, mode="w", zarr_format=zarr_format)
     dtype = np.dtype([("foo", "i4"), ("bar", "i4")])
@@ -335,5 +341,5 @@ def test_structured_dtype_fill_value_serialization(tmp_path, fill_value):
 
     zarr.consolidate_metadata(root_group.store, zarr_format=zarr_format)
     root_group = zarr.open_group(group_path, mode="r")
-    observed = root_group.metadata.consolidated_metadata.metadata["structured_dtype"].fill_value
+    observed = root_group.metadata.consolidated_metadata.metadata["structured_dtype"].fill_value  # type: ignore[union-attr]
     assert observed == fill_value
