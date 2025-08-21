@@ -1229,8 +1229,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The number of chunks in this array.
 
         Note that if a sharding codec is used, then the number of chunks may exceed the number of
-        stored objects supporting this array. To find out the number of stored objects that support
-        this array, see :func:`nshards`.
+        stored objects supporting this array.
 
         Returns
         -------
@@ -2423,8 +2422,7 @@ class Array:
         The number of chunks in this array.
 
         Note that if a sharding codec is used, then the number of chunks may exceed the number of
-        stored objects supporting this array. To find out the number of stored objects that support
-        this array, see :func:`nshards`.
+        stored objects supporting this array.
         """
         return self._async_array.nchunks
 
