@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
@@ -3924,7 +3924,7 @@ CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | Numcodec | Liter
 
 CompressorsLike: TypeAlias = (
     Iterable[dict[str, JSON] | BytesBytesCodec | Numcodec]
-    | dict[str, JSON]
+    | Mapping[str, JSON]
     | BytesBytesCodec
     | Numcodec
     | Literal["auto"]
