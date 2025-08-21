@@ -11,7 +11,6 @@ from zarr.abc.codec import ArrayArrayCodec, CodecJSON
 from zarr.core.array_spec import ArraySpec
 from zarr.core.common import (
     JSON,
-    ChunkCoordsLike,
     NamedRequiredConfig,
     ZarrFormat,
 )
@@ -78,7 +77,7 @@ class TransposeCodec(ArrayArrayCodec):
 
     order: tuple[int, ...]
 
-    def __init__(self, *, order: ChunkCoordsLike) -> None:
+    def __init__(self, *, order: Iterable[int]) -> None:
         order_parsed = parse_transpose_order(order)
 
         object.__setattr__(self, "order", order_parsed)

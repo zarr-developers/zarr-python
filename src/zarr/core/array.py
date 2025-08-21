@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
@@ -53,7 +53,6 @@ from zarr.core.common import (
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
-    ChunkCoords,
     DimensionNames,
     MemoryOrder,
     ShapeLike,
@@ -506,7 +505,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The fill value of the array (default is None).
         attributes : dict[str, JSON], optional
             The attributes of the array (default is None).
-        chunk_shape : ChunkCoords, optional
+        chunk_shape : tuple[int, ...], optional
             The shape of the array's chunks
             Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
             If not specified, default are guessed based on the shape and dtype.
@@ -725,7 +724,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _create_metadata_v3(
         shape: ShapeLike,
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_shape: ChunkCoords,
+        chunk_shape: tuple[int, ...],
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
@@ -780,7 +779,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         *,
         shape: ShapeLike,
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_shape: ChunkCoords,
+        chunk_shape: tuple[int, ...],
         config: ArrayConfig,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: (
@@ -826,9 +825,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @staticmethod
     def _create_metadata_v2(
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunks: ChunkCoords,
+        chunks: tuple[int, ...],
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
@@ -863,9 +862,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store_path: StorePath,
         *,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunks: ChunkCoords,
+        chunks: tuple[int, ...],
         order: MemoryOrder,
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -990,7 +989,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return len(self.metadata.shape)
 
     @property
-    def shape(self) -> ChunkCoords:
+    def shape(self) -> tuple[int, ...]:
         """Returns the shape of the Array.
 
         Returns
@@ -1001,7 +1000,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.metadata.shape
 
     @property
-    def chunks(self) -> ChunkCoords:
+    def chunks(self) -> tuple[int, ...]:
         """Returns the chunk shape of the Array.
         If sharding is used the inner chunk shape is returned.
 
@@ -1010,13 +1009,13 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        ChunkCoords:
+        tuple[int, ...]:
             The chunk shape of the Array.
         """
         return self.metadata.chunks
 
     @property
-    def shards(self) -> ChunkCoords | None:
+    def shards(self) -> tuple[int, ...] | None:
         """Returns the shard shape of the Array.
         Returns None if sharding is not used.
 
@@ -1025,7 +1024,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        ChunkCoords:
+        tuple[int, ...]:
             The shard shape of the Array.
         """
         return self.metadata.shards
@@ -1194,7 +1193,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.name.split("/")[-1]
 
     @property
-    def cdata_shape(self) -> ChunkCoords:
+    def cdata_shape(self) -> tuple[int, ...]:
         """
         The shape of the chunk grid for this array.
 
@@ -1248,7 +1247,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
-    ) -> Iterator[ChunkCoords]:
+    ) -> Iterator[tuple[int, ...]]:
         """
         Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
         keyword is used, iteration will start at the chunk index specified by `origin`.
@@ -1266,7 +1265,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Yields
         ------
-        chunk_coords: ChunkCoords
+        chunk_coords: tuple[int, ...]
             The coordinates of each chunk in the selection.
         """
         return _iter_grid(self.cdata_shape, origin=origin, selection_shape=selection_shape)
@@ -1360,11 +1359,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
                 )
         else:
-            out_buffer = prototype.nd_buffer.create(
+            out_buffer = prototype.nd_buffer.empty(
                 shape=indexer.shape,
                 dtype=out_dtype,
                 order=self.order,
-                fill_value=self.metadata.fill_value,
             )
         if product(indexer.shape) > 0:
             # need to use the order from the metadata for v2
@@ -1572,7 +1570,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Parameters
         ----------
-        new_shape : ChunkCoords
+        new_shape : tuple[int, ...]
             The desired new shape of the array.
 
         delete_outside_chunks : bool, optional
@@ -1620,7 +1618,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # Update metadata (in place)
         object.__setattr__(self, "metadata", new_metadata)
 
-    async def append(self, data: npt.ArrayLike, axis: int = 0) -> ChunkCoords:
+    async def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
 
         Parameters
@@ -1806,13 +1804,13 @@ class Array:
         store: StoreLike,
         *,
         # v2 and v3
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ChunkCoords | None = None,
+        chunk_shape: tuple[int, ...] | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -1822,7 +1820,7 @@ class Array:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: DimensionNames = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: tuple[int, ...] | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -1840,11 +1838,11 @@ class Array:
         ----------
         store : StoreLike
             The array store that has already been initialized.
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             The shape of the array.
         dtype : ZDTypeLike
             The data type of the array.
-        chunk_shape : ChunkCoords, optional
+        chunk_shape : tuple[int, ...], optional
             The shape of the Array's chunks.
             Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
             If not specified, default are guessed based on the shape and dtype.
@@ -1868,7 +1866,7 @@ class Array:
         dimension_names : Iterable[str | None], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
-        chunks : ChunkCoords, optional
+        chunks : tuple[int, ...], optional
             The shape of the array's chunks.
             Zarr format 2 only. Zarr format 3 arrays should use ``chunk_shape`` instead.
             If not specified, default are guessed based on the shape and dtype.
@@ -1935,13 +1933,13 @@ class Array:
         store: StoreLike,
         *,
         # v2 and v3
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDTypeLike,
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ChunkCoords | None = None,
+        chunk_shape: tuple[int, ...] | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -1951,7 +1949,7 @@ class Array:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: DimensionNames = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: tuple[int, ...] | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -2054,23 +2052,23 @@ class Array:
         return self._async_array.ndim
 
     @property
-    def shape(self) -> ChunkCoords:
+    def shape(self) -> tuple[int, ...]:
         """Returns the shape of the array.
 
         Returns
         -------
-        ChunkCoords
+        tuple[int, ...]
             The shape of the array.
         """
         return self._async_array.shape
 
     @shape.setter
-    def shape(self, value: ChunkCoords) -> None:
+    def shape(self, value: tuple[int, ...]) -> None:
         """Sets the shape of the array by calling resize."""
         self.resize(value)
 
     @property
-    def chunks(self) -> ChunkCoords:
+    def chunks(self) -> tuple[int, ...]:
         """Returns a tuple of integers describing the length of each dimension of a chunk of the array.
         If sharding is used the inner chunk shape is returned.
 
@@ -2085,7 +2083,7 @@ class Array:
         return self._async_array.chunks
 
     @property
-    def shards(self) -> ChunkCoords | None:
+    def shards(self) -> tuple[int, ...] | None:
         """Returns a tuple of integers describing the length of each dimension of a shard of the array.
         Returns None if sharding is not used.
 
@@ -2207,7 +2205,7 @@ class Array:
         return self._async_array.compressors
 
     @property
-    def cdata_shape(self) -> ChunkCoords:
+    def cdata_shape(self) -> tuple[int, ...]:
         """
         The shape of the chunk grid for this array.
         """
@@ -2222,7 +2220,7 @@ class Array:
 
     def _iter_chunk_coords(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
-    ) -> Iterator[ChunkCoords]:
+    ) -> Iterator[tuple[int, ...]]:
         """
         Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
         keyword is used, iteration will start at the chunk index specified by `origin`.
@@ -2240,7 +2238,7 @@ class Array:
 
         Yields
         ------
-        chunk_coords: ChunkCoords
+        chunk_coords: tuple[int, ...]
             The coordinates of each chunk in the selection.
         """
         yield from self._async_array._iter_chunk_coords(
@@ -3655,7 +3653,7 @@ class Array:
         """
         sync(self._async_array.resize(new_shape))
 
-    def append(self, data: npt.ArrayLike, axis: int = 0) -> ChunkCoords:
+    def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
 
         Parameters
@@ -3855,7 +3853,7 @@ CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | Numcodec | Liter
 
 CompressorsLike: TypeAlias = (
     Iterable[dict[str, JSON] | BytesBytesCodec | Numcodec]
-    | dict[str, JSON]
+    | Mapping[str, JSON]
     | BytesBytesCodec
     | Numcodec
     | Literal["auto"]
@@ -3865,11 +3863,11 @@ SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
-    shape: ChunkCoords
+    shape: tuple[int, ...]
     index_location: ShardingCodecIndexLocation | None
 
 
-ShardsLike: TypeAlias = ChunkCoords | ShardsConfigParam | Literal["auto"]
+ShardsLike: TypeAlias = tuple[int, ...] | ShardsConfigParam | Literal["auto"]
 
 
 async def from_array(
@@ -3878,7 +3876,7 @@ async def from_array(
     data: Array | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
-    chunks: Literal["auto", "keep"] | ChunkCoords = "keep",
+    chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
     shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
@@ -3908,22 +3906,22 @@ async def from_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    chunks : ChunkCoords or "auto" or "keep", optional
+    chunks : tuple[int, ...] or "auto" or "keep", optional
         Chunk shape of the array.
         Following values are supported:
 
         - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
         - "keep": Retain the chunk shape of the data array if it is a zarr Array.
-        - ChunkCoords: A tuple of integers representing the chunk shape.
+        - tuple[int, ...]: A tuple of integers representing the chunk shape.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
-    shards : ChunkCoords, optional
+    shards : tuple[int, ...], optional
         Shard shape of the array.
         Following values are supported:
 
         - "auto": Automatically determine the shard shape based on the array's shape and chunk shape.
         - "keep": Retain the shard shape of the data array if it is a zarr Array.
-        - ChunkCoords: A tuple of integers representing the shard shape.
+        - tuple[int, ...]: A tuple of integers representing the shard shape.
         - None: No sharding.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise None.
@@ -4111,7 +4109,9 @@ async def from_array(
     if write_data:
         if isinstance(data, Array):
 
-            async def _copy_array_region(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
+            async def _copy_array_region(
+                chunk_coords: tuple[int, ...] | slice, _data: Array
+            ) -> None:
                 arr = await _data._async_array.getitem(chunk_coords)
                 await result.setitem(chunk_coords, arr)
 
@@ -4140,7 +4140,7 @@ async def init_array(
     store_path: StorePath,
     shape: ShapeLike,
     dtype: ZDTypeLike,
-    chunks: ChunkCoords | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -4160,14 +4160,14 @@ async def init_array(
     ----------
     store_path : StorePath
         StorePath instance. The path attribute is the name of the array to initialize.
-    shape : ChunkCoords
+    shape : tuple[int, ...]
         Shape of the array.
     dtype : ZDTypeLike
         Data type of the array.
-    chunks : ChunkCoords, optional
+    chunks : tuple[int, ...], optional
         Chunk shape of the array.
         If not specified, default are guessed based on the shape and dtype.
-    shards : ChunkCoords, optional
+    shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -4359,7 +4359,7 @@ async def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: ChunkCoords | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -4384,17 +4384,17 @@ async def create_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    shape : ChunkCoords, optional
+    shape : tuple[int, ...], optional
         Shape of the array. Can be ``None`` if ``data`` is provided.
     dtype : ZDTypeLike | None
         Data type of the array. Can be ``None`` if ``data`` is provided.
     data : Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
         or ``None``.
-    chunks : ChunkCoords, optional
+    chunks : tuple[int, ...], optional
         Chunk shape of the array.
         If not specified, default are guessed based on the shape and dtype.
-    shards : ChunkCoords, optional
+    shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -4539,7 +4539,7 @@ async def create_array(
 
 def _parse_keep_array_attr(
     data: Array | npt.ArrayLike,
-    chunks: Literal["auto", "keep"] | ChunkCoords,
+    chunks: Literal["auto", "keep"] | tuple[int, ...],
     shards: ShardsLike | None | Literal["keep"],
     filters: FiltersLike | Literal["keep"],
     compressors: CompressorsLike | Literal["keep"],
@@ -4550,7 +4550,7 @@ def _parse_keep_array_attr(
     chunk_key_encoding: ChunkKeyEncodingLike | None,
     dimension_names: DimensionNames,
 ) -> tuple[
-    ChunkCoords | Literal["auto"],
+    tuple[int, ...] | Literal["auto"],
     ShardsLike | None,
     FiltersLike,
     CompressorsLike,

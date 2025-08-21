@@ -37,9 +37,9 @@ ZATTRS_JSON = ".zattrs"
 ZMETADATA_V2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
-ShapeLike = tuple[int, ...] | int
-ChunkCoords = tuple[int, ...]
-ChunkCoordsLike = Iterable[int]
+ShapeLike = Iterable[int] | int
+# For backwards compatibility
+ChunkCoords: tuple[int, ...]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
@@ -87,7 +87,7 @@ class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
     """The configuration of the object."""
 
 
-def product(tup: ChunkCoords) -> int:
+def product(tup: tuple[int, ...]) -> int:
     return functools.reduce(operator.mul, tup, 1)
 
 
@@ -181,7 +181,7 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
+def parse_shapelike(data: ShapeLike) -> tuple[int, ...]:
     if isinstance(data, int):
         if data < 0:
             raise ValueError(f"Expected a non-negative integer. Got {data} instead")
