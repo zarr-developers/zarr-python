@@ -138,7 +138,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         """
 
     async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def decode(
         self,
@@ -161,7 +161,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
     async def _encode_single(
         self, chunk_data: CodecInput, chunk_spec: ArraySpec
     ) -> CodecOutput | None:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def encode(
         self,
@@ -242,7 +242,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         selection: SelectorTuple,
         chunk_spec: ArraySpec,
     ) -> None:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def encode_partial(
         self,
@@ -427,6 +427,11 @@ class CodecPipeline:
             The second slice selection determines where in the output array the chunk data will be written.
             The ByteGetter is used to fetch the necessary bytes.
             The chunk spec contains information about the construction of an array from the bytes.
+
+            If the Store returns ``None`` for a chunk, then the chunk was not
+            written and the implementation must set the values of that chunk (or
+            ``out``) to the fill value for the array.
+
         out : NDBuffer
         """
         ...

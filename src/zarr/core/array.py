@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
@@ -1349,11 +1349,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
                 )
         else:
-            out_buffer = prototype.nd_buffer.create(
+            out_buffer = prototype.nd_buffer.empty(
                 shape=indexer.shape,
                 dtype=out_dtype,
                 order=self.order,
-                fill_value=self.metadata.fill_value,
             )
         if product(indexer.shape) > 0:
             # need to use the order from the metadata for v2
@@ -3908,7 +3907,7 @@ CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | Numcodec | Liter
 
 CompressorsLike: TypeAlias = (
     Iterable[dict[str, JSON] | BytesBytesCodec | Numcodec]
-    | dict[str, JSON]
+    | Mapping[str, JSON]
     | BytesBytesCodec
     | Numcodec
     | Literal["auto"]
