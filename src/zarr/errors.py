@@ -146,3 +146,6 @@ class ZarrRuntimeWarning(RuntimeWarning):
     """
     A warning for dubious runtime behavior.
     """
+
+
+class CodecValidationError(ValueError): ...
