@@ -25,7 +25,6 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasEndianness,
     HasItemSize,
-    check_dtype_spec_v2,
 )
 from zarr.core.dtype.npy.common import (
     DATETIME_UNIT,
@@ -664,7 +663,6 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
         TypeGuard[DateTime64JSON_V3]
             True if the input is a valid JSON representation of a numpy datetime64 data type in Zarr V3, False otherwise.
         """
-
         return check_type(data, DateTime64JSON_V3).success
 
     @classmethod

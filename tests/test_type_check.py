@@ -1,12 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Generic, List, Literal, Optional, Tuple, TypedDict, TypeVar
+from typing import Any, Literal, TypedDict
 
 import pytest
 from typing_extensions import ReadOnly
 
 from src.zarr.core.type_check import check_type
-from zarr.core.dtype.common import StructuredName_V2
+from zarr.core.common import NamedConfig
+from zarr.core.dtype.common import DTypeConfig_V2, DTypeSpec_V2, DTypeSpec_V3, StructuredName_V2
+from zarr.core.dtype.npy.common import DateTimeUnit
+from zarr.core.dtype.npy.structured import StructuredJSON_V2
 
 
 # --- Sample TypedDicts for testing ---
@@ -14,15 +17,18 @@ class Address(TypedDict):
     street: str
     zipcode: int
 
+
 class User(TypedDict):
     id: int
     name: str
     address: Address
     tags: list[str]
 
+
 class PartialUser(TypedDict, total=False):
     id: int
     name: str
+
 
 def test_int_valid() -> None:
     """
@@ -40,12 +46,14 @@ def test_int_invalid() -> None:
     assert not result.success
     assert "expected int but got str" in result.errors[0]
 
+
 def test_float_valid() -> None:
     """
     Test that a float matches the float type.
     """
     result = check_type(3.14, float)
     assert result.success
+
 
 def test_float_invalid() -> None:
     """
@@ -54,6 +62,7 @@ def test_float_invalid() -> None:
     result = check_type("oops", float)
     assert not result.success
     assert "expected float but got str" in result.errors[0]
+
 
 def test_tuple_valid() -> None:
     """
@@ -112,6 +121,7 @@ def test_dict_any_valid() -> None:
     """
     result = check_type({1: "x", "y": 2}, dict[Any, Any])
     assert result.success
+
 
 def test_typeddict_valid() -> None:
     """
@@ -182,6 +192,7 @@ def test_literal_valid() -> None:
     result = check_type(2, Literal[2, 3])
     assert result.success
 
+
 def test_literal_invalid() -> None:
     """
     Test that values not in a Literal fail type checking.
@@ -192,61 +203,30 @@ def test_literal_invalid() -> None:
     assert "expected literal" in joined_errors
     assert "but got 1" in joined_errors
 
-from collections.abc import Mapping
 
-TName = TypeVar("TName", bound=str)
-TConfig = TypeVar("TConfig", bound=Mapping[str, object])
-class NamedConfig(TypedDict, Generic[TName, TConfig]):
-    """
-    A typed dictionary representing an object with a name and configuration, where the configuration
-    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
-
-    This class is generic with two type parameters: the type of the name (``TName``) and the type of
-    the configuration (``TConfig``).
-    """
-
-    name: ReadOnly[TName]
-    """The name of the object."""
-
-    configuration: ReadOnly[TConfig]
-    """The configuration of the object."""
-
-DTypeSpec_V3 = str | NamedConfig[str, Mapping[str, object]]
-
-@pytest.mark.parametrize('data', (10, {"nam": "foo", "configuration": {"foo": "bar"}}))
+@pytest.mark.parametrize("data", (10, {"nam": "foo", "configuration": {"foo": "bar"}}))
 def test_typeddict_dtype_spec_invalid(data: DTypeSpec_V3) -> None:
     """
-    Test that a TypedDict with dtype_spec passes type checking.
+    Test that a TypedDict with dtype_spec fails type checking.
     """
     result = check_type(data, DTypeSpec_V3)
     assert not result.success
 
-@pytest.mark.parametrize('data', ('foo', {"name": "foo", "configuration": {"foo": "bar"}}))
+
+@pytest.mark.parametrize("data", ("foo", {"name": "foo", "configuration": {"foo": "bar"}}))
 def test_typeddict_dtype_spec_valid(data: DTypeSpec_V3) -> None:
     """
     Test that a TypedDict with dtype_spec passes type checking.
     """
-    x: DTypeSpec_V3 = 'foo'
+    x: DTypeSpec_V3 = "foo"
     result = check_type(x, DTypeSpec_V3)
     assert result.success
 
-DTypeName_V2 = StructuredName_V2 | str
 
-TDTypeNameV2_co = TypeVar("TDTypeNameV2_co", bound=DTypeName_V2, covariant=True)
-TObjectCodecID_co = TypeVar("TObjectCodecID_co", bound=None | str, covariant=True)
-
-class DTypeConfig_V2(TypedDict, Generic[TDTypeNameV2_co, TObjectCodecID_co]):
-    name: ReadOnly[TDTypeNameV2_co]
-    object_codec_id: ReadOnly[TObjectCodecID_co]
+class InheritedTD(DTypeConfig_V2[str, None]): ...
 
 
-DTypeSpec_V2 = DTypeConfig_V2[DTypeName_V2, None | str]
-
-class InheritedTD(DTypeConfig_V2[str, None]):
-    ...
-
-
-@pytest.mark.parametrize('typ', [DTypeSpec_V2, DTypeConfig_V2[str, None], InheritedTD])
+@pytest.mark.parametrize("typ", [DTypeSpec_V2, DTypeConfig_V2[str, None], InheritedTD])
 def test_typeddict_dtype_spec_v2_valid(typ: type) -> None:
     """
     Test that a TypedDict with dtype_spec passes type checking.
@@ -254,8 +234,21 @@ def test_typeddict_dtype_spec_v2_valid(typ: type) -> None:
     result = check_type({"name": "gzip", "object_codec_id": None}, typ)
     assert result.success
 
-def test_typeddict_recursive() -> None:
+
+@pytest.mark.parametrize("typ", [DTypeConfig_V2[StructuredName_V2, None], StructuredJSON_V2])
+def test_typeddict_recursive(typ: type) -> None:
     result = check_type(
-        {'name': [['field1', '>i4'], ['field2', '>f8']], 'object_codec_id': None}, 
-        DTypeConfig_V2[StructuredName_V2, None])
+        {"name": [["field1", ">i4"], ["field2", ">f8"]], "object_codec_id": None}, typ
+    )
+    assert result.success
+
+
+def test_datetime_valid():
+    class TimeConfig(TypedDict):
+        unit: ReadOnly[DateTimeUnit]
+        scale_factor: ReadOnly[int]
+
+    DateTime64JSON_V3 = NamedConfig[Literal["numpy.datetime64"], TimeConfig]
+    data = {"name": "numpy.datetime64", "configuration": {"unit": "ns", "scale_factor": 10}}
+    result = check_type(data, DateTime64JSON_V3)
     assert result.success

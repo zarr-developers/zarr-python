@@ -29,6 +29,7 @@ from zarr.core.dtype.common import (
     DTypeConfig_V2,
     DTypeJSON,
 )
+from zarr.core.type_check import check_type
 
 # This is the int2 array data type
 int2_dtype_cls = type(np.dtype("int2"))
