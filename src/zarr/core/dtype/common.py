@@ -16,6 +16,7 @@ from typing import (
 from typing_extensions import ReadOnly
 
 from zarr.core.common import NamedConfig
+from zarr.core.type_check import check_type
 from zarr.errors import UnstableSpecificationWarning
 
 EndiannessStr = Literal["little", "big"]
@@ -111,6 +112,7 @@ def check_dtype_spec_v2(data: object) -> TypeGuard[DTypeSpec_V2]:
     """
     Type guard for narrowing a python object to an instance of DTypeSpec_V2
     """
+    return check_type(data, DTypeSpec_V2).success
     if not isinstance(data, Mapping):
         return False
     if set(data.keys()) != {"name", "object_codec_id"}:
