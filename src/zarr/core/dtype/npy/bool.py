@@ -105,7 +105,6 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         """
         return check_type(data, DTypeConfig_V2[Literal["|b1"], None]).success
 
-
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["bool"]]:
         """

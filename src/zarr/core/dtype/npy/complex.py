@@ -18,7 +18,6 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasEndianness,
     HasItemSize,
-    check_dtype_spec_v2,
 )
 from zarr.core.dtype.npy.common import (
     ComplexLike,

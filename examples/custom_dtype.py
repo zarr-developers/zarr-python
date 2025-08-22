@@ -67,7 +67,7 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
         return self.dtype_cls()
 
     @classmethod
-    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[Literal["|int2"], None]]:
+    def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[Literal["int2"], None]]:
         """
         Type check for Zarr v2-flavored JSON.
 
@@ -84,7 +84,8 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
 
         See the Zarr docs for more information about the JSON encoding for data types.
         """
-        return check_type(data, DTypeConfig_V2[Literal["|int2"], None]).success
+        return check_type(data, DTypeConfig_V2[Literal["int2"], None]).success
+
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["int2"]]:
         """

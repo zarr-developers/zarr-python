@@ -114,6 +114,7 @@ def check_dtype_spec_v2(data: object) -> TypeGuard[DTypeSpec_V2]:
     """
     return check_type(data, DTypeSpec_V2).success
 
+
 # By comparison, The JSON representation of a dtype in zarr v3 is much simpler.
 # It's either a string, or a structured dict
 DTypeSpec_V3 = str | NamedConfig[str, Mapping[str, object]]
