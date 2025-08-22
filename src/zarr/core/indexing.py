@@ -199,7 +199,7 @@ def _iter_regions(
     order : Literal["lexicographic"], default="lexicographic"
         The linear indexing order to use.
 
-    Returns
+    Yields
     -------
 
     Iterator[tuple[slice, ...]]
