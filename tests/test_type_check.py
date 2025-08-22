@@ -235,7 +235,6 @@ DTypeName_V2 = StructuredName_V2 | str
 TDTypeNameV2_co = TypeVar("TDTypeNameV2_co", bound=DTypeName_V2, covariant=True)
 TObjectCodecID_co = TypeVar("TObjectCodecID_co", bound=None | str, covariant=True)
 
-
 class DTypeConfig_V2(TypedDict, Generic[TDTypeNameV2_co, TObjectCodecID_co]):
     name: ReadOnly[TDTypeNameV2_co]
     object_codec_id: ReadOnly[TObjectCodecID_co]
@@ -246,6 +245,7 @@ DTypeSpec_V2 = DTypeConfig_V2[DTypeName_V2, None | str]
 class InheritedTD(DTypeConfig_V2[str, None]):
     ...
 
+
 @pytest.mark.parametrize('typ', [DTypeSpec_V2, DTypeConfig_V2[str, None], InheritedTD])
 def test_typeddict_dtype_spec_v2_valid(typ: type) -> None:
     """
@@ -254,9 +254,8 @@ def test_typeddict_dtype_spec_v2_valid(typ: type) -> None:
     result = check_type({"name": "gzip", "object_codec_id": None}, typ)
     assert result.success
 
-def test_typeddict_dtype_spec_v2_invalid() -> None:
-    """
-    Test that a TypedDict with dtype_spec passes type checking.
-    """
-    result = check_type({"name": "gzip", "object_codec_id": None}, DTypeConfig_V2[Literal["gzip"], None])
+def test_typeddict_recursive() -> None:
+    result = check_type(
+        {'name': [['field1', '>i4'], ['field2', '>f8']], 'object_codec_id': None}, 
+        DTypeConfig_V2[StructuredName_V2, None])
     assert result.success

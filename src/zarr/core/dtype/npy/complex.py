@@ -34,6 +34,7 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.core.type_check import check_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -106,9 +107,8 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
             True if the input is a valid JSON representation, False otherwise.
         """
         return (
-            check_dtype_spec_v2(data)
+            check_type(data, DTypeConfig_V2[str, None]).success
             and data["name"] in cls._zarr_v2_names
-            and data["object_codec_id"] is None
         )
 
     @classmethod

@@ -262,7 +262,6 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         bool
             True if the input data is a valid representation, False otherwise.
         """
-        breakpoint()
         return (
             check_type(data, NullterminatedBytesJSON_V2).success
             and re.match(r"^\|S\d+$", data["name"]) is not None
@@ -657,10 +656,8 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
         """
         return (
-            check_dtype_spec_v2(data)
-            and isinstance(data["name"], str)
+            check_type(data, RawBytesJSON_V2).success
             and re.match(r"^\|V\d+$", data["name"]) is not None
-            and data["object_codec_id"] is None
         )
 
     @classmethod
@@ -1010,13 +1007,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         otherwise.
         """
         # Check that the input is a valid JSON representation of a Zarr v2 data type spec.
-        if not check_dtype_spec_v2(data):
-            return False
-
-        # Check that the object codec id is appropriate for variable-length bytes strings.
-        if data["name"] != "|O":
-            return False
-        return data["object_codec_id"] == cls.object_codec_id
+        return check_type(data, VariableLengthBytesJSON_V2).success
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["variable_length_bytes"]]:

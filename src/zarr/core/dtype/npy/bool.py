@@ -170,7 +170,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         """
         if cls._check_json_v3(data):
             return cls()
-        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {'name': '|b1', 'object_codec_id': None}"
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {{'name': '|b1', 'object_codec_id': None}}"
         raise DataTypeValidationError(msg)
 
     @overload

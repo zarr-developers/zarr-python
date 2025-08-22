@@ -35,6 +35,7 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.core.type_check import check_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -377,13 +378,11 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             True if the JSON input is a valid representation of this class,
             otherwise False.
         """
-        if not check_dtype_spec_v2(data):
+        if not check_type(data, TimeDelta64JSON_V2).success:
             return False
         name = data["name"]
         # match <m[ns], >m[M], etc
         # consider making this a standalone function
-        if not isinstance(name, str):
-            return False
         if not name.startswith(cls._zarr_v2_names):
             return False
         if len(name) == 3:
@@ -394,7 +393,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             return name[4:-1].endswith(DATETIME_UNIT) and name[-1] == "]"
 
     @classmethod
-    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[DateTime64JSON_V3]:
+    def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[TimeDelta64JSON_V3]:
         """
         Check that the input is a valid JSON representation of this class in Zarr V3.
 
@@ -404,13 +403,7 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             True if the JSON input is a valid representation of this class,
             otherwise False.
         """
-        return (
-            isinstance(data, dict)
-            and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == cls._zarr_v3_name
-            and isinstance(data["configuration"], dict)
-            and set(data["configuration"].keys()) == {"unit", "scale_factor"}
-        )
+        return check_type(data, TimeDelta64JSON_V3).success
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -644,11 +637,9 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             True if the input is a valid JSON representation of a NumPy datetime64 data type,
             otherwise False.
         """
-        if not check_dtype_spec_v2(data):
+        if not check_type(data, DateTime64JSON_V2).success:
             return False
         name = data["name"]
-        if not isinstance(name, str):
-            return False
         if not name.startswith(cls._zarr_v2_names):
             return False
         if len(name) == 3:
@@ -674,13 +665,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             True if the input is a valid JSON representation of a numpy datetime64 data type in Zarr V3, False otherwise.
         """
 
-        return (
-            isinstance(data, dict)
-            and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == cls._zarr_v3_name
-            and isinstance(data["configuration"], dict)
-            and set(data["configuration"].keys()) == {"unit", "scale_factor"}
-        )
+        return check_type(data, DateTime64JSON_V3).success
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
