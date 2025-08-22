@@ -87,7 +87,10 @@ async def save_metadata(
         try:
             await asyncio.gather(*ensure_array_awaitables)
         except ContainsArrayError as e:
-            set_awaitables = []  # clear awaitables to avoid printed RuntimeWarning: coroutine was never awaited
+            # clear awaitables to avoid RuntimeWarning: coroutine was never awaited
+            for awaitable in set_awaitables:
+                awaitable.close()
+
             raise ValueError(
                 f"A parent of {store_path} is an array - only groups may have child nodes."
             ) from e
