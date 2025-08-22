@@ -119,6 +119,7 @@ from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import (
     ArrayNotFoundError,
+    ContainsArrayError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -1496,14 +1497,23 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Asynchronously save the array metadata.
         """
         to_save = metadata.to_buffer_dict(cpu_buffer_prototype)
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
+        set_awaitables = [
+            set_or_delete(self.store_path / key, value) for key, value in to_save.items()
+        ]
 
         if ensure_parents:
             # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
             parents = _build_parents(self)
+            ensure_array_awaitables = []
 
             for parent in parents:
-                awaitables.extend(
+                # Error if an array already exists at any parent location. Only groups can have child nodes.
+                ensure_array_awaitables.append(
+                    ensure_no_existing_node(
+                        parent.store_path, metadata.zarr_format, node_type="array"
+                    )
+                )
+                set_awaitables.extend(
                     [
                         (parent.store_path / key).set_if_not_exists(value)
                         for key, value in parent.metadata.to_buffer_dict(
@@ -1512,7 +1522,16 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     ]
                 )
 
-        await gather(*awaitables)
+            # Checks for parent arrays must happen first, before any metadata is modified
+            try:
+                await gather(*ensure_array_awaitables)
+            except ContainsArrayError as e:
+                set_awaitables = []  # clear awaitables to avoid printed RuntimeWarning: coroutine was never awaited
+                raise ValueError(
+                    f"A parent of {self.store_path} is an array - only groups may have child nodes."
+                ) from e
+
+        await gather(*set_awaitables)
 
     async def _set_selection(
         self,

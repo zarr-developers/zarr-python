@@ -400,7 +400,11 @@ def _is_fsspec_uri(uri: str) -> bool:
     return "://" in uri or ("::" in uri and "local://" not in uri)
 
 
-async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
+async def ensure_no_existing_node(
+    store_path: StorePath,
+    zarr_format: ZarrFormat,
+    node_type: Literal["array", "group"] | None = None,
+) -> None:
     """
     Check if a store_path is safe for array / group creation.
     Returns `None` or raises an exception.
@@ -411,6 +415,8 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
         The storage location to check.
     zarr_format : ZarrFormat
         The Zarr format to check.
+    node_type : str | None, optional
+        Raise an error if an "array", or "group" exists. By default (when None), raises an error for either.
 
     Raises
     ------
@@ -421,13 +427,13 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
     elif zarr_format == 3:
         extant_node = await _contains_node_v3(store_path)
 
-    if extant_node == "array":
+    if extant_node == "array" and node_type != "group":
         raise ContainsArrayError(store_path.store, store_path.path)
-    elif extant_node == "group":
+    elif extant_node == "group" and node_type != "array":
         raise ContainsGroupError(store_path.store, store_path.path)
     elif extant_node == "nothing":
         return
-    msg = f"Invalid value for extant_node: {extant_node}"  # type: ignore[unreachable]
+    msg = f"Invalid value for extant_node: {extant_node}"
     raise ValueError(msg)
 
 
