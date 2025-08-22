@@ -28,7 +28,6 @@ from zarr.core.array import (
     FiltersLike,
     SerializerLike,
     ShardsLike,
-    _build_parents,
     _parse_deprecated_compressor,
     create_array,
 )
@@ -49,6 +48,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ContainsArrayError,
@@ -808,22 +808,7 @@ class AsyncGroup:
             return default
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
-        to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
-
-        if ensure_parents:
-            parents = _build_parents(self)
-            for parent in parents:
-                awaitables.extend(
-                    [
-                        (parent.store_path / key).set_if_not_exists(value)
-                        for key, value in parent.metadata.to_buffer_dict(
-                            default_buffer_prototype()
-                        ).items()
-                    ]
-                )
-
-        await asyncio.gather(*awaitables)
+        await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
 
     @property
     def path(self) -> str:

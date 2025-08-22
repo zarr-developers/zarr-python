@@ -427,14 +427,21 @@ async def ensure_no_existing_node(
     elif zarr_format == 3:
         extant_node = await _contains_node_v3(store_path)
 
-    if extant_node == "array" and node_type != "group":
-        raise ContainsArrayError(store_path.store, store_path.path)
-    elif extant_node == "group" and node_type != "array":
-        raise ContainsGroupError(store_path.store, store_path.path)
-    elif extant_node == "nothing":
-        return
-    msg = f"Invalid value for extant_node: {extant_node}"
-    raise ValueError(msg)
+    match extant_node:
+        case "array":
+            if node_type != "group":
+                raise ContainsArrayError(store_path.store, store_path.path)
+
+        case "group":
+            if node_type != "array":
+                raise ContainsGroupError(store_path.store, store_path.path)
+
+        case "nothing":
+            return
+
+        case _:
+            msg = f"Invalid value for extant_node: {extant_node}"  # type: ignore[unreachable]
+            raise ValueError(msg)
 
 
 async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", "nothing"]:
