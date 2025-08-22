@@ -55,7 +55,7 @@ async def save_metadata(
     metadata : ArrayMetadata | GroupMetadata
         Metadata to save.
     ensure_parents : bool, optional
-        Whether to create any missing parent groups
+        Create any missing parent groups, and check no existing parents are arrays.
 
     Raises
     ------

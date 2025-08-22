@@ -2042,14 +2042,14 @@ class TestAsync:
 
     @pytest.mark.asyncio
     async def test_async_oindex_with_zarr_array(self, store):
-        z1 = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
+        group = zarr.create_group(store=store, zarr_format=3)
+
+        z1 = group.create_array(name="z1", shape=(2, 2), chunks=(1, 1), dtype="i8")
         z1[...] = np.array([[1, 2], [3, 4]])
         async_zarr = z1._async_array
 
         # create boolean zarr array to index with
-        z2 = zarr.create_array(
-            store=store, name="z2", shape=(2,), chunks=(1,), zarr_format=3, dtype="?"
-        )
+        z2 = group.create_array(name="z2", shape=(2,), chunks=(1,), dtype="?")
         z2[...] = np.array([True, False])
 
         result = await async_zarr.oindex.getitem(z2)
@@ -2075,14 +2075,14 @@ class TestAsync:
 
     @pytest.mark.asyncio
     async def test_async_vindex_with_zarr_array(self, store):
-        z1 = zarr.create_array(store=store, shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="i8")
+        group = zarr.create_group(store=store, zarr_format=3)
+
+        z1 = group.create_array(name="z1", shape=(2, 2), chunks=(1, 1), dtype="i8")
         z1[...] = np.array([[1, 2], [3, 4]])
         async_zarr = z1._async_array
 
         # create boolean zarr array to index with
-        z2 = zarr.create_array(
-            store=store, name="z2", shape=(2, 2), chunks=(1, 1), zarr_format=3, dtype="?"
-        )
+        z2 = group.create_array(name="z2", shape=(2, 2), chunks=(1, 1), dtype="?")
         z2[...] = np.array([[False, True], [False, True]])
 
         result = await async_zarr.vindex.getitem(z2)
