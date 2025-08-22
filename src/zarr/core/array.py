@@ -5377,7 +5377,7 @@ def _iter_chunk_regions(
         The shape of the selection in grid coordinates.
 
     Returns
-    ------
+    -------
     region: tuple[slice, ...]
         A tuple of slice objects representing the region spanned by each shard in the selection.
     """
