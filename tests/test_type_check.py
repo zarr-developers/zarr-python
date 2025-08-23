@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Literal, TypedDict, get_args
+from typing import Any, Literal, NotRequired, get_args
 
 import pytest
-from typing_extensions import ReadOnly
+from typing_extensions import ReadOnly, TypedDict
 
 from src.zarr.core.type_check import check_type
 from zarr.core.common import NamedConfig
@@ -45,7 +45,7 @@ def test_int_invalid() -> None:
     """
     result = check_type("oops", int)
     assert not result.success
-    #assert "expected int but got str" in result.errors[0]
+    # assert "expected int but got str" in result.errors[0]
 
 
 def test_float_valid() -> None:
@@ -62,7 +62,7 @@ def test_float_invalid() -> None:
     """
     result = check_type("oops", float)
     assert not result.success
-    #assert "expected float but got str" in result.errors[0]
+    # assert "expected float but got str" in result.errors[0]
 
 
 def test_tuple_valid() -> None:
@@ -79,7 +79,7 @@ def test_tuple_invalid() -> None:
     """
     result = check_type((1, "x", 5), tuple[int, str, None])
     assert not result.success
-    #assert "expected None but got int" in result.errors[0]
+    # assert "expected None but got int" in result.errors[0]
 
 
 def test_list_valid() -> None:
@@ -96,7 +96,7 @@ def test_list_invalid() -> None:
     """
     result = check_type([1, "oops", 3], list[int])
     assert not result.success
-    #assert "expected int but got str" in result.errors[0]
+    # assert "expected int but got str" in result.errors[0]
 
 
 def test_dict_valid() -> None:
@@ -113,7 +113,7 @@ def test_dict_invalid() -> None:
     """
     result = check_type({"a": 1, "b": "oops"}, dict[str, int])
     assert not result.success
-    #assert "expected int but got str" in result.errors[0]
+    # assert "expected int but got str" in result.errors[0]
 
 
 def test_dict_any_valid() -> None:
@@ -150,7 +150,7 @@ def test_typeddict_invalid() -> None:
     }
     result = check_type(bad_user, User)
     assert not result.success
-    #assert "expected int but got str" in "".join(result.errors)
+    # assert "expected int but got str" in "".join(result.errors)
 
 
 def test_typeddict_fail_missing_required() -> None:
@@ -198,7 +198,7 @@ def test_literal_invalid() -> None:
     """
     Test that values not in a Literal fail type checking.
     """
-    typ = Literal[2,3]
+    typ = Literal[2, 3]
     val = 1
     result = check_type(val, typ)
     assert not result.success
@@ -254,8 +254,8 @@ def test_datetime_valid():
     result = check_type(data, DateTime64JSON_V3)
     assert result.success
 
+
 def test_zarr_v2_metadata() -> None:
-    from typing import NotRequired
     class ArrayMetadataJSON_V3(TypedDict):
         """
         A typed dictionary model for zarr v3 metadata.
@@ -277,8 +277,8 @@ def test_zarr_v2_metadata() -> None:
         "zarr_format": 3,
         "node_type": "array",
         "chunk_key_encoding": {"name": "default", "configuration": {"separator": "."}},
-        "shape": (10,10),
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (5,5)}},
+        "shape": (10, 10),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (5, 5)}},
         "codecs": ("bytes",),
         "attributes": {"a": 1, "b": 2},
         "data_type": "uint8",
