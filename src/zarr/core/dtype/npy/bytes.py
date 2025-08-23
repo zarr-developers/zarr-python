@@ -19,7 +19,7 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
-from zarr.core.type_check import check_type
+from zarr.core.type_check import check_type, guard_type
 
 BytesLike = np.bytes_ | str | bytes | int
 
@@ -263,7 +263,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
             True if the input data is a valid representation, False otherwise.
         """
         return (
-            check_type(data, NullterminatedBytesJSON_V2).success
+            guard_type(data, NullterminatedBytesJSON_V2)
             and re.match(r"^\|S\d+$", data["name"]) is not None
         )
 
@@ -655,10 +655,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         True if the input is a valid representation of this class in Zarr V3, False otherwise.
 
         """
-        return (
-            check_type(data, RawBytesJSON_V2).success
-            and re.match(r"^\|V\d+$", data["name"]) is not None
-        )
+        return guard_type(data, RawBytesJSON_V2) and re.match(r"^\|V\d+$", data["name"]) is not None
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[RawBytesJSON_V3]:
@@ -1007,7 +1004,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         otherwise.
         """
         # Check that the input is a valid JSON representation of a Zarr v2 data type spec.
-        return check_type(data, VariableLengthBytesJSON_V2).success
+        return guard_type(data, VariableLengthBytesJSON_V2)
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["variable_length_bytes"]]:

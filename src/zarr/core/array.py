@@ -53,6 +53,8 @@ from zarr.core.common import (
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
+    ArrayMetadataJSON_V2,
+    ArrayMetadataJSON_V3,
     DimensionNames,
     MemoryOrder,
     ShapeLike,
@@ -102,11 +104,8 @@ from zarr.core.indexing import (
 )
 from zarr.core.metadata import (
     ArrayMetadata,
-    ArrayMetadataDict,
     ArrayV2Metadata,
-    ArrayV2MetadataDict,
     ArrayV3Metadata,
-    ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
 from zarr.core.metadata.v2 import (
@@ -115,9 +114,14 @@ from zarr.core.metadata.v2 import (
     parse_compressor,
     parse_filters,
 )
-from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
-from zarr.errors import MetadataValidationError, ZarrDeprecationWarning, ZarrUserWarning
+from zarr.core.type_check import check_type
+from zarr.errors import (
+    MetadataValidationError,
+    NodeTypeValidationError,
+    ZarrDeprecationWarning,
+    ZarrUserWarning,
+)
 from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
@@ -176,12 +180,6 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
             meta_out = ArrayV3Metadata.from_dict(data)
-            if len(meta_out.storage_transformers) > 0:
-                msg = (
-                    f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
-                    "Arrays with storage transformers are not supported in zarr-python at this time."
-                )
-                raise ValueError(msg)
             return meta_out
         elif zarr_format == 2:
             return ArrayV2Metadata.from_dict(data)
@@ -207,9 +205,27 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
     raise TypeError  # pragma: no cover
 
 
+@overload
+async def get_array_metadata(
+    store_path: StorePath, zarr_format: Literal[3]
+) -> ArrayMetadataJSON_V3: ...
+
+
+@overload
+async def get_array_metadata(
+    store_path: StorePath, zarr_format: Literal[2]
+) -> ArrayMetadataJSON_V2: ...
+
+
+@overload
+async def get_array_metadata(
+    store_path: StorePath, zarr_format: None
+) -> ArrayMetadataJSON_V3 | ArrayMetadataJSON_V2: ...
+
+
 async def get_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
-) -> dict[str, JSON]:
+) -> ArrayMetadataJSON_V3 | ArrayMetadataJSON_V2:
     if zarr_format == 2:
         zarray_bytes, zattrs_bytes = await gather(
             (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
@@ -241,19 +257,25 @@ async def get_array_metadata(
     else:
         raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
 
-    metadata_dict: dict[str, JSON]
+    metadata_dict: ArrayMetadataJSON_V2 | ArrayMetadataJSON_V3
     if zarr_format == 2:
         # V2 arrays are comprised of a .zarray and .zattrs objects
         assert zarray_bytes is not None
         metadata_dict = json.loads(zarray_bytes.to_bytes())
         zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
         metadata_dict["attributes"] = zattrs_dict
+        tycheck = check_type(metadata_dict, ArrayMetadataJSON_V2)
+        if not tycheck.success:
+            msg = "The .zarray object at {store_path} is not a valid Zarr array metadata object. "
+            raise NodeTypeValidationError("zarray", "Zarr array metadata object", metadata_dict)
     else:
         # V3 arrays are comprised of a zarr.json object
         assert zarr_json_bytes is not None
         metadata_dict = json.loads(zarr_json_bytes.to_bytes())
-
-        parse_node_type_array(metadata_dict.get("node_type"))
+        tycheck = check_type(metadata_dict, ArrayMetadataJSON_V3)
+        if not tycheck.success:
+            msg = "The zarr.json object at {store_path} is not a valid Zarr array metadata object. "
+            raise NodeTypeValidationError("zarr.json", "Zarr array metadata object", metadata_dict)
 
     return metadata_dict
 
@@ -292,7 +314,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @overload
     def __init__(
         self: AsyncArray[ArrayV2Metadata],
-        metadata: ArrayV2Metadata | ArrayV2MetadataDict,
+        metadata: ArrayV2Metadata | ArrayMetadataJSON_V2,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None: ...
@@ -300,14 +322,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @overload
     def __init__(
         self: AsyncArray[ArrayV3Metadata],
-        metadata: ArrayV3Metadata | ArrayV3MetadataDict,
+        metadata: ArrayV3Metadata | ArrayMetadataJSON_V3,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None: ...
 
     def __init__(
         self,
-        metadata: ArrayMetadata | ArrayMetadataDict,
+        metadata: ArrayMetadata | ArrayMetadataJSON_V2 | ArrayMetadataJSON_V3,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None:
@@ -959,9 +981,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-        # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast("ArrayV3MetadataDict", metadata_dict)
-        return cls(store_path=store_path, metadata=_metadata_dict)
+        return cls(store_path=store_path, metadata=metadata_dict)
 
     @property
     def store(self) -> Store:

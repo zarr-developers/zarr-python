@@ -41,7 +41,7 @@ from zarr.core.array import (
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
-from zarr.core.common import JSON, ZarrFormat, ceildiv
+from zarr.core.common import JSON, CodecJSON_V3, ZarrFormat, ceildiv
 from zarr.core.dtype import (
     DateTime64,
     Float32,
@@ -73,7 +73,6 @@ from zarr.storage import LocalStore, MemoryStore, StorePath
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
-    from zarr.abc.codec import CodecJSON_V3
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
@@ -330,7 +329,7 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
             "codecs": (BytesCodec().to_dict(),),
             "fill_value": 0,
-            "storage_transformers": ({"test": "should_raise"}),
+            "storage_transformers": ({"name": "should_raise"},),
         }
     else:
         metadata_dict = {
@@ -342,7 +341,7 @@ def test_storage_transformers(store: MemoryStore, zarr_format: ZarrFormat | str)
             "codecs": (BytesCodec().to_dict(),),
             "fill_value": 0,
             "order": "C",
-            "storage_transformers": ({"test": "should_raise"}),
+            "storage_transformers": ({"name": "should_raise"},),
         }
     if zarr_format == 3:
         match = "Arrays with storage transformers are not supported in zarr-python at this time."

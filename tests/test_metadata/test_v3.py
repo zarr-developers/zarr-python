@@ -14,25 +14,17 @@ from zarr.core.config import config
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.dtype.npy.time import DateTime64
-from zarr.core.group import GroupMetadata, parse_node_type
+from zarr.core.group import GroupMetadata
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
-    parse_dimension_names,
-    parse_zarr_format,
 )
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
     from typing import Any
 
     from zarr.abc.codec import Codec
     from zarr.core.common import JSON
 
-
-from zarr.core.metadata.v3 import (
-    parse_node_type_array,
-)
 
 bool_dtypes = ("bool",)
 
@@ -68,57 +60,6 @@ dtypes = (
     *flexible_dtypes,
     *vlen_string_dtypes,
 )
-
-
-@pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
-def test_parse_zarr_format_invalid(data: Any) -> None:
-    with pytest.raises(
-        MetadataValidationError,
-        match=f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'.",
-    ):
-        parse_zarr_format(data)
-
-
-def test_parse_zarr_format_valid() -> None:
-    assert parse_zarr_format(3) == 3
-
-
-def test_parse_node_type_valid() -> None:
-    assert parse_node_type("array") == "array"
-    assert parse_node_type("group") == "group"
-
-
-@pytest.mark.parametrize("node_type", [None, 2, "other"])
-def test_parse_node_type_invalid(node_type: Any) -> None:
-    with pytest.raises(
-        MetadataValidationError,
-        match=f"Invalid value for 'node_type'. Expected 'array or group'. Got '{node_type}'.",
-    ):
-        parse_node_type(node_type)
-
-
-@pytest.mark.parametrize("data", [None, "group"])
-def test_parse_node_type_array_invalid(data: Any) -> None:
-    with pytest.raises(
-        NodeTypeValidationError,
-        match=f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'.",
-    ):
-        parse_node_type_array(data)
-
-
-def test_parse_node_typev_array_alid() -> None:
-    assert parse_node_type_array("array") == "array"
-
-
-@pytest.mark.parametrize("data", [(), [1, 2, "a"], {"foo": 10}])
-def parse_dimension_names_invalid(data: Any) -> None:
-    with pytest.raises(TypeError, match="Expected either None or iterable of str,"):
-        parse_dimension_names(data)
-
-
-@pytest.mark.parametrize("data", [None, ("a", "b", "c"), ["a", "a", "a"]])
-def parse_dimension_names_valid(data: Sequence[str] | None) -> None:
-    assert parse_dimension_names(data) == data
 
 
 @pytest.mark.parametrize("fill_value", [[1.0, 0.0], [0, 1]])

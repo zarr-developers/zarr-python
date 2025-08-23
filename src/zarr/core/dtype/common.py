@@ -15,8 +15,7 @@ from typing import (
 
 from typing_extensions import ReadOnly
 
-from zarr.core.common import NamedConfig
-from zarr.core.type_check import check_type
+from zarr.core.common import DTypeName_V2, DTypeSpec_V3, StructuredName_V2
 from zarr.errors import UnstableSpecificationWarning
 
 EndiannessStr = Literal["little", "big"]
@@ -47,13 +46,6 @@ DTypeJSON = str | int | float | Sequence["DTypeJSON"] | None | Mapping[str, obje
 # in a single dict, and pass that to the data type inference logic.
 # These type variables have a very wide bound because the individual zdtype
 # classes can perform a very specific type check.
-
-# This is the JSON representation of a structured dtype in zarr v2
-StructuredName_V2 = Sequence["str | StructuredName_V2"]
-
-# This models the type of the name a dtype might have in zarr v2 array metadata
-DTypeName_V2 = StructuredName_V2 | str
-
 TDTypeNameV2_co = TypeVar("TDTypeNameV2_co", bound=DTypeName_V2, covariant=True)
 TObjectCodecID_co = TypeVar("TObjectCodecID_co", bound=None | str, covariant=True)
 
@@ -105,34 +97,6 @@ def check_dtype_name_v2(data: object) -> TypeGuard[DTypeName_V2]:
         return True
     elif isinstance(data, Sequence):
         return check_structured_dtype_name_v2(data)
-    return False
-
-
-def check_dtype_spec_v2(data: object) -> TypeGuard[DTypeSpec_V2]:
-    """
-    Type guard for narrowing a python object to an instance of DTypeSpec_V2
-    """
-    return check_type(data, DTypeSpec_V2).success
-
-
-# By comparison, The JSON representation of a dtype in zarr v3 is much simpler.
-# It's either a string, or a structured dict
-DTypeSpec_V3 = str | NamedConfig[str, Mapping[str, object]]
-
-
-def check_dtype_spec_v3(data: object) -> TypeGuard[DTypeSpec_V3]:
-    """
-    Type guard for narrowing the type of a python object to an instance of
-    DTypeSpec_V3, i.e either a string or a dict with a "name" field that's a string and a
-    "configuration" field that's a mapping with string keys.
-    """
-    if isinstance(data, str) or (  # noqa: SIM103
-        isinstance(data, Mapping)
-        and set(data.keys()) == {"name", "configuration"}
-        and isinstance(data["configuration"], Mapping)
-        and all(isinstance(k, str) for k in data["configuration"])
-    ):
-        return True
     return False
 
 

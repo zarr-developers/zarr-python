@@ -21,7 +21,7 @@ from zarr.core.dtype.npy.common import (
     check_json_str,
 )
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-from zarr.core.type_check import check_type
+from zarr.core.type_check import guard_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -210,7 +210,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             True if the input is a valid JSON representation of a Structured data type
             for Zarr V2, False otherwise.
         """
-        return check_type(data, StructuredJSON_V2).success
+        return guard_type(data, StructuredJSON_V2)
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[StructuredJSON_V3]:

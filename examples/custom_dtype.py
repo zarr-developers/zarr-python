@@ -29,7 +29,7 @@ from zarr.core.dtype.common import (
     DTypeConfig_V2,
     DTypeJSON,
 )
-from zarr.core.type_check import check_type
+from zarr.core.type_check import guard_type
 
 # This is the int2 array data type
 int2_dtype_cls = type(np.dtype("int2"))
@@ -84,7 +84,7 @@ class Int2(ZDType[int2_dtype_cls, int2_scalar_cls]):
 
         See the Zarr docs for more information about the JSON encoding for data types.
         """
-        return check_type(data, DTypeConfig_V2[Literal["int2"], None]).success
+        return guard_type(data, DTypeConfig_V2[Literal["int2"], None])
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["int2"]]:

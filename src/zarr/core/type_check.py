@@ -1,20 +1,26 @@
+import collections
+import collections.abc
 import sys
 import types
 import typing
-from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import (
     Any,
     ForwardRef,
     Literal,
     NotRequired,
+    TypeGuard,
     TypeVar,
+    cast,
     get_args,
     get_origin,
     get_type_hints,
 )
 
-from typing_extensions import ReadOnly
+from typing_extensions import ReadOnly, evaluate_forward_ref
+
+
+class TypeResolutionError(Exception): ...
 
 
 @dataclass(frozen=True)
@@ -22,24 +28,16 @@ class TypeCheckResult:
     """
     Result of a type-checking operation.
     """
+
     success: bool
     errors: list[str]
-
-
-@dataclass(frozen=True)
-class UnresolvableType:
-    """A placeholder for types that could not be resolved."""
-    type_name: str
 
 
 # ---------- helpers ----------
 def _type_name(tp: Any) -> str:
     """Get a readable name for a type hint."""
-    try:
-        if isinstance(tp, type):
-            return tp.__name__
-    except Exception:
-        pass
+    if isinstance(tp, type):
+        return tp.__name__
     return getattr(tp, "__qualname__", None) or str(tp)
 
 
@@ -48,17 +46,6 @@ def _is_typeddict_class(tp: object) -> bool:
     Check if a type is a TypedDict class.
     """
     return isinstance(tp, type) and hasattr(tp, "__annotations__") and hasattr(tp, "__total__")
-
-
-def _strip_readonly(tp: Any) -> Any:
-    """
-    Unpack an inner type contained in a ReadOnly declaration.
-    """
-    origin = get_origin(tp)
-    if origin in (ReadOnly, NotRequired):
-        args = get_args(tp)
-        return args[0] if args else Any
-    return tp
 
 
 def _substitute_typevars(tp: Any, type_map: dict[TypeVar, Any]) -> Any:
@@ -99,40 +86,6 @@ def _substitute_typevars(tp: Any, type_map: dict[TypeVar, Any]) -> Any:
         return tp
 
 
-def _resolved_typedict_hints(
-    td_cls: type, type_map: dict[TypeVar, Any] | None = None
-) -> dict[str, Any]:
-    """
-    Attempt to resolve the type hints for a typeddict.
-
-    Parameters
-    ----------
-    td_cls : type
-        The typeddict class.
-    type_map : dict[TypeVar, Any], optional
-        A mapping of typevars to types.
-
-    Returns
-    -------
-    dict[str, Any]
-        The resolved type hints.
-    """
-    try:
-        # We have to resolve type hints defined in other modules
-        # relative to the module-local namespace
-        mod = sys.modules.get(td_cls.__module__)
-        globalns = vars(mod) if mod else {}
-        localns = dict(vars(td_cls))
-        hints = get_type_hints(td_cls, globalns=globalns, localns=localns, include_extras=True)
-    except Exception:
-        hints = getattr(td_cls, "__annotations__", {}).copy()
-
-    if type_map:
-        for k, v in list(hints.items()):
-            hints[k] = _substitute_typevars(v, type_map)
-
-    return hints
-
 def _find_generic_typeddict_base(cls: type) -> tuple[type | None, tuple[Any, ...] | None]:
     """
     Find the base class of a generic TypedDict class.
@@ -155,11 +108,12 @@ def _find_generic_typeddict_base(cls: type) -> tuple[type | None, tuple[Any, ...
             return origin, get_args(base)
     return None, None
 
+
 def _resolve_type(
     tp: Any,
-    type_map: Mapping[TypeVar, Any] | None = None,
-    globalns: Mapping[str, Any] | None=None,
-    localns: Mapping[str, Any] | None=None,
+    type_map: dict[TypeVar, Any] | None = None,
+    globalns: dict[str, Any] | None = None,
+    localns: dict[str, Any] | None = None,
     _seen: set[Any] | None = None,
 ) -> Any:
     """
@@ -167,14 +121,33 @@ def _resolve_type(
     """
     if _seen is None:
         _seen = set()
-    tp_id = id(tp)
-    if tp_id in _seen:
-        return Any
-    _seen.add(tp_id)
 
-    # Strip ReadOnly
-    tp = _strip_readonly(tp)
+    # Use a more robust tracking mechanism
+    type_repr = repr(tp)
+    if type_repr in _seen:
+        # Return Any for recursive types to break the cycle
+        result = Any
+        return result
 
+    _seen.add(type_repr)
+
+    try:
+        result = _resolve_type_impl(tp, type_map, globalns, localns, _seen)
+        return result
+    finally:
+        _seen.discard(type_repr)
+
+
+def _resolve_type_impl(
+    tp: Any,
+    type_map: dict[TypeVar, Any] | None,
+    globalns: dict[str, Any] | None,
+    localns: dict[str, Any] | None,
+    _seen: set[str],
+) -> Any:
+    """
+    Internal implementation of type resolution.
+    """
     # Substitute TypeVar
     if isinstance(tp, TypeVar):
         resolved = type_map.get(tp, tp) if type_map else tp
@@ -191,16 +164,13 @@ def _resolve_type(
             )
             for p in parts
         )
-        return typing.Union[resolved_parts]
+        return typing.Union[resolved_parts]  # noqa: UP007
 
     # Evaluate ForwardRef
     if isinstance(tp, (ForwardRef, str)):
-        try:
-            ref = tp if isinstance(tp, ForwardRef) else ForwardRef(tp)
-            tp = ref._evaluate(globalns or {}, localns or {}, set())
-        except Exception:
-            # If resolution fails, return a dedicated unresolvable object.
-            return UnresolvableType(str(tp))
+        ref = tp if isinstance(tp, ForwardRef) else ForwardRef(tp)
+        # Use frozenset to avoid issues with mutable default arguments
+        tp = evaluate_forward_ref(ref, globals=globalns, locals=localns)
 
     # Recurse into Literal
     origin = get_origin(tp)
@@ -209,15 +179,20 @@ def _resolve_type(
         # Pass literal arguments through as-is, they are values, not types to resolve.
         return Literal.__getitem__(args)
 
+    # Handle types.UnionType (Python 3.10+ union syntax like str | int)
+    if isinstance(tp, types.UnionType):
+        # Don't try to reconstruct UnionType, convert to typing.Union
+        resolved_args = tuple(_resolve_type(a, type_map, globalns, localns, _seen) for a in args)
+        return typing.Union[resolved_args]  # noqa: UP007
+
     # Recurse into other generics
     if origin and args:
         new_args = tuple(_resolve_type(a, type_map, globalns, localns, _seen) for a in args)
-        try:
-            return origin[new_args]
-        except Exception:
-            if len(new_args) == 1:
-                return new_args[0]
-            return tp
+        # Special handling for single-argument generics like NotRequired, ReadOnly
+        if len(new_args) == 1:
+            return origin[new_args[0]]  # Pass single argument, not tuple
+        else:
+            return origin[new_args]  # Pass tuple for multi-argument generics
 
     return tp
 
@@ -228,9 +203,10 @@ def check_type(obj: Any, expected_type: Any, path: str = "value") -> TypeCheckRe
     """
     origin = get_origin(expected_type)
 
-    if isinstance(expected_type, UnresolvableType):
-        # Handle the custom unresolvable type placeholder
-        return TypeCheckResult(False, [f"{path} has an unresolvable type: {expected_type.type_name}"])
+    if origin in (NotRequired, ReadOnly):
+        args = get_args(expected_type)
+        inner_type = args[0] if args else Any
+        return check_type(obj, inner_type, path)
 
     if expected_type is Any:
         return TypeCheckResult(True, [])
@@ -246,15 +222,19 @@ def check_type(obj: Any, expected_type: Any, path: str = "value") -> TypeCheckRe
 
     # Check for TypedDict (now unified)
     if (origin and _is_typeddict_class(origin)) or _is_typeddict_class(expected_type):
-        return _check_typeddict_unified(obj, expected_type, path)
+        return check_typeddict(obj, expected_type, path)
 
     if origin is tuple:
         return check_tuple(obj, expected_type, path)
 
-    if origin in (Sequence, list):
+    if origin in (collections.abc.Sequence, list):
         return check_sequence_or_list(obj, expected_type, path)
 
-    if origin in (dict, typing.Mapping) or expected_type in (dict, typing.Mapping):
+    if origin in (dict, typing.Mapping, collections.abc.Mapping) or expected_type in (
+        dict,
+        typing.Mapping,
+        collections.abc.Mapping,
+    ):
         return check_mapping(obj, expected_type, path)
 
     if expected_type in (int, float, str, bool):
@@ -270,8 +250,26 @@ def check_type(obj: Any, expected_type: Any, path: str = "value") -> TypeCheckRe
         return TypeCheckResult(False, [f"{path} cannot be checked against {expected_type}"])
 
 
-# ---------- Unified TypedDict Check Function ----------
-def _check_typeddict_unified(
+T = TypeVar("T")
+
+
+def ensure_type(obj: object, expected_type: type[T], path: str = "value") -> T:
+    """
+    Check if obj is assignable to expected type. If so, return obj. Otherwise a TypeError is raised.
+    """
+    if check_type(obj, expected_type, path).success:
+        return cast(T, obj)
+    raise TypeError(f"Expected {expected_type} but got {obj!r} with type {type(obj)}")
+
+
+def guard_type(obj: object, expected_type: type[T], path: str = "value") -> TypeGuard[T]:
+    """
+    A type guard function that checks if obj is assignable to expected type.
+    """
+    return check_type(obj, expected_type, path).success
+
+
+def check_typeddict(
     obj: Any,
     td_type: Any,
     path: str,
@@ -289,76 +287,38 @@ def _check_typeddict_unified(
             False, [f"{path} expected dict for TypedDict but got {type(obj).__name__}"]
         )
 
-    # --- Unified logic for handling generic vs. non-generic TypedDicts ---
-    origin = get_origin(td_type)
-    
-    if origin and _is_typeddict_class(origin):
-        # Case: Generic TypedDict like MyTD[str]
-        td_cls = origin
-        args = get_args(td_type)
-        tvars = getattr(td_cls, "__parameters__", ())
-        if len(tvars) != len(args):
-            return TypeCheckResult(False, [f"{path} type parameter count mismatch"])
-        type_map = dict(zip(tvars, args, strict=False))
-        globalns = getattr(sys.modules.get(td_cls.__module__), "__dict__", {})
-        localns = dict(vars(td_cls))
+    # --- Now get the metadata in a single, unified step ---
+    td_cls, type_map, globalns, localns = _get_typeddict_metadata(td_type)
 
-    elif _is_typeddict_class(td_type):
-        # Case: Non-generic TypedDict like MyTD
-        td_cls = td_type
-        # If it's a non-generic TypedDict, check if it inherits from a generic one
-        base_origin, base_args = _find_generic_typeddict_base(td_cls)
-        if base_origin is not None:
-            tvars = getattr(base_origin, "__parameters__", ())
-            if len(tvars) != len(base_args):
-                return TypeCheckResult(False, [f"{path} type parameter count mismatch in generic base"])
-            type_map = dict(zip(tvars, base_args, strict=False))
-            # Get the correct global and local namespaces from the base class
-            globalns = getattr(sys.modules.get(base_origin.__module__), "__dict__", {})
-            localns = dict(vars(base_origin))
-        else:
-            type_map = None
-            globalns = getattr(sys.modules.get(td_cls.__module__), "__dict__", {})
-            localns = dict(vars(td_cls))
-
-    else:
+    if td_cls is None:
         # Fallback if it's not a TypedDict type at all
         return TypeCheckResult(False, [f"{path} expected a TypedDict but got {td_type!r}"])
 
-    # --- Core validation logic (now unified) ---
-    annotations = _resolved_typedict_hints(td_cls, type_map)
-    total = getattr(td_cls, "__total__", True)
-    required_keys = getattr(td_cls, "__required_keys__", set())
-    errors: list[str] = []
+    if type_map is not None and len(getattr(td_cls, "__parameters__", ())) != len(
+        get_args(td_type)
+    ):
+        return TypeCheckResult(False, [f"{path} type parameter count mismatch"])
 
-    for key, typ in annotations.items():
-        # The _resolve_type call is now universal for both cases
-        eff = _resolve_type(typ, type_map, globalns=globalns, localns=localns)
-        
-        if key not in obj:
-            if total or key in required_keys:
-                errors.append(f"{path} missing required key '{key}'")
-            continue
-        res = check_type(obj[key], eff, f"{path}['{key}']")
-        if not res.success:
-            errors.extend(res.errors)
+    if type_map is None and len(get_args(td_type)) > 0:
+        base_origin, base_args = _find_generic_typeddict_base(td_cls)
+        if base_origin is not None and len(getattr(base_origin, "__parameters__", ())) != len(
+            base_args
+        ):
+            return TypeCheckResult(False, [f"{path} type parameter count mismatch in generic base"])
 
-    for key in obj:
-        if key not in annotations:
-            errors.append(f"{path} has unexpected key '{key}'")
+    # --- Now call the shared validation logic ---
+    errors = _validate_typeddict_fields(obj, td_cls, type_map, globalns, localns, path)
 
     return TypeCheckResult(not errors, errors)
 
 
-def check_mapping(
-    obj: Any, expected_type: Any, path: str
-) -> TypeCheckResult:
+def check_mapping(obj: Any, expected_type: Any, path: str) -> TypeCheckResult:
     """
     Check if an object is assignable to a mapping type.
     """
-    if not isinstance(obj, Mapping):
+    if not isinstance(obj, collections.abc.Mapping):
         return TypeCheckResult(
-            False, [f"{path} expected Mapping but got {type(obj).__name__}"]
+            False, [f"{path} expected  collections.abc.Mapping but got {type(obj).__name__}"]
         )
     args = get_args(expected_type)
     key_t = args[0] if args else Any
@@ -373,17 +333,16 @@ def check_mapping(
             errors.extend(rv.errors)
     return TypeCheckResult(len(errors) == 0, errors)
 
-def check_sequence_or_list(
-    obj: Any, expected_type: Any, path: str
-) -> TypeCheckResult:
+
+def check_sequence_or_list(obj: Any, expected_type: Any, path: str) -> TypeCheckResult:
     """
     Check if an object is assignable to a sequence or list type.
     """
     args = get_args(expected_type)
-    if not isinstance(obj, typing.Sequence) or isinstance(obj, (str, bytes)):
-        return TypeCheckResult(
-            False, [f"{path} expected sequence but got {type(obj).__name__}"]
-        )
+    if not isinstance(obj, typing.Sequence | collections.abc.Sequence) or isinstance(
+        obj, (str, bytes)
+    ):
+        return TypeCheckResult(False, [f"{path} expected sequence but got {type(obj).__name__}"])
     elem_type = args[0] if args else Any
     errors: list[str] = []
     for i, item in enumerate(obj):
@@ -404,8 +363,8 @@ def check_union(obj: Any, expected_type: Any, path: str) -> TypeCheckResult:
         if res.success:
             return TypeCheckResult(True, [])
         errors.extend(res.errors)
-    return TypeCheckResult(
-        False, errors or [f"{path} did not match any type in {expected_type}"])
+    return TypeCheckResult(False, errors or [f"{path} did not match any type in {expected_type}"])
+
 
 def check_tuple(obj: Any, expected_type: Any, path: str) -> TypeCheckResult:
     """
@@ -438,6 +397,7 @@ def check_tuple(obj: Any, expected_type: Any, path: str) -> TypeCheckResult:
             errors.extend(res.errors)
     return TypeCheckResult(len(errors) == 0, errors)
 
+
 def check_literal(obj: object, expected_type: Any, path: str) -> TypeCheckResult:
     """
     Check if an object is assignable to a literal type.
@@ -448,6 +408,7 @@ def check_literal(obj: object, expected_type: Any, path: str) -> TypeCheckResult
     msg = f"{path} expected literal in {allowed} but got {obj!r}"
     return TypeCheckResult(False, [msg])
 
+
 def check_none(obj: object, path: str) -> TypeCheckResult:
     """
     Check if an object is None.
@@ -457,13 +418,113 @@ def check_none(obj: object, path: str) -> TypeCheckResult:
     msg = f"{path} expected None but got {obj!r}"
     return TypeCheckResult(False, [msg])
 
+
 def check_primitive(obj: object, expected_type: type, path: str) -> TypeCheckResult:
     """
     Check if an object is a primitive type, i.e. a type where isinstance(obj, type) will work.
     """
+    if "value['shape']" in path and expected_type is not int:
+        breakpoint()
     if isinstance(obj, expected_type):
         return TypeCheckResult(True, [])
     msg = f"{path} expected an instance of {expected_type} but got {obj!r} with type {type(obj)}"
-    return TypeCheckResult(
-        False, [msg]
-    )
+    return TypeCheckResult(False, [msg])
+
+
+def _get_typeddict_metadata(
+    td_type: Any,
+) -> tuple[
+    type | None,
+    dict[TypeVar, Any] | None,
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]:
+    """
+    Extracts the TypedDict class, type variable map, and namespaces.
+    """
+    origin = get_origin(td_type)
+
+    if origin and _is_typeddict_class(origin):
+        td_cls = origin
+        args = get_args(td_type)
+        tvars = getattr(td_cls, "__parameters__", ())
+        type_map = dict(zip(tvars, args, strict=False))
+
+        # Enhanced namespace resolution - include calling frame locals
+        mod = sys.modules.get(td_cls.__module__)
+        globalns = vars(mod) if mod else {}
+        localns = dict(vars(td_cls))
+
+        return td_cls, type_map, globalns, localns
+
+    elif _is_typeddict_class(td_type):
+        td_cls = td_type
+        base_origin, base_args = _find_generic_typeddict_base(td_cls)
+        if base_origin is not None:
+            tvars = getattr(base_origin, "__parameters__", ())
+            type_map = dict(zip(tvars, base_args, strict=False))
+
+            mod = sys.modules.get(base_origin.__module__)
+            globalns = vars(mod) if mod else {}
+            localns = dict(vars(base_origin))
+        else:
+            type_map = None
+            mod = sys.modules.get(td_cls.__module__)
+            globalns = vars(mod) if mod else {}
+            localns = dict(vars(td_cls))
+
+        return td_cls, type_map, globalns, localns
+
+    return None, None, None, None
+
+
+def _validate_typeddict_fields(
+    obj: Any,
+    td_cls: type,
+    type_map: dict[TypeVar, Any] | None,
+    globalns: dict[str, Any] | None,
+    localns: dict[str, Any] | None,
+    path: str,
+) -> list[str]:
+    """
+    Validates the fields of a dictionary against a TypedDict's annotations.
+    """
+    annotations = get_type_hints(td_cls, globalns=globalns, localns=localns, include_extras=True)
+    errors: list[str] = []
+    is_total_false = getattr(td_cls, "__total__", True) is False
+    for key, typ in annotations.items():
+        # Check if the key is not present in the object
+        if key not in obj:
+            # If total=False, all fields are optional unless explicitly Required
+            if is_total_false:
+                continue
+
+            # Check the chain of parametrized types for a NotRequired.
+            # We only need to look at the first parameter.
+            is_optional = False
+            if get_origin(typ) == NotRequired:
+                is_optional = True
+            else:
+                sub_args = get_args(typ)
+                while len(sub_args) > 0:
+                    if get_origin(sub_args[0]) == NotRequired:
+                        is_optional = True
+                        break
+                    sub_args = get_args(sub_args[0])
+
+            if not is_optional:
+                errors.append(f"{path} missing required key '{key}'")
+            continue
+
+        #  we have to further resolve this type because get_type_hints does not resolve
+        # generic aliases
+        resolved_typ = _resolve_type(typ, type_map, globalns=globalns, localns=localns)
+        res = check_type(obj[key], resolved_typ, f"{path}['{key}']")
+        if not res.success:
+            errors.extend(res.errors)
+
+    # We allow extra keys of any type right now
+    # when PEP 728 is done, then we can refine this and do a type check on the keys
+    # errors.extend([f"{path} has unexpected key '{key}'" for key in obj if key not in annotations])
+
+    return errors

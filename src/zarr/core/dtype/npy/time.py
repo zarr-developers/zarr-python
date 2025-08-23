@@ -34,7 +34,7 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
-from zarr.core.type_check import check_type
+from zarr.core.type_check import check_type, guard_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -377,8 +377,10 @@ class TimeDelta64(TimeDTypeBase[np.dtypes.TimeDelta64DType, np.timedelta64], Has
             True if the JSON input is a valid representation of this class,
             otherwise False.
         """
-        if not check_type(data, TimeDelta64JSON_V2).success:
+        if not guard_type(data, TimeDelta64JSON_V2):
             return False
+        # We now know it's TimeDelta64JSON_V2, but there are constraints on the name that can't be
+        # expressed via type annotations
         name = data["name"]
         # match <m[ns], >m[M], etc
         # consider making this a standalone function
@@ -636,7 +638,7 @@ class DateTime64(TimeDTypeBase[np.dtypes.DateTime64DType, np.datetime64], HasEnd
             True if the input is a valid JSON representation of a NumPy datetime64 data type,
             otherwise False.
         """
-        if not check_type(data, DateTime64JSON_V2).success:
+        if not guard_type(data, DateTime64JSON_V2):
             return False
         name = data["name"]
         if not name.startswith(cls._zarr_v2_names):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -37,7 +37,7 @@ from zarr.core.group import (
     GroupMetadata,
     create_hierarchy,
 )
-from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.errors import (
     GroupNotFoundError,
     NodeTypeValidationError,
@@ -352,13 +352,12 @@ async def open(
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
             # for v2, the above would already have raised an exception if not an array
-            zarr_format = _metadata_dict["zarr_format"]
-            is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
+            zarr_format = metadata_dict["zarr_format"]
+            is_v3_array = zarr_format == 3 and metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
+                    store_path=store_path, metadata=metadata_dict, config=kwargs.get("config")
                 )
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass

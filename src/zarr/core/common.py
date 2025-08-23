@@ -14,6 +14,7 @@ from typing import (
     Final,
     Generic,
     Literal,
+    NotRequired,
     TypedDict,
     TypeVar,
     cast,
@@ -47,11 +48,11 @@ AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
 
-TName = TypeVar("TName", bound=str)
+TName = TypeVar("TName", bound=str, covariant=True)
 TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 
 
-class NamedConfig(TypedDict, Generic[TName, TConfig]):
+class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
     is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
@@ -65,6 +66,104 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
 
     configuration: ReadOnly[TConfig]
     """The configuration of the object."""
+
+
+class NamedConfig(TypedDict, Generic[TName, TConfig]):
+    """
+    A typed dictionary representing an object with a name and configuration, where the configuration
+    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+
+    The configuration key is not required.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+    """
+
+    name: ReadOnly[TName]
+    """The name of the object."""
+
+    configuration: ReadOnly[NotRequired[TConfig]]
+    """The configuration of the object."""
+
+
+class ArrayMetadataJSON_V2(TypedDict):
+    """
+    A typed dictionary model for Zarr V2 array metadata.
+    """
+
+    zarr_format: Literal[2]
+    dtype: str | StructuredName_V2
+    shape: Sequence[int]
+    chunks: Sequence[int]
+    dimension_separator: NotRequired[Literal[".", "/"]]
+    fill_value: Any
+    filters: Sequence[CodecJSON_V2[str]] | None
+    order: Literal["C", "F"]
+    compressor: CodecJSON_V2[str] | None
+    attributes: NotRequired[Mapping[str, JSON]]
+
+
+class GroupMetadataJSON_V2(TypedDict):
+    """
+    A typed dictionary model for Zarr V2 group metadata.
+    """
+
+    zarr_format: Literal[2]
+    attributes: NotRequired[Mapping[str, JSON]]
+
+
+class ArrayMetadataJSON_V3(TypedDict):
+    """
+    A typed dictionary model for Zarr V3 array metadata.
+    """
+
+    zarr_format: Literal[3]
+    node_type: Literal["array"]
+    data_type: str | NamedConfig[str, Mapping[str, object]]
+    shape: Sequence[int]
+    chunk_grid: NamedConfig[str, Mapping[str, object]]
+    chunk_key_encoding: NamedConfig[str, Mapping[str, object]]
+    fill_value: object
+    codecs: Sequence[str | NamedConfig[str, Mapping[str, object]]]
+    attributes: NotRequired[Mapping[str, object]]
+    storage_transformers: NotRequired[Sequence[NamedConfig[str, Mapping[str, object]]]]
+    dimension_names: NotRequired[Sequence[str | None]]
+
+
+class GroupMetadataJSON_V3(TypedDict):
+    """
+    A typed dictionary model for Zarr V3 group metadata.
+    """
+
+    zarr_format: Literal[3]
+    node_type: Literal["group"]
+    attributes: NotRequired[Mapping[str, JSON]]
+
+
+class CodecJSON_V2(TypedDict, Generic[TName]):
+    """The JSON representation of a codec for Zarr V2"""
+
+    id: ReadOnly[TName]
+
+
+CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
+"""The JSON representation of a codec for Zarr V3."""
+
+# The widest type we will *accept* for a codec JSON
+# This covers v2 and v3
+CodecJSON = str | Mapping[str, object]
+"""The widest type of JSON-like input that could specify a codec."""
+
+
+# By comparison, The JSON representation of a dtype in zarr v3 is much simpler.
+# It's either a string, or a structured dict
+DTypeSpec_V3 = str | NamedConfig[str, Mapping[str, object]]
+
+#  This is the JSON representation of a structured dtype in zarr v2
+StructuredName_V2 = Sequence["str | StructuredName_V2"]
+
+# This models the type of the name a dtype might have in zarr v2 array metadata
+DTypeName_V2 = StructuredName_V2 | str
 
 
 def product(tup: tuple[int, ...]) -> int:

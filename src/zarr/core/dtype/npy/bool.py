@@ -12,7 +12,7 @@ from zarr.core.dtype.common import (
     HasItemSize,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
-from zarr.core.type_check import check_type
+from zarr.core.type_check import guard_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -103,7 +103,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         ``TypeGuard[DTypeConfig_V2[Literal["|b1"], None]]``
             True if the input is a valid JSON representation, False otherwise.
         """
-        return check_type(data, DTypeConfig_V2[Literal["|b1"], None]).success
+        return guard_type(data, DTypeConfig_V2[Literal["|b1"], None])
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["bool"]]:

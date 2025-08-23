@@ -274,7 +274,7 @@ def parse_filters(data: object) -> tuple[Numcodec, ...] | None:
             if _is_numcodec(val):
                 out.append(val)
             elif isinstance(val, dict):
-                out.append(get_numcodec(val))  # type: ignore[arg-type]
+                out.append(get_numcodec(val))
             else:
                 msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
                 raise TypeError(msg)
@@ -297,7 +297,7 @@ def parse_compressor(data: object) -> Numcodec | None:
     if data is None or _is_numcodec(data):
         return data
     if isinstance(data, dict):
-        return get_numcodec(data)  # type: ignore[arg-type]
+        return get_numcodec(data)
     msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 
