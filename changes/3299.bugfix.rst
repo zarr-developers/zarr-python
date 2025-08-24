@@ -1,0 +1,4 @@
+Fix a bug in ``create_array`` caused by iterating over chunk-aligned regions instead of
+shard-aligned regions when writing data. Additionally, the behavior of ``nchunks_initialized``
+has been adjusted. This function consistently reports the number of chunks present in stored objects,
+even when the array uses the sharding codec.

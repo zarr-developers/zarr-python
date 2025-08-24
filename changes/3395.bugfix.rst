@@ -1,0 +1,1 @@
+Raise a Zarr-specific error class when a codec can't be found by name when deserializing the given codecs. This avoids hiding this error behind a "not part of a zarr hierarchy" warning.
