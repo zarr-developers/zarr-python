@@ -45,7 +45,6 @@ from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
     MetadataValidationError,
-    NodeNotFoundError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
@@ -191,7 +190,7 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     assert z.read_only
 
     # path not found
-    with pytest.raises(NodeNotFoundError):
+    with pytest.raises(FileNotFoundError):
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
 
