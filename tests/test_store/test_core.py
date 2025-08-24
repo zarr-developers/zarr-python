@@ -287,7 +287,7 @@ def test_different_open_mode(tmp_path: LEGACY_PATH) -> None:
     # Test with a store that doesn't implement .with_read_only()
     zarr_path = tmp_path / "foo.zarr"
     zip_store = ZipStore(zarr_path, mode="w")
-    zarr.create((100,), store=store, zarr_format=2, path="a")
+    zarr.create((100,), store=zip_store, zarr_format=2, path="a")
     with pytest.raises(
         ValueError,
         match="Store is not read-only but mode is 'r'. Unable to create a read-only copy of the store. Please use a read-only store or a storage class that implements .with_read_only().",
