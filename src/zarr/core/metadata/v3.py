@@ -56,6 +56,10 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
 
     return out
 
+def parse_dimension_names(data: DimensionNames) -> tuple[str | None, ...] | None:
+    if data is None:
+        return None
+    return tuple(data)
 
 def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     """
@@ -145,7 +149,7 @@ class ArrayV3Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
-        dimension_names_parsed = dimension_names
+        dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
         fill_value_parsed = data_type.cast_scalar(fill_value)
         attributes_parsed = parse_attributes(attributes)
