@@ -22,7 +22,6 @@ __all__ = [
     "URLStoreResolver",
     "ZEP8URLError",
     "is_zep8_url",
-    "parse_zep8_url",
     "resolve_url",
 ]
 
@@ -91,15 +90,9 @@ class URLParser:
 
         if parsed.scheme and ("://" in url or parsed.scheme == "file"):
             # Handle schemes like s3://, file://, https://, and also file: (without //)
-            if parsed.scheme in ("s3", "gcs", "gs", "abfs", "adl"):
-                # For cloud storage, keep full URL as path
-                return URLSegment(scheme=parsed.scheme, path=f"{parsed.netloc}{parsed.path}")
-            elif parsed.scheme in ("http", "https"):
-                return URLSegment(scheme=parsed.scheme, path=f"{parsed.netloc}{parsed.path}")
-            elif parsed.scheme == "file":
+            if parsed.scheme == "file":
                 return URLSegment(scheme="file", path=parsed.path)
             else:
-                # Unknown scheme
                 return URLSegment(scheme=parsed.scheme, path=f"{parsed.netloc}{parsed.path}")
         elif ":" in url:
             # Adapter syntax like "memory:", "zip:path", etc.
@@ -114,10 +107,6 @@ class URLParser:
         """Parse an adapter specification like 'zip:path' or 'zarr3:'."""
         if not spec:
             raise ZEP8URLError("Empty adapter specification")
-
-        # Handle relative path syntax
-        if spec.startswith(".."):
-            return URLSegment(adapter="..", path=spec)
 
         if ":" in spec:
             adapter, path_part = spec.split(":", 1)
@@ -241,27 +230,6 @@ class URLParser:
                     result_parts.append(f"{segment.adapter}:")
 
         return "|".join(result_parts)
-
-
-def parse_zep8_url(url: str) -> list[URLSegment]:
-    """
-    Parse a ZEP 8 URL into segments.
-
-    This is a convenience function that creates a URLParser instance
-    and parses the given URL.
-
-    Parameters
-    ----------
-    url : str
-        ZEP 8 URL to parse.
-
-    Returns
-    -------
-    List[URLSegment]
-        Ordered list of URL segments.
-    """
-    parser = URLParser()
-    return parser.parse(url)
 
 
 def is_zep8_url(url: Any) -> bool:
@@ -426,17 +394,26 @@ class URLStoreResolver:
         # Process segments in order, building preceding URL for each adapter
         current_store: Store | None = None
 
-        # Build list of segments that create stores (excluding zarr format segments)
+        # Build list of segments that create stores (excluding zarr format segments and path-only segments)
         store_segments = []
-        for segment in segments:
+        for i, segment in enumerate(segments):
             if segment.adapter in ("zarr2", "zarr3"):
                 # Skip zarr format segments - they don't create stores
                 # TODO: these should propagate to the open call somehow
                 continue
+
+            # Check if this is a path segment that should be consumed by the next adapter
+            if i < len(segments) - 1:
+                next_segment = segments[i + 1]
+                if segment.scheme and not segment.adapter and next_segment.adapter:
+                    # This segment provides a path for the next adapter, skip it as a store creator
+                    # Example: in "file:data.zip|zip", "file:data.zip" is just a path for the zip adapter
+                    continue
+
             store_segments.append(segment)
 
         # Process each store-creating segment
-        for i, segment in enumerate(store_segments):
+        for segment in store_segments:
             # Determine the adapter name to use
             adapter_name = segment.adapter or segment.scheme
             if not adapter_name:
@@ -452,9 +429,16 @@ class URLStoreResolver:
                     f'an entry point under [project.entry-points."zarr.stores"].'
                 ) from None
 
-            # Build preceding URL from current segment (for first) or previous segments
-            if i == 0:
-                # First segment - build from the scheme/adapter and path of this segment
+            # Build preceding URL - need to find this segment in the original segments list
+            # and include all segments before it (including skipped path-only segments)
+            segment_index_in_original = -1
+            for orig_i, orig_segment in enumerate(segments):
+                if orig_segment is segment:
+                    segment_index_in_original = orig_i
+                    break
+
+            if segment_index_in_original <= 0:
+                # This is the first segment or we couldn't find it, build from current segment
                 if segment.scheme:
                     # Handle schemes that need :// vs :
                     if segment.scheme in ("s3", "gcs", "gs", "http", "https", "ftp", "ftps"):
@@ -468,8 +452,8 @@ class URLStoreResolver:
                     # This shouldn't happen for first segment but handle gracefully
                     preceding_url = segment.path
             else:
-                # Build preceding URL from all previous segments
-                preceding_segments = store_segments[:i]
+                # Build preceding URL from all original segments before this one
+                preceding_segments = segments[:segment_index_in_original]
                 preceding_parts = []
 
                 for prev_segment in preceding_segments:
@@ -487,7 +471,7 @@ class URLStoreResolver:
                             preceding_parts.append(f"{prev_segment.scheme}://{prev_segment.path}")
                         else:
                             preceding_parts.append(f"{prev_segment.scheme}:{prev_segment.path}")
-                    else:
+                    elif prev_segment.adapter:
                         # Adapter segment - reconstruct format
                         preceding_parts.append(f"{prev_segment.adapter}:{prev_segment.path}")
 

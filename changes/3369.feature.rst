@@ -1,0 +1,27 @@
+Add support for ZEP8 URL syntax for store discovery and chaining of store adapters.
+
+This feature introduces URL-based storage specification following `ZEP 8: Zarr URL Specification`_,
+allowing users to specify complex storage configurations using concise URL syntax with chained adapters.
+
+Key additions:
+
+* **URL syntax support**: Use pipe (``|``) characters to chain storage adapters, e.g., ``file:data.zip|zip``
+* **Built-in adapters**: Support for ``file``, ``memory``, ``zip``, ``s3``, ``https``, ``gcs`` schemes
+* **Store adapter registry**: New ``zarr.registry.list_store_adapters()`` function to discover available adapters
+* **Extensible architecture**: Custom store adapters can be registered via entry points
+
+Examples::
+
+    # Basic ZIP file storage
+    zarr.open_array("file:data.zip|zip", mode='w', shape=(10, 10), dtype="f4")
+
+    # In-memory storage
+    zarr.open_array("memory:", mode='w', shape=(5, 5), dtype="i4")
+
+    # Remote ZIP file
+    zarr.open_array("s3://bucket/data.zip|zip", mode='r')
+
+    # 3rd-party store adapter (icechunk on S3)
+    zarr.open_group("s3://bucket/repo|icechunk", mode='r')
+
+.. _ZEP 8\\: Zarr URL Specification: https://zarr.dev/zeps/draft/ZEP0008.html

@@ -198,6 +198,28 @@ To open an existing array from a ZIP file::
         [0.4335856 , 0.7565437 , 0.7828931 , ..., 0.48119593, 0.66220033,
             0.6652362 ]], shape=(100, 100), dtype=float32)
 
+URL-based Storage (ZEP 8)
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Zarr supports URL-based storage following the ZEP 8 specification, which allows you to specify storage locations using URLs with chained adapters::
+
+    >>> # Store data directly in a ZIP file using ZEP 8 URL syntax
+    >>> z = zarr.open_array("file:data/example-zep8.zip|zip", mode='w', shape=(50, 50), chunks=(10, 10), dtype="f4")
+    >>> z[:, :] = np.random.random((50, 50))
+    >>>
+    >>> # Read it back
+    >>> z2 = zarr.open_array("file:data/example-zep8.zip|zip", mode='r')
+    >>> z2.shape
+    (50, 50)
+
+ZEP 8 URLs use pipe (``|``) characters to chain storage adapters together:
+
+- ``file:path.zip|zip`` - ZIP file on local filesystem
+- ``s3://bucket/data.zip|zip`` - ZIP file in S3 bucket
+- ``memory:`` - In-memory storage
+
+This provides a concise way to specify complex storage configurations without explicitly creating store objects.
+
 Read more about Zarr's storage options  in the :ref:`User Guide <user-guide-storage>`.
 
 Next Steps

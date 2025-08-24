@@ -4,7 +4,7 @@ import os
 import shutil
 import tempfile
 import zipfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -155,3 +155,99 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+    async def test_file_handle_support(self, tmp_path: Path) -> None:
+        """Test that ZipStore works with open file handles."""
+        zip_path = tmp_path / "test_file_handle.zip"
+
+        # First create a ZIP file with some data using path-based approach
+        store = await ZipStore.open(path=zip_path, mode="w")
+        await store.set("test_key", cpu.Buffer.from_bytes(b"test_data"))
+        store.close()
+
+        # Now test reading via open file handle
+        with open(zip_path, "rb") as file_handle:
+            store = ZipStore(path=file_handle, mode="r")
+            await store._open()
+
+            # Test representation shows file-like object
+            assert "file-like-object" in str(store)
+            assert "file-like-object" in repr(store)
+
+            # Test that we can read the data
+            buffer = await store.get("test_key", default_buffer_prototype())
+            assert buffer is not None
+            assert buffer.to_bytes() == b"test_data"
+
+            # Test that the store reports no path
+            assert store.path is None
+            assert store._file_opener is file_handle
+
+            store.close()
+
+    async def test_file_opener_support(self, tmp_path: Path) -> None:
+        """Test that ZipStore works with file opener objects (like fsspec)."""
+        zip_path = tmp_path / "test_file_opener.zip"
+
+        # Create a ZIP file with some zarr data
+        store = await ZipStore.open(path=zip_path, mode="w")
+        # Create a simple zarr group structure
+        await store.set(
+            "zarr.json", cpu.Buffer.from_bytes(b'{"zarr_format":3,"node_type":"group"}')
+        )
+        await store.set(
+            "data/zarr.json",
+            cpu.Buffer.from_bytes(
+                b'{"zarr_format":3,"node_type":"array","shape":[2],"data_type":"int32","chunk_grid":{"name":"regular","chunk_shape":[2]},"chunk_key_encoding":{"name":"default"},"codecs":[{"name":"bytes"}]}'
+            ),
+        )
+        await store.set("data/c/0", cpu.Buffer.from_bytes(b"\x01\x00\x00\x00\x02\x00\x00\x00"))
+        store.close()
+
+        # Mock file opener (similar to what fsspec provides)
+        class MockFileOpener:
+            def __init__(self, path: Path) -> None:
+                self.path = path
+
+            def open(self) -> Any:
+                return open(self.path, "rb")
+
+        # Test with file opener
+        opener = MockFileOpener(zip_path)
+        store = ZipStore(path=opener, mode="r")
+        await store._open()
+
+        # Test representation shows file-like object
+        assert "file-like-object" in str(store)
+        assert "file-like-object" in repr(store)
+
+        # Test that we can read zarr data
+        group_buffer = await store.get("zarr.json", default_buffer_prototype())
+        assert group_buffer is not None
+        assert b"zarr_format" in group_buffer.to_bytes()
+
+        # Test array data
+        data_buffer = await store.get("data/c/0", default_buffer_prototype())
+        assert data_buffer is not None
+        assert len(data_buffer.to_bytes()) == 8  # 2 int32 values
+
+        # Test that store attributes are correct
+        assert store.path is None
+        assert store._file_opener is opener
+        assert hasattr(store, "_file_handle")
+
+        store.close()
+
+    def test_file_handle_backward_compatibility(self, tmp_path: Path) -> None:
+        """Test that path-based ZipStore continues to work unchanged."""
+        zip_path = tmp_path / "test_backward_compat.zip"
+
+        # Test that traditional path-based usage still works exactly as before
+        store = ZipStore(path=str(zip_path), mode="w")
+        # These should be the traditional attributes
+        assert store.path == zip_path
+        assert store._file_opener is None
+
+        # String representation should show the path
+        assert str(zip_path) in str(store)
+        assert str(zip_path) in repr(store)

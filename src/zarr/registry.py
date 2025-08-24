@@ -30,6 +30,7 @@ __all__ = [
     "get_ndbuffer_class",
     "get_pipeline_class",
     "get_store_adapter",
+    "list_store_adapters",
     "register_buffer",
     "register_codec",
     "register_ndbuffer",
@@ -343,6 +344,19 @@ def get_store_adapter(name: str) -> type[StoreAdapter]:
     raise KeyError(
         f"Store adapter '{name}' not found in registered adapters: {list(__store_adapter_registry)}"
     )
+
+
+def list_store_adapters() -> list[str]:
+    """
+    List the names of all registered store adapters.
+
+    Returns
+    -------
+    list[str]
+        A list of adapter names that can be used with :func:`get_store_adapter`.
+    """
+    __store_adapter_registry.lazy_load()
+    return list(__store_adapter_registry)
 
 
 _collect_entrypoints()

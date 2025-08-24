@@ -22,6 +22,7 @@ def register_builtin_adapters() -> None:
         HttpsAdapter,
         MemoryAdapter,
         S3Adapter,
+        ZipAdapter,
     )
 
     if TYPE_CHECKING:
@@ -34,6 +35,7 @@ def register_builtin_adapters() -> None:
         S3Adapter,
         GCSAdapter,
         GSAdapter,
+        ZipAdapter,
     ]
 
     for adapter in adapters:
