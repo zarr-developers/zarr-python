@@ -4525,7 +4525,8 @@ async def init_array(
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
     config : ArrayConfigLike or None, default=None
-        Configuration for this array (default is None).
+        Configuration for this array. If  ``None``, the default array runtime configuration will be used. This default
+        is stored in the global configuration object.
 
     Returns
     -------
