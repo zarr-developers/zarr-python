@@ -123,7 +123,7 @@ def _iter_grid(
     Returns
     -------
 
-    itertools.product object
+    Iterator[tuple[int, ...]]
         An iterator over tuples of integers
 
     Examples
@@ -134,11 +134,11 @@ def _iter_grid(
     >>> tuple(iter_grid((2,3)))
     ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3)), origin=(1,1))
-    ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3))
+    >>> tuple(iter_grid((2,3), origin=(1,1)))
+    ((1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3)), origin=(1,1), selection_shape=(2,2))
-    ((1, 1), (1, 2), (1, 3), (2, 1))
+    >>> tuple(iter_grid((2,3), origin=(0,0), selection_shape=(2,2)))
+    ((0, 0), (0, 1), (1, 0), (1, 1))
     """
     if origin is None:
         origin_parsed = (0,) * len(grid_shape)
@@ -163,14 +163,74 @@ def _iter_grid(
         ):
             if o + ss > gs:
                 raise IndexError(
-                    f"Invalid selection shape ({selection_shape}) for origin ({origin}) and grid shape ({grid_shape}) at axis {idx}."
+                    f"Invalid selection shape ({ss}) for origin ({o}) and grid shape ({gs}) at axis {idx}."
                 )
             dimensions += (range(o, o + ss),)
-        yield from itertools.product(*(dimensions))
+        return itertools.product(*(dimensions))
 
     else:
-        msg = f"Indexing order {order} is not supported at this time."  # type: ignore[unreachable]
-        raise NotImplementedError(msg)
+        msg = f"Indexing order {order} is not supported at this time."  # type: ignore[unreachable] # pragma: no cover
+        raise NotImplementedError(msg)  # pragma: no cover
+
+
+def _iter_regions(
+    domain_shape: Sequence[int],
+    region_shape: Sequence[int],
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+    order: _ArrayIndexingOrder = "lexicographic",
+    trim_excess: bool = True,
+) -> Iterator[tuple[slice, ...]]:
+    """
+    Iterate over contiguous regions on a grid of integers, with the option to restrict the
+    domain of iteration to a contiguous subregion of that grid.
+
+    Parameters
+    ----------
+    domain_shape : Sequence[int]
+        The size of the domain to iterate over.
+    region_shape : Sequence[int]
+        The shape of the region to iterate over.
+    origin : Sequence[int] | None, default=None
+        The location, in grid coordinates, of the first region to return.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection, in grid coordinates.
+    order : Literal["lexicographic"], default="lexicographic"
+        The linear indexing order to use.
+
+    Yields
+    -------
+
+    Iterator[tuple[slice, ...]]
+        An iterator over tuples of slices, where each slice spans a separate contiguous region
+
+    Examples
+    --------
+    >>> tuple(iter_regions((1,), (1,)))
+    ((slice(0, 1, 1),),)
+
+    >>> tuple(iter_regions((2, 3), (1, 2)))
+    ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
+
+    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1))
+    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+
+    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1), selection_shape=(2,2))
+    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+    """
+    grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
+    for grid_position in _iter_grid(
+        grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
+    ):
+        out: list[slice] = []
+        for g_pos, r_shape, d_shape in zip(grid_position, region_shape, domain_shape, strict=True):
+            start = g_pos * r_shape
+            stop = start + r_shape
+            if trim_excess:
+                stop = min(stop, d_shape)
+            out.append(slice(start, stop, 1))
+        yield tuple(out)
 
 
 def is_integer(x: Any) -> TypeGuard[int]:
