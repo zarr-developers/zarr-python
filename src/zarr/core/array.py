@@ -4524,7 +4524,7 @@ async def init_array(
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfigLike or None, optional
+    config : ArrayConfigLike or None, default=None
         Configuration for this array (default is None).
 
     Returns
