@@ -45,7 +45,6 @@ from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
     MetadataValidationError,
-    NodeNotFoundError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
@@ -191,7 +190,7 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     assert z.read_only
 
     # path not found
-    with pytest.raises(NodeNotFoundError):
+    with pytest.raises(FileNotFoundError):
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
 
@@ -333,8 +332,12 @@ def test_open_with_mode_r(tmp_path: Path) -> None:
 
 def test_open_with_mode_r_plus(tmp_path: Path) -> None:
     # 'r+' means read/write (must exist)
+    new_store_path = tmp_path / "new_store.zarr"
+    assert not new_store_path.exists(), "Test should operate on non-existent directory"
     with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmp_path, mode="r+")
+        zarr.open(store=new_store_path, mode="r+")
+    assert not new_store_path.exists(), "mode='r+' should not create directory"
+
     zarr.ones(store=tmp_path, shape=(3, 3))
     z2 = zarr.open(store=tmp_path, mode="r+")
     assert isinstance(z2, Array)
