@@ -1,3 +1,0 @@
-Ensure passing `config` is handled properly when `open`ing an existing
-array.
-
