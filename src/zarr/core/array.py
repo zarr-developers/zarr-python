@@ -173,14 +173,23 @@ class DefaultFillValue:
 DEFAULT_FILL_VALUE = DefaultFillValue()
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadata:
+@overload
+def parse_array_metadata(data: ArrayV2Metadata | ArrayMetadataJSON_V2) -> ArrayV2Metadata: ...
+
+
+@overload
+def parse_array_metadata(data: ArrayV3Metadata | ArrayMetadataJSON_V3) -> ArrayV3Metadata: ...
+
+
+def parse_array_metadata(
+    data: ArrayV2Metadata | ArrayMetadataJSON_V2 | ArrayV3Metadata | ArrayMetadataJSON_V3,
+) -> ArrayV2Metadata | ArrayV3Metadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
         zarr_format = data.get("zarr_format")
         if zarr_format == 3:
-            meta_out = ArrayV3Metadata.from_dict(data)
-            return meta_out
+            return ArrayV3Metadata.from_dict(data)
         elif zarr_format == 2:
             return ArrayV2Metadata.from_dict(data)
         else:
