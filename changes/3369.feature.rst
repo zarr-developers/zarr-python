@@ -24,4 +24,4 @@ Examples::
     # 3rd-party store adapter (icechunk on S3)
     zarr.open_group("s3://bucket/repo|icechunk", mode='r')
 
-.. _ZEP 8\\: Zarr URL Specification: https://zarr.dev/zeps/draft/ZEP0008.html
+.. _ZEP 8\: Zarr URL Specification: https://zarr.dev/zeps/draft/ZEP0008.html
