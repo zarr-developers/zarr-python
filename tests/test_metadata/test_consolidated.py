@@ -105,7 +105,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (1, 2, 3)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[typeddict-item]
                         }
                     ),
                     "lat": ArrayV3Metadata.from_dict(
@@ -115,7 +115,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (1,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[typeddict-item]
                         }
                     ),
                     "lon": ArrayV3Metadata.from_dict(
@@ -125,7 +125,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (2,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[typeddict-item]
                         }
                     ),
                     "time": ArrayV3Metadata.from_dict(
@@ -135,7 +135,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (3,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[typeddict-item]
                         }
                     ),
                     "child": GroupMetadata(
@@ -144,7 +144,7 @@ class TestConsolidated:
                             metadata={
                                 "array": ArrayV3Metadata.from_dict(
                                     {
-                                        **array_metadata,
+                                        **array_metadata,  # type: ignore[typeddict-item]
                                         "attributes": {"key": "child"},
                                         "shape": (4, 4),
                                         "chunk_grid": {
@@ -166,7 +166,7 @@ class TestConsolidated:
                                             ),
                                             "array": ArrayV3Metadata.from_dict(
                                                 {
-                                                    **array_metadata,
+                                                    **array_metadata,  # type: ignore[typeddict-item]
                                                     "attributes": {"key": "grandchild"},
                                                     "shape": (4, 4),
                                                     "chunk_grid": {
@@ -256,7 +256,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (1, 2, 3)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[typeddict-item]
                         }
                     ),
                     "lat": ArrayV3Metadata.from_dict(
@@ -266,7 +266,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (1,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[typeddict-item]
                         }
                     ),
                     "lon": ArrayV3Metadata.from_dict(
@@ -276,7 +276,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (2,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[typeddict-item]
                         }
                     ),
                     "time": ArrayV3Metadata.from_dict(
@@ -286,7 +286,7 @@ class TestConsolidated:
                                 "configuration": {"chunk_shape": (3,)},
                                 "name": "regular",
                             },
-                            **array_metadata,
+                            **array_metadata,  # type: ignore[typeddict-item]
                         }
                     ),
                 },
@@ -324,23 +324,23 @@ class TestConsolidated:
 
         # missing kind
         with pytest.raises(ValueError, match="kind='None'"):
-            ConsolidatedMetadata.from_dict(data)
+            ConsolidatedMetadata.from_dict(data)  # type: ignore[arg-type]
 
         # invalid kind
         data["kind"] = "invalid"
         with pytest.raises(ValueError, match="kind='invalid'"):
-            ConsolidatedMetadata.from_dict(data)
+            ConsolidatedMetadata.from_dict(data)  # type: ignore[arg-type]
 
         # missing metadata
         data["kind"] = "inline"
 
         with pytest.raises(TypeError, match="Unexpected type for 'metadata'"):
-            ConsolidatedMetadata.from_dict(data)
+            ConsolidatedMetadata.from_dict(data)  # type: ignore[arg-type]
 
         data["kind"] = "inline"
         # empty is fine
         data["metadata"] = {}
-        ConsolidatedMetadata.from_dict(data)
+        ConsolidatedMetadata.from_dict(data)  # type: ignore[arg-type]
 
     def test_flatten(self) -> None:
         array_metadata: dict[str, Any] = {
@@ -368,7 +368,7 @@ class TestConsolidated:
                             "configuration": {"chunk_shape": (1, 2, 3)},
                             "name": "regular",
                         },
-                        **array_metadata,
+                        **array_metadata,  # type: ignore[typeddict-item]
                     }
                 ),
                 "lat": ArrayV3Metadata.from_dict(
@@ -378,7 +378,7 @@ class TestConsolidated:
                             "configuration": {"chunk_shape": (1,)},
                             "name": "regular",
                         },
-                        **array_metadata,
+                        **array_metadata,  # type: ignore[typeddict-item]
                     }
                 ),
                 "child": GroupMetadata(
@@ -387,7 +387,7 @@ class TestConsolidated:
                         metadata={
                             "array": ArrayV3Metadata.from_dict(
                                 {
-                                    **array_metadata,
+                                    **array_metadata,  # type: ignore[typeddict-item]
                                     "attributes": {"key": "child"},
                                     "shape": (4, 4),
                                     "chunk_grid": {
@@ -402,7 +402,7 @@ class TestConsolidated:
                                     metadata={
                                         "array": ArrayV3Metadata.from_dict(
                                             {
-                                                **array_metadata,
+                                                **array_metadata,  # type: ignore[typeddict-item]
                                                 "attributes": {"key": "grandchild"},
                                                 "shape": (4, 4),
                                                 "chunk_grid": {
@@ -450,7 +450,7 @@ class TestConsolidated:
         }
 
         with pytest.raises(TypeError, match="key='foo', type='list'"):
-            ConsolidatedMetadata.from_dict(payload)
+            ConsolidatedMetadata.from_dict(payload)  # type: ignore[arg-type]
 
     def test_to_dict_empty(self) -> None:
         meta = ConsolidatedMetadata(

@@ -309,15 +309,13 @@ class ArrayV3Metadata(Metadata):
             fill_value=fill_value_parsed,
             dimension_names=dimension_names,
             storage_transformers=storage_transformers,  # type: ignore[arg-type]
-        )  # type: ignore[arg-type]
+        )
 
-    def to_dict(self) -> dict[str, JSON]:
+    def to_dict(self) -> ArrayMetadataJSON_V3:  # type: ignore[override]
         out_dict = super().to_dict()
         out_dict["fill_value"] = self.data_type.to_json_scalar(
             self.fill_value, zarr_format=self.zarr_format
         )
-        if not isinstance(out_dict, dict):
-            raise TypeError(f"Expected dict. Got {type(out_dict)}.")
 
         # if `dimension_names` is `None`, we do not include it in
         # the metadata document
@@ -332,7 +330,7 @@ class ArrayV3Metadata(Metadata):
         if isinstance(dtype_meta, ZDType):
             out_dict["data_type"] = dtype_meta.to_json(zarr_format=3)  # type: ignore[unreachable]
 
-        return out_dict
+        return out_dict  # type: ignore[return-value]
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
         return replace(self, shape=shape)

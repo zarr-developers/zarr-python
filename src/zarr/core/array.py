@@ -186,17 +186,21 @@ def parse_array_metadata(data: ArrayV3Metadata | ArrayMetadataJSON_V3) -> ArrayV
 def parse_array_metadata(
     data: ArrayV2Metadata | ArrayMetadataJSON_V2 | ArrayV3Metadata | ArrayMetadataJSON_V3,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
+    """
+    If the input is a dict representation of a Zarr metadata document, instantiate the right metadata
+    class from that dict. If the input is a metadata object, return it.
+    """
+
     if isinstance(data, ArrayMetadata):
-        return data
-    elif isinstance(data, dict):
-        zarr_format = data.get("zarr_format")
+        raise
+    else:
+        zarr_format = data["zarr_format"]
         if zarr_format == 3:
-            return ArrayV3Metadata.from_dict(data)
+            return ArrayV3Metadata.from_dict(data)  # type: ignore[arg-type]
         elif zarr_format == 2:
-            return ArrayV2Metadata.from_dict(data)
+            return ArrayV2Metadata.from_dict(data)  # type: ignore[arg-type]
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
-    raise TypeError  # pragma: no cover
 
 
 def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None) -> CodecPipeline:
@@ -971,7 +975,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         ValueError
             If the dictionary data is invalid or incompatible with either Zarr format 2 or 3 array creation.
         """
-        metadata = parse_array_metadata(data)
+        metadata = parse_array_metadata(data)  # type: ignore[call-overload]
         return cls(metadata=metadata, store_path=store_path)
 
     @classmethod

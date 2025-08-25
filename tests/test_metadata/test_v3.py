@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, Literal
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 import pytest
 
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.common import NamedConfig
 from zarr.core.config import config
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
@@ -20,11 +22,9 @@ from zarr.core.metadata.v3 import (
 from zarr.errors import UnknownCodecError
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from typing import Any
 
-    from zarr.abc.codec import Codec
-    from zarr.core.common import JSON, ArrayMetadataJSON_V3, NamedConfig
+    from zarr.core.common import JSON, ArrayMetadataJSON_V3
 
 
 bool_dtypes = ("bool",)
@@ -133,18 +133,18 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
 @pytest.mark.parametrize("storage_transformers", [(), "unset"])
 def test_metadata_to_dict(
     chunk_grid: NamedConfig[str, Mapping[str, object]],
-    codecs: list[Codec],
+    codecs: tuple[NamedConfig[str, Mapping[str, object]]],
     data_type: str,
     fill_value: Any,
     chunk_key_encoding: NamedConfig[str, Mapping[str, object]],
     dimension_names: tuple[str | None, ...] | Literal["unset"],
-    attributes: dict[str, Any] | Literal["unset"],
+    attributes: Mapping[str, Any] | Literal["unset"],
     storage_transformers: tuple[dict[str, JSON]] | Literal["unset"],
 ) -> None:
     shape = (1, 2, 3)
 
     # These are the fields in the array metadata document that are optional
-    not_required = {}
+    not_required: dict[str, object] = {}
 
     if dimension_names != "unset":
         not_required["dimension_names"] = dimension_names
@@ -155,7 +155,7 @@ def test_metadata_to_dict(
     if attributes != "unset":
         not_required["attributes"] = attributes
 
-    source_dict = {
+    source_dict: ArrayMetadataJSON_V3 = {
         "zarr_format": 3,
         "node_type": "array",
         "shape": shape,
@@ -164,7 +164,7 @@ def test_metadata_to_dict(
         "chunk_key_encoding": chunk_key_encoding,
         "codecs": codecs,
         "fill_value": fill_value,
-    } | not_required
+    } | not_required  # type: ignore[assignment]
 
     metadata = ArrayV3Metadata.from_dict(source_dict)
     parsed_dict = metadata.to_dict()
@@ -172,10 +172,12 @@ def test_metadata_to_dict(
     for k, v in parsed_dict.items():
         if k in source_dict:
             if k == "chunk_key_encoding":
+                v = cast(NamedConfig[str, Mapping[str, object]], v)
                 assert v["name"] == chunk_key_encoding["name"]
                 if chunk_key_encoding["name"] == "v2":
                     if "configuration" in chunk_key_encoding:
                         if "separator" in chunk_key_encoding["configuration"]:
+                            assert "configuration" in v
                             assert (
                                 v["configuration"]["separator"]
                                 == chunk_key_encoding["configuration"]["separator"]
@@ -185,14 +187,16 @@ def test_metadata_to_dict(
                 elif chunk_key_encoding["name"] == "default":
                     if "configuration" in chunk_key_encoding:
                         if "separator" in chunk_key_encoding["configuration"]:
+                            assert "configuration" in v
                             assert (
                                 v["configuration"]["separator"]
                                 == chunk_key_encoding["configuration"]["separator"]
                             )
                     else:
+                        assert "configuration" in v
                         assert v["configuration"]["separator"] == "/"
             else:
-                assert source_dict[k] == v
+                assert source_dict[k] == v  # type: ignore[literal-required]
         else:
             if k == "attributes":
                 assert v == {}

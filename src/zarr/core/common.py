@@ -110,6 +110,7 @@ class GroupMetadataJSON_V2(TypedDict):
 
     zarr_format: Literal[2]
     attributes: NotRequired[Mapping[str, JSON]]
+    consolidated_metadata: NotRequired[ConsolidatedMetadata_JSON_V2]
 
 
 class ArrayMetadataJSON_V3(TypedDict):
@@ -138,6 +139,33 @@ class GroupMetadataJSON_V3(TypedDict):
     zarr_format: Literal[3]
     node_type: Literal["group"]
     attributes: NotRequired[Mapping[str, JSON]]
+    consolidated_metadata: NotRequired[ConsolidatedMetadata_JSON_V3]
+
+
+# TODO: use just 1 generic class and parametrize the type of the value type of the metadata
+# I.e., ConsolidatedMetadata_JSON[ArrayMetadataJSON_V2 | GroupMetadataJSON_V2]
+class ConsolidatedMetadata_JSON_V2(TypedDict):
+    """
+    A typed dictionary model for Zarr consolidated metadata.
+
+    This model is parameterized by the type of the metadata itself.
+    """
+
+    kind: Literal["inline"]
+    must_understand: Literal["false"]
+    metadata: Mapping[str, ArrayMetadataJSON_V2 | GroupMetadataJSON_V2]
+
+
+class ConsolidatedMetadata_JSON_V3(TypedDict):
+    """
+    A typed dictionary model for Zarr consolidated metadata.
+
+    This model is parameterized by the type of the metadata itself.
+    """
+
+    kind: Literal["inline"]
+    must_understand: Literal["false"]
+    metadata: Mapping[str, ArrayMetadataJSON_V3 | GroupMetadataJSON_V3]
 
 
 class CodecJSON_V2(TypedDict, Generic[TName]):

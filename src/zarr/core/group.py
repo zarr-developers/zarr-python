@@ -7,9 +7,9 @@ import logging
 import unicodedata
 import warnings
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field, fields, replace
+from dataclasses import asdict, dataclass, field, replace
 from itertools import accumulate
-from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
+from typing import TYPE_CHECKING, Literal, Self, TypeVar, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -41,7 +41,13 @@ from zarr.core.common import (
     ZATTRS_JSON,
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
+    ArrayMetadataJSON_V2,
+    ArrayMetadataJSON_V3,
+    ConsolidatedMetadata_JSON_V2,
+    ConsolidatedMetadata_JSON_V3,
     DimensionNames,
+    GroupMetadataJSON_V2,
+    GroupMetadataJSON_V3,
     NodeType,
     ShapeLike,
     ZarrFormat,
@@ -143,7 +149,7 @@ class ConsolidatedMetadata:
     kind: Literal["inline"] = "inline"
     must_understand: Literal[False] = False
 
-    def to_dict(self) -> dict[str, JSON]:
+    def to_dict(self) -> ConsolidatedMetadata_JSON_V2 | ConsolidatedMetadata_JSON_V3:
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
@@ -157,13 +163,12 @@ class ConsolidatedMetadata:
                     ),
                 )
             },
-        }
+        }  # type: ignore[return-value, misc]
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
-        data = dict(data)
+    def from_dict(cls, data: ConsolidatedMetadata_JSON_V2 | ConsolidatedMetadata_JSON_V3) -> Self:
+        kind = data["kind"]
 
-        kind = data.get("kind")
         if kind != "inline":
             raise ValueError(f"Consolidated metadata kind='{kind}' is not supported.")
 
@@ -179,20 +184,21 @@ class ConsolidatedMetadata:
                         f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
                     )
 
-                # zarr_format is present in v2 and v3.
-                zarr_format = parse_zarr_format(v["zarr_format"])
+                zarr_format = v["zarr_format"]
 
                 if zarr_format == 3:
-                    node_type = parse_node_type(v.get("node_type", None))
+                    v = cast(ArrayMetadataJSON_V3 | GroupMetadataJSON_V3, v)
+                    node_type = v["node_type"]
                     if node_type == "group":
-                        metadata[k] = GroupMetadata.from_dict(v)
+                        metadata[k] = GroupMetadata.from_dict(v)  # type: ignore[arg-type]
                     elif node_type == "array":
-                        metadata[k] = ArrayV3Metadata.from_dict(v)
+                        metadata[k] = ArrayV3Metadata.from_dict(v)  # type: ignore[arg-type]
                     else:
                         assert_never(node_type)
                 elif zarr_format == 2:
+                    v = cast(ArrayMetadataJSON_V2 | GroupMetadataJSON_V2, v)
                     if "shape" in v:
-                        metadata[k] = ArrayV2Metadata.from_dict(v)
+                        metadata[k] = ArrayV2Metadata.from_dict(v)  # type: ignore[arg-type]
                     else:
                         metadata[k] = GroupMetadata.from_dict(v)
                 else:
@@ -408,22 +414,21 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
-        data = dict(data)
-        assert data.pop("node_type", None) in ("group", None)
-        consolidated_metadata = data.pop("consolidated_metadata", None)
-        if consolidated_metadata:
-            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
-
-        zarr_format = data.get("zarr_format")
-        if zarr_format == 2 or zarr_format is None:
-            # zarr v2 allowed arbitrary keys here.
-            # We don't want the GroupMetadata constructor to fail just because someone put an
-            # extra key in the metadata.
-            expected = {x.name for x in fields(cls)}
-            data = {k: v for k, v in data.items() if k in expected}
-
-        return cls(**data)
+    def from_dict(cls, data: GroupMetadataJSON_V2 | GroupMetadataJSON_V3) -> GroupMetadata:  # type: ignore[override]
+        """
+        Create an instance of GroupMetadata from a dict model of Zarr group metadata.
+        """
+        if "consolidated_metadata" in data:
+            consolidated_metadata = ConsolidatedMetadata.from_dict(data["consolidated_metadata"])
+        else:
+            consolidated_metadata = None
+        zarr_format = data["zarr_format"]
+        attributes = data.get("attributes", {})
+        return cls(
+            attributes=attributes,  # type: ignore[arg-type]
+            zarr_format=zarr_format,
+            consolidated_metadata=consolidated_metadata,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(replace(self, consolidated_metadata=None))
@@ -672,7 +677,7 @@ class AsyncGroup:
         data: dict[str, Any],
     ) -> AsyncGroup:
         return cls(
-            metadata=GroupMetadata.from_dict(data),
+            metadata=GroupMetadata.from_dict(data),  # type: ignore[arg-type]
             store_path=store_path,
         )
 
@@ -3552,9 +3557,9 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
         raise MetadataValidationError("node_type", "array or group", "nothing (the key is missing)")
     match zarr_json:
         case {"node_type": "array"}:
-            return ArrayV3Metadata.from_dict(zarr_json)
+            return ArrayV3Metadata.from_dict(zarr_json)  # type: ignore[arg-type]
         case {"node_type": "group"}:
-            return GroupMetadata.from_dict(zarr_json)
+            return GroupMetadata.from_dict(zarr_json)  # type: ignore[arg-type]
         case _:  # pragma: no cover
             raise ValueError(
                 "invalid value for `node_type` key in metadata document"
@@ -3571,7 +3576,7 @@ def _build_metadata_v2(
         case {"shape": _}:
             return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json})
         case _:  # pragma: no cover
-            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
+            return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})  # type: ignore[arg-type]
 
 
 @overload
