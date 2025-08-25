@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
-from zarr.core.type_check import check_type
+from zarr.errors import UnknownCodecError
 
 if TYPE_CHECKING:
     from typing import Self
