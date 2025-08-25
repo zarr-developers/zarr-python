@@ -5,13 +5,13 @@ from collections.abc import Iterable, Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
-import numcodecs.abc
-
 from zarr.abc.metadata import Metadata
+from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
 from zarr.errors import ZarrUserWarning
+from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -19,7 +19,6 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import ChunkCoords
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
@@ -31,7 +30,6 @@ if TYPE_CHECKING:
 import json
 from dataclasses import dataclass, field, fields, replace
 
-import numcodecs
 import numpy as np
 
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -57,33 +55,33 @@ class ArrayV2MetadataDict(TypedDict):
 
 
 # Union of acceptable types for v2 compressors
-CompressorLikev2: TypeAlias = dict[str, JSON] | numcodecs.abc.Codec | None
+CompressorLikev2: TypeAlias = dict[str, JSON] | Numcodec | None
 
 
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
-    shape: ChunkCoords
-    chunks: ChunkCoords
+    shape: tuple[int, ...]
+    chunks: tuple[int, ...]
     dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: int | float | str | bytes | None = None
     order: MemoryOrder = "C"
-    filters: tuple[numcodecs.abc.Codec, ...] | None = None
+    filters: tuple[Numcodec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: numcodecs.abc.Codec | None
+    compressor: Numcodec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(
         self,
         *,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDType[TDType_co, TScalar_co],
-        chunks: ChunkCoords,
+        chunks: tuple[int, ...],
         fill_value: Any,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
         compressor: CompressorLikev2 = None,
-        filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
+        filters: Iterable[Numcodec | dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> None:
         """
@@ -124,7 +122,7 @@ class ArrayV2Metadata(Metadata):
         return RegularChunkGrid(chunk_shape=self.chunks)
 
     @property
-    def shards(self) -> ChunkCoords | None:
+    def shards(self) -> tuple[int, ...] | None:
         return None
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
@@ -198,7 +196,7 @@ class ArrayV2Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
-        if isinstance(zarray_dict["compressor"], numcodecs.abc.Codec):
+        if _is_numcodec(zarray_dict["compressor"]):
             codec_config = zarray_dict["compressor"].get_config()
             # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
             if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
@@ -213,7 +211,7 @@ class ArrayV2Metadata(Metadata):
                 raise TypeError("Invalid type for filters. Expected a list or tuple.")
             new_filters = []
             for f in raw_filters:
-                if isinstance(f, numcodecs.abc.Codec):
+                if _is_numcodec(f):
                     new_filters.append(f.get_config())
                 else:
                     new_filters.append(f)
@@ -230,7 +228,7 @@ class ArrayV2Metadata(Metadata):
         return zarray_dict
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
+        self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunks,
@@ -240,11 +238,11 @@ class ArrayV2Metadata(Metadata):
             prototype=prototype,
         )
 
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+    def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         chunk_identifier = self.dimension_separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
 
-    def update_shape(self, shape: ChunkCoords) -> Self:
+    def update_shape(self, shape: tuple[int, ...]) -> Self:
         return replace(self, shape=shape)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
@@ -263,20 +261,20 @@ def parse_zarr_format(data: object) -> Literal[2]:
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
+def parse_filters(data: object) -> tuple[Numcodec, ...] | None:
     """
     Parse a potential tuple of filters
     """
-    out: list[numcodecs.abc.Codec] = []
+    out: list[Numcodec] = []
 
     if data is None:
         return data
     if isinstance(data, Iterable):
         for idx, val in enumerate(data):
-            if isinstance(val, numcodecs.abc.Codec):
+            if _is_numcodec(val):
                 out.append(val)
             elif isinstance(val, dict):
-                out.append(numcodecs.get_codec(val))
+                out.append(get_numcodec(val))  # type: ignore[arg-type]
             else:
                 msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
                 raise TypeError(msg)
@@ -286,20 +284,20 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
         else:
             return tuple(out)
     # take a single codec instance and wrap it in a tuple
-    if isinstance(data, numcodecs.abc.Codec):
+    if _is_numcodec(data):
         return (data,)
     msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
     raise TypeError(msg)
 
 
-def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
+def parse_compressor(data: object) -> Numcodec | None:
     """
     Parse a potential compressor.
     """
-    if data is None or isinstance(data, numcodecs.abc.Codec):
+    if data is None or _is_numcodec(data):
         return data
     if isinstance(data, dict):
-        return numcodecs.get_codec(data)
+        return get_numcodec(data)  # type: ignore[arg-type]
     msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 

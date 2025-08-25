@@ -1,0 +1,2 @@
+Define a ``Protocol`` to model the ``numcodecs.abc.Codec`` interface. This is groundwork toward
+making ``numcodecs`` an optional dependency for ``zarr-python``.

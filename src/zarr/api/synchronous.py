@@ -15,11 +15,11 @@ from zarr.errors import ZarrDeprecationWarning
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    import numcodecs.abc
     import numpy as np
     import numpy.typing as npt
 
     from zarr.abc.codec import Codec
+    from zarr.abc.numcodec import Numcodec
     from zarr.api.asynchronous import ArrayLike, PathLike
     from zarr.core.array import (
         CompressorsLike,
@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from zarr.core.common import (
         JSON,
         AccessModeLiteral,
-        ChunkCoords,
         DimensionNames,
         MemoryOrder,
         ShapeLike,
@@ -598,9 +597,9 @@ def create_group(
 
 # TODO: add type annotations for kwargs
 def create(
-    shape: ChunkCoords | int,
+    shape: tuple[int, ...] | int,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | int | bool | None = None,
+    chunks: tuple[int, ...] | int | bool | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,  # TODO: need type
@@ -610,7 +609,7 @@ def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -622,7 +621,7 @@ def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: ChunkCoords | int | None = None,
+    chunk_shape: tuple[int, ...] | int | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -755,7 +754,7 @@ def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: ChunkCoords | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -782,18 +781,17 @@ def create_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    shape : ChunkCoords, optional
-        Shape of the array. Can be ``None`` if ``data`` is provided.
+    shape : ShapeLike, optional
+        Shape of the array. Must be ``None`` if ``data`` is provided.
     dtype : ZDTypeLike, optional
-        Data type of the array. Can be ``None`` if ``data`` is provided.
+        Data type of the array. Must be ``None`` if ``data`` is provided.
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
-        ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
-        or ``None``.
-    chunks : ChunkCoords, optional
+        ``shape`` and ``dtype`` parameters must be ``None``.
+    chunks : tuple[int, ...], optional
         Chunk shape of the array.
         If not specified, default are guessed based on the shape and dtype.
-    shards : ChunkCoords, optional
+    shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -921,7 +919,7 @@ def from_array(
     data: Array | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
-    chunks: Literal["auto", "keep"] | ChunkCoords = "keep",
+    chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
     shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
@@ -951,22 +949,22 @@ def from_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    chunks : ChunkCoords or "auto" or "keep", optional
+    chunks : tuple[int, ...] or "auto" or "keep", optional
         Chunk shape of the array.
         Following values are supported:
 
         - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
         - "keep": Retain the chunk shape of the data array if it is a zarr Array.
-        - ChunkCoords: A tuple of integers representing the chunk shape.
+        - tuple[int, ...]: A tuple of integers representing the chunk shape.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
-    shards : ChunkCoords, optional
+    shards : tuple[int, ...], optional
         Shard shape of the array.
         Following values are supported:
 
         - "auto": Automatically determine the shard shape based on the array's shape and chunk shape.
         - "keep": Retain the shard shape of the data array if it is a zarr Array.
-        - ChunkCoords: A tuple of integers representing the shard shape.
+        - tuple[int, ...]: A tuple of integers representing the shard shape.
         - None: No sharding.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise None.
@@ -1129,7 +1127,7 @@ def from_array(
 
 
 # TODO: add type annotations for kwargs
-def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
+def empty(shape: tuple[int, ...], **kwargs: Any) -> Array:
     """Create an empty array with the specified shape. The contents will be filled with the
     array's fill value or zeros if no fill value is provided.
 
@@ -1182,7 +1180,7 @@ def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs and fill_value
-def full(shape: ChunkCoords, fill_value: Any, **kwargs: Any) -> Array:
+def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> Array:
     """Create an array with a default fill value.
 
     Parameters
@@ -1223,7 +1221,7 @@ def full_like(a: ArrayLike, **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs
-def ones(shape: ChunkCoords, **kwargs: Any) -> Array:
+def ones(shape: tuple[int, ...], **kwargs: Any) -> Array:
     """Create an array with a fill value of one.
 
     Parameters
@@ -1325,7 +1323,7 @@ def open_like(a: ArrayLike, path: str, **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs
-def zeros(shape: ChunkCoords, **kwargs: Any) -> Array:
+def zeros(shape: tuple[int, ...], **kwargs: Any) -> Array:
     """Create an array with a fill value of zero.
 
     Parameters
