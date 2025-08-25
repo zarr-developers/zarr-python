@@ -93,7 +93,7 @@ def test_parse_node_type_valid() -> None:
 def test_parse_node_type_invalid(node_type: Any) -> None:
     with pytest.raises(
         MetadataValidationError,
-        match=f"Invalid value for 'node_type'. Expected 'array or group'. Got '{node_type}'.",
+        match=f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got '{node_type}'.",
     ):
         parse_node_type(node_type)
 

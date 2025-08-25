@@ -862,7 +862,8 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    raise GroupNotFoundError(store, store_path.path)
+    msg = f"No group found in store {store!r} at path {store_path.path!r}"
+    raise GroupNotFoundError(msg)
 
 
 async def create(
@@ -1268,7 +1269,8 @@ async def open_array(
                 overwrite=overwrite,
                 **kwargs,
             )
-        raise ArrayNotFoundError(store_path.store, store_path.path) from err
+        msg = "No array found in store {store_path.store} at path {store_path.path}"
+        raise ArrayNotFoundError(msg) from err
 
 
 async def open_like(
