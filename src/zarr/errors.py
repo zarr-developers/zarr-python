@@ -134,16 +134,10 @@ class ZarrRuntimeWarning(RuntimeWarning):
     """
 
 
-class VindexInvalidSelectionError(IndexError):
-    _msg = (
-        "unsupported selection type for vectorized indexing; only "
-        "coordinate selection (tuple of integer arrays) and mask selection "
-        "(single Boolean array) are supported; got {!r}"
-    )
+class VindexInvalidSelectionError(IndexError): ...
 
 
-class NegativeStepError(IndexError):
-    _msg = "only slices with step >= 1 are supported"
+class NegativeStepError(IndexError): ...
 
 
 class BoundsCheckError(IndexError): ...
