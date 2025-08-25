@@ -4444,7 +4444,7 @@ async def init_array(
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: DimensionNames = None,
     overwrite: bool = False,
-    config: ArrayConfigLike | None,
+    config: ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
     """Create and persist an array metadata document.
 
@@ -4524,8 +4524,10 @@ async def init_array(
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfigLike or None, optional
+    config : ArrayConfigLike or None, default=None
         Configuration for this array.
+        If  ``None``, the default array runtime configuration will be used. This default
+        is stored in the global configuration object.
 
     Returns
     -------
