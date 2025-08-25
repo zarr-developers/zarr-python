@@ -41,7 +41,8 @@ from zarr.registry import get_codec_class
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
         return 3
-    raise MetadataValidationError("zarr_format", 3, data)
+    msg = f"Invalid value for zarr_format. Expected 3. Got '{data}'."
+    raise MetadataValidationError(msg)
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
