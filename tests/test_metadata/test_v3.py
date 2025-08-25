@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 import json
 import re
 from typing import TYPE_CHECKING, Literal
@@ -8,10 +7,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import pytest
 
-from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.core.common import ArrayMetadataJSON_V3, NamedConfig
 from zarr.core.config import config
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
@@ -22,10 +18,11 @@ from zarr.core.metadata.v3 import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from typing import Any
 
     from zarr.abc.codec import Codec
-    from zarr.core.common import JSON
+    from zarr.core.common import JSON, ArrayMetadataJSON_V3, NamedConfig
 
 
 bool_dtypes = ("bool",)
@@ -112,20 +109,25 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
         dtype_instance.from_json_scalar(fill_value, zarr_format=3)
 
 
-@pytest.mark.parametrize("chunk_grid", [{"name": "regular", "configuration": {"chunk_shape": (1, 1, 1)}}])
-@pytest.mark.parametrize("codecs", [({"name" : "bytes"},)])
+@pytest.mark.parametrize(
+    "chunk_grid", [{"name": "regular", "configuration": {"chunk_shape": (1, 1, 1)}}]
+)
+@pytest.mark.parametrize("codecs", [({"name": "bytes"},)])
 @pytest.mark.parametrize("fill_value", [0, 1])
 @pytest.mark.parametrize("data_type", ["int8", "uint8"])
-@pytest.mark.parametrize("chunk_key_encoding", [
-    {"name": "v2", "configuration": {"separator": "."}},
-    {"name": "v2", "configuration": {"separator": "/"}},
-    {"name": "v2"},
-    {"name": "default", "configuration": {"separator": "."}},
-    {"name": "default", "configuration": {"separator": "/"}},
-    {"name": "default"},
-    ])
+@pytest.mark.parametrize(
+    "chunk_key_encoding",
+    [
+        {"name": "v2", "configuration": {"separator": "."}},
+        {"name": "v2", "configuration": {"separator": "/"}},
+        {"name": "v2"},
+        {"name": "default", "configuration": {"separator": "."}},
+        {"name": "default", "configuration": {"separator": "/"}},
+        {"name": "default"},
+    ],
+)
 @pytest.mark.parametrize("attributes", ["unset", {"foo": "bar"}])
-@pytest.mark.parametrize("dimension_names", [(None, None, None), ('a','b', None), "unset"])
+@pytest.mark.parametrize("dimension_names", [(None, None, None), ("a", "b", None), "unset"])
 @pytest.mark.parametrize("storage_transformers", [(), "unset"])
 def test_metadata_to_dict(
     chunk_grid: NamedConfig[str, Mapping[str, object]],
@@ -134,7 +136,7 @@ def test_metadata_to_dict(
     fill_value: Any,
     chunk_key_encoding: NamedConfig[str, Mapping[str, object]],
     dimension_names: tuple[str | None, ...] | Literal["unset"],
-    attributes: dict[str, Any] | Literal['unset'],
+    attributes: dict[str, Any] | Literal["unset"],
     storage_transformers: tuple[dict[str, JSON]] | Literal["unset"],
 ) -> None:
     shape = (1, 2, 3)
@@ -165,28 +167,34 @@ def test_metadata_to_dict(
     metadata = ArrayV3Metadata.from_dict(source_dict)
     parsed_dict = metadata.to_dict()
 
-    for k,v in parsed_dict.items():
+    for k, v in parsed_dict.items():
         if k in source_dict:
-            if k == 'chunk_key_encoding':
-                assert v['name'] == chunk_key_encoding['name']
-                if chunk_key_encoding['name'] == 'v2':
+            if k == "chunk_key_encoding":
+                assert v["name"] == chunk_key_encoding["name"]
+                if chunk_key_encoding["name"] == "v2":
                     if "configuration" in chunk_key_encoding:
-                        if "separator" in chunk_key_encoding['configuration']:
-                            assert v['configuration']['separator'] == chunk_key_encoding['configuration']['separator']
+                        if "separator" in chunk_key_encoding["configuration"]:
+                            assert (
+                                v["configuration"]["separator"]
+                                == chunk_key_encoding["configuration"]["separator"]
+                            )
                     else:
                         assert v["configuration"]["separator"] == "."
-                elif chunk_key_encoding['name'] == 'default':
+                elif chunk_key_encoding["name"] == "default":
                     if "configuration" in chunk_key_encoding:
-                        if "separator" in chunk_key_encoding['configuration']:
-                            assert v['configuration']['separator'] == chunk_key_encoding['configuration']['separator']
+                        if "separator" in chunk_key_encoding["configuration"]:
+                            assert (
+                                v["configuration"]["separator"]
+                                == chunk_key_encoding["configuration"]["separator"]
+                            )
                     else:
                         assert v["configuration"]["separator"] == "/"
             else:
                 assert source_dict[k] == v
         else:
-            if k == 'attributes':
+            if k == "attributes":
                 assert v == {}
-            elif k == 'storage_transformers':
+            elif k == "storage_transformers":
                 assert v == ()
             else:
                 assert v is None
