@@ -25,7 +25,6 @@ from zarr.core.dtype.common import (
     HasItemSize,
     HasLength,
     HasObjectCodec,
-    check_dtype_spec_v2,
     v3_unstable_dtype_warning,
 )
 from zarr.core.dtype.npy.common import (
@@ -34,6 +33,7 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TDType_co, ZDType
+from zarr.core.type_check import guard_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -189,10 +189,8 @@ class FixedLengthUTF32(
             Whether the input is a valid JSON representation of a NumPy U dtype.
         """
         return (
-            check_dtype_spec_v2(data)
-            and isinstance(data["name"], str)
+            guard_type(data, FixedLengthUTF32JSON_V2)
             and re.match(r"^[><]U\d+$", data["name"]) is not None
-            and data["object_codec_id"] is None
         )
 
     @classmethod
@@ -520,11 +518,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
             Whether the input is a valid JSON representation of a NumPy "object" data type, and that the
             object codec id is appropriate for variable-length UTF-8 strings.
         """
-        return (
-            check_dtype_spec_v2(data)
-            and data["name"] == "|O"
-            and data["object_codec_id"] == cls.object_codec_id
-        )
+        return guard_type(data, VariableLengthUTF8JSON_V2)
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["variable_length_utf8"]]:

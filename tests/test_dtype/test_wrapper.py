@@ -5,9 +5,10 @@ from typing import TYPE_CHECKING, Any, ClassVar
 
 import pytest
 
-from zarr.core.dtype.common import DTypeSpec_V2, DTypeSpec_V3, HasItemSize
+from zarr.core.dtype.common import DTypeSpec_V2, HasItemSize
 
 if TYPE_CHECKING:
+    from zarr.core.common import DTypeSpec_V3
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
