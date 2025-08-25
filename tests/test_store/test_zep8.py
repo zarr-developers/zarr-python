@@ -14,9 +14,10 @@ import pytest
 import zarr
 from zarr.abc.store_adapter import StoreAdapter, URLSegment
 from zarr.core.array import Array
+from zarr.core.buffer import default_buffer_prototype
 from zarr.registry import get_store_adapter, register_store_adapter
-from zarr.storage import FsspecStore, LocalStore, MemoryStore, ZipStore
-from zarr.storage._builtin_adapters import GCSAdapter, HttpsAdapter, S3Adapter
+from zarr.storage import FsspecStore, LocalStore, LoggingStore, MemoryStore, ZipStore
+from zarr.storage._builtin_adapters import GCSAdapter, HttpsAdapter, LoggingAdapter, S3Adapter
 from zarr.storage._common import make_store_path
 from zarr.storage._zep8 import URLParser, URLStoreResolver, ZEP8URLError, is_zep8_url
 
@@ -175,13 +176,9 @@ async def test_zip_chain_resolution(tmp_path: Path) -> None:
         zf.writestr("data/0.0", b"test chunk data")
 
     # Test ZIP URL chain
-    try:
-        store = await resolver.resolve_url(f"file:{zip_path}|zip:")
-        # The store should be accessible
-        assert store is not None
-    except Exception as e:
-        # ZIP integration might fail due to path handling issues
-        pytest.skip(f"ZIP chain resolution not fully working: {e}")
+    store = await resolver.resolve_url(f"file:{zip_path}|zip:")
+    # The store should be accessible
+    assert store is not None
 
 
 def test_zarr_format_extraction() -> None:
@@ -540,11 +537,11 @@ async def test_fsspec_adapter_error_handling() -> None:
     # Test S3 adapter with invalid URL
     segment = URLSegment(scheme="s3", path="bucket/data", adapter=None)
 
-    with pytest.raises(ValueError, match="Expected s3://"):
+    with pytest.raises(ValueError, match="Unsupported scheme"):
         await S3Adapter.from_url_segment(segment, "invalid://url")
 
     # Test HTTPS adapter with invalid URL
-    with pytest.raises(ValueError, match="Expected HTTP/HTTPS"):
+    with pytest.raises(ValueError, match="Unsupported scheme"):
         await HttpsAdapter.from_url_segment(segment, "ftp://invalid")
 
 
@@ -557,12 +554,9 @@ async def test_fsspec_storage_options() -> None:
     # This would normally create an fsspec store, but we can't test the full
     # creation without network access. We just verify the adapter can handle
     # the parameters without raising an error during validation.
-    try:
-        # The adapter should accept the parameters
-        assert S3Adapter.can_handle_scheme("s3")
-        assert "s3" in S3Adapter.get_supported_schemes()
-    except Exception as e:
-        pytest.fail(f"S3 adapter configuration failed: {e}")
+    # The adapter should accept the parameters
+    assert S3Adapter.can_handle_scheme("s3")
+    assert "s3" in S3Adapter.get_supported_schemes()
 
 
 def test_fsspec_schemes_support() -> None:
@@ -610,3 +604,229 @@ async def test_fsspec_url_chain_parsing() -> None:
             assert zarr_format == 2
         elif "|zarr3:" in url:
             assert zarr_format == 3
+
+
+# =============================================================================
+# LoggingStore Adapter Tests
+# =============================================================================
+
+
+def test_logging_adapter_registration() -> None:
+    """Test that LoggingAdapter is registered properly."""
+    adapter = get_store_adapter("log")
+    assert adapter is LoggingAdapter
+    assert adapter.adapter_name == "log"
+
+
+def test_logging_adapter_scheme_handling() -> None:
+    """Test LoggingAdapter scheme handling."""
+
+    # LoggingAdapter should not handle schemes directly (it's a wrapper)
+    assert not LoggingAdapter.can_handle_scheme("log")
+    assert not LoggingAdapter.can_handle_scheme("memory")
+    assert LoggingAdapter.get_supported_schemes() == []
+
+
+async def test_logging_adapter_basic_functionality() -> None:
+    """Test basic LoggingAdapter functionality with memory store."""
+
+    resolver = URLStoreResolver()
+
+    # Test basic memory store with logging
+    store = await resolver.resolve_url("memory:|log:")
+    assert isinstance(store, LoggingStore)
+
+    # Verify it wraps a MemoryStore
+    assert isinstance(store._store, MemoryStore)
+
+
+async def test_logging_adapter_query_parameters() -> None:
+    """Test LoggingAdapter with query parameters for log level."""
+
+    resolver = URLStoreResolver()
+
+    # Test with custom log level
+    store = await resolver.resolve_url("memory:|log:?log_level=INFO")
+    assert isinstance(store, LoggingStore)
+    assert store.log_level == "INFO"
+
+    # Test with DEBUG log level
+    store_debug = await resolver.resolve_url("memory:|log:?log_level=DEBUG")
+    assert isinstance(store_debug, LoggingStore)
+    assert store_debug.log_level == "DEBUG"
+
+    # Test without query parameters (should default to DEBUG)
+    store_default = await resolver.resolve_url("memory:|log:")
+    assert isinstance(store_default, LoggingStore)
+    assert store_default.log_level == "DEBUG"
+
+
+async def test_logging_adapter_with_file_store(tmp_path: Path) -> None:
+    """Test LoggingAdapter wrapping a file store."""
+
+    resolver = URLStoreResolver()
+
+    # Test with file store
+    test_dir = tmp_path / "test_data"
+    test_dir.mkdir()
+
+    store = await resolver.resolve_url(f"file:{test_dir}|log:")
+    assert isinstance(store, LoggingStore)
+    assert isinstance(store._store, LocalStore)
+
+
+async def test_logging_adapter_operations_are_logged(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Test that store operations are actually logged."""
+
+    resolver = URLStoreResolver()
+
+    # Create test directory
+    test_dir = tmp_path / "log_test"
+    test_dir.mkdir()
+
+    # Create logging store
+    store = await resolver.resolve_url(f"file:{test_dir}|log:?log_level=INFO")
+    assert isinstance(store, LoggingStore)
+
+    # Clear previous log records
+    caplog.clear()
+
+    # Perform some operations
+    buffer = default_buffer_prototype().buffer
+    test_data = buffer.from_bytes(b"test data")
+
+    # Test set operation
+    await store.set("c/0", test_data)
+
+    # Check that operations were logged
+    assert len(caplog.record_tuples) >= 2  # Start and finish logs
+    log_messages = [record[2] for record in caplog.record_tuples]
+
+    # Should see calling and finished messages
+    calling_logs = [msg for msg in log_messages if "Calling" in msg]
+    finished_logs = [msg for msg in log_messages if "Finished" in msg]
+
+    assert len(calling_logs) >= 1
+    assert len(finished_logs) >= 1
+
+    # Should mention the operation and store type
+    assert any("set" in msg for msg in log_messages)
+    assert any("LocalStore" in msg for msg in log_messages)
+
+
+def test_logging_adapter_zep8_url_detection() -> None:
+    """Test that logging URLs are properly detected as ZEP 8 URLs."""
+    # URLs with logging should be detected as ZEP 8
+    logging_urls = [
+        "memory:|log:",
+        "file:/tmp/data.zarr|log:",
+        "memory:|log:?log_level=INFO",
+        "s3://bucket/data.zarr|log:?log_level=DEBUG",
+        "file:/path/data.zip|zip:|log:",
+    ]
+
+    for url in logging_urls:
+        assert is_zep8_url(url), f"Should detect {url} as ZEP 8 URL"
+
+    # Regular URLs should not be detected as ZEP 8
+    regular_urls = [
+        "file:/tmp/zarr.log",
+        "/local/log",
+        "https://example.com/data.zarr/log",
+    ]
+
+    for url in regular_urls:
+        assert not is_zep8_url(url), f"Should NOT detect {url} as ZEP 8 URL"
+
+
+def test_logging_adapter_integration_with_zarr() -> None:
+    """Test LoggingAdapter integration with zarr.open and zarr.create."""
+    # Test creating array with logging
+    arr = zarr.create_array("memory:|log:", shape=(5,), dtype="i4")
+    arr[:] = [1, 2, 3, 4, 5]
+
+    # Verify data integrity
+    data = []
+    for i in range(5):
+        value = arr[i]
+        # Cast numpy scalar to Python int
+        data.append(value.item() if hasattr(value, "item") else int(value))  # type: ignore[arg-type]
+    assert data == [1, 2, 3, 4, 5]
+
+    # Verify that the underlying store is LoggingStore
+    assert isinstance(arr.store, LoggingStore)
+
+
+def test_logging_adapter_integration_with_zip(tmp_path: Path) -> None:
+    """Test LoggingAdapter integration with ZIP files."""
+
+    # Create a test ZIP with zarr data
+    zip_path = tmp_path / "test_with_logging.zip"
+
+    # First create zarr data in ZIP without logging
+    with ZipStore(str(zip_path), mode="w") as zip_store:
+        group = zarr.open_group(zip_store, mode="w")
+        arr = group.create_array("temperature", shape=(4,), dtype="f4")
+        arr[:] = [20.5, 21.0, 19.8, 22.1]
+
+    # Now read using ZEP 8 URL with logging
+    group = zarr.open_group(f"file:{zip_path}|zip:|log:", mode="r")
+
+    # Verify we can access the data
+    assert "temperature" in group
+    temp_item = group["temperature"]  # This gets the array from the group
+
+    # Check if it's an array by looking for array-like attributes
+    assert isinstance(temp_item, Array)
+    assert temp_item.shape == (4,)
+
+    # Verify the store chain
+    store_path = group.store_path
+    assert isinstance(store_path.store, LoggingStore)
+
+
+async def test_logging_adapter_error_handling() -> None:
+    """Test error handling in LoggingAdapter."""
+    from zarr.storage._builtin_adapters import LoggingAdapter
+
+    # Test with invalid preceding URL
+    segment = URLSegment(scheme=None, adapter="log", path="")
+
+    # Should handle errors gracefully when underlying store creation fails
+    with pytest.raises((ValueError, RuntimeError, TypeError)):
+        await LoggingAdapter.from_url_segment(segment, "invalid://nonexistent", mode="r")
+
+
+async def test_logging_adapter_query_parameter_parsing() -> None:
+    """Test that LoggingAdapter correctly parses and applies query parameters."""
+    resolver = URLStoreResolver()
+
+    # Test different log levels via query parameters
+    test_cases = [
+        ("memory:|log:?log_level=INFO", "INFO"),
+        ("memory:|log:?log_level=DEBUG", "DEBUG"),
+        ("memory:|log:?log_level=WARNING", "WARNING"),
+        ("memory:|log:?log_level=ERROR", "ERROR"),
+        ("memory:|log:", "DEBUG"),  # Default when no parameters
+    ]
+
+    for url, expected_level in test_cases:
+        store = await resolver.resolve_url(url)
+        assert isinstance(store, LoggingStore)
+        assert store.log_level == expected_level
+
+
+async def test_logging_adapter_preserves_store_properties() -> None:
+    """Test that LoggingAdapter preserves underlying store properties."""
+
+    resolver = URLStoreResolver()
+
+    # Test with memory store (supports writes)
+    memory_logged = await resolver.resolve_url("memory:|log:")
+    assert isinstance(memory_logged, LoggingStore)
+    assert memory_logged.supports_writes
+    assert memory_logged.supports_deletes
+    assert memory_logged.supports_listing
+    assert memory_logged.supports_partial_writes

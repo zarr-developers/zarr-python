@@ -191,12 +191,25 @@ Common ZEP 8 URL patterns:
    >>> # Specify Zarr format version
    >>> zarr.create_array("file:data-v3.zip|zip|zarr3", shape=(10,), dtype="i4")  # doctest: +SKIP
 
+**Debugging with logging:**
+
+   >>> # Log all operations on any store type
+   >>> z = zarr.open_array("memory:|log:", mode='w', shape=(5, 5), dtype="f4")  # doctest: +SKIP
+   >>> # 2025-08-24 20:01:13,282 - LoggingStore(memory://...) - INFO -  Calling MemoryStore.set(zarr.json)
+   >>>
+   >>> # Log operations on ZIP files with custom log level
+   >>> z = zarr.open_array("file:debug.zip|zip:|log:?log_level=INFO", mode='w')  # doctest: +SKIP
+   >>>
+   >>> # Log operations on remote cloud storage
+   >>> z = zarr.open_array("s3://bucket/data.zarr|log:", mode='r')  # doctest: +SKIP
+
 Available adapters:
 
 * ``file`` - Local filesystem paths
 * ``zip`` - ZIP file storage
 * ``memory`` - In-memory storage
 * ``s3``, ``gs``, ``gcs`` - Cloud storage (requires appropriate fsspec backends)
+* ``log`` - Logging wrapper for debugging store operations
 * ``zarr2``, ``zarr3`` - Format specification adapters
 
 You can programmatically discover all available adapters using :func:`zarr.registry.list_store_adapters`:

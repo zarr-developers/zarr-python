@@ -9,10 +9,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
+from urllib.parse import parse_qs, urlparse
 
 from zarr.abc.store_adapter import StoreAdapter
 from zarr.storage._local import LocalStore
+from zarr.storage._logging import LoggingStore
 from zarr.storage._memory import MemoryStore
+from zarr.storage._zep8 import URLStoreResolver
 from zarr.storage._zip import ZipStore
 
 if TYPE_CHECKING:
@@ -25,6 +28,7 @@ __all__ = [
     "FileSystemAdapter",
     "GCSAdapter",
     "HttpsAdapter",
+    "LoggingAdapter",
     "MemoryAdapter",
     "RemoteAdapter",
     "S3Adapter",
@@ -248,6 +252,83 @@ class GSAdapter(GCSAdapter):
     """Alias adapter for gs:// URLs (same as gcs)."""
 
     adapter_name = "gs"
+
+
+class LoggingAdapter(StoreAdapter):
+    """Store adapter that wraps any other store with logging capabilities.
+
+    This adapter enables logging of all store operations by wrapping the result
+    of any preceding URL chain with a LoggingStore. It can be used to debug
+    and monitor store operations.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> # Log all operations on a memory store
+    >>> store = zarr.open("memory:|log:", mode="w")
+    >>>
+    >>> # Log operations on a remote S3 store
+    >>> store = zarr.open("s3://bucket/data.zarr|log:", mode="r")
+    >>>
+    >>> # Log operations with custom log level
+    >>> store = zarr.open("file:/tmp/data.zarr|log:?log_level=INFO", mode="r")
+    """
+
+    adapter_name = "log"
+
+    @classmethod
+    async def from_url_segment(
+        cls,
+        segment: URLSegment,
+        preceding_url: str,
+        **kwargs: Any,
+    ) -> Store:
+        """Create a LoggingStore that wraps a store created from the preceding URL.
+
+        Parameters
+        ----------
+        segment : URLSegment
+            The URL segment with adapter='log'. The segment path can contain
+            query parameters for configuring the logging behavior:
+            - log_level: Log level (DEBUG, INFO, WARNING, ERROR)
+        preceding_url : str
+            The URL for the store to wrap with logging
+        **kwargs : Any
+            Additional arguments passed through to the wrapped store
+
+        Returns
+        -------
+        Store
+            A LoggingStore wrapping the store created from preceding_url
+        """
+
+        # Parse query parameters from the segment path for logging configuration
+        log_level = "DEBUG"  # default
+        log_handler = None
+
+        if segment.path and "?" in segment.path:
+            # Parse the segment path as a URL to extract query parameters
+            parsed = urlparse(f"log:{segment.path}")
+            query_params = parse_qs(parsed.query)
+
+            if "log_level" in query_params:
+                log_level = query_params["log_level"][0].upper()
+
+        # Create the underlying store from the preceding URL
+        resolver = URLStoreResolver()
+        underlying_store = await resolver.resolve_url(preceding_url, **kwargs)
+
+        # Wrap it with logging
+        return LoggingStore(store=underlying_store, log_level=log_level, log_handler=log_handler)
+
+    @classmethod
+    def can_handle_scheme(cls, scheme: str) -> bool:
+        # LoggingAdapter doesn't handle schemes directly, it wraps other stores
+        return False
+
+    @classmethod
+    def get_supported_schemes(cls) -> list[str]:
+        return []
 
 
 class ZipAdapter(StoreAdapter):
