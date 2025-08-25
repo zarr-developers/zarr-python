@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, over
 
 import numpy as np
 
-from zarr.core.common import NamedRequiredConfig, StructuredName_V2
+from zarr.core.common import NamedConfig, NamedRequiredConfig, StructuredName_V2
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     DTypeConfig_V2,
@@ -56,7 +56,10 @@ class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
 
 
 class StructuredJSON_V3(
-    NamedRequiredConfig[Literal["structured"], Mapping[str, Sequence[Sequence[str | DTypeJSON]]]]
+    NamedRequiredConfig[
+        Literal["structured"],
+        Mapping[str, Sequence[list[str | NamedConfig[str, Mapping[str, object]]]]],
+    ]
 ):
     """
     A JSON representation of a structured data type in Zarr V3.

@@ -139,7 +139,7 @@ class GroupMetadataJSON_V3(TypedDict):
     zarr_format: Literal[3]
     node_type: Literal["group"]
     attributes: NotRequired[Mapping[str, JSON]]
-    consolidated_metadata: NotRequired[ConsolidatedMetadata_JSON_V3]
+    consolidated_metadata: NotRequired[ConsolidatedMetadata_JSON_V3 | None]
 
 
 # TODO: use just 1 generic class and parametrize the type of the value type of the metadata

@@ -418,7 +418,7 @@ class GroupMetadata(Metadata):
         """
         Create an instance of GroupMetadata from a dict model of Zarr group metadata.
         """
-        if "consolidated_metadata" in data:
+        if "consolidated_metadata" in data and data["consolidated_metadata"] is not None:
             consolidated_metadata = ConsolidatedMetadata.from_dict(data["consolidated_metadata"])
         else:
             consolidated_metadata = None

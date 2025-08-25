@@ -192,7 +192,7 @@ def parse_array_metadata(
     """
 
     if isinstance(data, ArrayMetadata):
-        raise
+        return data
     else:
         zarr_format = data["zarr_format"]
         if zarr_format == 3:
