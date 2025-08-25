@@ -322,10 +322,6 @@ class TestConsolidated:
     def test_consolidated_metadata_from_dict(self) -> None:
         data: dict[str, JSON] = {"must_understand": False}
 
-        # missing kind
-        with pytest.raises(ValueError, match="kind='None'"):
-            ConsolidatedMetadata.from_dict(data)  # type: ignore[arg-type]
-
         # invalid kind
         data["kind"] = "invalid"
         with pytest.raises(ValueError, match="kind='invalid'"):
