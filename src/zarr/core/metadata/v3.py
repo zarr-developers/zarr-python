@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import JSON, ChunkCoords
+    from zarr.core.common import JSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
 
 
@@ -28,14 +28,13 @@ from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
-    ChunkCoords,
     DimensionNames,
     parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
 from zarr.registry import get_codec_class
 
 
@@ -64,7 +63,11 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
             out += (c,)
         else:
             name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-            out += (get_codec_class(name_parsed).from_dict(c),)
+
+            try:
+                out += (get_codec_class(name_parsed).from_dict(c),)
+            except KeyError as e:
+                raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
 
     return out
 
@@ -138,7 +141,7 @@ class ArrayV3MetadataDict(TypedDict):
 
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(Metadata):
-    shape: ChunkCoords
+    shape: tuple[int, ...]
     data_type: ZDType[TBaseDType, TBaseScalar]
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
@@ -224,7 +227,7 @@ class ArrayV3Metadata(Metadata):
         return self.data_type
 
     @property
-    def chunks(self) -> ChunkCoords:
+    def chunks(self) -> tuple[int, ...]:
         if isinstance(self.chunk_grid, RegularChunkGrid):
             from zarr.codecs.sharding import ShardingCodec
 
@@ -242,7 +245,7 @@ class ArrayV3Metadata(Metadata):
         raise NotImplementedError(msg)
 
     @property
-    def shards(self) -> ChunkCoords | None:
+    def shards(self) -> tuple[int, ...] | None:
         if isinstance(self.chunk_grid, RegularChunkGrid):
             from zarr.codecs.sharding import ShardingCodec
 
@@ -267,7 +270,7 @@ class ArrayV3Metadata(Metadata):
         return self.codecs
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
+        self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         assert isinstance(self.chunk_grid, RegularChunkGrid), (
             "Currently, only regular chunk grid is supported"
@@ -280,7 +283,7 @@ class ArrayV3Metadata(Metadata):
             prototype=prototype,
         )
 
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+    def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
@@ -345,7 +348,7 @@ class ArrayV3Metadata(Metadata):
 
         return out_dict
 
-    def update_shape(self, shape: ChunkCoords) -> Self:
+    def update_shape(self, shape: tuple[int, ...]) -> Self:
         return replace(self, shape=shape)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:

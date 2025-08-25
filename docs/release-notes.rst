@@ -3,6 +3,80 @@ Release notes
 
 .. towncrier release notes start
 
+3.1.2 (2025-08-25)
+------------------
+
+Features
+~~~~~~~~
+
+- Added support for async vectorized and orthogonal indexing. (:issue:`3083`)
+- Make config param optional in init_array (:issue:`3391`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Ensure that -0.0 is not considered equal to 0.0 when checking if all the values in a chunk are equal to an array's fill value.``` (:issue:`3144`)
+- Fix a bug in ``create_array`` caused by iterating over chunk-aligned regions instead of
+  shard-aligned regions when writing data. Additionally, the behavior of ``nchunks_initialized``
+  has been adjusted. This function consistently reports the number of chunks present in stored objects,
+  even when the array uses the sharding codec. (:issue:`3299`)
+- Opening an array or group with ``mode="r+"`` will no longer create new arrays or groups. (:issue:`3307`)
+- Added `zarr.errors.ArrayNotFoundError`, which is raised when attempting to open a zarr array that does not exist, and `zarr.errors.NodeNotFoundError`, which is raised when failing to open an array or a group in a context where either an array or a group was expected. (:issue:`3367`)
+- Ensure passing `config` is handled properly when `open`ing an existing
+  array. (:issue:`3378`)
+- Raise a Zarr-specific error class when a codec can't be found by name when deserializing the given codecs. This avoids hiding this error behind a "not part of a zarr hierarchy" warning. (:issue:`3395`)
+
+
+Misc
+~~~~
+
+- :issue:`3098`, :issue:`3288`, :issue:`3318`, :issue:`3368`, :issue:`3371`, :issue:`3372`, :issue:`3374`
+
+
+3.1.1 (2025-07-28)
+------------------
+
+Features
+~~~~~~~~
+
+- Add lightweight implementations of .getsize() and .getsize_prefix() for ObjectStore. (:issue:`3227`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Creating a Zarr format 2 array with the ``order`` keyword argument no longer raises a warning. (:issue:`3112`)
+- Fixed the error message when passing both ``config`` and ``write_empty_chunks`` arguments to reflect the current behaviour (``write_empty_chunks`` takes precedence). (:issue:`3112`)
+- Creating a Zarr format 3 array with the ``order`` argument now conistently ignores this argument and raises a warning. (:issue:`3112`)
+- When using ``from_array`` to copy a Zarr format 2 array to a Zarr format 3 array, if the memory order of the input array is ``"F"`` a warning is raised and the order ignored.
+  This is because Zarr format 3 arrays are always stored in "C" order. (:issue:`3112`)
+- The ``config`` argument to `zarr.create` (and functions that create arrays) is now used - previously it had no effect. (:issue:`3112`)
+- Ensure that all abstract methods of ``ZDType`` raise a ``NotImplementedError`` when invoked. (:issue:`3251`)
+- Register 'gpu' marker with pytest for downstream StoreTests. (:issue:`3258`)
+- Expand the range of types accepted by ``parse_data_type`` to include strings and Sequences.
+- Move the functionality of ``parse_data_type`` to a new function called ``parse_dtype``. This change
+  ensures that nomenclature is consistent across the codebase. ``parse_data_type`` remains, so this
+  change is not breaking. (:issue:`3264`)
+- Fix a regression introduced in 3.1.0 that prevented ``inf``, ``-inf``, and ``nan`` values
+  from being stored in ``attributes``. (:issue:`3280`)
+- Fixes Group.nmembers() ignoring depth when using consolidated metadata. (:issue:`3287`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Expand the data type docs to include a demonstration of the ``parse_data_type`` function.
+  Expand the docstring for the ``parse_data_type`` function. (:issue:`3249`)
+- Add a section on codecs to the migration guide. (:issue:`3273`)
+
+
+Misc
+~~~~
+
+- :issue:`3268`
+
+
 3.1.0 (2025-07-14)
 ------------------
 

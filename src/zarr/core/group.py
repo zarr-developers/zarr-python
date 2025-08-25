@@ -41,7 +41,6 @@ from zarr.core.common import (
     ZATTRS_JSON,
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
-    ChunkCoords,
     DimensionNames,
     NodeType,
     ShapeLike,
@@ -1019,7 +1018,7 @@ class AsyncGroup:
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: ChunkCoords | Literal["auto"] = "auto",
+        chunks: tuple[int, ...] | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -1044,14 +1043,14 @@ class AsyncGroup:
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunks : ChunkCoords, optional
+        chunks : tuple[int, ...], optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
-        shards : ChunkCoords, optional
+        shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -1197,7 +1196,7 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
@@ -1616,7 +1615,7 @@ class AsyncGroup:
         return await group_tree_async(self, max_depth=level)
 
     async def empty(
-        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an empty array with the specified shape in this Group. The contents will
         be filled with the array's fill value or zeros if no fill value is provided.
@@ -1639,7 +1638,7 @@ class AsyncGroup:
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def zeros(
-        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
@@ -1660,7 +1659,7 @@ class AsyncGroup:
         return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def ones(
-        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
@@ -1681,7 +1680,7 @@ class AsyncGroup:
         return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def full(
-        self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
@@ -2450,7 +2449,7 @@ class Group(SyncMixin):
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: ChunkCoords | Literal["auto"] = "auto",
+        chunks: tuple[int, ...] | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -2475,17 +2474,16 @@ class Group(SyncMixin):
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : ChunkCoords, optional
-            Shape of the array. Can be ``None`` if ``data`` is provided.
+        shape : ShapeLike, optional
+            Shape of the array. Must be ``None`` if ``data`` is provided.
         dtype : npt.DTypeLike | None
-            Data type of the array. Can be ``None`` if ``data`` is provided.
+            Data type of the array. Must be ``None`` if ``data`` is provided.
         data : Array-like data to use for initializing the array. If this parameter is provided, the
-            ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
-            or ``None``.
-        chunks : ChunkCoords, optional
+            ``shape`` and ``dtype`` parameters must be ``None``.
+        chunks : tuple[int, ...], optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
-        shards : ChunkCoords, optional
+        shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -2660,7 +2658,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+    def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
         the array's fill value or zeros if no fill value is provided.
 
@@ -2681,7 +2679,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
-    def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+    def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2700,7 +2698,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
-    def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+    def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2720,7 +2718,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
     def full(
-        self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
     ) -> Array:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
@@ -2846,8 +2844,8 @@ class Group(SyncMixin):
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunks: ChunkCoords | Literal["auto"] = "auto",
-        shards: ChunkCoords | Literal["auto"] | None = None,
+        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        shards: tuple[int, ...] | Literal["auto"] | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = None,
@@ -2874,14 +2872,14 @@ class Group(SyncMixin):
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunks : ChunkCoords, optional
+        chunks : tuple[int, ...], optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
-        shards : ChunkCoords, optional
+        shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
