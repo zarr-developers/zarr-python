@@ -5,7 +5,6 @@ from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from zarr.core.common import CodecJSON_V2
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
 from zarr.errors import ZarrUserWarning
@@ -22,7 +21,7 @@ if TYPE_CHECKING:
     )
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import Buffer, NDBuffer
-    from zarr.core.common import JSON
+    from zarr.core.common import JSON, CodecJSON_V2
 
 __all__ = [
     "Registry",

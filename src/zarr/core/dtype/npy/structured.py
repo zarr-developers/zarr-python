@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
 
-from zarr.core.common import NamedConfig
+from zarr.core.common import NamedRequiredConfig, StructuredName_V2
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
-    StructuredName_V2,
     v3_unstable_dtype_warning,
 )
 from zarr.core.dtype.npy.common import (
@@ -57,7 +56,7 @@ class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
 
 
 class StructuredJSON_V3(
-    NamedConfig[Literal["structured"], dict[str, Sequence[Sequence[str | DTypeJSON]]]]
+    NamedRequiredConfig[Literal["structured"], Mapping[str, Sequence[Sequence[str | DTypeJSON]]]]
 ):
     """
     A JSON representation of a structured data type in Zarr V3.
@@ -229,13 +228,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             False otherwise.
         """
 
-        return (
-            isinstance(data, dict)
-            and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == cls._zarr_v3_name
-            and isinstance(data["configuration"], dict)
-            and set(data["configuration"].keys()) == {"fields"}
-        )
+        return guard_type(data, StructuredJSON_V3)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:

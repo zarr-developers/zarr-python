@@ -7,8 +7,8 @@ import pytest
 from typing_extensions import ReadOnly, TypedDict
 
 from src.zarr.core.type_check import check_type
-from zarr.core.common import ArrayMetadataJSON_V3, NamedConfig
-from zarr.core.dtype.common import DTypeConfig_V2, DTypeSpec_V2, DTypeSpec_V3, StructuredName_V2
+from zarr.core.common import ArrayMetadataJSON_V3, DTypeSpec_V3, NamedConfig, StructuredName_V2
+from zarr.core.dtype.common import DTypeConfig_V2, DTypeSpec_V2
 from zarr.core.dtype.npy.structured import StructuredJSON_V2
 from zarr.core.dtype.npy.time import TimeConfig
 
@@ -269,7 +269,7 @@ def test_zarr_v2_metadata(optionals: dict[str, object]) -> None:
         "codecs": ("bytes",),
         "attributes": {"a": 1, "b": 2},
         "data_type": "uint8",
-    } | optionals
+    } | optionals  # type: ignore[assignment]
     result = check_type(meta, ArrayMetadataJSON_V3)
     assert result.success
 
@@ -287,7 +287,7 @@ def test_typeddict_extra_keys_allowed() -> None:
     class X(TypedDict):
         a: int
 
-    b: X = {"a": 1, "b": 2}
+    b: X = {"a": 1, "b": 2}  # type: ignore[typeddict-unknown-key]
     result = check_type(b, X)
     assert result.success
 
@@ -295,7 +295,7 @@ def test_typeddict_extra_keys_allowed() -> None:
 def test_typeddict_readonly_notrequired() -> None:
     class X(TypedDict):
         a: ReadOnly[NotRequired[int]]
-        b: NotRequired[ReadOnly[int]]  # type: ignore[typeddict-unknown-key]
+        b: NotRequired[ReadOnly[int]]
         c: Annotated[ReadOnly[NotRequired[int]], 10]
         d: int
 

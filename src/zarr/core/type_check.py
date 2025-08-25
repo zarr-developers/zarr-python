@@ -117,7 +117,7 @@ def _resolve_type(
     _seen: set[Any] | None = None,
 ) -> Any:
     """
-    Resolve type hints and ForwardRef.
+    Resolve type hints and ForwardRef. Maintains a cache of resolved types to avoid infinite recursion.
     """
     if _seen is None:
         _seen = set()
@@ -126,14 +126,12 @@ def _resolve_type(
     type_repr = repr(tp)
     if type_repr in _seen:
         # Return Any for recursive types to break the cycle
-        result = Any
-        return result
+        return Any
 
     _seen.add(type_repr)
 
     try:
-        result = _resolve_type_impl(tp, type_map, globalns, localns, _seen)
-        return result
+        return _resolve_type_impl(tp, type_map, globalns, localns, _seen)
     finally:
         _seen.discard(type_repr)
 
@@ -301,8 +299,10 @@ def check_typeddict(
 
     if type_map is None and len(get_args(td_type)) > 0:
         base_origin, base_args = _find_generic_typeddict_base(td_cls)
-        if base_origin is not None and len(getattr(base_origin, "__parameters__", ())) != len(
-            base_args
+        if (
+            base_origin is not None
+            and base_args is not None
+            and len(getattr(base_origin, "__parameters__", ())) != len(base_args)
         ):
             return TypeCheckResult(False, [f"{path} type parameter count mismatch in generic base"])
 
@@ -462,7 +462,7 @@ def _get_typeddict_metadata(
         base_origin, base_args = _find_generic_typeddict_base(td_cls)
         if base_origin is not None:
             tvars = getattr(base_origin, "__parameters__", ())
-            type_map = dict(zip(tvars, base_args, strict=False))
+            type_map = dict(zip(tvars, base_args, strict=False))  # type: ignore[arg-type]
 
             mod = sys.modules.get(base_origin.__module__)
             globalns = vars(mod) if mod else {}
