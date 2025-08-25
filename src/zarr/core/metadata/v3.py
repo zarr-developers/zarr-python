@@ -56,10 +56,12 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
 
     return out
 
+
 def parse_dimension_names(data: DimensionNames) -> tuple[str | None, ...] | None:
     if data is None:
         return None
     return tuple(data)
+
 
 def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     """
@@ -271,44 +273,38 @@ class ArrayV3Metadata(Metadata):
             )
         }
 
+    # this type annotation violates liskov but that's a problem we need to fix at the base class
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
-        # type check the dict
-        tycheck = check_type(data, ArrayMetadataJSON_V3)
-        if not tycheck.success:
-            raise ValueError(f"Invalid metadata: {data!r}. {tycheck.errors}")
-
-        # make a copy because we are modifying the dict
-
-        _data = data.copy()
-
-        data_type_json = _data.pop("data_type")
+    def from_dict(cls, data: ArrayMetadataJSON_V3) -> Self:  # type: ignore[override]
+        data_type_json = data["data_type"]
         data_type = get_data_type_from_json(data_type_json, zarr_format=3)
 
         # check that the fill value is consistent with the data type
+        fill = data["fill_value"]
         try:
-            fill = _data["fill_value"]
-            fill_value_parsed = data_type.from_json_scalar(fill, zarr_format=3)
-
+            fill_value_parsed = data_type.from_json_scalar(fill, zarr_format=3)  # type: ignore[arg-type]
         except ValueError as e:
             raise TypeError(f"Invalid fill_value: {fill!r}") from e
 
         # dimension_names key is optional, normalize missing to `None`
-        dimension_names = _data.pop("dimension_names", None)
+        dimension_names = data.get("dimension_names", None)
 
         # attributes key is optional, normalize missing to `None`
-        attributes = _data.pop("attributes", None)
+        attributes = data.get("attributes", None)
+
+        # storage transformers key is optional, normalize missing to `None`
+        storage_transformers = data.get("storage_transformers", None)
 
         return cls(
             shape=data["shape"],
-            chunk_grid=data["chunk_grid"],
-            chunk_key_encoding=data["chunk_key_encoding"],
-            codecs=data["codecs"],
-            attributes=attributes,
+            chunk_grid=data["chunk_grid"],  # type: ignore[arg-type]
+            chunk_key_encoding=data["chunk_key_encoding"],  # type: ignore[arg-type]
+            codecs=data["codecs"],  # type: ignore[arg-type]
+            attributes=attributes,  # type: ignore[arg-type]
             data_type=data_type,
             fill_value=fill_value_parsed,
             dimension_names=dimension_names,
-            storage_transformers=_data.get("storage_transformers", None),
+            storage_transformers=storage_transformers,  # type: ignore[arg-type]
         )  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
