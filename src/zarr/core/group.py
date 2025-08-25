@@ -3131,10 +3131,12 @@ async def create_hierarchy(
                         else:
                             # we have proposed an explicit group, which is an error, given that a
                             # group already exists.
-                            raise ContainsGroupError(store, key)
+                            msg = f"A group exists in store {store!r} at path {key!r}."
+                            raise ContainsGroupError(msg)
                     elif isinstance(extant_node, ArrayV2Metadata | ArrayV3Metadata):
                         # we are trying to overwrite an existing array. this is an error.
-                        raise ContainsArrayError(store, key)
+                        msg = f"An array exists in store {store!r} at path {key!r}."
+                        raise ContainsArrayError(msg)
 
     nodes_explicit: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {}
 

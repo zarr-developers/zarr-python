@@ -90,8 +90,6 @@ class UnknownCodecError(BaseZarrError):
     Raised when a unknown codec was used.
     """
 
-    _msg = "{}"
-
 
 class NodeTypeValidationError(MetadataValidationError):
     """
