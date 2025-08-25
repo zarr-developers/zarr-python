@@ -1,13 +1,17 @@
 __all__ = [
+    "ArrayIndexError",
     "ArrayNotFoundError",
     "BaseZarrError",
+    "BoundsCheckError",
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
     "ContainsGroupError",
     "GroupNotFoundError",
     "MetadataValidationError",
+    "NegativeStepError",
     "NodeTypeValidationError",
     "UnstableSpecificationWarning",
+    "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",
     "ZarrFutureWarning",
     "ZarrRuntimeWarning",
@@ -128,3 +132,21 @@ class ZarrRuntimeWarning(RuntimeWarning):
     """
     A warning for dubious runtime behavior.
     """
+
+
+class VindexInvalidSelectionError(IndexError):
+    _msg = (
+        "unsupported selection type for vectorized indexing; only "
+        "coordinate selection (tuple of integer arrays) and mask selection "
+        "(single Boolean array) are supported; got {!r}"
+    )
+
+
+class NegativeStepError(IndexError):
+    _msg = "only slices with step >= 1 are supported"
+
+
+class BoundsCheckError(IndexError): ...
+
+
+class ArrayIndexError(IndexError): ...
