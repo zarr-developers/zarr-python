@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from asyncio import gather
+from asyncio import as_completed, gather
 from dataclasses import dataclass
 from itertools import starmap
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
@@ -410,8 +410,17 @@ class Store(ABC):
         that objects will be retrieved in the order in which they were requested, so this method
         yields tuple[str, Buffer | None] instead of just Buffer | None
         """
-        for req in requests:
-            yield (req[0], await self.get(*req))
+
+        async def _get_with_name(
+            key: str, prototype: BufferPrototype, byte_range: ByteRequest | None
+        ) -> tuple[str, Buffer | None]:
+            value = await self.get(key, prototype, byte_range)
+            return key, value
+
+        tasks = [_get_with_name(*req) for req in requests]
+        for completed in as_completed(tasks):
+            task = await completed
+            yield task
 
     async def getsize(self, key: str) -> int:
         """
