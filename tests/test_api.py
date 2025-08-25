@@ -440,7 +440,6 @@ async def test_init_order_warns() -> None:
             store_path=StorePath(store=MemoryStore()),
             shape=(1,),
             dtype="uint8",
-            config=None,
             zarr_format=3,
             order="F",
         )
