@@ -96,7 +96,7 @@ def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
     if data in ("array", "group"):
         return cast("Literal['array', 'group']", data)
-    msg = f"Invalid value for node_type. Expected array or group. Got '{data}'."
+    msg = f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got '{data}'."
     raise MetadataValidationError(msg)
 
 
@@ -575,7 +575,7 @@ class AsyncGroup:
             else:
                 zarr_format = 2
         else:
-            msg = f"Invalid value for zarr_format. Expected 2, 3 or None. Got '{zarr_format}'."  # type: ignore[unreachable]
+            msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
             raise MetadataValidationError(msg)
 
         if zarr_format == 2:
@@ -3553,7 +3553,7 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
     if "node_type" not in zarr_json:
-        msg = "Invalid value for node_type. Expected array or group. Got nothing (the key is missing)."
+        msg = "Invalid value for 'node_type'. Expected 'array' or 'group'. Got nothing (the key is missing)."
         raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:

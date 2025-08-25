@@ -2220,8 +2220,8 @@ def test_build_metadata_v3(option: Literal["array", "group", "invalid"]) -> None
             metadata_dict = GroupMetadata(zarr_format=3).to_dict()
             metadata_dict.pop("node_type")
             # TODO: fix the error message
-            msg = "Invalid value for 'node_type'. Expected 'array or group'. Got 'nothing (the key is missing)'."
-            with pytest.raises(MetadataValidationError, match=re.escape(msg)):
+            msg = r"Invalid value for 'node_type'. Expected 'array' or 'group'. Got nothing \(the key is missing\)."
+            with pytest.raises(MetadataValidationError, match=msg):
                 _build_metadata_v3(metadata_dict)
 
 
