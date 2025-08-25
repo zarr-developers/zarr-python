@@ -3,6 +3,49 @@ Release notes
 
 .. towncrier release notes start
 
+3.1.1 (2025-07-28)
+------------------
+
+Features
+~~~~~~~~
+
+- Add lightweight implementations of .getsize() and .getsize_prefix() for ObjectStore. (:issue:`3227`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Creating a Zarr format 2 array with the ``order`` keyword argument no longer raises a warning. (:issue:`3112`)
+- Fixed the error message when passing both ``config`` and ``write_empty_chunks`` arguments to reflect the current behaviour (``write_empty_chunks`` takes precedence). (:issue:`3112`)
+- Creating a Zarr format 3 array with the ``order`` argument now conistently ignores this argument and raises a warning. (:issue:`3112`)
+- When using ``from_array`` to copy a Zarr format 2 array to a Zarr format 3 array, if the memory order of the input array is ``"F"`` a warning is raised and the order ignored.
+  This is because Zarr format 3 arrays are always stored in "C" order. (:issue:`3112`)
+- The ``config`` argument to `zarr.create` (and functions that create arrays) is now used - previously it had no effect. (:issue:`3112`)
+- Ensure that all abstract methods of ``ZDType`` raise a ``NotImplementedError`` when invoked. (:issue:`3251`)
+- Register 'gpu' marker with pytest for downstream StoreTests. (:issue:`3258`)
+- Expand the range of types accepted by ``parse_data_type`` to include strings and Sequences.
+- Move the functionality of ``parse_data_type`` to a new function called ``parse_dtype``. This change
+  ensures that nomenclature is consistent across the codebase. ``parse_data_type`` remains, so this
+  change is not breaking. (:issue:`3264`)
+- Fix a regression introduced in 3.1.0 that prevented ``inf``, ``-inf``, and ``nan`` values
+  from being stored in ``attributes``. (:issue:`3280`)
+- Fixes Group.nmembers() ignoring depth when using consolidated metadata. (:issue:`3287`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Expand the data type docs to include a demonstration of the ``parse_data_type`` function.
+  Expand the docstring for the ``parse_data_type`` function. (:issue:`3249`)
+- Add a section on codecs to the migration guide. (:issue:`3273`)
+
+
+Misc
+~~~~
+
+- :issue:`3268`
+
+
 3.1.0 (2025-07-14)
 ------------------
 

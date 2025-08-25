@@ -15,7 +15,9 @@ from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
+    parse_codecs,
 )
+from zarr.errors import UnknownCodecError
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -68,7 +70,7 @@ def test_jsonify_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) correctly handles complex values represented
     as length-2 sequences
     """
-    zarr_format = 3
+    zarr_format: Literal[3] = 3
     dtype = get_data_type_from_native_dtype(dtype_str)
     expected = dtype.to_native_dtype().type(complex(*fill_value))
     observed = dtype.from_json_scalar(fill_value, zarr_format=zarr_format)
@@ -201,7 +203,7 @@ def test_metadata_to_dict(
 
 
 @pytest.mark.parametrize("indent", [2, 4, None])
-def test_json_indent(indent: int):
+def test_json_indent(indent: int) -> None:
     with config.set({"json_indent": indent}):
         m = GroupMetadata()
         d = m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes()
@@ -210,7 +212,7 @@ def test_json_indent(indent: int):
 
 @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
 @pytest.mark.parametrize("precision", ["ns", "D"])
-async def test_datetime_metadata(fill_value: int, precision: str) -> None:
+async def test_datetime_metadata(fill_value: int, precision: Literal["ns", "D"]) -> None:
     dtype = DateTime64(unit=precision)
     metadata_dict: ArrayMetadataJSON_V3 = {
         "zarr_format": 3,
@@ -275,3 +277,17 @@ async def test_special_float_fill_values(fill_value: str) -> None:
     elif fill_value == "-Infinity":
         assert np.isneginf(m.fill_value)
         assert d["fill_value"] == "-Infinity"
+
+
+def test_parse_codecs_unknown_codec_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    from collections import defaultdict
+
+    import zarr.registry
+    from zarr.registry import Registry
+
+    # to make sure the codec is always unknown (not sure if that's necessary)
+    monkeypatch.setattr(zarr.registry, "__codec_registries", defaultdict(Registry))
+
+    codecs = [{"name": "unknown"}]
+    with pytest.raises(UnknownCodecError):
+        parse_codecs(codecs)
