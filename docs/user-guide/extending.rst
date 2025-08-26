@@ -78,7 +78,65 @@ implementation.
 Custom stores
 -------------
 
-Coming soon.
+Zarr-Python supports two levels of store customization: custom store implementations and custom store adapters for ZEP 8 URL syntax.
+
+Custom Store Implementation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Custom stores can be created by subclassing :class:`zarr.abc.store.Store`. The Store Abstract Base Class includes all of the methods needed to be a fully operational store in Zarr Python. Zarr also provides a test harness for custom stores: :class:`zarr.testing.store.StoreTests`.
+
+See the :ref:`user-guide-custom-stores` section in the storage guide for more details.
+
+Custom Store Adapters
+~~~~~~~~~~~~~~~~~~~~~~
+
+Store adapters enable custom storage backends to work with ZEP 8 URL syntax. This allows users to access your storage backend using simple URL strings instead of explicitly creating store objects.
+
+Store adapters are implemented by subclassing :class:`zarr.abc.store_adapter.StoreAdapter` and registering them via entry points:
+
+.. code-block:: python
+
+    from zarr.abc.store_adapter import StoreAdapter
+    from zarr.abc.store import Store
+
+    class FooStoreAdapter(StoreAdapter):
+        adapter_name = "foo"  # Used in URLs like "file:data|foo"
+
+        @classmethod
+        async def from_url_segment(cls, segment, preceding_url=None, **kwargs):
+            # Create and return a Store instance based on the URL segment
+            # segment.path contains the path from the URL
+            # preceding_url contains the URL from previous adapters
+
+            store = FooStore(segment.path, **kwargs)
+            await store._open()
+            return store
+
+Register the adapter in your ``pyproject.toml``:
+
+.. code-block:: toml
+
+    [project.entry-points."zarr.stores"]
+    "foo" = "mypackage:FooStoreAdapter"
+
+Once registered, your adapter can be used in ZEP 8 URLs:
+
+.. code-block:: python
+
+    # Users can now use your custom adapter
+    zarr.open_array("file:data.foo|foo", mode='r')
+
+    # Or chain with other adapters
+    zarr.open_array("s3://bucket/data.custom|foo|zip", mode='r')
+
+Store Adapter Guidelines
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+When implementing custom store adapters:
+
+1. **Choose unique names**: Use descriptive, unique adapter names to avoid conflicts
+2. **Handle errors gracefully**: Provide clear error messages, particularly for invalid URLs or missing dependencies
+3. **Document URL syntax**: Clearly document the expected URL format for your adapter
 
 Custom array buffers
 --------------------
