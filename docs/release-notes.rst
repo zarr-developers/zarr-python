@@ -3,6 +3,37 @@ Release notes
 
 .. towncrier release notes start
 
+3.1.2 (2025-08-25)
+------------------
+
+Features
+~~~~~~~~
+
+- Added support for async vectorized and orthogonal indexing. (:issue:`3083`)
+- Make config param optional in init_array (:issue:`3391`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Ensure that -0.0 is not considered equal to 0.0 when checking if all the values in a chunk are equal to an array's fill value.``` (:issue:`3144`)
+- Fix a bug in ``create_array`` caused by iterating over chunk-aligned regions instead of
+  shard-aligned regions when writing data. Additionally, the behavior of ``nchunks_initialized``
+  has been adjusted. This function consistently reports the number of chunks present in stored objects,
+  even when the array uses the sharding codec. (:issue:`3299`)
+- Opening an array or group with ``mode="r+"`` will no longer create new arrays or groups. (:issue:`3307`)
+- Added `zarr.errors.ArrayNotFoundError`, which is raised when attempting to open a zarr array that does not exist, and `zarr.errors.NodeNotFoundError`, which is raised when failing to open an array or a group in a context where either an array or a group was expected. (:issue:`3367`)
+- Ensure passing `config` is handled properly when `open`ing an existing
+  array. (:issue:`3378`)
+- Raise a Zarr-specific error class when a codec can't be found by name when deserializing the given codecs. This avoids hiding this error behind a "not part of a zarr hierarchy" warning. (:issue:`3395`)
+
+
+Misc
+~~~~
+
+- :issue:`3098`, :issue:`3288`, :issue:`3318`, :issue:`3368`, :issue:`3371`, :issue:`3372`, :issue:`3374`
+
+
 3.1.1 (2025-07-28)
 ------------------
 
