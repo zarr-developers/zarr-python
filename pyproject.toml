@@ -428,3 +428,13 @@ ignore-words-list = "astroid"
 
 [project.entry-points.pytest11]
 zarr = "zarr.testing"
+
+[project.entry-points."zarr.stores"]
+file = "zarr.storage._builtin_adapters:FileSystemAdapter"
+memory = "zarr.storage._builtin_adapters:MemoryAdapter"
+https = "zarr.storage._builtin_adapters:HttpsAdapter"
+s3 = "zarr.storage._builtin_adapters:S3Adapter"
+gcs = "zarr.storage._builtin_adapters:GCSAdapter"
+gs = "zarr.storage._builtin_adapters:GSAdapter"
+log = "zarr.storage._builtin_adapters:LoggingAdapter"
+zip = "zarr.storage._builtin_adapters:ZipAdapter"
