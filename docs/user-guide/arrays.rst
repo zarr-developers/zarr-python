@@ -567,11 +567,12 @@ Any combination of integer and slice can be used for block indexing::
    >>>
    >>> root = zarr.create_group('data/example-19.zarr')
    >>> foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='float32')
-   >>> bar = root.create_array(name='foo/bar', shape=(100,), dtype='int32')
+   >>> bar = root.create_array(name='bar', shape=(100,), dtype='int32')
    >>> foo[:, :] = np.random.random((1000, 100))
    >>> bar[:] = np.arange(100)
    >>> root.tree()
    /
+   ├── bar (100,) int32
    └── foo (1000, 100) float32
    <BLANKLINE>
 
