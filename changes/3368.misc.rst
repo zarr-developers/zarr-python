@@ -1,2 +1,0 @@
-Improved performance of reading arrays by not unnecessarily using
-the fill value.

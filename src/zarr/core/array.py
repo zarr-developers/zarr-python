@@ -92,6 +92,7 @@ from zarr.core.indexing import (
     Selection,
     VIndex,
     _iter_grid,
+    _iter_regions,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
@@ -714,7 +715,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 overwrite=overwrite,
             )
         else:
-            raise ValueError(f"Unsupported zarr_format. Got: {zarr_format}")
+            raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
         if data is not None:
             # insert user-provided data
@@ -1206,27 +1207,74 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        Tuple[int]
+        tuple[int, ...]
             The shape of the chunk grid for this array.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
+        return self._chunk_grid_shape
+
+    @property
+    def _chunk_grid_shape(self) -> tuple[int, ...]:
+        """
+        The shape of the chunk grid for this array.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The shape of the chunk grid for this array.
+        """
+        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
+
+    @property
+    def _shard_grid_shape(self) -> tuple[int, ...]:
+        """
+        The shape of the shard grid for this array.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The shape of the shard grid for this array.
+        """
+        if self.shards is None:
+            shard_shape = self.chunks
+        else:
+            shard_shape = self.shards
+        return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
 
     @property
     def nchunks(self) -> int:
         """
-        The number of chunks in the stored representation of this array.
+        The number of chunks in this array.
+
+        Note that if a sharding codec is used, then the number of chunks may exceed the number of
+        stored objects supporting this array.
 
         Returns
         -------
         int
             The total number of chunks in the array.
         """
-        return product(self.cdata_shape)
+        return product(self._chunk_grid_shape)
+
+    @property
+    def _nshards(self) -> int:
+        """
+        The number of shards in this array.
+
+        Returns
+        -------
+        int
+            The total number of shards in the array.
+        """
+        return product(self._shard_grid_shape)
 
     async def nchunks_initialized(self) -> int:
         """
-        Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
-        been persisted to the storage backend.
+        Calculate the number of chunks that have been initialized in storage.
+
+        This value is calculated as the product of the number of initialized shards and the number
+        of chunks per shard. For arrays that do not use sharding, the number of chunks per shard is
+        effectively 1, and in that case the number of chunks initialized is the same as the number
+        of stored objects associated with an array.
 
         Returns
         -------
@@ -1240,14 +1288,47 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
+        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(1,), shards=(2,))
         >>> await arr.nchunks_initialized()
         0
         >>> await arr.setitem(slice(5), 1)
         >>> await arr.nchunks_initialized()
+        6
+        """
+        if self.shards is None:
+            chunks_per_shard = 1
+        else:
+            chunks_per_shard = product(
+                tuple(a // b for a, b in zip(self.shards, self.chunks, strict=True))
+            )
+        return (await self._nshards_initialized()) * chunks_per_shard
+
+    async def _nshards_initialized(self) -> int:
+        """
+        Calculate the number of shards that have been initialized in storage.
+
+        This is the number of shards that have been persisted to the storage backend.
+
+        Returns
+        -------
+        nshards_initialized : int
+            The number of shards that have been initialized.
+
+        Notes
+        -----
+        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
+        property :attr:`Array._nshards_initialized`.
+
+        Examples
+        --------
+        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
+        >>> await arr._nshards_initialized()
+        0
+        >>> await arr.setitem(slice(5), 1)
+        >>> await arr._nshards_initialized()
         3
         """
-        return len(await chunks_initialized(self))
+        return len(await _shards_initialized(self))
 
     async def nbytes_stored(self) -> int:
         return await self.store_path.store.getsize_prefix(self.store_path.path)
@@ -1256,8 +1337,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[tuple[int, ...]]:
         """
-        Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
-        keyword is used, iteration will start at the chunk index specified by `origin`.
+        Create an iterator over the coordinates of chunks in chunk grid space.
+
+        If the `origin` keyword is used, iteration will start at the chunk index specified by `origin`.
         The default behavior is to start at the origin of the grid coordinate space.
         If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
         ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
@@ -1275,21 +1357,56 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunk_coords: tuple[int, ...]
             The coordinates of each chunk in the selection.
         """
-        return _iter_grid(self.cdata_shape, origin=origin, selection_shape=selection_shape)
+        return _iter_chunk_coords(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
-    def _iter_chunk_keys(
+    def _iter_shard_coords(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[int, ...]]:
+        """
+        Create an iterator over the coordinates of shards in shard grid space.
+
+        Note that
+
+        If the `origin` keyword is used, iteration will start at the shard index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's shard grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in shard grid coordinates.
+
+        Yields
+        ------
+        chunk_coords: tuple[int, ...]
+            The coordinates of each shard in the selection.
+        """
+        return _iter_shard_coords(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
+
+    def _iter_shard_keys(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[str]:
         """
-        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
-        limited to a contiguous region in chunk grid coordinates.
+        Iterate over the keys of the stored objects supporting this array.
 
         Parameters
         ----------
         origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
         selection_shape : Sequence[int] | None, default=None
-            The shape of the selection in chunk grid coordinates.
+            The shape of the selection in shard grid coordinates.
 
         Yields
         ------
@@ -1297,9 +1414,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The storage key of each chunk in the selection.
         """
         # Iterate over the coordinates of chunks in chunk grid space.
-        for k in self._iter_chunk_coords(origin=origin, selection_shape=selection_shape):
-            # Encode the chunk key from the chunk coordinates.
-            yield self.metadata.encode_chunk_key(k)
+        return _iter_shard_keys(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
 
     def _iter_chunk_regions(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -1319,15 +1438,31 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         region: tuple[slice, ...]
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        for cgrid_position in self._iter_chunk_coords(
-            origin=origin, selection_shape=selection_shape
-        ):
-            out: tuple[slice, ...] = ()
-            for c_pos, c_shape in zip(cgrid_position, self.chunks, strict=False):
-                start = c_pos * c_shape
-                stop = start + c_shape
-                out += (slice(start, stop, 1),)
-            yield out
+        return _iter_chunk_regions(
+            array=self,
+            origin=origin,
+            selection_shape=selection_shape,
+        )
+
+    def _iter_shard_regions(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[slice, ...]]:
+        """
+        Iterate over the regions spanned by each shard.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's shard grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in shard grid coordinates.
+
+        Yields
+        ------
+        region: tuple[slice, ...]
+            A tuple of slice objects representing the region spanned by each shard in the selection.
+        """
+        return _iter_shard_regions(array=self, origin=origin, selection_shape=selection_shape)
 
     @property
     def nbytes(self) -> int:
@@ -1816,7 +1951,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             A property giving just the statically known information about an array.
         """
         return self._info(
-            await self.nchunks_initialized(),
+            await self._nshards_initialized(),
             await self.store_path.store.getsize_prefix(self.store_path.path),
         )
 
@@ -2263,41 +2398,38 @@ class Array:
         """
         The shape of the chunk grid for this array.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
+        return self._async_array._chunk_grid_shape
+
+    @property
+    def _chunk_grid_shape(self) -> tuple[int, ...]:
+        """
+        The shape of the chunk grid for this array.
+        """
+        return self._async_array._chunk_grid_shape
+
+    @property
+    def _shard_grid_shape(self) -> tuple[int, ...]:
+        """
+        The shape of the shard grid for this array.
+        """
+        return self._async_array._shard_grid_shape
 
     @property
     def nchunks(self) -> int:
         """
-        The number of chunks in the stored representation of this array.
+        The number of chunks in this array.
+
+        Note that if a sharding codec is used, then the number of chunks may exceed the number of
+        stored objects supporting this array.
         """
         return self._async_array.nchunks
 
-    def _iter_chunk_coords(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
-    ) -> Iterator[tuple[int, ...]]:
+    @property
+    def _nshards(self) -> int:
         """
-        Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
-        keyword is used, iteration will start at the chunk index specified by `origin`.
-        The default behavior is to start at the origin of the grid coordinate space.
-        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
-        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
-        per python indexing conventions.
-
-        Parameters
-        ----------
-        origin : Sequence[int] | None, default=None
-            The origin of the selection relative to the array's chunk grid.
-        selection_shape : Sequence[int] | None, default=None
-            The shape of the selection in chunk grid coordinates.
-
-        Yields
-        ------
-        chunk_coords: tuple[int, ...]
-            The coordinates of each chunk in the selection.
+        The number of shards in the stored representation of this array.
         """
-        yield from self._async_array._iter_chunk_coords(
-            origin=origin, selection_shape=selection_shape
-        )
+        return self._async_array._nshards
 
     @property
     def nbytes(self) -> int:
@@ -2317,29 +2449,50 @@ class Array:
     @property
     def nchunks_initialized(self) -> int:
         """
-        Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
-        been persisted to the storage backend.
+        Calculate the number of chunks that have been initialized in storage.
+
+        This value is calculated as the product of the number of initialized shards and the number of
+        chunks per shard. For arrays that do not use sharding, the number of chunks per shard is effectively 1,
+        and in that case the number of chunks initialized is the same as the number of stored objects associated with an
+        array. For a direct count of the number of initialized stored objects, see ``nshards_initialized``.
 
         Returns
         -------
         nchunks_initialized : int
             The number of chunks that have been initialized.
 
-        Notes
-        -----
-        On :class:`Array` this is a (synchronous) property, unlike asynchronous function
-        :meth:`AsyncArray.nchunks_initialized`.
-
         Examples
         --------
-        >>> arr = await zarr.create(shape=(10,), chunks=(2,))
+        >>> arr = zarr.create_array(store={}, shape=(10,), chunks=(1,), shards=(2,))
         >>> arr.nchunks_initialized
         0
         >>> arr[:5] = 1
         >>> arr.nchunks_initialized
-        3
+        6
         """
         return sync(self._async_array.nchunks_initialized())
+
+    @property
+    def _nshards_initialized(self) -> int:
+        """
+        Calculate the number of shards that have been initialized, i.e. the number of shards that have
+        been persisted to the storage backend.
+
+        Returns
+        -------
+        nshards_initialized : int
+            The number of shards that have been initialized.
+
+        Examples
+        --------
+        >>> arr = await zarr.create(shape=(10,), chunks=(2,))
+        >>> arr._nshards_initialized
+        0
+        >>> arr[:5] = 1
+        >>> arr._nshard_initialized
+        3
+        """
+        return sync(self._async_array._nshards_initialized())
 
     def nbytes_stored(self) -> int:
         """
@@ -2351,12 +2504,38 @@ class Array:
         """
         return sync(self._async_array.nbytes_stored())
 
-    def _iter_chunk_keys(
+    def _iter_shard_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[str]:
         """
-        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
+        Iterate over the storage keys of each shard, relative to an optional origin, and optionally
         limited to a contiguous region in chunk grid coordinates.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's shard grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in shard grid coordinates.
+
+        Yields
+        ------
+        str
+            The storage key of each shard in the selection.
+        """
+        return self._async_array._iter_shard_keys(origin=origin, selection_shape=selection_shape)
+
+    def _iter_chunk_coords(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[int, ...]]:
+        """
+        Create an iterator over the coordinates of chunks in chunk grid space.
+
+        If the `origin` keyword is used, iteration will start at the chunk index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
 
         Parameters
         ----------
@@ -2367,12 +2546,36 @@ class Array:
 
         Yields
         ------
-        key: str
-            The storage key of each chunk in the selection.
+        tuple[int, ...]
+            The coordinates of each chunk in the selection.
         """
-        yield from self._async_array._iter_chunk_keys(
-            origin=origin, selection_shape=selection_shape
-        )
+        return self._async_array._iter_chunk_coords(origin=origin, selection_shape=selection_shape)
+
+    def _iter_shard_coords(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[int, ...]]:
+        """
+        Create an iterator over the coordinates of shards in shard grid space.
+
+        If the `origin` keyword is used, iteration will start at the shard index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's shard grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in shard grid coordinates.
+
+        Yields
+        ------
+        tuple[int, ...]
+            The coordinates of each shard in the selection.
+        """
+        return self._async_array._iter_shard_coords(origin=origin, selection_shape=selection_shape)
 
     def _iter_chunk_regions(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2389,12 +2592,30 @@ class Array:
 
         Yields
         ------
-        region: tuple[slice, ...]
+        tuple[slice, ...]
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        yield from self._async_array._iter_chunk_regions(
-            origin=origin, selection_shape=selection_shape
-        )
+        return self._async_array._iter_chunk_regions(origin=origin, selection_shape=selection_shape)
+
+    def _iter_shard_regions(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[slice, ...]]:
+        """
+        Iterate over the regions spanned by each shard.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape : Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        tuple[slice, ...]
+            A tuple of slice objects representing the region spanned by each chunk in the selection.
+        """
+        return self._async_array._iter_shard_regions(origin=origin, selection_shape=selection_shape)
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
@@ -3831,7 +4052,7 @@ class Array:
         return sync(self._async_array.info_complete())
 
 
-async def chunks_initialized(
+async def _shards_initialized(
     array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
 ) -> tuple[str, ...]:
     """
@@ -3859,7 +4080,7 @@ async def chunks_initialized(
         _relativize_path(path=key, prefix=array.store_path.path) for key in store_contents
     ]
     return tuple(
-        chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents_relative
+        chunk_key for chunk_key in array._iter_shard_keys() if chunk_key in store_contents_relative
     )
 
 
@@ -4140,7 +4361,7 @@ async def from_array(
 
             # Stream data from the source array to the new array
             await concurrent_map(
-                [(region, data) for region in result._iter_chunk_regions()],
+                [(region, data) for region in result._iter_shard_regions()],
                 _copy_array_region,
                 zarr.core.config.config.get("async.concurrency"),
             )
@@ -4175,7 +4396,7 @@ async def init_array(
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: DimensionNames = None,
     overwrite: bool = False,
-    config: ArrayConfigLike | None,
+    config: ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
     """Create and persist an array metadata document.
 
@@ -4255,8 +4476,10 @@ async def init_array(
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfigLike or None, optional
+    config : ArrayConfigLike or None, default=None
         Configuration for this array.
+        If  ``None``, the default array runtime configuration will be used. This default
+        is stored in the global configuration object.
 
     Returns
     -------
@@ -4959,3 +5182,160 @@ def _parse_data_params(
             raise ValueError(msg)
         dtype_out = data.dtype
     return data, shape_out, dtype_out
+
+
+def _iter_chunk_coords(
+    array: Array | AsyncArray[Any],
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[tuple[int, ...]]:
+    """
+    Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
+    keyword is used, iteration will start at the chunk index specified by `origin`.
+    The default behavior is to start at the origin of the grid coordinate space.
+    If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+    ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
+    per python indexing conventions.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection in grid coordinates.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in grid coordinates.
+
+    Yields
+    ------
+    chunk_coords: tuple[int, ...]
+        The coordinates of each chunk in the selection.
+    """
+    return _iter_grid(array._chunk_grid_shape, origin=origin, selection_shape=selection_shape)
+
+
+def _iter_shard_coords(
+    array: Array | AsyncArray[Any],
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[tuple[int, ...]]:
+    """
+    Create an iterator over the coordinates of shards in shard grid space. If the `origin`
+    keyword is used, iteration will start at the shard index specified by `origin`.
+    The default behavior is to start at the origin of the grid coordinate space.
+    If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+    ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
+    per python indexing conventions.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection in grid coordinates.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in grid coordinates.
+
+    Yields
+    ------
+    chunk_coords: tuple[int, ...]
+        The coordinates of each shard in the selection.
+    """
+    return _iter_grid(array._shard_grid_shape, origin=origin, selection_shape=selection_shape)
+
+
+def _iter_shard_keys(
+    array: Array | AsyncArray[Any],
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[str]:
+    """
+    Iterate over the storage keys of each shard, relative to an optional origin, and optionally
+    limited to a contiguous region in shard grid coordinates.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection in grid coordinates.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in grid coordinates.
+
+    Yields
+    ------
+    key: str
+        The storage key of each chunk in the selection.
+    """
+    # Iterate over the coordinates of chunks in chunk grid space.
+    _iter = _iter_grid(array._shard_grid_shape, origin=origin, selection_shape=selection_shape)
+    return (array.metadata.encode_chunk_key(k) for k in _iter)
+
+
+def _iter_shard_regions(
+    array: Array | AsyncArray[Any],
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[tuple[slice, ...]]:
+    """
+    Iterate over the regions spanned by each shard.
+
+    These are the smallest regions of the array that are safe to write concurrently.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection relative to the array's shard grid.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in shard grid coordinates.
+
+    Yields
+    ------
+    region: tuple[slice, ...]
+        A tuple of slice objects representing the region spanned by each shard in the selection.
+    """
+    if array.shards is None:
+        shard_shape = array.chunks
+    else:
+        shard_shape = array.shards
+
+    return _iter_regions(
+        array.shape, shard_shape, origin=origin, selection_shape=selection_shape, trim_excess=True
+    )
+
+
+def _iter_chunk_regions(
+    array: Array | AsyncArray[Any],
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+) -> Iterator[tuple[slice, ...]]:
+    """
+    Iterate over the regions spanned by each shard.
+
+    These are the smallest regions of the array that are efficient to read concurrently.
+
+    Parameters
+    ----------
+    array : Array | AsyncArray
+        The array to iterate over.
+    origin : Sequence[int] | None, default=None
+        The origin of the selection in grid coordinates.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection in grid coordinates.
+
+    Returns
+    -------
+    region: tuple[slice, ...]
+        A tuple of slice objects representing the region spanned by each shard in the selection.
+    """
+
+    return _iter_regions(
+        array.shape, array.chunks, origin=origin, selection_shape=selection_shape, trim_excess=True
+    )
