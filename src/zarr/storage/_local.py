@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterator
 import contextlib
 import io
 import os
@@ -23,7 +22,7 @@ from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import AccessModeLiteral, concurrent_map
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable
+    from collections.abc import AsyncIterator, Iterable, Iterator
 
     from zarr.core.buffer import BufferPrototype
 

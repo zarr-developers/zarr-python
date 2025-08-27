@@ -124,7 +124,7 @@ def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> Non
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_atomic_write_incomplete(tmp_path: pathlib.Path, exclusive: bool) -> None:
     path = pathlib.Path(tmp_path) / 'data'
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError):  # noqa: PT012
         with _atomic_write(path, 'wb', exclusive=exclusive) as f:
             f.write(b'a')
             raise RuntimeError
