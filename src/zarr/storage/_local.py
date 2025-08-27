@@ -44,7 +44,7 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None)
         return prototype.buffer.from_bytes(f.read())
 
 
-if sys.platform == 'win32':
+if sys.platform == "win32":
     # Per the os.rename docs:
     # On Windows, if dst exists a FileExistsError is always raised.
     _safe_move = os.rename
@@ -64,7 +64,7 @@ def _atomic_write(
     mode: Literal["r+b", "wb"],
     exclusive: bool = False,
 ) -> Iterator[BinaryIO]:
-    tmp_path = path.with_suffix(f'.{uuid.uuid4().hex}.partial')
+    tmp_path = path.with_suffix(f".{uuid.uuid4().hex}.partial")
     try:
         with tmp_path.open(mode) as f:
             yield f

@@ -114,42 +114,42 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> None:
-    path = pathlib.Path(tmp_path) / 'data'
-    with _atomic_write(path, 'wb', exclusive=exclusive) as f:
-        f.write(b'abc')
-    assert path.read_bytes() == b'abc'
+    path = pathlib.Path(tmp_path) / "data"
+    with _atomic_write(path, "wb", exclusive=exclusive) as f:
+        f.write(b"abc")
+    assert path.read_bytes() == b"abc"
     assert list(path.parent.iterdir()) == [path]  # no temp files
 
 
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_atomic_write_incomplete(tmp_path: pathlib.Path, exclusive: bool) -> None:
-    path = pathlib.Path(tmp_path) / 'data'
+    path = pathlib.Path(tmp_path) / "data"
     with pytest.raises(RuntimeError):  # noqa: PT012
-        with _atomic_write(path, 'wb', exclusive=exclusive) as f:
-            f.write(b'a')
+        with _atomic_write(path, "wb", exclusive=exclusive) as f:
+            f.write(b"a")
             raise RuntimeError
     assert not path.exists()
     assert list(path.parent.iterdir()) == []  # no temp files
 
 
 def test_atomic_write_non_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
-    path = pathlib.Path(tmp_path) / 'data'
-    with path.open('wb') as f:
-        f.write(b'xyz')
-    assert path.read_bytes() == b'xyz'
-    with _atomic_write(path, 'wb', exclusive=False) as f:
-        f.write(b'abc')
-    assert path.read_bytes() == b'abc'
+    path = pathlib.Path(tmp_path) / "data"
+    with path.open("wb") as f:
+        f.write(b"xyz")
+    assert path.read_bytes() == b"xyz"
+    with _atomic_write(path, "wb", exclusive=False) as f:
+        f.write(b"abc")
+    assert path.read_bytes() == b"abc"
     assert list(path.parent.iterdir()) == [path]  # no temp files
 
 
 def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
-    path = pathlib.Path(tmp_path) / 'data'
-    with path.open('wb') as f:
-        f.write(b'xyz')
-    assert path.read_bytes() == b'xyz'
+    path = pathlib.Path(tmp_path) / "data"
+    with path.open("wb") as f:
+        f.write(b"xyz")
+    assert path.read_bytes() == b"xyz"
     with pytest.raises(FileExistsError):
-        with _atomic_write(path, 'wb', exclusive=True) as f:
-            f.write(b'abc')
-    assert path.read_bytes() == b'xyz'
+        with _atomic_write(path, "wb", exclusive=True) as f:
+            f.write(b"abc")
+    assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
