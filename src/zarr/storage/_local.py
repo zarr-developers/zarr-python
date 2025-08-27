@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
+import contextlib
 import io
 import os
 import shutil
+import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Literal, BinaryIO, Self
+import uuid
 
 from zarr.abc.store import (
     ByteRequest,
@@ -41,6 +45,39 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None)
         return prototype.buffer.from_bytes(f.read())
 
 
+if sys.platform == 'win32':
+    # Per the os.rename docs:
+    # On Windows, if dst exists a FileExistsError is always raised.
+    _safe_move = os.rename
+else:
+    # On Unix, os.rename silently replace files, so instead we use os.link like
+    # atomicwrites:
+    # https://github.com/untitaker/python-atomicwrites/blob/1.4.1/atomicwrites/__init__.py#L59-L60
+    # This also raises FileExistsError if dst exists.
+    def _safe_move(src: Path, dst: Path) -> None:
+        os.link(src, dst)
+        os.unlink(src)
+
+
+@contextlib.contextmanager
+def _atomic_write(
+    path: Path,
+    mode: Literal["r+b", "wb"],
+    exclusive: bool = False,
+) -> Iterator[BinaryIO]:
+    tmp_path = path.with_suffix(f'.{uuid.uuid4().hex}.partial')
+    try:
+        with tmp_path.open(mode) as f:
+            yield f
+        if exclusive:
+            _safe_move(tmp_path, path)
+        else:
+            tmp_path.replace(path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def _put(
     path: Path,
     value: Buffer,
@@ -48,20 +85,15 @@ def _put(
     exclusive: bool = False,
 ) -> int | None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    # write takes any object supporting the buffer protocol
+    view = value.as_buffer_like()
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            # write takes any object supporting the buffer protocol
-            f.write(value.as_buffer_like())
+            f.write(view)
         return None
     else:
-        view = value.as_buffer_like()
-        if exclusive:
-            mode = "xb"
-        else:
-            mode = "wb"
-        with path.open(mode=mode) as f:
-            # write takes any object supporting the buffer protocol
+        with _atomic_write(path, "wb", exclusive=exclusive) as f:
             return f.write(view)
 
 
