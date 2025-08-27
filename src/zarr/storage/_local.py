@@ -6,9 +6,9 @@ import io
 import os
 import shutil
 import sys
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal, Self
-import uuid
 
 from zarr.abc.store import (
     ByteRequest,
