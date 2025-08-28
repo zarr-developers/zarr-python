@@ -1269,7 +1269,7 @@ async def open_array(
                 overwrite=overwrite,
                 **kwargs,
             )
-        msg = "No array found in store {store_path.store} at path {store_path.path}"
+        msg = f"No array found in store {store_path.store} at path {store_path.path}"
         raise ArrayNotFoundError(msg) from err
 
 
