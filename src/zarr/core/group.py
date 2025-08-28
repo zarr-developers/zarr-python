@@ -3553,7 +3553,7 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
     if "node_type" not in zarr_json:
-        msg = "Invalid value for 'node_type'. Expected 'array' or 'group'. Got nothing (the key is missing)."
+        msg = "Required key 'node_type' is missing from the provided metadata document."
         raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
