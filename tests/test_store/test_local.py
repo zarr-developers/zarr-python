@@ -10,6 +10,7 @@ import zarr
 from zarr import create_array
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
+from zarr.storage._local import _atomic_write
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import assert_bytes_equal
 
@@ -109,3 +110,46 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
             FileExistsError, match=re.escape(f"Destination root {destination} already exists")
         ):
             await store2.move(destination)
+
+
+@pytest.mark.parametrize("exclusive", [True, False])
+def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> None:
+    path = pathlib.Path(tmp_path) / "data"
+    with _atomic_write(path, "wb", exclusive=exclusive) as f:
+        f.write(b"abc")
+    assert path.read_bytes() == b"abc"
+    assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+@pytest.mark.parametrize("exclusive", [True, False])
+def test_atomic_write_incomplete(tmp_path: pathlib.Path, exclusive: bool) -> None:
+    path = pathlib.Path(tmp_path) / "data"
+    with pytest.raises(RuntimeError):  # noqa: PT012
+        with _atomic_write(path, "wb", exclusive=exclusive) as f:
+            f.write(b"a")
+            raise RuntimeError
+    assert not path.exists()
+    assert list(path.parent.iterdir()) == []  # no temp files
+
+
+def test_atomic_write_non_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
+    path = pathlib.Path(tmp_path) / "data"
+    with path.open("wb") as f:
+        f.write(b"xyz")
+    assert path.read_bytes() == b"xyz"
+    with _atomic_write(path, "wb", exclusive=False) as f:
+        f.write(b"abc")
+    assert path.read_bytes() == b"abc"
+    assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
+    path = pathlib.Path(tmp_path) / "data"
+    with path.open("wb") as f:
+        f.write(b"xyz")
+    assert path.read_bytes() == b"xyz"
+    with pytest.raises(FileExistsError):
+        with _atomic_write(path, "wb", exclusive=True) as f:
+            f.write(b"abc")
+    assert path.read_bytes() == b"xyz"
+    assert list(path.parent.iterdir()) == [path]  # no temp files
