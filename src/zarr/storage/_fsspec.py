@@ -89,7 +89,6 @@ class FsspecStore(Store):
     allowed_exceptions
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
 
     Raises
@@ -113,7 +112,6 @@ class FsspecStore(Store):
     # based on FSSpec
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = False
     supports_listing: bool = True
 
     fs: AsyncFileSystem
