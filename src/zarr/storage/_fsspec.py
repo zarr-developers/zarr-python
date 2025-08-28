@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from fsspec.mapping import FSMap
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import BytesLike
 
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
