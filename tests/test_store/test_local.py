@@ -111,7 +111,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> None:
-    path = pathlib.Path(tmp_path) / "data"
+    path = tmp_path / "data"
     with _atomic_write(path, "wb", exclusive=exclusive) as f:
         f.write(b"abc")
     assert path.read_bytes() == b"abc"
@@ -120,7 +120,7 @@ def test_atomic_write_successful(tmp_path: pathlib.Path, exclusive: bool) -> Non
 
 @pytest.mark.parametrize("exclusive", [True, False])
 def test_atomic_write_incomplete(tmp_path: pathlib.Path, exclusive: bool) -> None:
-    path = pathlib.Path(tmp_path) / "data"
+    path = tmp_path / "data"
     with pytest.raises(RuntimeError):  # noqa: PT012
         with _atomic_write(path, "wb", exclusive=exclusive) as f:
             f.write(b"a")
@@ -130,7 +130,7 @@ def test_atomic_write_incomplete(tmp_path: pathlib.Path, exclusive: bool) -> Non
 
 
 def test_atomic_write_non_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
-    path = pathlib.Path(tmp_path) / "data"
+    path = tmp_path / "data"
     with path.open("wb") as f:
         f.write(b"xyz")
     assert path.read_bytes() == b"xyz"
@@ -141,7 +141,7 @@ def test_atomic_write_non_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
 
 
 def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
-    path = pathlib.Path(tmp_path) / "data"
+    path = tmp_path / "data"
     with path.open("wb") as f:
         f.write(b"xyz")
     assert path.read_bytes() == b"xyz"
