@@ -77,23 +77,12 @@ def _atomic_write(
         raise
 
 
-def _put(
-    path: Path,
-    value: Buffer,
-    start: int | None = None,
-    exclusive: bool = False,
-) -> int | None:
+def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     # write takes any object supporting the buffer protocol
     view = value.as_buffer_like()
-    if start is not None:
-        with path.open("r+b") as f:
-            f.seek(start)
-            f.write(view)
-        return None
-    else:
-        with _atomic_write(path, "wb", exclusive=exclusive) as f:
-            return f.write(view)
+    with _atomic_write(path, "wb", exclusive=exclusive) as f:
+        return f.write(view)
 
 
 class LocalStore(Store):
@@ -111,14 +100,12 @@ class LocalStore(Store):
     ----------
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
     root
     """
 
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = True
     supports_listing: bool = True
 
     root: Path
@@ -253,19 +240,7 @@ class LocalStore(Store):
                 f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
             )
         path = self.root / key
-        await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
-    ) -> None:
-        # docstring inherited
-        self._check_writable()
-        args = []
-        for key, start, value in key_start_values:
-            assert isinstance(key, str)
-            path = self.root / key
-            args.append((_put, path, value, start))
-        await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
+        await asyncio.to_thread(_put, path, value, exclusive=exclusive)
 
     async def delete(self, key: str) -> None:
         """

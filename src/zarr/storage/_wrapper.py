@@ -120,15 +120,6 @@ class WrapperStore(Store, Generic[T_Store]):
         await self._store.delete(key)
 
     @property
-    def supports_partial_writes(self) -> bool:
-        return self._store.supports_partial_writes
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        return await self._store.set_partial_values(key_start_values)
-
-    @property
     def supports_listing(self) -> bool:
         return self._store.supports_listing
 

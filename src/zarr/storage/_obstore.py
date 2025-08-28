@@ -197,17 +197,6 @@ class ObjectStore(Store):
             await obs.delete_async(self.store, key)
 
     @property
-    def supports_partial_writes(self) -> bool:
-        # docstring inherited
-        return False
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
-
-    @property
     def supports_listing(self) -> bool:
         # docstring inherited
         return True

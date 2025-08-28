@@ -418,12 +418,6 @@ class FsspecStore(Store):
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
 
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
-
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
