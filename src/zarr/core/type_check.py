@@ -235,7 +235,10 @@ def check_type(obj: Any, expected_type: Any, path: str = "value") -> TypeCheckRe
     ):
         return check_mapping(obj, expected_type, path)
 
-    if expected_type in (int, float, str, bool):
+    if expected_type is int:
+        return check_int(obj, path)
+
+    if expected_type in (float, str, bool):
         return check_primitive(obj, expected_type, path)
 
     # Fallback
@@ -257,7 +260,9 @@ def ensure_type(obj: object, expected_type: type[T], path: str = "value") -> T:
     """
     if check_type(obj, expected_type, path).success:
         return cast(T, obj)
-    raise TypeError(f"Expected {expected_type} but got {obj!r} with type {type(obj)}")
+    raise TypeError(
+        f"Expected an instance of {expected_type} but got {obj!r} with type {type(obj)}"
+    )
 
 
 def guard_type(obj: object, expected_type: type[T], path: str = "value") -> TypeGuard[T]:
@@ -423,11 +428,19 @@ def check_primitive(obj: object, expected_type: type, path: str) -> TypeCheckRes
     """
     Check if an object is a primitive type, i.e. a type where isinstance(obj, type) will work.
     """
-    if "value['shape']" in path and expected_type is not int:
-        breakpoint()
     if isinstance(obj, expected_type):
         return TypeCheckResult(True, [])
     msg = f"{path} expected an instance of {expected_type} but got {obj!r} with type {type(obj)}"
+    return TypeCheckResult(False, [msg])
+
+
+def check_int(obj: object, path: str) -> TypeCheckResult:
+    """
+    Check if an object is an int.
+    """
+    if isinstance(obj, int) and not isinstance(obj, bool):  # bool is a subclass of int
+        return TypeCheckResult(True, [])
+    msg = f"{path} expected int but got {obj!r} with type {type(obj)}"
     return TypeCheckResult(False, [msg])
 
 
