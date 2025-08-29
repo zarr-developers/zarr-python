@@ -1,20 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, cast, overload
 
 import numpy as np
 
-from zarr.core.common import NamedConfig
+from zarr.core.common import NamedConfig, NamedRequiredConfig, StructuredName_V2
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
-    StructuredName_V2,
-    check_dtype_spec_v2,
-    check_structured_dtype_name_v2,
     v3_unstable_dtype_warning,
 )
 from zarr.core.dtype.npy.common import (
@@ -23,6 +20,7 @@ from zarr.core.dtype.npy.common import (
     check_json_str,
 )
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+from zarr.core.type_check import guard_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -58,7 +56,10 @@ class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
 
 
 class StructuredJSON_V3(
-    NamedConfig[Literal["structured"], dict[str, Sequence[Sequence[str | DTypeJSON]]]]
+    NamedRequiredConfig[
+        Literal["structured"],
+        Mapping[str, Sequence[list[str | NamedConfig[str, Mapping[str, object]]]]],
+    ]
 ):
     """
     A JSON representation of a structured data type in Zarr V3.
@@ -211,12 +212,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             True if the input is a valid JSON representation of a Structured data type
             for Zarr V2, False otherwise.
         """
-        return (
-            check_dtype_spec_v2(data)
-            and not isinstance(data["name"], str)
-            and check_structured_dtype_name_v2(data["name"])
-            and data["object_codec_id"] is None
-        )
+        return guard_type(data, StructuredJSON_V2)
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[StructuredJSON_V3]:
@@ -235,13 +231,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             False otherwise.
         """
 
-        return (
-            isinstance(data, dict)
-            and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == cls._zarr_v3_name
-            and isinstance(data["configuration"], dict)
-            and set(data["configuration"].keys()) == {"fields"}
-        )
+        return guard_type(data, StructuredJSON_V3)
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
