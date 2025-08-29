@@ -413,9 +413,11 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
         extant_node = await _contains_node_v3(store_path)
 
     if extant_node == "array":
-        raise ContainsArrayError(store_path.store, store_path.path)
+        msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
+        raise ContainsArrayError(msg)
     elif extant_node == "group":
-        raise ContainsGroupError(store_path.store, store_path.path)
+        msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
+        raise ContainsGroupError(msg)
     elif extant_node == "nothing":
         return
     msg = f"Invalid value for extant_node: {extant_node}"  # type: ignore[unreachable]
@@ -476,7 +478,13 @@ async def _contains_node_v2(store_path: StorePath) -> Literal["array", "group", 
     _group = await contains_group(store_path=store_path, zarr_format=2)
 
     if _array and _group:
-        raise ContainsArrayAndGroupError(store_path.store, store_path.path)
+        msg = (
+            "Array and group metadata documents (.zarray and .zgroup) were both found in store "
+            f"{store_path.store!r} at path {store_path.path!r}. "
+            "Only one of these files may be present in a given directory / prefix. "
+            "Remove the .zarray file, or the .zgroup file, or both."
+        )
+        raise ContainsArrayAndGroupError(msg)
     elif _array:
         return "array"
     elif _group:
