@@ -38,7 +38,7 @@ def _type_name(tp: Any) -> str:
     """Get a readable name for a type hint."""
     if isinstance(tp, type):
         return tp.__name__
-    return getattr(tp, "__qualname__", None) or str(tp)
+    return str(tp)
 
 
 def _is_typeddict_class(tp: object) -> bool:
@@ -46,44 +46,6 @@ def _is_typeddict_class(tp: object) -> bool:
     Check if a type is a TypedDict class.
     """
     return isinstance(tp, type) and hasattr(tp, "__annotations__") and hasattr(tp, "__total__")
-
-
-def _substitute_typevars(tp: Any, type_map: dict[TypeVar, Any]) -> Any:
-    """
-    Given a type and a mapping of typevars to types, substitute the typevars in the type.
-
-    This function will recurse into nested types.
-
-    Parameters
-    ----------
-    tp : Any
-        The type to substitute.
-    type_map : dict[TypeVar, Any]
-        A mapping of typevars to types.
-
-    Returns
-    -------
-    Any
-        The substituted type.
-    """
-    if isinstance(tp, TypeVar):
-        return type_map.get(tp, tp)
-
-    origin = get_origin(tp)
-    if origin is None:
-        return tp
-
-    args = get_args(tp)
-    if not args:
-        return tp
-
-    new_args = tuple(_substitute_typevars(a, type_map) for a in args)
-    try:
-        return origin[new_args]
-    except Exception:
-        if len(new_args) == 1:
-            return new_args[0]
-        return tp
 
 
 def _find_generic_typeddict_base(cls: type) -> tuple[type | None, tuple[Any, ...] | None]:

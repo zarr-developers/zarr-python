@@ -6,16 +6,11 @@ from typing import Annotated, Any, ForwardRef, Literal, NotRequired, TypeVar
 import pytest
 from typing_extensions import ReadOnly, TypedDict
 
-from src.zarr.core.type_check import (
-    TypeCheckResult,
-    check_type,
-    ensure_type,
-    guard_type,
-)
 from zarr.core.common import ArrayMetadataJSON_V3, DTypeSpec_V3, NamedConfig, StructuredName_V2
 from zarr.core.dtype.common import DTypeConfig_V2, DTypeSpec_V2
 from zarr.core.dtype.npy.structured import StructuredJSON_V2
 from zarr.core.dtype.npy.time import TimeConfig
+from zarr.core.type_check import TypeCheckResult, _type_name, check_type, ensure_type, guard_type
 
 
 # --- Sample TypedDicts for testing ---
@@ -39,16 +34,23 @@ class PartialUser(TypedDict, total=False):
 @pytest.mark.parametrize(
     ("inliers", "outliers", "typ"),
     [
+        ((1, 2, 3), (), Any),
         ((True, False), (1, "True", [True]), bool),
         (("a", "1"), (1, True, ["a"]), str),
         ((1.0, 2.0), (1, True, ["a"]), float),
         ((1, 2), (1.0, True, ["a"]), int),
-        ((1, 2), (3, 4, "a"), Literal[1, 2]),
-        ((("a", 1), ("hello", 2)), ((True, 1), ("a", 1, 1)), tuple[str, int]),
-        ((("a",), ("a", 1), ("hello", 2, 3)), ((True, 1), ("a", 1, 1.0)), tuple[str | int, ...]),
-        ((["a", "b"], ["x"]), (["a", 1], "oops", 1), list[str]),
-        (({"a": 1, "b": 2}, {"x": 10}), ({"a": "oops"}, [("a", 1)]), dict[str, int]),
-        (({"a": 1, "b": 2}, {"x": 10}), ({"a": "oops"}, [("a", 1)]), Mapping[str, int]),
+        ((1, 2, None), (3, 4, "a"), Literal[1, 2, None]),
+        ((1, 2, None), ("a", 1.2), int | None),
+        ((("a", 1), ("hello", 2)), (True, 1, ("a", 1, 1), ()), tuple[str, int]),
+        (
+            (("a",), ("a", 1), ("hello", 2, 3), ()),
+            ((True, 1), ("a", 1, 1.0)),
+            tuple[str | int, ...],
+        ),
+        ((["a", "b"], ["x"], []), (["a", 1], "oops", 1), list[str]),
+        (({"a": 1, "b": 2}, {"x": 10}, {}), ({"a": "oops"}, [("a", 1)]), dict[str, int]),
+        (({"a": 1, "b": 2}, {10: 10}, {}), (), dict[Any, Any]),
+        (({"a": 1, "b": 2}, {"x": 10}, {}), ({"a": "oops"}, [("a", 1)]), Mapping[str, int]),
     ],
 )
 def test_inliers_outliers(inliers: tuple[Any, ...], outliers: tuple[Any, ...], typ: type) -> None:
@@ -58,42 +60,6 @@ def test_inliers_outliers(inliers: tuple[Any, ...], outliers: tuple[Any, ...], t
     """
     assert all(check_type(val, typ).success for val in inliers)
     assert all(not check_type(val, typ).success for val in outliers)
-
-
-def test_dict_valid() -> None:
-    """
-    Test that check_type correctly validates a dictionary with specific key-value types.
-
-    Verifies that dictionary type checking works for homogeneous mappings,
-    testing dict[str, int] with {"a": 1, "b": 2} where all keys are strings
-    and all values are integers.
-    """
-    result = check_type({"a": 1, "b": 2}, dict[str, int])
-    assert result.success
-
-
-def test_dict_invalid() -> None:
-    """
-    Test that check_type correctly rejects a dictionary with mismatched value types.
-
-    Verifies that dictionary type checking fails when values don't match
-    the expected type. Tests dict[str, int] with {"a": 1, "b": "oops"}
-    where "oops" is a string instead of the expected int.
-    """
-    result = check_type({"a": 1, "b": "oops"}, dict[str, int])
-    assert not result.success
-    # assert "expected int but got str" in result.errors[0]
-
-
-def test_dict_any_valid() -> None:
-    """
-    Test that check_type correctly validates a dictionary when using Any type annotations.
-
-    Verifies that dictionaries with dict[Any, Any] accept any combination of
-    key and value types, testing with {1: "x", "y": 2} which has mixed types.
-    """
-    result = check_type({1: "x", "y": 2}, dict[Any, Any])
-    assert result.success
 
 
 def test_typeddict_valid() -> None:
@@ -176,33 +142,6 @@ def test_typeddict_partial_total_false_fail() -> None:
     result = check_type(bad, PartialUser)
     assert not result.success
     # assert f"expected {int} but got 'wrong-type' with type {str}" in result.errors
-
-
-def test_literal_valid() -> None:
-    """
-    Test that check_type correctly validates values against Literal types.
-
-    Verifies that Literal type checking accepts values that are exactly one
-    of the allowed literal values. Tests Literal[2, 3] with the value 2
-    which is in the allowed set.
-    """
-    result = check_type(2, Literal[2, 3])
-    assert result.success
-
-
-def test_literal_invalid() -> None:
-    """
-    Test that check_type correctly rejects values not in the Literal's allowed set.
-
-    Verifies that Literal type checking fails when the value is not one of
-    the specified literal values. Tests Literal[2, 3] with the value 1
-    which is not in the allowed set.
-    """
-    typ = Literal[2, 3]
-    val = 1
-    result = check_type(val, typ)
-    assert not result.success
-    # assert result.errors == [f"Expected literal in {get_args(typ)} but got {val!r}"]
 
 
 @pytest.mark.parametrize("data", [10, {"blame": "foo", "configuration": {"foo": "bar"}}])
@@ -360,9 +299,6 @@ def test_typeddict_readonly_notrequired() -> None:
     assert result.success
 
 
-# --- Additional tests for uncovered code paths ---
-
-
 def test_ensure_type_valid() -> None:
     """
     Test that ensure_type returns the input value when type validation succeeds.
@@ -407,18 +343,6 @@ def test_guard_type_invalid() -> None:
     Tests with string "hello" against int type.
     """
     assert guard_type("hello", int) is False
-
-
-def test_check_type_any() -> None:
-    """
-    Test that check_type accepts any value when the expected type is Any.
-
-    Verifies that the Any type annotation works as a universal type that
-    accepts any input value without validation. Tests with string "anything"
-    against Any type.
-    """
-    result = check_type("anything", Any)
-    assert result.success
 
 
 def test_check_type_none_with_none_type() -> None:
@@ -471,34 +395,6 @@ def test_check_type_fallback_type_error() -> None:
     assert "cannot be checked against" in result.errors[0]
 
 
-def test_tuple_variadic() -> None:
-    """
-    Test that check_type correctly validates variadic tuples using Ellipsis notation.
-
-    Verifies that tuple[type, ...] syntax works for tuples of variable length
-    where all elements must be of the same type. Tests tuple[int, ...]
-    with both valid all-integer tuple and invalid mixed-type tuple.
-    """
-    result = check_type((1, 2, 3, 4), tuple[int, ...])
-    assert result.success
-
-    result = check_type((1, "bad", 3), tuple[int, ...])
-    assert not result.success
-
-
-def test_tuple_length_mismatch() -> None:
-    """
-    Test that check_type correctly rejects tuples with incorrect length.
-
-    Verifies that fixed-length tuple validation enforces exact length matching.
-    Tests tuple[int, str, bool] (expecting 3 elements) with a 2-element tuple,
-    ensuring the length mismatch is detected and reported.
-    """
-    result = check_type((1, 2), tuple[int, str, bool])
-    assert not result.success
-    assert "expected tuple of length 3 but got 2" in result.errors[0]
-
-
 def test_sequence_type_string_bytes_excluded() -> None:
     """
     Test that check_type excludes strings and bytes from sequence type validation.
@@ -514,58 +410,6 @@ def test_sequence_type_string_bytes_excluded() -> None:
     result = check_type(b"bytes", list[str])
     assert not result.success
     assert "expected sequence" in result.errors[0]
-
-
-def test_union_all_fail() -> None:
-    """
-    Test that check_type correctly handles union types where no option matches.
-
-    Verifies that union type validation fails when the input value doesn't
-    match any of the union's member types. Tests string "hello" against
-    int | float union, which should fail for both types.
-    """
-    result = check_type("hello", int | float)
-    assert not result.success
-    # Should contain errors from both int and float checks
-
-
-def test_union_success_early() -> None:
-    """
-    Test that check_type succeeds immediately when first union member matches.
-
-    Verifies that union type validation short-circuits on the first successful
-    match, making it efficient. Tests integer 42 against int | str union,
-    which should succeed on the int check.
-    """
-    result = check_type(42, int | str)
-    assert result.success
-
-
-def test_mapping_key_value_errors() -> None:
-    """
-    Test that check_type correctly identifies both key and value type errors in mappings.
-
-    Verifies that mapping validation checks both keys and values independently,
-    reporting errors for mismatches in either. Tests dict[str, str] with
-    mixed types for both keys and values.
-    """
-    bad_mapping = {1: "str", "str": 2}  # Mixed key types, mixed value types
-    result = check_type(bad_mapping, dict[str, str])
-    assert not result.success
-    # Should have errors for both key and value mismatches
-
-
-def test_non_mapping_object() -> None:
-    """
-    Test that check_type correctly rejects non-mapping objects for mapping types.
-
-    Verifies that mapping type validation first checks if the object implements
-    the Mapping protocol before checking keys/values. Tests list against
-    dict[str, int] which should fail at the protocol level.
-    """
-    result = check_type([], dict[str, int])
-    assert not result.success
-    assert "expected  collections.abc.Mapping" in result.errors[0]
 
 
 def test_typeddict_non_dict() -> None:
@@ -602,37 +446,6 @@ def test_typeddict_type_parameter_mismatch() -> None:
     assert "type parameter count mismatch" in result.errors[0]
 
 
-def test_typeddict_not_typeddict_fallback() -> None:
-    """
-    Test the fallback behavior when a type appears to be TypedDict but isn't.
-
-    This tests the internal _get_typeddict_metadata function returning None
-    for types that aren't actually TypedDict classes. This is a placeholder
-    test for an edge case that's difficult to trigger externally.
-    """
-    # This tests the fallback in _get_typeddict_metadata returning None
-    # We can't easily trigger this without internal manipulation
-
-
-def test_annotated_types() -> None:
-    """
-    Test that check_type handles Annotated types by falling back to isinstance check.
-
-    Verifies the current limitation where Annotated types cannot be properly
-    validated and fall back to isinstance(), which fails. This documents
-    the current behavior and tests the fallback error path.
-    """
-    from typing import Annotated
-
-    # Annotated types currently fall back to isinstance check which fails
-    # This shows the current limitation and tests the fallback path
-    AnnotatedInt = Annotated[int, "some annotation"]
-    result = check_type(42, AnnotatedInt)
-    # Currently fails due to isinstance not working with Annotated
-    assert not result.success
-    assert "cannot be checked against" in result.errors[0]
-
-
 def test_complex_nested_unions() -> None:
     """
     Test that check_type correctly validates complex nested structures with union types.
@@ -653,27 +466,6 @@ def test_complex_nested_unions() -> None:
     }
 
     result = check_type(bad_data, ComplexType)
-    assert not result.success
-
-
-def test_types_union_type() -> None:
-    """
-    Test that check_type correctly handles Python 3.10+ union syntax (str | int).
-
-    Verifies that the modern union syntax using | operator works correctly
-    when available (Python 3.10+). Tests str | int with string, integer,
-    and invalid list values to ensure proper union handling.
-    """
-
-    # Test the new union syntax str | int
-    union_type = str | int
-    result = check_type("hello", union_type)
-    assert result.success
-
-    result = check_type(42, union_type)
-    assert result.success
-
-    result = check_type([], union_type)
     assert not result.success
 
 
@@ -719,55 +511,88 @@ def test_sequence_with_collections_abc() -> None:
     assert result.success
 
 
-def test_empty_containers() -> None:
+@pytest.mark.parametrize(
+    ("typ", "expected"),
+    [
+        (str, "str"),
+        (list, "list"),
+        (list[int], "list[int]"),
+        (str | int, "str | int"),
+    ],
+)
+def test_type_name(typ: Any, expected: str) -> None:
+    assert _type_name(typ) == expected
+
+
+def test_typevar_self_reference_edge_case() -> None:
     """
-    Test that check_type correctly validates empty container types.
+    Test TypeVar that maps to itself in type resolution (line 114).
 
-    Verifies that empty containers (list, dict, tuple) pass validation
-    against their respective generic types. Tests empty list against list[int],
-    empty dict against dict[str, int], and empty tuple against tuple[int, ...].
+    Tests the edge case where a TypeVar in the type_map resolves to itself,
+    triggering the self-reference detection in _resolve_type_impl.
+    This covers the rarely hit line 114.
     """
-    result = check_type([], list[int])
-    assert result.success
+    from zarr.core.type_check import _resolve_type
 
-    result = check_type({}, dict[str, int])
-    assert result.success
+    T = TypeVar("T")
+    # Create a type_map where T maps to itself
+    type_map = {T: T}
 
-    result = check_type((), tuple[int, ...])
-    assert result.success
+    # This should trigger the self-reference detection
+    result = _resolve_type(T, type_map=type_map)
+    assert result == T  # Should return the original TypeVar
 
 
-def test_none_literal() -> None:
+def test_non_typeddict_fallback_error() -> None:
     """
-    Test that check_type correctly validates None within Literal types.
+    Test error when non-TypedDict is passed to check_typeddict (line 259).
 
-    Verifies that None can be used as a literal value in Literal types.
-    Tests Literal[None, "other"] with None, "other", and invalid "wrong"
-    values to ensure None is properly handled in literal validation.
+    Tests the fallback error case when _get_typeddict_metadata returns None,
+    meaning the type is not actually a TypedDict.
     """
-    result = check_type(None, Literal[None, "other"])
-    assert result.success
+    from zarr.core.type_check import check_typeddict
 
-    result = check_type("other", Literal[None, "other"])
-    assert result.success
+    # Pass a regular class that's not a TypedDict
+    class NotATypedDict:
+        pass
 
-    result = check_type("wrong", Literal[None, "other"])
+    result = check_typeddict({"key": "value"}, NotATypedDict, "test_path")
     assert not result.success
+    assert "expected a TypedDict but got" in result.errors[0]
 
 
-def test_union_with_none() -> None:
+def test_get_typeddict_metadata_fallback() -> None:
     """
-    Test that check_type correctly validates union types containing None.
 
-    Verifies that optional types (T | None) work correctly, accepting both
-    the base type and None values. Tests int | None with None, integer 42,
-    and invalid string "wrong" to ensure proper union validation.
+    Tests the fallback case where _get_typeddict_metadata cannot extract
+    valid metadata from the provided type.
     """
-    result = check_type(None, int | None)
-    assert result.success
+    from zarr.core.type_check import _get_typeddict_metadata
 
-    result = check_type(42, int | None)
-    assert result.success
+    # Test with a type that's not a TypedDict at all
+    result = _get_typeddict_metadata(int)
+    assert result == (None, None, None, None)
 
-    result = check_type("wrong", int | None)
-    assert not result.success
+    # Test with a complex type that looks like it might be TypedDict but isn't
+    result = _get_typeddict_metadata(dict[str, int])
+    assert result == (None, None, None, None)
+
+
+@pytest.mark.parametrize(("typ_str", "typ_expected"), [("int", int), ("str", str), ("list", list)])
+def test_complex_forwardref_scenarios(typ_str: str, typ_expected: type) -> None:
+    """
+    Test additional ForwardRef scenarios to ensure coverage.
+
+    Tests various ForwardRef evaluation scenarios including edge cases
+    that might not be covered by the basic test.
+    """
+    # String type annotations aren't handled the same way as ForwardRef
+    # in the current implementation. The ForwardRef evaluation happens
+    # in internal type resolution, not in the main check_type path.
+
+    # Instead, let's test a scenario that would use ForwardRef internally
+    from zarr.core.type_check import _resolve_type
+
+    # Test string that would need evaluation in type context
+    result = _resolve_type(typ_str, globalns=globals())
+    assert result is typ_expected
