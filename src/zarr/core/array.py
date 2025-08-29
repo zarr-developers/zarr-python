@@ -217,10 +217,10 @@ async def get_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
 ) -> dict[str, JSON]:
     if zarr_format == 2:
-        zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
-        )
+        requests = [(key, default_buffer_prototype(), None) for key in [ZARRAY_JSON, ZATTRS_JSON]]
+        retrieved_buffers = {key: value async for key, value in store_path.get_many(requests)}
+        zarray_bytes, zattrs_bytes = tuple(retrieved_buffers.get(req[0]) for req in requests)
+
         if zarray_bytes is None:
             msg = (
                 "A Zarr V2 array metadata document was not found in store "
@@ -236,11 +236,14 @@ async def get_array_metadata(
             )
             raise ArrayNotFoundError(msg)
     elif zarr_format is None:
-        zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
-            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
+        requests = [
+            (key, default_buffer_prototype(), None) for key in [ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON]
+        ]
+        retrieved_buffers = {key: value async for key, value in store_path.get_many(requests)}
+        zarr_json_bytes, zarray_bytes, zattrs_bytes = tuple(
+            retrieved_buffers.get(req[0]) for req in requests
         )
+
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
             msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store_path}. Zarr v3 will be used."
@@ -1646,7 +1649,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                         ).items()
                     ]
                 )
-
         await gather(*awaitables)
 
     async def _set_selection(
