@@ -163,7 +163,7 @@ class StorePath:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
+    async def set(self, value: Buffer) -> None:
         """
         Write bytes to the store.
 
@@ -171,16 +171,7 @@ class StorePath:
         ----------
         value : Buffer
             The buffer to write.
-        byte_range : ByteRequest, optional
-            The range of bytes to write. If None, the entire buffer is written.
-
-        Raises
-        ------
-        NotImplementedError
-            If `byte_range` is not None, because Store.set does not support partial writes yet.
         """
-        if byte_range is not None:
-            raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
 
     async def delete(self) -> None:
@@ -358,7 +349,7 @@ async def make_store_path(
 
     elif isinstance(store_like, Path):
         # Create a new LocalStore
-        store = await LocalStore.open(root=store_like, read_only=_read_only)
+        store = await LocalStore.open(root=store_like, mode=mode)
 
     elif isinstance(store_like, str):
         # Either a FSSpec URI or a local filesystem path

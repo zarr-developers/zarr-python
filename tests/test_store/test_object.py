@@ -48,11 +48,6 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     def test_store_supports_writes(self, store: ObjectStore) -> None:
         assert store.supports_writes
 
-    async def test_store_supports_partial_writes(self, store: ObjectStore) -> None:
-        assert not store.supports_partial_writes
-        with pytest.raises(NotImplementedError):
-            await store.set_partial_values([("foo", 0, b"\x01\x02\x03\x04")])
-
     def test_store_supports_listing(self, store: ObjectStore) -> None:
         assert store.supports_listing
 
