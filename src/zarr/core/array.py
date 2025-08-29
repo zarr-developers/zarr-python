@@ -282,7 +282,8 @@ async def get_array_metadata(
         else:
             zarr_format = 2
     else:
-        raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
+        msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
+        raise MetadataValidationError(msg)
 
     metadata_dict: ArrayMetadataJSON_V2 | ArrayMetadataJSON_V3
     if zarr_format == 2:

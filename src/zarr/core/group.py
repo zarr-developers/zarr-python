@@ -102,7 +102,8 @@ def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
     if data in ("array", "group"):
         return cast("Literal['array', 'group']", data)
-    raise MetadataValidationError("node_type", "array or group", data)
+    msg = f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got '{data}'."
+    raise MetadataValidationError(msg)
 
 
 # todo: convert None to empty dict
@@ -579,7 +580,8 @@ class AsyncGroup:
             else:
                 zarr_format = 2
         else:
-            raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
+            msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
+            raise MetadataValidationError(msg)
 
         if zarr_format == 2:
             # this is checked above, asserting here for mypy
@@ -3134,10 +3136,12 @@ async def create_hierarchy(
                         else:
                             # we have proposed an explicit group, which is an error, given that a
                             # group already exists.
-                            raise ContainsGroupError(store, key)
+                            msg = f"A group exists in store {store!r} at path {key!r}."
+                            raise ContainsGroupError(msg)
                     elif isinstance(extant_node, ArrayV2Metadata | ArrayV3Metadata):
                         # we are trying to overwrite an existing array. this is an error.
-                        raise ContainsArrayError(store, key)
+                        msg = f"An array exists in store {store!r} at path {key!r}."
+                        raise ContainsArrayError(msg)
 
     nodes_explicit: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {}
 
@@ -3554,7 +3558,8 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
     if "node_type" not in zarr_json:
-        raise MetadataValidationError("node_type", "array or group", "nothing (the key is missing)")
+        msg = "Required key 'node_type' is missing from the provided metadata document."
+        raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
             return ArrayV3Metadata.from_dict(zarr_json)  # type: ignore[arg-type]
