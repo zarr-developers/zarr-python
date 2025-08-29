@@ -761,6 +761,24 @@ def test_group_create_array(
     assert np.array_equal(array[:], data)
 
 
+@pytest.mark.parametrize("method", ["create_array", "create_group"])
+def test_create_with_parent_array(store: Store, zarr_format: ZarrFormat, method: str):
+    """Test that groups/arrays cannot be created under a parent array."""
+
+    # create a group with a child array
+    group = Group.from_store(store, zarr_format=zarr_format)
+    group.create_array(name="arr_1", shape=(10, 10), dtype="uint8")
+
+    error_msg = r"A parent of .* is an array - only groups may have child nodes."
+    if method == "create_array":
+        with pytest.raises(ValueError, match=error_msg):
+            group.create_array("arr_1/group_1/group_2/arr_2", shape=(10, 10), dtype="uint8")
+
+    else:
+        with pytest.raises(ValueError, match=error_msg):
+            group.create_group("arr_1/group_1/group_2/group_3")
+
+
 def test_group_array_creation(
     store: Store,
     zarr_format: ZarrFormat,
