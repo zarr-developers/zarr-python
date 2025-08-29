@@ -144,6 +144,7 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
+    from zarr.types import AnyArray, AnyAsyncArray, AsyncArrayV2, AsyncArrayV3
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -310,7 +311,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @overload
     def __init__(
-        self: AsyncArray[ArrayV2Metadata],
+        self: AsyncArrayV2,
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
@@ -318,7 +319,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @overload
     def __init__(
-        self: AsyncArray[ArrayV3Metadata],
+        self: AsyncArrayV3,
         metadata: ArrayV3Metadata | ArrayV3MetadataDict,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
@@ -364,7 +365,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata]: ...
+    ) -> AsyncArrayV2: ...
 
     # this overload defines the function signature when zarr_format is 3
     @overload
@@ -393,7 +394,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]: ...
+    ) -> AsyncArrayV3: ...
 
     @overload
     @classmethod
@@ -421,7 +422,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]: ...
+    ) -> AsyncArrayV3: ...
 
     @overload
     @classmethod
@@ -455,7 +456,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
+    ) -> AnyAsyncArray: ...
 
     @classmethod
     @deprecated("Use zarr.api.asynchronous.create_array instead.", category=ZarrDeprecationWarning)
@@ -489,7 +490,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Method to create a new asynchronous array instance.
 
         .. deprecated:: 3.0.0
@@ -630,7 +631,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Method to create a new asynchronous array instance.
         See :func:`AsyncArray.create` for more details.
         Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
@@ -652,7 +653,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _chunks = normalize_chunks(chunk_shape, shape, item_size)
         config_parsed = parse_array_config(config)
 
-        result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
+        result: AnyAsyncArray
         if zarr_format == 3:
             if dimension_separator is not None:
                 raise ValueError(
@@ -796,7 +797,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_names: DimensionNames = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
-    ) -> AsyncArray[ArrayV3Metadata]:
+    ) -> AsyncArrayV3:
         if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
@@ -877,7 +878,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         compressor: CompressorLike = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
-    ) -> AsyncArray[ArrayV2Metadata]:
+    ) -> AsyncArrayV2:
         if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
@@ -921,7 +922,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    ) -> AnyAsyncArray:
         """
         Create a Zarr array from a dictionary, with support for both Zarr format 2 and 3 metadata.
 
@@ -937,7 +938,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        AsyncArray[ArrayV3Metadata] or AsyncArray[ArrayV2Metadata]
+        AsyncArrayV3 or AsyncArrayV2
             The created Zarr array, either using Zarr format 2 or 3 metadata based on the provided data.
 
         Raises
@@ -953,7 +954,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
-    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    ) -> AnyAsyncArray:
         """
         Async method to open an existing Zarr array from a given store.
 
@@ -1997,12 +1998,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
 @dataclass(frozen=False)
-class Array:
+class Array(Generic[T_ArrayMetadata]):
     """
     A Zarr array.
     """
 
-    _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
+    _async_array: AsyncArray[T_ArrayMetadata]
 
     @classmethod
     @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
@@ -2035,7 +2036,7 @@ class Array:
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
-    ) -> Array:
+    ) -> AnyArray:
         """Creates a new Array instance from an initialized store.
 
         .. deprecated:: 3.0.0
@@ -2164,7 +2165,7 @@ class Array:
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
-    ) -> Array:
+    ) -> AnyArray:
         """Creates a new Array instance from an initialized store.
         See :func:`Array.create` for more details.
         Deprecated in favor of :func:`zarr.create_array`.
@@ -2190,14 +2191,14 @@ class Array:
                 config=config,
             ),
         )
-        return cls(async_array)
+        return Array(async_array)
 
     @classmethod
     def from_dict(
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
-    ) -> Array:
+    ) -> AnyArray:
         """
         Create a Zarr array from a dictionary.
 
@@ -2221,13 +2222,13 @@ class Array:
             If the dictionary data is invalid or missing required fields for array creation.
         """
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
-        return cls(async_array)
+        return Array(async_array)
 
     @classmethod
     def open(
         cls,
         store: StoreLike,
-    ) -> Array:
+    ) -> AnyArray:
         """Opens an existing Array from a store.
 
         Parameters
@@ -2241,7 +2242,7 @@ class Array:
             Array opened from the store.
         """
         async_array = sync(AsyncArray.open(store))
-        return cls(async_array)
+        return Array(async_array)
 
     @property
     def store(self) -> Store:
@@ -3982,7 +3983,7 @@ class Array:
         """
         return sync(self._async_array.append(data, axis=axis))
 
-    def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
+    def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
         Update the array's attributes.
 
@@ -4007,11 +4008,8 @@ class Array:
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        # TODO: remove this cast when type inference improves
         new_array = sync(self._async_array.update_attributes(new_attributes))
-        # TODO: remove this cast when type inference improves
-        _new_array = cast("AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]", new_array)
-        return type(self)(_new_array)
+        return type(self)(new_array)
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -4071,7 +4069,7 @@ class Array:
 
 
 async def _shards_initialized(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+    array: AnyAsyncArray,
 ) -> tuple[str, ...]:
     """
     Return the keys of the chunks that have been persisted to the storage backend.
@@ -4103,7 +4101,7 @@ async def _shards_initialized(
 
 
 def _build_parents(
-    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
+    node: AnyAsyncArray | AsyncGroup,
 ) -> list[AsyncGroup]:
     from zarr.core.group import AsyncGroup, GroupMetadata
 
@@ -4166,7 +4164,7 @@ ShardsLike: TypeAlias = tuple[int, ...] | ShardsConfigParam | Literal["auto"]
 async def from_array(
     store: str | StoreLike,
     *,
-    data: Array | npt.ArrayLike,
+    data: AnyArray | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
     chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
@@ -4183,7 +4181,7 @@ async def from_array(
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigLike | None = None,
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> AnyAsyncArray:
     """Create an array from an existing array or array-like.
 
     Parameters
@@ -4403,7 +4401,7 @@ async def from_array(
         if isinstance(data, Array):
 
             async def _copy_array_region(
-                chunk_coords: tuple[int, ...] | slice, _data: Array
+                chunk_coords: tuple[int, ...] | slice, _data: AnyArray
             ) -> None:
                 arr = await _data._async_array.getitem(chunk_coords)
                 await result.setitem(chunk_coords, arr)
@@ -4446,7 +4444,7 @@ async def init_array(
     dimension_names: DimensionNames = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
-) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+) -> AnyAsyncArray:
     """Create and persist an array metadata document.
 
     Parameters
@@ -4669,7 +4667,7 @@ async def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> AnyAsyncArray:
     """Create an array.
 
     Parameters
@@ -4833,7 +4831,7 @@ async def create_array(
 
 
 def _parse_keep_array_attr(
-    data: Array | npt.ArrayLike,
+    data: AnyArray | npt.ArrayLike,
     chunks: Literal["auto", "keep"] | tuple[int, ...],
     shards: ShardsLike | None | Literal["keep"],
     filters: FiltersLike | Literal["keep"],
@@ -5234,7 +5232,7 @@ def _parse_data_params(
 
 
 def _iter_chunk_coords(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AnyAsyncArray,
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
@@ -5265,7 +5263,7 @@ def _iter_chunk_coords(
 
 
 def _iter_shard_coords(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AnyAsyncArray,
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
@@ -5296,7 +5294,7 @@ def _iter_shard_coords(
 
 
 def _iter_shard_keys(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AnyAsyncArray,
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
@@ -5325,7 +5323,7 @@ def _iter_shard_keys(
 
 
 def _iter_shard_regions(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AnyAsyncArray,
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
@@ -5360,7 +5358,7 @@ def _iter_shard_regions(
 
 
 def _iter_chunk_regions(
-    array: Array | AsyncArray[Any],
+    array: AnyArray | AnyAsyncArray,
     *,
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,

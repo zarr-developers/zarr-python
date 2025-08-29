@@ -16,8 +16,9 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
-    from zarr.core.array import Array, AsyncArray
+    from zarr.core.array import AsyncArray
     from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+    from zarr.types import AnyArray
 
 
 @dataclass
@@ -80,7 +81,10 @@ def test_get_shape_chunks(
     ],
 )
 def test_like_args(
-    observed: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any],
+    observed: AsyncArray[ArrayV2Metadata]
+    | AsyncArray[ArrayV3Metadata]
+    | AnyArray
+    | npt.NDArray[Any],
     expected: object,
 ) -> None:
     """
