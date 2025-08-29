@@ -51,7 +51,7 @@ from zarr.core.indexing import (
     morton_order_iter,
 )
 from zarr.core.metadata.v3 import parse_codecs
-from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
+from zarr.registry import get_ndbuffer_class, get_pipeline_class
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -760,6 +760,3 @@ class ShardingCodec(
     def compute_encoded_size(self, input_byte_length: int, shard_spec: ArraySpec) -> int:
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         return input_byte_length + self._shard_index_size(chunks_per_shard)
-
-
-register_codec("sharding_indexed", ShardingCodec)
