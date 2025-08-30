@@ -5,7 +5,7 @@ import pytest
 
 import zarr
 from zarr.abc.store import Store
-from zarr.codecs import BytesCodec
+from zarr.codecs import BytesCodec, Endian
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
@@ -76,3 +76,29 @@ def test_to_dict(endian: str, expected: dict[str, Any]) -> None:
     actual = codec.to_dict()
 
     assert actual == expected
+
+
+@pytest.mark.parametrize(
+    ("mapping", "expected"),
+    [
+        pytest.param(
+            {"name": "bytes", "configuration": {"endian": "little"}}, Endian.little, id="little"
+        ),
+        pytest.param({"name": "bytes", "configuration": {"endian": "big"}}, Endian.big, id="big"),
+        pytest.param({"name": "bytes"}, None, id="missing"),
+    ],
+)
+def test_from_dict(mapping: dict[str, Any], expected: Endian | None) -> None:
+    actual = BytesCodec.from_dict(mapping)
+
+    assert actual.endian == expected
+
+
+@pytest.mark.parametrize("endian", ["little", "big", pytest.param(None, id="missing")])
+def test_roundtrip(endian: str | None) -> None:
+    codec = BytesCodec(endian=endian)
+
+    encoded = codec.to_dict()
+    roundtripped = BytesCodec.from_dict(encoded)
+
+    assert codec == roundtripped
