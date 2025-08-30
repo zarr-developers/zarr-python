@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pytest
@@ -58,3 +58,21 @@ async def test_endian_write(
     await _AsyncArrayProxy(a)[:, :].set(data)
     readback_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, readback_data)
+
+
+@pytest.mark.parametrize(
+    ("endian", "expected"),
+    [
+        pytest.param(
+            "little", {"name": "bytes", "configuration": {"endian": "little"}}, id="little"
+        ),
+        pytest.param("big", {"name": "bytes", "configuration": {"endian": "big"}}, id="big"),
+        pytest.param(None, {"name": "bytes"}, id="missing"),
+    ],
+)
+def test_to_dict(endian: str, expected: dict[str, Any]) -> None:
+    codec = BytesCodec(endian=endian)
+
+    actual = codec.to_dict()
+
+    assert actual == expected
