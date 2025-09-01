@@ -2123,7 +2123,10 @@ def test_iter_chunk_regions(
 
 
 @pytest.mark.parametrize("num_shards", [1, 3])
-def test_create_array_with_data_num_gets(num_shards: int) -> None:
+@pytest.mark.parametrize("array_type", ["numpy", "zarr"])
+def test_create_array_with_data_num_gets(
+    num_shards: int, array_type: Literal["numpy", "zarr"]
+) -> None:
     """
     Test that creating an array with data only invokes a single get request per stored object
     """
@@ -2132,7 +2135,10 @@ def test_create_array_with_data_num_gets(num_shards: int) -> None:
     chunk_shape = (1,)
     shard_shape = (100,)
     shape = (shard_shape[0] * num_shards,)
-    data = np.arange(shape[0])
+    if array_type == "numpy":
+        data = np.arange(shape[0])
+    else:
+        data = zarr.zeros(shape, dtype="int64")
 
     zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)
     # one get for the metadata and one per shard.
