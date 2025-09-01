@@ -2135,12 +2135,13 @@ def test_create_array_with_data_num_gets(
     chunk_shape = (1,)
     shard_shape = (100,)
     shape = (shard_shape[0] * num_shards,)
+    data: Array | npt.NDArray[np.int64]
     if array_type == "numpy":
-        data = np.arange(shape[0])
+        data = np.zeros(shape[0], dtype="int64")
     else:
         data = zarr.zeros(shape, dtype="int64")
 
-    zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)
+    zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)  # type: ignore[arg-type]
     # one get for the metadata and one per shard.
     # Note: we don't actually need one get per shard, but this is the current behavior
     assert store.counter["get"] == 1 + num_shards
