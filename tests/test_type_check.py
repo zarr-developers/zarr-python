@@ -10,7 +10,16 @@ from zarr.core.common import ArrayMetadataJSON_V3, DTypeSpec_V3, NamedConfig, St
 from zarr.core.dtype.common import DTypeConfig_V2, DTypeSpec_V2
 from zarr.core.dtype.npy.structured import StructuredJSON_V2
 from zarr.core.dtype.npy.time import TimeConfig
-from zarr.core.type_check import TypeCheckResult, _type_name, check_type, ensure_type, guard_type
+from zarr.core.type_check import (
+    TypeCheckResult,
+    _get_typeddict_metadata,
+    _resolve_type,
+    _type_name,
+    check_type,
+    check_typeddict,
+    ensure_type,
+    guard_type,
+)
 
 
 # --- Sample TypedDicts for testing ---
@@ -532,8 +541,6 @@ def test_typevar_self_reference_edge_case() -> None:
     triggering the self-reference detection in _resolve_type_impl.
     This covers the rarely hit line 114.
     """
-    from zarr.core.type_check import _resolve_type
-
     T = TypeVar("T")
     # Create a type_map where T maps to itself
     type_map = {T: T}
@@ -550,7 +557,6 @@ def test_non_typeddict_fallback_error() -> None:
     Tests the fallback error case when _get_typeddict_metadata returns None,
     meaning the type is not actually a TypedDict.
     """
-    from zarr.core.type_check import check_typeddict
 
     # Pass a regular class that's not a TypedDict
     class NotATypedDict:
@@ -567,7 +573,6 @@ def test_get_typeddict_metadata_fallback() -> None:
     Tests the fallback case where _get_typeddict_metadata cannot extract
     valid metadata from the provided type.
     """
-    from zarr.core.type_check import _get_typeddict_metadata
 
     # Test with a type that's not a TypedDict at all
     result = _get_typeddict_metadata(int)
@@ -591,7 +596,6 @@ def test_complex_forwardref_scenarios(typ_str: str, typ_expected: type) -> None:
     # in internal type resolution, not in the main check_type path.
 
     # Instead, let's test a scenario that would use ForwardRef internally
-    from zarr.core.type_check import _resolve_type
 
     # Test string that would need evaluation in type context
     result = _resolve_type(typ_str, globalns=globals())
