@@ -20,9 +20,6 @@ from typing import (
 from typing_extensions import ReadOnly, evaluate_forward_ref
 
 
-class TypeResolutionError(Exception): ...
-
-
 @dataclass(frozen=True)
 class TypeCheckResult:
     """
@@ -157,7 +154,9 @@ def _resolve_type_impl(
     return tp
 
 
-def check_type(obj: Any, expected_type: Any, path: str = "value") -> TypeCheckResult:
+def check_type(
+    obj: Any, expected_type: type | types.UnionType | ForwardRef | None, path: str = "value"
+) -> TypeCheckResult:
     """
     Check if `obj` is of type `expected_type`.
     """
@@ -171,7 +170,7 @@ def check_type(obj: Any, expected_type: Any, path: str = "value") -> TypeCheckRe
     if expected_type is Any:
         return TypeCheckResult(True, [])
 
-    if origin is typing.Union or isinstance(expected_type, types.UnionType):
+    if origin in (typing.Union, types.UnionType):
         return check_union(obj, expected_type, path)
 
     if origin is typing.Literal:
@@ -201,11 +200,11 @@ def check_type(obj: Any, expected_type: Any, path: str = "value") -> TypeCheckRe
         return check_int(obj, path)
 
     if expected_type in (float, str, bool):
-        return check_primitive(obj, expected_type, path)
+        return check_primitive(obj, expected_type, path)  # type: ignore[arg-type]
 
     # Fallback
     try:
-        if isinstance(obj, expected_type):
+        if isinstance(obj, expected_type):  # type: ignore[arg-type]
             return TypeCheckResult(True, [])
         tn = _type_name(expected_type)
         return TypeCheckResult(False, [f"{path} expected {tn} but got {type(obj).__name__}"])
