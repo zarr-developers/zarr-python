@@ -74,6 +74,7 @@ from zarr.errors import (
     ZarrUserWarning,
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath
+from zarr.storage._logging import LoggingStore
 
 from .test_dtype.conftest import zdtype_examples
 
@@ -2119,3 +2120,21 @@ def test_iter_chunk_regions(
     assert observed == expected
     assert observed == tuple(arr._iter_chunk_regions())
     assert observed == tuple(arr._async_array._iter_chunk_regions())
+
+
+@pytest.mark.parametrize("num_shards", [1, 3])
+def test_create_array_with_data_num_gets(num_shards: int) -> None:
+    """
+    Test that creating an array with data only invokes a single get request per stored object
+    """
+    store = LoggingStore(store=MemoryStore())
+
+    chunk_shape = (1,)
+    shard_shape = (100,)
+    shape = (shard_shape[0] * num_shards,)
+    data = np.arange(shape[0])
+
+    zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)
+    # one get for the metadata and one per shard.
+    # Note: we don't actually need one get per shard, but this is the current behavior
+    assert store.counter["get"] == 1 + num_shards
