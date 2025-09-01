@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import (  # noqa: F401 CodecJSON re-exported for backwards compatibility
+    CodecJSON,
     CodecJSON_V2,
+    CodecJSON_V3,
     concurrent_map,
 )
 from zarr.core.config import config
