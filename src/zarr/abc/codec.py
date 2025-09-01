@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import concurrent_map
+from zarr.core.common import (  # noqa: F401 CodecJSON re-exported for backwards compatibility
+    CodecJSON_V2,
+    concurrent_map,
+)
 from zarr.core.config import config
 
 if TYPE_CHECKING:
