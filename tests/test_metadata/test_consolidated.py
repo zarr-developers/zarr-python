@@ -692,9 +692,7 @@ class TestConsolidated:
         expected = ["b", "b/c"]
         assert result == expected
 
-    async def test_absolute_path_for_subgroup(
-        self, memory_store: zarr.storage.MemoryStore
-    ) -> None:
+    async def test_absolute_path_for_subgroup(self, memory_store: zarr.storage.MemoryStore) -> None:
         root = await zarr.api.asynchronous.create_group(store=memory_store)
         await root.create_group("a/b")
         with pytest.warns(
