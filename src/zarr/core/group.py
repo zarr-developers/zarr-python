@@ -735,7 +735,7 @@ class AsyncGroup:
         assert self.metadata.consolidated_metadata is not None
 
         # we support nested getitems like group/subgroup/array
-        indexers = key.split("/")
+        indexers = normalize_path(key).split("/")
         indexers.reverse()
         metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata = self.metadata
 

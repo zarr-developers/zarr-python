@@ -692,6 +692,22 @@ class TestConsolidated:
         expected = ["b", "b/c"]
         assert result == expected
 
+    async def test_absolute_path_for_subgroup(
+        self, memory_store: zarr.storage.MemoryStore
+    ) -> None:
+        root = await zarr.api.asynchronous.create_group(store=memory_store)
+        await root.create_group("a/b")
+        with pytest.warns(
+            ZarrUserWarning,
+            match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+        ):
+            await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+        group = await zarr.api.asynchronous.open_group(store=memory_store)
+        subgroup = await group.getitem("/a")
+        members = [x async for x in subgroup.keys()]  # type: ignore[union-attr]
+        assert members == ["b"]
+
 
 @pytest.mark.parametrize("fill_value", [np.nan, np.inf, -np.inf])
 async def test_consolidated_metadata_encodes_special_chars(
