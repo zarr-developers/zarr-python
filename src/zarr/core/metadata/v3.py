@@ -40,13 +40,15 @@ from zarr.registry import get_codec
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
         return 3
-    raise MetadataValidationError("zarr_format", 3, data)
+    msg = f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
+    raise MetadataValidationError(msg)
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
     if data == "array":
         return "array"
-    raise NodeTypeValidationError("node_type", "array", data)
+    msg = f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
+    raise NodeTypeValidationError(msg)
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:

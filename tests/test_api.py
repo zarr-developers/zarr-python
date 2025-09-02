@@ -45,7 +45,6 @@ from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
     MetadataValidationError,
-    NodeNotFoundError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
 )
@@ -191,7 +190,7 @@ async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) ->
     assert z.read_only
 
     # path not found
-    with pytest.raises(NodeNotFoundError):
+    with pytest.raises(FileNotFoundError):
         zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
 
 
@@ -333,8 +332,12 @@ def test_open_with_mode_r(tmp_path: Path) -> None:
 
 def test_open_with_mode_r_plus(tmp_path: Path) -> None:
     # 'r+' means read/write (must exist)
+    new_store_path = tmp_path / "new_store.zarr"
+    assert not new_store_path.exists(), "Test should operate on non-existent directory"
     with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmp_path, mode="r+")
+        zarr.open(store=new_store_path, mode="r+")
+    assert not new_store_path.exists(), "mode='r+' should not create directory"
+
     zarr.ones(store=tmp_path, shape=(3, 3))
     z2 = zarr.open(store=tmp_path, mode="r+")
     assert isinstance(z2, Array)
@@ -440,7 +443,6 @@ async def test_init_order_warns() -> None:
             store_path=StorePath(store=MemoryStore()),
             shape=(1,),
             dtype="uint8",
-            config=None,
             zarr_format=3,
             order="F",
         )
@@ -1229,13 +1231,13 @@ def test_open_modes_creates_group(tmp_path: Path, mode: str) -> None:
 async def test_metadata_validation_error() -> None:
     with pytest.raises(
         MetadataValidationError,
-        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+        match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
 
     with pytest.raises(
         MetadataValidationError,
-        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+        match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
 

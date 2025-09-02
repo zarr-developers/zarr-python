@@ -1,15 +1,17 @@
-from typing import Any
-
 __all__ = [
+    "ArrayIndexError",
     "ArrayNotFoundError",
     "BaseZarrError",
+    "BoundsCheckError",
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
     "ContainsGroupError",
     "GroupNotFoundError",
     "MetadataValidationError",
+    "NegativeStepError",
     "NodeTypeValidationError",
     "UnstableSpecificationWarning",
+    "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",
     "ZarrFutureWarning",
     "ZarrRuntimeWarning",
@@ -21,10 +23,19 @@ class BaseZarrError(ValueError):
     Base error which all zarr errors are sub-classed from.
     """
 
-    _msg = ""
+    _msg: str = "{}"
 
-    def __init__(self, *args: Any) -> None:
-        super().__init__(self._msg.format(*args))
+    def __init__(self, *args: object) -> None:
+        """
+        If a single argument is passed, treat it as a pre-formatted message.
+
+        If multiple arguments are passed, they are used as arguments for a template string class
+        variable. This behavior is deprecated.
+        """
+        if len(args) == 1:
+            super().__init__(args[0])
+        else:
+            super().__init__(self._msg.format(*args))
 
 
 class NodeNotFoundError(BaseZarrError, FileNotFoundError):
@@ -32,29 +43,13 @@ class NodeNotFoundError(BaseZarrError, FileNotFoundError):
     Raised when a node (array or group) is not found at a certain path.
     """
 
-    def __init__(self, *args: Any) -> None:
-        if len(args) == 1:
-            # Pre-formatted message
-            super(BaseZarrError, self).__init__(args[0])
-        else:
-            # Store and path arguments - format them
-            _msg = "No node found in store {!r} at path {!r}"
-            super(BaseZarrError, self).__init__(_msg.format(*args))
-
 
 class ArrayNotFoundError(NodeNotFoundError):
     """
     Raised when an array isn't found at a certain path.
     """
 
-    def __init__(self, *args: Any) -> None:
-        if len(args) == 1:
-            # Pre-formatted message
-            super(BaseZarrError, self).__init__(args[0])
-        else:
-            # Store and path arguments - format them
-            _msg = "No array found in store {!r} at path {!r}"
-            super(BaseZarrError, self).__init__(_msg.format(*args))
+    _msg = "No array found in store {!r} at path {!r}"
 
 
 class GroupNotFoundError(NodeNotFoundError):
@@ -62,14 +57,7 @@ class GroupNotFoundError(NodeNotFoundError):
     Raised when a group isn't found at a certain path.
     """
 
-    def __init__(self, *args: Any) -> None:
-        if len(args) == 1:
-            # Pre-formatted message
-            super(BaseZarrError, self).__init__(args[0])
-        else:
-            # Store and path arguments - format them
-            _msg = "No group found in store {!r} at path {!r}"
-            super(BaseZarrError, self).__init__(_msg.format(*args))
+    _msg = "No group found in store {!r} at path {!r}"
 
 
 class ContainsGroupError(BaseZarrError):
@@ -105,8 +93,6 @@ class UnknownCodecError(BaseZarrError):
     """
     Raised when a unknown codec was used.
     """
-
-    _msg = "{}"
 
 
 class NodeTypeValidationError(MetadataValidationError):
@@ -149,3 +135,15 @@ class ZarrRuntimeWarning(RuntimeWarning):
 
 
 class CodecValidationError(ValueError): ...
+
+
+class VindexInvalidSelectionError(IndexError): ...
+
+
+class NegativeStepError(IndexError): ...
+
+
+class BoundsCheckError(IndexError): ...
+
+
+class ArrayIndexError(IndexError): ...
