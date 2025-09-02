@@ -220,7 +220,17 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
             # In such a case, we will insert a bytes codec that applies no endian transformation.
             # We skip this insertion if the data type is an instance of HasObjectCodec, because
             # in zarr v2 these data types required a special codec that functioned like an array bytes codec.
-            _codecs = (BytesCodec(endian=None),) + _codecs
+
+            # find the last array-array codec, if any
+            abc_idx = 0
+            for idx, codec in enumerate(_codecs):
+                if isinstance(codec, ArrayArrayCodec):
+                    abc_idx = idx + 1
+            if isinstance(metadata.dtype, HasEndianness):
+                out_endianness = metadata.dtype.endianness
+            else:
+                out_endianness = None
+            _codecs = _codecs[:abc_idx] + (BytesCodec(endian=out_endianness),) + _codecs[abc_idx:]
         if metadata.order == "F":
             # Zarr V2 supports declaring the order of an array in metadata. Using the zarr v3 codec
             # framework, we express C or F ordered arrays by adding a transpose codec to the front
@@ -5048,16 +5058,16 @@ def _parse_chunk_encoding_v2(
     elif compressor == "auto":
         _compressor = default_compressor_v2(dtype)
     elif isinstance(compressor, Sequence) and len(compressor) == 1:
-        _compressor = parse_compressor(compressor[0])
+        _compressor = parse_compressor(compressor[0], dtype)
     else:
-        _compressor = parse_compressor(compressor)
+        _compressor = parse_compressor(compressor, dtype)
 
     if filters is None:
         _filters = None
     elif filters == "auto":
         _filters = default_filters_v2(dtype)
     else:
-        _filters = parse_filters(filters)
+        _filters = parse_filters(filters, dtype)
     if isinstance(dtype, HasObjectCodec):
         # check the filters and the compressor for the object codec required for this data type
         if _filters is None:

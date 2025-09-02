@@ -26,52 +26,80 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, Final, Literal, Self, overload
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, Self, overload
+from warnings import warn
 
 import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, CodecJSON_V2
+from zarr.abc.codec import (
+    ArrayArrayCodec,
+    ArrayBytesCodec,
+    BytesBytesCodec,
+    CodecJSON,
+    CodecJSON_V2,
+    CodecJSON_V3,
+)
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration, product
+from zarr.core.common import JSON, NamedConfig, ZarrFormat, product
 from zarr.dtype import UInt8, ZDType, parse_dtype
+from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
 
-CODEC_PREFIX: Final = "numcodecs."
 
-
-def _expect_name_prefix(codec_name: str) -> str:
-    if not codec_name.startswith(CODEC_PREFIX):
-        raise ValueError(
-            f"Expected name to start with '{CODEC_PREFIX}'. Got {codec_name} instead."
-        )  # pragma: no cover
-    return codec_name.removeprefix(CODEC_PREFIX)
-
-
-def _parse_codec_configuration(data: dict[str, JSON]) -> dict[str, JSON]:
-    parsed_name, parsed_configuration = parse_named_configuration(data)
-    if not parsed_name.startswith(CODEC_PREFIX):
-        raise ValueError(
-            f"Expected name to start with '{CODEC_PREFIX}'. Got {parsed_name} instead."
-        )  # pragma: no cover
-    id = _expect_name_prefix(parsed_name)
-    return {"id": id, **parsed_configuration}
+def _warn_unstable_specification(obj: _NumcodecsCodec) -> None:
+    warn(
+        f"The codec {type(obj)} does not have a stable specification. "
+        "Data saved with this codec may not be supported by other Zarr implementations. "
+        "The API for this codec may change in future versions of Zarr.",
+        category=ZarrUserWarning,
+        stacklevel=2,
+    )
 
 
 @dataclass(frozen=True)
 class _NumcodecsCodec:
-    codec_cls: type[Numcodec]
+    codec_name: str
+    _codec_id: ClassVar[str]
+    codec_config: Mapping[str, Any]
+
+    def __init__(self, **codec_config: Any) -> None:
+        object.__setattr__(self, "codec_config", codec_config)
+
+    def to_dict(self) -> NamedConfig[str, Mapping[str, object]]:
+        return {"name": self._codec_id, "configuration": self.codec_config}
 
     @cached_property
     def _codec(self) -> Numcodec:
-        return get_numcodec(self.to_json(zarr_format=2))  # type: ignore[arg-type]
+        return get_numcodec({"id": self._codec_id, **self.codec_config})  # type: ignore[arg-type]
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON_V2[str]) -> Self:
+        return cls(**data)
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        if isinstance(data, str):
+            return cls()
+        return cls(**data["configuration"])
+
+    @classmethod
+    def from_json(cls, data: CodecJSON, zarr_format: ZarrFormat) -> Self:
+        if zarr_format == 2:
+            return cls._from_json_v2(data)
+        elif zarr_format == 3:
+            return cls._from_json_v3(data)
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
@@ -81,7 +109,7 @@ class _NumcodecsCodec:
     def to_json(
         self, zarr_format: ZarrFormat
     ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
-        codec_id = self.codec_config["id"]
+        codec_id = self._codec_id
         codec_config = {k: v for k, v in self.codec_config.items() if k != "id"}
         if zarr_format == 2:
             return {"id": codec_id, **codec_config}
@@ -137,35 +165,93 @@ class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
 
 # bytes-to-bytes codecs
 class Blosc(_NumcodecsBytesBytesCodec):
-    codec_name = "blosc"
+    codec_name = "numcodecs.blosc"
+    _codec_id = "blosc"
 
 
 class LZ4(_NumcodecsBytesBytesCodec):
-    codec_name = "lz4"
+    codec_name = "numcodecs.lz4"
+    _codec_id = "lz4"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class Zstd(_NumcodecsBytesBytesCodec):
-    codec_name = "zstd"
+    codec_name = "numcodecs.zstd"
+    _codec_id = "zstd"
 
 
 class Zlib(_NumcodecsBytesBytesCodec):
-    codec_name = "zlib"
+    codec_name = "numcodecs.zlib"
+    _codec_id = "zlib"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class GZip(_NumcodecsBytesBytesCodec):
-    codec_name = "gzip"
+    codec_name = "numcodecs.gzip"
+    _codec_id = "gzip"
 
 
 class BZ2(_NumcodecsBytesBytesCodec):
-    codec_name = "bz2"
+    codec_name = "numcodecs.bz2"
+    _codec_id = "bz2"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class LZMA(_NumcodecsBytesBytesCodec):
-    codec_name = "lzma"
+    codec_name = "numcodecs.lzma"
+    _codec_id = "lzma"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class Shuffle(_NumcodecsBytesBytesCodec):
-    codec_name = "shuffle"
+    codec_name = "numcodecs.shuffle"
+    _codec_id = "shuffle"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Shuffle:
         if self.codec_config.get("elementsize") is None:
@@ -176,7 +262,23 @@ class Shuffle(_NumcodecsBytesBytesCodec):
 
 # array-to-array codecs ("filters")
 class Delta(_NumcodecsArrayArrayCodec):
-    codec_name = "delta"
+    codec_name = "numcodecs.delta"
+    _codec_id = "delta"
+
+    def __init__(self, **codec_config: Any) -> None:
+        if "codec_config" in codec_config:
+            raise ValueError("The argument 'codec_config' is not supported.")
+        super().__init__(**codec_config)
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         if astype := self.codec_config.get("astype"):
@@ -186,11 +288,33 @@ class Delta(_NumcodecsArrayArrayCodec):
 
 
 class BitRound(_NumcodecsArrayArrayCodec):
-    codec_name = "bitround"
+    codec_name = "numcodecs.bitround"
+    _codec_id = "bitround"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class FixedScaleOffset(_NumcodecsArrayArrayCodec):
-    codec_name = "fixedscaleoffset"
+    codec_name = "numcodecs.fixedscaleoffset"
+    _codec_id = "fixedscaleoffset"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         if astype := self.codec_config.get("astype"):
@@ -206,7 +330,18 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec):
 
 
 class Quantize(_NumcodecsArrayArrayCodec):
-    codec_name = "quantize"
+    codec_name = "numcodecs.quantize"
+    _codec_id = "quantize"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if self.codec_config.get("dtype") is None:
@@ -216,7 +351,18 @@ class Quantize(_NumcodecsArrayArrayCodec):
 
 
 class PackBits(_NumcodecsArrayArrayCodec):
-    codec_name = "packbits"
+    codec_name = "numcodecs.packbits"
+    _codec_id = "packbits"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         return replace(
@@ -235,7 +381,18 @@ class PackBits(_NumcodecsArrayArrayCodec):
 
 
 class AsType(_NumcodecsArrayArrayCodec):
-    codec_name = "astype"
+    codec_name = "numcodecs.astype"
+    _codec_id = "astype"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         dtype = parse_dtype(np.dtype(self.codec_config["encode_dtype"]), zarr_format=3)  # type: ignore[arg-type]
@@ -256,29 +413,106 @@ class _NumcodecsChecksumCodec(_NumcodecsBytesBytesCodec):
 
 
 class CRC32(_NumcodecsChecksumCodec):
-    codec_name = "crc32"
+    codec_name = "numcodecs.crc32"
+    _codec_id = "crc32"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class CRC32C(_NumcodecsChecksumCodec):
-    codec_name = "crc32c"
+    codec_name = "numcodecs.crc32c"
+    _codec_id = "crc32c"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class Adler32(_NumcodecsChecksumCodec):
-    codec_name = "adler32"
+    codec_name = "numcodecs.adler32"
+    _codec_id = "adler32"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class Fletcher32(_NumcodecsChecksumCodec):
-    codec_name = "fletcher32"
+    codec_name = "numcodecs.fletcher32"
+    _codec_id = "fletcher32"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class JenkinsLookup3(_NumcodecsChecksumCodec):
-    codec_name = "jenkins_lookup3"
+    codec_name = "numcodecs.jenkins_lookup3"
+    _codec_id = "jenkins_lookup3"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 # array-to-bytes codecs
 class PCodec(_NumcodecsArrayBytesCodec):
-    codec_name = "pcodec"
+    codec_name = "numcodecs.pcodec"
+    _codec_id = "pcodec"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)
 
 
 class ZFPY(_NumcodecsArrayBytesCodec):
-    codec_name = "zfpy"
+    codec_name = "numcodecs.zfpy"
+    _codec_id = "zfpy"
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(
+        self, zarr_format: ZarrFormat
+    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+        _warn_unstable_specification(self)
+        return super().to_json(zarr_format)

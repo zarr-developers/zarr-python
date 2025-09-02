@@ -134,10 +134,10 @@ def parse_shuffle(data: object) -> BloscShuffle:
 class BloscCodec(BytesBytesCodec):
     is_fixed_size = False
 
-    typesize: int
+    typesize: int | None
     cname: BloscCname
     clevel: int
-    shuffle: BloscShuffle
+    shuffle: BloscShuffle | None
     blocksize: int
 
     def __init__(
@@ -149,10 +149,10 @@ class BloscCodec(BytesBytesCodec):
         shuffle: BloscShuffle | None = None,
         blocksize: int = 0,
     ) -> None:
-        typesize_parsed = parse_typesize(typesize) if typesize is not None else 1
+        typesize_parsed = parse_typesize(typesize) if typesize is not None else None
         cname_parsed = parse_cname(cname)
         clevel_parsed = parse_clevel(clevel)
-        shuffle_parsed = parse_shuffle(shuffle) if shuffle is not None else "noshuffle"
+        shuffle_parsed = parse_shuffle(shuffle) if shuffle is not None else None
         blocksize_parsed = parse_blocksize(blocksize)
 
         object.__setattr__(self, "typesize", typesize_parsed)
@@ -166,7 +166,20 @@ class BloscCodec(BytesBytesCodec):
         return cls.from_json(data, zarr_format=3)
 
     def to_dict(self) -> dict[str, JSON]:
-        return self.to_json(zarr_format=3)
+        if self.shuffle is None:
+            raise ValueError("`shuffle` must be set to serialize to zarr format 3")
+        if self.typesize is None:
+            raise ValueError("`typesize` must be set to serialize to zarr format 3")
+        return {
+            "name": "blosc",
+            "configuration": {
+                "clevel": self.clevel,
+                "cname": self.cname,
+                "shuffle": self.shuffle,
+                "typesize": self.typesize,
+                "blocksize": self.blocksize,
+            },
+        }
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
@@ -176,7 +189,7 @@ class BloscCodec(BytesBytesCodec):
                 clevel=data["clevel"],
                 shuffle=BLOSC_SHUFFLE[data["shuffle"]],
                 blocksize=data["blocksize"],
-                typesize=data.get("typesize", None),
+                typesize=data.get("typesize", 1),
             )
         msg = (
             "Invalid Zarr V2 JSON representation of the blosc codec. "
@@ -208,6 +221,8 @@ class BloscCodec(BytesBytesCodec):
 
     def to_json(self, zarr_format: ZarrFormat) -> BloscJSON_V2 | BloscJSON_V3:
         if zarr_format == 2:
+            if self.shuffle is None:
+                raise ValueError("`shuffle` must be set to serialize to zarr format 2")
             return {
                 "id": "blosc",
                 "clevel": self.clevel,
@@ -216,16 +231,7 @@ class BloscCodec(BytesBytesCodec):
                 "blocksize": self.blocksize,
             }
         elif zarr_format == 3:
-            return {
-                "name": "blosc",
-                "configuration": {
-                    "clevel": self.clevel,
-                    "cname": self.cname,
-                    "shuffle": self.shuffle,
-                    "typesize": self.typesize,
-                    "blocksize": self.blocksize,
-                },
-            }
+            return self.to_dict()  # type: ignore[return-value]
         raise ValueError(
             f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
         )  # pragma: no cover
@@ -246,6 +252,8 @@ class BloscCodec(BytesBytesCodec):
     def _blosc_codec(self) -> Blosc:
         if self.shuffle is None:
             raise ValueError("`shuffle` needs to be set for decoding and encoding.")
+        if self.typesize is None:
+            raise ValueError("`typesize` needs to be set for decoding and encoding.")
         config_dict = {
             "cname": self.cname,
             "clevel": self.clevel,

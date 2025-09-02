@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, ClassVar, Literal, Self, overload
+from typing import TYPE_CHECKING, Literal, Self, overload
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
@@ -16,16 +15,18 @@ from zarr.abc.codec import (
     CodecJSON,
     CodecJSON_V2,
 )
-from zarr.core.chunk_grids import ChunkGrid
-from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.buffer.core import BufferPrototype
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import BaseConfig, NamedConfig, ZarrFormat
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 @dataclass(frozen=True)
@@ -114,7 +115,7 @@ class V2Codec(ArrayBytesCodec):
 
 @dataclass(frozen=True, kw_only=True)
 class NumcodecsWrapper:
-    codec_cls: ClassVar[type[Numcodec]]
+    codec_cls: type[Numcodec]
     config: Mapping[str, object]
 
     @cached_property
@@ -128,7 +129,7 @@ class NumcodecsWrapper:
 
     def to_json(self, zarr_format: ZarrFormat) -> CodecJSON_V2[str] | NamedConfig[str, BaseConfig]:
         if zarr_format == 2:
-            return {"id": self.codec_cls.codec_id, **self.config}
+            return self.config
         elif zarr_format == 3:
             config = self.codec.get_config()
             config_no_id = {k: v for k, v in config.items() if k != "id"}
@@ -184,19 +185,19 @@ class NumcodecsWrapper:
         """
         Use the ``_codec`` attribute to create a NumcodecsArrayArrayCodec.
         """
-        return NumcodecsArrayArrayCodec(config=self.config)
+        return NumcodecsArrayArrayCodec(cls=self.codec_cls, config=self.config)
 
     def to_bytes_bytes(self) -> NumcodecsBytesBytesCodec:
         """
         Use the ``_codec`` attribute to create a NumcodecsBytesBytesCodec.
         """
-        return NumcodecsBytesBytesCodec(config=self.config)
+        return NumcodecsBytesBytesCodec(cls=self.codec_cls, config=self.config)
 
     def to_array_bytes(self) -> NumcodecsArrayBytesCodec:
         """
         Use the ``_codec`` attribute to create a NumcodecsArrayBytesCodec.
         """
-        return NumcodecsArrayBytesCodec(config=self.config)
+        return NumcodecsArrayBytesCodec(codec_cls=self.codec_cls, config=self.config)
 
 
 class NumcodecsBytesBytesCodec(NumcodecsWrapper, BytesBytesCodec):

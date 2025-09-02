@@ -9,6 +9,7 @@ from zarr.abc.codec import ArrayArrayCodec, Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import NumcodecsWrapper
+from zarr.codecs.blosc import BloscCodec
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
@@ -98,29 +99,16 @@ class ArrayV2Metadata(Metadata):
         # TODO: remove this
         if not isinstance(dtype, ZDType):
             raise TypeError
-        compressor_parsed = parse_compressor(compressor)
+        compressor_parsed = parse_compressor(compressor, dtype)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
-        filters_parsed = parse_filters(filters)
+        filters_parsed = parse_filters(filters, dtype)
         fill_value_parsed: TBaseScalar | None
         if fill_value is not None:
             fill_value_parsed = dtype.cast_scalar(fill_value)
         else:
             fill_value_parsed = fill_value
 
-        array_spec = ArraySpec(
-            shape=shape_parsed,
-            dtype=dtype,
-            fill_value=fill_value_parsed,
-            config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
-            prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
-        )
-        if compressor_parsed is not None:
-            pass
-            # compressor_parsed = compressor_parsed.evolve_from_array_spec(array_spec)
-        if filters_parsed is not None:
-            pass
-            # filters_parsed = tuple(fp.evolve_from_array_spec(array_spec) for fp in filters_parsed)
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -275,7 +263,44 @@ def parse_zarr_format(data: object) -> Literal[2]:
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_filters(data: object) -> tuple[ArrayArrayCodec | NumcodecsWrapper, ...] | None:
+def _parse_codec(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecsWrapper:
+    """
+    Resolve a potential codec.
+    """
+    if isinstance(data, (Codec, NumcodecsWrapper)):
+        # TERRIBLE HACK
+        if isinstance(data, BloscCodec):
+            return data.evolve_from_array_spec(
+                ArraySpec(
+                    shape=(1,),
+                    dtype=dtype,
+                    fill_value=None,
+                    config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
+                    prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
+                )
+            )
+        return data
+
+    if _is_numcodec(data):
+        try:
+            # attempt to get a v3-api compatible version of this codec from the registry
+            return get_codec(data.get_config(), zarr_format=2)
+        except KeyError:
+            # if we could not find a v3-api compatible version of this codec, wrap it
+            # in a NumcodecsWrapper
+            return NumcodecsWrapper(codec_cls=type(data), config=data.get_config())
+
+    if isinstance(data, Mapping):
+        return get_codec(data, zarr_format=2)
+
+    raise TypeError(
+        f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
+    )
+
+
+def parse_filters(
+    data: object, dtype: ZDType[Any, Any]
+) -> tuple[ArrayArrayCodec | NumcodecsWrapper, ...] | None:
     """
     Parse a potential tuple of filters
     """
@@ -283,49 +308,25 @@ def parse_filters(data: object) -> tuple[ArrayArrayCodec | NumcodecsWrapper, ...
 
     if data is None:
         return data
-    if isinstance(data, Iterable):
-        for idx, val in enumerate(data):
-            if isinstance(val, (Codec, NumcodecsWrapper)):
-                out.append(val)
-            elif _is_numcodec(val):
-                out.append(NumcodecsWrapper(codec=val))
-            elif isinstance(val, dict):
-                codec = get_codec(val, zarr_format=2)
-                out.append(codec)
-            else:
-                msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
-                raise TypeError(msg)
-        if len(out) == 0:
-            # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
-            return None
-        else:
-            return tuple(out)
-    # take a single codec instance and wrap it in a tuple
-    if _is_numcodec(data):
-        return (NumcodecsWrapper(codec=data),)
-    elif isinstance(data, Codec):
-        return (data,)
-    msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
-    raise TypeError(msg)
+    if not isinstance(data, Iterable):
+        return (_parse_codec(data, dtype),)
+    out = [(_parse_codec(val, dtype)) for val in enumerate(data)]
+    if len(out) == 0:
+        # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
+        return None
+    else:
+        return tuple(out)
 
 
-def parse_compressor(data: object) -> Codec | NumcodecsWrapper | None:
+def parse_compressor(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecsWrapper | None:
     """
     Parse a potential compressor.
     """
     # TODO: only validate the compressor in one place. currently we do it twice, once in init_array
     # and again when constructing metadata
-    if data is None or isinstance(data, Codec | NumcodecsWrapper):
+    if data is None:
         return data
-    if _is_numcodec(data):
-        try:
-            return get_codec(data.get_config(), zarr_format=2)
-        except KeyError:
-            return NumcodecsWrapper(codec=data)
-    if isinstance(data, dict):
-        return get_codec(data, zarr_format=2)
-    msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
-    raise ValueError(msg)
+    return _parse_codec(data, dtype)
 
 
 def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:

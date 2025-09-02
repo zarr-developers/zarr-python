@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import pickle
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 import numpy as np
 import pytest
@@ -16,6 +16,8 @@ from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+CODECS_WITH_SPECS: Final = ("zstd", "gzip", "blosc", "crc32c")
 
 
 @contextlib.contextmanager
@@ -70,7 +72,9 @@ def test_is_numcodec_cls() -> None:
     assert _is_numcodec_cls(GZip)
 
 
-EXPECTED_WARNING_STR = "Numcodecs codecs are not in the Zarr version 3.*"
+EXPECTED_WARNING_STR = (
+    "Data saved with this codec may not be supported by other Zarr implementations. "
+)
 
 ALL_CODECS = tuple(
     filter(
@@ -103,17 +107,27 @@ def test_docstring(codec_class: type[_numcodecs._NumcodecsCodec]) -> None:
 )
 def test_generic_compressor(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec]) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
+    compressors = [codec_class()]
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+    if codec_class._codec_id not in CODECS_WITH_SPECS:
+        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+            a = create_array(
+                {},
+                shape=data.shape,
+                chunks=(16, 16),
+                dtype=data.dtype,
+                fill_value=0,
+                compressors=compressors,
+            )
+    else:
         a = create_array(
             {},
             shape=data.shape,
             chunks=(16, 16),
             dtype=data.dtype,
             fill_value=0,
-            compressors=[codec_class()],
+            compressors=compressors,
         )
-
     a[:, :] = data.copy()
     np.testing.assert_array_equal(data, a[:, :])
 
@@ -211,16 +225,15 @@ def test_generic_filter_packbits() -> None:
     b = open_array(a.store, mode="r")
     np.testing.assert_array_equal(data, b[:, :])
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        with pytest.raises(ValueError, match=".*requires bool dtype.*"):
-            create_array(
-                {},
-                shape=data.shape,
-                chunks=(16, 16),
-                dtype="uint32",
-                fill_value=0,
-                filters=[_numcodecs.PackBits()],
-            )
+    with pytest.raises(ValueError, match=".*requires bool dtype.*"):
+        create_array(
+            {},
+            shape=data.shape,
+            chunks=(16, 16),
+            dtype="uint32",
+            fill_value=0,
+            filters=[_numcodecs.PackBits()],
+        )
 
 
 @pytest.mark.parametrize(
@@ -255,8 +268,7 @@ def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec
 @pytest.mark.parametrize("codec_class", [_numcodecs.PCodec, _numcodecs.ZFPY])
 def test_generic_bytes_codec(codec_class: type[_numcodecs._NumcodecsArrayBytesCodec]) -> None:
     try:
-        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-            codec_class()._codec  # noqa: B018
+        codec_class()._codec  # noqa: B018
     except ValueError as e:  # pragma: no cover
         if "codec not available" in str(e):
             pytest.xfail(f"{codec_class.codec_name} is not available: {e}")
@@ -303,14 +315,12 @@ def test_delta_astype() -> None:
 
 
 def test_repr() -> None:
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        codec = _numcodecs.LZ4(level=5)
+    codec = _numcodecs.LZ4(level=5)
     assert repr(codec) == "LZ4(codec_name='numcodecs.lz4', codec_config={'level': 5})"
 
 
 def test_to_dict() -> None:
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        codec = _numcodecs.LZ4(level=5)
+    codec = _numcodecs.LZ4(level=5)
     assert codec.to_dict() == {"name": "lz4", "configuration": {"level": 5}}
 
 
@@ -341,9 +351,7 @@ def test_to_dict() -> None:
     ],
 )
 def test_codecs_pickleable(codec_cls: type[_numcodecs._NumcodecsCodec]) -> None:
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        codec = codec_cls()
-
+    codec = codec_cls()
     expected = codec
 
     p = pickle.dumps(codec)

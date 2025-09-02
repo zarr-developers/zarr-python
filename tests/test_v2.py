@@ -21,8 +21,12 @@ from zarr.core.dtype.npy.bytes import NullTerminatedBytes
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import Group
 from zarr.core.sync import sync
-from zarr.errors import ZarrDeprecationWarning
+from zarr.errors import ZarrDeprecationWarning, ZarrUserWarning
 from zarr.storage import MemoryStore, StorePath
+
+EXPECTED_WARNING_STR = (
+    "Data saved with this codec may not be supported by other Zarr implementations. "
+)
 
 
 @pytest.fixture
@@ -49,14 +53,15 @@ def test_simple(store: StorePath) -> None:
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
     store = MemoryStore()
-    array = zarr.create(
-        store=store,
-        shape=(1,),
-        dtype="i4",
-        zarr_format=2,
-        filters=[Delta(dtype="i4").get_config()],
-        compressor=Blosc().get_config(),
-    )
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+        array = zarr.create(
+            store=store,
+            shape=(1,),
+            dtype="i4",
+            zarr_format=2,
+            filters=[Delta(dtype="i4").get_config()],
+            compressor=Blosc().get_config(),
+        )
     array[:] = 1
     result = array[:]
     expected = np.ones(1)
@@ -124,12 +129,13 @@ def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str) -> None
     np.testing.assert_equal(data, expected)
 
 
-@pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
+@pytest.mark.parametrize("filters", [[numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
     with config.set({"array.order": order}):
-        arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
+        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+            arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
