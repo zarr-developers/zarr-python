@@ -10,6 +10,7 @@ import pytest
 from zarr import create_array
 from zarr.api.asynchronous import _get_shape_chunks, _like_args, group, open
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.errors import ContainsGroupError
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -126,5 +127,5 @@ async def test_open_group_old_path(tmp_path: Path) -> None:
     """
     store = tmp_path
     await group(store=store, overwrite=True, attributes={"existing_group": True})
-    with pytest.raises(FileExistsError):
+    with pytest.raises(ContainsGroupError):
         await group(store=store)

@@ -2159,7 +2159,7 @@ def test_group_members_performance(store: Store) -> None:
 
     latency_store = LatencyStore(store, get_latency=get_latency)
     # create a group with some latency on get operations
-    group_read = zarr.group(store=latency_store)
+    group_read = zarr.open_group(store=latency_store)
 
     # check how long it takes to iterate over the groups
     # if .members is sensitive to IO latency,

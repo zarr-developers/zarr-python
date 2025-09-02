@@ -673,13 +673,6 @@ async def group(
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    mode: AccessModeLiteral
-    if overwrite:
-        mode = "w"
-    else:
-        mode = "w-"
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if cache_attrs is not None:
@@ -689,20 +682,7 @@ async def group(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
 
-    if attributes is None:
-        attributes = {}
-
-    try:
-        return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
-    except (KeyError, FileNotFoundError):
-        _zarr_format = zarr_format or _default_zarr_format()
-        return await AsyncGroup.from_store(
-            store=store_path,
-            zarr_format=_zarr_format,
-            overwrite=overwrite,
-            attributes=attributes,
-        )
-
+    return await create_group(store=store, path=path, overwrite=overwrite, zarr_format=zarr_format, attributes=attributes, storage_options=storage_options)
 
 async def create_group(
     *,
@@ -742,9 +722,7 @@ async def create_group(
     if zarr_format is None:
         zarr_format = _default_zarr_format()
 
-    mode: Literal["a"] = "a"
-
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    store_path = await make_store_path(store, path=path, mode="a", storage_options=storage_options)
 
     return await AsyncGroup.from_store(
         store=store_path,
