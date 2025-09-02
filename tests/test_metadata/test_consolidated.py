@@ -705,7 +705,8 @@ class TestConsolidated:
 
         group = await zarr.api.asynchronous.open_group(store=memory_store)
         subgroup = await group.getitem("/a")
-        members = [x async for x in subgroup.keys()]  # type: ignore[union-attr]
+        assert isinstance(subgroup, AsyncGroup)
+        members = [x async for x in subgroup.keys()]  # noqa: SIM118
         assert members == ["b"]
 
 
