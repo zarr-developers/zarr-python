@@ -116,3 +116,15 @@ async def test_open_group_new_path(tmp_path: Path) -> None:
     # tmp_path exists, but tmp_path / "test.zarr" will not, which is important for this test
     store = tmp_path / "test.zarr"
     await group(store=store)
+
+
+async def test_open_group_old_path(tmp_path: Path) -> None:
+    """
+    Test that zarr.api.asynchronous.group will not overwrite an existing file.
+
+    See https://github.com/zarr-developers/zarr-python/issues/3406
+    """
+    store = tmp_path
+    await group(store=store, overwrite=True, attributes={"existing_group": True})
+    with pytest.raises(FileExistsError):
+        await group(store=store)

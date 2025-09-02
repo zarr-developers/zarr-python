@@ -677,7 +677,7 @@ async def group(
     if overwrite:
         mode = "w"
     else:
-        mode = "a"
+        mode = "w-"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if chunk_store is not None:
