@@ -310,7 +310,7 @@ def parse_filters(
         return data
     if not isinstance(data, Iterable):
         return (_parse_codec(data, dtype),)
-    out = [(_parse_codec(val, dtype)) for val in enumerate(data)]
+    out = [(_parse_codec(val, dtype)) for val in data]
     if len(out) == 0:
         # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
         return None
