@@ -1,0 +1,6 @@
+Moves some indexing-specific exceptions to ``zarr.errors``, and ensures that all Zarr-specific
+exception classes accept a pre-formatted string as a single argument. This is a breaking change to
+the following exceptions classes: :class:`zarr.errors.BoundsCheckError`, :class:`zarr.errors.NegativeStepError`
+:class:`zarr.errors.VindexInvalidSelectionError`. These classes previously generated internally
+formatted error messages when given a single argument. After this change, formatting of the error
+message is up to the routine invoking the error.
