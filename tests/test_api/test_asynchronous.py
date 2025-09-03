@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
 from zarr import create_array
-from zarr.api.asynchronous import _get_shape_chunks, _like_args, open
+from zarr.api.asynchronous import _get_shape_chunks, _like_args, group, open
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.group import AsyncGroup
 
 if TYPE_CHECKING:
     from typing import Any
@@ -103,3 +105,18 @@ async def test_open_no_array() -> None:
         TypeError, match=r"open_group\(\) got an unexpected keyword argument 'shape'"
     ):
         await open(store=store, shape=(1,))
+
+
+async def test_open_group_new_path(tmp_path: Path) -> None:
+    """
+    Test that zarr.api.asynchronous.group properly handles a string representation of a local file
+    path that does not yet exist.
+    See https://github.com/zarr-developers/zarr-python/issues/3406
+    """
+    # tmp_path exists, but tmp_path / "test.zarr" will not, which is important for this test
+    path = tmp_path / "test.zarr"
+    grp = await group(store=path, attributes={"a": 1})
+    assert isinstance(grp, AsyncGroup)
+    # Calling group on an existing store should just open that store
+    grp = await group(store=path)
+    assert grp.attrs == {"a": 1}
