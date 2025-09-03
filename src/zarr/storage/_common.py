@@ -32,10 +32,10 @@ if TYPE_CHECKING:
 
 def _dereference_path(root: str, path: str) -> str:
     if not isinstance(root, str):
-        msg = f"{root=} is not a string ({type(root)=})"
+        msg = f"{root=} is not a string ({type(root)=})"  # type: ignore[unreachable]
         raise TypeError(msg)
     if not isinstance(path, str):
-        msg = f"{path=} is not a string ({type(path)=})"
+        msg = f"{path=} is not a string ({type(path)=})"  # type: ignore[unreachable]
         raise TypeError(msg)
     root = root.rstrip("/")
     path = f"{root}/{path}" if root else path
