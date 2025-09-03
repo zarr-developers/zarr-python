@@ -2,15 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from typing_extensions import deprecated
-
 import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr.core.array import DEFAULT_FILL_VALUE, Array, AsyncArray, CompressorLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.core.sync_group import create_hierarchy
-from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -67,7 +64,6 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
-    "tree",
     "zeros",
     "zeros_like",
 ]
@@ -127,7 +123,6 @@ def load(
     store: StoreLike,
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
-    zarr_version: ZarrFormat | None = None,
 ) -> NDArrayLikeOrScalar | dict[str, NDArrayLikeOrScalar]:
     """Load data from an array or group into memory.
 
@@ -154,16 +149,13 @@ def load(
     If loading data from a group of arrays, data will not be immediately loaded into
     memory. Rather, arrays will be loaded into memory as they are requested.
     """
-    return sync(
-        async_api.load(store=store, zarr_version=zarr_version, zarr_format=zarr_format, path=path)
-    )
+    return sync(async_api.load(store=store, zarr_format=zarr_format, path=path))
 
 
 def open(
     store: StoreLike | None = None,
     *,
     mode: AccessModeLiteral | None = None,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -201,7 +193,6 @@ def open(
         async_api.open(
             store=store,
             mode=mode,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
@@ -226,7 +217,6 @@ def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwar
 def save(
     store: StoreLike,
     *args: NDArrayLike,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
@@ -246,18 +236,13 @@ def save(
     **kwargs
         NumPy arrays with data to save.
     """
-    return sync(
-        async_api.save(
-            store, *args, zarr_version=zarr_version, zarr_format=zarr_format, path=path, **kwargs
-        )
-    )
+    return sync(async_api.save(store, *args, zarr_format=zarr_format, path=path, **kwargs))
 
 
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
     *,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -287,7 +272,6 @@ def save_array(
         async_api.save_array(
             store=store,
             arr=arr,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
@@ -299,7 +283,6 @@ def save_array(
 def save_group(
     store: StoreLike,
     *args: NDArrayLike,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -330,38 +313,12 @@ def save_group(
         async_api.save_group(
             store,
             *args,
-            zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
             storage_options=storage_options,
             **kwargs,
         )
     )
-
-
-@deprecated("Use Group.tree instead.", category=ZarrDeprecationWarning)
-def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
-    """Provide a rich display of the hierarchy.
-
-    .. deprecated:: 3.0.0
-        `zarr.tree()` is deprecated and will be removed in a future release.
-        Use `group.tree()` instead.
-
-    Parameters
-    ----------
-    grp : Group
-        Zarr or h5py group.
-    expand : bool, optional
-        Only relevant for HTML representation. If True, tree will be fully expanded.
-    level : int, optional
-        Maximum depth to descend into hierarchy.
-
-    Returns
-    -------
-    TreeRepr
-        A pretty-printable object displaying the hierarchy.
-    """
-    return sync(async_api.tree(grp._async_group, expand=expand, level=level))
 
 
 # TODO: add type annotations for kwargs
@@ -392,7 +349,6 @@ def group(
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any | None = None,  # not used
     path: str | None = None,
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
@@ -441,7 +397,6 @@ def group(
                 cache_attrs=cache_attrs,
                 synchronizer=synchronizer,
                 path=path,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -460,7 +415,6 @@ def open_group(
     path: str | None = None,
     chunk_store: StoreLike | None = None,  # not used in async api
     storage_options: dict[str, Any] | None = None,  # not used in async api
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
     attributes: dict[str, JSON] | None = None,
@@ -537,7 +491,6 @@ def open_group(
                 path=path,
                 chunk_store=chunk_store,
                 storage_options=storage_options,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -616,7 +569,6 @@ def create(
     object_codec: Codec | None = None,  # TODO: type has changed
     dimension_separator: Literal[".", "/"] | None = None,
     write_empty_chunks: bool | None = None,  # TODO: default has changed
-    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
@@ -731,7 +683,6 @@ def create(
                 object_codec=object_codec,
                 dimension_separator=dimension_separator,
                 write_empty_chunks=write_empty_chunks,
-                zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
@@ -1262,7 +1213,6 @@ def ones_like(a: ArrayLike, **kwargs: Any) -> Array:
 def open_array(
     store: StoreLike | None = None,
     *,
-    zarr_version: ZarrFormat | None = None,
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -1273,8 +1223,6 @@ def open_array(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
-    zarr_version : {2, 3, None}, optional
-        The zarr format to use when saving.
     path : str, optional
         Path in store to array.
     storage_options : dict
@@ -1292,7 +1240,6 @@ def open_array(
         sync(
             async_api.open_array(
                 store=store,
-                zarr_version=zarr_version,
                 path=path,
                 storage_options=storage_options,
                 **kwargs,
