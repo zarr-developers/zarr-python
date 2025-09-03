@@ -467,16 +467,9 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def list_prefix(self, prefix: str) -> None:
         raise NotImplementedError
 
-    def set_partial_values(self, key_start_values: Any) -> None:
-        raise NotImplementedError
-
     @property
     def supports_listing(self) -> bool:
         return self.store.supports_listing
-
-    @property
-    def supports_partial_writes(self) -> bool:
-        return self.supports_partial_writes
 
     @property
     def supports_writes(self) -> bool:
