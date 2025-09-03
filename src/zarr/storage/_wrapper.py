@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import BytesLike
+    from zarr.core.buffer import Buffer, BufferPrototype
 
 from zarr.abc.store import Store
 
@@ -119,15 +120,6 @@ class WrapperStore(Store, Generic[T_Store]):
 
     async def delete(self, key: str) -> None:
         await self._store.delete(key)
-
-    @property
-    def supports_partial_writes(self) -> bool:
-        return self._store.supports_partial_writes
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        return await self._store.set_partial_values(key_start_values)
 
     @property
     def supports_listing(self) -> bool:
