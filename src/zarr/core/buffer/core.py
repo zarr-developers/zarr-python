@@ -571,6 +571,153 @@ class BufferPrototype(NamedTuple):
     nd_buffer: type[NDBuffer]
 
 
+class DelayedBuffer(Buffer):
+    """
+    A Buffer that is the virtual concatenation of other buffers.
+    """
+    _BufferImpl: type
+    _concatenate: callable
+
+    def __init__(self, array: NDArrayLike | list[NDArrayLike] | None) -> None:
+        if array is None:
+            self._data_list = []
+        elif isinstance(array, list):
+            self._data_list = list(array)
+        else:
+            self._data_list = [array]
+        for array in self._data_list:
+            if array.ndim != 1:
+                raise ValueError("array: only 1-dim allowed")
+            if array.dtype != np.dtype("b"):
+                raise ValueError("array: only byte dtype allowed")
+
+    @property
+    def _data(self) -> npt.NDArray[Any]:
+        return type(self)._concatenate(self._data_list)
+
+    @classmethod
+    def from_buffer(cls, buffer: Buffer) -> Self:
+        if isinstance(buffer, cls):
+            return cls(buffer._data_list)
+        else:
+            return cls(buffer._data)
+
+    def __add__(self, other: Buffer) -> Self:
+        if isinstance(other, self.__class__):
+            return self.__class__(self._data_list + other._data_list)
+        else:
+            return self.__class__(self._data_list + [other._data])
+
+    def __radd__(self, other: Buffer) -> Self:
+        if isinstance(other, self.__class__):
+            return self.__class__(other._data_list + self._data_list)
+        else:
+            return self.__class__([other._data] + self._data_list)
+
+    def __len__(self) -> int:
+        return sum(map(len, self._data_list))
+
+    def __getitem__(self, key: slice) -> Self:
+        check_item_key_is_1d_contiguous(key)
+        start, stop = key.start, key.stop
+        this_len = len(self)
+        if start is None:
+            start = 0
+        if start < 0:
+            start = this_len + start
+        if stop is None:
+            stop = this_len
+        if stop < 0:
+            stop = this_len + stop
+        if stop > this_len:
+            stop = this_len
+        if stop <= start:
+            return Buffer.from_buffer(b'')
+
+        new_list = []
+        offset = 0
+        found_last = False
+        for chunk in self._data_list:
+            chunk_size = len(chunk)
+            skip = False
+            if 0 <= start - offset < chunk_size:
+                # first chunk
+                if stop - offset <= chunk_size:
+                    # also last chunk
+                    chunk = chunk[start-offset:stop-offset]
+                    found_last = True
+                else:
+                    chunk = chunk[start-offset:]
+            elif 0 <= stop - offset <= chunk_size:
+                # last chunk
+                chunk = chunk[:stop-offset]
+                found_last = True
+            elif chunk_size <= start - offset:
+                # before first chunk
+                skip = True
+            else:
+                # middle chunk
+                pass
+
+            if not skip:
+                new_list.append(chunk)
+            if found_last:
+                break
+            offset += chunk_size
+        assert sum(map(len, new_list)) == stop - start
+        return self.__class__(new_list)
+
+    def __setitem__(self, key: slice, value: Any) -> None:
+        # This assumes that `value` is a broadcasted array
+        check_item_key_is_1d_contiguous(key)
+        start, stop = key.start, key.stop
+        if start is None:
+            start = 0
+        if start < 0:
+            start = len(self) + start
+        if stop is None:
+            stop = len(self)
+        if stop < 0:
+            stop = len(self) + stop
+        if stop <= start:
+            return
+
+        offset = 0
+        found_last = False
+        value = memoryview(np.asanyarray(value))
+        for chunk in self._data_list:
+            chunk_size = len(chunk)
+            skip = False
+            if 0 <= start - offset < chunk_size:
+                # first chunk
+                if stop - offset <= chunk_size:
+                    # also last chunk
+                    chunk = chunk[start-offset:stop-offset]
+                    found_last = True
+                else:
+                    chunk = chunk[start-offset:]
+            elif 0 <= stop - offset <= chunk_size:
+                # last chunk
+                chunk = chunk[:stop-offset]
+                found_last = True
+            elif chunk_size <= start - offset:
+                # before first chunk
+                skip = True
+            else:
+                # middle chunk
+                pass
+
+            if not skip:
+                chunk[:] = value[:len(chunk)]
+                value = value[len(chunk):]
+                if len(value) == 0:
+                    # nothing left to write
+                    break
+            if found_last:
+                break
+            offset += chunk_size
+
+
 # The default buffer prototype used throughout the Zarr codebase.
 def default_buffer_prototype() -> BufferPrototype:
     from zarr.registry import (
