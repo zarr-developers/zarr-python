@@ -11,7 +11,6 @@ from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasEndianness
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
@@ -119,9 +118,3 @@ class BytesCodec(ArrayBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
-
-
-register_codec("bytes", BytesCodec)
-
-# compatibility with earlier versions of ZEP1
-register_codec("endian", BytesCodec)
