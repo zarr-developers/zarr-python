@@ -54,9 +54,6 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: MemoryStore) -> None:
         assert store.supports_listing
 
-    def test_store_supports_partial_writes(self, store: MemoryStore) -> None:
-        assert store.supports_partial_writes
-
     async def test_list_prefix(self, store: MemoryStore) -> None:
         assert True
 
@@ -114,9 +111,6 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
 
     def test_store_supports_listing(self, store: GpuMemoryStore) -> None:
         assert store.supports_listing
-
-    def test_store_supports_partial_writes(self, store: GpuMemoryStore) -> None:
-        assert store.supports_partial_writes
 
     async def test_list_prefix(self, store: GpuMemoryStore) -> None:
         assert True

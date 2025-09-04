@@ -257,7 +257,8 @@ async def get_array_metadata(
         else:
             zarr_format = 2
     else:
-        raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
+        msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
+        raise MetadataValidationError(msg)
 
     metadata_dict: dict[str, JSON]
     if zarr_format == 2:
@@ -4444,7 +4445,7 @@ async def init_array(
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: DimensionNames = None,
     overwrite: bool = False,
-    config: ArrayConfigLike | None,
+    config: ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
     """Create and persist an array metadata document.
 
@@ -4524,8 +4525,10 @@ async def init_array(
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfigLike or None, optional
+    config : ArrayConfigLike or None, default=None
         Configuration for this array.
+        If  ``None``, the default array runtime configuration will be used. This default
+        is stored in the global configuration object.
 
     Returns
     -------
