@@ -40,6 +40,7 @@ if TYPE_CHECKING:
     )
     from zarr.core.dtype import ZDTypeLike
     from zarr.storage import StoreLike
+    from zarr.types import AnyArray
 
 __all__ = [
     "array",
@@ -168,7 +169,7 @@ def open(
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.open
-) -> Array | Group:
+) -> AnyArray | Group:
     """Open a group or array using file-mode-like semantics.
 
     Parameters
@@ -365,7 +366,7 @@ def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> An
 
 
 # TODO: add type annotations for kwargs
-def array(data: npt.ArrayLike | Array, **kwargs: Any) -> Array:
+def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyArray:
     """Create an array filled with `data`.
 
     Parameters
@@ -633,7 +634,7 @@ def create(
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
     **kwargs: Any,
-) -> Array:
+) -> AnyArray:
     """Create an array.
 
     Parameters
@@ -769,7 +770,7 @@ def create_array(
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
     write_data: bool = True,
-) -> Array:
+) -> AnyArray:
     """Create an array.
 
     This function wraps :func:`zarr.core.array.create_array`.
@@ -916,7 +917,7 @@ def create_array(
 def from_array(
     store: str | StoreLike,
     *,
-    data: Array | npt.ArrayLike,
+    data: AnyArray | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
     chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
@@ -933,7 +934,7 @@ def from_array(
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
-) -> Array:
+) -> AnyArray:
     """Create an array from an existing array or array-like.
 
     Parameters
@@ -1127,7 +1128,7 @@ def from_array(
 
 
 # TODO: add type annotations for kwargs
-def empty(shape: tuple[int, ...], **kwargs: Any) -> Array:
+def empty(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
     """Create an empty array with the specified shape. The contents will be filled with the
     array's fill value or zeros if no fill value is provided.
 
@@ -1154,7 +1155,7 @@ def empty(shape: tuple[int, ...], **kwargs: Any) -> Array:
 
 # TODO: move ArrayLike to common module
 # TODO: add type annotations for kwargs
-def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
+def empty_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     """Create an empty array like another array. The contents will be filled with the
     array's fill value or zeros if no fill value is provided.
 
@@ -1180,7 +1181,7 @@ def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs and fill_value
-def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> Array:
+def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> AnyArray:
     """Create an array with a default fill value.
 
     Parameters
@@ -1202,7 +1203,7 @@ def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> Array:
 
 # TODO: move ArrayLike to common module
 # TODO: add type annotations for kwargs
-def full_like(a: ArrayLike, **kwargs: Any) -> Array:
+def full_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     """Create a filled array like another array.
 
     Parameters
@@ -1221,7 +1222,7 @@ def full_like(a: ArrayLike, **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs
-def ones(shape: tuple[int, ...], **kwargs: Any) -> Array:
+def ones(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
     """Create an array with a fill value of one.
 
     Parameters
@@ -1240,7 +1241,7 @@ def ones(shape: tuple[int, ...], **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs
-def ones_like(a: ArrayLike, **kwargs: Any) -> Array:
+def ones_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     """Create an array of ones like another array.
 
     Parameters
@@ -1266,7 +1267,7 @@ def open_array(
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,
-) -> Array:
+) -> AnyArray:
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -1302,7 +1303,7 @@ def open_array(
 
 
 # TODO: add type annotations for kwargs
-def open_like(a: ArrayLike, path: str, **kwargs: Any) -> Array:
+def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyArray:
     """Open a persistent array like another array.
 
     Parameters
@@ -1323,7 +1324,7 @@ def open_like(a: ArrayLike, path: str, **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs
-def zeros(shape: tuple[int, ...], **kwargs: Any) -> Array:
+def zeros(shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
     """Create an array with a fill value of zero.
 
     Parameters
@@ -1342,7 +1343,7 @@ def zeros(shape: tuple[int, ...], **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs
-def zeros_like(a: ArrayLike, **kwargs: Any) -> Array:
+def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyArray:
     """Create an array of zeros like another array.
 
     Parameters
