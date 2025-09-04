@@ -17,12 +17,11 @@ if TYPE_CHECKING:
         ArrayBytesCodec,
         BytesBytesCodec,
         Codec,
-        CodecJSON_V2,
         CodecPipeline,
     )
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import Buffer, NDBuffer
-    from zarr.core.common import JSON
+    from zarr.core.common import JSON, CodecJSON_V2
 
 __all__ = [
     "Registry",

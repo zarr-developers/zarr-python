@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
-from zarr.core.dtype.common import check_dtype_spec_v3
+from zarr.errors import UnknownCodecError
 
 if TYPE_CHECKING:
     from typing import Self
@@ -28,28 +29,14 @@ from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
+    ArrayMetadataJSON_V3,
     DimensionNames,
     parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
 from zarr.registry import get_codec_class
-
-
-def parse_zarr_format(data: object) -> Literal[3]:
-    if data == 3:
-        return 3
-    msg = f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
-    raise MetadataValidationError(msg)
-
-
-def parse_node_type_array(data: object) -> Literal["array"]:
-    if data == "array":
-        return "array"
-    msg = f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
-    raise NodeTypeValidationError(msg)
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:
@@ -72,6 +59,35 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
                 raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
 
     return out
+
+
+def parse_dimension_names(data: DimensionNames) -> tuple[str | None, ...] | None:
+    if data is None:
+        return None
+    return tuple(data)
+
+
+def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
+    """
+    Parse storage_transformers. Zarr python cannot use storage transformers
+    at this time, so this function doesn't attempt to validate them.
+    """
+
+    if data is None:
+        return ()
+
+    if isinstance(data, Sequence):
+        if len(data) > 0:
+            msg = (
+                f"Array metadata contains storage transformers: {data}."
+                "Arrays with storage transformers are not supported in zarr-python at this time."
+            )
+            raise ValueError(msg)
+        else:
+            return ()
+    raise TypeError(
+        f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
+    )
 
 
 def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
@@ -103,42 +119,6 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
-
-
-def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
-    if data is None:
-        return data
-    elif isinstance(data, Iterable) and all(isinstance(x, type(None) | str) for x in data):
-        return tuple(data)
-    else:
-        msg = f"Expected either None or a iterable of str, got {type(data)}"
-        raise TypeError(msg)
-
-
-def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
-    """
-    Parse storage_transformers. Zarr python cannot use storage transformers
-    at this time, so this function doesn't attempt to validate them.
-    """
-    if data is None:
-        return ()
-    if isinstance(data, Iterable):
-        if len(tuple(data)) >= 1:
-            return data  # type: ignore[return-value]
-        else:
-            return ()
-    raise TypeError(
-        f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
-    )
-
-
-class ArrayV3MetadataDict(TypedDict):
-    """
-    A typed dictionary model for zarr v3 metadata.
-    """
-
-    zarr_format: Literal[3]
-    attributes: dict[str, JSON]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -297,43 +277,45 @@ class ArrayV3Metadata(Metadata):
             )
         }
 
+    # this type annotation violates liskov but that's a problem we need to fix at the base class
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
-        # make a copy because we are modifying the dict
-        _data = data.copy()
-
-        # check that the zarr_format attribute is correct
-        _ = parse_zarr_format(_data.pop("zarr_format"))
-        # check that the node_type attribute is correct
-        _ = parse_node_type_array(_data.pop("node_type"))
-
-        data_type_json = _data.pop("data_type")
-        if not check_dtype_spec_v3(data_type_json):
-            raise ValueError(f"Invalid data_type: {data_type_json!r}")
+    def from_dict(cls, data: ArrayMetadataJSON_V3) -> Self:  # type: ignore[override]
+        data_type_json = data["data_type"]
         data_type = get_data_type_from_json(data_type_json, zarr_format=3)
 
         # check that the fill value is consistent with the data type
+        fill = data["fill_value"]
         try:
-            fill = _data.pop("fill_value")
-            fill_value_parsed = data_type.from_json_scalar(fill, zarr_format=3)
+            fill_value_parsed = data_type.from_json_scalar(fill, zarr_format=3)  # type: ignore[arg-type]
         except ValueError as e:
             raise TypeError(f"Invalid fill_value: {fill!r}") from e
 
         # dimension_names key is optional, normalize missing to `None`
-        _data["dimension_names"] = _data.pop("dimension_names", None)
+        dimension_names = data.get("dimension_names", None)
 
         # attributes key is optional, normalize missing to `None`
-        _data["attributes"] = _data.pop("attributes", None)
+        attributes = data.get("attributes", None)
 
-        return cls(**_data, fill_value=fill_value_parsed, data_type=data_type)  # type: ignore[arg-type]
+        # storage transformers key is optional, normalize missing to `None`
+        storage_transformers = data.get("storage_transformers", None)
 
-    def to_dict(self) -> dict[str, JSON]:
+        return cls(
+            shape=data["shape"],
+            chunk_grid=data["chunk_grid"],  # type: ignore[arg-type]
+            chunk_key_encoding=data["chunk_key_encoding"],  # type: ignore[arg-type]
+            codecs=data["codecs"],  # type: ignore[arg-type]
+            attributes=attributes,  # type: ignore[arg-type]
+            data_type=data_type,
+            fill_value=fill_value_parsed,
+            dimension_names=dimension_names,
+            storage_transformers=storage_transformers,  # type: ignore[arg-type]
+        )
+
+    def to_dict(self) -> ArrayMetadataJSON_V3:  # type: ignore[override]
         out_dict = super().to_dict()
         out_dict["fill_value"] = self.data_type.to_json_scalar(
             self.fill_value, zarr_format=self.zarr_format
         )
-        if not isinstance(out_dict, dict):
-            raise TypeError(f"Expected dict. Got {type(out_dict)}.")
 
         # if `dimension_names` is `None`, we do not include it in
         # the metadata document
@@ -348,7 +330,7 @@ class ArrayV3Metadata(Metadata):
         if isinstance(dtype_meta, ZDType):
             out_dict["data_type"] = dtype_meta.to_json(zarr_format=3)  # type: ignore[unreachable]
 
-        return out_dict
+        return out_dict  # type: ignore[return-value]
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
         return replace(self, shape=shape)

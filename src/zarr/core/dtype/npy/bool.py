@@ -10,9 +10,9 @@ from zarr.core.dtype.common import (
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
-    check_dtype_spec_v2,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.core.type_check import guard_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -103,11 +103,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         ``TypeGuard[DTypeConfig_V2[Literal["|b1"], None]]``
             True if the input is a valid JSON representation, False otherwise.
         """
-        return (
-            check_dtype_spec_v2(data)
-            and data["name"] == cls._zarr_v2_name
-            and data["object_codec_id"] is None
-        )
+        return guard_type(data, DTypeConfig_V2[Literal["|b1"], None])
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["bool"]]:
@@ -173,7 +169,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
         """
         if cls._check_json_v3(data):
             return cls()
-        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected the string {cls._zarr_v3_name!r}"
+        msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected {{'name': '|b1', 'object_codec_id': None}}"
         raise DataTypeValidationError(msg)
 
     @overload
