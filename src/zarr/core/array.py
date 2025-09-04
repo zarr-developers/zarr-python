@@ -2215,7 +2215,7 @@ class Array(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
-    ) -> AnyArray:
+    ) -> Self:
         """Creates a new Array instance from an initialized store.
         Deprecated in favor of [`zarr.create_array`][].
         """
@@ -2240,14 +2240,14 @@ class Array(Generic[T_ArrayMetadata]):
                 config=config,
             ),
         )
-        return Array(async_array)
+        return cls(async_array)
 
     @classmethod
     def from_dict(
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
-    ) -> AnyArray:
+    ) -> Self:
         """
         Create a Zarr array from a dictionary.
 
@@ -2271,13 +2271,13 @@ class Array(Generic[T_ArrayMetadata]):
             If the dictionary data is invalid or missing required fields for array creation.
         """
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
-        return Array(async_array)
+        return cls(async_array)
 
     @classmethod
     def open(
         cls,
         store: StoreLike,
-    ) -> AnyArray:
+    ) -> Self:
         """Opens an existing Array from a store.
 
         Parameters
@@ -2293,7 +2293,7 @@ class Array(Generic[T_ArrayMetadata]):
             Array opened from the store.
         """
         async_array = sync(AsyncArray.open(store))
-        return Array(async_array)
+        return cls(async_array)
 
     @property
     def store(self) -> Store:
