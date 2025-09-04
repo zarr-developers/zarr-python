@@ -5,6 +5,7 @@ import shutil
 import threading
 import time
 import zipfile
+from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -58,16 +59,17 @@ class ZipStore(Store):
     supports_deletes: bool = False
     supports_listing: bool = True
 
-    path: Path
+    path: Path | None
     compression: int
     allowZip64: bool
 
     _zf: zipfile.ZipFile
-    _lock: threading.RLock
+    _file_opener: Any | None
+    _file_handle: Any | None
 
     def __init__(
         self,
-        path: Path | str,
+        path: Path | str | Any,
         *,
         mode: ZipStoreAccessModeLiteral = "r",
         read_only: bool | None = None,
@@ -79,27 +81,54 @@ class ZipStore(Store):
 
         super().__init__(read_only=read_only)
 
-        if isinstance(path, str):
-            path = Path(path)
-        assert isinstance(path, Path)
-        self.path = path  # root?
+        # Handle both file paths and file-like objects (e.g., fsspec openers)
+        if isinstance(path, (str, Path)):
+            if isinstance(path, str):
+                path = Path(path)
+            self.path = path
+            self._file_opener = None
+        else:
+            # Assume it's a file-like object or file opener
+            self.path = None
+            self._file_opener = path
 
         self._zmode = mode
         self.compression = compression
         self.allowZip64 = allowZip64
+        self._file_handle = None
+
+    @cached_property
+    def _lock(self) -> threading.RLock:
+        return threading.RLock()
 
     def _sync_open(self) -> None:
         if self._is_open:
             raise ValueError("store is already open")
 
-        self._lock = threading.RLock()
+        # Handle file paths vs file-like objects
+        if self.path is not None:
+            # Traditional path-based opening
+            self._zf = zipfile.ZipFile(
+                self.path,
+                mode=self._zmode,
+                compression=self.compression,
+                allowZip64=self.allowZip64,
+            )
+        else:
+            # File-like object (e.g., fsspec opener)
+            if self._file_opener is not None and hasattr(self._file_opener, "open"):
+                # It's a file opener (like fsspec.open())
+                self._file_handle = self._file_opener.open()
+            else:
+                # It's already an open file-like object
+                self._file_handle = self._file_opener
 
-        self._zf = zipfile.ZipFile(
-            self.path,
-            mode=self._zmode,
-            compression=self.compression,
-            allowZip64=self.allowZip64,
-        )
+            self._zf = zipfile.ZipFile(
+                self._file_handle,  # type: ignore[arg-type]
+                mode=self._zmode,
+                compression=self.compression,
+                allowZip64=self.allowZip64,
+            )
 
         self._is_open = True
 
@@ -109,8 +138,7 @@ class ZipStore(Store):
     def __getstate__(self) -> dict[str, Any]:
         # We need a copy to not modify the state of the original store
         state = self.__dict__.copy()
-        for attr in ["_zf", "_lock"]:
-            state.pop(attr, None)
+        state.pop("_zf", None)
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
@@ -122,23 +150,34 @@ class ZipStore(Store):
         # docstring inherited
         super().close()
         with self._lock:
-            self._zf.close()
+            if hasattr(self, "_zf"):
+                self._zf.close()
+            # Close file handle if using file-like objects
+            if self._file_handle is not None:
+                self._file_handle.close()
 
     async def clear(self) -> None:
         # docstring inherited
         with self._lock:
             self._check_writable()
             self._zf.close()
-            os.remove(self.path)
-            self._zf = zipfile.ZipFile(
-                self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
-            )
+            if self.path is not None:
+                os.remove(self.path)
+                self._zf = zipfile.ZipFile(
+                    self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
+                )
+            else:
+                raise NotImplementedError("Cannot clear file-like object stores")
 
     def __str__(self) -> str:
-        return f"zip://{self.path}"
+        if self.path is not None:
+            return f"zip://{self.path}"
+        return "zip://<file-like-object>"
 
     def __repr__(self) -> str:
-        return f"ZipStore('{self}')"
+        if self.path is not None:
+            return f"ZipStore('{self.path}')"
+        return "ZipStore(<file-like-object>)"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.path == other.path
@@ -289,6 +328,8 @@ class ZipStore(Store):
         """
         Move the store to another path.
         """
+        if self.path is None:
+            raise NotImplementedError("Cannot move file-like object stores")
         if isinstance(path, str):
             path = Path(path)
         self.close()
