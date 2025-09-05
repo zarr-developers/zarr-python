@@ -1,0 +1,2 @@
+`zarr.group`, `zarr.api.synchronous.group`, and `zarr.api.asynchronous.group` are all deprecated and will be removed in the future.
+Use the relevant ``open_group()`` or ``create_group()`` functions instead.
