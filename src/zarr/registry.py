@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.common import JSON
 
-# CHANGE: Consider adding here
 __all__ = [
     "Registry",
     "get_buffer_class",
@@ -64,10 +63,8 @@ __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
-# Now a dict[str, Registry[ChunkKeyEncoding]]
 __chunk_key_encoding_registries: dict[str, Registry[ChunkKeyEncoding]] = defaultdict(Registry)
 
-# CHANGE: Consider updating docstring
 """
 The registry module is responsible for managing implementations of codecs,
 pipelines, buffers, ndbuffers, and chunk key encodings and collecting them from entrypoints.

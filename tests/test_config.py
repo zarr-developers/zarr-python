@@ -74,6 +74,10 @@ def test_config_defaults_set() -> None:
                     "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                     "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
                 },
+                "chunk_key_encodings": {
+                    "default": "zarr.core.chunk_key_encodings.DefaultChunkKeyEncoding",
+                    "v2": "zarr.core.chunk_key_encodings.V2ChunkKeyEncoding",
+                },
                 "buffer": "zarr.buffer.cpu.Buffer",
                 "ndbuffer": "zarr.buffer.cpu.NDBuffer",
             }
