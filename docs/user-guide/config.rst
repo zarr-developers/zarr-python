@@ -42,10 +42,11 @@ requires the value of ``codecs.bytes.name`` to be ``'custompackage.NewBytesCodec
 This is the current default configuration::
 
    >>> zarr.config.pprint()
-   {'array': {'order': 'C',
-              'write_empty_chunks': False},
+   {'array': {'order': 'C', 'write_empty_chunks': False},
    'async': {'concurrency': 10, 'timeout': None},
    'buffer': 'zarr.buffer.cpu.Buffer',
+   'chunk_key_encodings': {'default': 'zarr.core.chunk_key_encodings.DefaultChunkKeyEncoding',
+                           'v2': 'zarr.core.chunk_key_encodings.V2ChunkKeyEncoding'},
    'codec_pipeline': {'batch_size': 1,
                      'path': 'zarr.core.codec_pipeline.BatchedCodecPipeline'},
    'codecs': {'blosc': 'zarr.codecs.blosc.BloscCodec',
