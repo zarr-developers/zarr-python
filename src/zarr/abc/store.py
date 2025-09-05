@@ -417,6 +417,7 @@ class Store(ABC):
         FileNotFoundError
             When the given key does not exist in the store.
         """
+
         # Note to implementers: this default implementation is very inefficient since
         # it requires reading the entire object. Many systems will have ways to get the
         # size of an object without reading it.

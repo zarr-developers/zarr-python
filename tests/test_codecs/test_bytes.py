@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
@@ -9,6 +9,26 @@ from zarr.codecs import BytesCodec
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
+
+if TYPE_CHECKING:
+    from zarr.codecs.bytes import BytesJSON_V2, BytesJSON_V3
+
+
+@pytest.mark.parametrize("endian", ["big", "little"])
+def test_bytescodec_to_json(endian: Literal["big", "little"]) -> None:
+    codec = BytesCodec(endian=endian)
+    expected_v2: BytesJSON_V2 = {
+        "id": "bytes",
+        "endian": endian,
+    }
+    expected_v3: BytesJSON_V3 = {
+        "name": "bytes",
+        "configuration": {
+            "endian": endian,
+        },
+    }
+    assert codec.to_json(zarr_format=2) == expected_v2
+    assert codec.to_json(zarr_format=3) == expected_v3
 
 
 @pytest.mark.filterwarnings("ignore:The endianness of the requested serializer")
