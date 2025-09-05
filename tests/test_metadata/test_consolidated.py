@@ -13,9 +13,10 @@ import zarr.storage
 from zarr import AsyncGroup
 from zarr.api.asynchronous import (
     consolidate_metadata,
-    group,
+    create_group,
     open,
     open_consolidated,
+    open_group,
 )
 from zarr.core.buffer import cpu, default_buffer_prototype
 from zarr.core.dtype import parse_dtype
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 async def memory_store_with_hierarchy(memory_store: Store) -> Store:
-    g = await group(store=memory_store, attributes={"foo": "bar"})
+    g = await create_group(store=memory_store, attributes={"foo": "bar"})
     dtype = "uint8"
     await g.create_array(name="air", shape=(1, 2, 3), dtype=dtype)
     await g.create_array(name="lat", shape=(1,), dtype=dtype)
@@ -212,7 +213,7 @@ class TestConsolidated:
         ]
 
     def test_consolidated_sync(self, memory_store: Store) -> None:
-        g = zarr.api.synchronous.group(store=memory_store, attributes={"foo": "bar"})
+        g = zarr.api.synchronous.create_group(store=memory_store, attributes={"foo": "bar"})
         dtype = "uint8"
         g.create_array(name="air", shape=(1, 2, 3), dtype=dtype)
         g.create_array(name="lat", shape=(1,), dtype=dtype)
@@ -300,7 +301,7 @@ class TestConsolidated:
         assert group4.metadata == expected
 
     async def test_not_writable_raises(self, memory_store: zarr.storage.MemoryStore) -> None:
-        await group(store=memory_store, attributes={"foo": "bar"})
+        await create_group(store=memory_store, attributes={"foo": "bar"})
         read_store = zarr.storage.MemoryStore(store_dict=memory_store._store_dict, read_only=True)
         with pytest.raises(ValueError, match="does not support writing"):
             await consolidate_metadata(read_store)
@@ -485,7 +486,7 @@ class TestConsolidated:
         self, memory_store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
     ) -> None:
         with zarr.config.set(default_zarr_format=zarr_format):
-            g = await group(store=memory_store)
+            g = await create_group(store=memory_store)
 
             # Create groups in non-lexicographix order
             dtype = "float32"
@@ -602,7 +603,7 @@ class TestConsolidated:
         self, memory_store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
     ) -> None:
         with zarr.config.set(default_zarr_format=zarr_format):
-            g = await group(store=memory_store, attributes={"foo": "bar"})
+            g = await create_group(store=memory_store, attributes={"foo": "bar"})
             await g.create_group(name="a")
 
             # test a stale read
@@ -648,7 +649,7 @@ class TestConsolidated:
         # https://github.com/zarr-developers/zarr-python/issues/2921
         # When consolidating metadata, we should ignore any (possibly stale) metadata
         # from previous consolidations, *including at child nodes*.
-        root = await zarr.api.asynchronous.group(store=memory_store, zarr_format=3)
+        root = await zarr.api.asynchronous.create_group(store=memory_store, zarr_format=3)
         await root.create_group("foo")
         await zarr.api.asynchronous.consolidate_metadata(memory_store, path="foo")
         await root.create_group("foo/bar/spam")
@@ -712,7 +713,7 @@ class TestConsolidated:
 async def test_consolidated_metadata_encodes_special_chars(
     memory_store: Store, zarr_format: ZarrFormat, fill_value: float
 ) -> None:
-    root = await group(store=memory_store, zarr_format=zarr_format)
+    root = await create_group(store=memory_store, zarr_format=zarr_format)
     _time = await root.create_array("time", shape=(12,), dtype=np.float64, fill_value=fill_value)
     if zarr_format == 3:
         with pytest.warns(
@@ -723,7 +724,7 @@ async def test_consolidated_metadata_encodes_special_chars(
     else:
         await zarr.api.asynchronous.consolidate_metadata(memory_store)
 
-    root = await group(store=memory_store, zarr_format=zarr_format)
+    root = await open_group(store=memory_store, zarr_format=zarr_format)
     root_buffer = root.metadata.to_buffer_dict(default_buffer_prototype())
 
     if zarr_format == 2:

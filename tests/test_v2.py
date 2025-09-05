@@ -73,7 +73,7 @@ async def test_v2_encode_decode(
     dtype: str, expected_dtype: str, fill_value: bytes, fill_value_json: str
 ) -> None:
     store = zarr.storage.MemoryStore()
-    g = zarr.group(store=store, zarr_format=2)
+    g = zarr.create_group(store=store, zarr_format=2)
     g.create_array(
         name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
     )
