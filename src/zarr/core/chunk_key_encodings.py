@@ -5,13 +5,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypedDict, cast
 
 if TYPE_CHECKING:
-    from typing import NotRequired
+    from typing import NotRequired, Self
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
     JSON,
     parse_named_configuration,
 )
+from zarr.registry import get_chunk_key_encoding_class, register_chunk_key_encoding
 
 SeparatorLiteral = Literal[".", "/"]
 
@@ -38,31 +39,9 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkKeyEncodingLike) -> ChunkKeyEncoding:
-        if isinstance(data, ChunkKeyEncoding):
-            return data
-
-        # handle ChunkKeyEncodingParams
-        if "name" in data and "separator" in data:
-            data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
-
-        # TODO: remove this cast when we are statically typing the JSON metadata completely.
-        data = cast("dict[str, JSON]", data)
-
-        # configuration is optional for chunk key encodings
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
-        if name_parsed == "default":
-            if config_parsed is None:
-                # for default, normalize missing configuration to use the "/" separator.
-                config_parsed = {"separator": "/"}
-            return DefaultChunkKeyEncoding(**config_parsed)  # type: ignore[arg-type]
-        if name_parsed == "v2":
-            if config_parsed is None:
-                # for v2, normalize missing configuration to use the "." separator.
-                config_parsed = {"separator": "."}
-            return V2ChunkKeyEncoding(**config_parsed)  # type: ignore[arg-type]
-        msg = f"Unknown chunk key encoding. Got {name_parsed}, expected one of ('v2', 'default')."
-        raise ValueError(msg)
+        return cls(**config_parsed if config_parsed else {})  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": {"separator": self.separator}}
@@ -76,12 +55,13 @@ class ChunkKeyEncoding(Metadata):
         pass
 
 
-ChunkKeyEncodingLike: TypeAlias = ChunkKeyEncodingParams | ChunkKeyEncoding
+ChunkKeyEncodingLike: TypeAlias = dict[str, JSON] | ChunkKeyEncodingParams | ChunkKeyEncoding
 
 
 @dataclass(frozen=True)
 class DefaultChunkKeyEncoding(ChunkKeyEncoding):
     name: Literal["default"] = "default"
+    separator: SeparatorLiteral = "/"  # default
 
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         if chunk_key == "c":
@@ -95,6 +75,7 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
 @dataclass(frozen=True)
 class V2ChunkKeyEncoding(ChunkKeyEncoding):
     name: Literal["v2"] = "v2"
+    separator: SeparatorLiteral = "."  # default
 
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         return tuple(map(int, chunk_key.split(self.separator)))
@@ -102,3 +83,30 @@ class V2ChunkKeyEncoding(ChunkKeyEncoding):
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         chunk_identifier = self.separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
+
+
+def parse_chunk_key_encoding(data: ChunkKeyEncodingLike) -> ChunkKeyEncoding:
+    """
+    Take an implicit specification of a chunk key encoding and parse it into a ChunkKeyEncoding object.
+    """
+    if isinstance(data, ChunkKeyEncoding):
+        return data
+
+    # handle ChunkKeyEncodingParams
+    if "name" in data and "separator" in data:
+        data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
+
+    # Now must be a named config
+    data = cast("dict[str, JSON]", data)
+
+    name_parsed, _ = parse_named_configuration(data, require_configuration=False)
+    try:
+        chunk_key_encoding = get_chunk_key_encoding_class(name_parsed).from_dict(data)
+    except KeyError as e:
+        raise ValueError(f"Unknown chunk key encoding: {e.args[0]!r}") from e
+
+    return chunk_key_encoding
+
+
+register_chunk_key_encoding(DefaultChunkKeyEncoding, qualname="default")
+register_chunk_key_encoding(V2ChunkKeyEncoding, qualname="v2")
