@@ -88,7 +88,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         self.store = store
 
         self.model = MemoryStore()
-        zarr.group(store=self.model)
+        zarr.create_group(store=self.model)
 
         # Track state of the hierarchy, these should contain fully qualified paths
         self.all_groups: set[str] = set()

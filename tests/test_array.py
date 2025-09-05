@@ -1742,7 +1742,7 @@ def test_roundtrip_numcodecs() -> None:
     ]
 
     # Create the array with the correct codecs
-    root = zarr.group(store)
+    root = zarr.create_group(store)
     warn_msg = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
     with pytest.warns(UserWarning, match=warn_msg):
         root.create_array(
