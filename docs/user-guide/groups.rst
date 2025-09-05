@@ -107,7 +107,7 @@ Diagnostic information about arrays and groups is available via the ``info``
 property. E.g.::
 
    >>> store = zarr.storage.MemoryStore()
-   >>> root = zarr.group(store=store)
+   >>> root = zarr.create_group(store=store)
    >>> foo = root.create_group('foo')
    >>> bar = foo.create_array(name='bar', shape=1000000, chunks=100000, dtype='int64')
    >>> bar[:] = 42
