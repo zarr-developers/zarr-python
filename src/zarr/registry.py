@@ -25,7 +25,6 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.common import JSON
 
-# CHANGE: Consider adding here
 __all__ = [
     "Registry",
     "get_buffer_class",
@@ -48,9 +47,9 @@ class Registry(dict[str, type[T]], Generic[T]):
         super().__init__()
         self.lazy_load_list: list[EntryPoint] = []
 
-    def lazy_load(self) -> None:
+    def lazy_load(self, use_entrypoint_name: bool = False) -> None:
         for e in self.lazy_load_list:
-            self.register(e.load())
+            self.register(e.load(), qualname=e.name if use_entrypoint_name else None)
 
         self.lazy_load_list.clear()
 
@@ -158,8 +157,8 @@ def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
     __buffer_registry.register(cls, qualname)
 
 
-def register_chunk_key_encoding(cls: type, qualname: str | None = None) -> None:
-    __chunk_key_encoding_registry.register(cls, qualname)
+def register_chunk_key_encoding(key: str, cls: type) -> None:
+    __chunk_key_encoding_registry.register(cls, key)
 
 
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
@@ -300,12 +299,11 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
 
 
 def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
-    __chunk_key_encoding_registry.lazy_load()
+    __chunk_key_encoding_registry.lazy_load(use_entrypoint_name=True)
     if key not in __chunk_key_encoding_registry:
         raise KeyError(
             f"Chunk key encoding '{key}' not found in registered chunk key encodings: {list(__chunk_key_encoding_registry)}."
         )
-
     return __chunk_key_encoding_registry[key]
 
 

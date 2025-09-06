@@ -108,5 +108,5 @@ def parse_chunk_key_encoding(data: ChunkKeyEncodingLike) -> ChunkKeyEncoding:
     return chunk_key_encoding
 
 
-register_chunk_key_encoding(DefaultChunkKeyEncoding, qualname="default")
-register_chunk_key_encoding(V2ChunkKeyEncoding, qualname="v2")
+register_chunk_key_encoding("default", DefaultChunkKeyEncoding)
+register_chunk_key_encoding("v2", V2ChunkKeyEncoding)
