@@ -1,0 +1,1 @@
+Ensure syntax like ``root['/subgroup']`` works equivalently to ``root['subgroup']`` when using consolidated metadata.
