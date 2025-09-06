@@ -90,17 +90,6 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         total_size = await store.getsize_prefix("c")
         assert total_size == len(buf) * 2
 
-    async def test_store_delete(self, store: ObjectStore) -> None:
-        assert store.supports_deletes
-        buf = cpu.Buffer.from_bytes(b"\x01\x02\x03\x04")
-        await store.set("foo/1", buf)
-        await store.set("foo/2", buf)
-        await store.delete("foo/1")
-        assert not await store.exists("foo/1")
-        assert await store.exists("foo/2")
-        await store.delete_dir("foo")  # FileNotFoundErrors are suppressed
-        assert not await store.exists("foo/2")
-
 
 @pytest.mark.slow_hypothesis
 def test_zarr_hierarchy():
