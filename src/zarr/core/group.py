@@ -4,6 +4,7 @@ import asyncio
 import itertools
 import json
 import logging
+import unicodedata
 import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
@@ -40,7 +41,6 @@ from zarr.core.common import (
     ZATTRS_JSON,
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
-    ChunkCoords,
     DimensionNames,
     NodeType,
     ShapeLike,
@@ -50,7 +50,13 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import SyncMixin, sync
-from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
+from zarr.errors import (
+    ContainsArrayError,
+    ContainsGroupError,
+    MetadataValidationError,
+    ZarrDeprecationWarning,
+    ZarrUserWarning,
+)
 from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
 from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
@@ -90,7 +96,8 @@ def parse_node_type(data: Any) -> NodeType:
     """Parse the node_type field from metadata."""
     if data in ("array", "group"):
         return cast("Literal['array', 'group']", data)
-    raise MetadataValidationError("node_type", "array or group", data)
+    msg = f"Invalid value for 'node_type'. Expected 'array' or 'group'. Got '{data}'."
+    raise MetadataValidationError(msg)
 
 
 # todo: convert None to empty dict
@@ -141,7 +148,16 @@ class ConsolidatedMetadata:
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
-            "metadata": {k: v.to_dict() for k, v in self.flattened_metadata.items()},
+            "metadata": {
+                k: v.to_dict()
+                for k, v in sorted(
+                    self.flattened_metadata.items(),
+                    key=lambda item: (
+                        item[0].count("/"),
+                        unicodedata.normalize("NFKC", item[0]).casefold(),
+                    ),
+                )
+            },
         }
 
     @classmethod
@@ -548,7 +564,7 @@ class AsyncGroup:
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
                 msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
-                warnings.warn(msg, stacklevel=1)
+                warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
             if zarr_json_bytes is None and zgroup_bytes is None:
                 raise FileNotFoundError(
                     f"could not find zarr.json or .zgroup objects in {store_path}"
@@ -559,7 +575,8 @@ class AsyncGroup:
             else:
                 zarr_format = 2
         else:
-            raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
+            msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
+            raise MetadataValidationError(msg)
 
         if zarr_format == 2:
             # this is checked above, asserting here for mypy
@@ -718,7 +735,7 @@ class AsyncGroup:
         assert self.metadata.consolidated_metadata is not None
 
         # we support nested getitems like group/subgroup/array
-        indexers = key.split("/")
+        indexers = normalize_path(key).split("/")
         indexers.reverse()
         metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata = self.metadata
 
@@ -1003,7 +1020,7 @@ class AsyncGroup:
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: ChunkCoords | Literal["auto"] = "auto",
+        chunks: tuple[int, ...] | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -1028,14 +1045,14 @@ class AsyncGroup:
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunks : ChunkCoords, optional
+        chunks : tuple[int, ...], optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
-        shards : ChunkCoords, optional
+        shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -1142,7 +1159,7 @@ class AsyncGroup:
             write_data=write_data,
         )
 
-    @deprecated("Use AsyncGroup.create_array instead.")
+    @deprecated("Use AsyncGroup.create_array instead.", category=ZarrDeprecationWarning)
     async def create_dataset(
         self, name: str, *, shape: ShapeLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
@@ -1176,12 +1193,12 @@ class AsyncGroup:
             await array.setitem(slice(None), data)
         return array
 
-    @deprecated("Use AsyncGroup.require_array instead.")
+    @deprecated("Use AsyncGroup.require_array instead.", category=ZarrDeprecationWarning)
     async def require_dataset(
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
@@ -1600,7 +1617,7 @@ class AsyncGroup:
         return await group_tree_async(self, max_depth=level)
 
     async def empty(
-        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an empty array with the specified shape in this Group. The contents will
         be filled with the array's fill value or zeros if no fill value is provided.
@@ -1623,7 +1640,7 @@ class AsyncGroup:
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def zeros(
-        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
@@ -1644,7 +1661,7 @@ class AsyncGroup:
         return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def ones(
-        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
@@ -1665,7 +1682,7 @@ class AsyncGroup:
         return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def full(
-        self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
@@ -2434,7 +2451,7 @@ class Group(SyncMixin):
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: ChunkCoords | Literal["auto"] = "auto",
+        chunks: tuple[int, ...] | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -2459,17 +2476,16 @@ class Group(SyncMixin):
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : ChunkCoords, optional
-            Shape of the array. Can be ``None`` if ``data`` is provided.
+        shape : ShapeLike, optional
+            Shape of the array. Must be ``None`` if ``data`` is provided.
         dtype : npt.DTypeLike | None
-            Data type of the array. Can be ``None`` if ``data`` is provided.
+            Data type of the array. Must be ``None`` if ``data`` is provided.
         data : Array-like data to use for initializing the array. If this parameter is provided, the
-            ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
-            or ``None``.
-        chunks : ChunkCoords, optional
+            ``shape`` and ``dtype`` parameters must be ``None``.
+        chunks : tuple[int, ...], optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
-        shards : ChunkCoords, optional
+        shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -2577,7 +2593,7 @@ class Group(SyncMixin):
             )
         )
 
-    @deprecated("Use Group.create_array instead.")
+    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
     def create_dataset(self, name: str, **kwargs: Any) -> Array:
         """Create an array.
 
@@ -2601,7 +2617,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
-    @deprecated("Use Group.require_array instead.")
+    @deprecated("Use Group.require_array instead.", category=ZarrDeprecationWarning)
     def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
@@ -2644,7 +2660,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+    def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
         the array's fill value or zeros if no fill value is provided.
 
@@ -2665,7 +2681,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
-    def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+    def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2684,7 +2700,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
-    def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+    def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2704,7 +2720,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
     def full(
-        self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
+        self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
     ) -> Array:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
@@ -2823,15 +2839,15 @@ class Group(SyncMixin):
         """
         return self._sync(self._async_group.move(source, dest))
 
-    @deprecated("Use Group.create_array instead.")
+    @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
     def array(
         self,
         name: str,
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunks: ChunkCoords | Literal["auto"] = "auto",
-        shards: ChunkCoords | Literal["auto"] | None = None,
+        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        shards: tuple[int, ...] | Literal["auto"] | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
         compressor: CompressorLike = None,
@@ -2858,14 +2874,14 @@ class Group(SyncMixin):
         name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunks : ChunkCoords, optional
+        chunks : tuple[int, ...], optional
             Chunk shape of the array.
             If not specified, default are guessed based on the shape and dtype.
-        shards : ChunkCoords, optional
+        shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -3115,10 +3131,12 @@ async def create_hierarchy(
                         else:
                             # we have proposed an explicit group, which is an error, given that a
                             # group already exists.
-                            raise ContainsGroupError(store, key)
+                            msg = f"A group exists in store {store!r} at path {key!r}."
+                            raise ContainsGroupError(msg)
                     elif isinstance(extant_node, ArrayV2Metadata | ArrayV3Metadata):
                         # we are trying to overwrite an existing array. this is an error.
-                        raise ContainsArrayError(store, key)
+                        msg = f"An array exists in store {store!r} at path {key!r}."
+                        raise ContainsArrayError(msg)
 
     nodes_explicit: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {}
 
@@ -3375,7 +3393,7 @@ async def _iter_members(
             # in which case `key` cannot be the name of a sub-array or sub-group.
             warnings.warn(
                 f"Object at {e.args[0]} is not recognized as a component of a Zarr hierarchy.",
-                UserWarning,
+                ZarrUserWarning,
                 stacklevel=1,
             )
             continue
@@ -3535,7 +3553,8 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
     if "node_type" not in zarr_json:
-        raise MetadataValidationError("node_type", "array or group", "nothing (the key is missing)")
+        msg = "Required key 'node_type' is missing from the provided metadata document."
+        raise MetadataValidationError(msg)
     match zarr_json:
         case {"node_type": "array"}:
             return ArrayV3Metadata.from_dict(zarr_json)

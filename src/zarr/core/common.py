@@ -23,6 +23,7 @@ from typing import (
 from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
+from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -35,9 +36,9 @@ ZATTRS_JSON = ".zattrs"
 ZMETADATA_V2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
-ShapeLike = tuple[int, ...] | int
+ShapeLike = Iterable[int] | int
+# For backwards compatibility
 ChunkCoords = tuple[int, ...]
-ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
@@ -66,7 +67,7 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
     """The configuration of the object."""
 
 
-def product(tup: ChunkCoords) -> int:
+def product(tup: tuple[int, ...]) -> int:
     return functools.reduce(operator.mul, tup, 1)
 
 
@@ -160,7 +161,7 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
+def parse_shapelike(data: ShapeLike) -> tuple[int, ...]:
     if isinstance(data, int):
         if data < 0:
             raise ValueError(f"Expected a non-negative integer. Got {data} instead")
@@ -205,7 +206,7 @@ def _warn_write_empty_chunks_kwarg() -> None:
         "argument, as in `config={'write_empty_chunks': True}`,"
         "or change the global 'array.write_empty_chunks' configuration variable."
     )
-    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+    warnings.warn(msg, ZarrRuntimeWarning, stacklevel=2)
 
 
 def _warn_order_kwarg() -> None:
@@ -216,7 +217,7 @@ def _warn_order_kwarg() -> None:
         "argument, as in `config={'order': 'C'}`,"
         "or change the global 'array.order' configuration variable."
     )
-    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+    warnings.warn(msg, ZarrRuntimeWarning, stacklevel=2)
 
 
 def _default_zarr_format() -> ZarrFormat:

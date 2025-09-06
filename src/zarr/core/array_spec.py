@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from typing import NotRequired
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import ChunkCoords
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
@@ -88,7 +87,7 @@ def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
 
 @dataclass(frozen=True)
 class ArraySpec:
-    shape: ChunkCoords
+    shape: tuple[int, ...]
     dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: Any
     config: ArrayConfig
@@ -96,7 +95,7 @@ class ArraySpec:
 
     def __init__(
         self,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
         fill_value: Any,
         config: ArrayConfig,

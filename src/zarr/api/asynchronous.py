@@ -24,7 +24,6 @@ from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
-    ChunkCoords,
     DimensionNames,
     MemoryOrder,
     ZarrFormat,
@@ -39,16 +38,22 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.errors import GroupNotFoundError, NodeTypeValidationError
+from zarr.errors import (
+    ArrayNotFoundError,
+    GroupNotFoundError,
+    NodeTypeValidationError,
+    ZarrDeprecationWarning,
+    ZarrRuntimeWarning,
+    ZarrUserWarning,
+)
 from zarr.storage import StorePath
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    import numcodecs.abc
-
     from zarr.abc.codec import Codec
+    from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
@@ -101,7 +106,7 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
-def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
+def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple[int, ...] | None]:
     """Helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
@@ -141,7 +146,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
         else:
             # TODO: Remove type: ignore statement when type inference improves.
             # mypy cannot correctly infer the type of a.metadata here for some reason.
-            new["codecs"] = a.metadata.codecs  # type: ignore[unreachable]
+            new["codecs"] = a.metadata.codecs
 
     else:
         # TODO: set default values compressor/codecs
@@ -162,7 +167,7 @@ def _handle_zarr_version_or_format(
         )
     if zarr_version is not None:
         warnings.warn(
-            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+            "zarr_version is deprecated, use zarr_format", ZarrDeprecationWarning, stacklevel=2
         )
         return zarr_version
     return zarr_format
@@ -228,7 +233,7 @@ async def consolidate_metadata(
         warnings.warn(
             "Consolidated metadata is currently not part in the Zarr format 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
-            category=UserWarning,
+            category=ZarrUserWarning,
             stacklevel=1,
         )
 
@@ -353,7 +358,9 @@ async def open(
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
-                return AsyncArray(store_path=store_path, metadata=_metadata_dict)
+                return AsyncArray(
+                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
+                )
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
@@ -536,7 +543,7 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
-@deprecated("Use AsyncGroup.tree instead.")
+@deprecated("Use AsyncGroup.tree instead.", category=ZarrDeprecationWarning)
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
@@ -663,38 +670,24 @@ async def group(
     g : group
         The new group.
     """
-
-    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-
     mode: AccessModeLiteral
     if overwrite:
         mode = "w"
     else:
-        mode = "r+"
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-
-    if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
-    if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
-    if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
-
-    if attributes is None:
-        attributes = {}
-
-    try:
-        return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
-    except (KeyError, FileNotFoundError):
-        _zarr_format = zarr_format or _default_zarr_format()
-        return await AsyncGroup.from_store(
-            store=store_path,
-            zarr_format=_zarr_format,
-            overwrite=overwrite,
-            attributes=attributes,
-        )
+        mode = "a"
+    return await open_group(
+        store=store,
+        mode=mode,
+        chunk_store=chunk_store,
+        cache_attrs=cache_attrs,
+        synchronizer=synchronizer,
+        path=path,
+        zarr_version=zarr_version,
+        zarr_format=zarr_format,
+        meta_array=meta_array,
+        attributes=attributes,
+        storage_options=storage_options,
+    )
 
 
 async def create_group(
@@ -827,13 +820,13 @@ async def open_group(
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
     if attributes is None:
@@ -855,13 +848,14 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    raise GroupNotFoundError(store, store_path.path)
+    msg = f"No group found in store {store!r} at path {store_path.path!r}"
+    raise GroupNotFoundError(msg)
 
 
 async def create(
-    shape: ChunkCoords | int,
+    shape: tuple[int, ...] | int,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | int | bool | None = None,
+    chunks: tuple[int, ...] | int | bool | None = None,
     dtype: ZDTypeLike | None = None,
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,
@@ -871,7 +865,7 @@ async def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: Iterable[dict[str, JSON] | numcodecs.abc.Codec] | None = None,
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -883,7 +877,7 @@ async def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: ChunkCoords | int | None = None,
+    chunk_shape: tuple[int, ...] | int | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -1011,19 +1005,19 @@ async def create(
     )
 
     if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if cache_metadata is not None:
-        warnings.warn("cache_metadata is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_metadata is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if object_codec is not None:
-        warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("object_codec is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if read_only is not None:
-        warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("read_only is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
 
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
@@ -1042,7 +1036,7 @@ async def create(
                 "This is redundant. When both are set, write_empty_chunks will be used instead "
                 "of the value in config."
             )
-            warnings.warn(UserWarning(msg), stacklevel=1)
+            warnings.warn(ZarrUserWarning(msg), stacklevel=1)
         config_parsed = dataclasses.replace(config_parsed, write_empty_chunks=write_empty_chunks)
 
     return await AsyncArray._create(
@@ -1068,7 +1062,7 @@ async def create(
 
 
 async def empty(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an empty array with the specified shape. The contents will be filled with the
     array's fill value or zeros if no fill value is provided.
@@ -1120,7 +1114,7 @@ async def empty_like(
 
 # TODO: add type annotations for fill_value and kwargs
 async def full(
-    shape: ChunkCoords, fill_value: Any, **kwargs: Any
+    shape: tuple[int, ...], fill_value: Any, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with `fill_value` being used as the default value for
     uninitialized portions of the array.
@@ -1167,7 +1161,7 @@ async def full_like(
 
 
 async def ones(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with one being used as the default value for
     uninitialized portions of the array.
@@ -1251,7 +1245,7 @@ async def open_array(
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
             _zarr_format = zarr_format or _default_zarr_format()
@@ -1261,7 +1255,8 @@ async def open_array(
                 overwrite=overwrite,
                 **kwargs,
             )
-        raise
+        msg = f"No array found in store {store_path.store} at path {store_path.path}"
+        raise ArrayNotFoundError(msg) from err
 
 
 async def open_like(
@@ -1290,7 +1285,7 @@ async def open_like(
 
 
 async def zeros(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with zero being used as the default value for
     uninitialized portions of the array.

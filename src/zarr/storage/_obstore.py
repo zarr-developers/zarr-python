@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 __all__ = ["ObjectStore"]
 
@@ -208,17 +207,6 @@ class ObjectStore(Store):
         metas = await obs.list(self.store, prefix).collect_async()
         keys = [(m["path"],) for m in metas]
         await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
-
-    @property
-    def supports_partial_writes(self) -> bool:
-        # docstring inherited
-        return False
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
 
     @property
     def supports_listing(self) -> bool:

@@ -301,7 +301,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     #     array_path = data.draw(st.sampled_from(self.all_arrays), label="Array move source")
     #     to_group = data.draw(st.sampled_from(self.all_groups), label="Array move destination")
 
-    #     # fixme renaiming to self?
+    #     # fixme renaming to self?
     #     array_name = os.path.basename(array_path)
     #     assume(self.model.can_add(to_group, array_name))
     #     new_path = f"{to_group}/{array_name}".lstrip("/")
@@ -318,7 +318,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
 
     #     from_group_name = os.path.basename(from_group)
     #     assume(self.model.can_add(to_group, from_group_name))
-    #     # fixme renaiming to self?
+    #     # fixme renaming to self?
     #     new_path = f"{to_group}/{from_group_name}".lstrip("/")
     #     note(f"moving group '{from_group}' -> '{new_path}'")
     #     self.model.rename(from_group, new_path)
@@ -467,16 +467,9 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def list_prefix(self, prefix: str) -> None:
         raise NotImplementedError
 
-    def set_partial_values(self, key_start_values: Any) -> None:
-        raise NotImplementedError
-
     @property
     def supports_listing(self) -> bool:
         return self.store.supports_listing
-
-    @property
-    def supports_partial_writes(self) -> bool:
-        return self.supports_partial_writes
 
     @property
     def supports_writes(self) -> bool:
