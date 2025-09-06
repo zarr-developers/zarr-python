@@ -22,15 +22,18 @@ if TYPE_CHECKING:
     )
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.common import JSON
 
 __all__ = [
     "Registry",
     "get_buffer_class",
+    "get_chunk_key_encoding_class",
     "get_codec_class",
     "get_ndbuffer_class",
     "get_pipeline_class",
     "register_buffer",
+    "register_chunk_key_encoding",
     "register_codec",
     "register_ndbuffer",
     "register_pipeline",
@@ -60,10 +63,11 @@ __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
+__chunk_key_encoding_registries: dict[str, Registry[ChunkKeyEncoding]] = defaultdict(Registry)
 
 """
 The registry module is responsible for managing implementations of codecs,
-pipelines, buffers and ndbuffers and collecting them from entrypoints.
+pipelines, buffers, ndbuffers, and chunk key encodings and collecting them from entrypoints.
 The implementation used is determined by the config.
 
 The registry module is also responsible for managing dtypes.
@@ -99,6 +103,11 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
     data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
 
+    for e in entry_points.select(group="zarr.chunk_key_encoding"):
+        __chunk_key_encoding_registries[e.name].lazy_load_list.append(e)
+    for e in entry_points.select(group="zarr", name="chunk_key_encoding"):
+        __chunk_key_encoding_registries[e.name].lazy_load_list.append(e)
+
     __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     __pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
@@ -114,6 +123,7 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         __pipeline_registry,
         __buffer_registry,
         __ndbuffer_registry,
+        *(__chunk_key_encoding_registries.values()),
     ]
 
 
@@ -142,6 +152,12 @@ def register_ndbuffer(cls: type[NDBuffer], qualname: str | None = None) -> None:
 
 def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
     __buffer_registry.register(cls, qualname)
+
+
+def register_chunk_key_encoding(
+    key: str, cke_cls: type[ChunkKeyEncoding], qualname: str | None = None
+) -> None:
+    __chunk_key_encoding_registries[key].register(cke_cls, qualname)
 
 
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
@@ -279,6 +295,38 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     raise BadConfigError(
         f"NDBuffer class '{path}' not found in registered buffers: {list(__ndbuffer_registry)}."
     )
+
+
+def get_chunk_key_encoding_class(key: str, reload_config: bool = False) -> type[ChunkKeyEncoding]:
+    if reload_config:
+        _reload_config()
+
+    if key in __chunk_key_encoding_registries:
+        __chunk_key_encoding_registries[key].lazy_load()
+    else:
+        raise KeyError(
+            f"Chunk key encoding '{key}' not found in registered chunk key encodings: {list(__chunk_key_encoding_registries)}."
+        )
+
+    cke_classes = __chunk_key_encoding_registries[key]
+    if not cke_classes:
+        raise KeyError(key)
+
+    config_entry = config.get("chunk_key_encodings", {}).get(key)
+    if config_entry is None:
+        if len(cke_classes) == 1:
+            return next(iter(cke_classes.values()))
+        warnings.warn(
+            f"Chunk key encoding '{key}' not configured in config. Selecting any implementation.",
+            stacklevel=2,
+            category=ZarrUserWarning,
+        )
+        return list(cke_classes.values())[-1]
+    selected_encoding_cls = cke_classes[config_entry]
+
+    if selected_encoding_cls:
+        return selected_encoding_cls
+    raise KeyError(key)
 
 
 _collect_entrypoints()
