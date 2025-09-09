@@ -132,6 +132,30 @@ def _parse_async_node(
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
+async def _get_zarr_version(store_path: StorePath) -> Literal[2, 3]:
+    """
+    Guess Zarr format from present metadata files in a Store.
+    """
+    (
+        zarr_json_bytes,
+        zgroup_bytes,
+    ) = await asyncio.gather(
+        (store_path / ZARR_JSON).exists(),
+        (store_path / ZGROUP_JSON).exists(),
+    )
+    if zarr_json_bytes and zgroup_bytes:
+        # warn and favor v3
+        msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
+        warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
+    if not zarr_json_bytes and not zgroup_bytes:
+        raise FileNotFoundError(f"could not find zarr.json or .zgroup objects in {store_path}")
+    # set zarr_format based on which keys were found
+    if zarr_json_bytes:
+        return 3
+    else:
+        return 2
+
+
 @dataclass(frozen=True)
 class ConsolidatedMetadata:
     """
@@ -513,6 +537,14 @@ class AsyncGroup:
             to load consolidated metadata from a non-default key.
         """
         store_path = await make_store_path(store)
+        # Guess zarr_format if not passed explicitly
+        if zarr_format is None:
+            zarr_format = await _get_zarr_version(store_path)
+            return await cls.open(
+                store=store, zarr_format=zarr_format, use_consolidated=use_consolidated
+            )
+        assert zarr_format is not None
+
         if not store_path.store.supports_consolidated_metadata:
             # Fail if consolidated metadata was requested but the Store doesn't support it
             if use_consolidated:
@@ -524,12 +556,11 @@ class AsyncGroup:
             # if use_consolidated was None (optional), the Store dictates it doesn't want consolidation
             use_consolidated = False
 
-        consolidated_key = ZMETADATA_V2_JSON
-
-        if (zarr_format == 2 or zarr_format is None) and isinstance(use_consolidated, str):
-            consolidated_key = use_consolidated
-
         if zarr_format == 2:
+            consolidated_key = ZMETADATA_V2_JSON
+            if isinstance(use_consolidated, str):
+                consolidated_key = use_consolidated
+
             paths = [store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
             if use_consolidated or use_consolidated is None:
                 paths.append(store_path / consolidated_key)
@@ -546,43 +577,6 @@ class AsyncGroup:
             else:
                 maybe_consolidated_metadata_bytes = None
 
-        elif zarr_format == 3:
-            zarr_json_bytes = await (store_path / ZARR_JSON).get()
-            if zarr_json_bytes is None:
-                raise FileNotFoundError(store_path)
-        elif zarr_format is None:
-            (
-                zarr_json_bytes,
-                zgroup_bytes,
-                zattrs_bytes,
-                maybe_consolidated_metadata_bytes,
-            ) = await asyncio.gather(
-                (store_path / ZARR_JSON).get(),
-                (store_path / ZGROUP_JSON).get(),
-                (store_path / ZATTRS_JSON).get(),
-                (store_path / str(consolidated_key)).get(),
-            )
-            if zarr_json_bytes is not None and zgroup_bytes is not None:
-                # warn and favor v3
-                msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
-                warnings.warn(msg, category=ZarrUserWarning, stacklevel=1)
-            if zarr_json_bytes is None and zgroup_bytes is None:
-                raise FileNotFoundError(
-                    f"could not find zarr.json or .zgroup objects in {store_path}"
-                )
-            # set zarr_format based on which keys were found
-            if zarr_json_bytes is not None:
-                zarr_format = 3
-            else:
-                zarr_format = 2
-        else:
-            msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
-            raise MetadataValidationError(msg)
-
-        if zarr_format == 2:
-            # this is checked above, asserting here for mypy
-            assert zgroup_bytes is not None
-
             if use_consolidated and maybe_consolidated_metadata_bytes is None:
                 # the user requested consolidated metadata, but it was missing
                 raise ValueError(consolidated_key)
@@ -595,9 +589,11 @@ class AsyncGroup:
             return cls._from_bytes_v2(
                 store_path, zgroup_bytes, zattrs_bytes, maybe_consolidated_metadata_bytes
             )
-        else:
-            # V3 groups are comprised of a zarr.json object
-            assert zarr_json_bytes is not None
+
+        elif zarr_format == 3:
+            zarr_json_bytes = await (store_path / ZARR_JSON).get()
+            if zarr_json_bytes is None:
+                raise FileNotFoundError(store_path)
             if not isinstance(use_consolidated, bool | None):
                 raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
 
@@ -606,6 +602,9 @@ class AsyncGroup:
                 zarr_json_bytes,
                 use_consolidated=use_consolidated,
             )
+        else:
+            msg = f"Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '{zarr_format}'."  # type: ignore[unreachable]
+            raise MetadataValidationError(msg)
 
     @classmethod
     def _from_bytes_v2(
