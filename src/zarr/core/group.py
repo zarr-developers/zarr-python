@@ -488,7 +488,8 @@ class AsyncGroup:
         zarr_format: ZarrFormat | None = 3,
         use_consolidated: bool | str | None = None,
     ) -> AsyncGroup:
-        """Open a new AsyncGroup
+        """
+        Create a new AsyncGroup from an existing group.
 
         Parameters
         ----------
