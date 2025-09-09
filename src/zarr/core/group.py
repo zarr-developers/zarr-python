@@ -53,6 +53,7 @@ from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
+    GroupNotFoundError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -673,6 +674,11 @@ class AsyncGroup:
         store_path: StorePath,
         data: dict[str, Any],
     ) -> AsyncGroup:
+        node_type = data.pop("node_type", None)
+        if node_type == "array":
+            raise ContainsArrayError(store_path.store, store_path.path)
+        elif node_type not in ("group", None):
+            raise GroupNotFoundError(store_path.store, store_path.path)
         return cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
