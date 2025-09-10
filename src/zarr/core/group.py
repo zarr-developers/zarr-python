@@ -676,9 +676,11 @@ class AsyncGroup:
     ) -> AsyncGroup:
         node_type = data.pop("node_type", None)
         if node_type == "array":
-            raise ContainsArrayError(store_path.store, store_path.path)
+            msg = f"An array already exists in store {store_path.store} at path {store_path.path}."
+            raise ContainsArrayError(msg)
         elif node_type not in ("group", None):
-            raise GroupNotFoundError(store_path.store, store_path.path)
+            msg = f"Node type in metadata ({node_type}) is not 'group'"
+            raise GroupNotFoundError(msg)
         return cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
