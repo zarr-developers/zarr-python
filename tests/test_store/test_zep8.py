@@ -251,6 +251,11 @@ async def test_make_store_path_with_zep8_url() -> None:
 async def test_make_store_path_with_regular_url() -> None:
     """Test make_store_path with regular URLs (backward compatibility)."""
     pytest.importorskip("fsspec", reason="fsspec not available")
+    pytest.importorskip(
+        "fsspec",
+        minversion="2024.12.0",
+        reason="fsspec >= 2024.12.0 required for AsyncFileSystemWrapper",
+    )
 
     # Test that regular fsspec paths still work
     # Note: We test with memory:// which doesn't require network
@@ -483,6 +488,11 @@ async def test_fsspec_https_url_resolution() -> None:
 async def test_fsspec_store_creation_mock() -> None:
     """Test fsspec store creation with mocked filesystem."""
     fsspec = pytest.importorskip("fsspec", reason="fsspec not available")
+    pytest.importorskip(
+        "fsspec",
+        minversion="2024.12.0",
+        reason="fsspec >= 2024.12.0 required for AsyncFileSystemWrapper",
+    )
 
     # Create a mock filesystem for testing
     from zarr.storage._fsspec import _make_async
