@@ -841,7 +841,7 @@ async def test_logging_adapter_preserves_store_properties() -> None:
     assert memory_logged.supports_writes
     assert memory_logged.supports_deletes
     assert memory_logged.supports_listing
-    assert memory_logged.supports_partial_writes
+    assert not memory_logged.supports_partial_writes  # Always False per ABC
 
 
 # Error handling and edge case tests
