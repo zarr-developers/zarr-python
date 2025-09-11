@@ -13,6 +13,7 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -23,7 +24,6 @@ if TYPE_CHECKING:
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 __all__ = ["ObjectStore"]
 
@@ -196,16 +196,17 @@ class ObjectStore(Store):
         with contextlib.suppress(FileNotFoundError):
             await obs.delete_async(self.store, key)
 
-    @property
-    def supports_partial_writes(self) -> bool:
+    async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
-        return False
+        import obstore as obs
 
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
+        self._check_writable()
+        if prefix != "" and not prefix.endswith("/"):
+            prefix += "/"
+
+        metas = await obs.list(self.store, prefix).collect_async()
+        keys = [(m["path"],) for m in metas]
+        await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
 
     @property
     def supports_listing(self) -> bool:

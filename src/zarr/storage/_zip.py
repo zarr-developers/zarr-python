@@ -49,7 +49,6 @@ class ZipStore(Store):
     allowed_exceptions
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
     path
     compression
@@ -58,7 +57,6 @@ class ZipStore(Store):
 
     supports_writes: bool = True
     supports_deletes: bool = False
-    supports_partial_writes: bool = False
     supports_listing: bool = True
 
     path: Path | None
@@ -260,11 +258,6 @@ class ZipStore(Store):
             )
         with self._lock:
             self._set(key, value)
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview[int]]]
-    ) -> None:
-        raise NotImplementedError
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()

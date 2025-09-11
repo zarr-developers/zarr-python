@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from fsspec.mapping import FSMap
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import BytesLike
 
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -90,7 +89,6 @@ class FsspecStore(Store):
     allowed_exceptions
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
 
     Raises
@@ -114,7 +112,6 @@ class FsspecStore(Store):
     # based on FSSpec
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = False
     supports_listing: bool = True
 
     fs: AsyncFileSystem
@@ -417,12 +414,6 @@ class FsspecStore(Store):
                 raise r
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
