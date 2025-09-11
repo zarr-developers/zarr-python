@@ -8,6 +8,7 @@ It provides both URL parsing capabilities and store resolution.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
@@ -84,6 +85,11 @@ class URLParser:
         return segments
 
     @staticmethod
+    def _is_windows_path(url: str) -> bool:
+        r"""Check if URL is a Windows absolute path like C:\... or C:/..."""
+        return re.match(r"^[A-Za-z]:[/\\]", url) is not None
+
+    @staticmethod
     def _parse_base_url(url: str) -> URLSegment:
         """Parse the base URL component."""
         parsed = urlparse(url)
@@ -94,6 +100,9 @@ class URLParser:
                 return URLSegment(scheme="file", path=parsed.path)
             else:
                 return URLSegment(scheme=parsed.scheme, path=f"{parsed.netloc}{parsed.path}")
+        elif URLParser._is_windows_path(url):
+            # Windows absolute path like C:\... or C:/... - treat as filesystem path
+            return URLSegment(scheme="file", path=url)
         elif ":" in url:
             # Adapter syntax like "memory:", "zip:path", etc.
             adapter, path = url.split(":", 1)

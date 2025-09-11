@@ -5,6 +5,7 @@ This module tests the ZEP 8 URL syntax functionality using pytest's functional a
 Tests are organized by functionality groups rather than classes.
 """
 
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -1202,15 +1203,16 @@ async def test_filesystem_adapter_edge_cases() -> None:
     store = await FileSystemAdapter.from_url_segment(segment, "file:")
     assert store is not None
 
-    # Test with mode specified in kwargs
+    # Test with mode specified in kwargs - use cross-platform temp directory
+    temp_dir = tempfile.gettempdir()
     segment = URLSegment(adapter="file")
-    store = await FileSystemAdapter.from_url_segment(segment, "file:/tmp", mode="r")
+    store = await FileSystemAdapter.from_url_segment(segment, f"file:{temp_dir}", mode="r")
     assert store.read_only
 
     # Test with read_only in storage_options
     segment = URLSegment(adapter="file")
     store = await FileSystemAdapter.from_url_segment(
-        segment, "file:/tmp", storage_options={"read_only": True}
+        segment, f"file:{temp_dir}", storage_options={"read_only": True}
     )
     assert store.read_only
 
