@@ -223,13 +223,129 @@ class HttpsAdapter(RemoteAdapter):
 
 
 class S3Adapter(RemoteAdapter):
-    """Store adapter for S3 URLs using fsspec."""
+    """Store adapter for S3 URLs using fsspec.
+
+    Supports:
+    - Standard AWS S3: s3://bucket/path
+    - Custom S3 endpoints: s3+http://endpoint/bucket/path, s3+https://endpoint/bucket/path
+    """
 
     adapter_name = "s3"
 
     @classmethod
     def get_supported_schemes(cls) -> list[str]:
-        return ["s3"]
+        return ["s3", "s3+http", "s3+https"]
+
+    @classmethod
+    def _parse_s3_url(cls, url: str) -> tuple[str, str | None, dict[str, Any]]:
+        """Parse S3 URL and return (s3_url, endpoint_url, storage_options).
+
+        Returns:
+            - s3_url: Normalized s3:// URL for fsspec
+            - endpoint_url: Custom endpoint URL (None for AWS)
+            - storage_options: Additional fsspec configuration
+        """
+        if url.startswith("s3://"):
+            # Standard AWS S3
+            return url, None, {}
+
+        elif url.startswith("s3+http://"):
+            # Custom S3 via HTTP: s3+http://endpoint/bucket/path
+            # Remove "s3+" prefix and parse the remaining http URL
+            http_url = url[3:]  # "http://endpoint/bucket/path"
+
+            # Find the first '/' after "http://"
+            after_protocol = http_url[7:]  # Everything after "http://"
+            if "/" in after_protocol:
+                # Split at the first '/' to separate endpoint from path
+                endpoint_part, path_part = after_protocol.split("/", 1)
+                endpoint_url = f"http://{endpoint_part}"
+                s3_url = f"s3://{path_part}"
+            else:
+                # No path part, just endpoint
+                endpoint_url = http_url
+                s3_url = "s3://"
+
+            storage_options = {"endpoint_url": endpoint_url, "use_ssl": False}
+            return s3_url, endpoint_url, storage_options
+
+        elif url.startswith("s3+https://"):
+            # Custom S3 via HTTPS: s3+https://endpoint/bucket/path
+            # Remove "s3+" prefix and parse the remaining https URL
+            https_url = url[3:]  # "https://endpoint/bucket/path"
+
+            # Find the first '/' after "https://"
+            after_protocol = https_url[8:]  # Everything after "https://"
+            if "/" in after_protocol:
+                # Split at the first '/' to separate endpoint from path
+                endpoint_part, path_part = after_protocol.split("/", 1)
+                endpoint_url = f"https://{endpoint_part}"
+                s3_url = f"s3://{path_part}"
+            else:
+                # No path part, just endpoint
+                endpoint_url = https_url
+                s3_url = "s3://"
+
+            storage_options = {"endpoint_url": endpoint_url, "use_ssl": True}
+            return s3_url, endpoint_url, storage_options
+
+        else:
+            raise ValueError(f"Unsupported S3 URL format: {url}")
+
+    @classmethod
+    async def from_url_segment(
+        cls,
+        segment: URLSegment,
+        preceding_url: str,
+        **kwargs: Any,
+    ) -> Store:
+        """Create an FsspecStore for S3 URLs with custom endpoint support."""
+        from zarr.storage._fsspec import FsspecStore
+
+        # Parse the S3 URL to extract endpoint information
+        s3_url, endpoint_url, endpoint_storage_options = cls._parse_s3_url(preceding_url)
+
+        # Merge storage options (user-provided options take precedence)
+        storage_options = endpoint_storage_options.copy()
+        user_storage_options = kwargs.get("storage_options", {})
+        storage_options.update(user_storage_options)
+
+        # Determine read-only mode (S3 can be writable)
+        read_only = cls._determine_read_only_mode(preceding_url, **kwargs)
+
+        return FsspecStore.from_url(s3_url, storage_options=storage_options, read_only=read_only)
+
+    @classmethod
+    def _extract_scheme(cls, url: str) -> str:
+        """Extract scheme from URL, handling composite schemes."""
+        if url.startswith("s3+http://"):
+            return "s3+http"
+        elif url.startswith("s3+https://"):
+            return "s3+https"
+        elif url.startswith("s3://"):
+            return "s3"
+        else:
+            return url.split("://", 1)[0]
+
+
+class S3HttpAdapter(S3Adapter):
+    """Store adapter for custom S3 HTTP endpoints."""
+
+    adapter_name = "s3+http"
+
+    @classmethod
+    def get_supported_schemes(cls) -> list[str]:
+        return ["s3+http"]
+
+
+class S3HttpsAdapter(S3Adapter):
+    """Store adapter for custom S3 HTTPS endpoints."""
+
+    adapter_name = "s3+https"
+
+    @classmethod
+    def get_supported_schemes(cls) -> list[str]:
+        return ["s3+https"]
 
 
 class GSAdapter(RemoteAdapter):

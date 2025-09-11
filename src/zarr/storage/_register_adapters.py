@@ -22,6 +22,8 @@ def register_builtin_adapters() -> None:
         LoggingAdapter,
         MemoryAdapter,
         S3Adapter,
+        S3HttpAdapter,
+        S3HttpsAdapter,
         ZipAdapter,
     )
 
@@ -33,6 +35,8 @@ def register_builtin_adapters() -> None:
         MemoryAdapter,
         HttpsAdapter,
         S3Adapter,
+        S3HttpAdapter,
+        S3HttpsAdapter,
         GSAdapter,
         LoggingAdapter,
         ZipAdapter,

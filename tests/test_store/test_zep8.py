@@ -18,7 +18,14 @@ from zarr.core.array import Array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.registry import get_store_adapter, register_store_adapter
 from zarr.storage import FsspecStore, LocalStore, LoggingStore, MemoryStore, ZipStore
-from zarr.storage._builtin_adapters import GSAdapter, HttpsAdapter, LoggingAdapter, S3Adapter
+from zarr.storage._builtin_adapters import (
+    GSAdapter,
+    HttpsAdapter,
+    LoggingAdapter,
+    S3Adapter,
+    S3HttpAdapter,
+    S3HttpsAdapter,
+)
 from zarr.storage._common import make_store_path
 from zarr.storage._zep8 import URLParser, URLStoreResolver, ZEP8URLError, is_zep8_url
 
@@ -513,6 +520,8 @@ def test_fsspec_zep8_url_detection() -> None:
     # These should be detected as ZEP 8 URLs
     zep8_urls = [
         "s3://bucket/data.zip|zip:",
+        "s3+http://minio.local:9000/bucket/data.zip|zip:",
+        "s3+https://storage.example.com/bucket/data.zarr|zarr3:",
         "https://example.com/data|zip:|zarr3:",
         "gs://bucket/data.zarr|zarr2:",
     ]
@@ -538,7 +547,7 @@ async def test_fsspec_adapter_error_handling() -> None:
     # Test S3 adapter with invalid URL
     segment = URLSegment(scheme="s3", path="bucket/data", adapter=None)
 
-    with pytest.raises(ValueError, match="Unsupported scheme"):
+    with pytest.raises(ValueError, match="Unsupported S3 URL format"):
         await S3Adapter.from_url_segment(segment, "invalid://url")
 
     # Test HTTPS adapter with invalid URL
@@ -566,7 +575,7 @@ def test_fsspec_schemes_support() -> None:
 
     # Test S3 adapter
     assert S3Adapter.can_handle_scheme("s3")
-    assert S3Adapter.get_supported_schemes() == ["s3"]
+    assert S3Adapter.get_supported_schemes() == ["s3", "s3+http", "s3+https"]
 
     # Test HTTPS adapter
     assert HttpsAdapter.can_handle_scheme("https")
@@ -589,6 +598,8 @@ async def test_fsspec_url_chain_parsing() -> None:
     # Test complex chained URLs
     complex_urls = [
         "s3://bucket/archive.zip|zip:data/|zarr3:group",
+        "s3+http://minio.local:9000/bucket/archive.zip|zip:data/|zarr3:group",
+        "s3+https://storage.example.com/bucket/nested.zip|zip:inner/|zarr2:",
         "https://example.com/data.tar.gz|tar:|zip:|zarr2:",
         "gs://bucket/dataset.zarr|zarr3:array/subarray",
     ]
@@ -1223,16 +1234,149 @@ async def test_remote_adapter_comprehensive() -> None:
 
 
 async def test_s3_adapter_functionality() -> None:
-    """Test S3Adapter functionality."""
+    """Test S3Adapter functionality including custom endpoints."""
     from zarr.storage._builtin_adapters import S3Adapter
 
-    # Test can_handle_scheme
+    # Test can_handle_scheme for all supported schemes
     assert S3Adapter.can_handle_scheme("s3")
+    assert S3Adapter.can_handle_scheme("s3+http")
+    assert S3Adapter.can_handle_scheme("s3+https")
     assert not S3Adapter.can_handle_scheme("gs")
+    assert not S3Adapter.can_handle_scheme("http")
 
     # Test get_supported_schemes
     schemes = S3Adapter.get_supported_schemes()
     assert "s3" in schemes
+    assert "s3+http" in schemes
+    assert "s3+https" in schemes
+    assert len(schemes) == 3
+
+
+async def test_s3_custom_endpoint_url_parsing() -> None:
+    """Test S3Adapter URL parsing for custom endpoints."""
+    from zarr.storage._builtin_adapters import S3Adapter
+
+    # Test standard AWS S3 URL parsing
+    s3_url, endpoint_url, storage_options = S3Adapter._parse_s3_url("s3://my-bucket/path/to/data")
+    assert s3_url == "s3://my-bucket/path/to/data"
+    assert endpoint_url is None
+    assert storage_options == {}
+
+    # Test custom HTTP endpoint parsing
+    s3_url, endpoint_url, storage_options = S3Adapter._parse_s3_url(
+        "s3+http://minio.local:9000/my-bucket/data"
+    )
+    assert s3_url == "s3://my-bucket/data"
+    assert endpoint_url == "http://minio.local:9000"
+    assert storage_options == {"endpoint_url": "http://minio.local:9000", "use_ssl": False}
+
+    # Test custom HTTPS endpoint parsing
+    s3_url, endpoint_url, storage_options = S3Adapter._parse_s3_url(
+        "s3+https://storage.example.com/bucket/path/file.zarr"
+    )
+    assert s3_url == "s3://bucket/path/file.zarr"
+    assert endpoint_url == "https://storage.example.com"
+    assert storage_options == {"endpoint_url": "https://storage.example.com", "use_ssl": True}
+
+    # Test custom HTTP endpoint with port
+    s3_url, endpoint_url, storage_options = S3Adapter._parse_s3_url(
+        "s3+http://localhost:9000/test-bucket"
+    )
+    assert s3_url == "s3://test-bucket"
+    assert endpoint_url == "http://localhost:9000"
+    assert storage_options["endpoint_url"] == "http://localhost:9000"
+    assert storage_options["use_ssl"] is False
+
+    # Test edge case: endpoint without path
+    s3_url, endpoint_url, storage_options = S3Adapter._parse_s3_url("s3+https://minio.example.com")
+    assert s3_url == "s3://"
+    assert endpoint_url == "https://minio.example.com"
+
+
+async def test_s3_custom_endpoint_scheme_extraction() -> None:
+    """Test S3Adapter scheme extraction for custom endpoints."""
+    from zarr.storage._builtin_adapters import S3Adapter
+
+    # Test scheme extraction
+    assert S3Adapter._extract_scheme("s3://bucket/path") == "s3"
+    assert S3Adapter._extract_scheme("s3+http://minio.local:9000/bucket") == "s3+http"
+    assert S3Adapter._extract_scheme("s3+https://storage.example.com/bucket") == "s3+https"
+
+
+async def test_s3_custom_endpoint_error_handling() -> None:
+    """Test S3Adapter error handling for invalid URLs."""
+    from zarr.storage._builtin_adapters import S3Adapter
+
+    # Test unsupported URL format
+    with pytest.raises(ValueError, match="Unsupported S3 URL format"):
+        S3Adapter._parse_s3_url("invalid://not-s3")
+
+    with pytest.raises(ValueError, match="Unsupported S3 URL format"):
+        S3Adapter._parse_s3_url("gs://bucket/path")
+
+
+async def test_s3_custom_endpoint_registration() -> None:
+    """Test that custom S3 endpoint schemes are properly registered."""
+    from zarr.registry import get_store_adapter
+
+    # Test that all S3 schemes can be retrieved
+    s3_adapter = get_store_adapter("s3")
+    assert s3_adapter is not None
+    assert s3_adapter == S3Adapter
+
+    s3_http_adapter = get_store_adapter("s3+http")
+    assert s3_http_adapter is not None
+    assert s3_http_adapter == S3HttpAdapter
+
+    s3_https_adapter = get_store_adapter("s3+https")
+    assert s3_https_adapter is not None
+    assert s3_https_adapter == S3HttpsAdapter
+
+
+async def test_s3_http_adapter_functionality() -> None:
+    """Test S3HttpAdapter specific functionality."""
+    # Test adapter name
+    assert S3HttpAdapter.adapter_name == "s3+http"
+
+    # Test supported schemes
+    schemes = S3HttpAdapter.get_supported_schemes()
+    assert schemes == ["s3+http"]
+
+    # Test can_handle_scheme
+    assert S3HttpAdapter.can_handle_scheme("s3+http")
+    assert not S3HttpAdapter.can_handle_scheme("s3")
+    assert not S3HttpAdapter.can_handle_scheme("s3+https")
+
+
+async def test_s3_https_adapter_functionality() -> None:
+    """Test S3HttpsAdapter specific functionality."""
+    # Test adapter name
+    assert S3HttpsAdapter.adapter_name == "s3+https"
+
+    # Test supported schemes
+    schemes = S3HttpsAdapter.get_supported_schemes()
+    assert schemes == ["s3+https"]
+
+    # Test can_handle_scheme
+    assert S3HttpsAdapter.can_handle_scheme("s3+https")
+    assert not S3HttpsAdapter.can_handle_scheme("s3")
+    assert not S3HttpsAdapter.can_handle_scheme("s3+http")
+
+
+async def test_s3_custom_endpoint_zep8_url_detection() -> None:
+    """Test ZEP 8 URL detection with custom S3 endpoints."""
+    from zarr.storage._zep8 import is_zep8_url
+
+    # Standard S3 URLs (not ZEP 8)
+    assert not is_zep8_url("s3://bucket/data")
+    assert not is_zep8_url("s3+http://minio.local:9000/bucket/data")
+    assert not is_zep8_url("s3+https://storage.example.com/bucket/data")
+
+    # ZEP 8 URLs with custom S3 endpoints
+    assert is_zep8_url("s3://bucket/data.zip|zip:")
+    assert is_zep8_url("s3+http://minio.local:9000/bucket/data.zip|zip:")
+    assert is_zep8_url("s3+https://storage.example.com/bucket/data|zarr3:")
+    assert is_zep8_url("s3+http://localhost:9000/bucket/archive.zip|zip:data/|zarr2:")
 
 
 async def test_gcs_adapter_functionality() -> None:
@@ -1346,6 +1490,8 @@ def test_builtin_adapters_imports_and_module_structure() -> None:
         MemoryAdapter,
         RemoteAdapter,
         S3Adapter,
+        S3HttpAdapter,
+        S3HttpsAdapter,
         ZipAdapter,
     )
 
@@ -1354,6 +1500,8 @@ def test_builtin_adapters_imports_and_module_structure() -> None:
     assert MemoryAdapter.adapter_name == "memory"
     assert RemoteAdapter.adapter_name == "remote"
     assert S3Adapter.adapter_name == "s3"
+    assert S3HttpAdapter.adapter_name == "s3+http"
+    assert S3HttpsAdapter.adapter_name == "s3+https"
     assert GSAdapter.adapter_name == "gs"
     assert HttpsAdapter.adapter_name == "https"
     assert LoggingAdapter.adapter_name == "log"
@@ -1361,6 +1509,8 @@ def test_builtin_adapters_imports_and_module_structure() -> None:
 
     # Test inheritance relationships
     assert issubclass(S3Adapter, RemoteAdapter)
+    assert issubclass(S3HttpAdapter, S3Adapter)
+    assert issubclass(S3HttpsAdapter, S3Adapter)
     assert issubclass(GSAdapter, RemoteAdapter)
     assert issubclass(HttpsAdapter, RemoteAdapter)
 

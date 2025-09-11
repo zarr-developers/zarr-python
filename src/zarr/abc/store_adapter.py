@@ -192,5 +192,5 @@ class StoreAdapter(ABC):
 
         import re
 
-        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", cls.adapter_name):
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_+-]*$", cls.adapter_name):
             raise ValueError(f"Invalid adapter_name format: {cls.adapter_name}")
