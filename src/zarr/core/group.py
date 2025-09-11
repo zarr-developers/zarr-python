@@ -319,19 +319,18 @@ class ConsolidatedMetadata:
             children: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
             if isinstance(group, ArrayV2Metadata | ArrayV3Metadata):
                 children[key] = group
+            elif group.consolidated_metadata and group.consolidated_metadata.metadata is not None:
+                children[key] = replace(
+                    group, consolidated_metadata=ConsolidatedMetadata(metadata={})
+                )
+                for name, val in group.consolidated_metadata.metadata.items():
+                    full_key = f"{key}/{name}"
+                    if isinstance(val, GroupMetadata):
+                        children.update(flatten(full_key, val))
+                    else:
+                        children[full_key] = val
             else:
-                if group.consolidated_metadata and group.consolidated_metadata.metadata is not None:
-                    children[key] = replace(
-                        group, consolidated_metadata=ConsolidatedMetadata(metadata={})
-                    )
-                    for name, val in group.consolidated_metadata.metadata.items():
-                        full_key = f"{key}/{name}"
-                        if isinstance(val, GroupMetadata):
-                            children.update(flatten(full_key, val))
-                        else:
-                            children[full_key] = val
-                else:
-                    children[key] = replace(group, consolidated_metadata=None)
+                children[key] = replace(group, consolidated_metadata=None)
             return children
 
         for k, v in self.metadata.items():
@@ -1275,9 +1274,8 @@ class AsyncGroup:
             if exact:
                 if ds.dtype != dtype:
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
-            else:
-                if not np.can_cast(ds.dtype, dtype):
-                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+            elif not np.can_cast(ds.dtype, dtype):
+                raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
         except KeyError:
             ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
 
@@ -3277,24 +3275,23 @@ async def create_hierarchy(
                     else:
                         # Any other exception is a real error
                         raise extant_node
-                else:
-                    # this is a node that already exists, but a node with the same key was specified
-                    #  in nodes_parsed.
-                    if isinstance(extant_node, GroupMetadata):
-                        # a group already exists where we want to create a group
-                        if isinstance(proposed_node, ImplicitGroupMarker):
-                            # we have proposed an implicit group, which is OK -- we will just skip
-                            # creating this particular metadata document
-                            redundant_implicit_groups.append(key)
-                        else:
-                            # we have proposed an explicit group, which is an error, given that a
-                            # group already exists.
-                            msg = f"A group exists in store {store!r} at path {key!r}."
-                            raise ContainsGroupError(msg)
-                    elif isinstance(extant_node, ArrayV2Metadata | ArrayV3Metadata):
-                        # we are trying to overwrite an existing array. this is an error.
-                        msg = f"An array exists in store {store!r} at path {key!r}."
-                        raise ContainsArrayError(msg)
+                # this is a node that already exists, but a node with the same key was specified
+                #  in nodes_parsed.
+                elif isinstance(extant_node, GroupMetadata):
+                    # a group already exists where we want to create a group
+                    if isinstance(proposed_node, ImplicitGroupMarker):
+                        # we have proposed an implicit group, which is OK -- we will just skip
+                        # creating this particular metadata document
+                        redundant_implicit_groups.append(key)
+                    else:
+                        # we have proposed an explicit group, which is an error, given that a
+                        # group already exists.
+                        msg = f"A group exists in store {store!r} at path {key!r}."
+                        raise ContainsGroupError(msg)
+                elif isinstance(extant_node, ArrayV2Metadata | ArrayV3Metadata):
+                    # we are trying to overwrite an existing array. this is an error.
+                    msg = f"An array exists in store {store!r} at path {key!r}."
+                    raise ContainsArrayError(msg)
 
     nodes_explicit: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {}
 
@@ -3454,13 +3451,12 @@ def _parse_hierarchy_dict(
             # If a component is not already in the output dict, add ImplicitGroupMetadata
             if subpath not in out:
                 out[subpath] = ImplicitGroupMarker(zarr_format=v.zarr_format)
-            else:
-                if not isinstance(out[subpath], GroupMetadata | ImplicitGroupMarker):
-                    msg = (
-                        f"The node at {subpath} contains other nodes, but it is not a Zarr group. "
-                        "This is invalid. Only Zarr groups can contain other nodes."
-                    )
-                    raise ValueError(msg)
+            elif not isinstance(out[subpath], GroupMetadata | ImplicitGroupMarker):
+                msg = (
+                    f"The node at {subpath} contains other nodes, but it is not a Zarr group. "
+                    "This is invalid. Only Zarr groups can contain other nodes."
+                )
+                raise ValueError(msg)
     return out
 
 
@@ -3668,12 +3664,11 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
     # return the array metadata.
     if zarray_bytes is not None:
         zmeta = json.loads(zarray_bytes.to_bytes())
+    elif zgroup_bytes is None:
+        # neither .zarray or .zgroup were found results in KeyError
+        raise FileNotFoundError(path)
     else:
-        if zgroup_bytes is None:
-            # neither .zarray or .zgroup were found results in KeyError
-            raise FileNotFoundError(path)
-        else:
-            zmeta = json.loads(zgroup_bytes.to_bytes())
+        zmeta = json.loads(zgroup_bytes.to_bytes())
 
     return _build_metadata_v2(zmeta, zattrs)
 
