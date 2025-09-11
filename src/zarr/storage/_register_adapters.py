@@ -17,7 +17,6 @@ def register_builtin_adapters() -> None:
 
     from zarr.storage._builtin_adapters import (
         FileSystemAdapter,
-        GCSAdapter,
         GSAdapter,
         HttpsAdapter,
         LoggingAdapter,
@@ -34,7 +33,6 @@ def register_builtin_adapters() -> None:
         MemoryAdapter,
         HttpsAdapter,
         S3Adapter,
-        GCSAdapter,
         GSAdapter,
         LoggingAdapter,
         ZipAdapter,

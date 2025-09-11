@@ -18,7 +18,7 @@ from zarr.core.array import Array
 from zarr.core.buffer import default_buffer_prototype
 from zarr.registry import get_store_adapter, register_store_adapter
 from zarr.storage import FsspecStore, LocalStore, LoggingStore, MemoryStore, ZipStore
-from zarr.storage._builtin_adapters import GCSAdapter, HttpsAdapter, LoggingAdapter, S3Adapter
+from zarr.storage._builtin_adapters import GSAdapter, HttpsAdapter, LoggingAdapter, S3Adapter
 from zarr.storage._common import make_store_path
 from zarr.storage._zep8 import URLParser, URLStoreResolver, ZEP8URLError, is_zep8_url
 
@@ -428,8 +428,8 @@ def test_fsspec_store_adapters_registered() -> None:
     https_adapter = get_store_adapter("https")
     assert https_adapter is not None
 
-    gcs_adapter = get_store_adapter("gcs")
-    assert gcs_adapter is not None
+    gs_adapter = get_store_adapter("gs")
+    assert gs_adapter is not None
 
 
 async def test_fsspec_s3_url_resolution() -> None:
@@ -496,7 +496,7 @@ async def test_make_store_path_with_fsspec_urls() -> None:
 
     # Test that fsspec URLs still work with make_store_path
     # Note: These will fail to connect but should parse correctly
-    fsspec_urls = ["s3://bucket/path", "gcs://bucket/path", "https://example.com/data"]
+    fsspec_urls = ["s3://bucket/path", "gs://bucket/path", "https://example.com/data"]
 
     for url in fsspec_urls:
         # These should not be detected as ZEP 8 URLs
@@ -514,7 +514,7 @@ def test_fsspec_zep8_url_detection() -> None:
     zep8_urls = [
         "s3://bucket/data.zip|zip:",
         "https://example.com/data|zip:|zarr3:",
-        "gcs://bucket/data.zarr|zarr2:",
+        "gs://bucket/data.zarr|zarr2:",
     ]
 
     for url in zep8_urls:
@@ -524,7 +524,7 @@ def test_fsspec_zep8_url_detection() -> None:
     regular_urls = [
         "s3://bucket/data.zarr",
         "https://example.com/data.zarr",
-        "gcs://bucket/data",
+        "gs://bucket/data",
     ]
 
     for url in regular_urls:
@@ -574,10 +574,10 @@ def test_fsspec_schemes_support() -> None:
     assert set(HttpsAdapter.get_supported_schemes()) == {"http", "https"}
 
     # Test GCS adapter
-    assert GCSAdapter.can_handle_scheme("gcs")
-    # GCS adapter supports both gcs:// and gs:// schemes
-    supported_schemes = GCSAdapter.get_supported_schemes()
-    assert "gcs" in supported_schemes or "gs" in supported_schemes
+    assert GSAdapter.can_handle_scheme("gs")
+    # GCS adapter only supports gs:// scheme
+    supported_schemes = GSAdapter.get_supported_schemes()
+    assert "gs" in supported_schemes
 
 
 async def test_fsspec_url_chain_parsing() -> None:
@@ -590,7 +590,7 @@ async def test_fsspec_url_chain_parsing() -> None:
     complex_urls = [
         "s3://bucket/archive.zip|zip:data/|zarr3:group",
         "https://example.com/data.tar.gz|tar:|zip:|zarr2:",
-        "gcs://bucket/dataset.zarr|zarr3:array/subarray",
+        "gs://bucket/dataset.zarr|zarr3:array/subarray",
     ]
 
     for url in complex_urls:
@@ -1236,27 +1236,16 @@ async def test_s3_adapter_functionality() -> None:
 
 
 async def test_gcs_adapter_functionality() -> None:
-    """Test GCSAdapter functionality."""
-    from zarr.storage._builtin_adapters import GCSAdapter
+    """Test GSAdapter functionality."""
 
     # Test can_handle_scheme
-    assert GCSAdapter.can_handle_scheme("gs")
-    assert GCSAdapter.can_handle_scheme("gcs")
-    assert not GCSAdapter.can_handle_scheme("s3")
+    assert GSAdapter.can_handle_scheme("gs")
+    assert not GSAdapter.can_handle_scheme("s3")
 
     # Test get_supported_schemes
-    schemes = GCSAdapter.get_supported_schemes()
-    assert "gs" in schemes
-    assert "gcs" in schemes
-
-
-async def test_gs_adapter_functionality() -> None:
-    """Test GSAdapter (alias) functionality."""
-    from zarr.storage._builtin_adapters import GSAdapter
-
-    # GSAdapter is an alias for GCSAdapter
     schemes = GSAdapter.get_supported_schemes()
     assert "gs" in schemes
+    assert len(schemes) == 1  # Should only support gs now
 
 
 async def test_https_adapter_functionality() -> None:
@@ -1351,7 +1340,6 @@ def test_builtin_adapters_imports_and_module_structure() -> None:
     # Test that all adapter classes can be imported
     from zarr.storage._builtin_adapters import (
         FileSystemAdapter,
-        GCSAdapter,
         GSAdapter,
         HttpsAdapter,
         LoggingAdapter,
@@ -1366,7 +1354,6 @@ def test_builtin_adapters_imports_and_module_structure() -> None:
     assert MemoryAdapter.adapter_name == "memory"
     assert RemoteAdapter.adapter_name == "remote"
     assert S3Adapter.adapter_name == "s3"
-    assert GCSAdapter.adapter_name == "gcs"
     assert GSAdapter.adapter_name == "gs"
     assert HttpsAdapter.adapter_name == "https"
     assert LoggingAdapter.adapter_name == "log"
@@ -1374,8 +1361,7 @@ def test_builtin_adapters_imports_and_module_structure() -> None:
 
     # Test inheritance relationships
     assert issubclass(S3Adapter, RemoteAdapter)
-    assert issubclass(GCSAdapter, RemoteAdapter)
-    assert issubclass(GSAdapter, GCSAdapter)
+    assert issubclass(GSAdapter, RemoteAdapter)
     assert issubclass(HttpsAdapter, RemoteAdapter)
 
 

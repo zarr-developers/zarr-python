@@ -26,7 +26,6 @@ if TYPE_CHECKING:
 
 __all__ = [
     "FileSystemAdapter",
-    "GCSAdapter",
     "HttpsAdapter",
     "LoggingAdapter",
     "MemoryAdapter",
@@ -117,7 +116,7 @@ class RemoteAdapter(StoreAdapter):
 
     Supports any URL scheme that fsspec can handle, including:
     - S3: s3://bucket/path
-    - Google Cloud Storage: gs://bucket/path, gcs://bucket/path
+    - Google Cloud Storage: gs://bucket/path
     - HTTP(S): https://example.com/file.zip, http://example.com/file.zip
     - Azure: abfs://container/path, az://container/path
     - And many more via fsspec ecosystem
@@ -192,9 +191,6 @@ class RemoteAdapter(StoreAdapter):
     @classmethod
     def _normalize_url(cls, url: str, scheme: str) -> str:
         """Apply scheme-specific URL normalization."""
-        if scheme == "gcs":
-            # Normalize gcs:// to gs:// (fsspec standard)
-            return "gs://" + url[6:]
         return url
 
     @classmethod
@@ -206,7 +202,6 @@ class RemoteAdapter(StoreAdapter):
         return [
             "s3",
             "gs",
-            "gcs",  # Google Cloud Storage
             "http",
             "https",  # HTTP(S)
             "abfs",
@@ -237,21 +232,14 @@ class S3Adapter(RemoteAdapter):
         return ["s3"]
 
 
-class GCSAdapter(RemoteAdapter):
+class GSAdapter(RemoteAdapter):
     """Store adapter for Google Cloud Storage URLs using fsspec."""
 
-    adapter_name = "gcs"
+    adapter_name = "gs"
 
     @classmethod
     def get_supported_schemes(cls) -> list[str]:
-        return ["gcs", "gs"]
-
-
-# Additional adapter for gs scheme (alias for gcs)
-class GSAdapter(GCSAdapter):
-    """Alias adapter for gs:// URLs (same as gcs)."""
-
-    adapter_name = "gs"
+        return ["gs"]
 
 
 class LoggingAdapter(StoreAdapter):
@@ -442,7 +430,7 @@ class ZipAdapter(StoreAdapter):
         """Get the fsspec protocol name for installation hints."""
         if url.startswith("s3://"):
             return "s3"
-        elif url.startswith(("gs://", "gcs://")):
+        elif url.startswith("gs://"):
             return "gs"
         elif url.startswith(("http://", "https://")):
             return "http"
