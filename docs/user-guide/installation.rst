@@ -42,6 +42,17 @@ Zarr is also published to `conda-forge <https://conda-forge.org>`_. Install it u
 Conda does not support optional dependencies, so you will have to manually install any packages
 needed to enable extra functionality.
 
+Nightly wheels
+--------------
+
+Development wheels are built nightly and published to the `scientific-python-nightly-wheels <https://anaconda.org/scientific-python-nightly-wheels>`_ index. To install the latest nightly build:
+
+.. code-block:: console
+
+    $ pip install --pre --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple zarr
+
+Note that nightly wheels may be unstable and are intended for testing purposes.
+
 Dependency support
 ------------------
 Zarr has endorsed `Scientific-Python SPEC 0 <https://scientific-python.org/specs/spec-0000/>`_ and now follows the version support window as outlined below:
