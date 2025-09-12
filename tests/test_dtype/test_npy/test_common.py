@@ -325,6 +325,7 @@ def test_check_json_intish_float() -> None:
     assert check_json_intish_float(0.0)
     assert check_json_intish_float(1.0)
     assert not check_json_intish_float("0")
+    assert not check_json_intish_float(1.1)
 
 
 def test_check_json_str() -> None:
