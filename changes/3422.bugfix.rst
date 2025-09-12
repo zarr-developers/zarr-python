@@ -1,0 +1,4 @@
+Fix a potential race condition when using :func:`zarr.create_array` with the ``data`` parameter
+set to a NumPy array. Previously Zarr was iterating over the newly created array with a granularity
+that was too low. Now Zarr chooses a granularity that matches the size of the stored objects for
+that array.
