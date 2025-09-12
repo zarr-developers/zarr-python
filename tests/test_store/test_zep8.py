@@ -873,6 +873,10 @@ async def test_url_segment_validation_errors() -> None:
     with pytest.raises(ZEP8URLError, match="Invalid adapter name"):
         URLSegment(adapter="invalid@name")
 
+    # Test invalid adapter name (starts with number)
+    with pytest.raises(ZEP8URLError, match="Invalid adapter name"):
+        URLSegment(adapter="1abc")
+
 
 async def test_memory_adapter_error_conditions() -> None:
     """Test error conditions in MemoryAdapter."""
@@ -1073,7 +1077,17 @@ def test_url_segment_edge_cases() -> None:
     """Test URLSegment edge cases and validation."""
 
     # Test adapter name validation with various valid names
-    valid_names = ["zip", "memory", "s3", "test123", "valid_name", "valid-name", "z", "Z", "1abc"]
+    valid_names = [
+        "zip",
+        "memory",
+        "s3",
+        "test123",
+        "valid_name",
+        "valid-name",
+        "z",
+        "Z",
+        "s3+http",
+    ]
     for name in valid_names:
         segment = URLSegment(adapter=name)
         assert segment.adapter == name
@@ -1950,14 +1964,14 @@ async def test_s3_adapter_error_conditions() -> None:
     # Skip if s3fs is not available
     pytest.importorskip("s3fs", reason="s3fs not available")
 
-    # Test invalid URL parsing
+    # Test unsupported URL format
     segment = URLSegment(adapter="s3")
-    with pytest.raises(ValueError, match="Invalid S3 URL format"):
-        await S3Adapter.from_url_segment(segment, "s3://")
+    with pytest.raises(ValueError, match="Unsupported S3 URL format"):
+        await S3Adapter.from_url_segment(segment, "invalid://not-s3")
 
-    # Test empty bucket
-    with pytest.raises(ValueError, match="Invalid S3 URL format"):
-        await S3Adapter.from_url_segment(segment, "s3:///key")
+    # Test invalid protocol
+    with pytest.raises(ValueError, match="Unsupported S3 URL format"):
+        await S3Adapter.from_url_segment(segment, "gs://bucket/path")
 
 
 async def test_s3_http_adapter_url_parsing() -> None:
@@ -1967,7 +1981,7 @@ async def test_s3_http_adapter_url_parsing() -> None:
     # Skip if s3fs is not available
     pytest.importorskip("s3fs", reason="s3fs not available")
 
-    # Test S3HttpAdapter
+    # Test S3HttpAdapter URL parsing (now that + is allowed in adapter names)
     segment = URLSegment(adapter="s3+http")
     # This should try to parse the custom endpoint
     with contextlib.suppress(ImportError):
@@ -1980,8 +1994,9 @@ async def test_s3_http_adapter_url_parsing() -> None:
         await S3HttpsAdapter.from_url_segment(segment, "s3+https://custom.endpoint.com/bucket/key")
 
     # Test error condition - invalid custom endpoint URL
-    with pytest.raises(ValueError, match="Invalid S3 custom endpoint URL format"):
-        await S3HttpAdapter.from_url_segment(segment, "s3+http://")
+    http_segment = URLSegment(adapter="s3+http")
+    with pytest.raises(ValueError, match="Unsupported S3 URL format"):
+        await S3HttpAdapter.from_url_segment(http_segment, "invalid://not-s3-format")
 
 
 async def test_gc_adapter_missing_coverage() -> None:

@@ -47,7 +47,7 @@ class URLSegment:
 
         if not self.scheme and not self.adapter:
             raise ZEP8URLError("URL segment must have either scheme or adapter")
-        if self.adapter and not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$", self.adapter):
+        if self.adapter and not re.match(r"^[a-zA-Z][a-zA-Z0-9_+-]*$", self.adapter):
             raise ZEP8URLError(f"Invalid adapter name: {self.adapter}")
 
 
