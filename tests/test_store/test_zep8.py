@@ -1920,21 +1920,21 @@ async def test_zip_adapter_missing_coverage() -> None:
     assert schemes == []
 
     # Test ZIP with storage options (should ignore them)
-    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-        tmp_path = tmp.name
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_path = Path(temp_dir) / "test.zip"
 
-    # Create a zip file with zarr data
-    with zipfile.ZipFile(tmp_path, "w") as zf:
-        zf.writestr(".zgroup", "{}")  # Valid zarr group
+        # Create a zip file with zarr data
+        with zipfile.ZipFile(tmp_path, "w") as zf:
+            zf.writestr(".zgroup", "{}")  # Valid zarr group
 
-    try:
         segment = URLSegment(adapter="zip", path="")
         result = await ZipAdapter.from_url_segment(
             segment, f"file:{tmp_path}", storage_options={"some_option": "value"}
         )
         assert result is not None
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        # Close the store to release the file handle on Windows
+        result.close()
+        # File will be automatically cleaned up when temp_dir is removed
 
 
 async def test_logging_adapter_missing_coverage() -> None:
@@ -2494,10 +2494,9 @@ async def test_zip_adapter_remote_functionality() -> None:
     segment = URLSegment(adapter="zip", path="inner")
 
     # Create a temporary zip file to test with
-    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-        tmp_path = tmp.name
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tmp_path = Path(temp_dir) / "test.zip"
 
-    try:
         # Create a valid zip file
         with zipfile.ZipFile(tmp_path, "w") as zf:
             zf.writestr(".zgroup", "{}")
@@ -2506,9 +2505,9 @@ async def test_zip_adapter_remote_functionality() -> None:
         # Test with file: URL (should convert to local path)
         result = await ZipAdapter.from_url_segment(segment, f"file:{tmp_path}")
         assert result is not None
-
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        # Close the store to release the file handle on Windows
+        result.close()
+        # File will be automatically cleaned up when temp_dir is removed
 
 
 async def test_zip_adapter_remote_error_handling() -> None:
