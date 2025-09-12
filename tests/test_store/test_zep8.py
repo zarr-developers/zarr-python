@@ -2289,8 +2289,14 @@ async def test_url_store_resolver_error_handling() -> None:
     with pytest.raises(ValueError, match="Unknown store adapter"):
         await resolver.resolve_url("unknown_adapter:")
 
-    # Test malformed URL that gets past initial parsing
+    # Test valid adapter name format but unknown adapter
     with pytest.raises(ValueError, match="Unknown store adapter"):
+        await resolver.resolve_url("validbutunknown:")
+
+    # Test invalid adapter name format (starts with number)
+    from zarr.storage._zep8 import ZEP8URLError
+
+    with pytest.raises(ZEP8URLError, match="Invalid adapter name"):
         await resolver.resolve_url("999invalid:")
 
 
