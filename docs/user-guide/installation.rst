@@ -49,7 +49,9 @@ Development wheels are built nightly and published to the `scientific-python-nig
 
 .. code-block:: console
 
-    $ pip install --pre --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple zarr
+    $ pip install --pre \
+        --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple \
+        zarr
 
 Note that nightly wheels may be unstable and are intended for testing purposes.
 
