@@ -20,6 +20,7 @@ from zarr.core.dtype.npy.common import (
     check_json_float_v2,
     check_json_float_v3,
     check_json_int,
+    check_json_intish_float,
     check_json_str,
     complex_float_to_json_v2,
     complex_float_to_json_v3,
@@ -318,6 +319,12 @@ def test_check_json_complex_float_false(data: JSON, zarr_format: ZarrFormat) -> 
 def test_check_json_int() -> None:
     assert check_json_int(0)
     assert not check_json_int(1.0)
+
+
+def test_check_json_intish_float() -> None:
+    assert check_json_intish_float(0)
+    assert check_json_intish_float(1.0)
+    assert not check_json_intish_float("0")
 
 
 def test_check_json_str() -> None:
