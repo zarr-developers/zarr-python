@@ -323,7 +323,12 @@ def is_zep8_url(url: Any) -> bool:
                 and adapter_name.lower() not in standard_schemes
                 and "/" not in adapter_name
                 and "\\" not in adapter_name
-                and not (len(adapter_name) == 1 and adapter_name.isalpha() and len(parts) == 2 and (parts[1].startswith("/") or parts[1].startswith("\\")))
+                and not (
+                    len(adapter_name) == 1
+                    and adapter_name.isalpha()
+                    and len(parts) == 2
+                    and (parts[1].startswith("/") or parts[1].startswith("\\"))
+                )
                 and (
                     adapter_name.isalnum()
                     or adapter_name.replace("_", "").replace("-", "").isalnum()
