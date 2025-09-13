@@ -138,10 +138,10 @@ def fully_qualified_name(cls: type) -> str:
     return module + "." + cls.__qualname__
 
 
-def register_codec(key: str, codec_cls: type[Codec]) -> None:
+def register_codec(key: str, codec_cls: type[Codec], *, qualname: str | None = None) -> None:
     if key not in __codec_registries:
         __codec_registries[key] = Registry()
-    __codec_registries[key].register(codec_cls)
+    __codec_registries[key].register(codec_cls, qualname=qualname)
 
 
 def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
@@ -171,7 +171,6 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     codec_classes = __codec_registries[key]
     if not codec_classes:
         raise KeyError(key)
-
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
         if len(codec_classes) == 1:
