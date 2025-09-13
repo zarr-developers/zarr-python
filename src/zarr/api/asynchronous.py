@@ -250,14 +250,23 @@ async def consolidate_metadata(
 
 
 async def copy(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     raise NotImplementedError
 
 
 async def copy_all(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     raise NotImplementedError
 
 
 async def copy_store(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     raise NotImplementedError
 
 

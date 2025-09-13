@@ -28,7 +28,7 @@ class TestInt8(BaseTestZDType):
         {"name": "int8", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((Int8(), 1), (Int8(), -1))
+    scalar_v2_params = ((Int8(), 1), (Int8(), -1), (Int8(), 1.0))
     scalar_v3_params = ((Int8(), 1), (Int8(), -1))
     cast_value_params = (
         (Int8(), 1, np.int8(1)),
@@ -63,7 +63,7 @@ class TestInt16(BaseTestZDType):
         {"name": "int16", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((Int16(), 1), (Int16(), -1))
+    scalar_v2_params = ((Int16(), 1), (Int16(), -1), (Int16(), 1.0))
     scalar_v3_params = ((Int16(), 1), (Int16(), -1))
     cast_value_params = (
         (Int16(), 1, np.int16(1)),
@@ -101,7 +101,7 @@ class TestInt32(BaseTestZDType):
         {"name": "int32", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((Int32(), 1), (Int32(), -1))
+    scalar_v2_params = ((Int32(), 1), (Int32(), -1), (Int32(), 1.0))
     scalar_v3_params = ((Int32(), 1), (Int32(), -1))
     cast_value_params = (
         (Int32(), 1, np.int32(1)),
@@ -136,7 +136,7 @@ class TestInt64(BaseTestZDType):
         {"name": "int64", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((Int64(), 1), (Int64(), -1))
+    scalar_v2_params = ((Int64(), 1), (Int64(), -1), (Int64(), 1.0))
     scalar_v3_params = ((Int64(), 1), (Int64(), -1))
     cast_value_params = (
         (Int64(), 1, np.int64(1)),
@@ -168,7 +168,7 @@ class TestUInt8(BaseTestZDType):
         {"name": "uint8", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((UInt8(), 1), (UInt8(), 0))
+    scalar_v2_params = ((UInt8(), 1), (UInt8(), 0), (UInt8(), 1.0))
     scalar_v3_params = ((UInt8(), 1), (UInt8(), 0))
     cast_value_params = (
         (UInt8(), 1, np.uint8(1)),
@@ -203,7 +203,7 @@ class TestUInt16(BaseTestZDType):
         {"name": "uint16", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((UInt16(), 1), (UInt16(), 0))
+    scalar_v2_params = ((UInt16(), 1), (UInt16(), 0), (UInt16(), 1.0))
     scalar_v3_params = ((UInt16(), 1), (UInt16(), 0))
     cast_value_params = (
         (UInt16(), 1, np.uint16(1)),
@@ -238,7 +238,7 @@ class TestUInt32(BaseTestZDType):
         {"name": "uint32", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((UInt32(), 1), (UInt32(), 0))
+    scalar_v2_params = ((UInt32(), 1), (UInt32(), 0), (UInt32(), 1.0))
     scalar_v3_params = ((UInt32(), 1), (UInt32(), 0))
     cast_value_params = (
         (UInt32(), 1, np.uint32(1)),
@@ -273,7 +273,7 @@ class TestUInt64(BaseTestZDType):
         {"name": "uint64", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((UInt64(), 1), (UInt64(), 0))
+    scalar_v2_params = ((UInt64(), 1), (UInt64(), 0), (UInt64(), 1.0))
     scalar_v3_params = ((UInt64(), 1), (UInt64(), 0))
     cast_value_params = (
         (UInt64(), 1, np.uint64(1)),
