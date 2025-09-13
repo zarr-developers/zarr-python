@@ -65,7 +65,6 @@ __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
 __chunk_key_encoding_registry: Registry[ChunkKeyEncoding] = Registry()
 
-# CHANGE: Consider updating docstring
 """
 The registry module is responsible for managing implementations of codecs,
 pipelines, buffers, ndbuffers, and chunk key encodings and collecting them from entrypoints.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypeAlias, TypedDict, cast
 
@@ -29,7 +29,7 @@ class ChunkKeyEncodingParams(TypedDict):
 
 
 @dataclass(frozen=True)
-class ChunkKeyEncoding(Metadata):
+class ChunkKeyEncoding(ABC, Metadata):
     name: str
     separator: SeparatorLiteral = "."
 
@@ -45,13 +45,19 @@ class ChunkKeyEncoding(Metadata):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": {"separator": self.separator}}
 
-    @abstractmethod
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
-        pass
+        """
+        Optional: decode a chunk key string into chunk coordinates.
+        Not required for normal operation; override if needed for testing or debugging.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__} does not implement decode_chunk_key.")
 
     @abstractmethod
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
-        pass
+        """
+        Encode chunk coordinates into a chunk key string.
+        Must be implemented by subclasses.
+        """
 
 
 ChunkKeyEncodingLike: TypeAlias = dict[str, JSON] | ChunkKeyEncodingParams | ChunkKeyEncoding
