@@ -74,6 +74,7 @@ from zarr.errors import (
     ZarrUserWarning,
 )
 from zarr.storage import LocalStore, MemoryStore, StorePath
+from zarr.storage._logging import LoggingStore
 
 from .test_dtype.conftest import zdtype_examples
 
@@ -1759,7 +1760,6 @@ def test_roundtrip_numcodecs() -> None:
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
     root = zarr.open_group(store)
-
     with pytest.warns(ZarrUserWarning, match=warn_msg):
         metadata = root["test"].metadata.to_dict()
     # The names will change because numcodecs.<codec> is an alias for <codec>
@@ -2124,3 +2124,28 @@ def test_iter_chunk_regions(
     assert observed == expected
     assert observed == tuple(arr._iter_chunk_regions())
     assert observed == tuple(arr._async_array._iter_chunk_regions())
+
+
+@pytest.mark.parametrize("num_shards", [1, 3])
+@pytest.mark.parametrize("array_type", ["numpy", "zarr"])
+def test_create_array_with_data_num_gets(
+    num_shards: int, array_type: Literal["numpy", "zarr"]
+) -> None:
+    """
+    Test that creating an array with data only invokes a single get request per stored object
+    """
+    store = LoggingStore(store=MemoryStore())
+
+    chunk_shape = (1,)
+    shard_shape = (100,)
+    shape = (shard_shape[0] * num_shards,)
+    data: Array | npt.NDArray[np.int64]
+    if array_type == "numpy":
+        data = np.zeros(shape[0], dtype="int64")
+    else:
+        data = zarr.zeros(shape, dtype="int64")
+
+    zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)  # type: ignore[arg-type]
+    # one get for the metadata and one per shard.
+    # Note: we don't actually need one get per shard, but this is the current behavior
+    assert store.counter["get"] == 1 + num_shards

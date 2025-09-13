@@ -4442,7 +4442,7 @@ async def from_array(
 
             # Stream data from the source array to the new array
             await concurrent_map(
-                [(region, data) for region in result._iter_chunk_regions()],
+                [(region, data) for region in result._iter_shard_regions()],
                 _copy_arraylike_region,
                 zarr.core.config.config.get("async.concurrency"),
             )
