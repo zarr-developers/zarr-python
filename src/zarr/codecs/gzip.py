@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, overload
+from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast, overload
 
 from numcodecs.gzip import GZip
 from typing_extensions import ReadOnly
@@ -64,10 +64,10 @@ class GzipCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return self.to_json(zarr_format=3)
+        return cast(dict[str, JSON], self.to_json(zarr_format=3))
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> GZipJSON_V2: ...
@@ -88,8 +88,8 @@ class GzipCodec(BytesBytesCodec):
         return (
             isinstance(data, Mapping)
             and set(data.keys()) == {"id", "level"}
-            and data["id"] == "gzip"
-            and isinstance(data["level"], int)
+            and data["id"] == "gzip"  # type: ignore[typeddict-item]
+            and isinstance(data["level"], int)  # type: ignore[typeddict-item]
         )
 
     @classmethod
@@ -97,10 +97,10 @@ class GzipCodec(BytesBytesCodec):
         return (
             isinstance(data, Mapping)
             and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == "gzip"
-            and isinstance(data["configuration"], dict)
-            and "level" in data["configuration"]
-            and isinstance(data["configuration"]["level"], int)
+            and data["name"] == "gzip"  # type: ignore[typeddict-item]
+            and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
+            and "level" in data["configuration"]  # type: ignore[typeddict-item]
+            and isinstance(data["configuration"]["level"], int)  # type: ignore[typeddict-item]
         )
 
     @classmethod

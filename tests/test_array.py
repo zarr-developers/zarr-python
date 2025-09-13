@@ -1377,7 +1377,6 @@ class TestCreateArray:
         assert arr.metadata.zarr_format == 2  # guard for mypy
         assert arr.metadata.compressor == compressor_expected
         assert arr.metadata.filters == filters_expected
-
         # Normalize for property getters
         arr_compressors_expected = () if compressor_expected is None else (compressor_expected,)
         arr_filters_expected = () if filters_expected is None else filters_expected
@@ -1764,7 +1763,7 @@ def test_roundtrip_numcodecs() -> None:
         metadata = root["test"].metadata.to_dict()
     # The names will change because numcodecs.<codec> is an alias for <codec>
     expected = tuple(
-        {"name": v["name"].removeprefix("numcodecs."), "configuration": v["configuration"]}
+        {"name": v["name"].removeprefix("numcodecs."), "configuration": v["configuration"]}  # type: ignore[index, attr-defined]
         for v in (*filters, BYTES_CODEC, *compressors)
     )
     assert metadata["codecs"] == expected

@@ -521,7 +521,7 @@ def codecs_from_list(
                 array_bytes_idcs += ((idx, codec),)
             case BytesBytesCodec():
                 bytes_bytes_idcs += ((idx, codec),)
-            case NumcodecsWrapper():  # type: ignore[union-attr]
+            case NumcodecsWrapper():
                 numcodec_wrapper_idcs += ((idx, codec),)
 
     if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs_tup) > 1:

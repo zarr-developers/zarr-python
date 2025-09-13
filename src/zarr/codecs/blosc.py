@@ -75,7 +75,7 @@ def check_json_v2(data: CodecJSON) -> TypeGuard[BloscJSON_V2]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"id", "clevel", "cname", "shuffle", "blocksize"}
-        and data["id"] == "blosc"
+        and data["id"] == "blosc"  # type: ignore[typeddict-item]
     )
 
 
@@ -83,9 +83,9 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[BloscJSON_V3]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"name", "configuration"}
-        and data["name"] == "blosc"
-        and isinstance(data["configuration"], Mapping)
-        and set(data["configuration"].keys())
+        and data["name"] == "blosc"  # type: ignore[typeddict-item]
+        and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
+        and set(data["configuration"].keys())  # type: ignore[typeddict-item]
         == {"cname", "clevel", "shuffle", "blocksize", "typesize"}
     )
 

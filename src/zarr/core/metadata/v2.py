@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 from zarr.abc.codec import ArrayArrayCodec, Codec
 from zarr.abc.metadata import Metadata
-from zarr.abc.numcodec import Numcodec, _is_numcodec
+from zarr.abc.numcodec import Numcodec
 from zarr.codecs._v2 import NumcodecsWrapper
 from zarr.codecs.blosc import BloscCodec
 from zarr.core.buffer.core import default_buffer_prototype
@@ -225,7 +225,7 @@ class ArrayV2Metadata(Metadata):
             zarray_dict["fill_value"] = fill_value
 
         # serialize the dtype after fill value-specific JSON encoding
-        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)["name"]  # type: ignore[assignment]
+        zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)["name"]
 
         return zarray_dict
 
@@ -281,17 +281,17 @@ def _parse_codec(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecsWrap
             )
         return data
 
-    if _is_numcodec(data):
+    if isinstance(data, Numcodec):
         try:
             # attempt to get a v3-api compatible version of this codec from the registry
-            return get_codec(data.get_config(), zarr_format=2)
+            return get_codec(data.get_config())
         except KeyError:
             # if we could not find a v3-api compatible version of this codec, wrap it
             # in a NumcodecsWrapper
-            return NumcodecsWrapper(codec_cls=type(data), config=data.get_config())
+            return NumcodecsWrapper(codec=data)
 
     if isinstance(data, Mapping):
-        return get_codec(data, zarr_format=2)
+        return get_codec(data)
 
     raise TypeError(
         f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
@@ -343,7 +343,7 @@ def is_object_codec(codec: JSON) -> bool:
     return codec.get("id") in OBJECT_CODEC_IDS
 
 
-def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
+def get_object_codec_id(maybe_object_codecs: Sequence[Mapping[str, object]]) -> str | None:
     """
     Inspect a sequence of codecs / filters for an "object codec", i.e. a codec
     that can serialize object arrays to contiguous bytes. Zarr python

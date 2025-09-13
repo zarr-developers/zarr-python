@@ -1,8 +1,9 @@
 from typing import Any, Self, TypeGuard
 
-from typing_extensions import Protocol
+from typing_extensions import Protocol, runtime_checkable
 
 
+@runtime_checkable
 class Numcodec(Protocol):
     """
     A protocol that models the ``numcodecs.abc.Codec`` interface.
@@ -88,14 +89,3 @@ def _is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:
         and hasattr(obj, "from_config")
         and callable(obj.from_config)
     )
-
-
-def _is_numcodec(obj: object) -> TypeGuard[Numcodec]:
-    """
-    Check if the given object implements the Numcodec protocol.
-
-    The @runtime_checkable decorator does not allow issubclass checks for protocols with non-method
-    members (i.e., attributes), so we use this function to manually check for the presence of the
-    required attributes and methods on a given object.
-    """
-    return _is_numcodec_cls(type(obj))

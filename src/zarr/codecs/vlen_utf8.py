@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, overload
+from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
 from numcodecs.vlen import VLenBytes, VLenUTF8
 
-from zarr.abc.codec import ArrayBytesCodec, CodecJSON, CodecJSON_V2
+from zarr.abc.codec import ArrayBytesCodec, CodecJSON
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
+from zarr.core.common import JSON, NamedConfig, ZarrFormat
 
 if TYPE_CHECKING:
     from typing import Self
@@ -21,19 +21,21 @@ _vlen_utf8_codec = VLenUTF8()
 _vlen_bytes_codec = VLenBytes()
 
 
-class VlenUF8Config(TypedDict): ...
+class VlenUTF8Config(TypedDict): ...
 
 
-class VLenUTF8JSON_V2(CodecJSON_V2[Literal["vlen-utf8"]]): ...
+class VLenUTF8JSON_V2(VlenUTF8Config):
+    id: Literal["vlen-utf8"]
 
 
-class VLenUTF8JSON_V3(NamedConfig[Literal["vlen-utf8"], VlenUF8Config]): ...
+class VLenUTF8JSON_V3(NamedConfig[Literal["vlen-utf8"], VlenUTF8Config]): ...
 
 
 class VLenBytesConfig(TypedDict): ...
 
 
-class VLenBytesJSON_V2(CodecJSON_V2[Literal["vlen-bytes"]]): ...
+class VLenBytesJSON_V2(VLenBytesConfig):
+    id: Literal["vlen-bytes"]
 
 
 VLenBytesJSON_V3 = NamedConfig[Literal["vlen-bytes"], VLenBytesConfig] | Literal["vlen-bytes"]
@@ -43,15 +45,10 @@ VLenBytesJSON_V3 = NamedConfig[Literal["vlen-bytes"], VLenBytesConfig] | Literal
 class VLenUTF8Codec(ArrayBytesCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
-        _, configuration_parsed = parse_named_configuration(
-            data, "vlen-utf8", require_configuration=False
-        )
-        configuration_parsed = configuration_parsed or {}
-        return cls(**configuration_parsed)
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "vlen-utf8", "configuration": {}}
+        return cast(dict[str, JSON], self.to_json(zarr_format=3))
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> VLenUTF8JSON_V2: ...
@@ -124,7 +121,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
 class VLenBytesCodec(ArrayBytesCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
+        return cls.from_json(data)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "vlen-bytes", "configuration": {}}

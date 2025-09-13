@@ -54,9 +54,9 @@ def check_json_v2(data: CodecJSON) -> TypeGuard[TransposeJSON_V2]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"id", "configuration"}
-        and data["id"] == "transpose"
-        and isinstance(data["order"], Sequence)
-        and not isinstance(data["order"], str)
+        and data["id"] == "transpose"  # type: ignore[typeddict-item]
+        and isinstance(data["order"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["order"], str)  # type: ignore[typeddict-item]
     )
 
 
@@ -64,9 +64,9 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[TransposeJSON_V3]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"name", "configuration"}
-        and data["name"] == "transpose"
-        and isinstance(data["configuration"], Mapping)
-        and set(data["configuration"].keys()) == {"order"}
+        and data["name"] == "transpose"  # type: ignore[typeddict-item]
+        and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
+        and set(data["configuration"].keys()) == {"order"}  # type: ignore[typeddict-item]
     )
 
 
@@ -83,12 +83,12 @@ class TransposeCodec(ArrayArrayCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
+        return cls.from_json(data)
 
     @classmethod
-    def _from_json_v2(cls, data: str | Mapping[str, object]) -> Self:
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
         if check_json_v2(data):
-            return cls(order=data["order"])  # type: ignore[arg-type]
+            return cls(order=data["order"])
         msg = (
             "Invalid Zarr V2 JSON representation of the transpose codec. "
             f"Got {data!r}, expected a Mapping with keys ('id', 'order')"
@@ -96,7 +96,7 @@ class TransposeCodec(ArrayArrayCodec):
         raise CodecValidationError(msg)
 
     @classmethod
-    def _from_json_v3(cls, data: str | Mapping[str, object]) -> Self:
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
         if check_json_v3(data):
             return cls(order=data["configuration"]["order"])
         msg = (
@@ -115,7 +115,7 @@ class TransposeCodec(ArrayArrayCodec):
     @overload
     def to_json(self, zarr_format: Literal[3]) -> TransposeJSON_V3: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> CodecJSON:
+    def to_json(self, zarr_format: ZarrFormat) -> TransposeJSON_V2 | TransposeJSON_V3:
         if zarr_format == 2:
             return {"id": "transpose", "order": self.order}
         elif zarr_format == 3:

@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, cast, overload
 
 import numcodecs
 from numcodecs.zstd import Zstd
@@ -58,9 +58,9 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[ZstdJSON_V3]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"name", "configuration"}
-        and data["name"] == "zstd"
-        and isinstance(data["configuration"], Mapping)
-        and set(data["configuration"].keys()) == {"level", "checksum"}
+        and data["name"] == "zstd"  # type: ignore[typeddict-item]
+        and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
+        and set(data["configuration"].keys()) == {"level", "checksum"}  # type: ignore[typeddict-item]
     )
 
 
@@ -102,13 +102,13 @@ class ZstdCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
+        return cls.from_json(data)
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
         if check_json_v2(data):
             if "checksum" in data:
-                return cls(level=data["level"], checksum=data["checksum"])
+                return cls(level=data["level"], checksum=data["checksum"])  # type: ignore[typeddict-item]
             else:
                 return cls(level=data["level"])
 
@@ -132,7 +132,7 @@ class ZstdCodec(BytesBytesCodec):
         raise CodecValidationError(msg)
 
     def to_dict(self) -> dict[str, JSON]:
-        return self.to_json(zarr_format=3)
+        return cast(dict[str, JSON], self.to_json(zarr_format=3))
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> ZstdJSON_V2: ...

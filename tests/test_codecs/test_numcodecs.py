@@ -9,7 +9,7 @@ import pytest
 from numcodecs import GZip
 
 from zarr import config, create_array, open_array
-from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
+from zarr.abc.numcodec import Numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
@@ -60,9 +60,9 @@ def test_get_numcodec() -> None:
 
 def test_is_numcodec() -> None:
     """
-    Test the _is_numcodec function
+    Test isinstance with a Numcodec
     """
-    assert _is_numcodec(GZip())
+    assert isinstance(GZip(), Numcodec)
 
 
 def test_is_numcodec_cls() -> None:
@@ -321,7 +321,8 @@ def test_repr() -> None:
 
 def test_to_dict() -> None:
     codec = _numcodecs.LZ4(level=5)
-    assert codec.to_dict() == {"name": "lz4", "configuration": {"level": 5}}
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+        assert codec.to_dict() == {"name": "lz4", "configuration": {"level": 5}}
 
 
 @pytest.mark.parametrize(

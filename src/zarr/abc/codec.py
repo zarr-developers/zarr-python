@@ -8,12 +8,11 @@ from typing import (
     Literal,
     Self,
     TypedDict,
-    TypeGuard,
     TypeVar,
     overload,
 )
 
-from typing_extensions import ReadOnly
+from typing_extensions import ReadOnly, TypeIs
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
@@ -46,16 +45,14 @@ __all__ = [
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
-TName = TypeVar("TName", bound=str, covariant=True)
 
-
-class CodecJSON_V2(TypedDict, Generic[TName]):
+class CodecJSON_V2(TypedDict):
     """The JSON representation of a codec for Zarr V2"""
 
-    id: ReadOnly[TName]
+    id: ReadOnly[str]
 
 
-def _check_codecjson_v2(data: object) -> TypeGuard[CodecJSON_V2[str]]:
+def _check_codecjson_v2(data: object) -> TypeIs[CodecJSON_V2]:
     return isinstance(data, Mapping) and "id" in data and isinstance(data["id"], str)
 
 
@@ -64,7 +61,7 @@ CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
 
 # The widest type we will *accept* for a codec JSON
 # This covers v2 and v3
-CodecJSON = str | Mapping[str, object]
+CodecJSON = CodecJSON_V2 | CodecJSON_V3
 """The widest type of JSON-like input that could specify a codec."""
 
 
@@ -191,34 +188,28 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         return await _batching_helper(self._encode_single, chunks_and_specs)
 
     @overload
-    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2: ...
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, Mapping[str, object]]: ...
+    def to_json(self, zarr_format: Literal[3]) -> CodecJSON_V3: ...
 
-    def to_json(
-        self, zarr_format: ZarrFormat
-    ) -> CodecJSON_V2[str] | NamedConfig[str, Mapping[str, object]]:
+    def to_json(self, zarr_format: ZarrFormat) -> CodecJSON_V2 | CodecJSON_V3:
         raise NotImplementedError
 
     @classmethod
-    def _from_json_v2(cls, data: CodecJSON_V2[str]) -> Self:
+    def _from_json_v2(cls, data: CodecJSON_V2) -> Self:
         return cls(**{k: v for k, v in data.items() if k != "id"})
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
         if isinstance(data, str):
             return cls()
-        return cls(**data["configuration"])
+        return cls(**data.get("configuration", {}))
 
     @classmethod
-    def from_json(cls, data: CodecJSON, zarr_format: ZarrFormat) -> Self:
-        if zarr_format == 2:
+    def from_json(cls, data: CodecJSON) -> Self:
+        if _check_codecjson_v2(data):
             return cls._from_json_v2(data)
-        elif zarr_format == 3:
-            return cls._from_json_v3(data)
-        raise ValueError(
-            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
-        )  # pragma: no cover
+        return cls._from_json_v3(data)
 
 
 class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):

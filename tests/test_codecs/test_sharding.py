@@ -1,5 +1,4 @@
 import pickle
-from codecs import Codec
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -10,6 +9,7 @@ import zarr
 import zarr.api
 import zarr.api.asynchronous
 from zarr import Array
+from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,

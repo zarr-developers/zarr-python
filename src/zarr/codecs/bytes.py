@@ -4,7 +4,7 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict, TypeGuard, overload
+from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
 from typing_extensions import ReadOnly
@@ -61,7 +61,7 @@ def check_json_v2(data: CodecJSON) -> TypeGuard[BytesJSON_V2]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) in ({"id", "endian"}, {"id"})
-        and data["id"] == "bytes"
+        and data["id"] == "bytes"  # type: ignore[typeddict-item]
     )
 
 
@@ -70,10 +70,10 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[BytesJSON_V3]:
         (
             isinstance(data, Mapping)
             and set(data.keys()) in ({"name"}, {"name", "configuration"})
-            and data["name"] == "bytes"
+            and data["name"] == "bytes"  # type: ignore[typeddict-item]
         )
         and isinstance(data.get("configuration", {}), Mapping)
-        and set(data.get("configuration", {}).keys()) in ({"endian"}, set())
+        and set(data.get("configuration", {}).keys()) in ({"endian"}, set())  # type: ignore[attr-defined]
     )
 
 
@@ -90,10 +90,10 @@ class BytesCodec(ArrayBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return self.to_json(zarr_format=3)
+        return cast(dict[str, JSON], self.to_json(zarr_format=3))
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
@@ -108,7 +108,7 @@ class BytesCodec(ArrayBytesCodec):
             if data in ("bytes", {"name": "bytes"}, {"name": "bytes", "configuration": {}}):
                 return cls()
             else:
-                return cls(endian=data["configuration"].get("endian", None))
+                return cls(endian=data["configuration"].get("endian", None))  # type: ignore[union-attr, index]
         raise ValueError(f"Invalid JSON: {data}")
 
     @overload
@@ -182,11 +182,11 @@ class BytesCodec(ArrayBytesCodec):
         if (
             chunk_array.dtype.itemsize > 1
             and self.endian is not None
-            and self.endian != chunk_array.byteorder
+            and self.endian != chunk_array.byteorder.value
         ):
             # type-ignore is a numpy bug
             # see https://github.com/numpy/numpy/issues/26473
-            new_dtype = chunk_array.dtype.newbyteorder(self.endian)  # type: ignore[arg-type]
+            new_dtype = chunk_array.dtype.newbyteorder(self.endian)
             chunk_array = chunk_array.astype(new_dtype)
 
         nd_array = chunk_array.as_ndarray_like()

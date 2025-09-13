@@ -24,7 +24,7 @@ from typing_extensions import deprecated
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
-from zarr.abc.numcodec import Numcodec, _is_numcodec
+from zarr.abc.numcodec import Numcodec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.transpose import TransposeCodec
@@ -133,6 +133,7 @@ from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
+    from zarr.codecs._v2 import NumcodecsWrapper
     from collections.abc import Iterator
     from typing import Self
 
@@ -5046,12 +5047,12 @@ def _parse_chunk_encoding_v2(
     compressor: CompressorsLike,
     filters: FiltersLike,
     dtype: ZDType[TBaseDType, TBaseScalar],
-) -> tuple[tuple[Numcodec, ...] | None, Numcodec | None]:
+) -> tuple[tuple[Codec, ...] | None, Codec | None]:
     """
     Generate chunk encoding classes for Zarr format 2 arrays with optional defaults.
     """
-    _filters: tuple[Numcodec, ...] | None
-    _compressor: Numcodec | None
+    _filters: tuple[Codec | NumcodecsWrapper, ...] | None
+    _compressor: Codec | NumcodecsWrapper | None
 
     if compressor is None or compressor == ():
         _compressor = None
@@ -5137,14 +5138,12 @@ def _parse_chunk_encoding_v3(
         out_bytes_bytes = default_compressors_v3(dtype)
     else:
         maybe_bytes_bytes: Iterable[Codec | dict[str, JSON] | Numcodec]
-        if isinstance(compressors, dict | Codec) or _is_numcodec(compressors):
+        if isinstance(compressors, (dict | Codec | Numcodec)):
             maybe_bytes_bytes = (compressors,)
         else:
             maybe_bytes_bytes = compressors  # type: ignore[assignment]
 
-        out_bytes_bytes = tuple(
-            _parse_bytes_bytes_codec(c, zarr_format=3) for c in maybe_bytes_bytes
-        )
+        out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
 
     # specialize codecs as needed given the dtype
 

@@ -51,8 +51,10 @@ from zarr.core.buffer import (
 )
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.common import (
+    JSON,
     NamedRequiredConfig,
     ShapeLike,
+    ZarrFormat,
     parse_enum,
     parse_shapelike,
     product,
@@ -73,7 +75,6 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
     from typing import Self
 
-    from zarr.core.common import JSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 MAX_UINT_64 = 2**64 - 1
@@ -84,9 +85,9 @@ IndexLocation = Literal["start", "end"]
 
 
 class ShardingConfigV2(TypedDict):
-    codecs: tuple[CodecJSON_V2[str], ...]
+    codecs: tuple[CodecJSON_V2, ...]
     chunk_shape: tuple[int, ...]
-    index_codecs: tuple[CodecJSON_V2[str], ...]
+    index_codecs: tuple[CodecJSON_V2, ...]
     index_location: NotRequired[Literal["start", "end"]]
 
 
@@ -134,11 +135,11 @@ def check_json_v2(data: CodecJSON) -> TypeGuard[ShardingJSON_V2]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"id", "codecs", "chunk_shape"}
-        and data["id"] == "sharding_indexed"
-        and isinstance(data["chunk_shape"], Sequence)
-        and not isinstance(data["chunk_shape"], str)
-        and isinstance(data["codecs"], Sequence)
-        and not isinstance(data["codecs"], str)
+        and data["id"] == "sharding_indexed"  # type: ignore[typeddict-item]
+        and isinstance(data["chunk_shape"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["chunk_shape"], str)  # type: ignore[typeddict-item]
+        and isinstance(data["codecs"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["codecs"], str)  # type: ignore[typeddict-item]
     )
 
 
@@ -147,17 +148,17 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[ShardingJSON_V3]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"name", "configuration"}
-        and data["name"] == "sharding_indexed"
-        and isinstance(data["configuration"], Mapping)
-        and set(data["configuration"].keys())
+        and data["name"] == "sharding_indexed"  # type: ignore[typeddict-item]
+        and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
+        and set(data["configuration"].keys())  # type: ignore[typeddict-item]
         == {"codecs", "chunk_shape", "index_codecs", "index_location"}
-        and isinstance(data["configuration"]["chunk_shape"], Sequence)
-        and not isinstance(data["configuration"]["chunk_shape"], str)
-        and isinstance(data["configuration"]["codecs"], Sequence)
-        and not isinstance(data["configuration"]["codecs"], str)
-        and isinstance(data["configuration"]["index_codecs"], Sequence)
-        and not isinstance(data["configuration"]["index_codecs"], str)
-        and data["configuration"]["index_location"] in ("start", "end")
+        and isinstance(data["configuration"]["chunk_shape"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["configuration"]["chunk_shape"], str)  # type: ignore[typeddict-item]
+        and isinstance(data["configuration"]["codecs"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["configuration"]["codecs"], str)  # type: ignore[typeddict-item]
+        and isinstance(data["configuration"]["index_codecs"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["configuration"]["index_codecs"], str)  # type: ignore[typeddict-item]
+        and data["configuration"]["index_location"] in ("start", "end")  # type: ignore[typeddict-item, operator]
     )
 
 
@@ -467,7 +468,7 @@ class ShardingCodec(
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
+        return cls.from_json(data) # type: ignore[arg-type]
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
@@ -488,9 +489,9 @@ class ShardingCodec(
     def _from_json_v3(cls, data: CodecJSON) -> Self:
         if check_json_v3(data):
             return cls(
-                codecs=data["configuration"]["codecs"],
-                index_codecs=data["configuration"]["index_codecs"],
-                index_location=data["configuration"]["index_location"],
+                codecs=data["configuration"]["codecs"], # type: ignore[arg-type]
+                index_codecs=data["configuration"]["index_codecs"], # type: ignore[arg-type]
+                index_location=data["configuration"]["index_location"], # type: ignore[arg-type]
                 chunk_shape=data["configuration"]["chunk_shape"],
             )
         msg = (
@@ -505,7 +506,7 @@ class ShardingCodec(
         return get_pipeline_class().from_codecs(self.codecs)
 
     def to_dict(self) -> dict[str, JSON]:
-        return self.to_json(zarr_format=3)
+        return cast(dict[str, JSON], self.to_json(zarr_format=3))
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> ShardingJSON_V2: ...
@@ -513,7 +514,7 @@ class ShardingCodec(
     @overload
     def to_json(self, zarr_format: Literal[3]) -> ShardingJSON_V3: ...
 
-    def to_json(self, zarr_format: int) -> ShardingJSON_V2 | ShardingJSON_V3:
+    def to_json(self, zarr_format: ZarrFormat) -> ShardingJSON_V2 | ShardingJSON_V3:
         if zarr_format == 2:
             return {
                 "id": "sharding_indexed",

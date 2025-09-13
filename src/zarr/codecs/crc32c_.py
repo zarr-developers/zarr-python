@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast, overload
 import numpy as np
 import typing_extensions
 from crc32c import crc32c
+from typing_extensions import ReadOnly
 
-from zarr.abc.codec import BytesBytesCodec, CodecJSON, CodecJSON_V2
+from zarr.abc.codec import BytesBytesCodec, CodecJSON
 from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.errors import CodecValidationError
 
@@ -19,13 +20,14 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer
 
 
-class Crc32Config(TypedDict): ...
+class Crc32cConfig(TypedDict): ...
 
 
-class Crc32cJSON_V2(CodecJSON_V2[Literal["crc32c"]]): ...
+class Crc32cJSON_V2(TypedDict):
+    id: ReadOnly[Literal["crc32c"]]
 
 
-class Crc32cJSON_V3(NamedConfig[Literal["crc32c"], Crc32Config]): ...
+class Crc32cJSON_V3(NamedConfig[Literal["crc32c"], Crc32cConfig]): ...
 
 
 def check_json_v2(data: CodecJSON) -> TypeGuard[Crc32cJSON_V2]:
@@ -47,7 +49,6 @@ class Crc32cCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
         parse_named_configuration(data, "crc32c", require_configuration=False)
         return cls()
 
@@ -72,7 +73,6 @@ class Crc32cCodec(BytesBytesCodec):
         raise CodecValidationError(msg)
 
     def to_dict(self) -> dict[str, JSON]:
-        return self.to_json(zarr_format=3)
         return {"name": "crc32c"}
 
     @overload

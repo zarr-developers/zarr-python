@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from functools import cached_property
-from typing import TYPE_CHECKING, Literal, Self, overload
+from typing import TYPE_CHECKING, Literal, Self, cast, overload
 
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
@@ -15,11 +14,9 @@ from zarr.abc.codec import (
     CodecJSON,
     CodecJSON_V2,
 )
-from zarr.registry import get_ndbuffer_class
+from zarr.registry import _get_codec_v2, _get_codec_v3, get_ndbuffer_class
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
@@ -115,21 +112,16 @@ class V2Codec(ArrayBytesCodec):
 
 @dataclass(frozen=True, kw_only=True)
 class NumcodecsWrapper:
-    codec_cls: type[Numcodec]
-    config: Mapping[str, object]
-
-    @cached_property
-    def codec(self) -> Numcodec:
-        return self.codec_cls(**self.config)
+    codec: Numcodec
 
     @overload
-    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2[str]: ...
+    def to_json(self, zarr_format: Literal[2]) -> CodecJSON_V2: ...
     @overload
     def to_json(self, zarr_format: Literal[3]) -> NamedConfig[str, BaseConfig]: ...
 
-    def to_json(self, zarr_format: ZarrFormat) -> CodecJSON_V2[str] | NamedConfig[str, BaseConfig]:
+    def to_json(self, zarr_format: ZarrFormat) -> CodecJSON_V2 | NamedConfig[str, BaseConfig]:
         if zarr_format == 2:
-            return self.config
+            return cast(CodecJSON_V2, self.codec.get_config())
         elif zarr_format == 3:
             config = self.codec.get_config()
             config_no_id = {k: v for k, v in config.items() if k != "id"}
@@ -138,11 +130,13 @@ class NumcodecsWrapper:
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
-        return cls(config=data)
+        codec = _get_codec_v2(data)
+        return cls(codec=codec)
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON) -> Self:
-        return cls(config=data.get("configuration", {}))
+        codec = _get_codec_v3(data)
+        return cls(codec=codec)
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
@@ -185,19 +179,19 @@ class NumcodecsWrapper:
         """
         Use the ``_codec`` attribute to create a NumcodecsArrayArrayCodec.
         """
-        return NumcodecsArrayArrayCodec(cls=self.codec_cls, config=self.config)
+        return NumcodecsArrayArrayCodec(codec=self.codec)
 
     def to_bytes_bytes(self) -> NumcodecsBytesBytesCodec:
         """
         Use the ``_codec`` attribute to create a NumcodecsBytesBytesCodec.
         """
-        return NumcodecsBytesBytesCodec(cls=self.codec_cls, config=self.config)
+        return NumcodecsBytesBytesCodec(codec=self.codec)
 
     def to_array_bytes(self) -> NumcodecsArrayBytesCodec:
         """
         Use the ``_codec`` attribute to create a NumcodecsArrayBytesCodec.
         """
-        return NumcodecsArrayBytesCodec(codec_cls=self.codec_cls, config=self.config)
+        return NumcodecsArrayBytesCodec(codec=self.codec)
 
 
 class NumcodecsBytesBytesCodec(NumcodecsWrapper, BytesBytesCodec):
@@ -226,12 +220,12 @@ class NumcodecsArrayArrayCodec(NumcodecsWrapper, ArrayArrayCodec):
     async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
         out = await asyncio.to_thread(self.codec.decode, chunk_ndarray)
-        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))  # type: ignore[union-attr]
+        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out.reshape(chunk_spec.shape))
 
     async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
         out = await asyncio.to_thread(self.codec.encode, chunk_ndarray)
-        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)  # type: ignore[arg-type]
+        return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
 
 
 @dataclass(kw_only=True, frozen=True)
