@@ -1,0 +1,6 @@
+Add optional uvloop support for improved async performance.
+
+When uvloop is available, Zarr will automatically use it as the event loop implementation
+for better I/O performance. This can be controlled via the ``async.use_uvloop`` configuration
+setting or the ``ZARR_ASYNC__USE_UVLOOP`` environment variable. uvloop can be installed
+with ``pip install 'zarr[uvloop]'``.

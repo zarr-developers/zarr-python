@@ -270,6 +270,76 @@ E.g., pickle/unpickle an local store array::
    >>> np.all(z1[:] == z2[:])
    np.True_
 
+.. _user-guide-uvloop:
+
+Event loop optimization with uvloop
+-----------------------------------
+
+Zarr can optionally use `uvloop <https://github.com/MagicStack/uvloop>`_, a fast,
+drop-in replacement for the default Python asyncio event loop implementation.
+uvloop is written in Cython and built on top of libuv, providing significantly
+better performance for I/O-intensive operations.
+
+When uvloop is available, Zarr will use it by default for better performance.
+This is particularly beneficial when working with remote storage backends or
+performing many concurrent operations.
+
+Installation
+~~~~~~~~~~~~
+
+To enable uvloop support, install it as an optional dependency::
+
+   pip install 'zarr[uvloop]'
+
+Or install uvloop directly::
+
+   pip install uvloop
+
+Configuration
+~~~~~~~~~~~~~
+
+uvloop usage can be controlled via Zarr's configuration system:
+
+.. code-block:: python
+
+   import zarr
+
+   # Enable uvloop (default when available)
+   zarr.config.set({"async.use_uvloop": True})
+
+   # Disable uvloop (use standard asyncio)
+   zarr.config.set({"async.use_uvloop": False})
+
+You can also control this via environment variables::
+
+   # Disable uvloop
+   export ZARR_ASYNC__USE_UVLOOP=false
+
+Platform Support
+~~~~~~~~~~~~~~~~~
+
+uvloop is supported on:
+
+- Linux
+- macOS
+- Other Unix-like systems
+
+uvloop is **not** supported on Windows. On Windows, Zarr will automatically
+fall back to the standard asyncio event loop regardless of the configuration setting.
+
+Performance Benefits
+~~~~~~~~~~~~~~~~~~~~
+
+uvloop can provide performance improvements for:
+
+- Remote storage operations (S3, GCS, etc.)
+- Concurrent array operations
+- Large numbers of small I/O operations
+- Network-bound workloads
+
+The performance improvement varies depending on the workload, but can be
+substantial for I/O-intensive operations.
+
 .. _user-guide-tips-blosc:
 
 Configuring Blosc
