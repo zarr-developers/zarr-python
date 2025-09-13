@@ -112,14 +112,23 @@ def consolidate_metadata(
 
 
 def copy(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     return sync(async_api.copy(*args, **kwargs))
 
 
 def copy_all(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     return sync(async_api.copy_all(*args, **kwargs))
 
 
 def copy_store(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     return sync(async_api.copy_store(*args, **kwargs))
 
 
