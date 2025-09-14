@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, ClassVar, Literal, TypeAlias, TypedDict, cast
 
 if TYPE_CHECKING:
     from typing import NotRequired, Self
@@ -30,7 +30,7 @@ class ChunkKeyEncodingParams(TypedDict):
 
 @dataclass(frozen=True)
 class ChunkKeyEncoding(ABC, Metadata):
-    name: str
+    name: ClassVar[str]
     separator: SeparatorLiteral = "."
 
     def __post_init__(self) -> None:
@@ -65,7 +65,7 @@ ChunkKeyEncodingLike: TypeAlias = dict[str, JSON] | ChunkKeyEncodingParams | Chu
 
 @dataclass(frozen=True)
 class DefaultChunkKeyEncoding(ChunkKeyEncoding):
-    name: Literal["default"] = "default"
+    name: ClassVar[Literal["default"]] = "default"
     separator: SeparatorLiteral = "/"  # default
 
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
@@ -79,7 +79,7 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
 
 @dataclass(frozen=True)
 class V2ChunkKeyEncoding(ChunkKeyEncoding):
-    name: Literal["v2"] = "v2"
+    name: ClassVar[Literal["v2"]] = "v2"
     separator: SeparatorLiteral = "."  # default
 
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
