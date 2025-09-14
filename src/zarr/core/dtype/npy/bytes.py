@@ -170,8 +170,8 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     """
     A Zarr data type for arrays containing fixed-length null-terminated byte sequences.
 
-    Wraps the ``np.dtypes.BytesDType`` data type. Scalars for this data type are instances of
-    ``np.bytes_``.
+    Wraps the [`np.dtypes.BytesDType`][numpy.dtypes.BytesDType] data type. Scalars for this data type are instances of
+    [`np.bytes_`][numpy.bytes_].
 
     This data type is parametrized by an integral length which specifies size in bytes of each
     scalar. Because this data type uses null-terminated semantics, indexing into
@@ -413,7 +413,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
     def _cast_scalar_unchecked(self, data: BytesLike) -> np.bytes_:
         """
-        Cast the provided scalar data to ``np.bytes_``, truncating if necessary.
+        Cast the provided scalar data to [`np.bytes_`][numpy.bytes_], truncating if necessary.
 
         Parameters
         ----------
@@ -422,7 +422,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        np.bytes_
+        bytes : [`np.bytes_`][numpy.bytes_]
             The casted data as a NumPy bytes scalar.
 
         Notes
@@ -450,7 +450,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        ``np.bytes_``
+        bytes : [`np.bytes_`][numpy.bytes_]
             The data cast as a NumPy bytes scalar.
 
         Raises
@@ -473,7 +473,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        ``np.bytes_``
+        bytes : [`np.bytes_`][numpy.bytes_]
             The default scalar value.
         """
         return np.bytes_(b"")
@@ -502,7 +502,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bytes_:
         """
-        Read a JSON-serializable value as ``np.bytes_``.
+        Read a JSON-serializable value as [`np.bytes_`][numpy.bytes_].
 
         Parameters
         ----------
@@ -513,7 +513,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        ``np.bytes_``
+        bytes : [`np.bytes_`][numpy.bytes_]
             The NumPy bytes scalar obtained from decoding the base64 string.
 
         Raises
@@ -546,7 +546,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
     """
     A Zarr data type for arrays containing fixed-length sequences of raw bytes.
 
-    Wraps the NumPy ``void`` data type. Scalars for this data type are instances of ``np.void``.
+    Wraps the NumPy ``void`` data type. Scalars for this data type are instances of [`np.void`][numpy.void].
 
     This data type is parametrized by an integral length which specifies size in bytes of each
     scalar belonging to this data type.

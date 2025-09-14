@@ -23,8 +23,8 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     """
     A Zarr data type for arrays containing booleans.
 
-    Wraps the ``np.dtypes.BoolDType`` data type. Scalars for this data type are instances of
-    ``np.bool_``.
+    Wraps the [`np.dtypes.BoolDType`][numpy.dtypes.BoolDType] data type. Scalars for this data type are instances of
+    [`np.bool_`][numpy.bool_].
 
     Attributes
     ----------
@@ -236,7 +236,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        ``np.bool_``
+        bool : np.bool_
             The numpy boolean scalar.
 
         Raises
@@ -258,7 +258,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        ``np.bool_``
+        bool : np.bool_
             The default value.
         """
         return np.False_
@@ -294,7 +294,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
 
         Returns
         -------
-        ``np.bool_``
+        bool : np.bool_
             The numpy boolean scalar.
 
         Raises

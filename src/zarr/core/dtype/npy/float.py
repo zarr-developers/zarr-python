@@ -314,8 +314,8 @@ class Float16(BaseFloat[np.dtypes.Float16DType, np.float16]):
     """
     A Zarr data type for arrays containing 16-bit floating point numbers.
 
-    Wraps the ``np.dtypes.Float16DType`` data type. Scalars for this data type are instances
-    of ``np.float16``.
+    Wraps the [`np.dtypes.Float16DType`][numpy.dtypes.Float16DType] data type. Scalars for this data type are instances
+    of [`np.float16`][numpy.float16].
 
     Attributes
     ----------
@@ -351,8 +351,8 @@ class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
     """
     A Zarr data type for arrays containing 32-bit floating point numbers.
 
-    Wraps the ``np.dtypes.Float32DType`` data type. Scalars for this data type are instances
-    of ``np.float32``.
+    Wraps the [`np.dtypes.Float32DType`][numpy.dtypes.Float32DType] data type. Scalars for this data type are instances
+    of [`np.float32`][numpy.float32].
 
     Attributes
     ----------
@@ -388,8 +388,8 @@ class Float64(BaseFloat[np.dtypes.Float64DType, np.float64]):
     """
     A Zarr data type for arrays containing 64-bit floating point numbers.
 
-    Wraps the ``np.dtypes.Float64DType`` data type. Scalars for this data type are instances
-    of ``np.float64``.
+    Wraps the [`np.dtypes.Float64DType`][numpy.dtypes.Float64DType] data type. Scalars for this data type are instances
+    of [`np.float64`][numpy.float64].
 
     Attributes
     ----------
