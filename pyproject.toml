@@ -407,7 +407,9 @@ ignore = [
 [tool.numpydoc_validation]
 # See https://numpydoc.readthedocs.io/en/latest/validation.html#built-in-validation-checks for list of checks
 checks = [
-    "GL07",
+    # Requires third-party support; see https://github.com/numpy/numpydoc/issues/463
+    # "GL06",
+    # "GL07",
     # Currently broken; see https://github.com/numpy/numpydoc/issues/573
     # "GL09",
     "GL10",
