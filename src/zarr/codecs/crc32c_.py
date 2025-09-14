@@ -30,11 +30,11 @@ class Crc32cJSON_V2(TypedDict):
 class Crc32cJSON_V3(NamedConfig[Literal["crc32c"], Crc32cConfig]): ...
 
 
-def check_json_v2(data: CodecJSON) -> TypeGuard[Crc32cJSON_V2]:
+def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
     return isinstance(data, Mapping) and set(data.keys()) == {"id"} and data["id"] == "crc32c"
 
 
-def check_json_v3(data: CodecJSON) -> TypeGuard[Crc32cJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[Crc32cJSON_V3]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) in ({"name", "configuration"}, {"name"})

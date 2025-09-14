@@ -50,17 +50,17 @@ class ZstdJSON_V3(NamedRequiredConfig[Literal["zstd"], ZstdConfig_V3]):
     """
 
 
-def check_json_v2(data: CodecJSON) -> TypeGuard[ZstdJSON_V2]:
+def check_json_v2(data: object) -> TypeGuard[ZstdJSON_V2]:
     return isinstance(data, Mapping) and set(data.keys()).issuperset({"id", "level"})
 
 
-def check_json_v3(data: CodecJSON) -> TypeGuard[ZstdJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[ZstdJSON_V3]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"name", "configuration"}
-        and data["name"] == "zstd"  # type: ignore[typeddict-item]
-        and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
-        and set(data["configuration"].keys()) == {"level", "checksum"}  # type: ignore[typeddict-item]
+        and data["name"] == "zstd"
+        and isinstance(data["configuration"], Mapping)
+        and set(data["configuration"].keys()) == {"level", "checksum"}
     )
 
 
@@ -102,7 +102,7 @@ class ZstdCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data)
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:

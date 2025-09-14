@@ -57,23 +57,23 @@ def parse_endianness(data: object) -> EndiannessStr:
     raise ValueError(f"Invalid endianness: {data!r}. Expected one of {ENDIANNESS_STR}")
 
 
-def check_json_v2(data: CodecJSON) -> TypeGuard[BytesJSON_V2]:
+def check_json_v2(data: object) -> TypeGuard[BytesJSON_V2]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) in ({"id", "endian"}, {"id"})
-        and data["id"] == "bytes"  # type: ignore[typeddict-item]
+        and data["id"] == "bytes"
     )
 
 
-def check_json_v3(data: CodecJSON) -> TypeGuard[BytesJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[BytesJSON_V3]:
     return data == "bytes" or (
         (
             isinstance(data, Mapping)
             and set(data.keys()) in ({"name"}, {"name", "configuration"})
-            and data["name"] == "bytes"  # type: ignore[typeddict-item]
+            and data["name"] == "bytes"
         )
         and isinstance(data.get("configuration", {}), Mapping)
-        and set(data.get("configuration", {}).keys()) in ({"endian"}, set())  # type: ignore[attr-defined]
+        and set(data.get("configuration", {}).keys()) in ({"endian"}, set())
     )
 
 

@@ -21,6 +21,7 @@ from typing import (
     overload,
 )
 
+import numpy as np
 from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
@@ -243,3 +244,11 @@ def _warn_order_kwarg() -> None:
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_version"""
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
+
+
+def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
+    if np.isscalar(value):
+        return True
+    if hasattr(value, "shape") and value.shape == ():
+        return True
+    return isinstance(value, tuple) and dtype.names is not None and len(value) == len(dtype.names)

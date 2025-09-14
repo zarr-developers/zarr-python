@@ -14,10 +14,9 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.codecs._v2 import NumcodecsWrapper
-from zarr.core.common import concurrent_map
+from zarr.codecs._v2 import NumcodecWrapper
+from zarr.core.common import concurrent_map, is_scalar
 from zarr.core.config import config
-from zarr.core.indexing import SelectorTuple, is_scalar
 from zarr.errors import ZarrUserWarning
 from zarr.registry import register_pipeline
 
@@ -30,6 +29,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.indexing import SelectorTuple
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -493,7 +493,7 @@ class BatchedCodecPipeline(CodecPipeline):
 
 
 def codecs_from_list(
-    codecs: Iterable[Codec],
+    codecs: Iterable[Codec | NumcodecWrapper],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     from zarr.codecs.sharding import ShardingCodec
 
@@ -504,14 +504,14 @@ def codecs_from_list(
     # handle two cases
     # either all of the codecs are numcodecwrapper instances, in which case we set the last element
     # to array-bytes and the rest to array-array
-    # or one of the codecs is an array-bytes, in which case we convert any preceding numcodecswrapper
-    # instances to array-array, and any following numcodecswrapper instances to bytes-bytes
+    # or one of the codecs is an array-bytes, in which case we convert any preceding NumcodecWrapper
+    # instances to array-array, and any following NumcodecWrapper instances to bytes-bytes
 
     codecs_tup = tuple(codecs)
     array_array_idcs: tuple[tuple[int, ArrayArrayCodec], ...] = ()
     array_bytes_idcs: tuple[tuple[int, ArrayBytesCodec], ...] = ()
     bytes_bytes_idcs: tuple[tuple[int, BytesBytesCodec], ...] = ()
-    numcodec_wrapper_idcs: tuple[tuple[int, NumcodecsWrapper], ...] = ()
+    numcodec_wrapper_idcs: tuple[tuple[int, NumcodecWrapper], ...] = ()
 
     for idx, codec in enumerate(codecs_tup):
         match codec:
@@ -521,7 +521,7 @@ def codecs_from_list(
                 array_bytes_idcs += ((idx, codec),)
             case BytesBytesCodec():
                 bytes_bytes_idcs += ((idx, codec),)
-            case NumcodecsWrapper():
+            case NumcodecWrapper():
                 numcodec_wrapper_idcs += ((idx, codec),)
 
     if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs_tup) > 1:
@@ -538,7 +538,7 @@ def codecs_from_list(
         if len(numcodec_wrapper_idcs) == 0:
             msg = (
                 f"The codecs {codecs_tup} do not include an ArrayBytesCodec or a codec castable to an "
-                "ArrayBytesCodec, such as a NumcodecsWrapper. This is an invalid sequence of codecs."
+                "ArrayBytesCodec, such as a NumcodecWrapper. This is an invalid sequence of codecs."
             )
             raise ValueError(msg)
         elif len(numcodec_wrapper_idcs) == len(codecs_tup):
@@ -552,8 +552,8 @@ def codecs_from_list(
             # But we know from experience that the Zarr V2-style chunk encoding pipelines typically
             # start with array-array transformations, so casting all but one of the unknown codecs
             # to array-array is a safe choice.
-            array_bytes_maybe = codecs_tup[-1].to_array_bytes()
-            array_array = tuple(c.to_array_array() for c in codecs_tup[:-1])
+            array_bytes_maybe = codecs_tup[-1].to_array_bytes()  # type: ignore[union-attr]
+            array_array = tuple(c.to_array_array() for c in codecs_tup[:-1])  # type: ignore[union-attr]
         else:
             # There are no array-bytes codecs, there is at least one numcodec wrapper, but there are
             # also some array-array and / or bytes-bytes codecs
@@ -574,7 +574,7 @@ def codecs_from_list(
                     if isinstance(aac, ArrayArrayCodec):
                         # Any array-array codec gets added to the list of array-array codecs
                         array_array += (aac,)
-                    elif isinstance(aac, NumcodecsWrapper):
+                    elif isinstance(aac, NumcodecWrapper):
                         # Any numcodecs wrapper gets converted to an array-array codec
                         array_array += (aac.to_array_array(),)
                     else:
@@ -582,17 +582,17 @@ def codecs_from_list(
                         msg = f"Invalid codec {aac} at index {idx}. Expected an ArrayArrayCodec"
                         raise TypeError(msg)
 
-                if isinstance(codecs_tup[last_array_array_idx + 1], NumcodecsWrapper):
+                if isinstance(codecs_tup[last_array_array_idx + 1], NumcodecWrapper):
                     # The codec following the last array-array codec is a numcodecs wrapper.
                     # We will cast it to an array-bytes codec.
-                    array_bytes_maybe = codecs_tup[last_array_array_idx + 1].to_array_bytes()
+                    array_bytes_maybe = codecs_tup[last_array_array_idx + 1].to_array_bytes()  # type: ignore[union-attr]
                 else:
                     # The codec following the last array-array codec was a bytes bytes codec, or
                     # something else entirely. This is invalid and we raise an exception.
                     msg = (
                         f"Invalid codec {codecs_tup[last_array_array_idx + 1]} at index "
                         f"{last_array_array_idx + 1}."
-                        "Expected a NumcodecsWrapper or an ArrayBytesCodec, got "
+                        "Expected a NumcodecWrapper or an ArrayBytesCodec, got "
                         f"{type(codecs_tup[last_array_array_idx + 1])}"
                     )
                     raise TypeError(msg)
@@ -603,7 +603,7 @@ def codecs_from_list(
                     # iterating over the codecs after that.
                     if isinstance(rem, BytesBytesCodec):
                         bytes_bytes += (rem,)
-                    elif isinstance(rem, NumcodecsWrapper):
+                    elif isinstance(rem, NumcodecWrapper):
                         bytes_bytes += (rem.to_bytes_bytes(),)
                     else:
                         msg = f"Invalid codec {rem} at index {start + idx}. Expected a BytesBytesCodec"
@@ -622,16 +622,16 @@ def codecs_from_list(
                     for idx, bb_codec in enumerate(codecs_tup):
                         if idx < first_bytes_bytes_idx - 1:
                             # This must be a numcodecs wrapper. cast it to array-array
-                            array_array += (bb_codec.to_array_array(),)
+                            array_array += (bb_codec.to_array_array(),)  # type: ignore[union-attr]
                         elif idx == first_bytes_bytes_idx - 1:
-                            array_bytes_maybe = bb_codec.to_array_bytes()
+                            array_bytes_maybe = bb_codec.to_array_bytes()  # type: ignore[union-attr]
                         else:
                             if isinstance(bb_codec, BytesBytesCodec):
                                 bytes_bytes += (bb_codec,)
-                            elif isinstance(bb_codec, NumcodecsWrapper):
+                            elif isinstance(bb_codec, NumcodecWrapper):
                                 bytes_bytes += (bb_codec.to_bytes_bytes(),)
                             else:
-                                msg = f"Invalid codec {bb_codec} at index {idx}. Expected a NumcodecsWrapper"
+                                msg = f"Invalid codec {bb_codec} at index {idx}. Expected a NumcodecWrapper"
                                 raise TypeError(msg)
 
     elif len(array_bytes_idcs) == 1:
@@ -643,7 +643,7 @@ def codecs_from_list(
         for idx, aa_codec in enumerate(codecs_tup[:end]):
             if isinstance(aa_codec, ArrayArrayCodec):
                 array_array += (aa_codec,)
-            elif isinstance(aa_codec, NumcodecsWrapper):
+            elif isinstance(aa_codec, NumcodecWrapper):
                 array_array += (aa_codec.to_array_array(),)
             else:
                 msg = f"Invalid codec {aa_codec} at index {idx}. Expected an ArrayArrayCodec"
@@ -651,7 +651,7 @@ def codecs_from_list(
         start = bb_idx + 1
         if bb_idx < len(codecs_tup) - 1:
             for idx, bb_codec in enumerate(codecs_tup[start:]):
-                if isinstance(bb_codec, NumcodecsWrapper):
+                if isinstance(bb_codec, NumcodecWrapper):
                     bytes_bytes += (bb_codec.to_bytes_bytes(),)
                 elif isinstance(bb_codec, BytesBytesCodec):
                     bytes_bytes += (bb_codec,)

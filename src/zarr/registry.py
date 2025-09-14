@@ -245,11 +245,11 @@ def _parse_array_bytes_codec(
     is converted to a ``ArrayBytesCodec`` instance via the ``_resolve_codec`` function.
     """
     from zarr.abc.codec import ArrayBytesCodec
-    from zarr.codecs._v2 import NumcodecsArrayBytesCodec, NumcodecsWrapper
+    from zarr.codecs._v2 import NumcodecsArrayBytesCodec, NumcodecWrapper
 
-    if isinstance(data, dict):
-        result = get_codec(data)
-        if isinstance(result, NumcodecsWrapper):
+    if isinstance(data, Mapping):
+        result = get_codec(data)  # type: ignore[arg-type]
+        if isinstance(result, NumcodecWrapper):
             result = result.to_array_bytes()
         if not isinstance(result, ArrayBytesCodec):
             msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
@@ -272,11 +272,11 @@ def _parse_array_array_codec(
     is converted to a ``ArrayArrayCodec`` instance via the ``_resolve_codec`` function.
     """
     from zarr.abc.codec import ArrayArrayCodec
-    from zarr.codecs._v2 import NumcodecsArrayArrayCodec, NumcodecsWrapper
+    from zarr.codecs._v2 import NumcodecsArrayArrayCodec, NumcodecWrapper
 
     if isinstance(data, dict):
-        result = get_codec(data)
-        if isinstance(result, NumcodecsWrapper):
+        result = get_codec(data)  # type: ignore[arg-type]
+        if isinstance(result, NumcodecWrapper):
             result = result.to_array_array()
         elif not isinstance(result, ArrayArrayCodec):
             msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."

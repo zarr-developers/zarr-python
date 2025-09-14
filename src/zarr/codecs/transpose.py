@@ -50,23 +50,23 @@ class TransposeJSON_V3(NamedRequiredConfig[Literal["transpose"], TransposeConfig
     """
 
 
-def check_json_v2(data: CodecJSON) -> TypeGuard[TransposeJSON_V2]:
+def check_json_v2(data: object) -> TypeGuard[TransposeJSON_V2]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"id", "configuration"}
-        and data["id"] == "transpose"  # type: ignore[typeddict-item]
-        and isinstance(data["order"], Sequence)  # type: ignore[typeddict-item]
-        and not isinstance(data["order"], str)  # type: ignore[typeddict-item]
+        and data["id"] == "transpose"
+        and isinstance(data["order"], Sequence)
+        and not isinstance(data["order"], str)
     )
 
 
-def check_json_v3(data: CodecJSON) -> TypeGuard[TransposeJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[TransposeJSON_V3]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"name", "configuration"}
-        and data["name"] == "transpose"  # type: ignore[typeddict-item]
-        and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
-        and set(data["configuration"].keys()) == {"order"}  # type: ignore[typeddict-item]
+        and data["name"] == "transpose"
+        and isinstance(data["configuration"], Mapping)
+        and set(data["configuration"].keys()) == {"order"}
     )
 
 
@@ -83,7 +83,7 @@ class TransposeCodec(ArrayArrayCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data)
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:

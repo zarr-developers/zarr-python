@@ -71,21 +71,21 @@ class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):
     """
 
 
-def check_json_v2(data: CodecJSON) -> TypeGuard[BloscJSON_V2]:
+def check_json_v2(data: object) -> TypeGuard[BloscJSON_V2]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"id", "clevel", "cname", "shuffle", "blocksize"}
-        and data["id"] == "blosc"  # type: ignore[typeddict-item]
+        and data["id"] == "blosc"
     )
 
 
-def check_json_v3(data: CodecJSON) -> TypeGuard[BloscJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"name", "configuration"}
-        and data["name"] == "blosc"  # type: ignore[typeddict-item]
-        and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
-        and set(data["configuration"].keys())  # type: ignore[typeddict-item]
+        and data["name"] == "blosc"
+        and isinstance(data["configuration"], Mapping)
+        and set(data["configuration"].keys())
         == {"cname", "clevel", "shuffle", "blocksize", "typesize"}
     )
 
@@ -93,7 +93,7 @@ def check_json_v3(data: CodecJSON) -> TypeGuard[BloscJSON_V3]:
 def parse_cname(value: object) -> BloscCname:
     if value not in BLOSC_CNAME:
         raise ValueError(f"Value must be one of {BLOSC_CNAME}. Got {value} instead.")
-    return value
+    return value  # type: ignore[return-value]
 
 
 # See https://zarr.readthedocs.io/en/stable/user-guide/performance.html#configuring-blosc
@@ -163,7 +163,7 @@ class BloscCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data, zarr_format=3)
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         if self.shuffle is None:

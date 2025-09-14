@@ -59,7 +59,9 @@ from zarr.core.common import (
     ZarrFormat,
     _default_zarr_format,
     _warn_order_kwarg,
+    ceildiv,
     concurrent_map,
+    is_scalar,
     parse_shapelike,
     product,
 )
@@ -92,12 +94,10 @@ from zarr.core.indexing import (
     VIndex,
     _iter_grid,
     _iter_regions,
-    ceildiv,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
-    is_scalar,
     pop_fields,
 )
 from zarr.core.metadata import (
@@ -133,13 +133,13 @@ from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
-    from zarr.codecs._v2 import NumcodecsWrapper
     from collections.abc import Iterator
     from typing import Self
 
     import numpy.typing as npt
 
     from zarr.abc.codec import CodecPipeline
+    from zarr.codecs._v2 import NumcodecWrapper
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.core.group import AsyncGroup
@@ -208,7 +208,7 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
-        _codecs: tuple[Codec, ...] = ()
+        _codecs: tuple[Codec | NumcodecWrapper, ...] = ()
         if metadata.filters is not None:
             _codecs += metadata.filters
         if metadata.compressor is not None:
@@ -237,7 +237,9 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
             # framework, we express C or F ordered arrays by adding a transpose codec to the front
             # of the list of codecs.
             _codecs = (TransposeCodec(order=tuple(reversed(range(metadata.ndim)))),) + _codecs
-        return get_pipeline_class().from_codecs(_codecs)
+            # We ignore this type check failure because we don't want to change the type signature
+            # of the from_codecs method yet.
+        return get_pipeline_class().from_codecs(_codecs)  # type: ignore[arg-type]
     raise TypeError  # pragma: no cover
 
 
@@ -902,7 +904,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         filters: Iterable[CompressorLike_V2] | None = None,
-        compressor: CompressorLike_V2 | Literal["auto"] = "auto",
+        compressor: CompressorLike_V2 | None | Literal["auto"] = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArray[ArrayV2Metadata]:
@@ -914,7 +916,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             await ensure_no_existing_node(store_path, zarr_format=2)
 
-        compressor_parsed: CompressorLike_V2
+        compressor_parsed: CompressorLike_V2 | None
         if compressor == "auto":
             compressor_parsed = default_compressor_v2(dtype)
         else:
@@ -1082,7 +1084,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             filters = self.metadata.filters
             if filters is None:
                 return ()
-            return filters
+            return filters  # type: ignore[return-value]
 
         return tuple(
             codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayArrayCodec)
@@ -1111,7 +1113,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Use `array.compressors` instead.
         """
         if self.metadata.zarr_format == 2:
-            return self.metadata.compressor
+            return self.metadata.compressor  # type: ignore[return-value]
         raise TypeError("`compressor` is not available for Zarr format 3 arrays.")
 
     @property
@@ -1122,7 +1124,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         if self.metadata.zarr_format == 2:
             if self.metadata.compressor is not None:
-                return (self.metadata.compressor,)
+                # The type: ignore here is necessary because there is no requirement that
+                # Zarr V2 compressors be Bytes-to-bytes compressors.
+                return (self.metadata.compressor,)  # type: ignore[return-value]
             return ()
 
         return tuple(
@@ -5039,7 +5043,7 @@ def default_compressor_v2(dtype: ZDType[Any, Any]) -> BytesBytesCodec:
 
     This is just the ``Zstd`` codec.
     """
-    return ZstdCodec(level=0, checksum=False)  # type: ignore[no-any-return]
+    return ZstdCodec(level=0, checksum=False)
 
 
 def _parse_chunk_encoding_v2(
@@ -5047,12 +5051,12 @@ def _parse_chunk_encoding_v2(
     compressor: CompressorsLike,
     filters: FiltersLike,
     dtype: ZDType[TBaseDType, TBaseScalar],
-) -> tuple[tuple[Codec, ...] | None, Codec | None]:
+) -> tuple[tuple[Codec | NumcodecWrapper, ...] | None, Codec | NumcodecWrapper | None]:
     """
     Generate chunk encoding classes for Zarr format 2 arrays with optional defaults.
     """
-    _filters: tuple[Codec | NumcodecsWrapper, ...] | None
-    _compressor: Codec | NumcodecsWrapper | None
+    _filters: tuple[Codec | NumcodecWrapper, ...] | None
+    _compressor: Codec | NumcodecWrapper | None
 
     if compressor is None or compressor == ():
         _compressor = None

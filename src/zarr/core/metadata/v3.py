@@ -89,7 +89,7 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     from zarr.core.codec_pipeline import codecs_from_list
 
     array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
-    _codecs = (*array_array_codecs, array_bytes_codec, *bytes_bytes_codecs)
+    _codecs: tuple[Codec, ...] = (*array_array_codecs, array_bytes_codec, *bytes_bytes_codecs)
 
     abc = validate_array_bytes_codec(_codecs)
 
@@ -341,10 +341,6 @@ class ArrayV3Metadata(Metadata):
         # the metadata document
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
-
-        out_dict["codecs"] = ()
-        for codec in self.codecs:
-            out_dict["codecs"] += (codec.to_json(zarr_format=3),)
 
         # TODO: replace the `to_dict` / `from_dict` on the `Metadata`` class with
         # to_json, from_json, and have ZDType inherit from `Metadata`

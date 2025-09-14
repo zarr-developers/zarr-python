@@ -62,7 +62,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
 
     @classmethod
     def _check_json_v2(cls, data: CodecJSON) -> TypeGuard[VLenUTF8JSON_V2]:
-        return data == {"id": "vlen-utf8"}
+        return data == {"id": "vlen-utf8"}  # type: ignore[comparison-overlap]
 
     @classmethod
     def _check_json_v3(cls, data: CodecJSON) -> TypeGuard[VLenUTF8JSON_V3]:
@@ -121,7 +121,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
 class VLenBytesCodec(ArrayBytesCodec):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data)
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "vlen-bytes", "configuration": {}}
@@ -138,7 +138,7 @@ class VLenBytesCodec(ArrayBytesCodec):
 
     @classmethod
     def _check_json_v2(cls, data: CodecJSON) -> TypeGuard[VLenBytesJSON_V2]:
-        return data == {"id": "vlen-bytes"}
+        return data == {"id": "vlen-bytes"}  # type: ignore[comparison-overlap]
 
     @classmethod
     def _check_json_v3(cls, data: CodecJSON) -> TypeGuard[VLenBytesJSON_V3]:

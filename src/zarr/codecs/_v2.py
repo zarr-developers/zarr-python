@@ -13,8 +13,12 @@ from zarr.abc.codec import (
     BytesBytesCodec,
     CodecJSON,
     CodecJSON_V2,
+    CodecJSON_V3,
+    _check_codecjson_v2,
+    _check_codecjson_v3,
 )
-from zarr.registry import _get_codec_v2, _get_codec_v3, get_ndbuffer_class
+from zarr.errors import CodecValidationError
+from zarr.registry import get_ndbuffer_class, get_numcodec
 
 if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
@@ -24,6 +28,26 @@ if TYPE_CHECKING:
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import BaseConfig, NamedConfig, ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+
+
+def codec_json_v2_to_v3(data: CodecJSON_V2) -> CodecJSON_V3:
+    """
+    Convert V2 codec JSON to V3 codec JSON
+    """
+    name = data["id"]
+    config = {k: v for k, v in data.items() if k != "id"}
+    return {"name": name, "configuration": config}
+
+
+def codec_json_v3_to_v2(data: CodecJSON_V3) -> CodecJSON_V2:
+    """
+    Convert V3 codec JSON to V2 codec JSON
+    """
+    if isinstance(data, str):
+        return {"id": data}
+    name = data["name"]
+    config = dict(data.get("configuration", {}))
+    return {"id": name, **config}  # type: ignore[typeddict-item]
 
 
 @dataclass(frozen=True)
@@ -111,7 +135,7 @@ class V2Codec(ArrayBytesCodec):
 
 
 @dataclass(frozen=True, kw_only=True)
-class NumcodecsWrapper:
+class NumcodecWrapper:
     codec: Numcodec
 
     @overload
@@ -130,13 +154,26 @@ class NumcodecsWrapper:
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
-        codec = _get_codec_v2(data)
-        return cls(codec=codec)
+        if _check_codecjson_v2(data):
+            codec = get_numcodec(data)
+            return cls(codec=codec)
+        msg = (
+            "Invalid Zarr V2 JSON representation of a numcodecs codec. "
+            f"Got {data!r}, expected a Mapping with an 'id' key"
+        )
+        raise CodecValidationError(msg)
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON) -> Self:
-        codec = _get_codec_v3(data)
-        return cls(codec=codec)
+        if _check_codecjson_v3(data):
+            # convert to a v2 codec JSON
+            codec = get_numcodec(codec_json_v3_to_v2(data))
+            return cls(codec=codec)
+        msg = (
+            "Invalid Zarr V3 JSON representation of a codec. "
+            f"Got {data!r}, expected a Mapping with an 'name' key"
+        )
+        raise CodecValidationError(msg)
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
@@ -177,24 +214,24 @@ class NumcodecsWrapper:
 
     def to_array_array(self) -> NumcodecsArrayArrayCodec:
         """
-        Use the ``_codec`` attribute to create a NumcodecsArrayArrayCodec.
+        Use the ``codec`` attribute to create a NumcodecsArrayArrayCodec.
         """
         return NumcodecsArrayArrayCodec(codec=self.codec)
 
     def to_bytes_bytes(self) -> NumcodecsBytesBytesCodec:
         """
-        Use the ``_codec`` attribute to create a NumcodecsBytesBytesCodec.
+        Use the ``codec`` attribute to create a NumcodecsBytesBytesCodec.
         """
         return NumcodecsBytesBytesCodec(codec=self.codec)
 
     def to_array_bytes(self) -> NumcodecsArrayBytesCodec:
         """
-        Use the ``_codec`` attribute to create a NumcodecsArrayBytesCodec.
+        Use the ``codec`` attribute to create a NumcodecsArrayBytesCodec.
         """
         return NumcodecsArrayBytesCodec(codec=self.codec)
 
 
-class NumcodecsBytesBytesCodec(NumcodecsWrapper, BytesBytesCodec):
+class NumcodecsBytesBytesCodec(NumcodecWrapper, BytesBytesCodec):
     async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
         from zarr.core.buffer.cpu import as_numpy_array_wrapper
 
@@ -216,7 +253,7 @@ class NumcodecsBytesBytesCodec(NumcodecsWrapper, BytesBytesCodec):
 
 
 @dataclass(kw_only=True, frozen=True)
-class NumcodecsArrayArrayCodec(NumcodecsWrapper, ArrayArrayCodec):
+class NumcodecsArrayArrayCodec(NumcodecWrapper, ArrayArrayCodec):
     async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
         out = await asyncio.to_thread(self.codec.decode, chunk_ndarray)
@@ -229,7 +266,7 @@ class NumcodecsArrayArrayCodec(NumcodecsWrapper, ArrayArrayCodec):
 
 
 @dataclass(kw_only=True, frozen=True)
-class NumcodecsArrayBytesCodec(NumcodecsWrapper, ArrayBytesCodec):
+class NumcodecsArrayBytesCodec(NumcodecWrapper, ArrayBytesCodec):
     async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_bytes = chunk_data.to_bytes()
         out = await asyncio.to_thread(self.codec.decode, chunk_bytes)

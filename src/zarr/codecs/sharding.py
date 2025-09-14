@@ -131,34 +131,34 @@ def parse_index_location(data: object) -> ShardingCodecIndexLocation:
     return parse_enum(data, ShardingCodecIndexLocation)
 
 
-def check_json_v2(data: CodecJSON) -> TypeGuard[ShardingJSON_V2]:
+def check_json_v2(data: object) -> TypeGuard[ShardingJSON_V2]:
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"id", "codecs", "chunk_shape"}
-        and data["id"] == "sharding_indexed"  # type: ignore[typeddict-item]
-        and isinstance(data["chunk_shape"], Sequence)  # type: ignore[typeddict-item]
-        and not isinstance(data["chunk_shape"], str)  # type: ignore[typeddict-item]
-        and isinstance(data["codecs"], Sequence)  # type: ignore[typeddict-item]
-        and not isinstance(data["codecs"], str)  # type: ignore[typeddict-item]
+        and data["id"] == "sharding_indexed"
+        and isinstance(data["chunk_shape"], Sequence)
+        and not isinstance(data["chunk_shape"], str)
+        and isinstance(data["codecs"], Sequence)
+        and not isinstance(data["codecs"], str)
     )
 
 
-def check_json_v3(data: CodecJSON) -> TypeGuard[ShardingJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[ShardingJSON_V3]:
     # TODO: Automate this with a function that does runtime type checking on typeddicts.
     return (
         isinstance(data, Mapping)
         and set(data.keys()) == {"name", "configuration"}
-        and data["name"] == "sharding_indexed"  # type: ignore[typeddict-item]
-        and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
-        and set(data["configuration"].keys())  # type: ignore[typeddict-item]
+        and data["name"] == "sharding_indexed"
+        and isinstance(data["configuration"], Mapping)
+        and set(data["configuration"].keys())
         == {"codecs", "chunk_shape", "index_codecs", "index_location"}
-        and isinstance(data["configuration"]["chunk_shape"], Sequence)  # type: ignore[typeddict-item]
-        and not isinstance(data["configuration"]["chunk_shape"], str)  # type: ignore[typeddict-item]
-        and isinstance(data["configuration"]["codecs"], Sequence)  # type: ignore[typeddict-item]
-        and not isinstance(data["configuration"]["codecs"], str)  # type: ignore[typeddict-item]
-        and isinstance(data["configuration"]["index_codecs"], Sequence)  # type: ignore[typeddict-item]
-        and not isinstance(data["configuration"]["index_codecs"], str)  # type: ignore[typeddict-item]
-        and data["configuration"]["index_location"] in ("start", "end")  # type: ignore[typeddict-item, operator]
+        and isinstance(data["configuration"]["chunk_shape"], Sequence)
+        and not isinstance(data["configuration"]["chunk_shape"], str)
+        and isinstance(data["configuration"]["codecs"], Sequence)
+        and not isinstance(data["configuration"]["codecs"], str)
+        and isinstance(data["configuration"]["index_codecs"], Sequence)
+        and not isinstance(data["configuration"]["index_codecs"], str)
+        and data["configuration"]["index_location"] in ("start", "end")
     )
 
 
@@ -468,14 +468,16 @@ class ShardingCodec(
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        return cls.from_json(data) # type: ignore[arg-type]
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
         if check_json_v2(data):
+            # TODO: Make these type: ignore statements can go away when we propagate the refined
+            # type information higher in the API by removing `dict[str, JSON]`
             return cls(
-                codecs=data["codecs"],
-                index_codecs=data["index_codecs"],
+                codecs=data["codecs"],  # type: ignore[arg-type]
+                index_codecs=data["index_codecs"],  # type: ignore[arg-type]
                 index_location=data["index_location"],
                 chunk_shape=data["chunk_shape"],
             )
@@ -489,9 +491,9 @@ class ShardingCodec(
     def _from_json_v3(cls, data: CodecJSON) -> Self:
         if check_json_v3(data):
             return cls(
-                codecs=data["configuration"]["codecs"], # type: ignore[arg-type]
-                index_codecs=data["configuration"]["index_codecs"], # type: ignore[arg-type]
-                index_location=data["configuration"]["index_location"], # type: ignore[arg-type]
+                codecs=data["configuration"]["codecs"],  # type: ignore[arg-type]
+                index_codecs=data["configuration"]["index_codecs"],  # type: ignore[arg-type]
+                index_location=data["configuration"]["index_location"],
                 chunk_shape=data["configuration"]["chunk_shape"],
             )
         msg = (
