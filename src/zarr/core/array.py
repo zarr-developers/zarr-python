@@ -2324,12 +2324,12 @@ class Array:
 
     @property
     def attrs(self) -> Attributes:
-        """Returns a MutableMapping containing user-defined attributes.
+        """Returns a [MutableMapping][collections.abc.MutableMapping] containing user-defined attributes.
 
         Returns
         -------
-        attrs : MutableMapping
-            A MutableMapping object containing user-defined attributes.
+        attrs
+            A [MutableMapping][collections.abc.MutableMapping] object containing user-defined attributes.
 
         Notes
         -----
