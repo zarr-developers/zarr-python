@@ -7,9 +7,11 @@ Tests are organized by functionality groups rather than classes.
 
 import contextlib
 import tempfile
+import unittest.mock
 import zipfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -18,18 +20,24 @@ from zarr.abc.store import Store
 from zarr.abc.store_adapter import StoreAdapter, URLSegment
 from zarr.core.array import Array
 from zarr.core.buffer import default_buffer_prototype
-from zarr.registry import get_store_adapter, register_store_adapter
+from zarr.registry import get_store_adapter, list_store_adapters, register_store_adapter
 from zarr.storage import FsspecStore, LocalStore, LoggingStore, MemoryStore, ZipStore
 from zarr.storage._builtin_adapters import (
+    FileSystemAdapter,
     GSAdapter,
     HttpsAdapter,
     LoggingAdapter,
+    MemoryAdapter,
+    RemoteAdapter,
     S3Adapter,
     S3HttpAdapter,
     S3HttpsAdapter,
+    ZipAdapter,
 )
 from zarr.storage._common import make_store_path
-from zarr.storage._zep8 import URLParser, URLStoreResolver, ZEP8URLError, is_zep8_url
+from zarr.storage._fsspec import _make_async
+from zarr.storage._register_adapters import register_builtin_adapters
+from zarr.storage._zep8 import URLParser, URLStoreResolver, ZEP8URLError, is_zep8_url, resolve_url
 
 
 def test_simple_url_parsing() -> None:
@@ -497,8 +505,6 @@ async def test_fsspec_store_creation_mock() -> None:
     )
 
     # Create a mock filesystem for testing
-    from zarr.storage._fsspec import _make_async
-
     # Test creating store from memory filesystem (doesn't require network)
     sync_fs = fsspec.filesystem("memory")
     async_fs = _make_async(sync_fs)
@@ -813,7 +819,6 @@ def test_logging_adapter_integration_with_zip(tmp_path: Path) -> None:
 
 async def test_logging_adapter_error_handling() -> None:
     """Test error handling in LoggingAdapter."""
-    from zarr.storage._builtin_adapters import LoggingAdapter
 
     # Test with invalid preceding URL
     segment = URLSegment(scheme=None, adapter="log", path="")
@@ -859,7 +864,6 @@ async def test_logging_adapter_preserves_store_properties() -> None:
 # Error handling and edge case tests
 async def test_url_segment_validation_errors() -> None:
     """Test URLSegment validation error conditions."""
-    from zarr.storage._zep8 import ZEP8URLError
 
     # Test missing both scheme and adapter
     with pytest.raises(ZEP8URLError, match="URL segment must have either scheme or adapter"):
@@ -880,7 +884,6 @@ async def test_url_segment_validation_errors() -> None:
 
 async def test_memory_adapter_error_conditions() -> None:
     """Test error conditions in MemoryAdapter."""
-    from zarr.storage._builtin_adapters import MemoryAdapter
 
     # Test non-memory URL error
     segment = URLSegment(adapter="memory")
@@ -895,7 +898,6 @@ async def test_memory_adapter_error_conditions() -> None:
 
 async def test_file_adapter_error_conditions() -> None:
     """Test error conditions in FileSystemAdapter."""
-    from zarr.storage._builtin_adapters import FileSystemAdapter
 
     # Test non-file URL error
     segment = URLSegment(adapter="file")
@@ -905,7 +907,6 @@ async def test_file_adapter_error_conditions() -> None:
 
 async def test_zip_adapter_error_conditions(tmp_path: Path) -> None:
     """Test error conditions in ZipAdapter."""
-    from zarr.storage._builtin_adapters import ZipAdapter
 
     # Test with invalid ZIP file path (should raise FileNotFoundError)
     segment = URLSegment(adapter="zip")
@@ -915,7 +916,6 @@ async def test_zip_adapter_error_conditions(tmp_path: Path) -> None:
 
 async def test_store_adapter_abstract_methods() -> None:
     """Test that StoreAdapter abstract methods work correctly."""
-    from zarr.storage._builtin_adapters import FileSystemAdapter
 
     # Test can_handle_scheme method
     assert FileSystemAdapter.can_handle_scheme("file")
@@ -926,7 +926,6 @@ async def test_store_adapter_abstract_methods() -> None:
     assert "file" in schemes
 
     # Test MemoryAdapter schemes
-    from zarr.storage._builtin_adapters import MemoryAdapter
 
     assert MemoryAdapter.can_handle_scheme("memory")
     assert not MemoryAdapter.can_handle_scheme("file")
@@ -937,7 +936,6 @@ async def test_store_adapter_abstract_methods() -> None:
 
 async def test_fsspec_adapter_error_conditions() -> None:
     """Test error conditions in RemoteAdapter."""
-    from zarr.storage._builtin_adapters import RemoteAdapter
 
     # Test non-remote URL
     segment = URLSegment(adapter="s3")
@@ -947,7 +945,6 @@ async def test_fsspec_adapter_error_conditions() -> None:
 
 async def test_zep8_url_parsing_edge_cases() -> None:
     """Test edge cases in ZEP 8 URL parsing."""
-    from zarr.storage._zep8 import URLParser, ZEP8URLError
 
     parser = URLParser()
 
@@ -966,7 +963,6 @@ async def test_zep8_url_parsing_edge_cases() -> None:
 
 async def test_url_resolver_error_handling() -> None:
     """Test error handling in URLStoreResolver."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -981,7 +977,6 @@ async def test_url_resolver_error_handling() -> None:
 
 async def test_logging_adapter_with_invalid_log_level() -> None:
     """Test LoggingAdapter with invalid log level handling."""
-    from zarr.storage._builtin_adapters import LoggingAdapter
 
     # Test with invalid log level (should raise ValueError)
     segment = URLSegment(adapter="log", path="?log_level=INVALID_LEVEL")
@@ -1028,8 +1023,6 @@ async def test_store_adapter_base_class_methods() -> None:
         async def from_url_segment(
             cls, segment: URLSegment, preceding_url: str, **kwargs: Any
         ) -> Store:
-            from zarr.storage import MemoryStore
-
             return await MemoryStore.open()
 
     # Test default can_handle_scheme implementation
@@ -1133,8 +1126,6 @@ def test_store_adapter_validation_edge_cases() -> None:
         async def from_url_segment(
             cls, segment: URLSegment, preceding_url: str, **kwargs: Any
         ) -> Store:
-            from zarr.storage import MemoryStore
-
             return await MemoryStore.open()
 
     # Should work fine
@@ -1148,33 +1139,9 @@ def test_store_adapter_validation_edge_cases() -> None:
         async def from_url_segment(
             cls, segment: URLSegment, preceding_url: str, **kwargs: Any
         ) -> Store:
-            from zarr.storage import MemoryStore
-
             return await MemoryStore.open()
 
     assert ComplexNameAdapter.adapter_name == "complex_name-with-parts"
-
-
-def test_store_adapter_imports_and_docstrings() -> None:
-    """Test that imports and module-level functionality work correctly."""
-    # Test that URLSegment is available and can be imported
-    # Test that type annotations work
-
-    # Test that all exports are available
-    from zarr.abc.store_adapter import StoreAdapter, URLSegment, __all__
-
-    assert "StoreAdapter" in __all__
-    assert "URLSegment" in __all__
-
-    # Test that we can create URLSegments and they validate correctly
-    segment = URLSegment(scheme="test")
-    assert segment.scheme == "test"
-
-    # Test the base StoreAdapter class exists
-    assert StoreAdapter.__name__ == "StoreAdapter"
-    assert hasattr(StoreAdapter, "from_url_segment")
-    assert hasattr(StoreAdapter, "can_handle_scheme")
-    assert hasattr(StoreAdapter, "get_supported_schemes")
 
 
 def test_store_adapter_kwargs_handling() -> None:
@@ -1189,8 +1156,6 @@ def test_store_adapter_kwargs_handling() -> None:
         async def from_url_segment(
             cls, segment: URLSegment, preceding_url: str, **kwargs: Any
         ) -> Store:
-            from zarr.storage import MemoryStore
-
             return await MemoryStore.open()
 
         def __init_subclass__(cls, custom_param: Any = None, **kwargs: Any) -> None:
@@ -1211,7 +1176,6 @@ def test_store_adapter_kwargs_handling() -> None:
 
 async def test_filesystem_adapter_edge_cases() -> None:
     """Test FileSystemAdapter edge cases and full functionality."""
-    from zarr.storage._builtin_adapters import FileSystemAdapter
 
     # Test with empty path (should default to ".")
     segment = URLSegment(adapter="file")
@@ -1238,7 +1202,6 @@ async def test_filesystem_adapter_edge_cases() -> None:
 
 async def test_memory_adapter_comprehensive() -> None:
     """Test MemoryAdapter comprehensive functionality."""
-    from zarr.storage._builtin_adapters import MemoryAdapter
 
     # Test get_supported_schemes
     schemes = MemoryAdapter.get_supported_schemes()
@@ -1250,7 +1213,6 @@ async def test_memory_adapter_comprehensive() -> None:
 
 async def test_remote_adapter_comprehensive() -> None:
     """Test RemoteAdapter comprehensive functionality."""
-    from zarr.storage._builtin_adapters import RemoteAdapter
 
     # Test _is_remote_url method
     assert RemoteAdapter._is_remote_url("s3://bucket/path")
@@ -1262,7 +1224,6 @@ async def test_remote_adapter_comprehensive() -> None:
 
 async def test_s3_adapter_functionality() -> None:
     """Test S3Adapter functionality including custom endpoints."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Test can_handle_scheme for all supported schemes
     assert S3Adapter.can_handle_scheme("s3")
@@ -1281,7 +1242,6 @@ async def test_s3_adapter_functionality() -> None:
 
 async def test_s3_custom_endpoint_url_parsing() -> None:
     """Test S3Adapter URL parsing for custom endpoints."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Test standard AWS S3 URL parsing
     s3_url, endpoint_url, storage_options = S3Adapter._parse_s3_url("s3://my-bucket/path/to/data")
@@ -1322,7 +1282,6 @@ async def test_s3_custom_endpoint_url_parsing() -> None:
 
 async def test_s3_custom_endpoint_scheme_extraction() -> None:
     """Test S3Adapter scheme extraction for custom endpoints."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Test scheme extraction
     assert S3Adapter._extract_scheme("s3://bucket/path") == "s3"
@@ -1332,7 +1291,6 @@ async def test_s3_custom_endpoint_scheme_extraction() -> None:
 
 async def test_s3_custom_endpoint_error_handling() -> None:
     """Test S3Adapter error handling for invalid URLs."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Test unsupported URL format
     with pytest.raises(ValueError, match="Unsupported S3 URL format"):
@@ -1344,7 +1302,6 @@ async def test_s3_custom_endpoint_error_handling() -> None:
 
 async def test_s3_custom_endpoint_registration() -> None:
     """Test that custom S3 endpoint schemes are properly registered."""
-    from zarr.registry import get_store_adapter
 
     # Test that all S3 schemes can be retrieved
     s3_adapter = get_store_adapter("s3")
@@ -1392,7 +1349,6 @@ async def test_s3_https_adapter_functionality() -> None:
 
 async def test_s3_custom_endpoint_zep8_url_detection() -> None:
     """Test ZEP 8 URL detection with custom S3 endpoints."""
-    from zarr.storage._zep8 import is_zep8_url
 
     # Standard S3 URLs (not ZEP 8)
     assert not is_zep8_url("s3://bucket/data")
@@ -1421,7 +1377,6 @@ async def test_gcs_adapter_functionality() -> None:
 
 async def test_https_adapter_functionality() -> None:
     """Test HttpsAdapter functionality."""
-    from zarr.storage._builtin_adapters import HttpsAdapter
 
     # Test can_handle_scheme
     assert HttpsAdapter.can_handle_scheme("https")
@@ -1434,18 +1389,102 @@ async def test_https_adapter_functionality() -> None:
     assert "https" in schemes
 
 
+async def test_resolve_relative_url_comprehensive() -> None:
+    """Test URLParser.resolve_relative_url simplified functionality."""
+
+    # Test that the method returns relative URLs unchanged (current implementation)
+    result = URLParser.resolve_relative_url(
+        "file://data/exp1/data.zip|zip:|zarr3:", "../control.zip|zip:|zarr3:"
+    )
+    assert result == "../control.zip|zip:|zarr3:"
+
+    # Test with different relative path formats
+    result = URLParser.resolve_relative_url("s3://bucket/data.zip", "../../other/path.zip")
+    assert result == "../../other/path.zip"
+
+    # Test with pipe-prefixed URLs (not currently implemented, returns as-is)
+    result = URLParser.resolve_relative_url("memory:", "|..|other.zarr")
+    assert result == "|..|other.zarr"
+
+
+async def test_url_store_resolver_error_conditions() -> None:
+    """Test URLStoreResolver error conditions covering lines 402, 408, 506."""
+
+    resolver = URLStoreResolver()
+
+    # Test line 402: Invalid URL without :// or :
+    with pytest.raises(ValueError, match="Not a valid URL"):
+        await resolver.resolve_url("/absolute/path/without/scheme")
+
+    # Test line 408: Empty URL segments
+    with pytest.raises(ValueError, match="Empty URL segments"):
+        # Mock parser.parse to return empty list
+        with unittest.mock.patch.object(resolver.parser, "parse", return_value=[]):
+            await resolver.resolve_url("file://test")
+
+    # Test URL resolved to no store
+    # This happens when all segments are zarr format segments or path-only segments
+    # Create segments that will be filtered out (zarr format segments)
+    segments = [URLSegment(adapter="zarr3", path="test")]
+    with unittest.mock.patch.object(resolver.parser, "parse", return_value=segments):
+        with pytest.raises(ValueError, match="URL resolved to no store"):
+            await resolver.resolve_url("zarr3:test")
+
+
+async def test_extract_zarr_format_exception_handling() -> None:
+    """Test URLStoreResolver.extract_zarr_format exception handling covering lines 538-539."""
+
+    resolver = URLStoreResolver()
+
+    # Test exception handling in extract_zarr_format (lines 538-539)
+    with unittest.mock.patch.object(resolver.parser, "parse", side_effect=Exception("Parse error")):
+        result = resolver.extract_zarr_format("file://test|zarr3:")
+        assert result is None  # Should return None on exception
+
+
+async def test_extract_path_exception_handling() -> None:
+    """Test URLStoreResolver.extract_path exception handling covering lines 577-578, 581."""
+
+    resolver = URLStoreResolver()
+
+    # Test exception handling in extract_path (lines 577-578)
+    with unittest.mock.patch.object(resolver.parser, "parse", side_effect=Exception("Parse error")):
+        result = resolver.extract_path("file://test|zarr3:path")
+        assert result == ""  # Should return empty string on exception
+
+    # Test empty segments handling (line 581)
+    with unittest.mock.patch.object(resolver.parser, "parse", return_value=[]):
+        result = resolver.extract_path("file://test")
+        assert result == ""  # Should return empty string for no segments
+
+
+async def test_icechunk_path_extraction_edge_cases() -> None:
+    """Test basic icechunk path extraction cases (complex icechunk logic marked pragma no cover)."""
+
+    resolver = URLStoreResolver()
+
+    # Test icechunk metadata path skipping (line 610 is marked pragma no cover)
+    segments = [URLSegment(adapter="icechunk", path="branch:main")]
+    with unittest.mock.patch.object(resolver.parser, "parse", return_value=segments):
+        result = resolver.extract_path("fake://url")
+        assert result == ""  # Should skip branch:main metadata paths
+
+    # Test other icechunk metadata formats (line 610 is marked pragma no cover)
+    for metadata_path in ["tag:v1.0", "snapshot:abc123"]:
+        segments = [URLSegment(adapter="icechunk", path=metadata_path)]
+        with unittest.mock.patch.object(resolver.parser, "parse", return_value=segments):
+            result = resolver.extract_path("fake://url")
+            assert result == ""  # Should skip all metadata paths
+
+
 async def test_zip_adapter_comprehensive(tmp_path: Path) -> None:
     """Test ZipAdapter comprehensive functionality."""
-    from zarr.storage._builtin_adapters import ZipAdapter
 
     # Create a test ZIP file
     zip_path = tmp_path / "test.zip"
-    from zarr.storage import ZipStore
 
     # Create minimal ZIP content
     with ZipStore(zip_path, mode="w") as zip_store:
-        import zarr
-
         arr = zarr.create_array(zip_store, shape=(2,), dtype="i4")
         arr[:] = [1, 2]
 
@@ -1483,19 +1522,15 @@ async def test_zip_adapter_comprehensive(tmp_path: Path) -> None:
 
 async def test_logging_adapter_edge_cases() -> None:
     """Test LoggingAdapter edge cases."""
-    from zarr.storage._builtin_adapters import LoggingAdapter
 
     # Test with no query parameters
     segment = URLSegment(adapter="log", path="")
     result = await LoggingAdapter.from_url_segment(segment, "memory:")
-    from zarr.storage import LoggingStore
 
     assert isinstance(result, LoggingStore)
     assert result.log_level == "DEBUG"  # Default
 
     # Test with complex query parsing
-    from urllib.parse import parse_qs, urlparse
-
     path_with_query = "?log_level=INFO&other_param=value"
     segment = URLSegment(adapter="log", path=path_with_query)
 
@@ -1509,18 +1544,6 @@ async def test_logging_adapter_edge_cases() -> None:
 def test_builtin_adapters_imports_and_module_structure() -> None:
     """Test imports and module structure of _builtin_adapters.py."""
     # Test that all adapter classes can be imported
-    from zarr.storage._builtin_adapters import (
-        FileSystemAdapter,
-        GSAdapter,
-        HttpsAdapter,
-        LoggingAdapter,
-        MemoryAdapter,
-        RemoteAdapter,
-        S3Adapter,
-        S3HttpAdapter,
-        S3HttpsAdapter,
-        ZipAdapter,
-    )
 
     # Test that they all have the right adapter_name
     assert FileSystemAdapter.adapter_name == "file"
@@ -1547,7 +1570,6 @@ def test_builtin_adapters_imports_and_module_structure() -> None:
 
 async def test_url_parser_relative_url_resolution() -> None:
     """Test URLParser relative URL resolution functionality."""
-    from zarr.storage._zep8 import URLParser
 
     # Test resolve_relative_url method
     base_url = "s3://bucket/data/file.zarr"
@@ -1560,7 +1582,6 @@ async def test_url_parser_relative_url_resolution() -> None:
 
 async def test_url_parser_edge_cases_and_validation() -> None:
     """Test URLParser edge cases and validation."""
-    from zarr.storage._zep8 import URLParser, ZEP8URLError
 
     parser = URLParser()
 
@@ -1579,7 +1600,6 @@ async def test_url_parser_edge_cases_and_validation() -> None:
 
 async def test_url_store_resolver_comprehensive() -> None:
     """Test comprehensive URLStoreResolver functionality."""
-    from zarr.registry import get_store_adapter
 
     # Test that resolver can access registered adapters via registry
     adapter = get_store_adapter("memory")
@@ -1593,7 +1613,6 @@ async def test_url_store_resolver_comprehensive() -> None:
 
 async def test_url_resolver_methods() -> None:
     """Test URLStoreResolver extract methods."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -1610,7 +1629,6 @@ async def test_url_resolver_methods() -> None:
 
 async def test_is_zep8_url_comprehensive() -> None:
     """Test is_zep8_url comprehensive functionality."""
-    from zarr.storage._zep8 import is_zep8_url
 
     # Test various URL types
     assert is_zep8_url("memory:")
@@ -1628,7 +1646,6 @@ async def test_is_zep8_url_comprehensive() -> None:
 
 async def test_url_resolver_relative_urls() -> None:
     """Test URLStoreResolver relative URL resolution."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -1645,35 +1662,8 @@ async def test_url_resolver_relative_urls() -> None:
     assert resolved == absolute_url
 
 
-def test_zep8_module_imports_and_structure() -> None:
-    """Test _zep8.py module imports and structure."""
-    # Test that all main classes and functions are importable
-    from zarr.storage._zep8 import (
-        URLParser,
-        URLStoreResolver,
-        ZEP8URLError,
-        is_zep8_url,
-        resolve_url,
-    )
-
-    # Test that classes exist and have expected methods
-    assert hasattr(URLParser, "parse")
-    assert hasattr(URLParser, "resolve_relative_url")
-    assert hasattr(URLStoreResolver, "resolve_url")
-    assert hasattr(URLStoreResolver, "extract_path")
-    assert hasattr(URLStoreResolver, "extract_zarr_format")
-
-    # Test that error class is properly defined
-    assert issubclass(ZEP8URLError, ValueError)
-
-    # Test that functions are callable
-    assert callable(is_zep8_url)
-    assert callable(resolve_url)
-
-
 async def test_url_resolver_adapter_access() -> None:
     """Test URL resolver adapter access via registry."""
-    from zarr.registry import get_store_adapter, list_store_adapters
 
     # Test that builtin adapters are registered and accessible
     registered_adapters = list_store_adapters()
@@ -1689,7 +1679,6 @@ async def test_url_resolver_adapter_access() -> None:
 
 async def test_complex_relative_url_resolution() -> None:
     """Test complex relative URL resolution scenarios."""
-    from zarr.storage._zep8 import URLParser
 
     parser = URLParser()
 
@@ -1745,7 +1734,6 @@ async def test_complex_relative_url_resolution() -> None:
 
 async def test_url_parsing_complex_scenarios() -> None:
     """Test URL parsing complex scenarios."""
-    from zarr.storage._zep8 import URLParser
 
     parser = URLParser()
 
@@ -1773,7 +1761,6 @@ async def test_url_parsing_complex_scenarios() -> None:
 
 async def test_module_level_resolve_url() -> None:
     """Test module-level resolve_url convenience function."""
-    from zarr.storage._zep8 import resolve_url
 
     # Test resolving a simple memory URL
     store = await resolve_url("memory:", mode="w")
@@ -1786,7 +1773,6 @@ async def test_module_level_resolve_url() -> None:
 
 async def test_url_resolver_icechunk_path_handling() -> None:
     """Test icechunk-specific path handling in URL resolution."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -1821,7 +1807,6 @@ async def test_url_resolver_icechunk_path_handling() -> None:
 
 async def test_url_parser_static_methods() -> None:
     """Test URLParser static methods for comprehensive coverage."""
-    from zarr.storage._zep8 import URLParser
 
     # Test _parse_base_url static method with various URLs
     base_segment = URLParser._parse_base_url("s3://bucket/path/file.zip")
@@ -1841,7 +1826,6 @@ async def test_url_parser_static_methods() -> None:
 
 async def test_edge_cases_and_error_conditions() -> None:
     """Test edge cases and error conditions for better coverage."""
-    from zarr.storage._zep8 import URLParser, ZEP8URLError
 
     parser = URLParser()
 
@@ -1862,7 +1846,6 @@ async def test_edge_cases_and_error_conditions() -> None:
 async def test_remote_adapter_storage_options() -> None:
     """Test Remote adapters with storage options and different modes."""
     pytest.importorskip("fsspec", reason="fsspec not available")
-    from zarr.storage._builtin_adapters import RemoteAdapter
 
     # Test with storage_options
     segment = URLSegment(adapter="http")
@@ -1878,7 +1861,6 @@ async def test_remote_adapter_storage_options() -> None:
 async def test_remote_adapter_mode_detection() -> None:
     """Test Remote adapter mode detection logic."""
     pytest.importorskip("fsspec", reason="fsspec not available")
-    from zarr.storage._builtin_adapters import RemoteAdapter
 
     # Test with explicit mode='r'
     segment = URLSegment(adapter="http")
@@ -1907,9 +1889,6 @@ async def test_remote_adapter_mode_detection() -> None:
 
 async def test_zip_adapter_missing_coverage() -> None:
     """Test ZIP adapter paths not covered by other tests."""
-    import tempfile
-
-    from zarr.storage._builtin_adapters import ZipAdapter
 
     # Test can_handle_scheme (default implementation returns False)
     assert not ZipAdapter.can_handle_scheme("zip")
@@ -1939,7 +1918,6 @@ async def test_zip_adapter_missing_coverage() -> None:
 
 async def test_logging_adapter_missing_coverage() -> None:
     """Test LoggingAdapter paths not covered by other tests."""
-    from zarr.storage._builtin_adapters import LoggingAdapter
 
     # Test can_handle_scheme (default implementation returns False)
     assert not LoggingAdapter.can_handle_scheme("log")
@@ -1959,7 +1937,6 @@ async def test_logging_adapter_missing_coverage() -> None:
 
 async def test_s3_adapter_error_conditions() -> None:
     """Test S3Adapter error handling and edge cases."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Skip if s3fs is not available
     pytest.importorskip("s3fs", reason="s3fs not available")
@@ -1976,7 +1953,6 @@ async def test_s3_adapter_error_conditions() -> None:
 
 async def test_s3_http_adapter_url_parsing() -> None:
     """Test S3HttpAdapter URL parsing logic."""
-    from zarr.storage._builtin_adapters import S3HttpAdapter, S3HttpsAdapter
 
     # Skip if s3fs is not available
     pytest.importorskip("s3fs", reason="s3fs not available")
@@ -2001,7 +1977,6 @@ async def test_s3_http_adapter_url_parsing() -> None:
 
 async def test_gc_adapter_missing_coverage() -> None:
     """Test GSAdapter paths not covered by other tests."""
-    from zarr.storage._builtin_adapters import GSAdapter
 
     # Test can_handle_scheme (inherits from RemoteAdapter)
     assert GSAdapter.can_handle_scheme("gs")
@@ -2022,7 +1997,6 @@ async def test_gc_adapter_missing_coverage() -> None:
 
 async def test_https_adapter_missing_coverage() -> None:
     """Test HttpsAdapter paths not covered by other tests."""
-    from zarr.storage._builtin_adapters import HttpsAdapter
 
     # Test get_supported_schemes
     schemes = HttpsAdapter.get_supported_schemes()
@@ -2044,7 +2018,6 @@ async def test_https_adapter_missing_coverage() -> None:
 
 async def test_s3_url_parsing_edge_cases() -> None:
     """Test S3 URL parsing edge cases for complete coverage."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Test URL parsing logic directly by calling _parse_s3_url
     # This covers the URL parsing without needing s3fs
@@ -2081,8 +2054,6 @@ async def test_s3_url_parsing_edge_cases() -> None:
 async def test_zip_adapter_additional_coverage() -> None:
     """Test ZipAdapter additional functionality for coverage."""
 
-    from zarr.storage._builtin_adapters import ZipAdapter
-
     # Test adapter name and supported schemes
     assert ZipAdapter.adapter_name == "zip"
     schemes = ZipAdapter.get_supported_schemes()
@@ -2095,7 +2066,6 @@ async def test_zip_adapter_additional_coverage() -> None:
 
 async def test_url_parser_additional_edge_cases() -> None:
     """Test additional URLParser edge cases for complete coverage."""
-    from zarr.storage._zep8 import URLParser
 
     parser = URLParser()
 
@@ -2113,8 +2083,7 @@ async def test_url_parser_additional_edge_cases() -> None:
 
 
 async def test_url_store_resolver_edge_cases() -> None:
-    """Test URLStoreResolver edge cases for coverage."""
-    from zarr.storage._zep8 import URLStoreResolver
+    """Test URLStoreResolver edge cases using public API."""
 
     resolver = URLStoreResolver()
 
@@ -2122,33 +2091,42 @@ async def test_url_store_resolver_edge_cases() -> None:
     with pytest.raises(ValueError, match="Unknown store adapter"):
         await resolver.resolve_url("nonexistent_adapter:")
 
-    # Test _combine_paths method with various combinations
-    from zarr.storage._common import _combine_paths
+    # Test path extraction from various URL formats (exercises internal path handling via public API)
 
-    # Test combining empty paths
-    result = _combine_paths("", "")
-    assert result == ""
+    # Test extracting path from simple URL (no zarr format, returns empty)
+    path = resolver.extract_path("memory:")
+    assert path == ""
 
-    # Test combining with empty URL path
-    result = _combine_paths("", "relative/path")
-    assert result == "relative/path"
+    # Test extracting path from regular URL (no zarr format, returns empty)
+    path = resolver.extract_path("file://data/test.zarr")
+    assert path == ""
 
-    # Test combining with empty relative path
-    result = _combine_paths("base/path", "")
-    assert result == "base/path"
+    # Test extracting path from ZEP 8 URL with zarr format containing path
+    path = resolver.extract_path("file://base/path.zip|zip:inner/data|zarr3:group/array")
+    assert path == "group/array"  # Should extract zarr3 path component
 
-    # Test combining normal paths
-    result = _combine_paths("base/path", "relative/path")
-    assert result == "base/path/relative/path"
+    # Test extracting path from URL with zarr format but no path
+    path = resolver.extract_path("memory:|zarr3:")
+    assert path == ""
 
-    # Test combining with path starting with slash (treated as relative)
-    result = _combine_paths("base/path", "/absolute/path")
-    assert result == "base/path/absolute/path"
+    # Test path extraction with adapter segments (but no zarr format)
+    path = resolver.extract_path("file://test.zip|zip:inner/data")
+    assert path == "inner/data"  # Should extract adapter path when no zarr format present
+
+    # Test zarr format extraction from various URLs
+    zarr_format = resolver.extract_zarr_format("file://test|zarr3:")
+    assert zarr_format == 3
+
+    zarr_format = resolver.extract_zarr_format("memory:|zarr2:")
+    assert zarr_format == 2
+
+    # Test zarr format extraction when no format specified
+    zarr_format = resolver.extract_zarr_format("file://test.zip|zip:")
+    assert zarr_format is None
 
 
 async def test_store_adapter_validation_complete() -> None:
     """Test complete StoreAdapter validation coverage."""
-    from zarr.abc.store_adapter import StoreAdapter
 
     # Test that adapter_name validation happens during class creation
     with pytest.raises(TypeError, match="must define 'adapter_name'"):
@@ -2171,7 +2149,6 @@ async def test_store_adapter_validation_complete() -> None:
 
 async def test_is_zep8_url_complete_coverage() -> None:
     """Test is_zep8_url function for complete coverage."""
-    from zarr.storage._zep8 import is_zep8_url
 
     # Test pipe detection edge cases
     assert is_zep8_url("before|after") is True  # No scheme, has pipe
@@ -2193,7 +2170,6 @@ async def test_is_zep8_url_complete_coverage() -> None:
 
 async def test_make_store_path_zep8_integration_complete() -> None:
     """Test make_store_path ZEP8 integration for complete coverage."""
-    from zarr.storage._common import make_store_path
 
     # Test with storage_options in ZEP8 URL (should work)
     store_path = await make_store_path("memory:", storage_options={"option": "value"}, mode="w")
@@ -2206,7 +2182,6 @@ async def test_make_store_path_zep8_integration_complete() -> None:
 
 async def test_url_parser_edge_cases() -> None:
     """Test URLParser edge cases and error conditions."""
-    from zarr.storage._zep8 import URLParser, ZEP8URLError
 
     parser = URLParser()
 
@@ -2234,7 +2209,6 @@ async def test_url_parser_edge_cases() -> None:
 
 async def test_url_segment_relative_resolution() -> None:
     """Test URLSegment relative path resolution."""
-    from zarr.storage._zep8 import URLParser
 
     parser = URLParser()
     base_segment = URLSegment(scheme="file", path="/data/arrays")
@@ -2259,7 +2233,6 @@ async def test_url_segment_relative_resolution() -> None:
 
 async def test_url_store_resolver_path_extraction() -> None:
     """Test URLStoreResolver path extraction functionality."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -2281,7 +2254,6 @@ async def test_url_store_resolver_path_extraction() -> None:
 
 async def test_url_store_resolver_error_handling() -> None:
     """Test URLStoreResolver error handling."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -2294,7 +2266,6 @@ async def test_url_store_resolver_error_handling() -> None:
         await resolver.resolve_url("validbutunknown:")
 
     # Test invalid adapter name format (starts with number)
-    from zarr.storage._zep8 import ZEP8URLError
 
     with pytest.raises(ZEP8URLError, match="Invalid adapter name"):
         await resolver.resolve_url("999invalid:")
@@ -2302,7 +2273,6 @@ async def test_url_store_resolver_error_handling() -> None:
 
 async def test_windows_path_detection() -> None:
     """Test Windows path detection in is_zep8_url."""
-    from zarr.storage._zep8 import is_zep8_url
 
     # Test various Windows path formats
     assert is_zep8_url("C:\\Users\\test") is False
@@ -2317,8 +2287,6 @@ async def test_windows_path_detection() -> None:
 
 async def test_registry_integration() -> None:
     """Test registry integration for better coverage."""
-    from zarr.abc.store_adapter import StoreAdapter
-    from zarr.registry import get_store_adapter, register_store_adapter
 
     # Test getting existing adapters
     memory_adapter = get_store_adapter("memory")
@@ -2337,8 +2305,6 @@ async def test_registry_integration() -> None:
         async def from_url_segment(
             cls, segment: URLSegment, preceding_url: str, **kwargs: Any
         ) -> Store:
-            from zarr.storage import MemoryStore
-
             return await MemoryStore.open()
 
     # Register the adapter
@@ -2349,7 +2315,6 @@ async def test_registry_integration() -> None:
     assert retrieved is TestRegistryAdapter
 
     # Test using it in a URL
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
     store = await resolver.resolve_url("test_registry:")
@@ -2360,7 +2325,6 @@ async def test_import_coverage() -> None:
     """Test import statements for coverage."""
     # Test imports that may not be covered
     from zarr.abc.store_adapter import StoreAdapter, URLSegment
-    from zarr.storage._register_adapters import register_builtin_adapters
     from zarr.storage._zep8 import URLParser, URLStoreResolver, ZEP8URLError, is_zep8_url
 
     # These should all be importable
@@ -2377,7 +2341,6 @@ async def test_import_coverage() -> None:
 
 async def test_additional_error_conditions() -> None:
     """Test additional error conditions for coverage."""
-    from zarr.storage._zep8 import URLParser, ZEP8URLError
 
     parser = URLParser()
 
@@ -2396,7 +2359,6 @@ async def test_additional_error_conditions() -> None:
 
 async def test_make_store_path_integration() -> None:
     """Test make_store_path integration with ZEP 8 URLs."""
-    from zarr.storage._common import make_store_path
 
     # Test make_store_path with ZEP 8 URL
     store_path = await make_store_path("memory:|log:")
@@ -2429,13 +2391,12 @@ async def test_async_api_integration() -> None:
 
 
 # =============================================================================
-# 100% Coverage Tests - Targeting Remaining Lines
+# Misc tests
 # =============================================================================
 
 
 async def test_s3_adapter_comprehensive_coverage() -> None:
     """Test S3Adapter comprehensive functionality for 100% coverage."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Test _extract_scheme method with different URL types
     scheme = S3Adapter._extract_scheme("s3://bucket/key")
@@ -2473,9 +2434,6 @@ async def test_s3_adapter_comprehensive_coverage() -> None:
 
 async def test_zip_adapter_remote_functionality() -> None:
     """Test ZipAdapter remote functionality for complete coverage."""
-    import tempfile
-
-    from zarr.storage._builtin_adapters import ZipAdapter
 
     # Test _get_fsspec_protocol method
     protocol = ZipAdapter._get_fsspec_protocol("http://example.com/file.zip")
@@ -2512,7 +2470,6 @@ async def test_zip_adapter_remote_functionality() -> None:
 
 async def test_zip_adapter_remote_error_handling() -> None:
     """Test ZipAdapter error handling for coverage."""
-    from zarr.storage._builtin_adapters import ZipAdapter
 
     # Test the _create_remote_zip_store method with a file that doesn't exist
     # This will cover the error handling paths in the remote ZIP functionality
@@ -2534,7 +2491,6 @@ async def test_zip_adapter_remote_error_handling() -> None:
 
 async def test_zip_adapter_remote_with_fsspec() -> None:
     """Test ZipAdapter remote functionality when fsspec is available."""
-    from zarr.storage._builtin_adapters import ZipAdapter
 
     # Skip if fsspec is not available
     pytest.importorskip("fsspec", reason="fsspec not available")
@@ -2556,7 +2512,6 @@ async def test_zip_adapter_remote_with_fsspec() -> None:
 
 async def test_remote_adapter_read_only_logic() -> None:
     """Test RemoteAdapter read-only determination logic."""
-    from zarr.storage._builtin_adapters import RemoteAdapter
 
     # Test _determine_read_only_mode with different scenarios
     # Mode specified in kwargs (line 179-180)
@@ -2588,14 +2543,8 @@ async def test_remote_adapter_read_only_logic() -> None:
     assert result is False  # S3 defaults to writable
 
 
-# =============================================================================
-# Final Coverage Tests - Last 9 lines in _builtin_adapters.py
-# =============================================================================
-
-
 async def test_s3_adapter_final_coverage() -> None:
     """Test final S3Adapter coverage for remaining lines."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Test URL parsing with the endpoint case where there's no path (line 542)
     # This is the case where we have just "s3+http://endpoint" without a bucket/key
@@ -2607,7 +2556,6 @@ async def test_s3_adapter_final_coverage() -> None:
 
 async def test_s3_storage_options_merge_logic() -> None:
     """Test S3 storage options merging for final coverage."""
-    from zarr.storage._builtin_adapters import S3Adapter
 
     # Skip if s3fs is not available
     pytest.importorskip("s3fs", reason="s3fs not available")
@@ -2630,14 +2578,8 @@ async def test_s3_storage_options_merge_logic() -> None:
         # This covers the storage options merging and read-only mode logic
 
 
-# =============================================================================
-# _zep8.py Coverage Tests - 58 Missing Lines
-# =============================================================================
-
-
 async def test_url_store_resolver_resolve_relative() -> None:
     """Test URLStoreResolver resolve_relative functionality for coverage."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -2671,7 +2613,6 @@ async def test_url_store_resolver_resolve_relative() -> None:
 
 async def test_url_parser_complex_scenarios() -> None:
     """Test URLParser complex scenarios for missing line coverage."""
-    from zarr.storage._zep8 import URLParser, ZEP8URLError
 
     parser = URLParser()
 
@@ -2703,7 +2644,6 @@ async def test_url_parser_complex_scenarios() -> None:
 
 async def test_url_store_resolver_complex_resolve() -> None:
     """Test URLStoreResolver complex resolution scenarios."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -2741,7 +2681,6 @@ async def test_url_store_resolver_complex_resolve() -> None:
 
 async def test_zep8_url_complex_detection() -> None:
     """Test is_zep8_url complex detection scenarios for missing lines."""
-    from zarr.storage._zep8 import is_zep8_url
 
     # Test various URL formats to cover different detection paths
     test_cases = [
@@ -2778,7 +2717,6 @@ async def test_zep8_url_complex_detection() -> None:
 
 async def test_url_parser_relative_resolution_comprehensive() -> None:
     """Test URLParser relative resolution for comprehensive coverage."""
-    from zarr.storage._zep8 import URLParser
 
     parser = URLParser()
 
@@ -2818,7 +2756,6 @@ async def test_url_parser_relative_resolution_comprehensive() -> None:
 
 async def test_error_handling_comprehensive() -> None:
     """Test comprehensive error handling for missing coverage."""
-    from zarr.storage._zep8 import URLParser, URLStoreResolver, ZEP8URLError
 
     parser = URLParser()
     resolver = URLStoreResolver()
@@ -2851,7 +2788,6 @@ async def test_error_handling_comprehensive() -> None:
 
 async def test_final_missing_lines_zep8() -> None:
     """Test the final specific missing lines in _zep8.py for 100% coverage."""
-    from zarr.storage._zep8 import URLParser, ZEP8URLError
 
     parser = URLParser()
 
@@ -2885,7 +2821,6 @@ async def test_final_missing_lines_zep8() -> None:
 
 async def test_url_resolver_specific_methods() -> None:
     """Test specific URLStoreResolver methods for missing line coverage."""
-    from zarr.storage._zep8 import URLStoreResolver
 
     resolver = URLStoreResolver()
 
@@ -2912,7 +2847,6 @@ async def test_url_resolver_specific_methods() -> None:
 
 async def test_zep8_url_edge_cases_final() -> None:
     """Test final edge cases for is_zep8_url function."""
-    from zarr.storage._zep8 import is_zep8_url
 
     # Test cases that might trigger different branches
     # These are designed to hit specific conditions in the is_zep8_url logic
