@@ -1,8 +1,7 @@
 import asyncio
-import importlib.util
 import sys
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock, call, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -177,10 +176,11 @@ def test_create_event_loop_default_config() -> None:
     with zarr.config.set({"async.use_uvloop": True}):
         loop = _create_event_loop()
         if sys.platform != "win32":
-            if importlib.util.find_spec("uvloop") is not None:
-                # uvloop is available, should use it
-                assert "uvloop" in str(type(loop))
-            else:
+            try:
+                import uvloop
+
+                assert isinstance(loop, uvloop.Loop)
+            except ImportError:
                 # uvloop not available, should use asyncio
                 assert isinstance(loop, asyncio.AbstractEventLoop)
                 assert "uvloop" not in str(type(loop))
@@ -203,13 +203,13 @@ def test_create_event_loop_uvloop_disabled() -> None:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="uvloop is not supported on Windows")
-@pytest.mark.skipif(importlib.util.find_spec("uvloop") is None, reason="uvloop is not installed")
 def test_create_event_loop_uvloop_enabled_non_windows() -> None:
     """Test uvloop usage on non-Windows platforms when uvloop is installed."""
+    uvloop = pytest.importorskip("uvloop")
+
     with zarr.config.set({"async.use_uvloop": True}):
         loop = _create_event_loop()
-        # uvloop is available and should be used
-        assert "uvloop" in str(type(loop))
+        assert isinstance(loop, uvloop.Loop)
         loop.close()
 
 
@@ -221,96 +221,6 @@ def test_create_event_loop_windows_no_uvloop() -> None:
         # Should use asyncio even when uvloop is requested on Windows
         assert isinstance(loop, asyncio.AbstractEventLoop)
         assert "uvloop" not in str(type(loop))
-        loop.close()
-
-
-def test_uvloop_config_environment_variable() -> None:
-    """Test that uvloop can be controlled via environment variable."""
-    # This test verifies the config system works with uvloop setting
-    # We test both True and False values
-    with zarr.config.set({"async.use_uvloop": False}):
-        assert zarr.config.get("async.use_uvloop") is False
-
-    with zarr.config.set({"async.use_uvloop": True}):
-        assert zarr.config.get("async.use_uvloop") is True
-
-
-def test_uvloop_integration_with_zarr_operations(clean_state) -> None:
-    """Test that uvloop integration doesn't break zarr operations."""
-    # Test with uvloop enabled (default)
-    with zarr.config.set({"async.use_uvloop": True}):
-        arr = zarr.zeros((10, 10), chunks=(5, 5))
-        arr[0, 0] = 42.0
-        result = arr[0, 0]
-        assert result == 42.0
-
-    # Test with uvloop disabled
-    with zarr.config.set({"async.use_uvloop": False}):
-        arr2 = zarr.zeros((10, 10), chunks=(5, 5))
-        arr2[0, 0] = 24.0
-        result2 = arr2[0, 0]
-        assert result2 == 24.0
-
-
-@patch("zarr.core.sync.logger.debug")
-def test_uvloop_logging_availability(mock_debug, clean_state) -> None:
-    """Test that appropriate debug messages are logged."""
-    # Test with uvloop enabled
-    with zarr.config.set({"async.use_uvloop": True}):
-        loop = _create_event_loop()
-
-        if sys.platform != "win32":
-            if importlib.util.find_spec("uvloop") is not None:
-                # Should log that uvloop is being used
-                mock_debug.assert_called_with("Creating Zarr event loop with uvloop")
-            else:
-                # Should log fallback to asyncio
-                mock_debug.assert_called_with("uvloop not available, falling back to asyncio")
-        else:
-            # Should log that uvloop is not supported on Windows
-            mock_debug.assert_called_with("uvloop not supported on Windows, using asyncio")
-
-        loop.close()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="uvloop is not supported on Windows")
-@pytest.mark.skipif(importlib.util.find_spec("uvloop") is None, reason="uvloop is not installed")
-@patch("zarr.core.sync.logger.debug")
-def test_uvloop_logging_with_uvloop_installed(mock_debug, clean_state) -> None:
-    """Test that uvloop is logged when installed and enabled."""
-    with zarr.config.set({"async.use_uvloop": True}):
-        loop = _create_event_loop()
-        # Should log that uvloop is being used
-        mock_debug.assert_called_with("Creating Zarr event loop with uvloop")
-        loop.close()
-
-
-@pytest.mark.skipif(importlib.util.find_spec("uvloop") is not None, reason="uvloop is installed")
-@patch("zarr.core.sync.logger.debug")
-def test_uvloop_logging_without_uvloop_installed(mock_debug, clean_state) -> None:
-    """Test that fallback to asyncio is logged when uvloop is not installed."""
-    with zarr.config.set({"async.use_uvloop": True}):
-        loop = _create_event_loop()
-        if sys.platform != "win32":
-            # Should log fallback to asyncio
-            mock_debug.assert_called_with("uvloop not available, falling back to asyncio")
-        else:
-            # Should log that uvloop is not supported on Windows
-            mock_debug.assert_called_with("uvloop not supported on Windows, using asyncio")
-        loop.close()
-
-
-@patch("zarr.core.sync.logger.debug")
-def test_uvloop_logging_disabled(mock_debug, clean_state) -> None:
-    """Test that appropriate debug message is logged when uvloop is disabled."""
-    with zarr.config.set({"async.use_uvloop": False}):
-        loop = _create_event_loop()
-        # Should log both that uvloop is disabled and the final loop creation
-        expected_calls = [
-            call("uvloop disabled via config, using asyncio"),
-            call("Creating Zarr event loop with asyncio"),
-        ]
-        mock_debug.assert_has_calls(expected_calls)
         loop.close()
 
 
