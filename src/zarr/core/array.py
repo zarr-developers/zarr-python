@@ -4588,6 +4588,7 @@ async def init_array(
             order_parsed = zarr_config.get("array.order")
         else:
             order_parsed = order
+        chunk_key_encoding_parsed = cast("V2ChunkKeyEncoding", chunk_key_encoding_parsed)
 
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,

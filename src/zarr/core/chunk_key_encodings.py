@@ -41,7 +41,7 @@ class ChunkKeyEncoding(ABC, Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, config_parsed = parse_named_configuration(data, require_configuration=False)
-        return cls(**config_parsed if config_parsed else {})  # type: ignore[arg-type]
+        return cls(**config_parsed if config_parsed else {})
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": super().to_dict()}
