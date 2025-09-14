@@ -68,7 +68,7 @@ def test_sync_timeout() -> None:
     async def foo() -> None:
         await asyncio.sleep(duration)
 
-    with pytest.raises(asyncio.TimeoutError):
+    with pytest.raises(TimeoutError):
         sync(foo(), timeout=duration / 10)
 
 
@@ -224,14 +224,16 @@ def test_create_event_loop_windows_no_uvloop() -> None:
         loop.close()
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="uvloop is not supported on Windows")
 def test_uvloop_mock_import_error(clean_state) -> None:
     """Test graceful handling when uvloop import fails."""
     with zarr.config.set({"async.use_uvloop": True}):
-        # Mock uvloop import failure
+        # Mock uvloop import failure by putting None in sys.modules
+        # This simulates the module being unavailable/corrupted
         with patch.dict("sys.modules", {"uvloop": None}):
-            with patch("builtins.__import__", side_effect=ImportError("No module named 'uvloop'")):
-                loop = _create_event_loop()
-                # Should fall back to asyncio
-                assert isinstance(loop, asyncio.AbstractEventLoop)
-                assert "uvloop" not in str(type(loop))
-                loop.close()
+            # When Python tries to import uvloop, it will get None and treat it as ImportError
+            loop = _create_event_loop()
+            # Should fall back to asyncio
+            assert isinstance(loop, asyncio.AbstractEventLoop)
+            assert "uvloop" not in str(type(loop))
+            loop.close()
