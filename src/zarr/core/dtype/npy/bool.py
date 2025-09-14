@@ -41,7 +41,7 @@ class Bool(ZDType[np.dtypes.BoolDType, np.bool_], HasItemSize):
     ----------
     This class implements the boolean data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding)and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     _zarr_v3_name: ClassVar[Literal["bool"]] = "bool"

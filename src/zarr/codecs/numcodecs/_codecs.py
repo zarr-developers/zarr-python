@@ -15,8 +15,7 @@ These codecs were previously defined in [numcodecs][], and have now been moved t
 ...   compressors=[numcodecs.zarr3.BZ2(level=5)])
 >>> array[:] = np.arange(*array.shape).astype(array.dtype)
 
-.. note::
-
+!!! note
     Please note that the codecs in [zarr.codecs.numcodecs][] are not part of the Zarr version
     3 specification. Using these codecs might cause interoperability issues with other Zarr
     implementations.

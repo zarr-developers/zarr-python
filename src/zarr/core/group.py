@@ -1165,8 +1165,9 @@ class AsyncGroup:
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
+        !!! warning "Deprecated"
+            `AsyncGroup.create_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
+            Use `AsyncGroup.create_array` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the [zarr.AsyncGroup.require_dataset][] method.
@@ -1205,8 +1206,9 @@ class AsyncGroup:
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.require_dataset` instead.
+        !!! warning "Deprecated"
+            `AsyncGroup.require_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
+            Use `AsyncGroup.require_dataset` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the [zarr.AsyncGroup.create_dataset][] method.
@@ -2597,8 +2599,9 @@ class Group(SyncMixin):
     def create_dataset(self, name: str, **kwargs: Any) -> Array:
         """Create an array.
 
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `Group.create_array` instead.
+        !!! warning "Deprecated"
+            `Group.create_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
+            Use `Group.create_array` instead.
 
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -2621,8 +2624,9 @@ class Group(SyncMixin):
     def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
+        !!! warning "Deprecated"
+            `Group.require_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
+            Use `Group.require_array` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the [zarr.Group.create_dataset][] method.
@@ -2864,7 +2868,8 @@ class Group(SyncMixin):
     ) -> Array:
         """Create an array within this group.
 
-        .. deprecated:: 3.0.0
+        !!! warning "Deprecated"
+            `Group.array()` is deprecated since v3.0.0 and will be removed in a future release.
             Use `Group.create_array` instead.
 
         This method lightly wraps [zarr.core.array.create_array][].

@@ -248,7 +248,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     ----------
     This class implements the 8-bit signed integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int8DType
@@ -404,7 +404,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     ----------
     This class implements the 8-bit unsigned integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt8DType
@@ -551,7 +551,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     ----------
     This class implements the 16-bit signed integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int16DType
@@ -713,7 +713,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     ----------
     This class implements the unsigned 16-bit unsigned integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt16DType
@@ -875,7 +875,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     ----------
     This class implements the 32-bit signed integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int32DType
@@ -1058,7 +1058,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     ----------
     This class implements the 32-bit unsigned integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt32DType
@@ -1216,7 +1216,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     ----------
     This class implements the 64-bit signed integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Int64DType
@@ -1374,7 +1374,7 @@ class UInt64(BaseInt[np.dtypes.UInt64DType, np.uint64], HasEndianness):
     ----------
     This class implements the unsigned 64-bit integer data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.UInt64DType

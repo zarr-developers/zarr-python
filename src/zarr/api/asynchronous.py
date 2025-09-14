@@ -556,8 +556,8 @@ async def save_group(
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
-    .. deprecated:: 3.0.0
-        `zarr.tree()` is deprecated and will be removed in a future release.
+    !!! warning "Deprecated"
+        `zarr.tree()` is deprecated since v3.0.0 and will be removed in a future release.
         Use `group.tree()` instead.
 
     Parameters

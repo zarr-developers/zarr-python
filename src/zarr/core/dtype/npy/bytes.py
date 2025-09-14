@@ -36,11 +36,11 @@ class FixedLengthBytesConfig(TypedDict):
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "length_bytes": 12
-        }
+    ```python
+    {
+        "length_bytes": 12
+    }
+    ```
     """
 
     length_bytes: int
@@ -56,17 +56,17 @@ class NullterminatedBytesJSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "|S10",
-            "object_codec_id": None
-        }
+    ```python
+    {
+        "name": "|S10",
+        "object_codec_id": None
+    }
+    ```
     """
 
 
@@ -83,14 +83,14 @@ class NullTerminatedBytesJSON_V3(
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "null_terminated_bytes",
-            "configuration": {
-                "length_bytes": 12
-            }
+    ```python
+    {
+        "name": "null_terminated_bytes",
+        "configuration": {
+            "length_bytes": 12
         }
+    }
+    ```
 
     """
 
@@ -105,17 +105,18 @@ class RawBytesJSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
 
     Examples
     --------
-    .. code-block:: python
+    ```python
 
         {
             "name": "|V10",
             "object_codec_id": None
         }
+    ```
     """
 
 
@@ -130,12 +131,14 @@ class RawBytesJSON_V3(NamedConfig[Literal["raw_bytes"], FixedLengthBytesConfig])
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "raw_bytes",
-            "configuration": {
-                "length_bytes": 12
+    ```python
+    {
+        "name": "raw_bytes",
+        "configuration": {
+            "length_bytes": 12
+        }
+    }
+    ```
     """
 
 
@@ -149,16 +152,16 @@ class VariableLengthBytesJSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-byt
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "|O",
-            "object_codec_id": "vlen-bytes"
-        }
+    ```python
+    {
+        "name": "|O",
+        "object_codec_id": "vlen-bytes"
+    }
+    ```
     """
 
 

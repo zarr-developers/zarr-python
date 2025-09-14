@@ -492,8 +492,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
 
-        .. deprecated:: 3.0.0
-            Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
+        !!! warning "Deprecated"
+            `AsyncArray.create()` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`zarr.api.asynchronous.create_array`][] instead.
 
         Parameters
         ----------
@@ -1082,9 +1083,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         Compressor that is applied to each chunk of the array.
 
-        .. deprecated:: 3.0.0
-            `array.compressor` is deprecated and will be removed in a future release.
-            Use `array.compressors` instead.
+        !!! warning "Deprecated"
+            `Array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`Array.compressors`][zarr.AsyncArray.compressors] instead.
         """
         if self.metadata.zarr_format == 2:
             return self.metadata.compressor
@@ -2035,8 +2036,9 @@ class Array:
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
-        .. deprecated:: 3.0.0
-            Deprecated in favor of [`zarr.create_array`][].
+        !!! warning "Deprecated"
+            `Array.create()` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`zarr.create_array`][] instead.
 
         Parameters
         ----------
@@ -2080,7 +2082,7 @@ class Array:
         order : Literal["C", "F"], optional
             The memory of the array (default is "C").
             If ``zarr_format`` is 2, this parameter sets the memory order of the array.
-            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
+            If ``zarr_format`` is 3, then this parameter is deprecated, because memory order
             is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
             order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
         filters : list[dict[str, JSON]], optional
@@ -2393,9 +2395,9 @@ class Array:
         """
         Compressor that is applied to each chunk of the array.
 
-        .. deprecated:: 3.0.0
-            `array.compressor` is deprecated and will be removed in a future release.
-            Use `array.compressors` instead.
+        !!! warning "Deprecated"
+            `array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`array.compressors`][zarr.Array.compressors] instead.
         """
         return self._async_array.compressor
 
