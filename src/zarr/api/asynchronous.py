@@ -341,8 +341,8 @@ async def open(
         If the store is backed by an fsspec-based implementation, then this dict will be passed to
         the Store constructor for that implementation. Ignored otherwise.
     **kwargs
-        Additional parameters are passed through to :func:`zarr.creation.open_array` or
-        :func:`zarr.hierarchy.open_group`.
+        Additional parameters are passed through to [zarr.creation.open_array][] or
+        [zarr.api.asynchronous.open_group][].
 
     Returns
     -------
@@ -387,7 +387,7 @@ async def open_consolidated(
     *args: Any, use_consolidated: Literal[True] = True, **kwargs: Any
 ) -> AsyncGroup:
     """
-    Alias for :func:`open_group` with ``use_consolidated=True``.
+    Alias for [`open_group`][zarr.api.asynchronous.open_group] with ``use_consolidated=True``.
     """
     if use_consolidated is not True:
         raise TypeError(
@@ -457,7 +457,7 @@ async def save_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Passed through to :func:`create`, e.g., compressor.
+        Passed through to [`create`][zarr.api.asynchronous.create], e.g., compressor.
     """
     zarr_format = (
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
@@ -587,7 +587,7 @@ async def array(
     data : array_like
         The data to fill the array with.
     **kwargs
-        Passed through to :func:`create`.
+        Passed through to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -723,7 +723,7 @@ async def create_group(
         The zarr format to use when saving.
         If no ``zarr_format`` is provided, the default format will be used.
         This default can be changed by modifying the value of ``default_zarr_format``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
@@ -772,12 +772,12 @@ async def open_group(
         Store or path to directory in file system or name of zip file.
 
         Strings are interpreted as paths on the local file system
-        and used as the ``root`` argument to :class:`zarr.storage.LocalStore`.
+        and used as the ``root`` argument to [zarr.storage.LocalStore][].
 
         Dictionaries are used as the ``store_dict`` argument in
-        :class:`zarr.storage.MemoryStore``.
+        [zarr.storage.MemoryStore][].
 
-        By default (``store=None``) a new :class:`zarr.storage.MemoryStore`
+        By default (``store=None``) a new [zarr.storage.MemoryStore][]
         is created.
 
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
@@ -930,7 +930,7 @@ async def create(
         - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
         These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-        ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
+        ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in [`zarr.config`][zarr.config].
     compressor : Codec, optional
         Primary compressor to compress chunk data.
         Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
@@ -941,7 +941,7 @@ async def create(
         - For Unicode strings, the default is ``VLenUTF8Codec``.
         - For bytes or objects, the default is ``VLenBytesCodec``.
 
-        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in [`zarr.config`][zarr.config].
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
@@ -964,7 +964,7 @@ async def create(
     filters : sequence of Codecs, optional
         Sequence of filters to use to encode chunk data prior to compression.
         Zarr format 2 only. If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v2_default_filters`` in [`zarr.config`][zarr.config].
     cache_metadata : bool, optional
         If True, array configuration metadata will be cached for the
         lifetime of the object. If False, array metadata will be reloaded
@@ -1081,7 +1081,7 @@ async def empty(
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [zarr.api.asynchronous.create][].
 
     Notes
     -----
@@ -1104,7 +1104,7 @@ async def empty_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [zarr.api.asynchronous.create][].
 
     Returns
     -------
@@ -1135,7 +1135,7 @@ async def full(
     fill_value : scalar
         Fill value.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [zarr.api.asynchronous.create][].
 
     Returns
     -------
@@ -1156,7 +1156,7 @@ async def full_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [zarr.api.asynchronous.create][].
 
     Returns
     -------
@@ -1180,7 +1180,7 @@ async def ones(
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [zarr.api.asynchronous.create][].
 
     Returns
     -------
@@ -1200,7 +1200,7 @@ async def ones_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [zarr.api.asynchronous.create][].
 
     Returns
     -------
@@ -1236,7 +1236,7 @@ async def open_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Any keyword arguments to pass to :func:`create`.
+        Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1304,7 +1304,7 @@ async def zeros(
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [zarr.api.asynchronous.create][].
 
     Returns
     -------
@@ -1324,7 +1324,7 @@ async def zeros_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [zarr.api.asynchronous.create][].
 
     Returns
     -------

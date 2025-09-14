@@ -450,7 +450,7 @@ class Store(ABC):
         Notes
         -----
         ``getsize_prefix`` is just provided as a potentially faster alternative to
-        listing all the keys under a prefix calling :meth:`Store.getsize` on each.
+        listing all the keys under a prefix calling [`Store.getsize`][zarr.abc.store.Store.getsize] on each.
 
         In general, ``prefix`` should be the path of an Array or Group in the Store.
         Implementations may differ on the behavior when some other ``prefix``

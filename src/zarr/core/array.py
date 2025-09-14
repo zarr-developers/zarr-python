@@ -529,7 +529,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
             These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
+            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in [`zarr.config`][zarr.config].
         dimension_names : Iterable[str | None], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -550,7 +550,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Sequence of filters to use to encode chunk data prior to compression.
             Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead. If no ``filters``
             are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
+            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in [`zarr.config`][zarr.config].
         compressor : dict[str, JSON], optional
             The compressor used to compress the data (default is None).
             Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
@@ -561,7 +561,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
 
-            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in [`zarr.config`][zarr.config].
         overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
         data : npt.ArrayLike, optional
@@ -1283,8 +1283,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Notes
         -----
-        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
-        property :attr:`Array.nchunks_initialized`.
+        On [`AsyncArray`][zarr.AsyncArray] this is an asynchronous method, unlike the (synchronous)
+        property [`Array.nchunks_initialized`][zarr.Array.nchunks_initialized].
 
         Examples
         --------
@@ -1316,8 +1316,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Notes
         -----
-        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
-        property :attr:`Array._nshards_initialized`.
+        On [`AsyncArray`][zarr.AsyncArray] this is an asynchronous method, unlike the (synchronous)
+        property [`Array._nshards_initialized`][zarr.Array._nshards_initialized].
 
         Examples
         --------
@@ -2066,7 +2066,7 @@ class Array:
             - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
             These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
+            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in [`zarr.config`][zarr.config].
         dimension_names : Iterable[str | None], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -2087,7 +2087,7 @@ class Array:
             Sequence of filters to use to encode chunk data prior to compression.
             Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead. If no ``filters``
             are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
+            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in [`zarr.config`][zarr.config].
         compressor : dict[str, JSON], optional
             Primary compressor to compress chunk data.
             Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
@@ -2098,7 +2098,7 @@ class Array:
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
 
-            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in [`zarr.config`][zarr.config].
         overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
 
@@ -4351,7 +4351,7 @@ async def from_array(
         - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
         - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
-          ``array.v3_default_serializer`` in :mod:`zarr.core.config`.
+          ``array.v3_default_serializer`` in [`zarr.config`][zarr.config].
         - "keep": Retain the serializer of the input array if it is a zarr Array.
 
     fill_value : Any, optional
@@ -4560,14 +4560,14 @@ async def init_array(
         of ``ArrayArrayCodec``.
         If no ``filters`` are provided, a default set of filters will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_filters``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit default filters.
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
         If no ``filters`` are provided, a default set of filters will be used.
         These defaults can be changed by modifying the value of ``array.v2_default_filters``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit default filters.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
@@ -4577,20 +4577,20 @@ async def init_array(
         returns another bytestream. Multiple compressors my be provided for Zarr format 3.
         If no ``compressors`` are provided, a default set of compressors will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
         If no ``compressor`` is provided, a default compressor will be used.
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
         If no ``serializer`` is provided, a default serializer will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -4600,7 +4600,7 @@ async def init_array(
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
         order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional
@@ -4789,14 +4789,14 @@ async def create_array(
         of ``ArrayArrayCodec``.
         If no ``filters`` are provided, a default set of filters will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_filters``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit default filters.
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
         If no ``filters`` are provided, a default set of filters will be used.
         These defaults can be changed by modifying the value of ``array.v2_default_filters``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit default filters.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
@@ -4806,20 +4806,20 @@ async def create_array(
         returns another bytestream. Multiple compressors my be provided for Zarr format 3.
         If no ``compressors`` are provided, a default set of compressors will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
         If no ``compressor`` is provided, a default compressor will be used.
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
         If no ``serializer`` is provided, a default serializer will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -4829,7 +4829,7 @@ async def create_array(
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
         order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional

@@ -188,7 +188,7 @@ class GpuMemoryStore(MemoryStore):
     Parameters
     ----------
     store_dict : MutableMapping, optional
-        A mutable mapping with string keys and :class:`zarr.core.buffer.gpu.Buffer`
+        A mutable mapping with string keys and [zarr.core.buffer.gpu.Buffer][]
         values.
     read_only : bool
         Whether to open the store in read-only mode.
@@ -222,7 +222,7 @@ class GpuMemoryStore(MemoryStore):
         ----------
         store_dict : mapping
             A mapping of strings keys to arbitrary Buffers. The buffer data
-            will be moved into a :class:`gpu.Buffer`.
+            will be moved into a [`gpu.Buffer`][zarr.core.buffer.gpu.Buffer].
 
         Returns
         -------
