@@ -30,20 +30,21 @@ class ChunkKeyEncodingParams(TypedDict):
 
 @dataclass(frozen=True)
 class ChunkKeyEncoding(ABC, Metadata):
-    name: ClassVar[str]
-    separator: SeparatorLiteral = "."
+    """
+    Defines how chunk coordinates are mapped to store keys.
 
-    def __post_init__(self) -> None:
-        separator_parsed = parse_separator(self.separator)
-        object.__setattr__(self, "separator", separator_parsed)
+    Subclasses must define a class variable `name` and implement `encode_chunk_key`.
+    """
+
+    name: ClassVar[str]
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
+        _, config_parsed = parse_named_configuration(data, require_configuration=False)
         return cls(**config_parsed if config_parsed else {})  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": self.name, "configuration": {"separator": self.separator}}
+        return {"name": self.name, "configuration": super().to_dict()}
 
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         """
@@ -66,7 +67,11 @@ ChunkKeyEncodingLike: TypeAlias = dict[str, JSON] | ChunkKeyEncodingParams | Chu
 @dataclass(frozen=True)
 class DefaultChunkKeyEncoding(ChunkKeyEncoding):
     name: ClassVar[Literal["default"]] = "default"
-    separator: SeparatorLiteral = "/"  # default
+    separator: SeparatorLiteral = "/"
+
+    def __post_init__(self) -> None:
+        separator_parsed = parse_separator(self.separator)
+        object.__setattr__(self, "separator", separator_parsed)
 
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         if chunk_key == "c":
@@ -80,7 +85,11 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
 @dataclass(frozen=True)
 class V2ChunkKeyEncoding(ChunkKeyEncoding):
     name: ClassVar[Literal["v2"]] = "v2"
-    separator: SeparatorLiteral = "."  # default
+    separator: SeparatorLiteral = "."
+
+    def __post_init__(self) -> None:
+        separator_parsed = parse_separator(self.separator)
+        object.__setattr__(self, "separator", separator_parsed)
 
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         return tuple(map(int, chunk_key.split(self.separator)))
