@@ -2,6 +2,26 @@
 
 <!-- towncrier release notes start -->
 
+## 3.1.2 (2025-08-25)
+
+### Features
+
+- Added support for async vectorized and orthogonal indexing. ([#3083](https://github.com/zarr-developers/zarr-python/issues/3083))
+- Make config param optional in init_array ([#3391](https://github.com/zarr-developers/zarr-python/issues/3391))
+
+### Bugfixes
+
+- Ensure that -0.0 is not considered equal to 0.0 when checking if all the values in a chunk are equal to an array's fill value. ([#3144](https://github.com/zarr-developers/zarr-python/issues/3144))
+- Fix a bug in `create_array` caused by iterating over chunk-aligned regions instead of shard-aligned regions when writing data. Additionally, the behavior of `nchunks_initialized` has been adjusted. This function consistently reports the number of chunks present in stored objects, even when the array uses the sharding codec. ([#3299](https://github.com/zarr-developers/zarr-python/issues/3299))
+- Opening an array or group with `mode="r+"` will no longer create new arrays or groups. ([#3307](https://github.com/zarr-developers/zarr-python/issues/3307))
+- Added `zarr.errors.ArrayNotFoundError`, which is raised when attempting to open a zarr array that does not exist, and `zarr.errors.NodeNotFoundError`, which is raised when failing to open an array or a group in a context where either an array or a group was expected. ([#3367](https://github.com/zarr-developers/zarr-python/issues/3367))
+- Ensure passing `config` is handled properly when `open`ing an existing array. ([#3378](https://github.com/zarr-developers/zarr-python/issues/3378))
+- Raise a Zarr-specific error class when a codec can't be found by name when deserializing the given codecs. This avoids hiding this error behind a "not part of a zarr hierarchy" warning. ([#3395](https://github.com/zarr-developers/zarr-python/issues/3395))
+
+### Misc
+
+- [#3098](https://github.com/zarr-developers/zarr-python/issues/3098), [#3288](https://github.com/zarr-developers/zarr-python/issues/3288), [#3318](https://github.com/zarr-developers/zarr-python/issues/3318), [#3368](https://github.com/zarr-developers/zarr-python/issues/3368), [#3371](https://github.com/zarr-developers/zarr-python/issues/3371), [#3372](https://github.com/zarr-developers/zarr-python/issues/3372), [#3374](https://github.com/zarr-developers/zarr-python/issues/3374)
+
 ## 3.1.1 (2025-07-28)
 
 ### Features
