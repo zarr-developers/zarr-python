@@ -1925,7 +1925,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         ArrayInfo
 
         Related
-        --------
+        -------
         [zarr.AsyncArray.info_complete][] - All information about a group, including dynamic information
             like the number of bytes and chunks written.
 
@@ -1963,7 +1963,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         ArrayInfo
 
         Related
-        --------
+        -------
         [zarr.AsyncArray.info][] - A property giving just the statically known information about an array.
         """
         return self._info(
@@ -2788,7 +2788,7 @@ class Array:
         methods listed under Related.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection], [set_basic_selection][zarr.Array.set_basic_selection]
         [get_mask_selection][zarr.Array.get_mask_selection], [set_mask_selection][zarr.Array.set_mask_selection],
         [get_coordinate_selection][zarr.Array.get_coordinate_selection], [set_coordinate_selection][zarr.Array.set_coordinate_selection],
@@ -2889,7 +2889,7 @@ class Array:
         methods listed under Related.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
@@ -3016,7 +3016,7 @@ class Array:
         using the alternative notation.
 
         Related
-        --------
+        -------
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
         [set_mask_selection][zarr.Array.set_mask_selection],
@@ -3126,7 +3126,7 @@ class Array:
         alternative notation.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
         [set_mask_selection][zarr.Array.set_mask_selection],
@@ -3254,7 +3254,7 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
@@ -3374,7 +3374,7 @@ class Array:
         Slices with step > 1 are supported, but slices with negative step are not.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
@@ -3461,7 +3461,7 @@ class Array:
         arrays by calling `np.nonzero`.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [set_mask_selection][zarr.Array.set_mask_selection],
@@ -3551,7 +3551,7 @@ class Array:
         arrays by calling `np.nonzero`.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
@@ -3639,7 +3639,7 @@ class Array:
         each coordinate array after broadcasting.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
@@ -3731,7 +3731,7 @@ class Array:
         of the array.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
@@ -3855,7 +3855,7 @@ class Array:
                    [23, 24, 25, 26, 27, 28]])
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
@@ -3955,7 +3955,7 @@ class Array:
         Slices are supported. However, only with a step size of one.
 
         Related
-        --------
+        -------
         [get_basic_selection][zarr.Array.get_basic_selection],
         [set_basic_selection][zarr.Array.set_basic_selection],
         [get_mask_selection][zarr.Array.get_mask_selection],
@@ -4119,7 +4119,7 @@ class Array:
         ArrayInfo
 
         Related
-        --------
+        -------
         [zarr.Array.info_complete][] - All information about a group,
             including dynamic information like the number of bytes and chunks written.
 
@@ -4155,7 +4155,7 @@ class Array:
         ArrayInfo
 
         Related
-        --------
+        -------
         [zarr.Array.info][] - The statically known subset of metadata about an array.
         """
         return sync(self._async_array.info_complete())
@@ -4178,7 +4178,7 @@ async def _shards_initialized(
         The keys of the chunks that have been initialized.
 
     Related
-    --------
+    -------
     [nchunks_initialized][zarr.Array.nchunks_initialized]
 
     """

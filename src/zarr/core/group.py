@@ -865,7 +865,7 @@ class AsyncGroup:
         GroupInfo
 
         Related
-        --------
+        -------
         [zarr.AsyncGroup.info_complete][]
             All information about a group, including dynamic information
         """
@@ -889,7 +889,7 @@ class AsyncGroup:
         GroupInfo
 
         Related
-        --------
+        -------
         [zarr.AsyncGroup.info][]
         """
         members = [x[1].metadata async for x in self.members(max_depth=None)]
@@ -2076,7 +2076,7 @@ class Group(SyncMixin):
         GroupInfo
 
         Related
-        --------
+        -------
         [zarr.Group.info_complete][]
             All information about a group, including dynamic information
             like the children members.
@@ -2095,7 +2095,7 @@ class Group(SyncMixin):
         GroupInfo
 
         Related
-        --------
+        -------
         [zarr.Group.info][]
         """
         return self._sync(self._async_group.info_complete())

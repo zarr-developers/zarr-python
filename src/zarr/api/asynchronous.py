@@ -295,7 +295,7 @@ async def load(
 
     See Also
     --------
-    save, savez
+    save
 
     Notes
     -----
