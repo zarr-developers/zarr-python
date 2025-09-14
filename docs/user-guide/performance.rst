@@ -289,11 +289,16 @@ Installation
 
 To enable uvloop support, install it as an optional dependency::
 
-   pip install 'zarr[uvloop]'
+   pip install 'zarr[optional]'
 
-Or install uvloop directly::
+Or install uvloop directly (Unix/Linux/macOS only)::
 
    pip install uvloop
+
+.. note::
+   uvloop is automatically included in the ``optional`` dependency group, but only
+   installed on supported platforms (Unix/Linux/macOS). On Windows, the installation
+   will succeed but uvloop will be skipped.
 
 Configuration
 ~~~~~~~~~~~~~
