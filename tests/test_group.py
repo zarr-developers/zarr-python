@@ -2234,3 +2234,9 @@ def test_get_roots(roots: tuple[str, ...]):
     }
     data = root_nodes | child_nodes
     assert set(_get_roots(data)) == set(roots)
+
+
+def test_open_array_as_group():
+    z = zarr.create_array(shape=(40, 50), chunks=(10, 10), dtype="f8", store={})
+    with pytest.raises(ContainsArrayError):
+        zarr.open_group(z.store)
