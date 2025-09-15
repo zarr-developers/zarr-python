@@ -389,7 +389,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: CompressorLike_V2 | Literal["auto"] = "auto",
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -434,35 +434,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # v2 and v3
         shape: ShapeLike,
         dtype: ZDTypeLike,
-        zarr_format: Literal[3] = 3,
-        fill_value: Any | None = DEFAULT_FILL_VALUE,
-        attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ShapeLike | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
-        # runtime
-        overwrite: bool = False,
-        data: npt.ArrayLike | None = None,
-        config: ArrayConfigLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]: ...
-
-    @overload
-    @classmethod
-    async def create(
-        cls,
-        store: StoreLike,
-        *,
-        # v2 and v3
-        shape: ShapeLike,
-        dtype: ZDTypeLike,
-        zarr_format: ZarrFormat,
+        zarr_format: ZarrFormat = 3,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
