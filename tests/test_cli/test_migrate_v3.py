@@ -13,7 +13,7 @@ from zarr.abc.codec import Codec
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
-from zarr.codecs.numcodecs._codecs import LZMA, Delta
+from zarr.codecs.numcodecs import LZMA, Delta
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array
@@ -506,7 +506,8 @@ def test_migrate_unknown_codec(local_store: LocalStore) -> None:
     assert result.exit_code == 1
     assert isinstance(result.exception, ValueError)
     assert (
-        str(result.exception) == "Couldn't find corresponding numcodecs.zarr3 codec for categorize"
+        str(result.exception)
+        == "Couldn't find corresponding zarr.codecs.numcodecs codec for categorize"
     )
 
 

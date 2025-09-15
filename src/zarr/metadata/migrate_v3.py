@@ -252,7 +252,7 @@ def _convert_compressor(
             return GzipCodec(level=compressor.level)
 
         case _:
-            # If possible, find matching numcodecs.zarr3 codec
+            # If possible, find matching zarr.codecs.numcodecs codec
             compressor_codec = _find_numcodecs_zarr3(compressor)
 
             if not isinstance(compressor_codec, BytesBytesCodec):
@@ -262,7 +262,7 @@ def _convert_compressor(
 
 
 def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
-    """Find matching numcodecs.zarr3 codec (if it exists)"""
+    """Find matching zarr.codecs.numcodecs codec (if it exists)"""
 
     numcodec_name = f"numcodecs.{numcodecs_codec.codec_id}"
     numcodec_dict = {
@@ -274,7 +274,7 @@ def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
         codec_v3 = get_codec_class(numcodec_name)
     except KeyError as exc:
         raise ValueError(
-            f"Couldn't find corresponding numcodecs.zarr3 codec for {numcodecs_codec.codec_id}"
+            f"Couldn't find corresponding zarr.codecs.numcodecs codec for {numcodecs_codec.codec_id}"
         ) from exc
 
     return codec_v3.from_dict(numcodec_dict)
