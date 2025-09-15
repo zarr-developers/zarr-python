@@ -51,9 +51,11 @@ class BytesJSON_V2(BytesConfig):
 BytesJSON_V3 = NamedConfig[Literal["bytes"], BytesConfig] | Literal["bytes"]
 
 
-def parse_endianness(data: object) -> EndiannessStr:
+def parse_endianness(data: object) -> Endian:
     if data in ENDIANNESS_STR:
-        return data  # type: ignore [return-value]
+        return Endian[data]  # type: ignore [misc]
+    if isinstance(data, Endian):
+        return data
     raise ValueError(f"Invalid endianness: {data!r}. Expected one of {ENDIANNESS_STR}")
 
 
@@ -81,9 +83,9 @@ def check_json_v3(data: object) -> TypeGuard[BytesJSON_V3]:
 class BytesCodec(ArrayBytesCodec):
     is_fixed_size = True
 
-    endian: EndiannessStr | None
+    endian: Endian | None
 
-    def __init__(self, *, endian: EndiannessStr | str | None = default_system_endian) -> None:
+    def __init__(self, *, endian: EndiannessStr | Endian | None = default_system_endian) -> None:
         endian_parsed = None if endian is None else parse_endianness(endian)
 
         object.__setattr__(self, "endian", endian_parsed)
@@ -121,14 +123,14 @@ class BytesCodec(ArrayBytesCodec):
             if self.endian is not None:
                 return {
                     "id": "bytes",
-                    "endian": self.endian,
+                    "endian": self.endian.value,
                 }
             return {"id": "bytes"}
         elif zarr_format == 3:
             if self.endian is not None:
                 return {
                     "name": "bytes",
-                    "configuration": {"endian": self.endian},
+                    "configuration": {"endian": self.endian.value},
                 }
             return {"name": "bytes"}
         raise ValueError(
@@ -152,7 +154,7 @@ class BytesCodec(ArrayBytesCodec):
     ) -> NDBuffer:
         assert isinstance(chunk_bytes, Buffer)
         # TODO: remove endianness enum in favor of literal union
-        endian = self.endian if self.endian is not None else None
+        endian = self.endian.value if self.endian is not None else None
         if isinstance(chunk_spec.dtype, HasEndianness) and endian is not None:
             dtype = replace(chunk_spec.dtype, endianness=endian).to_native_dtype()  # type: ignore[call-arg]
         else:
@@ -182,11 +184,11 @@ class BytesCodec(ArrayBytesCodec):
         if (
             chunk_array.dtype.itemsize > 1
             and self.endian is not None
-            and self.endian != chunk_array.byteorder.value
+            and self.endian.value != chunk_array.byteorder.value
         ):
             # type-ignore is a numpy bug
             # see https://github.com/numpy/numpy/issues/26473
-            new_dtype = chunk_array.dtype.newbyteorder(self.endian)
+            new_dtype = chunk_array.dtype.newbyteorder(self.endian.value)
             chunk_array = chunk_array.astype(new_dtype)
 
         nd_array = chunk_array.as_ndarray_like()
