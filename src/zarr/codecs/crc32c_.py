@@ -69,7 +69,7 @@ class Crc32cCodec(BytesBytesCodec):
             return cls()
         msg = (
             "Invalid Zarr V2 JSON representation of the crc32c codec. "
-            f"Got {data!r}, expected a Mapping with keys ('id')"
+            f"Got {data!r}, expected a Mapping with keys ('id', 'location')"
         )
         raise CodecValidationError(msg)
 
