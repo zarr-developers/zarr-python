@@ -71,7 +71,7 @@ from zarr.core.dtype import (
     VariableLengthUTF8,
     ZDType,
     ZDTypeLike,
-    parse_data_type,
+    parse_dtype,
 )
 from zarr.core.dtype.common import HasEndianness, HasItemSize, HasObjectCodec
 from zarr.core.indexing import (
@@ -638,7 +638,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
         """
 
-        dtype_parsed = parse_data_type(dtype, zarr_format=zarr_format)
+        dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
         store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
@@ -4539,7 +4539,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
-    zdtype = parse_data_type(dtype, zarr_format=zarr_format)
+    zdtype = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
         chunk_key_encoding, zarr_format=zarr_format
