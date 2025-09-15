@@ -254,14 +254,6 @@ def is_int_or_bool_iterable(x: Any) -> bool:
     return is_integer_list(x) or is_integer_array(x) or is_bool_array(x) or is_bool_list(x)
 
 
-def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
-    if np.isscalar(value):
-        return True
-    if hasattr(value, "shape") and value.shape == ():
-        return True
-    return isinstance(value, tuple) and dtype.names is not None and len(value) == len(dtype.names)
-
-
 def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
     """Check whether a selection contains only scalars or integer/bool array-likes.
 

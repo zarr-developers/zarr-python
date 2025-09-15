@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zarr.abc.codec import _check_codecjson_v2
+from zarr.core.common import _check_codecjson_v2
 
 
 def test_check_codecjson_v2_valid() -> None:

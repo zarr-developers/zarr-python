@@ -1,5 +1,5 @@
 import pickle
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -9,6 +9,7 @@ import zarr
 import zarr.api
 import zarr.api.asynchronous
 from zarr import Array
+from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,
@@ -16,12 +17,53 @@ from zarr.codecs import (
     ShardingCodecIndexLocation,
     TransposeCodec,
 )
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.errors import ZarrUserWarning
 from zarr.storage import StorePath, ZipStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
+
+if TYPE_CHECKING:
+    from zarr.codecs.sharding import ShardingJSON_V2, ShardingJSON_V3
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("chunk_shape", [(32, 32), (64, 64)])
+@pytest.mark.parametrize("codecs", [(BytesCodec(),)])
+@pytest.mark.parametrize("index_codecs", [(Crc32cCodec(),)])
+def test_sharding_codec_to_json(
+    index_location: Literal["start", "end"],
+    chunk_shape: tuple[int, ...],
+    codecs: tuple[Codec, ...],
+    index_codecs: tuple[Codec, ...],
+) -> None:
+    codec = ShardingCodec(
+        chunk_shape=chunk_shape,
+        codecs=codecs,
+        index_location=index_location,
+        index_codecs=index_codecs,
+    )
+    expected_v2: ShardingJSON_V2 = {
+        "id": "sharding_indexed",
+        "chunk_shape": chunk_shape,
+        "codecs": tuple(c.to_json(zarr_format=2) for c in codecs),
+        "index_codecs": tuple(c.to_json(zarr_format=2) for c in index_codecs),
+        "index_location": index_location,
+    }
+    expected_v3: ShardingJSON_V3 = {
+        "name": "sharding_indexed",
+        "configuration": {
+            "chunk_shape": chunk_shape,
+            "codecs": tuple(c.to_json(zarr_format=3) for c in codecs),
+            "index_codecs": tuple(c.to_json(zarr_format=3) for c in index_codecs),
+            "index_location": index_location,
+        },
+    }
+    assert codec.to_json(zarr_format=2) == expected_v2
+    assert codec.to_json(zarr_format=3) == expected_v3
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])

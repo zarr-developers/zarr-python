@@ -32,7 +32,7 @@ repos:
           - donfig
           - numcodecs[crc32c]
           - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
-          - typing_extensions
+          - typing_extensions>=4.10.0
           - universal-pathlib
           - obstore>=0.5.1
           # Tests

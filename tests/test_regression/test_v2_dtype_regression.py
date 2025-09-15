@@ -194,6 +194,7 @@ script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
 
 
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 @pytest.mark.parametrize(
     "source_array_v2", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
 )

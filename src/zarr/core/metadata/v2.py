@@ -1,17 +1,26 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
+from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
-from zarr.abc.numcodec import Numcodec, _is_numcodec
+from zarr.abc.numcodec import Numcodec
+from zarr.codecs._v2 import NumcodecWrapper
+from zarr.codecs.blosc import BloscCodec
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid
+from zarr.core.common import (
+    CodecJSON_V2,
+    _check_codecjson_v2,
+    _check_codecjson_v3,
+)
 from zarr.core.dtype import get_data_type_from_json
-from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
+from zarr.core.dtype.common import OBJECT_CODEC_IDS
 from zarr.errors import ZarrUserWarning
-from zarr.registry import get_numcodec
+from zarr.registry import get_codec
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -19,6 +28,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.dtype.common import DTypeSpec_V2
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
@@ -55,7 +65,7 @@ class ArrayV2MetadataDict(TypedDict):
 
 
 # Union of acceptable types for v2 compressors
-CompressorLikev2: TypeAlias = dict[str, JSON] | Numcodec | None
+CompressorLike_V2: TypeAlias = Mapping[str, JSON] | Numcodec | Codec | NumcodecWrapper
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -65,9 +75,9 @@ class ArrayV2Metadata(Metadata):
     dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: int | float | str | bytes | None = None
     order: MemoryOrder = "C"
-    filters: tuple[Numcodec, ...] | None = None
+    filters: tuple[Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: Numcodec | None
+    compressor: Codec | NumcodecWrapper | None = None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
@@ -80,8 +90,8 @@ class ArrayV2Metadata(Metadata):
         fill_value: Any,
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
-        compressor: CompressorLikev2 = None,
-        filters: Iterable[Numcodec | dict[str, JSON]] | None = None,
+        compressor: CompressorLike_V2 | None = None,
+        filters: Iterable[CompressorLike_V2] | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> None:
         """
@@ -89,15 +99,16 @@ class ArrayV2Metadata(Metadata):
         """
         shape_parsed = parse_shapelike(shape)
         chunks_parsed = parse_shapelike(chunks)
-        compressor_parsed = parse_compressor(compressor)
+        compressor_parsed = parse_compressor(compressor, dtype)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
-        filters_parsed = parse_filters(filters)
+        filters_parsed = parse_filters(filters, dtype)
         fill_value_parsed: TBaseScalar | None
         if fill_value is not None:
             fill_value_parsed = dtype.cast_scalar(fill_value)
         else:
             fill_value_parsed = fill_value
+
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -131,10 +142,10 @@ class ArrayV2Metadata(Metadata):
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, indent=json_indent, allow_nan=True).encode()
+                json.dumps(zarray_dict, indent=json_indent, allow_nan=False).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent, allow_nan=True).encode()
+                json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
             ),
         }
 
@@ -152,11 +163,12 @@ class ArrayV2Metadata(Metadata):
         _filters, _compressor = (data.get("filters"), data.get("compressor"))
         if _filters is not None:
             _filters = cast("tuple[dict[str, JSON], ...]", _filters)
-            object_codec_id = get_object_codec_id(tuple(_filters) + (_compressor,))
+            object_codec_id = get_object_codec_id(tuple(_filters) + (_compressor,))  # type: ignore[arg-type]
         else:
             object_codec_id = get_object_codec_id((_compressor,))
         # we add a layer of indirection here around the dtype attribute of the array metadata
         # because we also need to know the object codec id, if any, to resolve the data type
+
         dtype_spec: DTypeSpec_V2 = {
             "name": data["dtype"],
             "object_codec_id": object_codec_id,
@@ -196,33 +208,23 @@ class ArrayV2Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
-        if _is_numcodec(zarray_dict["compressor"]):
-            codec_config = zarray_dict["compressor"].get_config()
-            # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
-            if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
-                codec_config.pop("checksum")
-            zarray_dict["compressor"] = codec_config
-
-        if zarray_dict["filters"] is not None:
-            raw_filters = zarray_dict["filters"]
-            # TODO: remove this when we can stratically type the output JSON data structure
-            # entirely
-            if not isinstance(raw_filters, list | tuple):
-                raise TypeError("Invalid type for filters. Expected a list or tuple.")
-            new_filters = []
-            for f in raw_filters:
-                if _is_numcodec(f):
-                    new_filters.append(f.get_config())
-                else:
-                    new_filters.append(f)
-            zarray_dict["filters"] = new_filters
+        if self.compressor is not None:
+            zarray_dict["compressor"] = self.compressor.to_json(zarr_format=2)  # type: ignore[assignment]
+        else:
+            zarray_dict["compressor"] = None
+        new_filters: list[CodecJSON_V2] | None = []
+        if self.filters is not None:
+            new_filters.extend([f.to_json(zarr_format=2) for f in self.filters])  # type: ignore[union-attr]
+        else:
+            new_filters = None
+        zarray_dict["filters"] = new_filters  # type: ignore[assignment]
 
         # serialize the fill value after dtype-specific JSON encoding
         if self.fill_value is not None:
             fill_value = self.dtype.to_json_scalar(self.fill_value, zarr_format=2)
             zarray_dict["fill_value"] = fill_value
 
-        # pull the "name" attribute out of the dtype spec returned by self.dtype.to_json
+        # serialize the dtype after fill value-specific JSON encoding
         zarray_dict["dtype"] = self.dtype.to_json(zarr_format=2)["name"]
 
         return zarray_dict
@@ -261,45 +263,72 @@ def parse_zarr_format(data: object) -> Literal[2]:
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_filters(data: object) -> tuple[Numcodec, ...] | None:
+def _parse_codec(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecWrapper:
+    """
+    Resolve a potential codec.
+    """
+    if isinstance(data, (Codec, NumcodecWrapper)):
+        # TERRIBLE HACK
+        # This is necessary because the Blosc codec defaults create a broken state.
+        # We need to provide dtype information here to convert a potentially broken blosc codec to a valid one
+        if isinstance(data, BloscCodec):
+            return data.evolve_from_array_spec(
+                ArraySpec(
+                    shape=(1,),
+                    dtype=dtype,
+                    fill_value=None,
+                    config=ArrayConfig.from_dict({}),
+                    prototype=default_buffer_prototype(),
+                )
+            )
+        return data
+
+    if isinstance(data, Numcodec):
+        try:
+            # attempt to get a v3-api compatible version of this codec from the registry
+            return get_codec(data.get_config())
+        except KeyError:
+            # if we could not find a v3-api compatible version of this codec, wrap it
+            # in a NumcodecsWrapper
+            return NumcodecWrapper(codec=data)
+
+    if _check_codecjson_v2(data) or _check_codecjson_v3(data):
+        return get_codec(data)
+
+    raise TypeError(
+        f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of codec. Got {type(data)} instead."
+    )
+
+
+def parse_filters(
+    data: object, dtype: ZDType[Any, Any]
+) -> tuple[Codec | NumcodecWrapper, ...] | None:
     """
     Parse a potential tuple of filters
     """
-    out: list[Numcodec] = []
+    out: list[Codec | NumcodecWrapper] = []
 
     if data is None:
         return data
-    if isinstance(data, Iterable):
-        for idx, val in enumerate(data):
-            if _is_numcodec(val):
-                out.append(val)
-            elif isinstance(val, dict):
-                out.append(get_numcodec(val))  # type: ignore[arg-type]
-            else:
-                msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
-                raise TypeError(msg)
-        if len(out) == 0:
-            # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
-            return None
-        else:
-            return tuple(out)
-    # take a single codec instance and wrap it in a tuple
-    if _is_numcodec(data):
-        return (data,)
-    msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
-    raise TypeError(msg)
+    if not isinstance(data, Iterable):
+        return (_parse_codec(data, dtype),)
+    out = [(_parse_codec(val, dtype)) for val in data]
+    if len(out) == 0:
+        # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
+        return None
+    else:
+        return tuple(out)
 
 
-def parse_compressor(data: object) -> Numcodec | None:
+def parse_compressor(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecWrapper | None:
     """
     Parse a potential compressor.
     """
-    if data is None or _is_numcodec(data):
+    # TODO: only validate the compressor in one place. currently we do it twice, once in init_array
+    # and again when constructing metadata
+    if data is None:
         return data
-    if isinstance(data, dict):
-        return get_numcodec(data)  # type: ignore[arg-type]
-    msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
-    raise ValueError(msg)
+    return _parse_codec(data, dtype)
 
 
 def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
@@ -312,9 +341,13 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
+def is_object_codec(data: CodecJSON_V2) -> bool:
+    return data["id"] in OBJECT_CODEC_IDS
+
+
+def get_object_codec_id(maybe_object_codecs: Sequence[CodecJSON_V2 | None]) -> str | None:
     """
-    Inspect a sequence of codecs / filters for an "object codec", i.e. a codec
+    Inspect a sequence of Zarr V2 codec JSON objects for an "object codec", i.e. a codec
     that can serialize object arrays to contiguous bytes. Zarr python
     maintains a hard-coded set of object codec ids. If any element from the input
     has an id that matches one of the hard-coded object codec ids, that id
@@ -323,8 +356,8 @@ def get_object_codec_id(maybe_object_codecs: Sequence[JSON]) -> str | None:
     object_codec_id = None
     for maybe_object_codec in maybe_object_codecs:
         if (
-            isinstance(maybe_object_codec, dict)
+            isinstance(maybe_object_codec, Mapping)
             and maybe_object_codec.get("id") in OBJECT_CODEC_IDS
         ):
-            return cast("str", maybe_object_codec["id"])
+            return maybe_object_codec["id"]
     return object_codec_id

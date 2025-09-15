@@ -79,7 +79,7 @@ from zarr.storage._logging import LoggingStore
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
-    from zarr.abc.codec import CodecJSON_V3
+    from zarr.core.common import CodecJSON_V3
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
@@ -502,14 +502,14 @@ class TestInfo:
             _zarr_format=2,
             _data_type=arr._async_array._zdtype,
             _fill_value=arr.fill_value,
-            _shape=(8, 8),
+            _shape=arr.shape,
             _chunk_shape=chunks,
             _shard_shape=None,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressors=(numcodecs.Zstd(),),
+            _compressors=arr.compressors,
         )
         assert result == expected
 
@@ -520,14 +520,14 @@ class TestInfo:
             _zarr_format=3,
             _data_type=arr._async_array._zdtype,
             _fill_value=arr.fill_value,
-            _shape=(8, 8),
+            _shape=arr.shape,
             _chunk_shape=chunks,
             _shard_shape=shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _compressors=(ZstdCodec(),),
-            _serializer=BytesCodec(),
+            _compressors=arr.compressors,
+            _serializer=arr.serializer,
             _count_bytes=512,
         )
         assert result == expected
@@ -582,14 +582,14 @@ class TestInfo:
             _zarr_format=2,
             _data_type=Float64(),
             _fill_value=arr.metadata.fill_value,
-            _shape=(8, 8),
-            _chunk_shape=(2, 2),
+            _shape=arr.shape,
+            _chunk_shape=arr.chunks,
             _shard_shape=None,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressors=(numcodecs.Zstd(),),
+            _compressors=arr.compressors,
         )
         assert result == expected
 
@@ -614,8 +614,8 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _compressors=(ZstdCodec(),),
-            _serializer=BytesCodec(),
+            _compressors=arr.compressors,
+            _serializer=arr.serializer,
             _count_bytes=512,
         )
         assert result == expected
@@ -1169,8 +1169,8 @@ class TestCreateArray:
             (ZstdCodec(level=3),),
             (ZstdCodec(level=3), GzipCodec(level=0)),
             ZstdCodec(level=3),
-            {"name": "zstd", "configuration": {"level": 3}},
-            ({"name": "zstd", "configuration": {"level": 3}},),
+            {"name": "zstd", "configuration": {"level": 3, "checksum": True}},
+            ({"name": "zstd", "configuration": {"level": 3, "checksum": True}},),
         ],
     )
     @pytest.mark.parametrize(
@@ -1377,7 +1377,6 @@ class TestCreateArray:
         assert arr.metadata.zarr_format == 2  # guard for mypy
         assert arr.metadata.compressor == compressor_expected
         assert arr.metadata.filters == filters_expected
-
         # Normalize for property getters
         arr_compressors_expected = () if compressor_expected is None else (compressor_expected,)
         arr_filters_expected = () if filters_expected is None else filters_expected
@@ -1744,7 +1743,7 @@ def test_roundtrip_numcodecs() -> None:
 
     # Create the array with the correct codecs
     root = zarr.group(store)
-    warn_msg = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
+    warn_msg = "Data saved with this codec may not be supported by other Zarr implementations. "
     with pytest.warns(ZarrUserWarning, match=warn_msg):
         root.create_array(
             "test",
@@ -1762,7 +1761,11 @@ def test_roundtrip_numcodecs() -> None:
     root = zarr.open_group(store)
     with pytest.warns(ZarrUserWarning, match=warn_msg):
         metadata = root["test"].metadata.to_dict()
-    expected = (*filters, BYTES_CODEC, *compressors)
+    # The names will change because numcodecs.<codec> is an alias for <codec>
+    expected = tuple(
+        {"name": v["name"].removeprefix("numcodecs."), "configuration": v["configuration"]}  # type: ignore[index, attr-defined]
+        for v in (*filters, BYTES_CODEC, *compressors)
+    )
     assert metadata["codecs"] == expected
 
 
