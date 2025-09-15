@@ -396,7 +396,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
-    # this overload defines the function signature when zarr_format is 3
     @overload
     @classmethod
     async def create(
@@ -434,7 +433,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # v2 and v3
         shape: ShapeLike,
         dtype: ZDTypeLike,
-        zarr_format: ZarrFormat = 3,
+        zarr_format: ZarrFormat,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         attributes: dict[str, JSON] | None = None,
         # v3 only
