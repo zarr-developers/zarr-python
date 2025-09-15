@@ -20,12 +20,8 @@ from numcodecs.blosc import Blosc
 from packaging.version import Version
 from typing_extensions import ReadOnly
 
-from zarr.abc.codec import BytesBytesCodec, CodecJSON
-from zarr.core.common import (
-    JSON,
-    NamedRequiredConfig,
-    ZarrFormat,
-)
+from zarr.abc.codec import BytesBytesCodec
+from zarr.core.common import JSON, CodecJSON, NamedRequiredConfig, ZarrFormat
 from zarr.core.dtype.common import HasItemSize
 from zarr.errors import CodecValidationError
 

@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast, overload
 import numpy as np
 from numcodecs.vlen import VLenBytes, VLenUTF8
 
-from zarr.abc.codec import ArrayBytesCodec, CodecJSON
+from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import JSON, NamedConfig, ZarrFormat
+from zarr.core.common import JSON, CodecJSON, NamedConfig, ZarrFormat
 
 if TYPE_CHECKING:
     from typing import Self

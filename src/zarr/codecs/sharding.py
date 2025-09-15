@@ -27,7 +27,6 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
     Codec,
-    CodecJSON,
     CodecPipeline,
 )
 from zarr.abc.store import (
@@ -50,6 +49,7 @@ from zarr.core.buffer import (
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.common import (
     JSON,
+    CodecJSON,
     CodecJSON_V2,
     CodecJSON_V3,
     NamedRequiredConfig,

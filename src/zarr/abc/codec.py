@@ -13,6 +13,7 @@ from typing import (
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import (
+    CodecJSON,
     CodecJSON_V2,
     CodecJSON_V3,
     ZarrFormat,
@@ -46,12 +47,6 @@ __all__ = [
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
-
-
-# The widest type we will *accept* for a codec JSON
-# This covers v2 and v3
-CodecJSON = CodecJSON_V2 | CodecJSON_V3
-"""The widest type of JSON-like input that could specify a codec."""
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):

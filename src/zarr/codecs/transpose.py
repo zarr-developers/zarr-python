@@ -7,13 +7,9 @@ from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, cast, ove
 import numpy as np
 from typing_extensions import ReadOnly
 
-from zarr.abc.codec import ArrayArrayCodec, CodecJSON
+from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import (
-    JSON,
-    NamedRequiredConfig,
-    ZarrFormat,
-)
+from zarr.core.common import JSON, CodecJSON, NamedRequiredConfig, ZarrFormat
 from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:

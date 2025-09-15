@@ -8,13 +8,9 @@ from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast, overload
 from numcodecs.gzip import GZip
 from typing_extensions import ReadOnly
 
-from zarr.abc.codec import BytesBytesCodec, CodecJSON
+from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import (
-    JSON,
-    NamedRequiredConfig,
-    ZarrFormat,
-)
+from zarr.core.common import JSON, CodecJSON, NamedRequiredConfig, ZarrFormat
 
 if TYPE_CHECKING:
     from typing import Self

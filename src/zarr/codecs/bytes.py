@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict, TypeGu
 import numpy as np
 from typing_extensions import ReadOnly
 
-from zarr.abc.codec import ArrayBytesCodec, CodecJSON
+from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
-from zarr.core.common import JSON, NamedConfig, ZarrFormat
+from zarr.core.common import JSON, CodecJSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import HasEndianness
 
 if TYPE_CHECKING:

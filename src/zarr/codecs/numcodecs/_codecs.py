@@ -48,12 +48,12 @@ from zarr.abc.codec import (
     ArrayArrayCodec,
     ArrayBytesCodec,
     BytesBytesCodec,
-    CodecJSON,
 )
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import (
     JSON,
+    CodecJSON,
     CodecJSON_V2,
     CodecJSON_V3,
     NamedConfig,

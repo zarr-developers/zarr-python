@@ -11,13 +11,9 @@ from numcodecs.zstd import Zstd
 from packaging.version import Version
 from typing_extensions import ReadOnly
 
-from zarr.abc.codec import BytesBytesCodec, CodecJSON
+from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import (
-    JSON,
-    NamedRequiredConfig,
-    ZarrFormat,
-)
+from zarr.core.common import JSON, CodecJSON, NamedRequiredConfig, ZarrFormat
 from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:

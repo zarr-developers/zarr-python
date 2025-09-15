@@ -9,8 +9,8 @@ import typing_extensions
 from crc32c import crc32c
 from typing_extensions import ReadOnly
 
-from zarr.abc.codec import BytesBytesCodec, CodecJSON
-from zarr.core.common import JSON, NamedConfig, ZarrFormat, parse_named_configuration
+from zarr.abc.codec import BytesBytesCodec
+from zarr.core.common import JSON, CodecJSON, NamedConfig, ZarrFormat, parse_named_configuration
 from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:

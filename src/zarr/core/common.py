@@ -119,6 +119,12 @@ def _check_codecjson_v3(data: object) -> TypeIs[CodecJSON_V3]:
     )
 
 
+# The widest type we will *accept* for a codec JSON
+# This covers v2 and v3
+CodecJSON = CodecJSON_V2 | CodecJSON_V3
+"""The widest type of JSON-like input that could specify a codec."""
+
+
 def product(tup: tuple[int, ...]) -> int:
     return functools.reduce(operator.mul, tup, 1)
 
