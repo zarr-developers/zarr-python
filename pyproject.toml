@@ -35,7 +35,7 @@ dependencies = [
     'packaging>=22.0',
     'numpy>=1.26',
     'numcodecs[crc32c]>=0.14',
-    'typing_extensions>=4.9',
+    'typing_extensions>=4.10.0',
     'donfig>=0.8',
 ]
 
