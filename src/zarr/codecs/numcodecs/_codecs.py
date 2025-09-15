@@ -71,7 +71,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.numcodec import Numcodec
     from zarr.codecs.blosc import BloscJSON_V2, BloscJSON_V3
-    from zarr.codecs.crc32c_ import Crc32cConfig, Crc32cJSON_V2, Crc32cJSON_V3
+    from zarr.codecs.crc32c_ import Crc32cConfig_V2, Crc32cJSON_V2, Crc32cJSON_V3
     from zarr.codecs.gzip import GZipConfig, GZipJSON_V2, GZipJSON_V3
     from zarr.codecs.zstd import ZstdConfig_V3, ZstdJSON_V2, ZstdJSON_V3
     from zarr.core.array_spec import ArraySpec
@@ -253,6 +253,8 @@ class AsTypeJSON_V3(NamedRequiredConfig[Literal["astype"], AsTypeConfig]):
 class Crc32Config(TypedDict):
     """Configuration parameters for CRC32 codec."""
 
+    location: Literal["start", "end"]
+
 
 class Crc32JSON_V2(Crc32Config):
     """JSON representation of CRC32 codec for Zarr V2."""
@@ -266,6 +268,8 @@ class Crc32JSON_V3(NamedConfig[Literal["crc32"], Crc32Config]):
 
 class Adler32Config(TypedDict):
     """Configuration parameters for Adler32 codec."""
+
+    location: Literal["start", "end"]
 
 
 class Adler32JSON_V2(Adler32Config):
@@ -294,6 +298,9 @@ class Fletcher32JSON_V3(NamedRequiredConfig[Literal["fletcher32"], Fletcher32Con
 
 class JenkinsLookup3Config(TypedDict):
     """Configuration parameters for JenkinsLookup3 codec."""
+
+    initval: int
+    prefix: bytes
 
 
 class JenkinsLookup3JSON_V2(JenkinsLookup3Config):
@@ -747,7 +754,7 @@ class CRC32(_NumcodecsChecksumCodec):
 class CRC32C(_NumcodecsChecksumCodec):
     codec_name = "numcodecs.crc32c"
     _codec_id = "crc32c"
-    codec_config: Crc32cConfig
+    codec_config: Crc32cConfig_V2
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> Crc32cJSON_V2: ...

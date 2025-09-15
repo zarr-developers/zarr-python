@@ -20,18 +20,27 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer
 
 
-class Crc32cConfig(TypedDict): ...
+class Crc32cConfig_V2(TypedDict):
+    location: ReadOnly[Literal["start", "end"]]
 
 
-class Crc32cJSON_V2(TypedDict):
+class Crc32cConfig_V3(TypedDict): ...
+
+
+class Crc32cJSON_V2(Crc32cConfig_V2):
     id: ReadOnly[Literal["crc32c"]]
 
 
-class Crc32cJSON_V3(NamedConfig[Literal["crc32c"], Crc32cConfig]): ...
+class Crc32cJSON_V3(NamedConfig[Literal["crc32c"], Crc32cConfig_V3]): ...
 
 
 def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
-    return isinstance(data, Mapping) and set(data.keys()) == {"id"} and data["id"] == "crc32c"
+    return (
+        isinstance(data, Mapping)
+        and set(data.keys()) == {"id", "location"}
+        and data["id"] == "crc32c"
+        and data["location"] in ("start", "end")
+    )
 
 
 def check_json_v3(data: object) -> TypeGuard[Crc32cJSON_V3]:
@@ -55,6 +64,8 @@ class Crc32cCodec(BytesBytesCodec):
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
         if check_json_v2(data):
+            if data["location"] != "end":
+                raise ValueError('The crc32c codec only supports the "end" location')
             return cls()
         msg = (
             "Invalid Zarr V2 JSON representation of the crc32c codec. "
