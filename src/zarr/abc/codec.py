@@ -1,22 +1,24 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Mapping
 from typing import (
     TYPE_CHECKING,
     Generic,
     Literal,
     Self,
-    TypedDict,
     TypeVar,
     overload,
 )
 
-from typing_extensions import ReadOnly, TypeIs
-
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import NamedConfig, ZarrFormat, concurrent_map
+from zarr.core.common import (
+    CodecJSON_V2,
+    CodecJSON_V3,
+    ZarrFormat,
+    _check_codecjson_v2,
+    concurrent_map,
+)
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -44,37 +46,6 @@ __all__ = [
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
-
-
-class CodecJSON_V2(TypedDict):
-    """The JSON representation of a codec for Zarr V2"""
-
-    id: ReadOnly[str]
-
-
-def _check_codecjson_v2(data: object) -> TypeIs[CodecJSON_V2]:
-    """
-    A type narrowing function for the CodecJSON_V2 type
-    """
-    return isinstance(data, Mapping) and "id" in data and isinstance(data["id"], str)
-
-
-CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
-"""The JSON representation of a codec for Zarr V3."""
-
-
-def _check_codecjson_v3(data: object) -> TypeIs[CodecJSON_V3]:
-    """
-    A type narrowing function for the CodecJSON_V3 type
-    """
-    if isinstance(data, str):
-        return True
-    return (
-        isinstance(data, Mapping)
-        and "name" in data
-        and isinstance(data["name"], str)
-        and isinstance(data.get("configuration", {}), Mapping)
-    )
 
 
 # The widest type we will *accept* for a codec JSON

@@ -6,8 +6,8 @@ from collections.abc import Mapping
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from zarr.abc.codec import _check_codecjson_v2
 from zarr.abc.numcodec import Numcodec
+from zarr.core.common import CodecJSON_V2, CodecJSON_V3, _check_codecjson_v2
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
 from zarr.errors import ZarrUserWarning
@@ -20,8 +20,6 @@ if TYPE_CHECKING:
         ArrayBytesCodec,
         BytesBytesCodec,
         Codec,
-        CodecJSON_V2,
-        CodecJSON_V3,
         CodecPipeline,
     )
     from zarr.core.buffer import Buffer, NDBuffer

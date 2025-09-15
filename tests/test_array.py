@@ -79,7 +79,7 @@ from zarr.storage._logging import LoggingStore
 from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
-    from zarr.abc.codec import CodecJSON_V3
+    from zarr.core.common import CodecJSON_V3
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
 

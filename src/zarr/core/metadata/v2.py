@@ -5,18 +5,18 @@ from collections.abc import Iterable, Mapping, Sequence
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
-from zarr.abc.codec import (
-    Codec,
-    CodecJSON_V2,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
-)
+from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec
 from zarr.codecs._v2 import NumcodecWrapper
 from zarr.codecs.blosc import BloscCodec
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid
+from zarr.core.common import (
+    CodecJSON_V2,
+    _check_codecjson_v2,
+    _check_codecjson_v3,
+)
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS
 from zarr.errors import ZarrUserWarning

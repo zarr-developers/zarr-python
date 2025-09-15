@@ -12,6 +12,8 @@ from zarr.abc.codec import (
     ArrayBytesCodec,
     BytesBytesCodec,
     CodecJSON,
+)
+from zarr.core.common import (
     CodecJSON_V2,
     CodecJSON_V3,
     _check_codecjson_v2,
