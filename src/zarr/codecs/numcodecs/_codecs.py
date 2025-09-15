@@ -27,7 +27,6 @@ from __future__ import annotations
 import asyncio
 import math
 from dataclasses import dataclass, replace
-from functools import cached_property
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -83,26 +82,26 @@ if TYPE_CHECKING:
 
 # Configuration classes for codec parameters
 class LZ4Config(TypedDict):
-    acceleration: NotRequired[int]
+    acceleration: int
 
 
 class ZlibConfig(TypedDict):
-    level: NotRequired[int]
+    level: int
 
 
 class BZ2Config(TypedDict):
-    level: NotRequired[int]
+    level: int
 
 
 class LZMAConfig(TypedDict):
-    format: NotRequired[int]
-    check: NotRequired[int]
-    preset: NotRequired[int]
-    filters: NotRequired[list[dict[str, Any]]]
+    format: int
+    check: int
+    preset: int | None
+    filters: list[dict[str, Any]] | None
 
 
 class ShuffleConfig(TypedDict):
-    elementsize: NotRequired[int]
+    elementsize: int
 
 
 class LZ4JSON_V2(LZ4Config):
@@ -158,7 +157,7 @@ class ShuffleJSON_V3(NamedRequiredConfig[Literal["shuffle"], ShuffleConfig]):
 # Array-to-array codec configuration classes
 class DeltaConfig(TypedDict):
     dtype: str
-    astype: NotRequired[str]
+    astype: str
 
 
 class BitRoundConfig(TypedDict):
@@ -183,7 +182,7 @@ class PackBitsConfig(TypedDict):
 
 class AsTypeConfig(TypedDict):
     encode_dtype: str
-    decode_dtype: NotRequired[str]
+    decode_dtype: str
 
 
 # Array-to-array codec JSON representations
@@ -364,17 +363,15 @@ def _warn_unstable_specification(obj: _NumcodecsCodec) -> None:
 class _NumcodecsCodec:
     codec_name: str
     _codec_id: ClassVar[str]
+    _codec: Numcodec
     codec_config: Mapping[str, Any]
 
     def __init__(self, **codec_config: Any) -> None:
-        object.__setattr__(self, "codec_config", codec_config)
+        object.__setattr__(self, "_codec", get_numcodec({"id": self._codec_id, **codec_config}))  # type: ignore[typeddict-item]
+        object.__setattr__(self, "codec_config", self._codec.get_config())
 
     def to_dict(self) -> dict[str, JSON]:
         return cast(dict[str, JSON], self.to_json(zarr_format=3))
-
-    @cached_property
-    def _codec(self) -> Numcodec:
-        return get_numcodec({"id": self._codec_id, **self.codec_config})  # type: ignore[typeddict-item]
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON_V2) -> Self:

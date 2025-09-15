@@ -11,13 +11,15 @@ from numcodecs import GZip
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import Numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
+from zarr.codecs._v2 import codec_json_v2_to_v3
+from zarr.core.common import CodecJSON_V2, ZarrFormat
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-CODECS_WITH_SPECS: Final = ("zstd", "gzip", "blosc", "crc32c")
+CODECS_WITH_SPECS: Final = ("zstd", "gzip", "blosc")
 
 
 @contextlib.contextmanager
@@ -358,3 +360,507 @@ def test_codecs_pickleable(codec_cls: type[_numcodecs._NumcodecsCodec]) -> None:
     p = pickle.dumps(codec)
     actual = pickle.loads(p)
     assert actual == expected
+
+
+# JSON Serialization/Deserialization Tests
+
+
+@pytest.mark.parametrize(
+    ("codec_class", "codec_config", "expected_v2", "expected_v3"),
+    [
+        # Bytes-to-bytes codecs
+        (
+            _numcodecs.LZ4,
+            {"acceleration": 5},
+            {"id": "lz4", "acceleration": 5},
+            {"name": "lz4", "configuration": {"acceleration": 5}},
+        ),
+        (
+            _numcodecs.LZ4,
+            {},
+            {"id": "lz4"},
+            {"name": "lz4", "configuration": {}},
+        ),
+        (
+            _numcodecs.Zlib,
+            {"level": 6},
+            {"id": "zlib", "level": 6},
+            {"name": "zlib", "configuration": {"level": 6}},
+        ),
+        (
+            _numcodecs.Zlib,
+            {},
+            {"id": "zlib"},
+            {"name": "zlib", "configuration": {}},
+        ),
+        (
+            _numcodecs.BZ2,
+            {"level": 9},
+            {"id": "bz2", "level": 9},
+            {"name": "bz2", "configuration": {"level": 9}},
+        ),
+        (
+            _numcodecs.BZ2,
+            {},
+            {"id": "bz2"},
+            {"name": "bz2", "configuration": {}},
+        ),
+        (
+            _numcodecs.LZMA,
+            {"format": 1, "check": 0, "preset": 6},
+            {"id": "lzma", "format": 1, "check": 0, "preset": 6},
+            {"name": "lzma", "configuration": {"format": 1, "check": 0, "preset": 6}},
+        ),
+        (
+            _numcodecs.LZMA,
+            {},
+            {"id": "lzma"},
+            {"name": "lzma", "configuration": {}},
+        ),
+        (
+            _numcodecs.Shuffle,
+            {"elementsize": 4},
+            {"id": "shuffle", "elementsize": 4},
+            {"name": "shuffle", "configuration": {"elementsize": 4}},
+        ),
+        (
+            _numcodecs.Shuffle,
+            {},
+            {"id": "shuffle"},
+            {"name": "shuffle", "configuration": {}},
+        ),
+    ],
+)
+def test_bytes_to_bytes_codec_json_v2_v3(
+    codec_class: type[_numcodecs._NumcodecsBytesBytesCodec],
+    codec_config: dict[str, Any],
+    expected_v2: dict[str, Any],
+    expected_v3: dict[str, Any],
+) -> None:
+    """Test JSON serialization for bytes-to-bytes codecs in both V2 and V3 formats."""
+    codec = codec_class(**codec_config)
+
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+        # Test V2 serialization
+        v2_json = codec.to_json(zarr_format=2)
+        assert v2_json == expected_v2
+
+        # Test V3 serialization
+        v3_json = codec.to_json(zarr_format=3)
+        assert v3_json == expected_v3
+
+    # Test round-trip deserialization
+    codec_from_v2 = codec_class.from_json(v2_json)
+    codec_from_v3 = codec_class.from_json(v3_json)
+
+    # Compare configs excluding the 'id' field added during serialization
+    expected_config_v2 = {k: v for k, v in codec_from_v2.codec_config.items() if k != "id"}
+    expected_config_v3 = {k: v for k, v in codec_from_v3.codec_config.items() if k != "id"}
+
+    assert expected_config_v2 == codec.codec_config
+    assert expected_config_v3 == codec.codec_config
+
+
+@pytest.mark.parametrize(
+    ("codec_class", "codec_config", "expected_v2", "expected_v3"),
+    [
+        # Array-to-array codecs
+        (
+            _numcodecs.Delta,
+            {"dtype": "float32", "astype": "int16"},
+            {"id": "delta", "dtype": "float32", "astype": "int16"},
+            {"name": "delta", "configuration": {"dtype": "float32", "astype": "int16"}},
+        ),
+        (
+            _numcodecs.Delta,
+            {"dtype": "float64"},
+            {"id": "delta", "dtype": "float64"},
+            {"name": "delta", "configuration": {"dtype": "float64"}},
+        ),
+        (
+            _numcodecs.BitRound,
+            {"keepbits": 8},
+            {"id": "bitround", "keepbits": 8},
+            {"name": "bitround", "configuration": {"keepbits": 8}},
+        ),
+        (
+            _numcodecs.FixedScaleOffset,
+            {"dtype": "float32", "scale": 100.0, "offset": 10.0, "astype": "uint16"},
+            {
+                "id": "fixedscaleoffset",
+                "dtype": "float32",
+                "scale": 100.0,
+                "offset": 10.0,
+                "astype": "uint16",
+            },
+            {
+                "name": "fixedscaleoffset",
+                "configuration": {
+                    "dtype": "float32",
+                    "scale": 100.0,
+                    "offset": 10.0,
+                    "astype": "uint16",
+                },
+            },
+        ),
+        (
+            _numcodecs.FixedScaleOffset,
+            {},
+            {"id": "fixedscaleoffset"},
+            {"name": "fixedscaleoffset", "configuration": {}},
+        ),
+        (
+            _numcodecs.Quantize,
+            {"digits": 3, "dtype": "float32"},
+            {"id": "quantize", "digits": 3, "dtype": "float32"},
+            {"name": "quantize", "configuration": {"digits": 3, "dtype": "float32"}},
+        ),
+        (
+            _numcodecs.Quantize,
+            {"digits": 5},
+            {"id": "quantize", "digits": 5},
+            {"name": "quantize", "configuration": {"digits": 5}},
+        ),
+        (
+            _numcodecs.PackBits,
+            {},
+            {"id": "packbits"},
+            {"name": "packbits", "configuration": {}},
+        ),
+        (
+            _numcodecs.AsType,
+            {"encode_dtype": "float32", "decode_dtype": "int32"},
+            {"id": "astype", "encode_dtype": "float32", "decode_dtype": "int32"},
+            {
+                "name": "astype",
+                "configuration": {"encode_dtype": "float32", "decode_dtype": "int32"},
+            },
+        ),
+        (
+            _numcodecs.AsType,
+            {"encode_dtype": "uint8"},
+            {"id": "astype", "encode_dtype": "uint8"},
+            {"name": "astype", "configuration": {"encode_dtype": "uint8"}},
+        ),
+    ],
+)
+def test_array_to_array_codec_json_v2_v3(
+    codec_class: type[_numcodecs._NumcodecsArrayArrayCodec],
+    codec_config: dict[str, Any],
+    expected_v2: dict[str, Any],
+    expected_v3: dict[str, Any],
+) -> None:
+    """Test JSON serialization for array-to-array codecs in both V2 and V3 formats."""
+    codec = codec_class(**codec_config)
+
+    # Many codecs emit warnings about unstable specifications
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+        # Test V2 serialization
+        v2_json = codec.to_json(zarr_format=2)
+        assert v2_json == expected_v2
+
+        # Test V3 serialization
+        v3_json = codec.to_json(zarr_format=3)
+        assert v3_json == expected_v3
+
+    # Test round-trip deserialization
+    codec_from_v2 = codec_class.from_json(v2_json)
+    codec_from_v3 = codec_class.from_json(v3_json)
+
+    # Compare configs excluding the 'id' field added during serialization
+    expected_config_v2 = {k: v for k, v in codec_from_v2.codec_config.items() if k != "id"}
+    expected_config_v3 = {k: v for k, v in codec_from_v3.codec_config.items() if k != "id"}
+
+    assert expected_config_v2 == codec.codec_config
+    assert expected_config_v3 == codec.codec_config
+
+
+@pytest.mark.parametrize(
+    ("codec_class", "codec_config", "expected_v2", "expected_v3"),
+    [
+        # Checksum codecs
+        (
+            _numcodecs.CRC32,
+            {"location": "start"},
+            {"id": "crc32", "location": "start"},
+            {"name": "crc32", "configuration": {"location": "start"}},
+        ),
+        (
+            _numcodecs.CRC32,
+            {"location": "end"},
+            {"id": "crc32", "location": "end"},
+            {"name": "crc32", "configuration": {"location": "end"}},
+        ),
+        (
+            _numcodecs.CRC32,
+            {},
+            {"id": "crc32"},
+            {"name": "crc32", "configuration": {}},
+        ),
+        (
+            _numcodecs.Adler32,
+            {"location": "start"},
+            {"id": "adler32", "location": "start"},
+            {"name": "adler32", "configuration": {"location": "start"}},
+        ),
+        (
+            _numcodecs.Adler32,
+            {},
+            {"id": "adler32"},
+            {"name": "adler32", "configuration": {}},
+        ),
+        (
+            _numcodecs.Fletcher32,
+            {},
+            {"id": "fletcher32"},
+            {"name": "fletcher32", "configuration": {}},
+        ),
+        (
+            _numcodecs.JenkinsLookup3,
+            {"initval": 42, "prefix": b"test"},
+            {"id": "jenkins_lookup3", "initval": 42, "prefix": b"test"},
+            {"name": "jenkins_lookup3", "configuration": {"initval": 42, "prefix": b"test"}},
+        ),
+        (
+            _numcodecs.JenkinsLookup3,
+            {"initval": 0},
+            {"id": "jenkins_lookup3", "initval": 0},
+            {"name": "jenkins_lookup3", "configuration": {"initval": 0}},
+        ),
+        (
+            _numcodecs.JenkinsLookup3,
+            {},
+            {"id": "jenkins_lookup3"},
+            {"name": "jenkins_lookup3", "configuration": {}},
+        ),
+    ],
+)
+def test_checksum_codec_json_v2_v3(
+    codec_class: type[_numcodecs._NumcodecsChecksumCodec],
+    codec_config: dict[str, Any],
+    expected_v2: dict[str, Any],
+    expected_v3: dict[str, Any],
+) -> None:
+    """Test JSON serialization for checksum codecs in both V2 and V3 formats."""
+    codec = codec_class(**codec_config)
+
+    # Many codecs emit warnings about unstable specifications
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+        # Test V2 serialization
+        v2_json = codec.to_json(zarr_format=2)
+        assert v2_json == expected_v2
+
+        # Test V3 serialization
+        v3_json = codec.to_json(zarr_format=3)
+        assert v3_json == expected_v3
+
+    # Test round-trip deserialization
+    codec_from_v2 = codec_class.from_json(v2_json)
+    codec_from_v3 = codec_class.from_json(v3_json)
+
+    # Compare configs excluding the 'id' field added during serialization
+    expected_config_v2 = {k: v for k, v in codec_from_v2.codec_config.items() if k != "id"}
+    expected_config_v3 = {k: v for k, v in codec_from_v3.codec_config.items() if k != "id"}
+
+    assert expected_config_v2 == codec.codec_config
+    assert expected_config_v3 == codec.codec_config
+
+
+@pytest.mark.parametrize(
+    ("codec_class", "codec_config", "expected_v2", "expected_v3"),
+    [
+        # Array-to-bytes codecs
+        (
+            _numcodecs.PCodec,
+            {"level": 8, "delta_encoding_order": 1},
+            {"id": "pcodec", "level": 8, "delta_encoding_order": 1},
+            {"name": "pcodec", "configuration": {"level": 8, "delta_encoding_order": 1}},
+        ),
+        (
+            _numcodecs.PCodec,
+            {},
+            {"id": "pcodec"},
+            {"name": "pcodec", "configuration": {}},
+        ),
+        (
+            _numcodecs.ZFPY,
+            {"mode": 2, "rate": 16.0, "precision": 20, "tolerance": 0.001},
+            {"id": "zfpy", "mode": 2, "rate": 16.0, "precision": 20, "tolerance": 0.001},
+            {
+                "name": "zfpy",
+                "configuration": {"mode": 2, "rate": 16.0, "precision": 20, "tolerance": 0.001},
+            },
+        ),
+        (
+            _numcodecs.ZFPY,
+            {},
+            {"id": "zfpy"},
+            {"name": "zfpy", "configuration": {}},
+        ),
+    ],
+)
+def test_array_to_bytes_codec_json_v2_v3(
+    codec_class: type[_numcodecs._NumcodecsArrayBytesCodec],
+    codec_config: dict[str, Any],
+    expected_v2: dict[str, Any],
+    expected_v3: dict[str, Any],
+) -> None:
+    """Test JSON serialization for array-to-bytes codecs in both V2 and V3 formats."""
+    try:
+        codec = codec_class(**codec_config)
+        codec._codec  # Try to access the underlying codec to check if it's available
+    except (ValueError, ImportError) as e:
+        if "codec not available" in str(e) or "not available" in str(e):
+            pytest.skip(f"{codec_class.codec_name} is not available: {e}")
+        else:
+            raise
+
+    # Many codecs emit warnings about unstable specifications
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+        # Test V2 serialization
+        v2_json = codec.to_json(zarr_format=2)
+        assert v2_json == expected_v2
+
+        # Test V3 serialization
+        v3_json = codec.to_json(zarr_format=3)
+        assert v3_json == expected_v3
+
+    # Test round-trip deserialization
+    codec_from_v2 = codec_class.from_json(v2_json)
+    codec_from_v3 = codec_class.from_json(v3_json)
+
+    # Compare configs excluding the 'id' field added during serialization
+    expected_config_v2 = {k: v for k, v in codec_from_v2.codec_config.items() if k != "id"}
+    expected_config_v3 = {k: v for k, v in codec_from_v3.codec_config.items() if k != "id"}
+
+    assert expected_config_v2 == codec.codec_config
+    assert expected_config_v3 == codec.codec_config
+
+
+def test_json_v3_string_format() -> None:
+    """Test that V3 codecs can be serialized and deserialized from string format."""
+    # Test with a simple codec
+    codec = _numcodecs.LZ4()
+
+    # Test string-only V3 format (codec name without configuration)
+    v3_string = "lz4"
+    codec_from_string = _numcodecs.LZ4.from_json(v3_string)
+
+    # Should be equivalent to default codec
+    assert codec_from_string.codec_config == {}
+    assert codec_from_string == _numcodecs.LZ4()
+
+
+def test_json_mixed_format_compatibility() -> None:
+    """Test that codecs can deserialize from both V2 and V3 JSON formats."""
+    # Test a codec with configuration
+    original_codec = _numcodecs.Zlib(level=9)
+
+    # Create both formats
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+        v2_json = original_codec.to_json(zarr_format=2)
+        v3_json = original_codec.to_json(zarr_format=3)
+
+    # Both should deserialize to the same codec
+    codec_from_v2 = _numcodecs.Zlib.from_json(v2_json)
+    codec_from_v3 = _numcodecs.Zlib.from_json(v3_json)
+
+    # Compare configs excluding the 'id' field added during serialization
+    original_config = original_codec.codec_config
+    config_from_v2 = {k: v for k, v in codec_from_v2.codec_config.items() if k != "id"}
+    config_from_v3 = {k: v for k, v in codec_from_v3.codec_config.items() if k != "id"}
+
+    assert config_from_v2 == original_config
+    assert config_from_v3 == original_config
+    assert config_from_v2 == config_from_v3
+
+
+def test_json_error_handling() -> None:
+    """Test error handling for invalid JSON inputs."""
+    # Test None input
+    with pytest.raises(AttributeError):
+        _numcodecs.LZ4.from_json(None)  # type: ignore[arg-type]
+
+    # Test list input (doesn't have get method)
+    with pytest.raises(AttributeError):
+        _numcodecs.LZ4.from_json([])  # type: ignore[arg-type]
+
+
+@pytest.mark.filterwarnings("ignore", category=ZarrUserWarning)
+@pytest.mark.parametrize(
+    ("codec", "expected"),
+    [
+        (_numcodecs.LZ4(), {"id": "lz4", "acceleration": 1}),
+        (_numcodecs.Zlib(), {"id": "zlib", "level": 1}),
+        (_numcodecs.BZ2(), {"id": "bz2", "level": 1}),
+        (
+            _numcodecs.LZMA(),
+            {"id": "lzma", "filters": None, "preset": None, "format": 1, "check": -1},
+        ),
+        (_numcodecs.Shuffle(), {"id": "shuffle", "elementsize": 4}),
+        (_numcodecs.PackBits(), {"id": "packbits"}),
+        (_numcodecs.CRC32(), {"id": "crc32"}),
+        (_numcodecs.Adler32(), {"id": "adler32"}),
+        (_numcodecs.Fletcher32(), {"id": "fletcher32"}),
+        (_numcodecs.JenkinsLookup3(), {"id": "jenkins_lookup3", "initval": 0, "prefix": None}),
+        (
+            _numcodecs.PCodec(),
+            {
+                "id": "pcodec",
+                "delta_encoding_order": None,
+                "delta_spec": "auto",
+                "equal_pages_up_to": 262144,
+                "level": 8,
+                "mode_spec": "auto",
+                "paging_spec": "equal_pages_up_to",
+            },
+        ),
+        (
+            _numcodecs.ZFPY(),
+            {
+                "id": "zfpy",
+                "compression_kwargs": {"tolerance": -1},
+                "mode": 4,
+                "precision": -1,
+                "rate": -1,
+                "tolerance": -1,
+            },
+        ),
+        (_numcodecs.Delta(dtype="uint8"), {"id": "delta", "dtype": "|u1", "astype": "|u1"}),
+        (_numcodecs.BitRound(keepbits=8), {"id": "bitround", "keepbits": 8}),
+        (
+            _numcodecs.FixedScaleOffset(offset=0.0, scale=1.0, dtype="uint8"),
+            {
+                "id": "fixedscaleoffset",
+                "scale": 1.0,
+                "offset": 0.0,
+                "astype": "|u1",
+                "dtype": "|u1",
+            },
+        ),
+        (
+            _numcodecs.Quantize(digits=3, dtype="float32"),
+            {"id": "quantize", "digits": 3, "astype": "<f4", "dtype": "<f4"},
+        ),
+        (
+            _numcodecs.AsType(encode_dtype="float32", decode_dtype="float32"),
+            {"id": "astype", "encode_dtype": "<f4", "decode_dtype": "<f4"},
+        ),
+        (
+            _numcodecs.Blosc(),
+            {"id": "blosc", "clevel": 5, "shuffle": 1, "blocksize": 0, "cname": "lz4"},
+        ),
+        (_numcodecs.Zstd(), {"id": "zstd", "level": 0, "checksum": False}),
+        (_numcodecs.GZip(), {"id": "gzip", "level": 1}),
+        (_numcodecs.CRC32C(), {"id": "crc32c"}),
+    ],
+)
+def test_json_roundtrip_default_config(
+    codec: _numcodecs._NumcodecsCodec, expected: CodecJSON_V2, zarr_format: ZarrFormat
+) -> None:
+    """Test JSON roundtrip for all codecs with minimal valid configuration."""
+    if zarr_format == 3:
+        expected_transformed = codec_json_v2_to_v3(expected)
+    else:
+        expected_transformed = expected
+    assert codec.to_json(zarr_format=zarr_format) == expected_transformed
