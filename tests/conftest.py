@@ -23,7 +23,14 @@ from zarr.core.array import (
     _parse_chunk_key_encoding,
 )
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
-from zarr.core.common import JSON, DimensionNames, parse_shapelike
+from zarr.core.common import (
+    JSON,
+    DimensionNames,
+    MemoryOrder,
+    ShapeLike,
+    ZarrFormat,
+    parse_shapelike,
+)
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     get_data_type_from_native_dtype,
@@ -42,8 +49,10 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
-    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
-    from zarr.core.common import ChunkCoords, MemoryOrder, ShapeLike, ZarrFormat
+    from zarr.core.chunk_key_encodings import (
+        ChunkKeyEncoding,
+        ChunkKeyEncodingLike,
+    )
     from zarr.core.dtype.wrapper import ZDType
 
 
@@ -154,7 +163,7 @@ def reset_config() -> Generator[None, None, None]:
 
 @dataclass
 class ArrayRequest:
-    shape: ChunkCoords
+    shape: tuple[int, ...]
     dtype: str
     order: MemoryOrder
 
@@ -252,7 +261,7 @@ def create_array_metadata(
     *,
     shape: ShapeLike,
     dtype: npt.DTypeLike,
-    chunks: ChunkCoords | Literal["auto"],
+    chunks: tuple[int, ...] | Literal["auto"],
     shards: None,
     filters: FiltersLike,
     compressors: CompressorsLike,
@@ -271,7 +280,7 @@ def create_array_metadata(
     *,
     shape: ShapeLike,
     dtype: npt.DTypeLike,
-    chunks: ChunkCoords | Literal["auto"],
+    chunks: tuple[int, ...] | Literal["auto"],
     shards: ShardsLike | None,
     filters: FiltersLike,
     compressors: CompressorsLike,
@@ -290,7 +299,7 @@ def create_array_metadata(
     *,
     shape: ShapeLike,
     dtype: npt.DTypeLike,
-    chunks: ChunkCoords | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -392,7 +401,7 @@ def create_array_metadata(
 @overload
 def meta_from_array(
     array: np.ndarray[Any, Any],
-    chunks: ChunkCoords | Literal["auto"],
+    chunks: tuple[int, ...] | Literal["auto"],
     shards: None,
     filters: FiltersLike,
     compressors: CompressorsLike,
@@ -409,7 +418,7 @@ def meta_from_array(
 @overload
 def meta_from_array(
     array: np.ndarray[Any, Any],
-    chunks: ChunkCoords | Literal["auto"],
+    chunks: tuple[int, ...] | Literal["auto"],
     shards: ShardsLike | None,
     filters: FiltersLike,
     compressors: CompressorsLike,
@@ -428,7 +437,7 @@ def meta_from_array(
 def meta_from_array(
     array: np.ndarray[Any, Any],
     *,
-    chunks: ChunkCoords | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",

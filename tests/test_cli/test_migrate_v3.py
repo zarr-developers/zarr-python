@@ -13,6 +13,7 @@ from zarr.abc.codec import Codec
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.numcodecs._codecs import LZMA, Delta
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array
@@ -349,7 +350,7 @@ def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
     assert metadata.zarr_format == 3
     assert metadata.codecs == (
         BytesCodec(endian="little"),
-        numcodecs.zarr3.LZMA(
+        LZMA(
             format=lzma_settings["format"],
             check=lzma_settings["check"],
             preset=lzma_settings["preset"],
@@ -362,7 +363,7 @@ def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
 @pytest.mark.filterwarnings(f"ignore:{NUMCODECS_USER_WARNING}:UserWarning")
 def test_migrate_filter(local_store: LocalStore) -> None:
     filter_v2 = numcodecs.Delta(dtype="<u2", astype="<u2")
-    filter_v3 = numcodecs.zarr3.Delta(dtype="<u2", astype="<u2")
+    filter_v3 = Delta(dtype="<u2", astype="<u2")
 
     zarr.create_array(
         store=local_store,
@@ -528,7 +529,8 @@ def test_migrate_incorrect_filter(local_store: LocalStore) -> None:
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
     assert (
-        str(result.exception) == "Filter <class 'numcodecs.zarr3.Zstd'> is not an ArrayArrayCodec"
+        str(result.exception)
+        == "Filter <class 'zarr.codecs.numcodecs._codecs.Zstd'> is not an ArrayArrayCodec"
     )
 
 
@@ -552,7 +554,7 @@ def test_migrate_incorrect_compressor(local_store: LocalStore) -> None:
     assert isinstance(result.exception, TypeError)
     assert (
         str(result.exception)
-        == "Compressor <class 'numcodecs.zarr3.Delta'> is not a BytesBytesCodec"
+        == "Compressor <class 'zarr.codecs.numcodecs._codecs.Delta'> is not a BytesBytesCodec"
     )
 
 

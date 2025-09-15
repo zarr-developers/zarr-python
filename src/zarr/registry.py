@@ -17,8 +17,10 @@ if TYPE_CHECKING:
         ArrayBytesCodec,
         BytesBytesCodec,
         Codec,
+        CodecJSON_V2,
         CodecPipeline,
     )
+    from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
 
@@ -124,10 +126,10 @@ def fully_qualified_name(cls: type) -> str:
     return module + "." + cls.__qualname__
 
 
-def register_codec(key: str, codec_cls: type[Codec]) -> None:
+def register_codec(key: str, codec_cls: type[Codec], *, qualname: str | None = None) -> None:
     if key not in __codec_registries:
         __codec_registries[key] = Registry()
-    __codec_registries[key].register(codec_cls)
+    __codec_registries[key].register(codec_cls, qualname=qualname)
 
 
 def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
@@ -153,7 +155,6 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     codec_classes = __codec_registries[key]
     if not codec_classes:
         raise KeyError(key)
-
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
         if len(codec_classes) == 1:
@@ -280,3 +281,31 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
 
 
 _collect_entrypoints()
+
+
+def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
+    """
+    Resolve a numcodec codec from the numcodecs registry.
+
+    This requires the Numcodecs package to be installed.
+
+    Parameters
+    ----------
+    data : CodecJSON_V2
+        The JSON metadata for the codec.
+
+    Returns
+    -------
+    codec : Numcodec
+
+    Examples
+    --------
+
+    >>> codec = get_codec({'id': 'zlib', 'level': 1})
+    >>> codec
+    Zlib(level=1)
+    """
+
+    from numcodecs.registry import get_codec
+
+    return get_codec(data)  # type: ignore[no-any-return]
