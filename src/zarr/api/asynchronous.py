@@ -906,10 +906,10 @@ async def create(
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints, optional
-        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
-        False, will be set to `shape`, i.e., single chunk for the whole array.
+        Chunk shape. If True, will be guessed from ``shape`` and ``dtype``. If
+        False, will be set to ``shape``, i.e., single chunk for the whole array.
         If an int, the chunk size in each dimension will be given by the value
-        of `chunks`. Default is True.
+        of ``chunks``. Default is True.
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
