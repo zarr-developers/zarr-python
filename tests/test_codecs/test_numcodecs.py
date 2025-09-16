@@ -12,12 +12,13 @@ from zarr import config, create_array, open_array
 from zarr.abc.numcodec import Numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
 from zarr.codecs._v2 import codec_json_v2_to_v3
-from zarr.core.common import CodecJSON_V2, ZarrFormat
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from zarr.core.common import CodecJSON_V2, ZarrFormat
 
 CODECS_WITH_SPECS: Final = ("zstd", "gzip", "blosc")
 
@@ -57,7 +58,7 @@ if TYPE_CHECKING:
 
 
 def test_get_numcodec() -> None:
-    assert get_numcodec({"id": "gzip", "level": 2}) == GZip(level=2)  # type: ignore[typeddict-unknown-key]
+    assert get_numcodec({"id": "gzip", "level": 2}) == GZip(level=2)
 
 
 def test_is_numcodec() -> None:
@@ -227,7 +228,7 @@ def test_generic_filter_packbits() -> None:
     b = open_array(a.store, mode="r")
     np.testing.assert_array_equal(data, b[:, :])
 
-    with pytest.raises(ValueError, match=".*requires bool dtype.*"):
+    with pytest.raises(ValueError, match=r".*requires bool dtype.*"):
         create_array(
             {},
             shape=data.shape,
@@ -456,7 +457,7 @@ def test_bytes_to_bytes_codec_json_v2_v3(
     """Test JSON serialization for bytes-to-bytes codecs in both V2 and V3 formats."""
     codec = codec_class(**codec_config)
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):  # noqa: PT031
         # Test V2 serialization
         v2_json = codec.to_json(zarr_format=2)
         assert v2_json == expected_v2
@@ -553,7 +554,7 @@ def test_array_to_array_codec_json_v2_v3(
     codec = codec_class(**codec_config)
 
     # Many codecs emit warnings about unstable specifications
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):  # noqa: PT031
         # Test V2 serialization
         v2_json = codec.to_json(zarr_format=2)
         assert v2_json == expected_v2
@@ -655,10 +656,10 @@ def test_checksum_codec_json_v2_v3(
     codec = codec_class(**codec_config)
 
     # Helper function to compare dictionaries with potential numpy arrays
-    def compare_json_dicts(actual, expected):
+    def compare_json_dicts(actual: Any, expected: Any) -> bool:
         if set(actual.keys()) != set(expected.keys()):
             return False
-        for key in actual.keys():
+        for key in actual:
             actual_val = actual[key]
             expected_val = expected[key]
             if isinstance(actual_val, np.ndarray) and isinstance(expected_val, np.ndarray):
@@ -675,7 +676,7 @@ def test_checksum_codec_json_v2_v3(
         return True
 
     # Many codecs emit warnings about unstable specifications
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):  # noqa: PT031
         # Test V2 serialization
         v2_json = codec.to_json(zarr_format=2)
         assert compare_json_dicts(v2_json, expected_v2), (
@@ -812,7 +813,7 @@ def test_array_to_bytes_codec_json_v2_v3(
     """Test JSON serialization for array-to-bytes codecs in both V2 and V3 formats."""
     try:
         codec = codec_class(**codec_config)
-        codec._codec  # Try to access the underlying codec to check if it's available
+        _ = codec._codec  # Try to access the underlying codec to check if it's available
     except (ValueError, ImportError) as e:
         if "codec not available" in str(e) or "not available" in str(e):
             pytest.skip(f"{codec_class.codec_name} is not available: {e}")
@@ -820,10 +821,10 @@ def test_array_to_bytes_codec_json_v2_v3(
             raise
 
     # Helper function to compare dictionaries with potential numpy arrays
-    def compare_json_dicts(actual, expected):
+    def compare_json_dicts(actual: Any, expected: Any) -> bool:
         if set(actual.keys()) != set(expected.keys()):
             return False
-        for key in actual.keys():
+        for key in actual:
             actual_val = actual[key]
             expected_val = expected[key]
             if isinstance(actual_val, np.ndarray) and isinstance(expected_val, np.ndarray):
@@ -840,7 +841,7 @@ def test_array_to_bytes_codec_json_v2_v3(
         return True
 
     # Many codecs emit warnings about unstable specifications
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):  # noqa: PT031
         # Test V2 serialization
         v2_json = codec.to_json(zarr_format=2)
         assert compare_json_dicts(v2_json, expected_v2), (
@@ -872,9 +873,6 @@ def test_array_to_bytes_codec_json_v2_v3(
 
 def test_json_v3_string_format() -> None:
     """Test that V3 codecs can be serialized and deserialized from string format."""
-    # Test with a simple codec
-    codec = _numcodecs.LZ4()
-
     # Test string-only V3 format (codec name without configuration)
     v3_string = "lz4"
     codec_from_string = _numcodecs.LZ4.from_json(v3_string)
@@ -895,7 +893,7 @@ def test_json_mixed_format_compatibility() -> None:
     original_codec = _numcodecs.Zlib(level=9)
 
     # Create both formats
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):  # noqa: PT031
         v2_json = original_codec.to_json(zarr_format=2)
         v3_json = original_codec.to_json(zarr_format=3)
 
@@ -917,14 +915,14 @@ def test_json_error_handling() -> None:
     """Test error handling for invalid JSON inputs."""
     # Test None input
     with pytest.raises(AttributeError):
-        _numcodecs.LZ4.from_json(None)  # type: ignore[arg-type]
+        _numcodecs.LZ4.from_json(None)
 
     # Test list input (doesn't have get method)
     with pytest.raises(AttributeError):
-        _numcodecs.LZ4.from_json([])  # type: ignore[arg-type]
+        _numcodecs.LZ4.from_json([])
 
 
-@pytest.mark.filterwarnings("ignore", category=ZarrUserWarning)
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 @pytest.mark.parametrize(
     ("codec", "expected"),
     [
@@ -1070,10 +1068,11 @@ def test_json_roundtrip_default_config(
     )
 
 
-def compare_json_dicts(actual, expected):
+def compare_json_dicts(actual: Any, expected: Any) -> bool:
+    """Compare two dictionaries that may contain numpy arrays."""
     if set(actual.keys()) != set(expected.keys()):
         return False
-    for key in actual.keys():
+    for key in actual:
         actual_val = actual[key]
         expected_val = expected[key]
         if isinstance(actual_val, np.ndarray) and isinstance(expected_val, np.ndarray):
