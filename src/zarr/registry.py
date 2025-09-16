@@ -21,6 +21,7 @@ if TYPE_CHECKING:
         CodecPipeline,
     )
     from zarr.abc.numcodec import Numcodec
+    from zarr.abc.store_adapter import StoreAdapter
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
 
@@ -30,10 +31,13 @@ __all__ = [
     "get_codec_class",
     "get_ndbuffer_class",
     "get_pipeline_class",
+    "get_store_adapter",
+    "list_store_adapters",
     "register_buffer",
     "register_codec",
     "register_ndbuffer",
     "register_pipeline",
+    "register_store_adapter",
 ]
 
 T = TypeVar("T")
@@ -56,23 +60,37 @@ class Registry(dict[str, type[T]], Generic[T]):
         self[qualname] = cls
 
 
+class StoreAdapterRegistry(Registry["StoreAdapter"]):
+    """Registry for store adapters that uses adapter_name for entry point loading."""
+
+    def lazy_load(self) -> None:
+        for e in self.lazy_load_list:
+            adapter_cls = e.load()
+            # Use adapter_name instead of fully_qualified_name for store adapters
+            self.register(adapter_cls, adapter_cls.adapter_name)
+
+        self.lazy_load_list.clear()
+
+
 __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
+__store_adapter_registry: StoreAdapterRegistry = StoreAdapterRegistry()
 
 """
 The registry module is responsible for managing implementations of codecs,
-pipelines, buffers and ndbuffers and collecting them from entrypoints.
+pipelines, buffers, ndbuffers, and store adapters, collecting them from entrypoints.
 The implementation used is determined by the config.
 
-The registry module is also responsible for managing dtypes.
+The registry module is also responsible for managing dtypes and store adapters
+for ZEP 8 URL syntax support.
 """
 
 
 def _collect_entrypoints() -> list[Registry[Any]]:
     """
-    Collects codecs, pipelines, dtypes, buffers and ndbuffers from entrypoints.
+    Collects codecs, pipelines, dtypes, buffers, ndbuffers, and store adapters from entrypoints.
     Entry points can either be single items or groups of items.
     Allowed syntax for entry_points.txt is e.g.
 
@@ -87,6 +105,10 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         [zarr.buffer]
         xyz = package:TestBuffer2
         abc = package:TestBuffer3
+
+        [zarr.stores]
+        zip = package:ZipStoreAdapter
+        icechunk = package:IcechunkStoreAdapter
         ...
     """
     entry_points = get_entry_points()
@@ -103,6 +125,10 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     __pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
     )
+
+    # Store adapters for ZEP 8 URL syntax
+    __store_adapter_registry.lazy_load_list.extend(entry_points.select(group="zarr.stores"))
+    __store_adapter_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="store"))
     for e in entry_points.select(group="zarr.codecs"):
         __codec_registries[e.name].lazy_load_list.append(e)
     for group in entry_points.groups:
@@ -114,6 +140,7 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         __pipeline_registry,
         __buffer_registry,
         __ndbuffer_registry,
+        __store_adapter_registry,
     ]
 
 
@@ -278,6 +305,59 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     raise BadConfigError(
         f"NDBuffer class '{path}' not found in registered buffers: {list(__ndbuffer_registry)}."
     )
+
+
+def register_store_adapter(adapter_cls: type[StoreAdapter]) -> None:
+    """
+    Register a store adapter implementation.
+
+    Parameters
+    ----------
+    adapter_cls : type[StoreAdapter]
+        The store adapter class to register.
+    """
+    __store_adapter_registry.register(adapter_cls, adapter_cls.adapter_name)
+
+
+def get_store_adapter(name: str) -> type[StoreAdapter]:
+    """
+    Get store adapter by name.
+
+    Parameters
+    ----------
+    name : str
+        The adapter name to look up.
+
+    Returns
+    -------
+    type[StoreAdapter]
+        The store adapter class.
+
+    Raises
+    ------
+    KeyError
+        If no adapter with the given name is registered.
+    """
+    __store_adapter_registry.lazy_load()
+    adapter_cls = __store_adapter_registry.get(name)
+    if adapter_cls:
+        return adapter_cls
+    raise KeyError(
+        f"Store adapter '{name}' not found in registered adapters: {list(__store_adapter_registry)}"
+    )
+
+
+def list_store_adapters() -> list[str]:
+    """
+    List the names of all registered store adapters.
+
+    Returns
+    -------
+    list[str]
+        A list of adapter names that can be used with :func:`get_store_adapter`.
+    """
+    __store_adapter_registry.lazy_load()
+    return list(__store_adapter_registry)
 
 
 _collect_entrypoints()

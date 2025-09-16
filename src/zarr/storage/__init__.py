@@ -4,6 +4,9 @@ from types import ModuleType
 from typing import Any
 
 from zarr.errors import ZarrDeprecationWarning
+
+# Import to auto-register built-in store adapters for ZEP 8 URL syntax
+from zarr.storage import _register_adapters  # noqa: F401
 from zarr.storage._common import StoreLike, StorePath
 from zarr.storage._fsspec import FsspecStore
 from zarr.storage._local import LocalStore

@@ -46,6 +46,7 @@ class LoggingStore(WrapperStore[T_Store]):
     def __init__(
         self,
         store: T_Store,
+        *,
         log_level: str = "DEBUG",
         log_handler: logging.Handler | None = None,
     ) -> None:

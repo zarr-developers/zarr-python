@@ -145,6 +145,87 @@ Here's an example of using ObjectStore for accessing remote data:
 .. warning::
    The :class:`zarr.storage.ObjectStore` class is experimental.
 
+URL-based Storage (ZEP 8)
+-------------------------
+
+Zarr-Python supports URL-based storage specification following `ZEP 8: Zarr URL Specification`_.
+This allows you to specify complex storage configurations using a concise URL syntax with chained adapters.
+
+ZEP 8 URLs use pipe (``|``) characters to chain storage adapters together:
+
+   >>> # Basic ZIP file storage
+   >>> zarr.open_array("file:zep8-data.zip|zip", mode='w', shape=(10, 10), chunks=(5, 5), dtype="f4")
+   <Array zip://zep8-data.zip shape=(10, 10) dtype=float32>
+
+The general syntax is::
+
+   scheme:path|adapter1|adapter2|...
+
+Where:
+
+* ``scheme:path`` specifies the base storage location
+* ``|adapter`` chains storage adapters to transform or wrap the storage
+
+Common ZEP 8 URL patterns:
+
+**Local ZIP files:**
+
+   >>> # Create data in a ZIP file
+   >>> z = zarr.open_array("file:example.zip|zip", mode='w', shape=(100, 100), chunks=(10, 10), dtype="i4")
+   >>> import numpy as np
+   >>> z[:, :] = np.random.randint(0, 100, size=(100, 100))
+
+**Remote ZIP files:**
+
+   >>> # Access ZIP file from S3 (requires s3fs)
+   >>> zarr.open_array("s3://bucket/data.zip|zip", mode='r')  # doctest: +SKIP
+
+**In-memory storage:**
+
+   >>> # Create array in memory
+   >>> z = zarr.open_array("memory:", mode='w', shape=(5, 5), dtype="f4")
+   >>> z[:, :] = np.random.random((5, 5))
+
+**With format specification:**
+
+   >>> # Specify Zarr format version
+   >>> zarr.create_array("file:data-v3.zip|zip|zarr3", shape=(10,), dtype="i4")  # doctest: +SKIP
+
+**Debugging with logging:**
+
+   >>> # Log all operations on any store type
+   >>> z = zarr.open_array("memory:|log:", mode='w', shape=(5, 5), dtype="f4")  # doctest: +SKIP
+   >>> # 2025-08-24 20:01:13,282 - LoggingStore(memory://...) - INFO -  Calling MemoryStore.set(zarr.json)
+   >>>
+   >>> # Log operations on ZIP files with custom log level
+   >>> z = zarr.open_array("file:debug.zip|zip:|log:?log_level=INFO", mode='w')  # doctest: +SKIP
+   >>>
+   >>> # Log operations on remote cloud storage
+   >>> z = zarr.open_array("s3://bucket/data.zarr|log:", mode='r')  # doctest: +SKIP
+
+Available adapters:
+
+* ``file`` - Local filesystem paths
+* ``zip`` - ZIP file storage
+* ``memory`` - In-memory storage
+* ``s3``, ``gs``, ``gcs`` - Cloud storage (requires appropriate fsspec backends)
+* ``log`` - Logging wrapper for debugging store operations
+* ``zarr2``, ``zarr3`` - Format specification adapters
+
+You can programmatically discover all available adapters using :func:`zarr.registry.list_store_adapters`:
+
+   >>> import zarr
+   >>> zarr.registry.list_store_adapters()  # doctest: +SKIP
+   ['file', 'gcs', 'gs', 'https', 'memory', 's3', 'zip', ...]
+
+Additional adapters can be implemented as described in the `extending guide <./extending.html#custom-store-adapters>`_.
+
+.. note::
+   When using ZEP 8 URLs with third-party libraries like xarray, the URL syntax allows
+   seamless integration without requiring zarr-specific store creation.
+
+.. _ZEP 8\: Zarr URL Specification: https://zarr.dev/zeps/draft/ZEP0008.html
+
 .. _user-guide-custom-stores:
 
 Developing custom stores
