@@ -932,12 +932,12 @@ async def create(
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
-        If True, delete all pre-existing data in `store` at `path` before
+        If True, delete all pre-existing data in ``store`` at ``path`` before
         creating the array.
     path : str, optional
         Path under which array is stored.
     chunk_store : StoreLike or None, default=None
-        Separate storage for chunks. If not provided, `store` will be used
+        Separate storage for chunks. If not provided, ``store`` will be used
         for storage of both chunks and metadata.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that

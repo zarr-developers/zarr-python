@@ -23,7 +23,7 @@ MATCHED_CALLABLE_NAMES: Final[tuple[str, ...]] = tuple(
 
 
 @pytest.mark.parametrize("callable_name", MATCHED_CALLABLE_NAMES)
-def test_docstring_match(callable_name: str) -> None:
+def test_docstrings_match(callable_name: str) -> None:
     """
     Tests that the docstrings for the sync and async define identical parameters.
     """
@@ -34,7 +34,11 @@ def test_docstring_match(callable_name: str) -> None:
     else:
         params_a = NumpyDocString(callable_a.__doc__)["Parameters"]
         params_b = NumpyDocString(callable_b.__doc__)["Parameters"]
-        assert params_a == params_b
+        mismatch = []
+        for idx, (a, b) in enumerate(zip(params_a, params_b, strict=False)):
+            if a != b:
+                mismatch.append((idx, (a, b)))
+        assert mismatch == []
 
 
 @pytest.mark.parametrize(

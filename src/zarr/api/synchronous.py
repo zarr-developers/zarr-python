@@ -650,10 +650,10 @@ def create(
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints, optional
-        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
-        False, will be set to `shape`, i.e., single chunk for the whole array.
+        Chunk shape. If True, will be guessed from ``shape`` and ``dtype``. If
+        False, will be set to ``shape``, i.e., single chunk for the whole array.
         If an int, the chunk size in each dimension will be given by the value
-        of `chunks`. Default is True.
+        of ``chunks``. Default is True.
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
@@ -676,12 +676,12 @@ def create(
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
-        If True, delete all pre-existing data in `store` at `path` before
+        If True, delete all pre-existing data in ``store`` at ``path`` before
         creating the array.
     path : str, optional
         Path under which array is stored.
     chunk_store : StoreLike or None, default=None
-        Separate storage for chunks. If not provided, `store` will be used
+        Separate storage for chunks. If not provided, ``store`` will be used
         for storage of both chunks and metadata.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
@@ -698,7 +698,7 @@ def create(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        `:class:zarr.dtype.VariableLengthUTF8` or `:class:zarr.dtype.VariableLengthUTF8`. In these cases,
+        :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value ``None``.
@@ -863,7 +863,7 @@ def create_array(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        `:class:zarr.dtype.VariableLengthUTF8` or `:class:zarr.dtype.VariableLengthUTF8`. In these cases,
+        :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value ``None``.
@@ -915,7 +915,7 @@ def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-        If `True`, all existing paths in the store will be deleted.
+        If ``True``, all existing paths in the store will be deleted.
     config : ArrayConfigLike, optional
         Runtime configuration for the array.
     write_data : bool
