@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypedDict, TypeGuard, cast, overload
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
 import typing_extensions
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class Crc32cConfig_V2(TypedDict):
-    location: ReadOnly[Literal["start", "end"]]
+    location: NotRequired[ReadOnly[Literal["start", "end"]]]
 
 
 class Crc32cConfig_V3(TypedDict): ...
@@ -37,9 +37,9 @@ class Crc32cJSON_V3(NamedConfig[Literal["crc32c"], Crc32cConfig_V3]): ...
 def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
     return (
         isinstance(data, Mapping)
-        and set(data.keys()) == {"id", "location"}
+        and "id" in data
         and data["id"] == "crc32c"
-        and data["location"] in ("start", "end")
+        and data.get("location", "end") in ("start", "end")
     )
 
 
@@ -64,7 +64,7 @@ class Crc32cCodec(BytesBytesCodec):
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
         if check_json_v2(data):
-            if data["location"] != "end":
+            if data.get("location", "end") != "end":
                 raise ValueError('The crc32c codec only supports the "end" location')
             return cls()
         msg = (

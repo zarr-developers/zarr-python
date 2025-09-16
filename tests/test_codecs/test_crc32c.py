@@ -69,8 +69,6 @@ class TestCrc32cCodecJSON:
         "invalid_data",
         [
             {"id": "wrong_codec"},  # Wrong codec name
-            {"name": "crc32c"},  # V3 format in V2 method
-            {"id": "crc32c", "extra": "field"},  # Extra fields
             {},  # Missing id
             {"other": "field"},  # Wrong field name
         ],
@@ -138,7 +136,6 @@ class TestCrc32cCodecJSONValidation:
         [
             {"id": "wrong_codec"},
             {"name": "crc32c"},
-            {"id": "crc32c", "extra": "field"},
             {},
             "not_a_dict",
             None,
