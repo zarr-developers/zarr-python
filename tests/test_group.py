@@ -2238,8 +2238,8 @@ def test_build_metadata_v3(option: Literal["array", "group", "invalid"]) -> None
             metadata_dict = GroupMetadata(zarr_format=3).to_dict()
             metadata_dict.pop("node_type")
             # TODO: fix the error message
-            msg = "Invalid value for 'node_type'. Expected 'array or group'. Got 'nothing (the key is missing)'."
-            with pytest.raises(MetadataValidationError, match=re.escape(msg)):
+            msg = "Required key 'node_type' is missing from the provided metadata document."
+            with pytest.raises(MetadataValidationError, match=msg):
                 _build_metadata_v3(metadata_dict)
 
 
@@ -2252,3 +2252,9 @@ def test_get_roots(roots: tuple[str, ...]):
     }
     data = root_nodes | child_nodes
     assert set(_get_roots(data)) == set(roots)
+
+
+def test_open_array_as_group():
+    z = zarr.create_array(shape=(40, 50), chunks=(10, 10), dtype="f8", store={})
+    with pytest.raises(ContainsArrayError):
+        zarr.open_group(z.store)

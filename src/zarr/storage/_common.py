@@ -31,8 +31,12 @@ if TYPE_CHECKING:
 
 
 def _dereference_path(root: str, path: str) -> str:
-    assert isinstance(root, str)
-    assert isinstance(path, str)
+    if not isinstance(root, str):
+        msg = f"{root=} is not a string ({type(root)=})"  # type: ignore[unreachable]
+        raise TypeError(msg)
+    if not isinstance(path, str):
+        msg = f"{path=} is not a string ({type(path)=})"  # type: ignore[unreachable]
+        raise TypeError(msg)
     root = root.rstrip("/")
     path = f"{root}/{path}" if root else path
     return path.rstrip("/")
@@ -163,7 +167,7 @@ class StorePath:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
+    async def set(self, value: Buffer) -> None:
         """
         Write bytes to the store.
 
@@ -171,16 +175,7 @@ class StorePath:
         ----------
         value : Buffer
             The buffer to write.
-        byte_range : ByteRequest, optional
-            The range of bytes to write. If None, the entire buffer is written.
-
-        Raises
-        ------
-        NotImplementedError
-            If `byte_range` is not None, because Store.set does not support partial writes yet.
         """
-        if byte_range is not None:
-            raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
 
     async def delete(self) -> None:
@@ -299,7 +294,7 @@ async def make_store_path(
 
     Parameters
     ----------
-    store_like : StoreLike | None
+    store_like : StoreLike or None, default=None
         The object to convert to a `StorePath` object.
     path : str | None, optional
         The path to use when creating the `StorePath` object.  If None, the
@@ -358,7 +353,7 @@ async def make_store_path(
 
     elif isinstance(store_like, Path):
         # Create a new LocalStore
-        store = await LocalStore.open(root=store_like, mode=mode)
+        store = await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str):
         # Either a FSSpec URI or a local filesystem path
@@ -430,11 +425,13 @@ async def ensure_no_existing_node(
     match extant_node:
         case "array":
             if node_type != "group":
-                raise ContainsArrayError(store_path.store, store_path.path)
+                msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
+                raise ContainsArrayError(msg)
 
         case "group":
             if node_type != "array":
-                raise ContainsGroupError(store_path.store, store_path.path)
+                msg = f"A group exists in store {store_path.store!r} at path {store_path.path!r}."
+                raise ContainsGroupError(msg)
 
         case "nothing":
             return
@@ -498,7 +495,13 @@ async def _contains_node_v2(store_path: StorePath) -> Literal["array", "group", 
     _group = await contains_group(store_path=store_path, zarr_format=2)
 
     if _array and _group:
-        raise ContainsArrayAndGroupError(store_path.store, store_path.path)
+        msg = (
+            "Array and group metadata documents (.zarray and .zgroup) were both found in store "
+            f"{store_path.store!r} at path {store_path.path!r}. "
+            "Only one of these files may be present in a given directory / prefix. "
+            "Remove the .zarray file, or the .zgroup file, or both."
+        )
+        raise ContainsArrayAndGroupError(msg)
     elif _array:
         return "array"
     elif _group:

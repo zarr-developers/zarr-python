@@ -78,6 +78,7 @@ test = [
     "pytest-accept",
     "rich",
     "mypy",
+    'numpydoc',
     "hypothesis",
     "pytest-xdist",
     "packaging",
@@ -379,6 +380,7 @@ testpaths = ["tests", "docs/user-guide"]
 log_cli_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",
