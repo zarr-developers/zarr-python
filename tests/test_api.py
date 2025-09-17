@@ -1231,13 +1231,13 @@ def test_open_modes_creates_group(tmp_path: Path, mode: str) -> None:
 async def test_metadata_validation_error() -> None:
     with pytest.raises(
         MetadataValidationError,
-        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+        match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
 
     with pytest.raises(
         MetadataValidationError,
-        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+        match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
 

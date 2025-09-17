@@ -13,6 +13,7 @@ User guide
     storage
     config
     v3_migration
+    cli
 
 Advanced Topics
 ---------------
