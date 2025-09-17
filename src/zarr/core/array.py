@@ -47,6 +47,7 @@ from zarr.core.chunk_key_encodings import (
     ChunkKeyEncodingLike,
     DefaultChunkKeyEncoding,
     V2ChunkKeyEncoding,
+    parse_chunk_key_encoding,
 )
 from zarr.core.common import (
     JSON,
@@ -4602,6 +4603,7 @@ async def init_array(
             order_parsed = zarr_config.get("array.order")
         else:
             order_parsed = order
+        chunk_key_encoding_parsed = cast("V2ChunkKeyEncoding", chunk_key_encoding_parsed)
 
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
@@ -4951,13 +4953,11 @@ def _parse_chunk_key_encoding(
     """
     if data is None:
         if zarr_format == 2:
-            result = ChunkKeyEncoding.from_dict({"name": "v2", "separator": "."})
+            data = {"name": "v2", "configuration": {"separator": "."}}
         else:
-            result = ChunkKeyEncoding.from_dict({"name": "default", "separator": "/"})
-    elif isinstance(data, ChunkKeyEncoding):
-        result = data
-    else:
-        result = ChunkKeyEncoding.from_dict(data)
+            data = {"name": "default", "configuration": {"separator": "/"}}
+    result = parse_chunk_key_encoding(data)
+
     if zarr_format == 2 and result.name != "v2":
         msg = (
             "Invalid chunk key encoding. For Zarr format 2 arrays, the `name` field of the "

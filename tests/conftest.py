@@ -6,7 +6,7 @@ import pathlib
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import (
         ChunkKeyEncoding,
         ChunkKeyEncodingLike,
+        V2ChunkKeyEncoding,
     )
     from zarr.core.dtype.wrapper import ZDType
 
@@ -339,6 +340,7 @@ def create_array_metadata(
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
             compressor=compressors, filters=filters, dtype=dtype_parsed
         )
+        chunk_key_encoding_parsed = cast("V2ChunkKeyEncoding", chunk_key_encoding_parsed)
         return ArrayV2Metadata(
             shape=shape_parsed,
             dtype=dtype_parsed,

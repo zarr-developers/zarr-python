@@ -1,0 +1,2 @@
+Adds a registry for chunk key encodings for extensibility.
+This allows users to implement a custom `ChunkKeyEncoding`, which can be registered via `register_chunk_key_encoding` or as an entry point under `zarr.chunk_key_encoding`.
