@@ -160,7 +160,7 @@ async def test_array_like_creation(
     else:
         expect_dtype = ref_arr.dtype  # type: ignore[assignment]
 
-    new_arr = await func(ref_arr, path="foo", **kwargs)  # type: ignore[call-arg]
+    new_arr = await func(ref_arr, path="foo", zarr_format=zarr_format, **kwargs)  # type: ignore[call-arg]
     assert new_arr.shape == expect_shape
     assert new_arr.chunks == expect_chunks
     assert new_arr.dtype == expect_dtype

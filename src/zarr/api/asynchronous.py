@@ -52,8 +52,6 @@ from zarr.storage._common import make_store_path
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    import numcodecs
-
     from zarr.abc.codec import Codec
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
@@ -128,11 +126,11 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple
 
 
 class _LikeArgs(TypedDict):
-    shape: NotRequired[ChunkCoords]
-    chunks: NotRequired[ChunkCoords]
+    shape: NotRequired[tuple[int, ...]]
+    chunks: NotRequired[tuple[int, ...]]
     dtype: NotRequired[np.dtype[np.generic]]
     order: NotRequired[Literal["C", "F"]]
-    filters: NotRequired[tuple[numcodecs.abc.Codec, ...] | None]
+    filters: NotRequired[tuple[Numcodec, ...] | None]
     compressor: NotRequired[CompressorLikev2]
     codecs: NotRequired[tuple[Codec, ...]]
 
@@ -151,9 +149,9 @@ def _like_args(a: ArrayLike) -> _LikeArgs:
     if hasattr(a, "dtype"):
         new["dtype"] = a.dtype
 
-    if isinstance(a, AsyncArray):
-        new["order"] = a.order
+    if isinstance(a, AsyncArray | Array):
         if isinstance(a.metadata, ArrayV2Metadata):
+            new["order"] = a.order
             new["compressor"] = a.metadata.compressor
             new["filters"] = a.metadata.filters
         else:
