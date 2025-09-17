@@ -79,6 +79,7 @@ test = [
     "pytest-accept",
     "rich",
     "mypy",
+    'numpydoc',
     "hypothesis",
     "pytest-xdist",
     "packaging",
