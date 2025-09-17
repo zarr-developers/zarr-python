@@ -21,7 +21,6 @@ from zarr.core.dtype.common import (
     DTypeJSON,
     HasEndianness,
     HasItemSize,
-    check_dtype_spec_v2,
 )
 from zarr.core.dtype.npy.common import (
     check_json_int,
@@ -30,6 +29,7 @@ from zarr.core.dtype.npy.common import (
     get_endianness_from_numpy_dtype,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.core.type_check import guard_type
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -84,11 +84,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
             False otherwise.
         """
 
-        return (
-            check_dtype_spec_v2(data)
-            and data["name"] in cls._zarr_v2_names
-            and data["object_codec_id"] is None
-        )
+        return guard_type(data, DTypeConfig_V2[str, None]) and data["name"] in cls._zarr_v2_names
 
     @classmethod
     def _check_json_v3(cls, data: object) -> TypeGuard[str]:

@@ -15,11 +15,11 @@ from zarr.core.dtype.common import (
     HasItemSize,
     HasLength,
     HasObjectCodec,
-    check_dtype_spec_v2,
     v3_unstable_dtype_warning,
 )
 from zarr.core.dtype.npy.common import check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.core.type_check import check_type, guard_type
 
 BytesLike = np.bytes_ | str | bytes | int
 
@@ -46,28 +46,28 @@ class FixedLengthBytesConfig(TypedDict):
     length_bytes: int
 
 
-class NullterminatedBytesJSON_V2(DTypeConfig_V2[str, None]):
-    """
-    A wrapper around the JSON representation of the ``NullTerminatedBytes`` data type in Zarr V2.
+NullterminatedBytesJSON_V2 = DTypeConfig_V2[str, None]
+"""
+A wrapper around the JSON representation of the ``NullTerminatedBytes`` data type in Zarr V2.
 
-    The ``name`` field of this class contains the value that would appear under the
-    ``dtype`` field in Zarr V2 array metadata.
+The ``name`` field of this class contains the value that would appear under the
+``dtype`` field in Zarr V2 array metadata.
 
-    References
-    ----------
-    The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+References
+----------
+The structure of the ``name`` field is defined in the Zarr V2
+`specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
 
 
-    Examples
-    --------
-    .. code-block:: python
+Examples
+--------
+.. code-block:: python
 
-        {
-            "name": "|S10",
-            "object_codec_id": None
-        }
-    """
+    {
+        "name": "|S10",
+        "object_codec_id": None
+    }
+"""
 
 
 class NullTerminatedBytesJSON_V3(
@@ -262,12 +262,9 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
         bool
             True if the input data is a valid representation, False otherwise.
         """
-
         return (
-            check_dtype_spec_v2(data)
-            and isinstance(data["name"], str)
+            guard_type(data, NullterminatedBytesJSON_V2)
             and re.match(r"^\|S\d+$", data["name"]) is not None
-            and data["object_codec_id"] is None
         )
 
     @classmethod
@@ -286,14 +283,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
             True if the input is a valid representation of this class in Zarr V3, False
             otherwise.
         """
-        return (
-            isinstance(data, dict)
-            and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == cls._zarr_v3_name
-            and isinstance(data["configuration"], dict)
-            and "length_bytes" in data["configuration"]
-            and isinstance(data["configuration"]["length_bytes"], int)
-        )
+        return check_type(data, NullTerminatedBytesJSON_V3).success
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -665,12 +655,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         True if the input is a valid representation of this class in Zarr V3, False otherwise.
 
         """
-        return (
-            check_dtype_spec_v2(data)
-            and isinstance(data["name"], str)
-            and re.match(r"^\|V\d+$", data["name"]) is not None
-            and data["object_codec_id"] is None
-        )
+        return guard_type(data, RawBytesJSON_V2) and re.match(r"^\|V\d+$", data["name"]) is not None
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[RawBytesJSON_V3]:
@@ -1019,13 +1004,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         otherwise.
         """
         # Check that the input is a valid JSON representation of a Zarr v2 data type spec.
-        if not check_dtype_spec_v2(data):
-            return False
-
-        # Check that the object codec id is appropriate for variable-length bytes strings.
-        if data["name"] != "|O":
-            return False
-        return data["object_codec_id"] == cls.object_codec_id
+        return guard_type(data, VariableLengthBytesJSON_V2)
 
     @classmethod
     def _check_json_v3(cls, data: DTypeJSON) -> TypeGuard[Literal["variable_length_bytes"]]:

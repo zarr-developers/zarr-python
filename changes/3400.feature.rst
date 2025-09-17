@@ -1,0 +1,3 @@
+Add a runtime type checker for ``JSON`` types, and a variety of typeddict classes necessary for
+modelling Zarr metadata documents. This increases the type-safety of our internal metadata routines,
+and provides Zarr users with types they can use to model Zarr metadata.

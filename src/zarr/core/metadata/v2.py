@@ -10,6 +10,7 @@ from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
+from zarr.core.type_check import guard_type
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
@@ -38,6 +39,7 @@ from zarr.core.common import (
     JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
+    CodecJSON_V2,
     MemoryOrder,
     parse_shapelike,
 )
@@ -273,8 +275,8 @@ def parse_filters(data: object) -> tuple[Numcodec, ...] | None:
         for idx, val in enumerate(data):
             if _is_numcodec(val):
                 out.append(val)
-            elif isinstance(val, dict):
-                out.append(get_numcodec(val))  # type: ignore[arg-type]
+            elif guard_type(val, CodecJSON_V2[str]):
+                out.append(get_numcodec(val))
             else:
                 msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
                 raise TypeError(msg)
@@ -296,8 +298,8 @@ def parse_compressor(data: object) -> Numcodec | None:
     """
     if data is None or _is_numcodec(data):
         return data
-    if isinstance(data, dict):
-        return get_numcodec(data)  # type: ignore[arg-type]
+    if guard_type(data, CodecJSON_V2[str]):
+        return get_numcodec(data)
     msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 

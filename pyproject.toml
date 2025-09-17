@@ -35,7 +35,7 @@ dependencies = [
     'packaging>=22.0',
     'numpy>=1.26',
     'numcodecs[crc32c]>=0.14',
-    'typing_extensions>=4.9',
+    'typing_extensions>=4.13',
     'donfig>=0.8',
 ]
 
@@ -231,7 +231,6 @@ dependencies = [
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.0.22',
-    'typing_extensions==4.9.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
     # test deps
