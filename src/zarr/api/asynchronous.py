@@ -281,7 +281,7 @@ async def load(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     path : str or None, optional
         The path within the store from which to load.
@@ -325,7 +325,7 @@ async def open(
 
     Parameters
     ----------
-    store : Store or str, optional
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
@@ -338,8 +338,8 @@ async def open(
     path : str or None, optional
         The path within the store to open.
     storage_options : dict
-        If the store is backed by an fsspec-based implementation, then this dict will be passed to
-        the Store constructor for that implementation. Ignored otherwise.
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
     **kwargs
         Additional parameters are passed through to :func:`zarr.creation.open_array` or
         :func:`zarr.hierarchy.open_group`.
@@ -409,7 +409,7 @@ async def save(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     *args : ndarray
         NumPy arrays with data to save.
@@ -445,12 +445,13 @@ async def save_array(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     arr : ndarray
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving (default is 3 if not specified).
+        The zarr format to use when saving. The default is ``None``, which will
+        use the default Zarr format defined in the global configuration object.
     path : str or None, optional
         The path within the store where the array will be saved.
     storage_options : dict
@@ -500,7 +501,7 @@ async def save_group(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     *args : ndarray
         NumPy arrays with data to save.
@@ -649,14 +650,13 @@ async def group(
 
     Parameters
     ----------
-    store : Store or str, optional
-        Store or path to directory in file system.
+    store : StoreLike or None, default=None
+        Store or path to directory in file system or name of zip file.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
-    chunk_store : Store, optional
-        Separate storage for chunks. If not provided, `store` will be used
-        for storage of both chunks and metadata.
+    chunk_store : StoreLike or None, default=None
+        Separate storage for chunks. Not implemented.
     cache_attrs : bool, optional
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
@@ -712,8 +712,8 @@ async def create_group(
 
     Parameters
     ----------
-    store : Store or str
-        Store or path to directory in file system.
+    store : StoreLike
+        Store or path to directory in file system or name of zip file.
     path : str, optional
         Group path within store.
     overwrite : bool, optional
@@ -768,7 +768,7 @@ async def open_group(
 
     Parameters
     ----------
-    store : Store, str, or mapping, optional
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
 
         Strings are interpreted as paths on the local file system
@@ -793,7 +793,7 @@ async def open_group(
         Array synchronizer.
     path : str, optional
         Group path within store.
-    chunk_store : Store or str, optional
+    chunk_store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
@@ -869,7 +869,7 @@ async def create(
     compressor: CompressorLike = "auto",
     fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
-    store: str | StoreLike | None = None,
+    store: StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
     path: PathLike | None = None,
@@ -906,65 +906,58 @@ async def create(
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints, optional
-        The shape of the array's chunks.
-        Zarr format 2 only. Zarr format 3 arrays should use `chunk_shape` instead.
-        If not specified, default values are guessed based on the shape and dtype.
+        Chunk shape. If True, will be guessed from ``shape`` and ``dtype``. If
+        False, will be set to ``shape``, i.e., single chunk for the whole array.
+        If an int, the chunk size in each dimension will be given by the value
+        of ``chunks``. Default is True.
     dtype : str or dtype, optional
         NumPy dtype.
-    chunk_shape : int or tuple of ints, optional
-        The shape of the Array's chunks (default is None).
-        Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
-    chunk_key_encoding : ChunkKeyEncoding, optional
-        A specification of how the chunk keys are represented in storage.
-        Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
-        Default is ``("default", "/")``.
-    codecs : Sequence of Codecs or dicts, optional
-        An iterable of Codec or dict serializations of Codecs. The elements of
-        this collection specify the transformation from array values to stored bytes.
-        Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
-
-        If no codecs are provided, default codecs will be used:
-
-        - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-        - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
-        - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
-
-        These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-        ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
     compressor : Codec, optional
         Primary compressor to compress chunk data.
         Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
 
-        If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+        If neither ``compressor`` nor ``filters`` are provided, the default compressor
+        :class:`zarr.codecs.ZstdCodec` is used.
 
-        - For numeric arrays, the default is ``ZstdCodec``.
-        - For Unicode strings, the default is ``VLenUTF8Codec``.
-        - For bytes or objects, the default is ``VLenBytesCodec``.
-
-        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
-    fill_value : object
-        Default value to use for uninitialized portions of the array.
+        If ``compressor`` is set to ``None``, no compression is used.
+    fill_value : Any, optional
+        Fill value for the array.
     order : {'C', 'F'}, optional
         Deprecated in favor of the ``config`` keyword argument.
         Pass ``{'order': <value>}`` to ``create`` instead of using this parameter.
         Memory layout to be used within each chunk.
         If not specified, the ``array.order`` parameter in the global config will be used.
-    store : Store or str
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
-        If True, delete all pre-existing data in `store` at `path` before
+        If True, delete all pre-existing data in ``store`` at ``path`` before
         creating the array.
     path : str, optional
         Path under which array is stored.
-    chunk_store : MutableMapping, optional
-        Separate storage for chunks. If not provided, `store` will be used
+    chunk_store : StoreLike or None, default=None
+        Separate storage for chunks. If not provided, ``store`` will be used
         for storage of both chunks and metadata.
-    filters : sequence of Codecs, optional
-        Sequence of filters to use to encode chunk data prior to compression.
-        Zarr format 2 only. If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
+    filters : Iterable[Codec] | Literal["auto"], optional
+        Iterable of filters to apply to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+
+        For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+        and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
+        dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
+
+        For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
+        the order if your filters is consistent with the behavior of each filter.
+
+        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+        data types in Zarr V2, the default filters are empty. The only cases where default filters
+        are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+        :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
+        the default filters contains a single element which is a codec specific to that particular data type.
+
+        To create an array with no filters, provide an empty iterable or the value ``None``.
     cache_metadata : bool, optional
         If True, array configuration metadata will be cached for the
         lifetime of the object. If False, array metadata will be reloaded
@@ -981,7 +974,6 @@ async def create(
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
         Zarr format 2 only. Zarr format 3 arrays should use ``chunk_key_encoding`` instead.
-        Default is ".".
     write_empty_chunks : bool, optional
         Deprecated in favor of the ``config`` keyword argument.
         Pass ``{'write_empty_chunks': <value>}`` to ``create`` instead of using this parameter.
@@ -991,15 +983,36 @@ async def create(
         that chunk is not be stored, and the store entry for that chunk's key
         is deleted.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
-        Default is 3.
+        The Zarr format to use when creating an array. The default is ``None``,
+        which instructs Zarr to choose the default Zarr format value defined in the
+        runtime configuration.
     meta_array : array-like, optional
-        An array instance to use for determining arrays to create and return
-        to users. Use `numpy.empty(())` by default.
+        Not implemented.
+    attributes : dict[str, JSON], optional
+        A dictionary of user attributes to store with the array.
+    chunk_shape : int or tuple of ints, optional
+        The shape of the Array's chunks (default is None).
+        Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
+    chunk_key_encoding : ChunkKeyEncoding, optional
+        A specification of how the chunk keys are represented in storage.
+        Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
+        Default is ``("default", "/")``.
+    codecs : Sequence of Codecs or dicts, optional
+        An iterable of Codec or dict serializations of Codecs. Zarr V3 only.
+
+        The elements of ``codecs`` specify the transformation from array values to stored bytes.
+        Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
+
+        If no codecs are provided, default codecs will be used based on the data type of the array.
+        For most data types, the default codecs are the tuple ``(BytesCodec(), ZstdCodec())``;
+        data types that require a special :class:`zarr.abc.codec.ArrayBytesCodec`, like variable-length strings or bytes,
+        will use the :class:`zarr.abc.codec.ArrayBytesCodec` required for the data type instead of :class:`zarr.codecs.BytesCodec`.
+    dimension_names : Iterable[str | None] | None = None
+        An iterable of dimension names. Zarr format 3 only.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    config : ArrayConfig or ArrayConfigLike, optional
+    config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
 
@@ -1224,7 +1237,7 @@ async def open_array(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     zarr_version : {2, 3, None}, optional
         The zarr format to use when saving. Deprecated in favor of zarr_format.

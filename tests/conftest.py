@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import pathlib
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
@@ -12,6 +13,7 @@ import numpy.typing as npt
 import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
+import zarr.registry
 from zarr import AsyncGroup, config
 from zarr.abc.store import Store
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
@@ -185,6 +187,27 @@ def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
         return 3
     msg = f"Invalid zarr format requested. Got {request.param}, expected on of (2,3)."
     raise ValueError(msg)
+
+
+def _clear_registries() -> None:
+    registries = zarr.registry._collect_entrypoints()
+    for registry in registries:
+        registry.lazy_load_list.clear()
+
+
+@pytest.fixture
+def set_path() -> Generator[None, None, None]:
+    tests_dir = str(pathlib.Path(__file__).parent.absolute())
+    sys.path.append(tests_dir)
+    _clear_registries()
+    zarr.registry._collect_entrypoints()
+
+    yield
+
+    sys.path.remove(tests_dir)
+    _clear_registries()
+    zarr.registry._collect_entrypoints()
+    config.reset()
 
 
 def pytest_addoption(parser: Any) -> None:
