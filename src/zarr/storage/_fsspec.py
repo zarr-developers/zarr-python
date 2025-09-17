@@ -15,6 +15,7 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer
+from zarr.errors import ZarrUserWarning
 from zarr.storage._common import _dereference_path
 
 if TYPE_CHECKING:
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
     from fsspec.mapping import FSMap
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import BytesLike
 
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -56,19 +56,15 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
         fs_dict["asynchronous"] = True
         return fsspec.AbstractFileSystem.from_json(json.dumps(fs_dict))
 
-    # Wrap sync filesystems with the async wrapper
-    if type(fs) is fsspec.implementations.local.LocalFileSystem and not fs.auto_mkdir:
-        raise ValueError(
-            f"LocalFilesystem {fs} was created with auto_mkdir=False but Zarr requires the filesystem to automatically create directories"
-        )
     if fsspec_version < parse_version("2024.12.0"):
         raise ImportError(
             f"The filesystem '{fs}' is synchronous, and the required "
             "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
             "2024.12.0 or later to enable this functionality."
         )
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-    return fsspec.implementations.asyn_wrapper.AsyncFileSystemWrapper(fs, asynchronous=True)
+    return AsyncFileSystemWrapper(fs, asynchronous=True)
 
 
 class FsspecStore(Store):
@@ -93,7 +89,6 @@ class FsspecStore(Store):
     allowed_exceptions
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
 
     Raises
@@ -105,7 +100,7 @@ class FsspecStore(Store):
 
     Warns
     -----
-    UserWarning
+    ZarrUserWarning
         If the file system (fs) was not created with `asynchronous=True`.
 
     See Also
@@ -117,7 +112,6 @@ class FsspecStore(Store):
     # based on FSSpec
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = False
     supports_listing: bool = True
 
     fs: AsyncFileSystem
@@ -141,6 +135,7 @@ class FsspecStore(Store):
         if not self.fs.asynchronous:
             warnings.warn(
                 f"fs ({fs}) was not created with `asynchronous=True`, this may lead to surprising behavior",
+                category=ZarrUserWarning,
                 stacklevel=2,
             )
         if "://" in path and not path.startswith("http"):
@@ -220,7 +215,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from a URL.
+        Create a FsspecStore from a URL. The type of store is determined from the URL scheme.
 
         Parameters
         ----------
@@ -419,12 +414,6 @@ class FsspecStore(Store):
                 raise r
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited

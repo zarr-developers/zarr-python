@@ -28,12 +28,13 @@ class TestInt8(BaseTestZDType):
         {"name": "int8", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((Int8(), 1), (Int8(), -1))
+    scalar_v2_params = ((Int8(), 1), (Int8(), -1), (Int8(), 1.0))
     scalar_v3_params = ((Int8(), 1), (Int8(), -1))
     cast_value_params = (
         (Int8(), 1, np.int8(1)),
         (Int8(), -1, np.int8(-1)),
     )
+    invalid_scalar_params = ((Int8(), {"set!"}), (Int8(), ("tuple",)))
     item_size_params = (Int8(),)
 
 
@@ -62,20 +63,23 @@ class TestInt16(BaseTestZDType):
         {"name": "int16", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((Int16(), 1), (Int16(), -1))
+    scalar_v2_params = ((Int16(), 1), (Int16(), -1), (Int16(), 1.0))
     scalar_v3_params = ((Int16(), 1), (Int16(), -1))
     cast_value_params = (
         (Int16(), 1, np.int16(1)),
         (Int16(), -1, np.int16(-1)),
     )
-
+    invalid_scalar_params = ((Int16(), {"set!"}), (Int16(), ("tuple",)))
     item_size_params = (Int16(),)
 
 
 class TestInt32(BaseTestZDType):
     test_cls = Int32
     scalar_type = np.int32
-    valid_dtype = (np.dtype(">i4"), np.dtype("<i4"))
+    # The behavior of some tests associated with this class variable are
+    # order-dependent -- np.dtype('i') correctly fails certain tests only if it's not
+    # in the last position of the tuple. I have no idea how this is possible!
+    valid_dtype = (np.dtype("i"), np.dtype(">i4"), np.dtype("<i4"))
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.uint16),
@@ -97,12 +101,13 @@ class TestInt32(BaseTestZDType):
         {"name": "int32", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((Int32(), 1), (Int32(), -1))
+    scalar_v2_params = ((Int32(), 1), (Int32(), -1), (Int32(), 1.0))
     scalar_v3_params = ((Int32(), 1), (Int32(), -1))
     cast_value_params = (
         (Int32(), 1, np.int32(1)),
         (Int32(), -1, np.int32(-1)),
     )
+    invalid_scalar_params = ((Int32(), {"set!"}), (Int32(), ("tuple",)))
     item_size_params = (Int32(),)
 
 
@@ -131,12 +136,13 @@ class TestInt64(BaseTestZDType):
         {"name": "int64", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((Int64(), 1), (Int64(), -1))
+    scalar_v2_params = ((Int64(), 1), (Int64(), -1), (Int64(), 1.0))
     scalar_v3_params = ((Int64(), 1), (Int64(), -1))
     cast_value_params = (
         (Int64(), 1, np.int64(1)),
         (Int64(), -1, np.int64(-1)),
     )
+    invalid_scalar_params = ((Int64(), {"set!"}), (Int64(), ("tuple",)))
     item_size_params = (Int64(),)
 
 
@@ -162,12 +168,13 @@ class TestUInt8(BaseTestZDType):
         {"name": "uint8", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((UInt8(), 1), (UInt8(), 0))
+    scalar_v2_params = ((UInt8(), 1), (UInt8(), 0), (UInt8(), 1.0))
     scalar_v3_params = ((UInt8(), 1), (UInt8(), 0))
     cast_value_params = (
         (UInt8(), 1, np.uint8(1)),
         (UInt8(), 0, np.uint8(0)),
     )
+    invalid_scalar_params = ((UInt8(), {"set!"}), (UInt8(), ("tuple",)))
     item_size_params = (UInt8(),)
 
 
@@ -196,12 +203,13 @@ class TestUInt16(BaseTestZDType):
         {"name": "uint16", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((UInt16(), 1), (UInt16(), 0))
+    scalar_v2_params = ((UInt16(), 1), (UInt16(), 0), (UInt16(), 1.0))
     scalar_v3_params = ((UInt16(), 1), (UInt16(), 0))
     cast_value_params = (
         (UInt16(), 1, np.uint16(1)),
         (UInt16(), 0, np.uint16(0)),
     )
+    invalid_scalar_params = ((UInt16(), {"set!"}), (UInt16(), ("tuple",)))
     item_size_params = (UInt16(),)
 
 
@@ -230,12 +238,13 @@ class TestUInt32(BaseTestZDType):
         {"name": "uint32", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((UInt32(), 1), (UInt32(), 0))
+    scalar_v2_params = ((UInt32(), 1), (UInt32(), 0), (UInt32(), 1.0))
     scalar_v3_params = ((UInt32(), 1), (UInt32(), 0))
     cast_value_params = (
         (UInt32(), 1, np.uint32(1)),
         (UInt32(), 0, np.uint32(0)),
     )
+    invalid_scalar_params = ((UInt32(), {"set!"}), (UInt32(), ("tuple",)))
     item_size_params = (UInt32(),)
 
 
@@ -264,10 +273,11 @@ class TestUInt64(BaseTestZDType):
         {"name": "uint64", "configuration": {"endianness": "little"}},
     )
 
-    scalar_v2_params = ((UInt64(), 1), (UInt64(), 0))
+    scalar_v2_params = ((UInt64(), 1), (UInt64(), 0), (UInt64(), 1.0))
     scalar_v3_params = ((UInt64(), 1), (UInt64(), 0))
     cast_value_params = (
         (UInt64(), 1, np.uint64(1)),
         (UInt64(), 0, np.uint64(0)),
     )
+    invalid_scalar_params = ((UInt64(), {"set!"}), (UInt64(), ("tuple",)))
     item_size_params = (UInt64(),)

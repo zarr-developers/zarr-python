@@ -5,8 +5,8 @@ import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
 from zarr.core.dtype import FixedLengthUTF32
-from zarr.core.dtype.common import UnstableSpecificationWarning
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING, VariableLengthUTF8
+from zarr.errors import UnstableSpecificationWarning
 
 if _NUMPY_SUPPORTS_VLEN_STRING:
 
@@ -40,6 +40,8 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             (VariableLengthUTF8(), "", np.str_("")),
             (VariableLengthUTF8(), "hi", np.str_("hi")),
         )
+        # anything can become a string
+        invalid_scalar_params = (None,)
         item_size_params = (VariableLengthUTF8(),)
 
 else:
@@ -74,7 +76,8 @@ else:
             (VariableLengthUTF8(), "", np.str_("")),
             (VariableLengthUTF8(), "hi", np.str_("hi")),
         )
-
+        # anything can become a string
+        invalid_scalar_params = (None,)
         item_size_params = (VariableLengthUTF8(),)
 
 
@@ -118,6 +121,8 @@ class TestFixedLengthUTF32(BaseTestZDType):
         FixedLengthUTF32(length=4),
         FixedLengthUTF32(length=10),
     )
+    # anything can become a string
+    invalid_scalar_params = (None,)
 
 
 @pytest.mark.parametrize(
@@ -131,7 +136,7 @@ def test_unstable_dtype_warning(zdtype: FixedLengthUTF32 | VariableLengthUTF8) -
     Test that we get a warning when serializing a dtype without a zarr v3 spec to json
     when zarr_format is 3
     """
-    with pytest.raises(UnstableSpecificationWarning):
+    with pytest.warns(UnstableSpecificationWarning):
         zdtype.to_json(zarr_format=3)
 
 

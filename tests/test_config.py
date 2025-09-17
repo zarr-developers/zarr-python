@@ -1,6 +1,6 @@
 import os
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from unittest import mock
 from unittest.mock import Mock
 
@@ -16,17 +16,15 @@ from zarr.codecs import (
     BloscCodec,
     BytesCodec,
     Crc32cCodec,
-    GzipCodec,
     ShardingCodec,
 )
-from zarr.core.array import create_array
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
-from zarr.core.dtype import Int8, VariableLengthUTF8
 from zarr.core.indexing import SelectorTuple
+from zarr.errors import ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -38,16 +36,12 @@ from zarr.registry import (
     register_ndbuffer,
     register_pipeline,
 )
-from zarr.storage import MemoryStore
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
     StoreExpectingTestBuffer,
     TestBuffer,
     TestNDArrayLike,
 )
-
-if TYPE_CHECKING:
-    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
 def test_config_defaults_set() -> None:
@@ -60,27 +54,6 @@ def test_config_defaults_set() -> None:
                 "array": {
                     "order": "C",
                     "write_empty_chunks": False,
-                    "v2_default_compressor": {
-                        "default": {"id": "zstd", "level": 0, "checksum": False},
-                        "variable-length-string": {"id": "zstd", "level": 0, "checksum": False},
-                    },
-                    "v2_default_filters": {
-                        "default": None,
-                        "variable-length-string": [{"id": "vlen-utf8"}],
-                    },
-                    "v3_default_filters": {"default": [], "variable-length-string": []},
-                    "v3_default_serializer": {
-                        "default": {"name": "bytes", "configuration": {"endian": "little"}},
-                        "variable-length-string": {"name": "vlen-utf8"},
-                    },
-                    "v3_default_compressors": {
-                        "default": [
-                            {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
-                        ],
-                        "variable-length-string": [
-                            {"name": "zstd", "configuration": {"level": 0, "checksum": False}}
-                        ],
-                    },
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},
@@ -100,6 +73,27 @@ def test_config_defaults_set() -> None:
                     "transpose": "zarr.codecs.transpose.TransposeCodec",
                     "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                     "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
+                    "numcodecs.bz2": "zarr.codecs.numcodecs.BZ2",
+                    "numcodecs.crc32": "zarr.codecs.numcodecs.CRC32",
+                    "numcodecs.crc32c": "zarr.codecs.numcodecs.CRC32C",
+                    "numcodecs.lz4": "zarr.codecs.numcodecs.LZ4",
+                    "numcodecs.lzma": "zarr.codecs.numcodecs.LZMA",
+                    "numcodecs.zfpy": "zarr.codecs.numcodecs.ZFPY",
+                    "numcodecs.adler32": "zarr.codecs.numcodecs.Adler32",
+                    "numcodecs.astype": "zarr.codecs.numcodecs.AsType",
+                    "numcodecs.bitround": "zarr.codecs.numcodecs.BitRound",
+                    "numcodecs.blosc": "zarr.codecs.numcodecs.Blosc",
+                    "numcodecs.delta": "zarr.codecs.numcodecs.Delta",
+                    "numcodecs.fixedscaleoffset": "zarr.codecs.numcodecs.FixedScaleOffset",
+                    "numcodecs.fletcher32": "zarr.codecs.numcodecs.Fletcher32",
+                    "numcodecs.gzip": "zarr.codecs.numcodecs.GZip",
+                    "numcodecs.jenkins_lookup3": "zarr.codecs.numcodecs.JenkinsLookup3",
+                    "numcodecs.pcodec": "zarr.codecs.numcodecs.PCodec",
+                    "numcodecs.packbits": "zarr.codecs.numcodecs.PackBits",
+                    "numcodecs.shuffle": "zarr.codecs.numcodecs.Shuffle",
+                    "numcodecs.quantize": "zarr.codecs.numcodecs.Quantize",
+                    "numcodecs.zlib": "zarr.codecs.numcodecs.Zlib",
+                    "numcodecs.zstd": "zarr.codecs.numcodecs.Zstd",
                 },
                 "buffer": "zarr.buffer.cpu.Buffer",
                 "ndbuffer": "zarr.buffer.cpu.NDBuffer",
@@ -169,8 +163,8 @@ def test_config_codec_pipeline_class(store: Store) -> None:
 
     _mock.call.assert_called()
 
+    config.set({"codec_pipeline.path": "wrong_name"})
     with pytest.raises(BadConfigError):
-        config.set({"codec_pipeline.path": "wrong_name"})
         get_pipeline_class()
 
     class MockEnvCodecPipeline(CodecPipeline):
@@ -315,7 +309,9 @@ def test_warning_on_missing_codec_config() -> None:
 
     # warning because multiple implementations are available but none is selected in the config
     register_codec("new_codec", NewCodec2)
-    with pytest.warns(UserWarning):
+    with pytest.warns(
+        ZarrUserWarning, match="not configured in config. Selecting any implementation"
+    ):
         get_codec_class("new_codec")
 
     # no warning if multiple implementations are available and one is selected in the config
@@ -323,29 +319,31 @@ def test_warning_on_missing_codec_config() -> None:
         get_codec_class("new_codec")
 
 
-@pytest.mark.parametrize("dtype_category", ["variable-length-string", "default"])
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-async def test_default_codecs(dtype_category: str) -> None:
+@pytest.mark.parametrize(
+    "key",
+    [
+        "array.v2_default_compressor.numeric",
+        "array.v2_default_compressor.string",
+        "array.v2_default_compressor.bytes",
+        "array.v2_default_filters.string",
+        "array.v2_default_filters.bytes",
+        "array.v3_default_filters.numeric",
+        "array.v3_default_filters.raw",
+        "array.v3_default_filters.bytes",
+        "array.v3_default_serializer.numeric",
+        "array.v3_default_serializer.string",
+        "array.v3_default_serializer.bytes",
+        "array.v3_default_compressors.string",
+        "array.v3_default_compressors.bytes",
+        "array.v3_default_compressors",
+    ],
+)
+def test_deprecated_config(key: str) -> None:
     """
-    Test that the default compressors are sensitive to the current setting of the config.
+    Test that a valuerror is raised when setting the default chunk encoding for a given
+    data type category
     """
-    zdtype: ZDType[TBaseDType, TBaseScalar]
-    if dtype_category == "variable-length-string":
-        zdtype = VariableLengthUTF8()  # type: ignore[assignment]
-    else:
-        zdtype = Int8()
-    expected_compressors = (GzipCodec(),)
-    new_conf = {
-        f"array.v3_default_compressors.{dtype_category}": [
-            c.to_dict() for c in expected_compressors
-        ]
-    }
-    with config.set(new_conf):
-        arr = await create_array(
-            shape=(100,),
-            chunks=(100,),
-            dtype=zdtype,
-            zarr_format=3,
-            store=MemoryStore(),
-        )
-        assert arr.compressors == expected_compressors
+
+    with pytest.raises(ValueError):
+        with zarr.config.set({key: "foo"}):
+            pass

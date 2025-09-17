@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
@@ -13,6 +13,7 @@ from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
+from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore, StorePath
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
@@ -20,7 +21,7 @@ from zarr.testing.buffer import (
     TestBuffer,
     TestNDArrayLike,
 )
-from zarr.testing.utils import gpu_test
+from zarr.testing.utils import gpu_mark, gpu_test, skip_if_no_gpu
 
 if TYPE_CHECKING:
     import types
@@ -138,13 +139,17 @@ async def test_codecs_use_of_gpu_prototype() -> None:
         filters=[TransposeCodec(order=(1, 0))],
     )
     expect[:] = cp.arange(100).reshape(10, 10)
-
-    await a.setitem(
-        selection=(slice(0, 10), slice(0, 10)),
-        value=expect[:],
-        prototype=gpu.buffer_prototype,
-    )
-    got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype)
+    msg = "Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__ for zero-copy transfers, falling back to slow copy based path"
+    with pytest.warns(ZarrUserWarning, match=msg):
+        await a.setitem(
+            selection=(slice(0, 10), slice(0, 10)),
+            value=expect[:],
+            prototype=gpu.buffer_prototype,
+        )
+    with pytest.warns(ZarrUserWarning, match=msg):
+        got = await a.getitem(
+            selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
+        )
     assert isinstance(got, cp.ndarray)
     assert cp.array_equal(expect, got)
 
@@ -164,15 +169,17 @@ async def test_sharding_use_of_gpu_prototype() -> None:
             fill_value=0,
         )
         expect[:] = cp.arange(100).reshape(10, 10)
-
-        await a.setitem(
-            selection=(slice(0, 10), slice(0, 10)),
-            value=expect[:],
-            prototype=gpu.buffer_prototype,
-        )
-        got = await a.getitem(
-            selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
-        )
+        msg = "Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__ for zero-copy transfers, falling back to slow copy based path"
+        with pytest.warns(ZarrUserWarning, match=msg):
+            await a.setitem(
+                selection=(slice(0, 10), slice(0, 10)),
+                value=expect[:],
+                prototype=gpu.buffer_prototype,
+            )
+        with pytest.warns(ZarrUserWarning, match=msg):
+            got = await a.getitem(
+                selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
+            )
         assert isinstance(got, cp.ndarray)
         assert cp.array_equal(expect, got)
 
@@ -200,3 +207,39 @@ def test_gpu_buffer_prototype() -> None:
 def test_cpu_buffer_as_scalar() -> None:
     buf = cpu.buffer_prototype.nd_buffer.create(shape=(), dtype="int64")
     assert buf.as_scalar() == buf.as_ndarray_like()[()]  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    "prototype",
+    [
+        cpu.buffer_prototype,
+        pytest.param(
+            gpu.buffer_prototype,
+            marks=[gpu_mark, skip_if_no_gpu],
+        ),
+        BufferPrototype(
+            buffer=cpu.Buffer,
+            nd_buffer=NDBufferUsingTestNDArrayLike,
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "shape",
+    [
+        (1, 2),
+        (1, 2, 3),
+    ],
+)
+@pytest.mark.parametrize("dtype", ["int32", "float64"])
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_empty(
+    prototype: BufferPrototype, shape: tuple[int, ...], dtype: str, order: Literal["C", "F"]
+) -> None:
+    buf = prototype.nd_buffer.empty(shape=shape, dtype=dtype, order=order)
+    result = buf.as_ndarray_like()
+    assert result.shape == shape
+    assert result.dtype == dtype
+    if order == "C":
+        assert result.flags.c_contiguous  # type: ignore[attr-defined]
+    else:
+        assert result.flags.f_contiguous  # type: ignore[attr-defined]

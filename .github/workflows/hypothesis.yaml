@@ -1,11 +1,9 @@
 name: Slow Hypothesis CI
 on:
   push:
-    branches:
-      - "main"
+    branches: [main, 3.1.x]
   pull_request:
-    branches:
-      - "main"
+    branches: [main, 3.1.x]
     types: [opened, reopened, synchronize, labeled]
   schedule:
     - cron: "0 0 * * *" # Daily “At 00:00” UTC
@@ -30,7 +28,7 @@ jobs:
         dependency-set: ["optional"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Set HYPOTHESIS_PROFILE based on trigger
       run: |
         if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -39,7 +37,7 @@ jobs:
           echo "HYPOTHESIS_PROFILE=ci" >> $GITHUB_ENV
         fi
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -89,7 +87,7 @@ jobs:
         && steps.status.outcome == 'failure'
         && github.event_name == 'schedule'
         && github.repository_owner == 'zarr-developers'
-      uses: xarray-contrib/issue-from-pytest-log@v1
+      uses: scientific-python/issue-from-pytest-log-action@v1
       with:
         log-path: output-${{ matrix.python-version }}-log.jsonl
         issue-title: "Nightly Hypothesis tests failed"

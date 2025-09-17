@@ -8,8 +8,7 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
-from zarr.registry import register_codec
+from zarr.core.common import JSON, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Self
@@ -29,11 +28,13 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
 
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
+    """Transpose codec"""
+
     is_fixed_size = True
 
     order: tuple[int, ...]
 
-    def __init__(self, *, order: ChunkCoordsLike) -> None:
+    def __init__(self, *, order: Iterable[int]) -> None:
         order_parsed = parse_transpose_order(order)
 
         object.__setattr__(self, "order", order_parsed)
@@ -54,7 +55,7 @@ class TransposeCodec(ArrayArrayCodec):
     ) -> None:
         if len(self.order) != len(shape):
             raise ValueError(
-                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
+                f"The `order` tuple must have as many entries as there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
@@ -69,7 +70,7 @@ class TransposeCodec(ArrayArrayCodec):
         ndim = array_spec.ndim
         if len(self.order) != ndim:
             raise ValueError(
-                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
+                f"The `order` tuple must have as many entries as there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
@@ -111,6 +112,3 @@ class TransposeCodec(ArrayArrayCodec):
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
-
-
-register_codec("transpose", TransposeCodec)

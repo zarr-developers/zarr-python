@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import math
 import operator
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
@@ -19,7 +20,10 @@ from typing import (
     overload,
 )
 
+from typing_extensions import ReadOnly
+
 from zarr.core.config import config as zarr_config
+from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -32,9 +36,9 @@ ZATTRS_JSON = ".zattrs"
 ZMETADATA_V2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
-ShapeLike = tuple[int, ...] | int
+ShapeLike = Iterable[int] | int
+# For backwards compatibility
 ChunkCoords = tuple[int, ...]
-ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
@@ -48,12 +52,29 @@ TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 
 
 class NamedConfig(TypedDict, Generic[TName, TConfig]):
-    name: TName
-    configuration: TConfig
+    """
+    A typed dictionary representing an object with a name and configuration, where the configuration
+    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+    """
+
+    name: ReadOnly[TName]
+    """The name of the object."""
+
+    configuration: ReadOnly[TConfig]
+    """The configuration of the object."""
 
 
-def product(tup: ChunkCoords) -> int:
+def product(tup: tuple[int, ...]) -> int:
     return functools.reduce(operator.mul, tup, 1)
+
+
+def ceildiv(a: float, b: float) -> int:
+    if a == 0:
+        return 0
+    return math.ceil(a / b)
 
 
 T = TypeVar("T", bound=tuple[Any, ...])
@@ -140,7 +161,7 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
+def parse_shapelike(data: ShapeLike) -> tuple[int, ...]:
     if isinstance(data, int):
         if data < 0:
             raise ValueError(f"Expected a non-negative integer. Got {data} instead")
@@ -182,10 +203,10 @@ def _warn_write_empty_chunks_kwarg() -> None:
     msg = (
         "The `write_empty_chunks` keyword argument is deprecated and will be removed in future versions. "
         "To control whether empty chunks are written to storage, either use the `config` keyword "
-        "argument, as in `config={'write_empty_chunks: True}`,"
+        "argument, as in `config={'write_empty_chunks': True}`,"
         "or change the global 'array.write_empty_chunks' configuration variable."
     )
-    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+    warnings.warn(msg, ZarrRuntimeWarning, stacklevel=2)
 
 
 def _warn_order_kwarg() -> None:
@@ -193,10 +214,10 @@ def _warn_order_kwarg() -> None:
     msg = (
         "The `order` keyword argument has no effect for Zarr format 3 arrays. "
         "To control the memory layout of the array, either use the `config` keyword "
-        "argument, as in `config={'order: 'C'}`,"
+        "argument, as in `config={'order': 'C'}`,"
         "or change the global 'array.order' configuration variable."
     )
-    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+    warnings.warn(msg, ZarrRuntimeWarning, stacklevel=2)
 
 
 def _default_zarr_format() -> ZarrFormat:

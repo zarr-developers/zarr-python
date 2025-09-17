@@ -9,6 +9,7 @@ from typing import (
     Any,
     Final,
     Literal,
+    NewType,
     SupportsComplex,
     SupportsFloat,
     SupportsIndex,
@@ -53,6 +54,9 @@ DATETIME_UNIT: Final = (
     "as",
     "generic",
 )
+
+IntishFloat = NewType("IntishFloat", float)
+"""A type for floats that represent integers, like 1.0 (but not 1.1)."""
 
 NumpyEndiannessStr = Literal[">", "<", "="]
 NUMPY_ENDIANNESS_STR: Final = ">", "<", "="
@@ -384,9 +388,7 @@ def check_json_float_v2(data: JSON) -> TypeGuard[JSONFloatV2]:
     Bool
         True if the data is a float, False otherwise.
     """
-    if data == "NaN" or data == "Infinity" or data == "-Infinity":
-        return True
-    return isinstance(data, float | int)
+    return data in ("NaN", "Infinity", "-Infinity") or isinstance(data, float | int)
 
 
 def check_json_float_v3(data: JSON) -> TypeGuard[JSONFloatV3]:
@@ -467,6 +469,23 @@ def check_json_int(data: JSON) -> TypeGuard[int]:
         True if the data is an integer, False otherwise.
     """
     return bool(isinstance(data, int))
+
+
+def check_json_intish_float(data: JSON) -> TypeGuard[IntishFloat]:
+    """
+    Check if a JSON value is an "intish float", i.e. a float that represents an integer, like 0.0.
+
+    Parameters
+    ----------
+    data : JSON
+        The JSON value to check.
+
+    Returns
+    -------
+    Bool
+        True if the data is an intish float, False otherwise.
+    """
+    return isinstance(data, float) and data.is_integer()
 
 
 def check_json_str(data: JSON) -> TypeGuard[str]:

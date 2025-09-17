@@ -161,6 +161,12 @@ class NDBuffer(core.NDBuffer):
             return cls(np.full(shape=tuple(shape), fill_value=fill_value, dtype=dtype, order=order))
 
     @classmethod
+    def empty(
+        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+    ) -> Self:
+        return cls(np.empty(shape=shape, dtype=dtype, order=order))
+
+    @classmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         return cls.from_ndarray_like(np.asanyarray(array_like))
 

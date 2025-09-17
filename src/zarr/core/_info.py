@@ -5,9 +5,8 @@ import textwrap
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    import numcodecs.abc
-
     from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+    from zarr.abc.numcodec import Numcodec
     from zarr.core.common import ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
@@ -88,9 +87,9 @@ class ArrayInfo:
     _order: Literal["C", "F"]
     _read_only: bool
     _store_type: str
-    _filters: tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...] = ()
+    _filters: tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...] = ()
     _serializer: ArrayBytesCodec | None = None
-    _compressors: tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...] = ()
+    _compressors: tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...] = ()
     _count_bytes: int | None = None
     _count_bytes_stored: int | None = None
     _count_chunks_initialized: int | None = None
@@ -133,7 +132,7 @@ class ArrayInfo:
 
         if self._count_bytes_stored is not None:
             template += "\nNo. bytes stored   : {_count_bytes_stored}"
-            kwargs["_count_stored"] = byte_info(self._count_bytes_stored)
+            kwargs["_count_bytes_stored"] = byte_info(self._count_bytes_stored)
 
         if (
             self._count_bytes is not None

@@ -54,7 +54,7 @@ class TestComplex64(_BaseTestFloat):
         (Complex64(), complex(-1.0, math.inf), np.complex64(complex(-1.0, math.inf))),
         (Complex64(), complex(0, math.nan), np.complex64(complex(0, math.nan))),
     )
-
+    invalid_scalar_params = ((Complex64(), {"type": "dict"}),)
     item_size_params = (Complex64(),)
 
 
@@ -97,4 +97,5 @@ class TestComplex128(_BaseTestFloat):
         (Complex128(), complex(-1.0, math.inf), np.complex128(complex(-1.0, math.inf))),
         (Complex128(), complex(0, math.nan), np.complex128(complex(0, math.nan))),
     )
+    invalid_scalar_params = ((Complex128(), {"type": "dict"}),)
     item_size_params = (Complex128(),)

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import math
 import re
 import sys
 from typing import TYPE_CHECKING, Any, get_args
@@ -9,6 +8,7 @@ from typing import TYPE_CHECKING, Any, get_args
 import numpy as np
 import pytest
 
+from tests.conftest import nan_equal
 from zarr.core.dtype.common import ENDIANNESS_STR, JSONFloatV2, SpecialFloatStrings
 from zarr.core.dtype.npy.common import (
     NumpyEndiannessStr,
@@ -20,6 +20,7 @@ from zarr.core.dtype.npy.common import (
     check_json_float_v2,
     check_json_float_v3,
     check_json_int,
+    check_json_intish_float,
     check_json_str,
     complex_float_to_json_v2,
     complex_float_to_json_v3,
@@ -33,16 +34,6 @@ from zarr.core.dtype.npy.common import (
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
-
-
-def nan_equal(a: object, b: object) -> bool:
-    """
-    Convenience function for equality comparison between two values ``a`` and ``b``, that might both
-    be NaN. Returns True if both ``a`` and ``b`` are NaN, otherwise returns a == b
-    """
-    if math.isnan(a) and math.isnan(b):  # type: ignore[arg-type]
-        return True
-    return a == b
 
 
 json_float_v2_roundtrip_cases: tuple[tuple[JSONFloatV2, float | np.floating[Any]], ...] = (
@@ -328,6 +319,13 @@ def test_check_json_complex_float_false(data: JSON, zarr_format: ZarrFormat) -> 
 def test_check_json_int() -> None:
     assert check_json_int(0)
     assert not check_json_int(1.0)
+
+
+def test_check_json_intish_float() -> None:
+    assert check_json_intish_float(0.0)
+    assert check_json_intish_float(1.0)
+    assert not check_json_intish_float("0")
+    assert not check_json_intish_float(1.1)
 
 
 def test_check_json_str() -> None:
