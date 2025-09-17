@@ -238,6 +238,8 @@ built-in delta filter::
 
    >>> import lzma
    >>> from numcodecs.zarr3 import LZMA
+   >>> import warnings
+   >>> warnings.filterwarnings("ignore", category=UserWarning)
    >>>
    >>> lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
    >>> compressors = LZMA(filters=lzma_filters)

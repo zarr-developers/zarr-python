@@ -32,13 +32,11 @@ class MemoryStore(Store):
     ----------
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
     """
 
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = True
     supports_listing: bool = True
 
     _store_dict: MutableMapping[str, Buffer]
@@ -142,12 +140,6 @@ class MemoryStore(Store):
             del self._store_dict[key]
         except KeyError:
             logger.debug("Key %s does not exist.", key)
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview[int]]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited

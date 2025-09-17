@@ -1,1 +1,0 @@
-Register 'gpu' marker with pytest for downstream StoreTests.

@@ -68,8 +68,8 @@ class StoreTests(Generic[S, B]):
     @abstractmethod
     def test_store_supports_writes(self, store: S) -> None: ...
 
-    @abstractmethod
-    def test_store_supports_partial_writes(self, store: S) -> None: ...
+    def test_store_supports_partial_writes(self, store: S) -> None:
+        assert not store.supports_partial_writes
 
     @abstractmethod
     def test_store_supports_listing(self, store: S) -> None: ...

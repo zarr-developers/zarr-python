@@ -13,6 +13,7 @@ from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
+from zarr.errors import ZarrUserWarning
 from zarr.storage import MemoryStore, StorePath
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
@@ -138,13 +139,17 @@ async def test_codecs_use_of_gpu_prototype() -> None:
         filters=[TransposeCodec(order=(1, 0))],
     )
     expect[:] = cp.arange(100).reshape(10, 10)
-
-    await a.setitem(
-        selection=(slice(0, 10), slice(0, 10)),
-        value=expect[:],
-        prototype=gpu.buffer_prototype,
-    )
-    got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype)
+    msg = "Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__ for zero-copy transfers, falling back to slow copy based path"
+    with pytest.warns(ZarrUserWarning, match=msg):
+        await a.setitem(
+            selection=(slice(0, 10), slice(0, 10)),
+            value=expect[:],
+            prototype=gpu.buffer_prototype,
+        )
+    with pytest.warns(ZarrUserWarning, match=msg):
+        got = await a.getitem(
+            selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
+        )
     assert isinstance(got, cp.ndarray)
     assert cp.array_equal(expect, got)
 
@@ -164,15 +169,17 @@ async def test_sharding_use_of_gpu_prototype() -> None:
             fill_value=0,
         )
         expect[:] = cp.arange(100).reshape(10, 10)
-
-        await a.setitem(
-            selection=(slice(0, 10), slice(0, 10)),
-            value=expect[:],
-            prototype=gpu.buffer_prototype,
-        )
-        got = await a.getitem(
-            selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
-        )
+        msg = "Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__ for zero-copy transfers, falling back to slow copy based path"
+        with pytest.warns(ZarrUserWarning, match=msg):
+            await a.setitem(
+                selection=(slice(0, 10), slice(0, 10)),
+                value=expect[:],
+                prototype=gpu.buffer_prototype,
+            )
+        with pytest.warns(ZarrUserWarning, match=msg):
+            got = await a.getitem(
+                selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype
+            )
         assert isinstance(got, cp.ndarray)
         assert cp.array_equal(expect, got)
 

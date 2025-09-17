@@ -1,1 +1,0 @@
-Add a section on codecs to the migration guide.

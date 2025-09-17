@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import io
 import os
 import shutil
+import sys
+import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, BinaryIO, Literal, Self
 
 from zarr.abc.store import (
     ByteRequest,
@@ -16,10 +19,10 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.common import concurrent_map
+from zarr.core.common import AccessModeLiteral, concurrent_map
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Iterable
+    from collections.abc import AsyncIterator, Iterable, Iterator
 
     from zarr.core.buffer import BufferPrototype
 
@@ -41,28 +44,45 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None)
         return prototype.buffer.from_bytes(f.read())
 
 
-def _put(
+if sys.platform == "win32":
+    # Per the os.rename docs:
+    # On Windows, if dst exists a FileExistsError is always raised.
+    _safe_move = os.rename
+else:
+    # On Unix, os.rename silently replace files, so instead we use os.link like
+    # atomicwrites:
+    # https://github.com/untitaker/python-atomicwrites/blob/1.4.1/atomicwrites/__init__.py#L59-L60
+    # This also raises FileExistsError if dst exists.
+    def _safe_move(src: Path, dst: Path) -> None:
+        os.link(src, dst)
+        os.unlink(src)
+
+
+@contextlib.contextmanager
+def _atomic_write(
     path: Path,
-    value: Buffer,
-    start: int | None = None,
+    mode: Literal["r+b", "wb"],
     exclusive: bool = False,
-) -> int | None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if start is not None:
-        with path.open("r+b") as f:
-            f.seek(start)
-            # write takes any object supporting the buffer protocol
-            f.write(value.as_buffer_like())
-        return None
-    else:
-        view = value.as_buffer_like()
+) -> Iterator[BinaryIO]:
+    tmp_path = path.with_suffix(f".{uuid.uuid4().hex}.partial")
+    try:
+        with tmp_path.open(mode) as f:
+            yield f
         if exclusive:
-            mode = "xb"
+            _safe_move(tmp_path, path)
         else:
-            mode = "wb"
-        with path.open(mode=mode) as f:
-            # write takes any object supporting the buffer protocol
-            return f.write(view)
+            tmp_path.replace(path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
+def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # write takes any object supporting the buffer protocol
+    view = value.as_buffer_like()
+    with _atomic_write(path, "wb", exclusive=exclusive) as f:
+        return f.write(view)
 
 
 class LocalStore(Store):
@@ -80,14 +100,12 @@ class LocalStore(Store):
     ----------
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
     root
     """
 
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = True
     supports_listing: bool = True
 
     root: Path
@@ -102,16 +120,56 @@ class LocalStore(Store):
             )
         self.root = root
 
-    def with_read_only(self, read_only: bool = False) -> LocalStore:
+    def with_read_only(self, read_only: bool = False) -> Self:
         # docstring inherited
         return type(self)(
             root=self.root,
             read_only=read_only,
         )
 
-    async def _open(self) -> None:
+    @classmethod
+    async def open(
+        cls, root: Path | str, *, read_only: bool = False, mode: AccessModeLiteral | None = None
+    ) -> Self:
+        """
+        Create and open the store.
+
+        Parameters
+        ----------
+        root : str or Path
+            Directory to use as root of store.
+        read_only : bool
+            Whether the store is read-only
+        mode :
+            Mode in which to create the store. This only affects opening the store,
+            and the final read-only state of the store is controlled through the
+            read_only parameter.
+
+        Returns
+        -------
+        Store
+            The opened store instance.
+        """
+        # If mode = 'r+', want to open in read only mode (fail if exists),
+        # but return a writeable store
+        if mode is not None:
+            read_only_creation = mode in ["r", "r+"]
+        else:
+            read_only_creation = read_only
+        store = cls(root, read_only=read_only_creation)
+        await store._open()
+
+        # Set read_only state
+        store = store.with_read_only(read_only)
+        await store._open()
+        return store
+
+    async def _open(self, *, mode: AccessModeLiteral | None = None) -> None:
         if not self.read_only:
             self.root.mkdir(parents=True, exist_ok=True)
+
+        if not self.root.exists():
+            raise FileNotFoundError(f"{self.root} does not exist")
         return await super()._open()
 
     async def clear(self) -> None:
@@ -182,19 +240,7 @@ class LocalStore(Store):
                 f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
             )
         path = self.root / key
-        await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
-    ) -> None:
-        # docstring inherited
-        self._check_writable()
-        args = []
-        for key, start, value in key_start_values:
-            assert isinstance(key, str)
-            path = self.root / key
-            args.append((_put, path, value, start))
-        await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
+        await asyncio.to_thread(_put, path, value, exclusive=exclusive)
 
     async def delete(self, key: str) -> None:
         """

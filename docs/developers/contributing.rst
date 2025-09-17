@@ -98,7 +98,7 @@ you can do something like the following::
 To verify that your development environment is working, you can run the unit tests
 for one of the test environments, e.g.::
 
-    $ hatch env run --env test.py3.12-2.1-optional run-pytest
+    $ hatch env run --env test.py3.12-2.2-optional run-pytest
 
 Creating a branch
 ~~~~~~~~~~~~~~~~~
@@ -140,7 +140,7 @@ Zarr includes a suite of unit tests. The simplest way to run the unit tests
 is to activate your development environment
 (see `creating a development environment`_ above) and invoke::
 
-    $ hatch env run --env test.py3.12-2.1-optional run-pytest
+    $ hatch env run --env test.py3.12-2.2-optional run-pytest
 
 All tests are automatically run via GitHub Actions for every pull
 request and must pass before code can be accepted. Test coverage is
@@ -188,14 +188,14 @@ Test coverage
 Zarr strives to maintain 100% test coverage under the latest Python stable release
 Both unit tests and docstring doctests are included when computing coverage. Running::
 
-    $ hatch env run --env test.py3.12-2.1-optional run-coverage
+    $ hatch env run --env test.py3.12-2.2-optional run-coverage
 
 will automatically run the test suite with coverage and produce a XML coverage report.
 This should be 100% before code can be accepted into the main code base.
 
 You can also generate an HTML coverage report by running::
 
-     $ hatch env run --env test.py3.12-2.1-optional run-coverage-html
+     $ hatch env run --env test.py3.12-2.2-optional run-coverage-html
 
 When submitting a pull request, coverage will also be collected across all supported
 Python versions via the Codecov service, and will be reported back within the pull
@@ -261,8 +261,11 @@ Pull requests submitted by an external contributor should be reviewed and approv
 one core developer before being merged. Ideally, pull requests submitted by a core developer
 should be reviewed and approved by at least one other core developer before being merged.
 
-Pull requests should not be merged until all CI checks have passed (GitHub Actions
+Pull requests should not be merged until all CI checks have passed (GitHub Actions,
 Codecov) against code that has had the latest main merged in.
+
+Before merging the milestone must be set either to decide whether a PR will be in the next
+patch, minor, or major release. The next section explains which types of changes go in each release.
 
 Compatibility and versioning policies
 -------------------------------------

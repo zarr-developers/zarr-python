@@ -4,6 +4,8 @@ from functools import wraps
 from inspect import Parameter, signature
 from typing import Any, TypeVar
 
+from zarr.errors import ZarrFutureWarning
+
 T = TypeVar("T")
 
 # Based off https://github.com/scikit-learn/scikit-learn/blob/e87b32a81c70abed8f2e97483758eb64df8255e9/sklearn/utils/validation.py#L63
@@ -54,7 +56,7 @@ def _deprecate_positional_args(
                     f"{version} passing these as positional arguments "
                     "will result in an error"
                 ),
-                FutureWarning,
+                ZarrFutureWarning,
                 stacklevel=2,
             )
             kwargs.update(zip(sig.parameters, args, strict=False))

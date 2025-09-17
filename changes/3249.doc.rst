@@ -1,2 +1,0 @@
-Expand the data type docs to include a demonstration of the ``parse_data_type`` function.
-Expand the docstring for the ``parse_data_type`` function.

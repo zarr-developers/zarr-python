@@ -25,6 +25,7 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import (
     check_json_int,
+    check_json_intish_float,
     endianness_to_numpy_str,
     get_endianness_from_numpy_dtype,
 )
@@ -206,6 +207,8 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
         """
         if check_json_int(data):
             return self._cast_scalar_unchecked(data)
+        if check_json_intish_float(data):
+            return self._cast_scalar_unchecked(int(data))
         raise TypeError(f"Invalid type: {data}. Expected an integer.")
 
     def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> int:

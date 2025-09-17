@@ -44,9 +44,6 @@ class TestLoggingStore(StoreTests[LoggingStore, cpu.Buffer]):
     def test_store_supports_writes(self, store: LoggingStore) -> None:
         assert store.supports_writes
 
-    def test_store_supports_partial_writes(self, store: LoggingStore) -> None:
-        assert store.supports_partial_writes
-
     def test_store_supports_listing(self, store: LoggingStore) -> None:
         assert store.supports_listing
 

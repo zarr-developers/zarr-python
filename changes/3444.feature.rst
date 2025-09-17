@@ -1,0 +1,1 @@
+Trying to open a group at a path were a array already exists now raises a helpful error.

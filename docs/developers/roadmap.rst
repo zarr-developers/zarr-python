@@ -56,7 +56,7 @@ Goals
 -  Provide a complete implementation of Zarr V3 through the Zarr-Python
    API
 -  Clear the way for exciting extensions / ZEPs
-   (i.e. `sharding <https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/v1.0.html>`__,
+   (i.e. `sharding <https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/>`__,
    `variable chunking <https://zarr.dev/zeps/draft/ZEP0003.html>`__,
    etc.)
 -  Provide a developer API that can be used to implement and register V3

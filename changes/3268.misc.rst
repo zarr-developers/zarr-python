@@ -1,2 +1,0 @@
-Removed warnings that were emitted when using the ``vlen-utf8`` and ``vlen-bytes`` codecs. Those
-warnings are no longer needed now that both of these codecs are backed by specification documents.

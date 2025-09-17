@@ -46,4 +46,4 @@ skip_if_no_gpu = pytest.mark.skipif(not has_cupy(), reason="CuPy not installed o
 
 # Decorator for GPU tests
 def gpu_test(func: T) -> T:
-    return cast("T", gpu_mark(skip_if_no_gpu(func)))
+    return cast(T, gpu_mark(skip_if_no_gpu(func)))

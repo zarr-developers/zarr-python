@@ -43,9 +43,6 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
     def test_store_supports_writes(self, store: WrapperStore) -> None:
         assert store.supports_writes
 
-    def test_store_supports_partial_writes(self, store: WrapperStore) -> None:
-        assert store.supports_partial_writes
-
     def test_store_supports_listing(self, store: WrapperStore) -> None:
         assert store.supports_listing
 

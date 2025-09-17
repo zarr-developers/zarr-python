@@ -1,0 +1,2 @@
+Creating a new group with `zarr.group` no longer errors.
+This fixes a regression introduced in version 3.1.2.
