@@ -18,7 +18,10 @@ from zarr.core.indexing import (
     CoordinateSelection,
     OrthogonalSelection,
     Selection,
+    _ArrayIndexingOrder,
     _iter_grid,
+    _iter_regions,
+    ceildiv,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -33,7 +36,6 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
-    from zarr.core.common import ChunkCoords
 
 
 @pytest.fixture
@@ -44,7 +46,7 @@ async def store() -> AsyncGenerator[StorePath]:
 def zarr_array_from_numpy_array(
     store: StorePath,
     a: npt.NDArray[Any],
-    chunk_shape: ChunkCoords | None = None,
+    chunk_shape: tuple[int, ...] | None = None,
 ) -> zarr.Array:
     z = zarr.create_array(
         store=store / str(uuid4()),
@@ -1994,6 +1996,71 @@ def test_iter_chunk_regions():
         assert_array_equal(a[region], np.ones_like(a[region]))
         a[region] = 0
         assert_array_equal(a[region], np.zeros_like(a[region]))
+
+
+@pytest.mark.parametrize(
+    ("domain_shape", "region_shape", "origin", "selection_shape"),
+    [
+        ((9,), (1,), None, (9,)),
+        ((9,), (1,), (0,), (9,)),
+        ((3,), (2,), (0,), (1,)),
+        ((9,), (2,), (2,), (2,)),
+        ((9, 9), (2, 1), None, None),
+        ((9, 9), (4, 1), None, None),
+    ],
+)
+@pytest.mark.parametrize("order", ["lexicographic"])
+@pytest.mark.parametrize("trim_excess", [True, False])
+def test_iter_regions(
+    domain_shape: tuple[int, ...],
+    region_shape: tuple[int, ...],
+    origin: tuple[int, ...] | None,
+    selection_shape: tuple[int, ...] | None,
+    order: _ArrayIndexingOrder,
+    trim_excess: bool,
+) -> None:
+    """
+    Test that iter_regions properly iterates over contiguous regions of a gridded domain.
+    """
+    expected_slices_by_dim: list[list[slice]] = []
+    origin_parsed: tuple[int, ...]
+    selection_shape_parsed: tuple[int, ...]
+    if origin is None:
+        origin_parsed = (0,) * len(domain_shape)
+    else:
+        origin_parsed = origin
+    if selection_shape is None:
+        selection_shape_parsed = tuple(
+            ceildiv(ds, rs) - o
+            for ds, o, rs in zip(domain_shape, origin_parsed, region_shape, strict=True)
+        )
+    else:
+        selection_shape_parsed = selection_shape
+    for d_s, r_s, o, ss in zip(
+        domain_shape, region_shape, origin_parsed, selection_shape_parsed, strict=True
+    ):
+        _expected_slices: list[slice] = []
+        start = o * r_s
+        for incr in range(start, start + ss * r_s, r_s):
+            if trim_excess:
+                term = min(incr + r_s, d_s)
+            else:
+                term = incr + r_s
+            _expected_slices.append(slice(incr, term, 1))
+        expected_slices_by_dim.append(_expected_slices)
+
+    expected = tuple(itertools.product(*expected_slices_by_dim))
+    observed = tuple(
+        _iter_regions(
+            domain_shape,
+            region_shape,
+            origin=origin,
+            selection_shape=selection_shape,
+            order=order,
+            trim_excess=trim_excess,
+        )
+    )
+    assert observed == expected
 
 
 class TestAsync:

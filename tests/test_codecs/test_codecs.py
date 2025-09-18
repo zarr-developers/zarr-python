@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.abc.store import Store
     from zarr.core.buffer.core import NDArrayLikeOrScalar
-    from zarr.core.common import ChunkCoords, MemoryOrder
+    from zarr.core.common import MemoryOrder
 
 
 @dataclass(frozen=True)
@@ -215,7 +215,7 @@ def test_morton() -> None:
         [3, 2, 1, 6, 4, 5, 2],
     ],
 )
-def test_morton2(shape: ChunkCoords) -> None:
+def test_morton2(shape: tuple[int, ...]) -> None:
     order = list(morton_order_iter(shape))
     for i, x in enumerate(order):
         assert x not in order[:i]  # no duplicates
@@ -308,7 +308,7 @@ def test_invalid_metadata(codecs: tuple[Codec, ...]) -> None:
         ArrayV3Metadata(
             shape=shape,
             chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
-            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},  # type: ignore[arg-type]
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
             fill_value=0,
             data_type=data_type,
             codecs=codecs,
