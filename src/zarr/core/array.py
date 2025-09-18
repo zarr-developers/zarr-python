@@ -25,7 +25,6 @@ from typing_extensions import deprecated
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.numcodec import Numcodec, _is_numcodec
-from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
@@ -110,6 +109,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -140,9 +140,9 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.abc.codec import CodecPipeline
+    from zarr.abc.store import Store
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
-    from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
 
 
@@ -1639,24 +1639,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         Asynchronously save the array metadata.
         """
-        to_save = metadata.to_buffer_dict(cpu_buffer_prototype)
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
-
-        if ensure_parents:
-            # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
-            parents = _build_parents(self)
-
-            for parent in parents:
-                awaitables.extend(
-                    [
-                        (parent.store_path / key).set_if_not_exists(value)
-                        for key, value in parent.metadata.to_buffer_dict(
-                            cpu_buffer_prototype
-                        ).items()
-                    ]
-                )
-
-        await gather(*awaitables)
+        await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
 
     async def _set_selection(
         self,
@@ -4119,37 +4102,6 @@ async def _shards_initialized(
     return tuple(
         chunk_key for chunk_key in array._iter_shard_keys() if chunk_key in store_contents_relative
     )
-
-
-def _build_parents(
-    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
-) -> list[AsyncGroup]:
-    from zarr.core.group import AsyncGroup, GroupMetadata
-
-    store = node.store_path.store
-    path = node.store_path.path
-    if not path:
-        return []
-
-    required_parts = path.split("/")[:-1]
-    parents = [
-        # the root group
-        AsyncGroup(
-            metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
-            store_path=StorePath(store=store, path=""),
-        )
-    ]
-
-    for i, part in enumerate(required_parts):
-        p = "/".join(required_parts[:i] + [part])
-        parents.append(
-            AsyncGroup(
-                metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
-                store_path=StorePath(store=store, path=p),
-            )
-        )
-
-    return parents
 
 
 FiltersLike: TypeAlias = (
