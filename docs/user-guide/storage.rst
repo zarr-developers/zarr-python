@@ -21,7 +21,8 @@ Implicit Store Creation
 -----------------------
 
 In most cases, it is not required to create a ``Store`` object explicitly. Passing a string
-to Zarr's top level API will result in the store being created automatically.:
+(or other :ref:`StoreLike value <user-guide-storelike>`) to Zarr's top level API will result
+in the store being created automatically.:
 
    >>> import zarr
    >>>
@@ -42,12 +43,52 @@ to Zarr's top level API will result in the store being created automatically.:
    >>> zarr.create_group(store=data)
    <Group memory://...>
 
+.. _user-guide-storelike:
+
+StoreLike
+~~~~~~~~~~~
+
+`StoreLike` values can be:
+
+- a `Path` or string indicating a :ref:`local store <user-guide-local-store>` location e.g.:
+
+  >>> zarr.open_group(store='data/foo/bar')
+  >>> zarr.open_group(store=Path('data/foo/bar'))
+
+- an FSSpec URI string, indicating a :ref:`remote store <user-guide-remote-store>` location e.g.:
+
+   >>> zarr.open_group(
+   ...    store='s3://noaa-nwm-retro-v2-zarr-pds',
+   ...    mode='r',
+   ...    storage_options={'anon': True}
+   ... )
+
+- an empty dictionary or None, which will create a new :ref:`memory store <user-guide-memory-store>`:
+
+   >>> zarr.create_group(store={})
+   >>> zarr.create_group(store=None)
+
+- a dictionary of string to :class:`Buffer <zarr.abc.buffer.Buffer>` mappings, which
+  will create a :ref:`memory store <user-guide-memory-store>`:
+
+   >>> example?
+
+- an FSSpec `FSMap object <https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.FSMap>`_,
+  which will create an :ref:`FsspecStore <user-guide-remote-store>`:
+
+  >>> example?
+
+- a :class:`Store <zarr.abc.store.Store>` or :class:`StorePath <zarr.storage.StorePath>` -
+  see explicit store creation below.
+
 Explicit Store Creation
 -----------------------
 
 In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
 built-in store: :class:`zarr.storage.LocalStore`, :class:`zarr.storage.FsspecStore`,
 :class:`zarr.storage.ZipStore`, :class:`zarr.storage.MemoryStore`, and :class:`zarr.storage.ObjectStore`.
+
+.. _user-guide-local-store:
 
 Local Store
 ~~~~~~~~~~~
@@ -68,6 +109,8 @@ Zip file. The `Zip Store specification`_ is currently in draft form.:
    >>> store = zarr.storage.ZipStore('data.zip', mode='w')
    >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
    <Array zip://data.zip shape=(2,) dtype=float64>
+
+.. _user-guide-remote-store:
 
 Remote Store
 ~~~~~~~~~~~~
@@ -96,6 +139,8 @@ In case a specific filesystem is needed, one can explicitly create it. For examp
    ...    client_kwargs={'endpoint_url': "https://noaa-nwm-retro-v2-zarr-pds.s3.amazonaws.com"}
    ... )
    >>> store = zarr.storage.FsspecStore(fs)
+
+.. _user-guide-memory-store:
 
 Memory Store
 ~~~~~~~~~~~~

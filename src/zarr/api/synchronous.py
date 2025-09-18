@@ -183,7 +183,8 @@ def open(
     Parameters
     ----------
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        See the :ref:`storage documentation in the user guide <user-guide-storelike>`
+        for a description of all valid StoreLike values.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
