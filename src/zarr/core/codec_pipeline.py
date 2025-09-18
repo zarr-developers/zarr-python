@@ -14,22 +14,21 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
-from zarr.core.metadata.v2 import _default_fill_value
+from zarr.errors import ZarrUserWarning
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
     from typing import Self
 
-    import numpy as np
-
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -64,7 +63,7 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
         # validated when decoding the metadata, but we support reading
         # Zarr V2 data and need to support the case where fill_value
         # is None.
-        return _default_fill_value(dtype=chunk_spec.dtype)
+        return chunk_spec.dtype.default_scalar()
     else:
         return fill_value
 
@@ -134,7 +133,13 @@ class BatchedCodecPipeline(CodecPipeline):
         yield self.array_bytes_codec
         yield from self.bytes_bytes_codecs
 
-    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self,
+        *,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
+    ) -> None:
         for codec in self:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
 
@@ -296,7 +301,9 @@ class BatchedCodecPipeline(CodecPipeline):
         is_complete_chunk: bool,
         drop_axes: tuple[int, ...],
     ) -> NDBuffer:
-        if chunk_selection == () or is_scalar(value.as_ndarray_like(), chunk_spec.dtype):
+        if chunk_selection == () or is_scalar(
+            value.as_ndarray_like(), chunk_spec.dtype.to_native_dtype()
+        ):
             chunk_value = value
         else:
             chunk_value = value[out_selection]
@@ -317,7 +324,7 @@ class BatchedCodecPipeline(CodecPipeline):
         if existing_chunk_array is None:
             chunk_array = chunk_spec.prototype.nd_buffer.create(
                 shape=chunk_spec.shape,
-                dtype=chunk_spec.dtype,
+                dtype=chunk_spec.dtype.to_native_dtype(),
                 order=chunk_spec.order,
                 fill_value=fill_value_or_default(chunk_spec),
             )
@@ -499,6 +506,7 @@ def codecs_from_list(
         warn(
             "Combining a `sharding_indexed` codec disables partial reads and "
             "writes, which may lead to inefficient performance.",
+            category=ZarrUserWarning,
             stacklevel=3,
         )
 

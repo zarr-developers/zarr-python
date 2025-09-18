@@ -9,7 +9,6 @@ from numcodecs.gzip import GZip
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Self
@@ -30,6 +29,8 @@ def parse_gzip_level(data: JSON) -> int:
 
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
+    """gzip codec"""
+
     is_fixed_size = False
 
     level: int = 5
@@ -71,6 +72,3 @@ class GzipCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
     ) -> int:
         raise NotImplementedError
-
-
-register_codec("gzip", GzipCodec)

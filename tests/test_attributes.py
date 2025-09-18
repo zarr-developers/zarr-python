@@ -1,18 +1,26 @@
+import json
+from typing import Any
+
+import numpy as np
 import pytest
 
 import zarr.core
 import zarr.core.attributes
 import zarr.storage
+from tests.conftest import deep_nan_equal
+from zarr.core.common import ZarrFormat
 
 
-def test_put() -> None:
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize(
+    "data", [{"inf": np.inf, "-inf": -np.inf, "nan": np.nan}, {"a": 3, "c": 4}]
+)
+def test_put(data: dict[str, Any], zarr_format: ZarrFormat) -> None:
     store = zarr.storage.MemoryStore()
-    attrs = zarr.core.attributes.Attributes(
-        zarr.Group.from_store(store, attributes={"a": 1, "b": 2})
-    )
-    attrs.put({"a": 3, "c": 4})
-    expected = {"a": 3, "c": 4}
-    assert dict(attrs) == expected
+    attrs = zarr.core.attributes.Attributes(zarr.Group.from_store(store, zarr_format=zarr_format))
+    attrs.put(data)
+    expected = json.loads(json.dumps(data, allow_nan=True))
+    assert deep_nan_equal(dict(attrs), expected)
 
 
 def test_asdict() -> None:

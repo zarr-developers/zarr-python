@@ -1,4 +1,3 @@
-import dataclasses
 import json
 import numbers
 from typing import Any
@@ -76,13 +75,15 @@ def deep_equal(a: Any, b: Any) -> bool:
     return a == b
 
 
-@given(data=st.data(), zarr_format=zarr_formats)
-def test_array_roundtrip(data: st.DataObject, zarr_format: int) -> None:
-    nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
-    zarray = data.draw(arrays(arrays=st.just(nparray), zarr_formats=st.just(zarr_format)))
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+@given(data=st.data())
+def test_array_roundtrip(data: st.DataObject) -> None:
+    nparray = data.draw(numpy_arrays())
+    zarray = data.draw(arrays(arrays=st.just(nparray)))
     assert_array_equal(nparray, zarray[:])
 
 
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(array=arrays())
 def test_array_creates_implicit_groups(array):
     path = array.path
@@ -102,31 +103,54 @@ def test_array_creates_implicit_groups(array):
 
 
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
+
+
+@pytest.mark.asyncio
 @settings(deadline=None)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
-def test_basic_indexing(data: st.DataObject) -> None:
+async def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(simple_arrays())
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
+
+    # sync get
     actual = zarray[indexer]
     assert_array_equal(nparray[indexer], actual)
 
+    # async get
+    async_zarray = zarray._async_array
+    actual = await async_zarray.getitem(indexer)
+    assert_array_equal(nparray[indexer], actual)
+
+    # sync set
     new_data = data.draw(numpy_arrays(shapes=st.just(actual.shape), dtype=nparray.dtype))
     zarray[indexer] = new_data
     nparray[indexer] = new_data
     assert_array_equal(nparray, zarray[:])
 
+    # TODO test async setitem?
 
+
+@pytest.mark.asyncio
 @given(data=st.data())
-def test_oindex(data: st.DataObject) -> None:
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
-
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
+
+    # sync get
     actual = zarray.oindex[zindexer]
     assert_array_equal(nparray[npindexer], actual)
 
+    # async get
+    async_zarray = zarray._async_array
+    actual = await async_zarray.oindex.getitem(zindexer)
+    assert_array_equal(nparray[npindexer], actual)
+
+    # sync get
     assume(zarray.shards is None)  # GH2834
     for idxr in npindexer:
         if isinstance(idxr, np.ndarray) and idxr.size != np.unique(idxr).size:
@@ -137,21 +161,32 @@ def test_oindex(data: st.DataObject) -> None:
     zarray.oindex[zindexer] = new_data
     assert_array_equal(nparray, zarray[:])
 
+    # note: async oindex setitem not yet implemented
 
+
+@pytest.mark.asyncio
 @given(data=st.data())
-def test_vindex(data: st.DataObject) -> None:
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+async def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     nparray = zarray[:]
-
     indexer = data.draw(
         npst.integer_array_indices(
             shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
         )
     )
+
+    # sync get
     actual = zarray.vindex[indexer]
     assert_array_equal(nparray[indexer], actual)
 
+    # async get
+    async_zarray = zarray._async_array
+    actual = await async_zarray.vindex.getitem(indexer)
+    assert_array_equal(nparray[indexer], actual)
+
+    # sync set
     # FIXME!
     # when the indexer is such that a value gets overwritten multiple times,
     # I think the output depends on chunking.
@@ -160,8 +195,11 @@ def test_vindex(data: st.DataObject) -> None:
     # zarray.vindex[indexer] = new_data
     # assert_array_equal(nparray, zarray[:])
 
+    # note: async vindex setitem not yet implemented
+
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_roundtrip_array_metadata_from_store(
     store: Store, meta: ArrayV2Metadata | ArrayV3Metadata
 ) -> None:
@@ -181,6 +219,7 @@ async def test_roundtrip_array_metadata_from_store(
 
 
 @given(data=st.data(), zarr_format=zarr_formats)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: int) -> None:
     """
     Verify that JSON serialization and deserialization of metadata is lossless.
@@ -209,8 +248,8 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
         zarray_dict = json.loads(buffer_dict[ZARR_JSON].to_bytes().decode())
         metadata_roundtripped = ArrayV3Metadata.from_dict(zarray_dict)
 
-    orig = dataclasses.asdict(metadata)
-    rt = dataclasses.asdict(metadata_roundtripped)
+    orig = metadata.to_dict()
+    rt = metadata_roundtripped.to_dict()
 
     assert deep_equal(orig, rt), f"Roundtrip mismatch:\nOriginal: {orig}\nRoundtripped: {rt}"
 
@@ -239,6 +278,29 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
 #     assert_array_equal(nparray, zarray[:])
 
 
+def serialized_complex_float_is_valid(
+    serialized: tuple[numbers.Real | str, numbers.Real | str],
+) -> bool:
+    """
+    Validate that the serialized representation of a complex float conforms to the spec.
+
+    The specification requires that a serialized complex float must be either:
+      - A JSON number, or
+      - One of the strings "NaN", "Infinity", or "-Infinity".
+
+    Args:
+        serialized: The value produced by JSON serialization for a complex floating point number.
+
+    Returns:
+        bool: True if the serialized value is valid according to the spec, False otherwise.
+    """
+    return (
+        isinstance(serialized, tuple)
+        and len(serialized) == 2
+        and all(serialized_float_is_valid(x) for x in serialized)
+    )
+
+
 def serialized_float_is_valid(serialized: numbers.Real | str) -> bool:
     """
     Validate that the serialized representation of a float conforms to the spec.
@@ -259,6 +321,7 @@ def serialized_float_is_valid(serialized: numbers.Real | str) -> bool:
 
 
 @given(meta=array_metadata())  # type: ignore[misc]
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> None:
     """
     Validate that the array metadata produced by the library conforms to the relevant spec (V2 vs V3).
@@ -294,11 +357,11 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert asdict_dict["zarr_format"] == 3
 
     # version-agnostic validations
-    if meta.dtype.kind == "f":
+    dtype_native = meta.dtype.to_native_dtype()
+    if dtype_native.kind == "f":
         assert serialized_float_is_valid(asdict_dict["fill_value"])
-    elif meta.dtype.kind == "c":
+    elif dtype_native.kind == "c":
         # fill_value should be a two-element array [real, imag].
-        assert serialized_float_is_valid(asdict_dict["fill_value"].real)
-        assert serialized_float_is_valid(asdict_dict["fill_value"].imag)
-    elif meta.dtype.kind == "M" and np.isnat(meta.fill_value):
-        assert asdict_dict["fill_value"] == "NaT"
+        assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
+    elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
+        assert asdict_dict["fill_value"] == -9223372036854775808

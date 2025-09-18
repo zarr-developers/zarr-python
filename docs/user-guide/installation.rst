@@ -8,7 +8,7 @@ Required dependencies include:
 
 - `Python <https://docs.python.org/3/>`_ (3.11 or later)
 - `packaging <https://packaging.pypa.io>`_ (22.0 or later)
-- `numpy <https://numpy.org>`_ (1.25 or later)
+- `numpy <https://numpy.org>`_ (1.26 or later)
 - `numcodecs[crc32c] <https://numcodecs.readthedocs.io>`_ (0.14 or later)
 - `typing_extensions <https://typing-extensions.readthedocs.io>`_ (4.9 or later)
 - `donfig <https://donfig.readthedocs.io>`_ (0.8 or later)
@@ -41,6 +41,19 @@ Zarr is also published to `conda-forge <https://conda-forge.org>`_. Install it u
 
 Conda does not support optional dependencies, so you will have to manually install any packages
 needed to enable extra functionality.
+
+Nightly wheels
+--------------
+
+Development wheels are built nightly and published to the `scientific-python-nightly-wheels <https://anaconda.org/scientific-python-nightly-wheels>`_ index. To install the latest nightly build:
+
+.. code-block:: console
+
+    $ pip install --pre \
+        --extra-index-url https://pypi.anaconda.org/scientific-python-nightly-wheels/simple \
+        zarr
+
+Note that nightly wheels may be unstable and are intended for testing purposes.
 
 Dependency support
 ------------------

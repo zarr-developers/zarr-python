@@ -8,11 +8,12 @@ from typing import TYPE_CHECKING
 
 import numcodecs
 from numcodecs.blosc import Blosc
+from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
-from zarr.registry import register_codec
+from zarr.core.dtype.common import HasItemSize
 
 if TYPE_CHECKING:
     from typing import Self
@@ -85,6 +86,8 @@ def parse_blocksize(data: JSON) -> int:
 
 @dataclass(frozen=True)
 class BloscCodec(BytesBytesCodec):
+    """blosc codec"""
+
     is_fixed_size = False
 
     typesize: int | None
@@ -136,14 +139,16 @@ class BloscCodec(BytesBytesCodec):
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        dtype = array_spec.dtype
+        item_size = 1
+        if isinstance(array_spec.dtype, HasItemSize):
+            item_size = array_spec.dtype.item_size
         new_codec = self
         if new_codec.typesize is None:
-            new_codec = replace(new_codec, typesize=dtype.itemsize)
+            new_codec = replace(new_codec, typesize=item_size)
         if new_codec.shuffle is None:
             new_codec = replace(
                 new_codec,
-                shuffle=(BloscShuffle.bitshuffle if dtype.itemsize == 1 else BloscShuffle.shuffle),
+                shuffle=(BloscShuffle.bitshuffle if item_size == 1 else BloscShuffle.shuffle),
             )
 
         return new_codec
@@ -163,6 +168,9 @@ class BloscCodec(BytesBytesCodec):
             "shuffle": map_shuffle_str_to_int[self.shuffle],
             "blocksize": self.blocksize,
         }
+        # See https://github.com/zarr-developers/numcodecs/pull/713
+        if Version(numcodecs.__version__) >= Version("0.16.0"):
+            config_dict["typesize"] = self.typesize
         return Blosc.from_config(config_dict)
 
     async def _decode_single(
@@ -190,6 +198,3 @@ class BloscCodec(BytesBytesCodec):
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
-
-
-register_codec("blosc", BloscCodec)

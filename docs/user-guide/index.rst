@@ -13,6 +13,7 @@ User guide
     storage
     config
     v3_migration
+    cli
 
 Advanced Topics
 ---------------
@@ -20,6 +21,7 @@ Advanced Topics
 .. toctree::
     :maxdepth: 1
 
+    data_types
     performance
     consolidated_metadata
     extending

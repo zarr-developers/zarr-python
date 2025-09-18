@@ -5,9 +5,9 @@ name: Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 3.1.x ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 3.1.x ]
   workflow_dispatch:
 
 concurrency:
@@ -21,34 +21,34 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        numpy-version: ['1.25', '2.1']
+        numpy-version: ['1.26', '2.2']
         dependency-set: ["minimal", "optional"]
         os: ["ubuntu-latest"]
         include:
           - python-version: '3.11'
-            numpy-version: '1.25'
+            numpy-version: '1.26'
             dependency-set: 'optional'
             os: 'macos-latest'
           - python-version: '3.13'
-            numpy-version: '2.1'
+            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'macos-latest'
           - python-version: '3.11'
-            numpy-version: '1.25'
+            numpy-version: '1.26'
             dependency-set: 'optional'
             os: 'windows-latest'
           - python-version: '3.13'
-            numpy-version: '2.1'
+            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'windows-latest'
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0  # grab all branches and tags
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -61,9 +61,12 @@ jobs:
         hatch env create test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
         hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
+      env:
+        HYPOTHESIS_PROFILE: ci
       run: |
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
+      if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@v5
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
@@ -83,11 +86,11 @@ jobs:
           - python-version: "3.11"
             dependency-set: upstream
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -101,7 +104,7 @@ jobs:
         hatch env run -e ${{ matrix.dependency-set }} list-env
     - name: Run Tests
       run: |
-        hatch env run --env ${{ matrix.dependency-set }} run
+        hatch env run --env ${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
       uses: codecov/codecov-action@v5
       with:
@@ -112,11 +115,11 @@ jobs:
     name: doctests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.13'
         cache: 'pip'

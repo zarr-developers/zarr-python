@@ -3,26 +3,34 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
-from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, ArrayConfigParams
+from zarr.abc.store import Store
+from zarr.core.array import (
+    DEFAULT_FILL_VALUE,
+    Array,
+    AsyncArray,
+    CompressorLike,
+    create_array,
+    from_array,
+    get_array_metadata,
+)
+from zarr.core.array_spec import ArrayConfigLike, parse_array_config
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
-    ChunkCoords,
+    DimensionNames,
     MemoryOrder,
     ZarrFormat,
     _default_zarr_format,
-    _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
-    parse_dtype,
 )
+from zarr.core.dtype import ZDTypeLike, get_data_type_from_native_dtype
 from zarr.core.group import (
     AsyncGroup,
     ConsolidatedMetadata,
@@ -30,15 +38,25 @@ from zarr.core.group import (
     create_hierarchy,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v2 import _default_compressor, _default_filters
-from zarr.errors import NodeTypeValidationError
+from zarr.errors import (
+    ArrayNotFoundError,
+    GroupNotFoundError,
+    NodeTypeValidationError,
+    ZarrDeprecationWarning,
+    ZarrRuntimeWarning,
+    ZarrUserWarning,
+)
+from zarr.storage import StorePath
 from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
+    from zarr.abc.numcodec import Numcodec
+    from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.core.metadata.v2 import CompressorLikev2
     from zarr.storage import StoreLike
 
     # TODO: this type could use some more thought
@@ -56,6 +74,7 @@ __all__ = [
     "create_hierarchy",
     "empty",
     "empty_like",
+    "from_array",
     "full",
     "full_like",
     "group",
@@ -78,7 +97,7 @@ __all__ = [
 
 _READ_MODES: tuple[AccessModeLiteral, ...] = ("r", "r+", "a")
 _CREATE_MODES: tuple[AccessModeLiteral, ...] = ("a", "w", "w-")
-_OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("a", "r+", "w")
+_OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("w",)
 
 
 def _infer_overwrite(mode: AccessModeLiteral) -> bool:
@@ -88,7 +107,7 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
-def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
+def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple[int, ...] | None]:
     """Helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
@@ -106,10 +125,20 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoor
     return shape, chunks
 
 
-def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
+class _LikeArgs(TypedDict):
+    shape: NotRequired[tuple[int, ...]]
+    chunks: NotRequired[tuple[int, ...]]
+    dtype: NotRequired[np.dtype[np.generic]]
+    order: NotRequired[Literal["C", "F"]]
+    filters: NotRequired[tuple[Numcodec, ...] | None]
+    compressor: NotRequired[CompressorLikev2]
+    codecs: NotRequired[tuple[Codec, ...]]
+
+
+def _like_args(a: ArrayLike) -> _LikeArgs:
     """Set default values for shape and chunks if they are not present in the array-like object"""
 
-    new = kwargs.copy()
+    new: _LikeArgs = {}
 
     shape, chunks = _get_shape_chunks(a)
     if shape is not None:
@@ -120,15 +149,15 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
     if hasattr(a, "dtype"):
         new["dtype"] = a.dtype
 
-    if isinstance(a, AsyncArray):
-        new["order"] = a.order
+    if isinstance(a, AsyncArray | Array):
         if isinstance(a.metadata, ArrayV2Metadata):
+            new["order"] = a.order
             new["compressor"] = a.metadata.compressor
             new["filters"] = a.metadata.filters
         else:
             # TODO: Remove type: ignore statement when type inference improves.
             # mypy cannot correctly infer the type of a.metadata here for some reason.
-            new["codecs"] = a.metadata.codecs  # type: ignore[unreachable]
+            new["codecs"] = a.metadata.codecs
 
     else:
         # TODO: set default values compressor/codecs
@@ -149,7 +178,7 @@ def _handle_zarr_version_or_format(
         )
     if zarr_version is not None:
         warnings.warn(
-            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+            "zarr_version is deprecated, use zarr_format", ZarrDeprecationWarning, stacklevel=2
         )
         return zarr_version
     return zarr_format
@@ -164,7 +193,8 @@ async def consolidate_metadata(
     Consolidate the metadata of all nodes in a hierarchy.
 
     Upon completion, the metadata of the root node in the Zarr hierarchy will be
-    updated to include all the metadata of child nodes.
+    updated to include all the metadata of child nodes. For Stores that do
+    not support consolidated metadata, this operation raises a ``TypeError``.
 
     Parameters
     ----------
@@ -184,14 +214,25 @@ async def consolidate_metadata(
     -------
     group: AsyncGroup
         The group, with the ``consolidated_metadata`` field set to include
-        the metadata of each child node.
+        the metadata of each child node. If the Store doesn't support
+        consolidated metadata, this function raises a `TypeError`.
+        See ``Store.supports_consolidated_metadata``.
     """
     store_path = await make_store_path(store, path=path)
+
+    if not store_path.store.supports_consolidated_metadata:
+        store_name = type(store_path.store).__name__
+        raise TypeError(
+            f"The Zarr Store in use ({store_name}) doesn't support consolidated metadata",
+        )
 
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
 
-    members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
+    members_metadata = {
+        k: v.metadata
+        async for k, v in group.members(max_depth=None, use_consolidated_for_children=False)
+    }
     # While consolidating, we want to be explicit about when child groups
     # are empty by inserting an empty dict for consolidated_metadata.metadata
     for k, v in members_metadata.items():
@@ -203,7 +244,7 @@ async def consolidate_metadata(
         warnings.warn(
             "Consolidated metadata is currently not part in the Zarr format 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
-            category=UserWarning,
+            category=ZarrUserWarning,
             stacklevel=1,
         )
 
@@ -215,20 +256,28 @@ async def consolidate_metadata(
         group,
         metadata=metadata,
     )
-
     await group._save_metadata()
     return group
 
 
 async def copy(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     raise NotImplementedError
 
 
 async def copy_all(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     raise NotImplementedError
 
 
 async def copy_store(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
+    """
+    Not implemented.
+    """
     raise NotImplementedError
 
 
@@ -238,12 +287,12 @@ async def load(
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     zarr_version: ZarrFormat | None = None,
-) -> NDArrayLike | dict[str, NDArrayLike]:
+) -> NDArrayLikeOrScalar | dict[str, NDArrayLikeOrScalar]:
     """Load data from an array or group into memory.
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     path : str or None, optional
         The path within the store from which to load.
@@ -276,7 +325,7 @@ async def load(
 async def open(
     *,
     store: StoreLike | None = None,
-    mode: AccessModeLiteral = "a",
+    mode: AccessModeLiteral | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -287,20 +336,21 @@ async def open(
 
     Parameters
     ----------
-    store : Store or str, optional
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
+        If the store is read-only, the default is 'r'; otherwise, it is 'a'.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional
         The path within the store to open.
     storage_options : dict
-        If the store is backed by an fsspec-based implementation, then this dict will be passed to
-        the Store constructor for that implementation. Ignored otherwise.
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
     **kwargs
         Additional parameters are passed through to :func:`zarr.creation.open_array` or
         :func:`zarr.hierarchy.open_group`.
@@ -311,7 +361,11 @@ async def open(
         Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-
+    if mode is None:
+        if isinstance(store, (Store, StorePath)) and store.read_only:
+            mode = "r"
+        else:
+            mode = "a"
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
@@ -319,12 +373,14 @@ async def open(
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast(ArrayMetadataDict, metadata_dict)
+            _metadata_dict = cast("ArrayMetadataDict", metadata_dict)
             # for v2, the above would already have raised an exception if not an array
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
-                return AsyncArray(store_path=store_path, metadata=_metadata_dict)
+                return AsyncArray(
+                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
+                )
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
@@ -364,7 +420,7 @@ async def save(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     *args : ndarray
         NumPy arrays with data to save.
@@ -400,12 +456,13 @@ async def save_array(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     arr : ndarray
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving (default is 3 if not specified).
+        The zarr format to use when saving. The default is ``None``, which will
+        use the default Zarr format defined in the global configuration object.
     path : str or None, optional
         The path within the store where the array will be saved.
     storage_options : dict
@@ -428,11 +485,12 @@ async def save_array(
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
+    zarr_dtype = get_data_type_from_native_dtype(arr.dtype)
     new = await AsyncArray._create(
         store_path,
         zarr_format=zarr_format,
         shape=shape,
-        dtype=arr.dtype,
+        dtype=zarr_dtype,
         chunks=chunks,
         overwrite=overwrite,
         **kwargs,
@@ -454,7 +512,7 @@ async def save_group(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     *args : ndarray
         NumPy arrays with data to save.
@@ -492,13 +550,12 @@ async def save_group(
         raise ValueError("at least one array must be provided")
     aws = []
     for i, arr in enumerate(args):
-        _path = f"{path}/arr_{i}" if path is not None else f"arr_{i}"
         aws.append(
             save_array(
                 store_path,
                 arr,
                 zarr_format=zarr_format,
-                path=_path,
+                path=f"arr_{i}",
                 storage_options=storage_options,
             )
         )
@@ -507,7 +564,7 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
-@deprecated("Use AsyncGroup.tree instead.")
+@deprecated("Use AsyncGroup.tree instead.", category=ZarrDeprecationWarning)
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
@@ -533,7 +590,7 @@ async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = 
 
 
 async def array(
-    data: npt.ArrayLike, **kwargs: Any
+    data: npt.ArrayLike | Array, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array filled with `data`.
 
@@ -550,13 +607,16 @@ async def array(
         The new array.
     """
 
+    if isinstance(data, Array):
+        return await from_array(data=data, **kwargs)
+
     # ensure data is array-like
     if not hasattr(data, "shape") or not hasattr(data, "dtype"):
         data = np.asanyarray(data)
 
     # setup dtype
     kw_dtype = kwargs.get("dtype")
-    if kw_dtype is None:
+    if kw_dtype is None and hasattr(data, "dtype"):
         kwargs["dtype"] = data.dtype
     else:
         kwargs["dtype"] = kw_dtype
@@ -601,14 +661,13 @@ async def group(
 
     Parameters
     ----------
-    store : Store or str, optional
-        Store or path to directory in file system.
+    store : StoreLike or None, default=None
+        Store or path to directory in file system or name of zip file.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
-    chunk_store : Store, optional
-        Separate storage for chunks. If not provided, `store` will be used
-        for storage of both chunks and metadata.
+    chunk_store : StoreLike or None, default=None
+        Separate storage for chunks. Not implemented.
     cache_attrs : bool, optional
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
@@ -631,38 +690,24 @@ async def group(
     g : group
         The new group.
     """
-
-    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-
     mode: AccessModeLiteral
     if overwrite:
         mode = "w"
     else:
-        mode = "r+"
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-
-    if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
-    if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
-    if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
-
-    if attributes is None:
-        attributes = {}
-
-    try:
-        return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
-    except (KeyError, FileNotFoundError):
-        _zarr_format = zarr_format or _default_zarr_format()
-        return await AsyncGroup.from_store(
-            store=store_path,
-            zarr_format=_zarr_format,
-            overwrite=overwrite,
-            attributes=attributes,
-        )
+        mode = "a"
+    return await open_group(
+        store=store,
+        mode=mode,
+        chunk_store=chunk_store,
+        cache_attrs=cache_attrs,
+        synchronizer=synchronizer,
+        path=path,
+        zarr_version=zarr_version,
+        zarr_format=zarr_format,
+        meta_array=meta_array,
+        attributes=attributes,
+        storage_options=storage_options,
+    )
 
 
 async def create_group(
@@ -678,8 +723,8 @@ async def create_group(
 
     Parameters
     ----------
-    store : Store or str
-        Store or path to directory in file system.
+    store : StoreLike
+        Store or path to directory in file system or name of zip file.
     path : str, optional
         Group path within store.
     overwrite : bool, optional
@@ -734,7 +779,7 @@ async def open_group(
 
     Parameters
     ----------
-    store : Store, str, or mapping, optional
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
 
         Strings are interpreted as paths on the local file system
@@ -759,7 +804,7 @@ async def open_group(
         Array synchronizer.
     path : str, optional
         Group path within store.
-    chunk_store : Store or str, optional
+    chunk_store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
@@ -795,16 +840,15 @@ async def open_group(
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
-
     if attributes is None:
         attributes = {}
 
@@ -824,23 +868,24 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    raise FileNotFoundError(f"Unable to find group: {store_path}")
+    msg = f"No group found in store {store!r} at path {store_path.path!r}"
+    raise GroupNotFoundError(msg)
 
 
 async def create(
-    shape: ChunkCoords | int,
+    shape: tuple[int, ...] | int,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
-    dtype: npt.DTypeLike | None = None,
-    compressor: dict[str, JSON] | None = None,  # TODO: default and type change
-    fill_value: Any | None = 0,  # TODO: need type
+    chunks: tuple[int, ...] | int | bool | None = None,
+    dtype: ZDTypeLike | None = None,
+    compressor: CompressorLike = "auto",
+    fill_value: Any | None = DEFAULT_FILL_VALUE,
     order: MemoryOrder | None = None,
-    store: str | StoreLike | None = None,
+    store: StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -852,7 +897,7 @@ async def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: ChunkCoords | int | None = None,
+    chunk_shape: tuple[int, ...] | int | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -860,7 +905,7 @@ async def create(
         | None
     ) = None,
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-    dimension_names: Iterable[str] | None = None,
+    dimension_names: DimensionNames = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
     **kwargs: Any,
@@ -872,65 +917,58 @@ async def create(
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints, optional
-        The shape of the array's chunks.
-        Zarr format 2 only. Zarr format 3 arrays should use `chunk_shape` instead.
-        If not specified, default values are guessed based on the shape and dtype.
+        Chunk shape. If True, will be guessed from ``shape`` and ``dtype``. If
+        False, will be set to ``shape``, i.e., single chunk for the whole array.
+        If an int, the chunk size in each dimension will be given by the value
+        of ``chunks``. Default is True.
     dtype : str or dtype, optional
         NumPy dtype.
-    chunk_shape : int or tuple of ints, optional
-        The shape of the Array's chunks (default is None).
-        Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
-    chunk_key_encoding : ChunkKeyEncoding, optional
-        A specification of how the chunk keys are represented in storage.
-        Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
-        Default is ``("default", "/")``.
-    codecs : Sequence of Codecs or dicts, optional
-        An iterable of Codec or dict serializations of Codecs. The elements of
-        this collection specify the transformation from array values to stored bytes.
-        Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
-
-        If no codecs are provided, default codecs will be used:
-
-        - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-        - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
-        - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
-
-        These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-        ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
     compressor : Codec, optional
         Primary compressor to compress chunk data.
         Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
 
-        If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+        If neither ``compressor`` nor ``filters`` are provided, the default compressor
+        :class:`zarr.codecs.ZstdCodec` is used.
 
-        - For numeric arrays, the default is ``ZstdCodec``.
-        - For Unicode strings, the default is ``VLenUTF8Codec``.
-        - For bytes or objects, the default is ``VLenBytesCodec``.
-
-        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
-    fill_value : object
-        Default value to use for uninitialized portions of the array.
+        If ``compressor`` is set to ``None``, no compression is used.
+    fill_value : Any, optional
+        Fill value for the array.
     order : {'C', 'F'}, optional
         Deprecated in favor of the ``config`` keyword argument.
         Pass ``{'order': <value>}`` to ``create`` instead of using this parameter.
         Memory layout to be used within each chunk.
         If not specified, the ``array.order`` parameter in the global config will be used.
-    store : Store or str
+    store : StoreLike or None, default=None
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
-        If True, delete all pre-existing data in `store` at `path` before
+        If True, delete all pre-existing data in ``store`` at ``path`` before
         creating the array.
     path : str, optional
         Path under which array is stored.
-    chunk_store : MutableMapping, optional
-        Separate storage for chunks. If not provided, `store` will be used
+    chunk_store : StoreLike or None, default=None
+        Separate storage for chunks. If not provided, ``store`` will be used
         for storage of both chunks and metadata.
-    filters : sequence of Codecs, optional
-        Sequence of filters to use to encode chunk data prior to compression.
-        Zarr format 2 only. If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
+    filters : Iterable[Codec] | Literal["auto"], optional
+        Iterable of filters to apply to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+
+        For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+        and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
+        dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
+
+        For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
+        the order if your filters is consistent with the behavior of each filter.
+
+        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+        data types in Zarr V2, the default filters are empty. The only cases where default filters
+        are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+        :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
+        the default filters contains a single element which is a codec specific to that particular data type.
+
+        To create an array with no filters, provide an empty iterable or the value ``None``.
     cache_metadata : bool, optional
         If True, array configuration metadata will be cached for the
         lifetime of the object. If False, array metadata will be reloaded
@@ -947,7 +985,6 @@ async def create(
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
         Zarr format 2 only. Zarr format 3 arrays should use ``chunk_key_encoding`` instead.
-        Default is ".".
     write_empty_chunks : bool, optional
         Deprecated in favor of the ``config`` keyword argument.
         Pass ``{'write_empty_chunks': <value>}`` to ``create`` instead of using this parameter.
@@ -957,15 +994,36 @@ async def create(
         that chunk is not be stored, and the store entry for that chunk's key
         is deleted.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
-        Default is 3.
+        The Zarr format to use when creating an array. The default is ``None``,
+        which instructs Zarr to choose the default Zarr format value defined in the
+        runtime configuration.
     meta_array : array-like, optional
-        An array instance to use for determining arrays to create and return
-        to users. Use `numpy.empty(())` by default.
+        Not implemented.
+    attributes : dict[str, JSON], optional
+        A dictionary of user attributes to store with the array.
+    chunk_shape : int or tuple of ints, optional
+        The shape of the Array's chunks (default is None).
+        Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
+    chunk_key_encoding : ChunkKeyEncoding, optional
+        A specification of how the chunk keys are represented in storage.
+        Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
+        Default is ``("default", "/")``.
+    codecs : Sequence of Codecs or dicts, optional
+        An iterable of Codec or dict serializations of Codecs. Zarr V3 only.
+
+        The elements of ``codecs`` specify the transformation from array values to stored bytes.
+        Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
+
+        If no codecs are provided, default codecs will be used based on the data type of the array.
+        For most data types, the default codecs are the tuple ``(BytesCodec(), ZstdCodec())``;
+        data types that require a special :class:`zarr.abc.codec.ArrayBytesCodec`, like variable-length strings or bytes,
+        will use the :class:`zarr.abc.codec.ArrayBytesCodec` required for the data type instead of :class:`zarr.codecs.BytesCodec`.
+    dimension_names : Iterable[str | None] | None = None
+        An iterable of dimension names. Zarr format 3 only.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    config : ArrayConfig or ArrayConfigLike, optional
+    config : ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
 
@@ -979,73 +1037,40 @@ async def create(
         or _default_zarr_format()
     )
 
-    if zarr_format == 2:
-        if chunks is None:
-            chunks = shape
-        dtype = parse_dtype(dtype, zarr_format)
-        if not filters:
-            filters = _default_filters(dtype)
-        if not compressor:
-            compressor = _default_compressor(dtype)
-    elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
-        if chunks is not None:
-            chunk_shape = chunks
-            chunks = None
-        else:
-            chunk_shape = shape
-
     if synchronizer is not None:
-        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("synchronizer is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if chunk_store is not None:
-        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("chunk_store is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if cache_metadata is not None:
-        warnings.warn("cache_metadata is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_metadata is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if cache_attrs is not None:
-        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("cache_attrs is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if object_codec is not None:
-        warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
+        warnings.warn("object_codec is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
     if read_only is not None:
-        warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
-    if dimension_separator is not None and zarr_format == 3:
-        raise ValueError(
-            "dimension_separator is not supported for zarr format 3, use chunk_key_encoding instead"
-        )
+        warnings.warn("read_only is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
+    if meta_array is not None:
+        warnings.warn("meta_array is not yet implemented", ZarrRuntimeWarning, stacklevel=2)
 
-    if order is not None:
-        _warn_order_kwarg()
     if write_empty_chunks is not None:
         _warn_write_empty_chunks_kwarg()
-
-    if meta_array is not None:
-        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     mode = kwargs.pop("mode", None)
     if mode is None:
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
-    config_dict: ArrayConfigParams = {}
+    config_parsed = parse_array_config(config)
 
     if write_empty_chunks is not None:
         if config is not None:
             msg = (
                 "Both write_empty_chunks and config keyword arguments are set. "
-                "This is redundant. When both are set, write_empty_chunks will be ignored and "
-                "config will be used."
+                "This is redundant. When both are set, write_empty_chunks will be used instead "
+                "of the value in config."
             )
-            warnings.warn(UserWarning(msg), stacklevel=1)
-        config_dict["write_empty_chunks"] = write_empty_chunks
-    if order is not None:
-        if config is not None:
-            msg = (
-                "Both order and config keyword arguments are set. "
-                "This is redundant. When both are set, order will be ignored and "
-                "config will be used."
-            )
-            warnings.warn(UserWarning(msg), stacklevel=1)
-        config_dict["order"] = order
-
-    config_parsed = ArrayConfig.from_dict(config_dict)
+            warnings.warn(ZarrUserWarning(msg), stacklevel=1)
+        config_parsed = dataclasses.replace(config_parsed, write_empty_chunks=write_empty_chunks)
 
     return await AsyncArray._create(
         store_path,
@@ -1057,6 +1082,7 @@ async def create(
         overwrite=overwrite,
         filters=filters,
         dimension_separator=dimension_separator,
+        order=order,
         zarr_format=zarr_format,
         chunk_shape=chunk_shape,
         chunk_key_encoding=chunk_key_encoding,
@@ -1069,10 +1095,10 @@ async def create(
 
 
 async def empty(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an empty array with the specified shape. The contents will be filled with the
-    array's fill value or zeros if no fill value is provided.
+    specified fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
@@ -1087,8 +1113,7 @@ async def empty(
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-
-    return await create(shape=shape, fill_value=None, **kwargs)
+    return await create(shape=shape, **kwargs)
 
 
 async def empty_like(
@@ -1115,13 +1140,15 @@ async def empty_like(
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-    like_kwargs = _like_args(a, kwargs)
-    return await empty(**like_kwargs)
+    like_kwargs = _like_args(a) | kwargs
+    if isinstance(a, (AsyncArray | Array)):
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
+    return await empty(**like_kwargs)  # type: ignore[arg-type]
 
 
 # TODO: add type annotations for fill_value and kwargs
 async def full(
-    shape: ChunkCoords, fill_value: Any, **kwargs: Any
+    shape: tuple[int, ...], fill_value: Any, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with `fill_value` being used as the default value for
     uninitialized portions of the array.
@@ -1161,14 +1188,14 @@ async def full_like(
     Array
         The new array.
     """
-    like_kwargs = _like_args(a, kwargs)
-    if isinstance(a, AsyncArray):
+    like_kwargs = _like_args(a) | kwargs
+    if isinstance(a, (AsyncArray | Array)):
         like_kwargs.setdefault("fill_value", a.metadata.fill_value)
-    return await full(**like_kwargs)
+    return await full(**like_kwargs)  # type: ignore[arg-type]
 
 
 async def ones(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with one being used as the default value for
     uninitialized portions of the array.
@@ -1205,8 +1232,8 @@ async def ones_like(
     Array
         The new array.
     """
-    like_kwargs = _like_args(a, kwargs)
-    return await ones(**like_kwargs)
+    like_kwargs = _like_args(a) | kwargs
+    return await ones(**like_kwargs)  # type: ignore[arg-type]
 
 
 async def open_array(
@@ -1222,7 +1249,7 @@ async def open_array(
 
     Parameters
     ----------
-    store : Store or str
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     zarr_version : {2, 3, None}, optional
         The zarr format to use when saving. Deprecated in favor of zarr_format.
@@ -1247,14 +1274,12 @@ async def open_array(
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    if "order" in kwargs:
-        _warn_order_kwarg()
     if "write_empty_chunks" in kwargs:
         _warn_write_empty_chunks_kwarg()
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError:
+    except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
             _zarr_format = zarr_format or _default_zarr_format()
@@ -1264,7 +1289,8 @@ async def open_array(
                 overwrite=overwrite,
                 **kwargs,
             )
-        raise
+        msg = f"No array found in store {store_path.store} at path {store_path.path}"
+        raise ArrayNotFoundError(msg) from err
 
 
 async def open_like(
@@ -1286,14 +1312,14 @@ async def open_like(
     AsyncArray
         The opened array.
     """
-    like_kwargs = _like_args(a, kwargs)
+    like_kwargs = _like_args(a) | kwargs
     if isinstance(a, (AsyncArray | Array)):
-        kwargs.setdefault("fill_value", a.metadata.fill_value)
-    return await open_array(path=path, **like_kwargs)
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
+    return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
 
 
 async def zeros(
-    shape: ChunkCoords, **kwargs: Any
+    shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with zero being used as the default value for
     uninitialized portions of the array.
@@ -1330,5 +1356,5 @@ async def zeros_like(
     Array
         The new array.
     """
-    like_kwargs = _like_args(a, kwargs)
-    return await zeros(**like_kwargs)
+    like_kwargs = _like_args(a) | kwargs
+    return await zeros(**like_kwargs)  # type: ignore[arg-type]

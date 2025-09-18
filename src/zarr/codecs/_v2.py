@@ -4,7 +4,6 @@ import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-import numcodecs
 import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
@@ -12,16 +11,15 @@ from zarr.abc.codec import ArrayBytesCodec
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
-    import numcodecs.abc
-
+    from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, NDBuffer
 
 
 @dataclass(frozen=True)
 class V2Codec(ArrayBytesCodec):
-    filters: tuple[numcodecs.abc.Codec, ...] | None
-    compressor: numcodecs.abc.Codec | None
+    filters: tuple[Numcodec, ...] | None
+    compressor: Numcodec | None
 
     is_fixed_size = False
 
@@ -46,9 +44,9 @@ class V2Codec(ArrayBytesCodec):
         chunk = ensure_ndarray_like(chunk)
         # special case object dtype, because incorrect handling can lead to
         # segfaults and other bad things happening
-        if chunk_spec.dtype != object:
+        if chunk_spec.dtype.dtype_cls is not np.dtypes.ObjectDType:
             try:
-                chunk = chunk.view(chunk_spec.dtype)
+                chunk = chunk.view(chunk_spec.dtype.to_native_dtype())
             except TypeError:
                 # this will happen if the dtype of the chunk
                 # does not match the dtype of the array spec i.g. if
@@ -56,7 +54,7 @@ class V2Codec(ArrayBytesCodec):
                 # is an object array. In this case, we need to convert the object
                 # array to the correct dtype.
 
-                chunk = np.array(chunk).astype(chunk_spec.dtype)
+                chunk = np.array(chunk).astype(chunk_spec.dtype.to_native_dtype())
 
         elif chunk.dtype != object:
             # If we end up here, someone must have hacked around with the filters.
@@ -80,13 +78,12 @@ class V2Codec(ArrayBytesCodec):
         chunk = chunk_array.as_ndarray_like()
 
         # ensure contiguous and correct order
-        chunk = chunk.astype(chunk_spec.dtype, order=chunk_spec.order, copy=False)
+        chunk = chunk.astype(chunk_spec.dtype.to_native_dtype(), order=chunk_spec.order, copy=False)
 
         # apply filters
         if self.filters:
             for f in self.filters:
                 chunk = await asyncio.to_thread(f.encode, chunk)
-
         # check object encoding
         if ensure_ndarray_like(chunk).dtype == object:
             raise RuntimeError("cannot write object array without object codec")
@@ -96,7 +93,6 @@ class V2Codec(ArrayBytesCodec):
             cdata = await asyncio.to_thread(self.compressor.encode, chunk)
         else:
             cdata = chunk
-
         cdata = ensure_bytes(cdata)
         return chunk_spec.prototype.buffer.from_bytes(cdata)
 

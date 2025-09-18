@@ -24,7 +24,7 @@ T_Store = TypeVar("T_Store", bound=Store)
 
 class LoggingStore(WrapperStore[T_Store]):
     """
-    Store wrapper that logs all calls to the wrapped store.
+    Store that logs all calls to another wrapped store.
 
     Parameters
     ----------
@@ -116,11 +116,6 @@ class LoggingStore(WrapperStore[T_Store]):
             return self._store.supports_deletes
 
     @property
-    def supports_partial_writes(self) -> bool:
-        with self.log():
-            return self._store.supports_partial_writes
-
-    @property
     def supports_listing(self) -> bool:
         with self.log():
             return self._store.supports_listing
@@ -206,14 +201,6 @@ class LoggingStore(WrapperStore[T_Store]):
         # docstring inherited
         with self.log(key):
             return await self._store.delete(key=key)
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
-    ) -> None:
-        # docstring inherited
-        keys = ",".join([k[0] for k in key_start_values])
-        with self.log(keys):
-            return await self._store.set_partial_values(key_start_values=key_start_values)
 
     async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited

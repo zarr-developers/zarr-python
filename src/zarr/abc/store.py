@@ -4,11 +4,7 @@ from abc import ABC, abstractmethod
 from asyncio import gather
 from dataclasses import dataclass
 from itertools import starmap
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
-
-from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.common import concurrent_map
-from zarr.core.config import config
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
@@ -16,7 +12,6 @@ if TYPE_CHECKING:
     from typing import Any, Self, TypeAlias
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 __all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
@@ -82,6 +77,27 @@ class Store(ABC):
         store = cls(*args, **kwargs)
         await store._open()
         return store
+
+    def with_read_only(self, read_only: bool = False) -> Store:
+        """
+        Return a new store with a new read_only setting.
+
+        The new store points to the same location with the specified new read_only state.
+        The returned Store is not automatically opened, and this store is
+        not automatically closed.
+
+        Parameters
+        ----------
+        read_only
+            If True, the store will be created in read-only mode. Defaults to False.
+
+        Returns
+        -------
+            A new store of the same type with the new read only attribute.
+        """
+        raise NotImplementedError(
+            f"with_read_only is not implemented for the {type(self)} store type."
+        )
 
     def __enter__(self) -> Self:
         """Enter a context manager that will close the store upon exiting."""
@@ -265,6 +281,18 @@ class Store(ABC):
         await gather(*starmap(self.set, values))
 
     @property
+    def supports_consolidated_metadata(self) -> bool:
+        """
+        Does the store support consolidated metadata?.
+
+        If it doesn't an error will be raised on requests to consolidate the metadata.
+        Returning `False` can be useful for stores which implement their own
+        consolidation mechanism outside of the zarr-python implementation.
+        """
+
+        return True
+
+    @property
     @abstractmethod
     def supports_deletes(self) -> bool:
         """Does the store support deletes?"""
@@ -281,25 +309,12 @@ class Store(ABC):
         ...
 
     @property
-    @abstractmethod
-    def supports_partial_writes(self) -> bool:
-        """Does the store support partial writes?"""
-        ...
+    def supports_partial_writes(self) -> Literal[False]:
+        """Does the store support partial writes?
 
-    @abstractmethod
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        """Store values at a given key, starting at byte range_start.
-
-        Parameters
-        ----------
-        key_start_values : list[tuple[str, int, BytesLike]]
-            set of key, range_start, values triples, a key may occur multiple times with different
-            range_starts, range_starts (considering the length of the respective values) must not
-            specify overlapping ranges for the same key
+        Partial writes are no longer used by Zarr, so this is always false.
         """
-        ...
+        return False
 
     @property
     @abstractmethod
@@ -405,6 +420,9 @@ class Store(ABC):
         # Note to implementers: this default implementation is very inefficient since
         # it requires reading the entire object. Many systems will have ways to get the
         # size of an object without reading it.
+        # avoid circular import
+        from zarr.core.buffer.core import default_buffer_prototype
+
         value = await self.get(key, prototype=default_buffer_prototype())
         if value is None:
             raise FileNotFoundError(key)
@@ -443,6 +461,11 @@ class Store(ABC):
         # on to getting sizes. Ideally we would overlap those two, which should
         # improve tail latency and might reduce memory pressure (since not all keys
         # would be in memory at once).
+
+        # avoid circular import
+        from zarr.core.common import concurrent_map
+        from zarr.core.config import config
+
         keys = [(x,) async for x in self.list_prefix(prefix)]
         limit = config.get("async.concurrency")
         sizes = await concurrent_map(keys, self.getsize, limit=limit)
@@ -462,7 +485,7 @@ class ByteSetter(Protocol):
         self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None: ...
 
-    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None: ...
+    async def set(self, value: Buffer) -> None: ...
 
     async def delete(self) -> None: ...
 

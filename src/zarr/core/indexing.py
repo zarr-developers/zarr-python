@@ -12,6 +12,7 @@ from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
     Any,
+    Generic,
     Literal,
     NamedTuple,
     Protocol,
@@ -25,13 +26,20 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.common import product
+from zarr.core.common import ceildiv, product
+from zarr.core.metadata import T_ArrayMetadata
+from zarr.errors import (
+    ArrayIndexError,
+    BoundsCheckError,
+    NegativeStepError,
+    VindexInvalidSelectionError,
+)
 
 if TYPE_CHECKING:
-    from zarr.core.array import Array
-    from zarr.core.buffer import NDArrayLike
+    from zarr.core.array import Array, AsyncArray
+    from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import ChunkCoords
+
 
 IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
@@ -49,30 +57,7 @@ SelectorTuple = tuple[Selector, ...] | npt.NDArray[np.intp] | slice
 Fields = str | list[str] | tuple[str, ...]
 
 
-class ArrayIndexError(IndexError):
-    pass
-
-
-class BoundsCheckError(IndexError):
-    _msg = ""
-
-    def __init__(self, dim_len: int) -> None:
-        self._msg = f"index out of bounds for dimension with length {dim_len}"
-
-
-class NegativeStepError(IndexError):
-    _msg = "only slices with step >= 1 are supported"
-
-
-class VindexInvalidSelectionError(IndexError):
-    _msg = (
-        "unsupported selection type for vectorized indexing; only "
-        "coordinate selection (tuple of integer arrays) and mask selection "
-        "(single Boolean array) are supported; got {!r}"
-    )
-
-
-def err_too_many_indices(selection: Any, shape: ChunkCoords) -> None:
+def err_too_many_indices(selection: Any, shape: tuple[int, ...]) -> None:
     raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
 
 
@@ -87,16 +72,10 @@ def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.N
 
 @runtime_checkable
 class Indexer(Protocol):
-    shape: ChunkCoords
-    drop_axes: ChunkCoords
+    shape: tuple[int, ...]
+    drop_axes: tuple[int, ...]
 
     def __iter__(self) -> Iterator[ChunkProjection]: ...
-
-
-def ceildiv(a: float, b: float) -> int:
-    if a == 0:
-        return 0
-    return math.ceil(a / b)
 
 
 _ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
@@ -108,7 +87,7 @@ def _iter_grid(
     origin: Sequence[int] | None = None,
     selection_shape: Sequence[int] | None = None,
     order: _ArrayIndexingOrder = "lexicographic",
-) -> Iterator[ChunkCoords]:
+) -> Iterator[tuple[int, ...]]:
     """
     Iterate over the elements of grid of integers, with the option to restrict the domain of
     iteration to a contiguous subregion of that grid.
@@ -127,7 +106,7 @@ def _iter_grid(
     Returns
     -------
 
-    itertools.product object
+    Iterator[tuple[int, ...]]
         An iterator over tuples of integers
 
     Examples
@@ -138,11 +117,11 @@ def _iter_grid(
     >>> tuple(iter_grid((2,3)))
     ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3)), origin=(1,1))
-    ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3))
+    >>> tuple(iter_grid((2,3), origin=(1,1)))
+    ((1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3)), origin=(1,1), selection_shape=(2,2))
-    ((1, 1), (1, 2), (1, 3), (2, 1))
+    >>> tuple(iter_grid((2,3), origin=(0,0), selection_shape=(2,2)))
+    ((0, 0), (0, 1), (1, 0), (1, 1))
     """
     if origin is None:
         origin_parsed = (0,) * len(grid_shape)
@@ -167,14 +146,74 @@ def _iter_grid(
         ):
             if o + ss > gs:
                 raise IndexError(
-                    f"Invalid selection shape ({selection_shape}) for origin ({origin}) and grid shape ({grid_shape}) at axis {idx}."
+                    f"Invalid selection shape ({ss}) for origin ({o}) and grid shape ({gs}) at axis {idx}."
                 )
             dimensions += (range(o, o + ss),)
-        yield from itertools.product(*(dimensions))
+        return itertools.product(*(dimensions))
 
     else:
-        msg = f"Indexing order {order} is not supported at this time."  # type: ignore[unreachable]
-        raise NotImplementedError(msg)
+        msg = f"Indexing order {order} is not supported at this time."  # type: ignore[unreachable] # pragma: no cover
+        raise NotImplementedError(msg)  # pragma: no cover
+
+
+def _iter_regions(
+    domain_shape: Sequence[int],
+    region_shape: Sequence[int],
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+    order: _ArrayIndexingOrder = "lexicographic",
+    trim_excess: bool = True,
+) -> Iterator[tuple[slice, ...]]:
+    """
+    Iterate over contiguous regions on a grid of integers, with the option to restrict the
+    domain of iteration to a contiguous subregion of that grid.
+
+    Parameters
+    ----------
+    domain_shape : Sequence[int]
+        The size of the domain to iterate over.
+    region_shape : Sequence[int]
+        The shape of the region to iterate over.
+    origin : Sequence[int] | None, default=None
+        The location, in grid coordinates, of the first region to return.
+    selection_shape : Sequence[int] | None, default=None
+        The shape of the selection, in grid coordinates.
+    order : Literal["lexicographic"], default="lexicographic"
+        The linear indexing order to use.
+
+    Yields
+    -------
+
+    Iterator[tuple[slice, ...]]
+        An iterator over tuples of slices, where each slice spans a separate contiguous region
+
+    Examples
+    --------
+    >>> tuple(iter_regions((1,), (1,)))
+    ((slice(0, 1, 1),),)
+
+    >>> tuple(iter_regions((2, 3), (1, 2)))
+    ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
+
+    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1))
+    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+
+    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1), selection_shape=(2,2))
+    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+    """
+    grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
+    for grid_position in _iter_grid(
+        grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
+    ):
+        out: list[slice] = []
+        for g_pos, r_shape, d_shape in zip(grid_position, region_shape, domain_shape, strict=True):
+            start = g_pos * r_shape
+            stop = start + r_shape
+            if trim_excess:
+                stop = min(stop, d_shape)
+            out.append(slice(start, stop, 1))
+        yield tuple(out)
 
 
 def is_integer(x: Any) -> TypeGuard[int]:
@@ -286,7 +325,7 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
     )
 
 
-def get_chunk_shape(chunk_grid: ChunkGrid) -> ChunkCoords:
+def get_chunk_shape(chunk_grid: ChunkGrid) -> tuple[int, ...]:
     from zarr.core.chunk_grids import RegularChunkGrid
 
     assert isinstance(chunk_grid, RegularChunkGrid), (
@@ -305,7 +344,8 @@ def normalize_integer_selection(dim_sel: int, dim_len: int) -> int:
 
     # handle out of bounds
     if dim_sel >= dim_len or dim_sel < 0:
-        raise BoundsCheckError(dim_len)
+        msg = f"index out of bounds for dimension with length {dim_len}"
+        raise BoundsCheckError(msg)
 
     return dim_sel
 
@@ -365,7 +405,7 @@ class SliceDimIndexer:
         # normalize
         start, stop, step = dim_sel.indices(dim_len)
         if step < 1:
-            raise NegativeStepError
+            raise NegativeStepError("only slices with step >= 1 are supported.")
 
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "stop", stop)
@@ -427,12 +467,12 @@ class SliceDimIndexer:
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
-def check_selection_length(selection: SelectionNormalized, shape: ChunkCoords) -> None:
+def check_selection_length(selection: SelectionNormalized, shape: tuple[int, ...]) -> None:
     if len(selection) > len(shape):
         err_too_many_indices(selection, shape)
 
 
-def replace_ellipsis(selection: Any, shape: ChunkCoords) -> SelectionNormalized:
+def replace_ellipsis(selection: Any, shape: tuple[int, ...]) -> SelectionNormalized:
     selection = ensure_tuple(selection)
 
     # count number of ellipsis present
@@ -466,7 +506,7 @@ def replace_ellipsis(selection: Any, shape: ChunkCoords) -> SelectionNormalized:
     # check selection not too long
     check_selection_length(selection, shape)
 
-    return cast(SelectionNormalized, selection)
+    return cast("SelectionNormalized", selection)
 
 
 def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
@@ -481,7 +521,7 @@ T = TypeVar("T")
 def ensure_tuple(v: Any) -> SelectionNormalized:
     if not isinstance(v, tuple):
         v = (v,)
-    return cast(SelectionNormalized, v)
+    return cast("SelectionNormalized", v)
 
 
 class ChunkProjection(NamedTuple):
@@ -501,7 +541,7 @@ class ChunkProjection(NamedTuple):
         True if a complete chunk is indexed
     """
 
-    chunk_coords: ChunkCoords
+    chunk_coords: tuple[int, ...]
     chunk_selection: tuple[Selector, ...] | npt.NDArray[np.intp]
     out_selection: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
     is_complete_chunk: bool
@@ -532,13 +572,13 @@ def is_basic_selection(selection: Any) -> TypeGuard[BasicSelection]:
 @dataclass(frozen=True)
 class BasicIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer]
-    shape: ChunkCoords
-    drop_axes: ChunkCoords
+    shape: tuple[int, ...]
+    drop_axes: tuple[int, ...]
 
     def __init__(
         self,
         selection: BasicSelection,
-        shape: ChunkCoords,
+        shape: tuple[int, ...],
         chunk_grid: ChunkGrid,
     ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
@@ -688,7 +728,8 @@ def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
 
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
     if np.any(x < 0) or np.any(x >= dim_len):
-        raise BoundsCheckError(dim_len)
+        msg = f"index out of bounds for dimension with length {dim_len}"
+        raise BoundsCheckError(msg)
 
 
 @dataclass(frozen=True)
@@ -798,7 +839,7 @@ def slice_to_range(s: slice, length: int) -> range:
     return range(*s.indices(length))
 
 
-def ix_(selection: Any, shape: ChunkCoords) -> npt.NDArray[np.intp]:
+def ix_(selection: Any, shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     """Convert an orthogonal selection to a numpy advanced (fancy) selection, like ``numpy.ix_``
     but with support for slices and single ints."""
 
@@ -818,7 +859,7 @@ def ix_(selection: Any, shape: ChunkCoords) -> npt.NDArray[np.intp]:
     # now get numpy to convert to a coordinate selection
     selection = np.ix_(*selection)
 
-    return cast(npt.NDArray[np.intp], selection)
+    return cast("npt.NDArray[np.intp]", selection)
 
 
 def oindex(a: npt.NDArray[Any], selection: Selection) -> npt.NDArray[Any]:
@@ -848,12 +889,12 @@ def oindex_set(a: npt.NDArray[Any], selection: Selection, value: Any) -> None:
 @dataclass(frozen=True)
 class OrthogonalIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer | IntArrayDimIndexer | BoolArrayDimIndexer]
-    shape: ChunkCoords
-    chunk_shape: ChunkCoords
+    shape: tuple[int, ...]
+    chunk_shape: tuple[int, ...]
     is_advanced: bool
     drop_axes: tuple[int, ...]
 
-    def __init__(self, selection: Selection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
+    def __init__(self, selection: Selection, shape: tuple[int, ...], chunk_grid: ChunkGrid) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
         # handle ellipsis
@@ -937,7 +978,7 @@ class OIndex:
     array: Array
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
+    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -948,7 +989,7 @@ class OIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.get_orthogonal_selection(
-            cast(OrthogonalSelection, new_selection), fields=fields
+            cast("OrthogonalSelection", new_selection), fields=fields
         )
 
     def __setitem__(self, selection: OrthogonalSelection, value: npt.ArrayLike) -> None:
@@ -956,18 +997,37 @@ class OIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_orthogonal_selection(
-            cast(OrthogonalSelection, new_selection), value, fields=fields
+            cast("OrthogonalSelection", new_selection), value, fields=fields
+        )
+
+
+@dataclass(frozen=True)
+class AsyncOIndex(Generic[T_ArrayMetadata]):
+    array: AsyncArray[T_ArrayMetadata]
+
+    async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
+        from zarr.core.array import Array
+
+        # if input is a Zarr array, we materialize it now.
+        if isinstance(selection, Array):
+            selection = _zarr_array_to_int_or_bool_array(selection)
+
+        fields, new_selection = pop_fields(selection)
+        new_selection = ensure_tuple(new_selection)
+        new_selection = replace_lists(new_selection)
+        return await self.array.get_orthogonal_selection(
+            cast(OrthogonalSelection, new_selection), fields=fields
         )
 
 
 @dataclass(frozen=True)
 class BlockIndexer(Indexer):
     dim_indexers: list[SliceDimIndexer]
-    shape: ChunkCoords
-    drop_axes: ChunkCoords
+    shape: tuple[int, ...]
+    drop_axes: tuple[int, ...]
 
     def __init__(
-        self, selection: BasicSelection, shape: ChunkCoords, chunk_grid: ChunkGrid
+        self, selection: BasicSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
@@ -1023,7 +1083,8 @@ class BlockIndexer(Indexer):
             dim_indexers.append(dim_indexer)
 
             if start >= dim_len or start < 0:
-                raise BoundsCheckError(dim_len)
+                msg = f"index out of bounds for dimension with length {dim_len}"
+                raise BoundsCheckError(msg)
 
         shape = tuple(s.nitems for s in dim_indexers)
 
@@ -1046,23 +1107,23 @@ class BlockIndexer(Indexer):
 class BlockIndex:
     array: Array
 
-    def __getitem__(self, selection: BasicSelection) -> NDArrayLike:
+    def __getitem__(self, selection: BasicSelection) -> NDArrayLikeOrScalar:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
-        return self.array.get_block_selection(cast(BasicSelection, new_selection), fields=fields)
+        return self.array.get_block_selection(cast("BasicSelection", new_selection), fields=fields)
 
     def __setitem__(self, selection: BasicSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_block_selection(
-            cast(BasicSelection, new_selection), value, fields=fields
+            cast("BasicSelection", new_selection), value, fields=fields
         )
 
 
 def is_coordinate_selection(
-    selection: SelectionNormalized, shape: ChunkCoords
+    selection: SelectionNormalized, shape: tuple[int, ...]
 ) -> TypeGuard[CoordinateSelectionNormalized]:
     return (
         isinstance(selection, tuple)
@@ -1071,7 +1132,7 @@ def is_coordinate_selection(
     )
 
 
-def is_mask_selection(selection: Selection, shape: ChunkCoords) -> TypeGuard[MaskSelection]:
+def is_mask_selection(selection: Selection, shape: tuple[int, ...]) -> TypeGuard[MaskSelection]:
     return (
         isinstance(selection, tuple)
         and len(selection) == 1
@@ -1082,22 +1143,22 @@ def is_mask_selection(selection: Selection, shape: ChunkCoords) -> TypeGuard[Mas
 
 @dataclass(frozen=True)
 class CoordinateIndexer(Indexer):
-    sel_shape: ChunkCoords
+    sel_shape: tuple[int, ...]
     selection: CoordinateSelectionNormalized
     sel_sort: npt.NDArray[np.intp] | None
     chunk_nitems_cumsum: npt.NDArray[np.intp]
     chunk_rixs: npt.NDArray[np.intp]
     chunk_mixs: tuple[npt.NDArray[np.intp], ...]
-    shape: ChunkCoords
-    chunk_shape: ChunkCoords
-    drop_axes: ChunkCoords
+    shape: tuple[int, ...]
+    chunk_shape: tuple[int, ...]
+    drop_axes: tuple[int, ...]
 
     def __init__(
-        self, selection: CoordinateSelection, shape: ChunkCoords, chunk_grid: ChunkGrid
+        self, selection: CoordinateSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
-        cdata_shape: ChunkCoords
+        cdata_shape: tuple[int, ...]
         if shape == ():
             cdata_shape = (1,)
         else:
@@ -1105,12 +1166,12 @@ class CoordinateIndexer(Indexer):
         nchunks = reduce(operator.mul, cdata_shape, 1)
 
         # some initial normalization
-        selection_normalized = cast(CoordinateSelectionNormalized, ensure_tuple(selection))
+        selection_normalized = cast("CoordinateSelectionNormalized", ensure_tuple(selection))
         selection_normalized = tuple(
             np.asarray([i]) if is_integer(i) else i for i in selection_normalized
         )
         selection_normalized = cast(
-            CoordinateSelectionNormalized, replace_lists(selection_normalized)
+            "CoordinateSelectionNormalized", replace_lists(selection_normalized)
         )
 
         # validation
@@ -1212,10 +1273,12 @@ class CoordinateIndexer(Indexer):
 
 @dataclass(frozen=True)
 class MaskIndexer(CoordinateIndexer):
-    def __init__(self, selection: MaskSelection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
+    def __init__(
+        self, selection: MaskSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
+    ) -> None:
         # some initial normalization
-        selection_normalized = cast(tuple[MaskSelection], ensure_tuple(selection))
-        selection_normalized = cast(tuple[MaskSelection], replace_lists(selection_normalized))
+        selection_normalized = cast("tuple[MaskSelection]", ensure_tuple(selection))
+        selection_normalized = cast("tuple[MaskSelection]", replace_lists(selection_normalized))
 
         # validation
         if not is_mask_selection(selection_normalized, shape):
@@ -1236,7 +1299,9 @@ class VIndex:
     array: Array
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: CoordinateSelection | MaskSelection | Array) -> NDArrayLike:
+    def __getitem__(
+        self, selection: CoordinateSelection | MaskSelection | Array
+    ) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -1250,7 +1315,12 @@ class VIndex:
         elif is_mask_selection(new_selection, self.array.shape):
             return self.array.get_mask_selection(new_selection, fields=fields)
         else:
-            raise VindexInvalidSelectionError(new_selection)
+            msg = (
+                "unsupported selection type for vectorized indexing; only "
+                "coordinate selection (tuple of integer arrays) and mask selection "
+                f"(single Boolean array) are supported; got {new_selection!r}"
+            )
+            raise VindexInvalidSelectionError(msg)
 
     def __setitem__(
         self, selection: CoordinateSelection | MaskSelection, value: npt.ArrayLike
@@ -1263,7 +1333,43 @@ class VIndex:
         elif is_mask_selection(new_selection, self.array.shape):
             self.array.set_mask_selection(new_selection, value, fields=fields)
         else:
-            raise VindexInvalidSelectionError(new_selection)
+            msg = (
+                "unsupported selection type for vectorized indexing; only "
+                "coordinate selection (tuple of integer arrays) and mask selection "
+                f"(single Boolean array) are supported; got {new_selection!r}"
+            )
+            raise VindexInvalidSelectionError(msg)
+
+
+@dataclass(frozen=True)
+class AsyncVIndex(Generic[T_ArrayMetadata]):
+    array: AsyncArray[T_ArrayMetadata]
+
+    # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
+    async def getitem(
+        self, selection: CoordinateSelection | MaskSelection | Array
+    ) -> NDArrayLikeOrScalar:
+        # TODO deduplicate these internals with the sync version of getitem
+        # TODO requires solving this circular sync issue: https://github.com/zarr-developers/zarr-python/pull/3083#discussion_r2230737448
+        from zarr.core.array import Array
+
+        # if input is a Zarr array, we materialize it now.
+        if isinstance(selection, Array):
+            selection = _zarr_array_to_int_or_bool_array(selection)
+        fields, new_selection = pop_fields(selection)
+        new_selection = ensure_tuple(new_selection)
+        new_selection = replace_lists(new_selection)
+        if is_coordinate_selection(new_selection, self.array.shape):
+            return await self.array.get_coordinate_selection(new_selection, fields=fields)
+        elif is_mask_selection(new_selection, self.array.shape):
+            return await self.array.get_mask_selection(new_selection, fields=fields)
+        else:
+            msg = (
+                "unsupported selection type for vectorized indexing; only "
+                "coordinate selection (tuple of integer arrays) and mask selection "
+                f"(single Boolean array) are supported; got {new_selection!r}"
+            )
+            raise VindexInvalidSelectionError(msg)
 
 
 def check_fields(fields: Fields | None, dtype: np.dtype[Any]) -> np.dtype[Any]:
@@ -1309,14 +1415,14 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
     elif not isinstance(selection, tuple):
         # single selection item, no fields
         # leave selection as-is
-        return None, cast(Selection, selection)
+        return None, cast("Selection", selection)
     else:
         # multiple items, split fields from selection items
         fields: Fields = [f for f in selection if isinstance(f, str)]
         fields = fields[0] if len(fields) == 1 else fields
         selection_tuple = tuple(s for s in selection if not isinstance(s, str))
         selection = cast(
-            Selection, selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
+            "Selection", selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
         )
         return fields, selection
 
@@ -1336,7 +1442,7 @@ def make_slice_selection(selection: Any) -> list[slice]:
     return ls
 
 
-def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
+def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     # Inspired by compressed morton code as implemented in Neuroglancer
     # https://github.com/google/neuroglancer/blob/master/src/neuroglancer/datasource/precomputed/volume.md#compressed-morton-code
     bits = tuple(math.ceil(math.log2(c)) for c in chunk_shape)
@@ -1354,9 +1460,9 @@ def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
     return tuple(out)
 
 
-def morton_order_iter(chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
+def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
     i = 0
-    order: list[ChunkCoords] = []
+    order: list[tuple[int, ...]] = []
     while len(order) < product(chunk_shape):
         m = decode_morton(i, chunk_shape)
         if m not in order and all(x < y for x, y in zip(m, chunk_shape, strict=False)):
@@ -1366,24 +1472,29 @@ def morton_order_iter(chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
         yield order[j]
 
 
-def c_order_iter(chunks_per_shard: ChunkCoords) -> Iterator[ChunkCoords]:
+def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
     return itertools.product(*(range(x) for x in chunks_per_shard))
 
 
 def get_indexer(
-    selection: SelectionWithFields, shape: ChunkCoords, chunk_grid: ChunkGrid
+    selection: SelectionWithFields, shape: tuple[int, ...], chunk_grid: ChunkGrid
 ) -> Indexer:
     _, pure_selection = pop_fields(selection)
     if is_pure_fancy_indexing(pure_selection, len(shape)):
         new_selection = ensure_tuple(selection)
         new_selection = replace_lists(new_selection)
         if is_coordinate_selection(new_selection, shape):
-            return CoordinateIndexer(cast(CoordinateSelection, selection), shape, chunk_grid)
+            return CoordinateIndexer(cast("CoordinateSelection", selection), shape, chunk_grid)
         elif is_mask_selection(new_selection, shape):
-            return MaskIndexer(cast(MaskSelection, selection), shape, chunk_grid)
+            return MaskIndexer(cast("MaskSelection", selection), shape, chunk_grid)
         else:
-            raise VindexInvalidSelectionError(new_selection)
+            msg = (
+                "unsupported selection type for vectorized indexing; only "
+                "coordinate selection (tuple of integer arrays) and mask selection "
+                f"(single Boolean array) are supported; got {new_selection!r}"
+            )
+            raise VindexInvalidSelectionError(msg)
     elif is_pure_orthogonal_indexing(pure_selection, len(shape)):
-        return OrthogonalIndexer(cast(OrthogonalSelection, selection), shape, chunk_grid)
+        return OrthogonalIndexer(cast("OrthogonalSelection", selection), shape, chunk_grid)
     else:
-        return BasicIndexer(cast(BasicSelection, selection), shape, chunk_grid)
+        return BasicIndexer(cast("BasicSelection", selection), shape, chunk_grid)

@@ -15,13 +15,12 @@ import numpy as np
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
     JSON,
-    ChunkCoords,
-    ChunkCoordsLike,
     ShapeLike,
+    ceildiv,
     parse_named_configuration,
     parse_shapelike,
 )
-from zarr.core.indexing import ceildiv
+from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -31,13 +30,13 @@ if TYPE_CHECKING:
 
 
 def _guess_chunks(
-    shape: ShapeLike,
+    shape: tuple[int, ...] | int,
     typesize: int,
     *,
     increment_bytes: int = 256 * 1024,
     min_bytes: int = 128 * 1024,
     max_bytes: int = 64 * 1024 * 1024,
-) -> ChunkCoords:
+) -> tuple[int, ...]:
     """
     Iteratively guess an appropriate chunk layout for an array, given its shape and
     the size of each element in bytes, and size constraints expressed in bytes. This logic is
@@ -45,7 +44,7 @@ def _guess_chunks(
 
     Parameters
     ----------
-    shape : ChunkCoords
+    shape : tuple[int, ...]
         The chunk shape.
     typesize : int
         The size, in bytes, of each element of the chunk.
@@ -58,11 +57,14 @@ def _guess_chunks(
 
     Returns
     -------
-    ChunkCoords
+    tuple[int, ...]
 
     """
     if isinstance(shape, int):
         shape = (shape,)
+
+    if typesize == 0:
+        return shape
 
     ndims = len(shape)
     # require chunks to have non-zero length for all dimensions
@@ -160,19 +162,19 @@ class ChunkGrid(Metadata):
         raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
 
     @abstractmethod
-    def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
+    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
         pass
 
     @abstractmethod
-    def get_nchunks(self, array_shape: ChunkCoords) -> int:
+    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
         pass
 
 
 @dataclass(frozen=True)
 class RegularChunkGrid(ChunkGrid):
-    chunk_shape: ChunkCoords
+    chunk_shape: tuple[int, ...]
 
-    def __init__(self, *, chunk_shape: ChunkCoordsLike) -> None:
+    def __init__(self, *, chunk_shape: ShapeLike) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
 
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
@@ -186,12 +188,12 @@ class RegularChunkGrid(ChunkGrid):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
 
-    def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
+    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
         return itertools.product(
             *(range(ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
         )
 
-    def get_nchunks(self, array_shape: ChunkCoords) -> int:
+    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
         return reduce(
             operator.mul,
             itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
@@ -204,7 +206,7 @@ def _auto_partition(
     array_shape: tuple[int, ...],
     chunk_shape: tuple[int, ...] | Literal["auto"],
     shard_shape: ShardsLike | None,
-    dtype: np.dtype[Any],
+    item_size: int,
 ) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
     """
     Automatically determine the shard shape and chunk shape for an array, given the shape and dtype of the array.
@@ -214,7 +216,6 @@ def _auto_partition(
     of the array; if the `chunk_shape` is also "auto", then the chunks will be set heuristically as well,
     given the dtype and shard shape. Otherwise, the chunks will be returned as-is.
     """
-    item_size = dtype.itemsize
     if shard_shape is None:
         _shards_out: None | tuple[int, ...] = None
         if chunk_shape == "auto":
@@ -231,7 +232,7 @@ def _auto_partition(
         if shard_shape == "auto":
             warnings.warn(
                 "Automatic shard shape inference is experimental and may change without notice.",
-                UserWarning,
+                ZarrUserWarning,
                 stacklevel=2,
             )
             _shards_out = ()

@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 obstore = pytest.importorskip("obstore")
-import pytest
+
 from hypothesis.stateful import (
     run_state_machine_as_test,
 )
@@ -48,11 +48,6 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     def test_store_supports_writes(self, store: ObjectStore) -> None:
         assert store.supports_writes
 
-    async def test_store_supports_partial_writes(self, store: ObjectStore) -> None:
-        assert not store.supports_partial_writes
-        with pytest.raises(NotImplementedError):
-            await store.set_partial_values([("foo", 0, b"\x01\x02\x03\x04")])
-
     def test_store_supports_listing(self, store: ObjectStore) -> None:
         assert store.supports_listing
 
@@ -74,6 +69,21 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         """Test __init__ raises appropriate error for improper store type"""
         with pytest.raises(TypeError):
             ObjectStore("path/to/store")
+
+    async def test_store_getsize(self, store: ObjectStore) -> None:
+        buf = cpu.Buffer.from_bytes(b"\x01\x02\x03\x04")
+        await self.set(store, "key", buf)
+        size = await store.getsize("key")
+        assert size == len(buf)
+
+    async def test_store_getsize_prefix(self, store: ObjectStore) -> None:
+        buf = cpu.Buffer.from_bytes(b"\x01\x02\x03\x04")
+        await self.set(store, "c/key1/0", buf)
+        await self.set(store, "c/key2/0", buf)
+        size = await store.getsize_prefix("c/key1")
+        assert size == len(buf)
+        total_size = await store.getsize_prefix("c")
+        assert total_size == len(buf) * 2
 
 
 @pytest.mark.slow_hypothesis

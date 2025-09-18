@@ -1,0 +1,1 @@
+Add obstore implementation of delete_dir.

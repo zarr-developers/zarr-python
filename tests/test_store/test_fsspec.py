@@ -3,22 +3,32 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pytest
 from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
+from zarr import Array
 from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
+from zarr.errors import ZarrUserWarning
 from zarr.storage import FsspecStore
+from zarr.storage._fsspec import _make_async
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import Generator
+    from pathlib import Path
 
     import botocore.client
+    import s3fs
+
+    from zarr.core.common import JSON
+
 
 # Warning filter due to https://github.com/boto/boto3/issues/3889
 pytestmark = [
@@ -109,10 +119,13 @@ async def test_basic() -> None:
     data = b"hello"
     await store.set("foo", cpu.Buffer.from_bytes(data))
     assert await store.exists("foo")
-    assert (await store.get("foo", prototype=default_buffer_prototype())).to_bytes() == data
+    buf = await store.get("foo", prototype=default_buffer_prototype())
+    assert buf is not None
+    assert buf.to_bytes() == data
     out = await store.get_partial_values(
         prototype=default_buffer_prototype(), key_ranges=[("foo", OffsetByteRequest(1))]
     )
+    assert out[0] is not None
     assert out[0].to_bytes() == data[1:]
 
 
@@ -121,7 +134,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     buffer_cls = cpu.Buffer
 
     @pytest.fixture
-    def store_kwargs(self, request) -> dict[str, str | bool]:
+    def store_kwargs(self) -> dict[str, str | bool]:
         try:
             from fsspec import url_to_fs
         except ImportError:
@@ -133,7 +146,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         return {"fs": fs, "path": path}
 
     @pytest.fixture
-    def store(self, store_kwargs: dict[str, str | bool]) -> FsspecStore:
+    async def store(self, store_kwargs: dict[str, Any]) -> FsspecStore:
         return self.store_cls(**store_kwargs)
 
     async def get(self, store: FsspecStore, key: str) -> Buffer:
@@ -156,9 +169,6 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     def test_store_supports_writes(self, store: FsspecStore) -> None:
         assert store.supports_writes
 
-    def test_store_supports_partial_writes(self, store: FsspecStore) -> None:
-        assert not store.supports_partial_writes
-
     def test_store_supports_listing(self, store: FsspecStore) -> None:
         assert store.supports_listing
 
@@ -168,7 +178,11 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             "anon": False,
         }
 
-        meta = {"attributes": {"key": "value"}, "zarr_format": 3, "node_type": "group"}
+        meta: dict[str, JSON] = {
+            "attributes": {"key": "value"},
+            "zarr_format": 3,
+            "node_type": "group",
+        }
 
         await store.set(
             "zarr.json",
@@ -179,7 +193,11 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value"}
 
-        meta["attributes"]["key"] = "value-2"
+        meta = {
+            "attributes": {"key": "value-2"},
+            "zarr_format": 3,
+            "node_type": "group",
+        }
         await store.set(
             "directory-2/zarr.json",
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
@@ -189,7 +207,11 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value-2"}
 
-        meta["attributes"]["key"] = "value-3"
+        meta = {
+            "attributes": {"key": "value-3"},
+            "zarr_format": 3,
+            "node_type": "group",
+        }
         await store.set(
             "directory-3/zarr.json",
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
@@ -216,7 +238,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         assert result.fs.asynchronous
         assert result.path == f"{test_bucket_name}/foo/bar"
 
-    def test_init_raises_if_path_has_scheme(self, store_kwargs) -> None:
+    def test_init_raises_if_path_has_scheme(self, store_kwargs: dict[str, Any]) -> None:
         # regression test for https://github.com/zarr-developers/zarr-python/issues/2342
         store_kwargs["path"] = "s3://" + store_kwargs["path"]
         with pytest.raises(
@@ -234,10 +256,10 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=False
         )
         store_kwargs = {"fs": fs, "path": path}
-        with pytest.warns(UserWarning, match=r".* was not created with `asynchronous=True`.*"):
+        with pytest.warns(ZarrUserWarning, match=r".* was not created with `asynchronous=True`.*"):
             self.store_cls(**store_kwargs)
 
-    async def test_empty_nonexistent_path(self, store_kwargs) -> None:
+    async def test_empty_nonexistent_path(self, store_kwargs: dict[str, Any]) -> None:
         # regression test for https://github.com/zarr-developers/zarr-python/pull/2343
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
@@ -252,44 +274,143 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             await store.delete_dir("test_prefix")
 
 
+def array_roundtrip(store: FsspecStore) -> None:
+    """
+    Round trip an array using a Zarr store
+
+    Args:
+        store: FsspecStore
+    """
+    data = np.ones((3, 3))
+    arr = zarr.create_array(store=store, overwrite=True, data=data)
+    assert isinstance(arr, Array)
+    # Read set values
+    arr2 = zarr.open_array(store=store)
+    assert isinstance(arr2, Array)
+    np.testing.assert_array_equal(arr[:], data)
+
+
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
 )
-def test_wrap_sync_filesystem():
+def test_wrap_sync_filesystem(tmp_path: pathlib.Path) -> None:
     """The local fs is not async so we should expect it to be wrapped automatically"""
     from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-    store = FsspecStore.from_url("local://test/path")
-
+    store = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": True})
     assert isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.async_impl
+    array_roundtrip(store)
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) >= parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_wrap_sync_filesystem_raises(tmp_path: pathlib.Path) -> None:
+    """The local fs is not async so we should expect it to be wrapped automatically"""
+    with pytest.raises(ImportError, match="The filesystem .*"):
+        FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": True})
 
 
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
 )
-def test_no_wrap_async_filesystem():
-    """An async fs should not be wrapped automatically; fsspec's https filesystem is such an fs"""
+def test_no_wrap_async_filesystem() -> None:
+    """An async fs should not be wrapped automatically; fsspec's s3 filesystem is such an fs"""
     from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-    store = FsspecStore.from_url("https://test/path")
-
+    store = FsspecStore.from_url(
+        f"s3://{test_bucket_name}/foo/spam/",
+        storage_options={"endpoint_url": endpoint_url, "anon": False, "asynchronous": True},
+        read_only=False,
+    )
     assert not isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.async_impl
+    array_roundtrip(store)
 
 
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
     reason="No AsyncFileSystemWrapper",
 )
-async def test_delete_dir_wrapped_filesystem(tmpdir) -> None:
+def test_open_fsmap_file(tmp_path: pathlib.Path) -> None:
+    min_fsspec_with_async_wrapper = parse_version("2024.12.0")
+    current_version = parse_version(fsspec.__version__)
+
+    fs = fsspec.filesystem("file", auto_mkdir=True)
+    mapper = fs.get_mapper(tmp_path)
+
+    if current_version < min_fsspec_with_async_wrapper:
+        # Expect ImportError for older versions
+        with pytest.raises(
+            ImportError,
+            match=r"The filesystem .* is synchronous, and the required AsyncFileSystemWrapper is not available.*",
+        ):
+            array_roundtrip(mapper)
+    else:
+        # Newer versions should work
+        array_roundtrip(mapper)
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_open_fsmap_file_raises(tmp_path: pathlib.Path) -> None:
+    fsspec = pytest.importorskip("fsspec.implementations.local")
+    fs = fsspec.LocalFileSystem(auto_mkdir=False)
+    mapper = fs.get_mapper(tmp_path)
+    with pytest.raises(FileNotFoundError, match="No such file or directory: .*"):
+        array_roundtrip(mapper)
+
+
+@pytest.mark.parametrize("asynchronous", [True, False])
+def test_open_fsmap_s3(asynchronous: bool) -> None:
+    s3_filesystem = s3fs.S3FileSystem(
+        asynchronous=asynchronous, endpoint_url=endpoint_url, anon=False
+    )
+    mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/map/foo/")
+    array_roundtrip(mapper)
+
+
+def test_open_s3map_raises() -> None:
+    with pytest.raises(TypeError, match="Unsupported type for store_like:.*"):
+        zarr.open(store=0, mode="w", shape=(3, 3))
+    s3_filesystem = s3fs.S3FileSystem(asynchronous=True, endpoint_url=endpoint_url, anon=False)
+    mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/map/foo/")
+    with pytest.raises(
+        ValueError, match="'path' was provided but is not used for FSMap store_like objects"
+    ):
+        zarr.open(store=mapper, path="bar", mode="w", shape=(3, 3))
+    with pytest.raises(
+        TypeError,
+        match="'storage_options' is only used when the store is passed as a FSSpec URI string.",
+    ):
+        zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
+
+
+@pytest.mark.parametrize("asynchronous", [True, False])
+def test_make_async(asynchronous: bool) -> None:
+    s3_filesystem = s3fs.S3FileSystem(
+        asynchronous=asynchronous, endpoint_url=endpoint_url, anon=False
+    )
+    fs = _make_async(s3_filesystem)
+    assert fs.asynchronous
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+async def test_delete_dir_wrapped_filesystem(tmp_path: Path) -> None:
     from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
     from fsspec.implementations.local import LocalFileSystem
 
     wrapped_fs = AsyncFileSystemWrapper(LocalFileSystem(auto_mkdir=True))
-    store = FsspecStore(wrapped_fs, read_only=False, path=f"{tmpdir}/test/path")
+    store = FsspecStore(wrapped_fs, read_only=False, path=f"{tmp_path}/test/path")
 
     assert isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.asynchronous
@@ -303,3 +424,17 @@ async def test_delete_dir_wrapped_filesystem(tmpdir) -> None:
     assert await store.exists("foo-bar/zarr.json")
     assert not await store.exists("foo/zarr.json")
     assert not await store.exists("foo/c/0")
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+async def test_with_read_only_auto_mkdir(tmp_path: Path) -> None:
+    """
+    Test that creating a read-only copy of a store backed by the local file system does not error
+    if auto_mkdir is False.
+    """
+
+    store_w = FsspecStore.from_url(f"file://{tmp_path}", storage_options={"auto_mkdir": False})
+    _ = store_w.with_read_only()

@@ -1,14 +1,23 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import inspect
+import re
+from typing import TYPE_CHECKING, Any
+
+import zarr.codecs
+import zarr.storage
+from zarr.core.array import AsyncArray, init_array
+from zarr.storage import LocalStore, ZipStore
+from zarr.storage._common import StorePath
 
 if TYPE_CHECKING:
-    import pathlib
+    from collections.abc import Callable
+    from pathlib import Path
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 
-import warnings
+import contextlib
 from typing import Literal
 
 import numpy as np
@@ -24,15 +33,21 @@ from zarr.api.synchronous import (
     create,
     create_array,
     create_group,
+    from_array,
     group,
     load,
-    open,
     open_group,
     save,
     save_array,
     save_group,
 )
-from zarr.errors import MetadataValidationError
+from zarr.core.buffer import NDArrayLike
+from zarr.errors import (
+    ArrayNotFoundError,
+    MetadataValidationError,
+    ZarrDeprecationWarning,
+    ZarrUserWarning,
+)
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 from zarr.testing.utils import gpu_test
@@ -60,22 +75,113 @@ def test_create(memory_store: Store) -> None:
 
     # create array with float shape
     with pytest.raises(TypeError):
-        z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore [arg-type]
+        z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore[arg-type]
 
     # create array with float chunk shape
     with pytest.raises(TypeError):
-        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
+        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "func",
+    [
+        zarr.api.asynchronous.zeros_like,
+        zarr.api.asynchronous.ones_like,
+        zarr.api.asynchronous.empty_like,
+        zarr.api.asynchronous.full_like,
+        zarr.api.asynchronous.open_like,
+    ],
+)
+@pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_dtype", ["keep", "int8"])
+@pytest.mark.parametrize("out_fill", ["keep", 4])
+async def test_array_like_creation(
+    zarr_format: ZarrFormat,
+    func: Callable[[Any], Any],
+    out_shape: Literal["keep"] | tuple[int, ...],
+    out_chunks: Literal["keep"] | tuple[int, ...],
+    out_dtype: str,
+    out_fill: Literal["keep"] | int,
+) -> None:
+    """
+    Test zeros_like, ones_like, empty_like, full_like, ensuring that we can override the
+    shape, chunks, dtype and fill_value of the array-like object provided to these functions with
+    appropriate keyword arguments
+    """
+    ref_fill = 100
+    ref_arr = zarr.create_array(
+        store={},
+        shape=(11, 12),
+        dtype="uint8",
+        chunks=(11, 12),
+        zarr_format=zarr_format,
+        fill_value=ref_fill,
+    )
+    kwargs: dict[str, object] = {}
+    if func is zarr.api.asynchronous.full_like:
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            expect_fill = out_fill
+            kwargs["fill_value"] = expect_fill
+    elif func is zarr.api.asynchronous.zeros_like:
+        expect_fill = 0
+    elif func is zarr.api.asynchronous.ones_like:
+        expect_fill = 1
+    elif func is zarr.api.asynchronous.empty_like:
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            kwargs["fill_value"] = out_fill
+            expect_fill = out_fill
+    elif func is zarr.api.asynchronous.open_like:  # type: ignore[comparison-overlap]
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            kwargs["fill_value"] = out_fill
+            expect_fill = out_fill
+        kwargs["mode"] = "w"
+    else:
+        raise AssertionError
+    if out_shape != "keep":
+        kwargs["shape"] = out_shape
+        expect_shape = out_shape
+    else:
+        expect_shape = ref_arr.shape
+    if out_chunks != "keep":
+        kwargs["chunks"] = out_chunks
+        expect_chunks = out_chunks
+    else:
+        expect_chunks = ref_arr.chunks
+    if out_dtype != "keep":
+        kwargs["dtype"] = out_dtype
+        expect_dtype = out_dtype
+    else:
+        expect_dtype = ref_arr.dtype  # type: ignore[assignment]
+
+    new_arr = await func(ref_arr, path="foo", zarr_format=zarr_format, **kwargs)  # type: ignore[call-arg]
+    assert new_arr.shape == expect_shape
+    assert new_arr.chunks == expect_chunks
+    assert new_arr.dtype == expect_dtype
+    assert np.all(Array(new_arr)[:] == expect_fill)
 
 
 # TODO: parametrize over everything this function takes
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_create_array(store: Store) -> None:
+def test_create_array(store: Store, zarr_format: ZarrFormat) -> None:
     attrs: dict[str, JSON] = {"foo": 100}  # explicit type annotation to avoid mypy error
     shape = (10, 10)
     path = "foo"
     data_val = 1
     array_w = create_array(
-        store, name=path, shape=shape, attributes=attrs, chunks=shape, dtype="uint8"
+        store,
+        name=path,
+        shape=shape,
+        attributes=attrs,
+        chunks=shape,
+        dtype="uint8",
+        zarr_format=zarr_format,
     )
     array_w[:] = data_val
     assert array_w.shape == shape
@@ -84,18 +190,51 @@ def test_create_array(store: Store) -> None:
 
 
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
-def test_write_empty_chunks_warns(write_empty_chunks: bool) -> None:
+def test_write_empty_chunks_warns(write_empty_chunks: bool, zarr_format: ZarrFormat) -> None:
     """
     Test that using the `write_empty_chunks` kwarg on array access will raise a warning.
     """
     match = "The `write_empty_chunks` keyword argument .*"
     with pytest.warns(RuntimeWarning, match=match):
         _ = zarr.array(
-            data=np.arange(10), shape=(10,), dtype="uint8", write_empty_chunks=write_empty_chunks
+            data=np.arange(10),
+            shape=(10,),
+            dtype="uint8",
+            write_empty_chunks=write_empty_chunks,
+            zarr_format=zarr_format,
         )
 
     with pytest.warns(RuntimeWarning, match=match):
-        _ = zarr.create(shape=(10,), dtype="uint8", write_empty_chunks=write_empty_chunks)
+        _ = zarr.create(
+            shape=(10,),
+            dtype="uint8",
+            write_empty_chunks=write_empty_chunks,
+            zarr_format=zarr_format,
+        )
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) -> None:
+    """Test that zarr.open() respects write_empty_chunks config."""
+    store = MemoryStore()
+
+    _ = zarr.create(
+        store=store,
+        path="test_array",
+        shape=(10,),
+        chunks=(5,),
+        dtype="f8",
+        fill_value=0.0,
+        zarr_format=zarr_format,
+    )
+
+    arr2 = zarr.open(store=store, path="test_array", config={"write_empty_chunks": True})
+    assert isinstance(arr2, zarr.Array)
+
+    assert arr2._async_array._config.write_empty_chunks is True
+
+    arr2[0:5] = np.zeros(5)
+    assert arr2.nchunks_initialized == 1
 
 
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
@@ -112,32 +251,58 @@ def test_open_normalized_path(
     assert node.path == normalize_path(path)
 
 
-async def test_open_array(memory_store: MemoryStore) -> None:
+async def test_open_array(memory_store: MemoryStore, zarr_format: ZarrFormat) -> None:
     store = memory_store
 
     # open array, create if doesn't exist
-    z = open(store=store, shape=100)
+    z = zarr.api.synchronous.open(store=store, shape=100, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (100,)
 
     # open array, overwrite
     # store._store_dict = {}
     store = MemoryStore()
-    z = open(store=store, shape=200)
+    z = zarr.api.synchronous.open(store=store, shape=200, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
     # open array, read-only
     store_cls = type(store)
     ro_store = await store_cls.open(store_dict=store._store_dict, read_only=True)
-    z = open(store=ro_store, mode="r")
+    z = zarr.api.synchronous.open(store=ro_store, mode="r")
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only
 
     # path not found
     with pytest.raises(FileNotFoundError):
-        open(store="doesnotexist", mode="r")
+        zarr.api.synchronous.open(store="doesnotexist", mode="r", zarr_format=zarr_format)
+
+
+@pytest.mark.asyncio
+async def test_async_array_open_array_not_found() -> None:
+    """Test that AsyncArray.open raises ArrayNotFoundError when array doesn't exist"""
+    store = MemoryStore()
+    # Try to open an array that does not exist
+    with pytest.raises(ArrayNotFoundError):
+        await AsyncArray.open(store, zarr_format=2)
+
+
+def test_array_open_array_not_found_sync() -> None:
+    """Test that Array.open raises ArrayNotFoundError when array doesn't exist"""
+    store = MemoryStore()
+    # Try to open an array that does not exist
+    with pytest.raises(ArrayNotFoundError):
+        Array.open(store)
+
+
+@pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=True)
+def test_v2_and_v3_exist_at_same_path(store: Store) -> None:
+    zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=3)
+    zarr.create_array(store, shape=(10,), dtype="uint8", zarr_format=2)
+    msg = f"Both zarr.json (Zarr format 3) and .zarray (Zarr format 2) metadata objects exist at {store}. Zarr v3 will be used."
+    with pytest.warns(ZarrUserWarning, match=re.escape(msg)):
+        zarr.open(store=store)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -160,9 +325,9 @@ async def test_open_group(memory_store: MemoryStore) -> None:
     assert "foo" in g
 
     # open group, overwrite
-    # g = open_group(store=store)
-    # assert isinstance(g, Group)
-    # assert "foo" not in g
+    g = open_group(store=store, mode="w")
+    assert isinstance(g, Group)
+    assert "foo" not in g
 
     # open group, read-only
     store_cls = type(store)
@@ -173,9 +338,7 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
-async def test_open_group_unspecified_version(
-    tmpdir: pathlib.Path, zarr_format: ZarrFormat
-) -> None:
+async def test_open_group_unspecified_version(tmpdir: Path, zarr_format: ZarrFormat) -> None:
     """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
 
     # create a group with specified zarr format (could be 2, 3, or None)
@@ -195,22 +358,23 @@ async def test_open_group_unspecified_version(
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize("n_args", [10, 1, 0])
 @pytest.mark.parametrize("n_kwargs", [10, 1, 0])
-def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
+@pytest.mark.parametrize("path", [None, "some_path"])
+def test_save(store: Store, n_args: int, n_kwargs: int, path: None | str) -> None:
     data = np.arange(10)
     args = [np.arange(10) for _ in range(n_args)]
     kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
 
     if n_kwargs == 0 and n_args == 0:
         with pytest.raises(ValueError):
-            save(store)
+            save(store, path=path)
     elif n_args == 1 and n_kwargs == 0:
-        save(store, *args)
-        array = open(store)
+        save(store, *args, path=path)
+        array = zarr.api.synchronous.open(store, path=path)
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
-        save(store, *args, **kwargs)  # type: ignore [arg-type]
-        group = open(store)
+        save(store, *args, path=path, **kwargs)  # type: ignore[arg-type]
+        group = zarr.api.synchronous.open(store, path=path)
         assert isinstance(group, Group)
         for array in group.array_values():
             assert_array_equal(array[:], data)
@@ -225,17 +389,17 @@ def test_save_errors() -> None:
         save_group("data/group.zarr")
     with pytest.raises(TypeError):
         # no array provided
-        save_array("data/group.zarr")
+        save_array("data/group.zarr")  # type: ignore[call-arg]
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
+    a = np.arange(10)
     with pytest.raises(TypeError):
         # mode is no valid argument and would get handled as an array
-        a = np.arange(10)
         zarr.save("data/example.zarr", a, mode="w")
 
 
-def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_r(tmp_path: Path) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmp_path, mode="r")
@@ -244,23 +408,31 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
     z2 = zarr.open(store=tmp_path, mode="r")
     assert isinstance(z2, Array)
     assert z2.fill_value == 1
-    assert (z2[:] == 1).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert (result == 1).all()
     with pytest.raises(ValueError):
         z2[:] = 3
 
 
-def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_r_plus(tmp_path: Path) -> None:
     # 'r+' means read/write (must exist)
+    new_store_path = tmp_path / "new_store.zarr"
+    assert not new_store_path.exists(), "Test should operate on non-existent directory"
     with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmp_path, mode="r+")
+        zarr.open(store=new_store_path, mode="r+")
+    assert not new_store_path.exists(), "mode='r+' should not create directory"
+
     zarr.ones(store=tmp_path, shape=(3, 3))
     z2 = zarr.open(store=tmp_path, mode="r+")
     assert isinstance(z2, Array)
-    assert (z2[:] == 1).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert (result == 1).all()
     z2[:] = 3
 
 
-async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+async def test_open_with_mode_a(tmp_path: Path) -> None:
     # Open without shape argument should default to group
     g = zarr.open(store=tmp_path, mode="a")
     assert isinstance(g, Group)
@@ -272,11 +444,13 @@ async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
     arr[...] = 1
     z2 = zarr.open(store=tmp_path, mode="a")
     assert isinstance(z2, Array)
-    assert (z2[:] == 1).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert (result == 1).all()
     z2[:] = 3
 
 
-def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_w(tmp_path: Path) -> None:
     # 'w' means create (overwrite if exists);
     arr = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
     assert isinstance(arr, Array)
@@ -284,11 +458,13 @@ def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
     arr[...] = 3
     z2 = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
     assert isinstance(z2, Array)
-    assert not (z2[:] == 3).all()
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert not (result == 3).all()
     z2[:] = 3
 
 
-def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
+def test_open_with_mode_w_minus(tmp_path: Path) -> None:
     # 'w-' means create  (fail if exists)
     arr = zarr.open(store=tmp_path, mode="w-", shape=(3, 3))
     assert isinstance(arr, Array)
@@ -297,36 +473,64 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
         zarr.open(store=tmp_path, mode="w-")
 
 
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_array_order(zarr_format: ZarrFormat) -> None:
-    arr = zarr.ones(shape=(2, 2), order=None, zarr_format=zarr_format)
-    expected = zarr.config.get("array.order")
-    assert arr.order == expected
+@pytest.mark.parametrize("order", ["C", "F", None])
+@pytest.mark.parametrize("config", [{"order": "C"}, {"order": "F"}, {}], ids=["C", "F", "None"])
+def test_array_order(
+    order: MemoryOrder | None, config: dict[str, MemoryOrder | None], zarr_format: ZarrFormat
+) -> None:
+    """
+    Check that:
+    - For v2, memory order is taken from the `order` keyword argument.
+    - For v3, memory order is taken from `config`, and when order is passed a warning is raised
+    - The numpy array returned has the expected order
+    - For v2, the order metadata is set correctly
+    """
+    default_order = zarr.config.get("array.order")
+    ctx: contextlib.AbstractContextManager  # type: ignore[type-arg]
 
+    if zarr_format == 3:
+        if order is None:
+            ctx = contextlib.nullcontext()
+        else:
+            ctx = pytest.warns(
+                RuntimeWarning,
+                match="The `order` keyword argument has no effect for Zarr format 3 arrays",
+            )
+
+        expected_order = config.get("order", default_order)
+
+    if zarr_format == 2:
+        ctx = contextlib.nullcontext()
+        expected_order = order or config.get("order", default_order)
+
+    with ctx:
+        arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format, config=config)
+
+    assert arr.order == expected_order
     vals = np.asarray(arr)
-    if expected == "C":
+    if expected_order == "C":
         assert vals.flags.c_contiguous
-    elif expected == "F":
+    elif expected_order == "F":
         assert vals.flags.f_contiguous
     else:
         raise AssertionError
 
+    if zarr_format == 2:
+        assert arr.metadata.zarr_format == 2
+        assert arr.metadata.order == expected_order
 
-@pytest.mark.parametrize("order", ["C", "F"])
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
-    with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
-        arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
-    expected = order or zarr.config.get("array.order")
-    assert arr.order == expected
 
-    vals = np.asarray(arr)
-    if expected == "C":
-        assert vals.flags.c_contiguous
-    elif expected == "F":
-        assert vals.flags.f_contiguous
-    else:
-        raise AssertionError
+async def test_init_order_warns() -> None:
+    with pytest.warns(
+        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+    ):
+        await init_array(
+            store_path=StorePath(store=MemoryStore()),
+            shape=(1,),
+            dtype="uint8",
+            zarr_format=3,
+            order="F",
+        )
 
 
 # def test_lazy_loader():
@@ -345,8 +549,8 @@ def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -
 #     assert "LazyLoader: " in repr(loader)
 
 
-def test_load_array(memory_store: Store) -> None:
-    store = memory_store
+def test_load_array(sync_store: Store) -> None:
+    store = sync_store
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
     save(store, foo=foo, bar=bar)
@@ -361,6 +565,38 @@ def test_load_array(memory_store: Store) -> None:
             assert_array_equal(bar, array)
 
 
+@pytest.mark.parametrize("path", ["data", None])
+@pytest.mark.parametrize("load_read_only", [True, False, None])
+def test_load_zip(tmp_path: Path, path: str | None, load_read_only: bool | None) -> None:
+    file = tmp_path / "test.zip"
+    data = np.arange(100).reshape(10, 10)
+
+    with ZipStore(file, mode="w", read_only=False) as zs:
+        save(zs, data, path=path)
+    with ZipStore(file, mode="r", read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
+    with ZipStore(file, read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
+
+
+@pytest.mark.parametrize("path", ["data", None])
+@pytest.mark.parametrize("load_read_only", [True, False])
+def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> None:
+    file = tmp_path / "test.zip"
+    data = np.arange(100).reshape(10, 10)
+
+    with LocalStore(file, read_only=False) as zs:
+        save(zs, data, path=path)
+    with LocalStore(file, read_only=load_read_only) as zs:
+        result = zarr.load(store=zs, path=path)
+        assert isinstance(result, np.ndarray)
+        assert np.array_equal(result, data)
+
+
 def test_tree() -> None:
     pytest.importorskip("rich")
     g1 = zarr.group()
@@ -369,7 +605,7 @@ def test_tree() -> None:
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.tree instead\."):  # noqa: PT031
         assert repr(zarr.tree(g1)) == repr(g1.tree())
         assert str(zarr.tree(g1)) == str(g1.tree())
 
@@ -1041,40 +1277,6 @@ def test_tree() -> None:
 #             copy(source["foo"], dest, dry_run=True, log=True)
 
 
-def test_open_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        open(store, "w", shape=(1,))
-
-
-def test_save_array_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore", message="zarr_version is deprecated", category=DeprecationWarning
-        )
-        with pytest.warns(FutureWarning, match="pass"):
-            save_array(
-                store,
-                np.ones(
-                    1,
-                ),
-                3,
-            )
-
-
-def test_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        group(store, True)
-
-
-def test_open_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
-    with pytest.warns(FutureWarning, match="pass"):
-        open_group(store, "w")
-
-
 def test_open_falls_back_to_open_group() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     store = MemoryStore()
@@ -1085,41 +1287,44 @@ def test_open_falls_back_to_open_group() -> None:
     assert group.attrs == {"key": "value"}
 
 
-async def test_open_falls_back_to_open_group_async() -> None:
+async def test_open_falls_back_to_open_group_async(zarr_format: ZarrFormat) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     store = MemoryStore()
-    await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
+    await zarr.api.asynchronous.open_group(
+        store, attributes={"key": "value"}, zarr_format=zarr_format
+    )
 
     group = await zarr.api.asynchronous.open(store=store)
     assert isinstance(group, zarr.core.group.AsyncGroup)
+    assert group.metadata.zarr_format == zarr_format
     assert group.attrs == {"key": "value"}
 
 
 @pytest.mark.parametrize("mode", ["r", "r+", "w", "a"])
-def test_open_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
+def test_open_modes_creates_group(tmp_path: Path, mode: str) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2490
     zarr_dir = tmp_path / f"mode-{mode}-test.zarr"
     if mode in ["r", "r+"]:
         # Expect FileNotFoundError to be raised if 'r' or 'r+' mode
         with pytest.raises(FileNotFoundError):
-            zarr.open(store=zarr_dir, mode=mode)
+            zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
     else:
-        group = zarr.open(store=zarr_dir, mode=mode)
+        group = zarr.open(store=zarr_dir, mode=mode)  # type: ignore[arg-type]
         assert isinstance(group, Group)
 
 
 async def test_metadata_validation_error() -> None:
     with pytest.raises(
         MetadataValidationError,
-        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+        match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore [arg-type]
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
 
     with pytest.raises(
         MetadataValidationError,
-        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+        match="Invalid value for 'zarr_format'. Expected 2, 3, or None. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore [arg-type]
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -1127,15 +1332,55 @@ async def test_metadata_validation_error() -> None:
     ["local", "memory", "zip"],
     indirect=True,
 )
-def test_open_array_with_mode_r_plus(store: Store) -> None:
+def test_open_array_with_mode_r_plus(store: Store, zarr_format: ZarrFormat) -> None:
     # 'r+' means read/write (must exist)
-    with pytest.raises(FileNotFoundError):
-        zarr.open_array(store=store, mode="r+")
-    zarr.ones(store=store, shape=(3, 3))
+    with pytest.raises(ArrayNotFoundError):
+        zarr.open_array(store=store, mode="r+", zarr_format=zarr_format)
+    zarr.ones(store=store, shape=(3, 3), zarr_format=zarr_format)
     z2 = zarr.open_array(store=store, mode="r+")
     assert isinstance(z2, Array)
-    assert (z2[:] == 1).all()
+    assert z2.metadata.zarr_format == zarr_format
+    result = z2[:]
+    assert isinstance(result, NDArrayLike)
+    assert (result == 1).all()
     z2[:] = 3
+
+
+@pytest.mark.parametrize(
+    ("a_func", "b_func"),
+    [
+        (zarr.api.asynchronous.create_array, zarr.api.synchronous.create_array),
+        (zarr.api.asynchronous.save, zarr.api.synchronous.save),
+        (zarr.api.asynchronous.save_array, zarr.api.synchronous.save_array),
+        (zarr.api.asynchronous.save_group, zarr.api.synchronous.save_group),
+        (zarr.api.asynchronous.open_group, zarr.api.synchronous.open_group),
+        (zarr.api.asynchronous.create, zarr.api.synchronous.create),
+    ],
+)
+def test_consistent_signatures(
+    a_func: Callable[[object], object], b_func: Callable[[object], object]
+) -> None:
+    """
+    Ensure that pairs of functions have the same signature
+    """
+    base_sig = inspect.signature(a_func)
+    test_sig = inspect.signature(b_func)
+    wrong: dict[str, list[object]] = {
+        "missing_from_test": [],
+        "missing_from_base": [],
+        "wrong_type": [],
+    }
+    for key, value in base_sig.parameters.items():
+        if key not in test_sig.parameters:
+            wrong["missing_from_test"].append((key, value))
+    for key, value in test_sig.parameters.items():
+        if key not in base_sig.parameters:
+            wrong["missing_from_base"].append((key, value))
+        if base_sig.parameters[key] != value:
+            wrong["wrong_type"].append({key: {"test": value, "base": base_sig.parameters[key]}})
+    assert wrong["missing_from_base"] == []
+    assert wrong["missing_from_test"] == []
+    assert wrong["wrong_type"] == []
 
 
 def test_api_exports() -> None:
@@ -1172,7 +1417,7 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
             dtype=src.dtype,
             overwrite=True,
             zarr_format=zarr_format,
-            compressors=compressors,
+            compressors=compressors,  # type: ignore[arg-type]
         )
         z[:10, :10] = src[:10, :10]
 
@@ -1180,3 +1425,124 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
         # assert_array_equal doesn't check the type
         assert isinstance(result, type(src))
         cp.testing.assert_array_equal(result, src[:10, :10])
+
+
+def test_v2_without_compressor() -> None:
+    # Make sure it's possible to set no compressor for v2 arrays
+    arr = zarr.create(store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=None)
+    assert arr.compressors == ()
+
+
+def test_v2_with_v3_compressor() -> None:
+    # Check trying to create a v2 array with a v3 compressor fails
+    with pytest.raises(
+        ValueError,
+        match="Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. Use a numcodecs codec directly instead.",
+    ):
+        zarr.create(
+            store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=zarr.codecs.BloscCodec()
+        )
+
+
+def add_empty_file(path: Path) -> Path:
+    fpath = path / "a.txt"
+    fpath.touch()
+    return fpath
+
+
+@pytest.mark.parametrize("create_function", [create_array, from_array])
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_no_overwrite_array(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type:ignore[type-arg]
+    store = zarr.storage.LocalStore(tmp_path)
+    existing_fpath = add_empty_file(tmp_path)
+
+    assert existing_fpath.exists()
+    create_function(store=store, data=np.ones(shape=(1,)), overwrite=overwrite)
+    if overwrite:
+        assert not existing_fpath.exists()
+    else:
+        assert existing_fpath.exists()
+
+
+@pytest.mark.parametrize("create_function", [create_group, group])
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_no_overwrite_group(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type:ignore[type-arg]
+    store = zarr.storage.LocalStore(tmp_path)
+    existing_fpath = add_empty_file(tmp_path)
+
+    assert existing_fpath.exists()
+    create_function(store=store, overwrite=overwrite)
+    if overwrite:
+        assert not existing_fpath.exists()
+    else:
+        assert existing_fpath.exists()
+
+
+@pytest.mark.parametrize("open_func", [zarr.open, open_group])
+@pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
+def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> None:  # type:ignore[type-arg]
+    store = zarr.storage.LocalStore(tmp_path)
+    existing_fpath = add_empty_file(tmp_path)
+
+    assert existing_fpath.exists()
+    with contextlib.suppress(FileExistsError, FileNotFoundError, ZarrUserWarning):
+        open_func(store=store, mode=mode)
+    if mode == "w":
+        assert not existing_fpath.exists()
+    else:
+        assert existing_fpath.exists()
+
+
+def test_no_overwrite_load(tmp_path: Path) -> None:
+    store = zarr.storage.LocalStore(tmp_path)
+    existing_fpath = add_empty_file(tmp_path)
+
+    assert existing_fpath.exists()
+    with contextlib.suppress(NotImplementedError):
+        zarr.load(store)
+    assert existing_fpath.exists()
+
+
+@pytest.mark.parametrize(
+    "f",
+    [
+        zarr.array,
+        zarr.create,
+        zarr.create_array,
+        zarr.ones,
+        zarr.ones_like,
+        zarr.empty,
+        zarr.empty_like,
+        zarr.full,
+        zarr.full_like,
+        zarr.zeros,
+        zarr.zeros_like,
+    ],
+)
+def test_auto_chunks(f: Callable[..., Array]) -> None:
+    # Make sure chunks are set automatically across the public API
+    # TODO: test shards with this test too
+    shape = (1000, 1000)
+    dtype = np.uint8
+    kwargs = {"shape": shape, "dtype": dtype}
+    array = np.zeros(shape, dtype=dtype)
+    store = zarr.storage.MemoryStore()
+
+    if f in [zarr.full, zarr.full_like]:
+        kwargs["fill_value"] = 0
+    if f in [zarr.array]:
+        kwargs["data"] = array
+    if f in [zarr.empty_like, zarr.full_like, zarr.empty_like, zarr.ones_like, zarr.zeros_like]:
+        kwargs["a"] = array
+    if f in [zarr.create_array]:
+        kwargs["store"] = store
+
+    a = f(**kwargs)
+    assert a.chunks == (500, 500)
+
+
+@pytest.mark.parametrize("kwarg_name", ["synchronizer", "chunk_store", "cache_attrs", "meta_array"])
+def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
+    kwargs = {kwarg_name: 1}
+    with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
+        zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]

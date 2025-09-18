@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+
+from typing_extensions import ReadOnly, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
     from typing import Self
 
-    import numpy as np
-
-    from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
     from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
+    from zarr.core.metadata import ArrayMetadata
 
 __all__ = [
     "ArrayArrayCodec",
@@ -33,6 +36,27 @@ __all__ = [
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
+
+TName = TypeVar("TName", bound=str, covariant=True)
+
+
+class CodecJSON_V2(TypedDict, Generic[TName]):
+    """The JSON representation of a codec for Zarr V2"""
+
+    id: ReadOnly[TName]
+
+
+def _check_codecjson_v2(data: object) -> TypeGuard[CodecJSON_V2[str]]:
+    return isinstance(data, Mapping) and "id" in data and isinstance(data["id"], str)
+
+
+CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
+"""The JSON representation of a codec for Zarr V3."""
+
+# The widest type we will *accept* for a codec JSON
+# This covers v2 and v3
+CodecJSON = str | Mapping[str, object]
+"""The widest type of JSON-like input that could specify a codec."""
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
@@ -93,13 +117,19 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         """
         return self
 
-    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self,
+        *,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
+    ) -> None:
         """Validates that the codec configuration is compatible with the array metadata.
         Raises errors when the codec configuration is not compatible.
 
         Parameters
         ----------
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             The array shape
         dtype : np.dtype[Any]
             The array data type
@@ -108,7 +138,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         """
 
     async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def decode(
         self,
@@ -131,7 +161,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
     async def _encode_single(
         self, chunk_data: CodecInput, chunk_spec: ArraySpec
     ) -> CodecOutput | None:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def encode(
         self,
@@ -212,7 +242,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         selection: SelectorTuple,
         chunk_spec: ArraySpec,
     ) -> None:
-        raise NotImplementedError
+        raise NotImplementedError  # pragma: no cover
 
     async def encode_partial(
         self,
@@ -276,6 +306,25 @@ class CodecPipeline:
         """
         ...
 
+    @classmethod
+    def from_array_metadata_and_store(cls, array_metadata: ArrayMetadata, store: Store) -> Self:
+        """Creates a codec pipeline from array metadata and a store path.
+
+        Raises NotImplementedError by default, indicating the CodecPipeline must be created with from_codecs instead.
+
+        Parameters
+        ----------
+        array_metadata : ArrayMetadata
+        store : Store
+
+        Returns
+        -------
+        Self
+        """
+        raise NotImplementedError(
+            f"'{type(cls).__name__}' does not implement CodecPipeline.from_array_metadata_and_store."
+        )
+
     @property
     @abstractmethod
     def supports_partial_decode(self) -> bool: ...
@@ -285,13 +334,19 @@ class CodecPipeline:
     def supports_partial_encode(self) -> bool: ...
 
     @abstractmethod
-    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(
+        self,
+        *,
+        shape: tuple[int, ...],
+        dtype: ZDType[TBaseDType, TBaseScalar],
+        chunk_grid: ChunkGrid,
+    ) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
 
         Parameters
         ----------
-        shape : ChunkCoords
+        shape : tuple[int, ...]
             The array shape
         dtype : np.dtype[Any]
             The array data type
@@ -372,6 +427,11 @@ class CodecPipeline:
             The second slice selection determines where in the output array the chunk data will be written.
             The ByteGetter is used to fetch the necessary bytes.
             The chunk spec contains information about the construction of an array from the bytes.
+
+            If the Store returns ``None`` for a chunk, then the chunk was not
+            written and the implementation must set the values of that chunk (or
+            ``out``) to the fill value for the array.
+
         out : NDBuffer
         """
         ...

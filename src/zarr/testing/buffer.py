@@ -51,6 +51,15 @@ class NDBufferUsingTestNDArrayLike(cpu.NDBuffer):
             ret.fill(fill_value)
         return ret
 
+    @classmethod
+    def empty(
+        cls,
+        shape: tuple[int, ...],
+        dtype: npt.DTypeLike,
+        order: Literal["C", "F"] = "C",
+    ) -> Self:
+        return super(cpu.NDBuffer, cls).empty(shape=shape, dtype=dtype, order=order)
+
 
 class StoreExpectingTestBuffer(MemoryStore):
     """Example of a custom Store that expect MyBuffer for all its non-metadata
