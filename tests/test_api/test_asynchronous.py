@@ -88,7 +88,7 @@ def test_like_args(
     """
     Test the like_args function
     """
-    assert _like_args(observed, {}) == expected
+    assert _like_args(observed) == expected
 
 
 async def test_open_no_array() -> None:
