@@ -3,6 +3,55 @@ Release notes
 
 .. towncrier release notes start
 
+zarr 3.1.3 (2025-09-18)
+-----------------------
+
+Features
+~~~~~~~~
+
+- Add a command-line interface to migrate v2 Zarr metadata to v3. Corresponding functions are also
+  provided under zarr.metadata. (:issue:`1798`)
+- Add obstore implementation of delete_dir. (:issue:`3310`)
+- Adds a registry for chunk key encodings for extensibility.
+  This allows users to implement a custom `ChunkKeyEncoding`, which can be registered via `register_chunk_key_encoding` or as an entry point under `zarr.chunk_key_encoding`. (:issue:`3436`)
+- Trying to open a group at a path were a array already exists now raises a helpful error. (:issue:`3444`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Prevents creation of groups (.create_group) or arrays (.create_array) as children
+  of an existing array. (:issue:`2582`)
+- Fix a bug preventing ``ones_like``, ``full_like``, ``empty_like``, ``zeros_like`` and ``open_like`` functions from accepting
+  an explicit specification of array attributes like shape, dtype, chunks etc. The functions ``full_like``,
+  ``empty_like``, and ``open_like`` now also more consistently infer a ``fill_value`` parameter from the provided array. (:issue:`2992`)
+- LocalStore now uses atomic writes, which should prevent some cases of corrupted data. (:issue:`3411`)
+- Fix a potential race condition when using :func:`zarr.create_array` with the ``data`` parameter
+  set to a NumPy array. Previously Zarr was iterating over the newly created array with a granularity
+  that was too low. Now Zarr chooses a granularity that matches the size of the stored objects for
+  that array. (:issue:`3422`)
+- Fix ChunkGrid definition (broken in 3.1.2) (:issue:`3425`)
+- Ensure syntax like ``root['/subgroup']`` works equivalently to ``root['subgroup']`` when using consolidated metadata. (:issue:`3428`)
+- Creating a new group with `zarr.group` no longer errors.
+  This fixes a regression introduced in version 3.1.2. (:issue:`3431`)
+- Setting ``fill_value`` to a float like ``0.0`` when the data type of the array is an integer is a common
+  mistake. This change lets Zarr Python read arrays with this erroneous metadata, although Zarr Python
+  will not create such arrays. (:issue:`3448`)
+
+
+Deprecations and Removals
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- The ``Store.set_partial_writes`` method, which was not used by Zarr-Python, has been removed.
+  ``store.supports_partial_writes`` is now always ``False``. (:issue:`2859`)
+
+
+Misc
+~~~~
+
+- :issue:`3376`, :issue:`3390`, :issue:`3403`, :issue:`3449`
+
+
 3.1.2 (2025-08-25)
 ------------------
 
