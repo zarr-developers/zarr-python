@@ -1,2 +1,0 @@
-Add a command-line interface to migrate v2 Zarr metadata to v3. Corresponding functions are also
-provided under zarr.metadata.
