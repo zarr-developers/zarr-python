@@ -1,0 +1,2 @@
+Prevents creation of groups (.create_group) or arrays (.create_array) as children
+of an existing array.
