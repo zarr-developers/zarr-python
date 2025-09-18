@@ -138,7 +138,7 @@ config = Config(
                 "numcodecs.delta": "zarr.codecs.numcodecs.Delta",
                 "numcodecs.fixedscaleoffset": "zarr.codecs.numcodecs.FixedScaleOffset",
                 "numcodecs.fletcher32": "zarr.codecs.numcodecs.Fletcher32",
-                "numcodecs.gZip": "zarr.codecs.numcodecs.GZip",
+                "numcodecs.gzip": "zarr.codecs.numcodecs.GZip",
                 "numcodecs.jenkins_lookup3": "zarr.codecs.numcodecs.JenkinsLookup3",
                 "numcodecs.pcodec": "zarr.codecs.numcodecs.PCodec",
                 "numcodecs.packbits": "zarr.codecs.numcodecs.PackBits",

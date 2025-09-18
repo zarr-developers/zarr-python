@@ -28,7 +28,6 @@ Configuration options include the following:
 
 - Default Zarr format ``default_zarr_version``
 - Default array order in memory ``array.order``
-- Default filters, serializers and compressors, e.g. ``array.v3_default_filters``, ``array.v3_default_serializer``, ``array.v3_default_compressors``, ``array.v2_default_filters`` and ``array.v2_default_compressor``
 - Whether empty chunks are written to storage ``array.write_empty_chunks``
 - Async and threading options, e.g. ``async.concurrency`` and ``threading.max_workers``
 - Selections of implementations of codecs, codec pipelines and buffers
@@ -62,7 +61,7 @@ This is the current default configuration::
                'numcodecs.delta': 'zarr.codecs.numcodecs.Delta',
                'numcodecs.fixedscaleoffset': 'zarr.codecs.numcodecs.FixedScaleOffset',
                'numcodecs.fletcher32': 'zarr.codecs.numcodecs.Fletcher32',
-               'numcodecs.gZip': 'zarr.codecs.numcodecs.GZip',
+               'numcodecs.gzip': 'zarr.codecs.numcodecs.GZip',
                'numcodecs.jenkins_lookup3': 'zarr.codecs.numcodecs.JenkinsLookup3',
                'numcodecs.lz4': 'zarr.codecs.numcodecs.LZ4',
                'numcodecs.lzma': 'zarr.codecs.numcodecs.LZMA',
