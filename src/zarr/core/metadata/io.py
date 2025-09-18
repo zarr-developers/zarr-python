@@ -10,35 +10,25 @@ from zarr.storage._common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
-    from zarr.core.group import AsyncGroup, GroupMetadata
+    from zarr.core.group import GroupMetadata
     from zarr.core.metadata import ArrayMetadata
 
 
-def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> list[AsyncGroup]:
-    from zarr.core.group import AsyncGroup, GroupMetadata
+def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, GroupMetadata]:
+    from zarr.core.group import GroupMetadata
 
-    store = store_path.store
     path = store_path.path
     if not path:
-        return []
+        return {}
 
     required_parts = path.split("/")[:-1]
-    parents = [
-        # the root group
-        AsyncGroup(
-            metadata=GroupMetadata(zarr_format=zarr_format),
-            store_path=StorePath(store=store, path=""),
-        )
-    ]
+
+    # the root group
+    parents = {"": GroupMetadata(zarr_format=zarr_format)}
 
     for i, part in enumerate(required_parts):
-        p = "/".join(required_parts[:i] + [part])
-        parents.append(
-            AsyncGroup(
-                metadata=GroupMetadata(zarr_format=zarr_format),
-                store_path=StorePath(store=store, path=p),
-            )
-        )
+        parent_path = "/".join(required_parts[:i] + [part])
+        parents[parent_path] = GroupMetadata(zarr_format=zarr_format)
 
     return parents
 
@@ -69,15 +59,19 @@ async def save_metadata(
         parents = _build_parents(store_path, metadata.zarr_format)
         ensure_array_awaitables = []
 
-        for parent in parents:
+        for parent_path, parent_metadata in parents.items():
+            parent_store_path = StorePath(store_path.store, parent_path)
+
             # Error if an array already exists at any parent location. Only groups can have child nodes.
             ensure_array_awaitables.append(
-                ensure_no_existing_node(parent.store_path, metadata.zarr_format, node_type="array")
+                ensure_no_existing_node(
+                    parent_store_path, parent_metadata.zarr_format, node_type="array"
+                )
             )
             set_awaitables.extend(
                 [
-                    (parent.store_path / key).set_if_not_exists(value)
-                    for key, value in parent.metadata.to_buffer_dict(
+                    (parent_store_path / key).set_if_not_exists(value)
+                    for key, value in parent_metadata.to_buffer_dict(
                         default_buffer_prototype()
                     ).items()
                 ]
