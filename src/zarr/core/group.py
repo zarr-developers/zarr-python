@@ -2506,13 +2506,13 @@ class Group(SyncMixin):
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][].
             Use ``None`` to omit default compressors.
 
             For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
             be provided for Zarr format 2.
             If no ``compressor`` is provided, a default compressor will be used.
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][].
             Use ``None`` to omit the default compressor.
         compressor : Codec, optional
             Deprecated in favor of ``compressors``.
@@ -2521,7 +2521,7 @@ class Group(SyncMixin):
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
             If no ``serializer`` is provided, a default serializer will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][].
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
@@ -2531,7 +2531,7 @@ class Group(SyncMixin):
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
             order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
             If no ``order`` is provided, a default order will be used.
-            This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][].
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
