@@ -31,7 +31,7 @@ a bug report:
 
     ```python
     import zarr
-    g = zarr.group()
+    g = zarr.create_group(store={})
     # etc.
     ```
 

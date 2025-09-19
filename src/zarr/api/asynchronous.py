@@ -643,6 +643,7 @@ async def array(
     return z
 
 
+@deprecated("Use open_group() or create_group() instead")
 async def group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
