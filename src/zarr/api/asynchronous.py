@@ -352,8 +352,8 @@ async def open(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Additional parameters are passed through to [zarr.creation.open_array][] or
-        [zarr.api.asynchronous.open_group][].
+        Additional parameters are passed through to [`zarr.creation.open_array`][] or
+        [`open_group`][zarr.api.asynchronous.open_group].
 
     Returns
     -------
@@ -1105,7 +1105,7 @@ async def empty(
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Notes
     -----
@@ -1127,7 +1127,7 @@ async def empty_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1160,7 +1160,7 @@ async def full(
     fill_value : scalar
         Fill value.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1181,7 +1181,7 @@ async def full_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1205,7 +1205,7 @@ async def ones(
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1225,7 +1225,7 @@ async def ones_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1329,7 +1329,7 @@ async def zeros(
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1349,7 +1349,7 @@ async def zeros_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------

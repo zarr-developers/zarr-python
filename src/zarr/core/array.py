@@ -4756,6 +4756,7 @@ async def create_array(
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+
         and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
         dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 

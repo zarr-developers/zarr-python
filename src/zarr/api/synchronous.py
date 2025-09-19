@@ -199,7 +199,7 @@ def open(
         the backend implementation. Ignored otherwise.
     **kwargs
         Additional parameters are passed through to [`zarr.creation.open_array`][] or
-        [`zarr.api.synchronous.open_group`][].
+        [`open_group`][zarr.api.asynchronous.open_group].
 
     Returns
     -------
@@ -291,7 +291,7 @@ def save_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Passed through to [`create`][zarr.api.synchronous.create], e.g., compressor.
+        Passed through to [`create`][zarr.api.asynchronous.create], e.g., compressor.
     """
     return sync(
         async_api.save_array(
@@ -383,7 +383,7 @@ def array(data: npt.ArrayLike | Array, **kwargs: Any) -> Array:
     data : array_like
         The data to fill the array with.
     **kwargs
-        Passed through to [`create`][zarr.api.synchronous.create].
+        Passed through to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1196,7 +1196,7 @@ def empty(shape: tuple[int, ...], **kwargs: Any) -> Array:
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1223,7 +1223,7 @@ def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1250,7 +1250,7 @@ def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> Array:
     fill_value : scalar
         Fill value.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1270,7 +1270,7 @@ def full_like(a: ArrayLike, **kwargs: Any) -> Array:
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1289,7 +1289,7 @@ def ones(shape: tuple[int, ...], **kwargs: Any) -> Array:
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1308,7 +1308,7 @@ def ones_like(a: ArrayLike, **kwargs: Any) -> Array:
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1344,7 +1344,7 @@ def open_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Any keyword arguments to pass to [zarr.api.synchronous.create][].
+        Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
 
     Returns
@@ -1396,7 +1396,7 @@ def zeros(shape: tuple[int, ...], **kwargs: Any) -> Array:
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1415,7 +1415,7 @@ def zeros_like(a: ArrayLike, **kwargs: Any) -> Array:
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to [zarr.api.asynchronous.create][].
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
