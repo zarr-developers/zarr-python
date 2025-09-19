@@ -13,17 +13,17 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Coroutine, Iterable
+    from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
     from typing import Any
 
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 __all__ = ["ObjectStore"]
 
@@ -196,35 +196,38 @@ class ObjectStore(Store):
         with contextlib.suppress(FileNotFoundError):
             await obs.delete_async(self.store, key)
 
-    @property
-    def supports_partial_writes(self) -> bool:
+    async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
-        return False
+        import obstore as obs
 
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
+        self._check_writable()
+        if prefix != "" and not prefix.endswith("/"):
+            prefix += "/"
+
+        metas = await obs.list(self.store, prefix).collect_async()
+        keys = [(m["path"],) for m in metas]
+        await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
 
     @property
     def supports_listing(self) -> bool:
         # docstring inherited
         return True
 
-    def list(self) -> AsyncGenerator[str, None]:
-        # docstring inherited
+    async def _list(self, prefix: str | None = None) -> AsyncGenerator[ObjectMeta, None]:
         import obstore as obs
 
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store)
-        return _transform_list(objects)
+        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store, prefix=prefix)
+        async for batch in objects:
+            for item in batch:
+                yield item
+
+    def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
+        return (obj["path"] async for obj in self._list())
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        import obstore as obs
-
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
-        return _transform_list(objects)
+        return (obj["path"] async for obj in self._list(prefix))
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
@@ -233,20 +236,21 @@ class ObjectStore(Store):
         coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
         return _transform_list_dir(coroutine, prefix)
 
+    async def getsize(self, key: str) -> int:
+        # docstring inherited
+        import obstore as obs
 
-async def _transform_list(
-    list_stream: ListStream[list[ObjectMeta]],
-) -> AsyncGenerator[str, None]:
-    """
-    Transform the result of list into an async generator of paths.
-    """
-    async for batch in list_stream:
-        for item in batch:
-            yield item["path"]
+        resp = await obs.head_async(self.store, key)
+        return resp["size"]
+
+    async def getsize_prefix(self, prefix: str) -> int:
+        # docstring inherited
+        sizes = [obj["size"] async for obj in self._list(prefix=prefix)]
+        return sum(sizes)
 
 
 async def _transform_list_dir(
-    list_result_coroutine: Coroutine[Any, Any, ListResult[list[ObjectMeta]]], prefix: str
+    list_result_coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]], prefix: str
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list_with_delimiter into an async generator of paths.

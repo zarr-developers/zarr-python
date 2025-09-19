@@ -13,6 +13,7 @@ import numpy.typing as npt
 
 from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.errors import ZarrUserWarning
 from zarr.registry import (
     register_buffer,
     register_ndbuffer,
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.common import BytesLike
 
 try:
     import cupy as cp
@@ -72,6 +73,7 @@ class Buffer(core.Buffer):
             )
             warnings.warn(
                 msg,
+                category=ZarrUserWarning,
                 stacklevel=2,
             )
         self._data = cp.asarray(array_like)
@@ -180,7 +182,7 @@ class NDBuffer(core.NDBuffer):
 
     @classmethod
     def empty(
-        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
         return cls(cp.empty(shape=shape, dtype=dtype, order=order))
 

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling>=1.27.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
@@ -33,7 +33,7 @@ requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'packaging>=22.0',
-    'numpy>=1.25',
+    'numpy>=1.26',
     'numcodecs[crc32c]>=0.14',
     'typing_extensions>=4.9',
     'donfig>=0.8',
@@ -47,7 +47,6 @@ classifiers = [
     'Intended Audience :: Developers',
     'Intended Audience :: Information Technology',
     'Intended Audience :: Science/Research',
-    'License :: OSI Approved :: MIT License',
     'Programming Language :: Python',
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
@@ -56,7 +55,8 @@ classifiers = [
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
 ]
-license = {text = "MIT License"}
+license = "MIT"
+license-files = ["LICENSE.txt"]
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
@@ -68,9 +68,10 @@ remote = [
 gpu = [
     "cupy-cuda12x",
 ]
+cli = ["typer"]
 # Development extras
 test = [
-    "coverage",
+    "coverage>=7.10",
     # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
     "pytest<8.4",
     "pytest-asyncio",
@@ -78,6 +79,7 @@ test = [
     "pytest-accept",
     "rich",
     "mypy",
+    'numpydoc',
     "hypothesis",
     "pytest-xdist",
     "packaging",
@@ -113,13 +115,16 @@ docs = [
     'pytest'
 ]
 
+[project.scripts]
+zarr = "zarr._cli.cli:app"
+
 
 [project.urls]
-"Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
-Changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
+issues = "https://github.com/zarr-developers/zarr-python/issues"
+changelog = "https://zarr.readthedocs.io/en/stable/release-notes.html"
 Discussions = "https://github.com/zarr-developers/zarr-python/discussions"
-Documentation = "https://zarr.readthedocs.io/"
-Homepage = "https://github.com/zarr-developers/zarr-python"
+documentation = "https://zarr.readthedocs.io/"
+homepage = "https://github.com/zarr-developers/zarr-python"
 
 [dependency-groups]
 dev = [
@@ -128,16 +133,14 @@ dev = [
 ]
 
 [tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING:",
-    "pragma: ${PY_MAJOR_VERSION} no cover",
-    '.*\.\.\.' # Ignore "..." lines
+exclude_also = [
+    'if TYPE_CHECKING:',
 ]
 
 [tool.coverage.run]
 omit = [
     "bench/compress_normal.py",
+    "src/zarr/testing/conftest.py",  # only for downstream projects
 ]
 
 [tool.hatch]
@@ -152,19 +155,26 @@ dependencies = [
 ]
 features = ["test"]
 
+[tool.hatch.envs.test.env-vars]
+# Required to test with a pytest plugin; see https://pytest-cov.readthedocs.io/en/latest/plugins.html
+COV_CORE_SOURCE = "src"
+COV_CORE_CONFIG = ".coveragerc"
+COV_CORE_DATAFILE = ".coverage.eager"
+
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.2"]
+numpy = ["1.26", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
 matrix.deps.dependencies = [
-  {value = "zarr[remote, remote_tests, test, optional]", if = ["optional"]}
+  {value = "zarr[remote, remote_tests, test, optional, cli]", if = ["optional"]}
 ]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
 run = "run-coverage --no-cov"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
@@ -172,16 +182,8 @@ run-mypy = "mypy src"
 run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
-[tool.hatch.envs.doctest]
-features = ["test", "optional", "remote", "remote_tests"]
-description = "Test environment for doctests"
-
-[tool.hatch.envs.doctest.scripts]
-run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
-fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
-list-env = "pip list"
-
 [tool.hatch.envs.gputest]
+template = "test"
 dependencies = [
     "numpy~={matrix:numpy}",
     "universal_pathlib",
@@ -190,25 +192,11 @@ features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "2.2"]
+numpy = ["1.26", "2.2"]
 version = ["minimal"]
 
-[tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run = "run-coverage --no-cov"
-run-verbose = "run-coverage --verbose"
-run-mypy = "mypy src"
-run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
-list-env = "pip list"
-
-[tool.hatch.envs.docs]
-features = ['docs']
-
-[tool.hatch.envs.docs.scripts]
-build = "cd docs && make html"
-serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
-
 [tool.hatch.envs.upstream]
+template = 'test'
 python = "3.13"
 dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
@@ -228,25 +216,17 @@ PIP_INDEX_URL = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simp
 PIP_EXTRA_INDEX_URL = "https://pypi.org/simple/"
 PIP_PRE = "1"
 
-[tool.hatch.envs.upstream.scripts]
-run = "pytest --verbose"
-run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
-list-env = "pip list"
-
 [tool.hatch.envs.min_deps]
 description = """Test environment for minimum supported dependencies
 
 See Spec 0000 for details and drop schedule: https://scientific-python.org/specs/spec-0000/
 """
+template = "test"
 python = "3.11"
 dependencies = [
     'zarr[remote]',
     'packaging==22.*',
-    'numpy==1.25.*',
+    'numpy==1.26.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
@@ -259,13 +239,22 @@ dependencies = [
     'zarr[remote_tests]',
 ]
 
-[tool.hatch.envs.min_deps.scripts]
-run = "pytest --verbose"
-run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+
+[tool.hatch.envs.doctest]
+features = ["test", "optional", "remote", "remote_tests"]
+description = "Test environment for doctests"
+
+[tool.hatch.envs.doctest.scripts]
+run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
+fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
 list-env = "pip list"
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
+
+[tool.hatch.envs.docs]
+features = ['docs']
+
+[tool.hatch.envs.docs.scripts]
+build = "cd docs && make html"
+serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
@@ -323,9 +312,6 @@ extend-select = [
 ignore = [
     "ANN401",
     "PT011",  # TODO: apply this rule
-    "PT012",  # TODO: apply this rule
-    "PT030",  # TODO: apply this rule
-    "PT031",  # TODO: apply this rule
     "RET505",
     "RET506",
     "RUF005",
@@ -371,6 +357,7 @@ module = [
     "tests.test_store.test_fsspec",
     "tests.test_store.test_memory",
     "tests.test_codecs.test_codecs",
+    "tests.test_metadata.*",
 ]
 strict = false
 
@@ -378,7 +365,6 @@ strict = false
 # and fix the errors
 [[tool.mypy.overrides]]
 module = [
-    "tests.test_metadata.*",
     "tests.test_store.test_core",
     "tests.test_store.test_logging",
     "tests.test_store.test_object",
@@ -398,6 +384,7 @@ testpaths = ["tests", "docs/user-guide"]
 log_cli_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",
@@ -408,16 +395,6 @@ addopts = [
 ]
 filterwarnings = [
     "error",
-    # TODO: explicitly filter or catch the warnings below where we expect them to be emitted in the tests
-    "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification.*:UserWarning",
-    "ignore:Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__.*:UserWarning",
-    "ignore:Automatic shard shape inference is experimental and may change without notice.*:UserWarning",
-    "ignore:The codec .* is currently not part in the Zarr format 3 specification.*:UserWarning",
-    "ignore:The dtype .* is currently not part in the Zarr format 3 specification.*:UserWarning",
-    "ignore:Use zarr.create_array instead.:DeprecationWarning",
-    "ignore:Duplicate name.*:UserWarning",
-    "ignore:The `compressor` argument is deprecated. Use `compressors` instead.:UserWarning",
-    "ignore:Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations.:UserWarning",
     "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
 ]
 markers = [
@@ -439,7 +416,6 @@ checks = [
     # Currently broken; see https://github.com/numpy/numpydoc/issues/573
     # "GL09",
     "GL10",
-    "SS02",
     "SS04",
     "PR02",
     "PR03",
@@ -455,3 +431,6 @@ issue_format = ":issue:`{issue}`"
 
 [tool.codespell]
 ignore-words-list = "astroid"
+
+[project.entry-points.pytest11]
+zarr = "zarr.testing"
