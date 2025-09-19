@@ -55,7 +55,7 @@ def test_config_defaults_set() -> None:
                     "order": "C",
                     "write_empty_chunks": False,
                 },
-                "async": {"concurrency": 10, "timeout": None},
+                "async": {"concurrency": 10, "timeout": None, "use_uvloop": True},
                 "threading": {"max_workers": None},
                 "json_indent": 2,
                 "codec_pipeline": {

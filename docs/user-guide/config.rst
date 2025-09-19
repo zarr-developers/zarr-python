@@ -42,7 +42,7 @@ This is the current default configuration::
 
    >>> zarr.config.pprint()
    {'array': {'order': 'C', 'write_empty_chunks': False},
-    'async': {'concurrency': 10, 'timeout': None},
+    'async': {'concurrency': 10, 'timeout': None, 'use_uvloop': True},
     'buffer': 'zarr.buffer.cpu.Buffer',
     'codec_pipeline': {'batch_size': 1,
                        'path': 'zarr.core.codec_pipeline.BatchedCodecPipeline'},

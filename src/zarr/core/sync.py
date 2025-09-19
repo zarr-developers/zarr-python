@@ -4,6 +4,7 @@ import asyncio
 import atexit
 import logging
 import os
+import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, TypeVar
@@ -165,6 +166,31 @@ def sync(
         return return_result
 
 
+def _create_event_loop() -> asyncio.AbstractEventLoop:
+    """Create a new event loop, optionally using uvloop if available and enabled."""
+    use_uvloop = config.get("async.use_uvloop", True)
+
+    if use_uvloop and sys.platform != "win32":
+        try:
+            import uvloop
+
+            logger.debug("Creating Zarr event loop with uvloop")
+            # uvloop.new_event_loop() returns a loop compatible with AbstractEventLoop
+            loop: asyncio.AbstractEventLoop = uvloop.new_event_loop()
+        except ImportError:
+            logger.debug("uvloop not available, falling back to asyncio")
+        else:
+            return loop
+    else:
+        if not use_uvloop:
+            logger.debug("uvloop disabled via config, using asyncio")
+        else:
+            logger.debug("uvloop not supported on Windows, using asyncio")
+
+    logger.debug("Creating Zarr event loop with asyncio")
+    return asyncio.new_event_loop()
+
+
 def _get_loop() -> asyncio.AbstractEventLoop:
     """Create or return the default fsspec IO loop
 
@@ -175,8 +201,7 @@ def _get_loop() -> asyncio.AbstractEventLoop:
             # repeat the check just in case the loop got filled between the
             # previous two calls from another thread
             if loop[0] is None:
-                logger.debug("Creating Zarr event loop")
-                new_loop = asyncio.new_event_loop()
+                new_loop = _create_event_loop()
                 loop[0] = new_loop
                 iothread[0] = threading.Thread(target=new_loop.run_forever, name="zarr_io")
                 assert iothread[0] is not None

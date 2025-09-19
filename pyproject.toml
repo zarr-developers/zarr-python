@@ -93,7 +93,11 @@ remote_tests = [
     "moto[s3,server]",
     "requests",
 ]
-optional = ["rich", "universal-pathlib"]
+optional = [
+    "rich",
+    "universal-pathlib",
+    "uvloop; sys_platform != 'win32'"
+]
 docs = [
     # Doc building
     'sphinx==8.1.3',
@@ -234,6 +238,7 @@ dependencies = [
     'typing_extensions==4.9.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
+    'uvloop==0.20.0; sys_platform != "win32"',
     # test deps
     'zarr[test]',
     'zarr[remote_tests]',
