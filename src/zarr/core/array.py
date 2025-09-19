@@ -492,8 +492,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
 
-        .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
+        !!! warning "Deprecated"
+            `AsyncArray.create()` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`zarr.api.asynchronous.create_array`][] instead.
 
         Parameters
         ----------
@@ -523,7 +524,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
 
             If no codecs are provided, default codecs will be used:
-
         dimension_names : Iterable[str | None], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -537,7 +537,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         order : Literal["C", "F"], optional
             The memory of the array (default is "C").
             If ``zarr_format`` is 2, this parameter sets the memory order of the array.
-            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
+            If ``zarr_format`` is 3, then this parameter is deprecated, because memory order
             is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
             order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         filters : Iterable[Codec] | Literal["auto"], optional
@@ -545,8 +545,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
-            dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
+            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
@@ -555,7 +555,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             type of the array and the Zarr format specified. For all data types in Zarr V3, and most
             data types in Zarr V2, the default filters are empty. The only cases where default filters
             are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-            :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
             the default filters contains a single element which is a codec specific to that particular data type.
 
             To create an array with no filters, provide an empty iterable or the value ``None``.
@@ -569,7 +569,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
 
-            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in [`zarr.config`][zarr.config].
         overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
         data : npt.ArrayLike, optional
@@ -640,8 +640,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         config: ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
-        See :func:`AsyncArray.create` for more details.
-        Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
+        Deprecated in favor of [`zarr.api.asynchronous.create_array`][].
         """
 
         dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
@@ -1091,9 +1090,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         Compressor that is applied to each chunk of the array.
 
-        .. deprecated:: 3.0.0
-            `array.compressor` is deprecated and will be removed in a future release.
-            Use `array.compressors` instead.
+        !!! warning "Deprecated"
+            `Array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`Array.compressors`][zarr.AsyncArray.compressors] instead.
         """
         if self.metadata.zarr_format == 2:
             return self.metadata.compressor
@@ -1292,8 +1291,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Notes
         -----
-        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
-        property :attr:`Array.nchunks_initialized`.
+        On [`AsyncArray`][zarr.AsyncArray] this is an asynchronous method, unlike the (synchronous)
+        property [`Array.nchunks_initialized`][zarr.Array.nchunks_initialized].
 
         Examples
         --------
@@ -1325,8 +1324,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Notes
         -----
-        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
-        property :attr:`Array._nshards_initialized`.
+        On [`AsyncArray`][zarr.AsyncArray] this is an asynchronous method, unlike the (synchronous)
+        property [`Array._nshards_initialized`][zarr.Array._nshards_initialized].
 
         Examples
         --------
@@ -1751,15 +1750,15 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @property
     def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:
-        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
-        :func:`set_orthogonal_selection` for documentation and examples."""
+        """Shortcut for orthogonal (outer) indexing, see [get_orthogonal_selection][zarr.Array.get_orthogonal_selection] and
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection] for documentation and examples."""
         return AsyncOIndex(self)
 
     @property
     def vindex(self) -> AsyncVIndex[T_ArrayMetadata]:
-        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
-        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
-        :func:`set_mask_selection` for documentation and examples."""
+        """Shortcut for vectorized (inner) indexing, see [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection], [get_mask_selection][zarr.Array.get_mask_selection] and
+        [set_mask_selection][zarr.Array.set_mask_selection] for documentation and examples."""
         return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
@@ -1915,10 +1914,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         ArrayInfo
 
-        See Also
-        --------
-        AsyncArray.info_complete
-            All information about a group, including dynamic information
+        Related
+        -------
+        [zarr.AsyncArray.info_complete][] - All information about a group, including dynamic information
             like the number of bytes and chunks written.
 
         Examples
@@ -1954,10 +1952,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         ArrayInfo
 
-        See Also
-        --------
-        AsyncArray.info
-            A property giving just the statically known information about an array.
+        Related
+        -------
+        [zarr.AsyncArray.info][] - A property giving just the statically known information about an array.
         """
         return self._info(
             await self._nshards_initialized(),
@@ -2029,8 +2026,9 @@ class Array:
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
-        .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.create_array`.
+        !!! warning "Deprecated"
+            `Array.create()` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`zarr.create_array`][] instead.
 
         Parameters
         ----------
@@ -2071,16 +2069,17 @@ class Array:
         order : Literal["C", "F"], optional
             The memory of the array (default is "C").
             If ``zarr_format`` is 2, this parameter sets the memory order of the array.
-            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
+            If ``zarr_format`` is 3, then this parameter is deprecated, because memory order
             is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
             order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
+
         filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
-            dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
+            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
@@ -2089,7 +2088,7 @@ class Array:
             type of the array and the Zarr format specified. For all data types in Zarr V3, and most
             data types in Zarr V2, the default filters are empty. The only cases where default filters
             are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-            :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
             the default filters contains a single element which is a codec specific to that particular data type.
 
             To create an array with no filters, provide an empty iterable or the value ``None``.
@@ -2103,7 +2102,7 @@ class Array:
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
 
-            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in [`zarr.config`][zarr.config].
         overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
 
@@ -2168,8 +2167,7 @@ class Array:
         config: ArrayConfigLike | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
-        See :func:`Array.create` for more details.
-        Deprecated in favor of :func:`zarr.create_array`.
+        Deprecated in favor of [`zarr.create_array`][].
         """
         async_array = sync(
             AsyncArray._create(
@@ -2330,12 +2328,12 @@ class Array:
 
     @property
     def attrs(self) -> Attributes:
-        """Returns a MutableMapping containing user-defined attributes.
+        """Returns a [MutableMapping][collections.abc.MutableMapping] containing user-defined attributes.
 
         Returns
         -------
-        attrs : MutableMapping
-            A MutableMapping object containing user-defined attributes.
+        attrs
+            A [MutableMapping][collections.abc.MutableMapping] object containing user-defined attributes.
 
         Notes
         -----
@@ -2399,9 +2397,9 @@ class Array:
         """
         Compressor that is applied to each chunk of the array.
 
-        .. deprecated:: 3.0.0
-            `array.compressor` is deprecated and will be removed in a future release.
-            Use `array.compressors` instead.
+        !!! warning "Deprecated"
+            `array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
+            Use [`array.compressors`][zarr.Array.compressors] instead.
         """
         return self._async_array.compressor
 
@@ -2776,9 +2774,9 @@ class Array:
         fields
 
         Currently the implementation for __getitem__ is provided by
-        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        [`vindex`][zarr.Array.vindex] if the indexing is pure fancy indexing (ie a
         broadcast-compatible tuple of integer array indices), or by
-        :func:`set_basic_selection` otherwise.
+        [`set_basic_selection`][zarr.Array.set_basic_selection] otherwise.
 
         Effectively, this means that the following indexing modes are supported:
 
@@ -2789,14 +2787,16 @@ class Array:
            - fancy indexing (vectorized list of integers)
 
         For specific indexing options including outer indexing, see the
-        methods listed under See Also.
+        methods listed under Related.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection], [set_basic_selection][zarr.Array.set_basic_selection]
+        [get_mask_selection][zarr.Array.get_mask_selection], [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection], [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection], [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection], [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex], [blocks][zarr.Array.blocks], [__setitem__][zarr.Array.__setitem__]
 
         """
         fields, pure_selection = pop_fields(selection)
@@ -2875,27 +2875,35 @@ class Array:
         fields
 
         Currently the implementation for __setitem__ is provided by
-        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        [`vindex`][zarr.Array.vindex] if the indexing is pure fancy indexing (ie a
         broadcast-compatible tuple of integer array indices), or by
-        :func:`set_basic_selection` otherwise.
+        [`set_basic_selection`][zarr.Array.set_basic_selection] otherwise.
 
         Effectively, this means that the following indexing modes are supported:
 
-           - integer indexing
-           - slice indexing
-           - mixed slice and integer indexing
-           - boolean indexing
-           - fancy indexing (vectorized list of integers)
+            - integer indexing
+            - slice indexing
+            - mixed slice and integer indexing
+            - boolean indexing
+            - fancy indexing (vectorized list of integers)
 
         For specific indexing options including outer indexing, see the
-        methods listed under See Also.
+        methods listed under Related.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__]
 
         """
         fields, pure_selection = pop_fields(selection)
@@ -3006,15 +3014,23 @@ class Array:
         the `fields` parameter.
 
         This method provides the implementation for accessing data via the
-        square bracket notation (__getitem__). See :func:`__getitem__` for examples
+        square bracket notation (__getitem__). See [`__getitem__`][zarr.Array.__getitem__] for examples
         using the alternative notation.
 
-        See Also
-        --------
-        set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
 
@@ -3108,15 +3124,23 @@ class Array:
         the `fields` parameter.
 
         This method provides the underlying implementation for modifying data via square
-        bracket notation, see :func:`__setitem__` for equivalent examples using the
+        bracket notation, see [`__setitem__`][zarr.Array.__setitem__] for equivalent examples using the
         alternative notation.
 
-        See Also
-        --------
-        get_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        set_orthogonal_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3231,12 +3255,20 @@ class Array:
 
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, set_orthogonal_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3343,13 +3375,20 @@ class Array:
 
         Slices with step > 1 are supported, but slices with negative step are not.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
-
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
         if prototype is None:
             prototype = default_buffer_prototype()
@@ -3423,12 +3462,20 @@ class Array:
         coordinate indexing. Internally the mask array is converted to coordinate
         arrays by calling `np.nonzero`.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
 
         if prototype is None:
@@ -3505,12 +3552,20 @@ class Array:
         coordinate indexing. Internally the mask array is converted to coordinate
         arrays by calling `np.nonzero`.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3585,12 +3640,20 @@ class Array:
         before being applied. The shape of the output will be the same as the shape of
         each coordinate array after broadcasting.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, set_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3669,12 +3732,20 @@ class Array:
         Slices are not supported. Coordinate arrays must be provided for all dimensions
         of the array.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3785,13 +3856,20 @@ class Array:
                    [13, 14, 15, 16, 17, 18],
                    [23, 24, 25, 26, 27, 28]])
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        set_coordinate_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
-
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
         """
         if prototype is None:
             prototype = default_buffer_prototype()
@@ -3878,12 +3956,20 @@ class Array:
 
         Slices are supported. However, only with a step size of one.
 
-        See Also
-        --------
-        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
-        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
-        get_block_selection, set_block_selection,
-        vindex, oindex, blocks, __getitem__, __setitem__
+        Related
+        -------
+        [get_basic_selection][zarr.Array.get_basic_selection],
+        [set_basic_selection][zarr.Array.set_basic_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection],
+        [set_mask_selection][zarr.Array.set_mask_selection],
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection],
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection],
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [get_block_selection][zarr.Array.get_block_selection],
+        [set_block_selection][zarr.Array.set_block_selection],
+        [vindex][zarr.Array.vindex], [oindex][zarr.Array.oindex],
+        [blocks][zarr.Array.blocks], [__getitem__][zarr.Array.__getitem__],
+        [__setitem__][zarr.Array.__setitem__]
 
         """
         if prototype is None:
@@ -3893,21 +3979,28 @@ class Array:
 
     @property
     def vindex(self) -> VIndex:
-        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
-        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
-        :func:`set_mask_selection` for documentation and examples."""
+        """Shortcut for vectorized (inner) indexing, see
+        [get_coordinate_selection][zarr.Array.get_coordinate_selection],
+        [set_coordinate_selection][zarr.Array.set_coordinate_selection],
+        [get_mask_selection][zarr.Array.get_mask_selection] and
+        [set_mask_selection][zarr.Array.set_mask_selection] for documentation and
+        examples."""
         return VIndex(self)
 
     @property
     def oindex(self) -> OIndex:
-        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
-        :func:`set_orthogonal_selection` for documentation and examples."""
+        """Shortcut for orthogonal (outer) indexing, see
+        [get_orthogonal_selection][zarr.Array.get_orthogonal_selection] and
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection] for
+        documentation and examples."""
         return OIndex(self)
 
     @property
     def blocks(self) -> BlockIndex:
-        """Shortcut for blocked chunked indexing, see :func:`get_block_selection` and
-        :func:`set_block_selection` for documentation and examples."""
+        """Shortcut for blocked chunked indexing, see
+        [get_block_selection][zarr.Array.get_block_selection] and
+        [set_block_selection][zarr.Array.set_block_selection] for documentation and
+        examples."""
         return BlockIndex(self)
 
     def resize(self, new_shape: ShapeLike) -> None:
@@ -4027,11 +4120,10 @@ class Array:
         -------
         ArrayInfo
 
-        See Also
-        --------
-        Array.info_complete
-            All information about a group, including dynamic information
-            like the number of bytes and chunks written.
+        Related
+        -------
+        [zarr.Array.info_complete][] - All information about a group,
+            including dynamic information like the number of bytes and chunks written.
 
         Examples
         --------
@@ -4064,10 +4156,9 @@ class Array:
         -------
         ArrayInfo
 
-        See Also
-        --------
-        Array.info
-            The statically known subset of metadata about an array.
+        Related
+        -------
+        [zarr.Array.info][] - The statically known subset of metadata about an array.
         """
         return sync(self._async_array.info_complete())
 
@@ -4088,9 +4179,9 @@ async def _shards_initialized(
     chunks_initialized : tuple[str, ...]
         The keys of the chunks that have been initialized.
 
-    See Also
-    --------
-    nchunks_initialized
+    Related
+    -------
+    [nchunks_initialized][zarr.Array.nchunks_initialized]
 
     """
     store_contents = [
@@ -4194,8 +4285,8 @@ async def from_array(
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
-        dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
@@ -4205,8 +4296,8 @@ async def from_array(
         which is to choose default filters based on the data type of the array and the Zarr format specified.
         For all data types in Zarr V3, and most data types in Zarr V2, the default filters are the empty tuple ``()``.
         The only cases where default filters are not empty is when the Zarr format is 2, and the
-        data type is a variable-length data type like :class:`zarr.dtype.VariableLengthUTF8` or
-        :class:`zarr.dtype.VariableLengthUTF8`. In these cases, the default filters is a tuple with a
+        data type is a variable-length data type like [`zarr.dtype.VariableLengthUTF8`][] or
+        [`zarr.dtype.VariableLengthUTF8`][]. In these cases, the default filters is a tuple with a
         single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value ``None``.
@@ -4236,7 +4327,7 @@ async def from_array(
         - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
         - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
-          ``array.v3_default_serializer`` in :mod:`zarr.core.config`.
+          ``array.v3_default_serializer`` in [`zarr.config`][zarr.config].
         - "keep": Retain the serializer of the input array if it is a zarr Array.
 
     fill_value : Any, optional
@@ -4441,8 +4532,8 @@ async def init_array(
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
-        dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
@@ -4451,7 +4542,7 @@ async def init_array(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value ``None``.
@@ -4459,7 +4550,7 @@ async def init_array(
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
 
-        The default value of ``"auto"`` instructs Zarr to use a default of :class:`zarr.codecs.ZstdCodec`.
+        The default value of ``"auto"`` instructs Zarr to use a default of [`zarr.codecs.ZstdCodec`][].
 
         To create an array with no compressors, provide an empty iterable or the value ``None``.
     serializer : dict[str, JSON] | ArrayBytesCodec | Literal["auto"], optional
@@ -4467,9 +4558,9 @@ async def init_array(
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
 
         The default value of ``"auto"`` instructs Zarr to use a default codec based on the data type of the array.
-        For most data types this default codec is :class:`zarr.codecs.BytesCodec`.
-        For :class:`zarr.dtype.VariableLengthUTF8`, the default codec is :class:`zarr.codecs.VlenUTF8Codec`.
-        For :class:`zarr.dtype.VariableLengthBytes`, the default codec is :class:`zarr.codecs.VlenBytesCodec`.
+        For most data types this default codec is [`zarr.codecs.BytesCodec`][].
+        For [`zarr.dtype.VariableLengthUTF8`][], the default codec is [`zarr.codecs.VlenUTF8Codec`][].
+        For [`zarr.dtype.VariableLengthBytes`][], the default codec is [`zarr.codecs.VlenBytesCodec`][].
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -4479,7 +4570,7 @@ async def init_array(
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
         order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional
@@ -4665,8 +4756,9 @@ async def create_array(
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
-        dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
+
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
@@ -4675,7 +4767,7 @@ async def create_array(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value ``None``.
@@ -4687,20 +4779,20 @@ async def create_array(
         returns another bytestream. Multiple compressors my be provided for Zarr format 3.
         If no ``compressors`` are provided, a default set of compressors will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
         If no ``compressor`` is provided, a default compressor will be used.
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
         Use ``None`` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
         If no ``serializer`` is provided, a default serializer will be used.
         These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -4710,7 +4802,7 @@ async def create_array(
         is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
         order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         If no ``order`` is provided, a default order will be used.
-        This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+        This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional

@@ -36,11 +36,11 @@ class FixedLengthBytesConfig(TypedDict):
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "length_bytes": 12
-        }
+    ```python
+    {
+        "length_bytes": 12
+    }
+    ```
     """
 
     length_bytes: int
@@ -56,17 +56,17 @@ class NullterminatedBytesJSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "|S10",
-            "object_codec_id": None
-        }
+    ```python
+    {
+        "name": "|S10",
+        "object_codec_id": None
+    }
+    ```
     """
 
 
@@ -83,14 +83,14 @@ class NullTerminatedBytesJSON_V3(
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "null_terminated_bytes",
-            "configuration": {
-                "length_bytes": 12
-            }
+    ```python
+    {
+        "name": "null_terminated_bytes",
+        "configuration": {
+            "length_bytes": 12
         }
+    }
+    ```
 
     """
 
@@ -105,17 +105,18 @@ class RawBytesJSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
 
     Examples
     --------
-    .. code-block:: python
+    ```python
 
         {
             "name": "|V10",
             "object_codec_id": None
         }
+    ```
     """
 
 
@@ -130,12 +131,14 @@ class RawBytesJSON_V3(NamedConfig[Literal["raw_bytes"], FixedLengthBytesConfig])
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "raw_bytes",
-            "configuration": {
-                "length_bytes": 12
+    ```python
+    {
+        "name": "raw_bytes",
+        "configuration": {
+            "length_bytes": 12
+        }
+    }
+    ```
     """
 
 
@@ -149,16 +152,16 @@ class VariableLengthBytesJSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-byt
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "|O",
-            "object_codec_id": "vlen-bytes"
-        }
+    ```python
+    {
+        "name": "|O",
+        "object_codec_id": "vlen-bytes"
+    }
+    ```
     """
 
 
@@ -167,8 +170,8 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
     """
     A Zarr data type for arrays containing fixed-length null-terminated byte sequences.
 
-    Wraps the ``np.dtypes.BytesDType`` data type. Scalars for this data type are instances of
-    ``np.bytes_``.
+    Wraps the [`np.dtypes.BytesDType`][numpy.dtypes.BytesDType] data type. Scalars for this data type are instances of
+    [`np.bytes_`][numpy.bytes_].
 
     This data type is parametrized by an integral length which specifies size in bytes of each
     scalar. Because this data type uses null-terminated semantics, indexing into
@@ -410,7 +413,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
     def _cast_scalar_unchecked(self, data: BytesLike) -> np.bytes_:
         """
-        Cast the provided scalar data to ``np.bytes_``, truncating if necessary.
+        Cast the provided scalar data to [`np.bytes_`][numpy.bytes_], truncating if necessary.
 
         Parameters
         ----------
@@ -419,7 +422,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        np.bytes_
+        bytes : [`np.bytes_`][numpy.bytes_]
             The casted data as a NumPy bytes scalar.
 
         Notes
@@ -447,7 +450,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        ``np.bytes_``
+        bytes : [`np.bytes_`][numpy.bytes_]
             The data cast as a NumPy bytes scalar.
 
         Raises
@@ -470,7 +473,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        ``np.bytes_``
+        bytes : [`np.bytes_`][numpy.bytes_]
             The default scalar value.
         """
         return np.bytes_(b"")
@@ -499,7 +502,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.bytes_:
         """
-        Read a JSON-serializable value as ``np.bytes_``.
+        Read a JSON-serializable value as [`np.bytes_`][numpy.bytes_].
 
         Parameters
         ----------
@@ -510,7 +513,7 @@ class NullTerminatedBytes(ZDType[np.dtypes.BytesDType[int], np.bytes_], HasLengt
 
         Returns
         -------
-        ``np.bytes_``
+        bytes : [`np.bytes_`][numpy.bytes_]
             The NumPy bytes scalar obtained from decoding the base64 string.
 
         Raises
@@ -543,7 +546,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
     """
     A Zarr data type for arrays containing fixed-length sequences of raw bytes.
 
-    Wraps the NumPy ``void`` data type. Scalars for this data type are instances of ``np.void``.
+    Wraps the NumPy ``void`` data type. Scalars for this data type are instances of [`np.void`][numpy.void].
 
     This data type is parametrized by an integral length which specifies size in bytes of each
     scalar belonging to this data type.
