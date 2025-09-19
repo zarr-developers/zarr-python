@@ -372,16 +372,13 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
                     group = zarr.api.synchronous.consolidate_metadata(
                         store=store, zarr_format=zarr_format
                     )
-        else:
-            if isinstance(store, ZipStore):
-                with pytest.warns(UserWarning, match="Duplicate name: "):
-                    group = zarr.api.synchronous.consolidate_metadata(
-                        store=store, zarr_format=zarr_format
-                    )
-            else:
+        elif isinstance(store, ZipStore):
+            with pytest.warns(UserWarning, match="Duplicate name: "):
                 group = zarr.api.synchronous.consolidate_metadata(
                     store=store, zarr_format=zarr_format
                 )
+        else:
+            group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
         # we're going to assume that `group.metadata` is correct, and reuse that to focus
         # on indexing in this test. Other tests verify the correctness of group.metadata
         object.__setattr__(
@@ -581,12 +578,11 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                         group = zarr.consolidate_metadata(store)
                 else:
                     group = zarr.consolidate_metadata(store)
-        else:
-            if isinstance(store, ZipStore):
-                with pytest.warns(UserWarning, match="Duplicate name: "):
-                    group = zarr.consolidate_metadata(store)
-            else:
+        elif isinstance(store, ZipStore):
+            with pytest.warns(UserWarning, match="Duplicate name: "):
                 group = zarr.consolidate_metadata(store)
+        else:
+            group = zarr.consolidate_metadata(store)
         if zarr_format == 2:
             metadata = {
                 "subarray": {
@@ -1443,15 +1439,14 @@ async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFo
                         group = zarr.api.synchronous.consolidate_metadata(store)
                 else:
                     group = zarr.api.synchronous.consolidate_metadata(store)
-        else:
-            if zarr_format == 3:
-                with pytest.warns(
-                    ZarrUserWarning,
-                    match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
-                ):
-                    group = zarr.api.synchronous.consolidate_metadata(store)
-            else:
+        elif zarr_format == 3:
+            with pytest.warns(
+                ZarrUserWarning,
+                match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+            ):
                 group = zarr.api.synchronous.consolidate_metadata(store)
+        else:
+            group = zarr.api.synchronous.consolidate_metadata(store)
     result = group["a"]["b"]
     assert result.name == "/a/b"
 
