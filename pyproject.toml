@@ -68,6 +68,7 @@ remote = [
 gpu = [
     "cupy-cuda12x",
 ]
+cli = ["typer"]
 # Development extras
 test = [
     "coverage>=7.10",
@@ -78,6 +79,7 @@ test = [
     "pytest-accept",
     "rich",
     "mypy",
+    'numpydoc',
     "hypothesis",
     "pytest-xdist",
     "packaging",
@@ -112,6 +114,9 @@ docs = [
     'astroid<4',
     'pytest'
 ]
+
+[project.scripts]
+zarr = "zarr._cli.cli:app"
 
 
 [project.urls]
@@ -163,7 +168,7 @@ deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
 matrix.deps.dependencies = [
-  {value = "zarr[remote, remote_tests, test, optional]", if = ["optional"]}
+  {value = "zarr[remote, remote_tests, test, optional, cli]", if = ["optional"]}
 ]
 
 [tool.hatch.envs.test.scripts]

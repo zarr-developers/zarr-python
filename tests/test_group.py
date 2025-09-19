@@ -8,7 +8,7 @@ import pickle
 import re
 import time
 import warnings
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import numpy as np
 import pytest
@@ -759,6 +759,84 @@ def test_group_create_array(
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
+
+
+@pytest.mark.parametrize("method", ["create_array", "create_group"])
+def test_create_with_parent_array(store: Store, zarr_format: ZarrFormat, method: str):
+    """Test that groups/arrays cannot be created under a parent array."""
+
+    # create a group with a child array
+    group = Group.from_store(store, zarr_format=zarr_format)
+    group.create_array(name="arr_1", shape=(10, 10), dtype="uint8")
+
+    error_msg = r"A parent of .* is an array - only groups may have child nodes."
+    if method == "create_array":
+        with pytest.raises(ValueError, match=error_msg):
+            group.create_array("arr_1/group_1/group_2/arr_2", shape=(10, 10), dtype="uint8")
+
+    else:
+        with pytest.raises(ValueError, match=error_msg):
+            group.create_group("arr_1/group_1/group_2/group_3")
+
+
+LikeMethodName = Literal["zeros_like", "ones_like", "empty_like", "full_like"]
+
+
+@pytest.mark.parametrize("method_name", get_args(LikeMethodName))
+@pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_dtype", ["keep", "int8"])
+def test_group_array_like_creation(
+    zarr_format: ZarrFormat,
+    method_name: LikeMethodName,
+    out_shape: Literal["keep"] | tuple[int, ...],
+    out_chunks: Literal["keep"] | tuple[int, ...],
+    out_dtype: str,
+) -> None:
+    """
+    Test Group.{zeros_like, ones_like, empty_like, full_like}, ensuring that we can override the
+    shape, chunks, and dtype of the array-like object provided to these functions with
+    appropriate keyword arguments
+    """
+    ref_arr = zarr.ones(store={}, shape=(11, 12), dtype="uint8", chunks=(11, 12))
+    group = Group.from_store({}, zarr_format=zarr_format)
+    kwargs = {}
+    if method_name == "full_like":
+        expect_fill = 4
+        kwargs["fill_value"] = expect_fill
+        meth = group.full_like
+    elif method_name == "zeros_like":
+        expect_fill = 0
+        meth = group.zeros_like
+    elif method_name == "ones_like":
+        expect_fill = 1
+        meth = group.ones_like
+    elif method_name == "empty_like":
+        expect_fill = ref_arr.fill_value
+        meth = group.empty_like
+    else:
+        raise AssertionError
+    if out_shape != "keep":
+        kwargs["shape"] = out_shape
+        expect_shape = out_shape
+    else:
+        expect_shape = ref_arr.shape
+    if out_chunks != "keep":
+        kwargs["chunks"] = out_chunks
+        expect_chunks = out_chunks
+    else:
+        expect_chunks = ref_arr.chunks
+    if out_dtype != "keep":
+        kwargs["dtype"] = out_dtype
+        expect_dtype = out_dtype
+    else:
+        expect_dtype = ref_arr.dtype
+
+    new_arr = meth(name="foo", data=ref_arr, **kwargs)
+    assert new_arr.shape == expect_shape
+    assert new_arr.chunks == expect_chunks
+    assert new_arr.dtype == expect_dtype
+    assert np.all(new_arr[:] == expect_fill)
 
 
 def test_group_array_creation(
@@ -2234,3 +2312,9 @@ def test_get_roots(roots: tuple[str, ...]):
     }
     data = root_nodes | child_nodes
     assert set(_get_roots(data)) == set(roots)
+
+
+def test_open_array_as_group():
+    z = zarr.create_array(shape=(40, 50), chunks=(10, 10), dtype="f8", store={})
+    with pytest.raises(ContainsArrayError):
+        zarr.open_group(z.store)

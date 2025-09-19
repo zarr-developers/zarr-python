@@ -18,6 +18,7 @@ nav:
       - user-guide/attributes.md
       - user-guide/storage.md
       - user-guide/config.md
+      - user-guide/cli.md
       - user-guide/v3_migration.md
       - user-guide/data_types.md
       - user-guide/performance.md

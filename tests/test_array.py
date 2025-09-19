@@ -1247,11 +1247,11 @@ class TestCreateArray:
         chunk_key_encoding = ChunkKeyEncodingParams(name=name, separator=separator)  # type: ignore[typeddict-item]
         error_msg = ""
         if name == "invalid":
-            error_msg = "Unknown chunk key encoding."
+            error_msg = r'Unknown chunk key encoding: "Chunk key encoding \'invalid\' not found in registered chunk key encodings: \[.*\]."'
         if zarr_format == 2 and name == "default":
             error_msg = "Invalid chunk key encoding. For Zarr format 2 arrays, the `name` field of the chunk key encoding must be 'v2'."
         if error_msg:
-            with pytest.raises(ValueError, match=re.escape(error_msg)):
+            with pytest.raises(ValueError, match=error_msg):
                 arr = await create_array(
                     store=store,
                     dtype="uint8",

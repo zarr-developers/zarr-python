@@ -2,6 +2,34 @@
 
 <!-- towncrier release notes start -->
 
+# zarr 3.1.3 (2025-09-18)
+
+## Features
+
+- Add a command-line interface to migrate v2 Zarr metadata to v3. Corresponding functions are also provided under zarr.metadata. ([#1798](https://github.com/zarr-developers/zarr-python/issues/1798))
+- Add obstore implementation of delete_dir. ([#3310](https://github.com/zarr-developers/zarr-python/issues/3310))
+- Adds a registry for chunk key encodings for extensibility. This allows users to implement a custom `ChunkKeyEncoding`, which can be registered via `register_chunk_key_encoding` or as an entry point under `zarr.chunk_key_encoding`. ([#3436](https://github.com/zarr-developers/zarr-python/issues/3436))
+- Trying to open a group at a path were a array already exists now raises a helpful error. ([#3444](https://github.com/zarr-developers/zarr-python/issues/3444))
+
+## Bugfixes
+
+- Prevents creation of groups (.create_group) or arrays (.create_array) as children of an existing array. ([#2582](https://github.com/zarr-developers/zarr-python/issues/2582))
+- Fix a bug preventing `ones_like`, `full_like`, `empty_like`, `zeros_like` and `open_like` functions from accepting an explicit specification of array attributes like shape, dtype, chunks etc. The functions `full_like`, `empty_like`, and `open_like` now also more consistently infer a `fill_value` parameter from the provided array. ([#2992](https://github.com/zarr-developers/zarr-python/issues/2992))
+- LocalStore now uses atomic writes, which should prevent some cases of corrupted data. ([#3411](https://github.com/zarr-developers/zarr-python/issues/3411))
+- Fix a potential race condition when using `zarr.create_array` with the `data` parameter set to a NumPy array. Previously Zarr was iterating over the newly created array with a granularity that was too low. Now Zarr chooses a granularity that matches the size of the stored objects for that array. ([#3422](https://github.com/zarr-developers/zarr-python/issues/3422))
+- Fix ChunkGrid definition (broken in 3.1.2) ([#3425](https://github.com/zarr-developers/zarr-python/issues/3425))
+- Ensure syntax like `root['/subgroup']` works equivalently to `root['subgroup']` when using consolidated metadata. ([#3428](https://github.com/zarr-developers/zarr-python/issues/3428))
+- Creating a new group with `zarr.group` no longer errors. This fixes a regression introduced in version 3.1.2. ([#3431](https://github.com/zarr-developers/zarr-python/issues/3431))
+- Setting `fill_value` to a float like `0.0` when the data type of the array is an integer is a common mistake. This change lets Zarr Python read arrays with this erroneous metadata, although Zarr Python will not create such arrays. ([#3448](https://github.com/zarr-developers/zarr-python/issues/3448))
+
+## Deprecations and Removals
+
+- The `Store.set_partial_writes` method, which was not used by Zarr-Python, has been removed. `store.supports_partial_writes` is now always `False`. ([#2859](https://github.com/zarr-developers/zarr-python/issues/2859))
+
+## Misc
+
+- [#3376](https://github.com/zarr-developers/zarr-python/issues/3376), [#3390](https://github.com/zarr-developers/zarr-python/issues/3390), [#3403](https://github.com/zarr-developers/zarr-python/issues/3403), [#3449](https://github.com/zarr-developers/zarr-python/issues/3449)
+
 ## 3.1.2 (2025-08-25)
 
 ### Features

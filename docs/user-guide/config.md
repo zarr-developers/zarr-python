@@ -29,7 +29,6 @@ Configuration options include the following:
 
 - Default Zarr format `default_zarr_version`
 - Default array order in memory `array.order`
-- Default filters, serializers and compressors, e.g. `array.v3_default_filters`, `array.v3_default_serializer`, `array.v3_default_compressors`, `array.v2_default_filters` and `array.v2_default_compressor`
 - Whether empty chunks are written to storage `array.write_empty_chunks`
 - Async and threading options, e.g. `async.concurrency` and `threading.max_workers`
 - Selections of implementations of codecs, codec pipelines and buffers

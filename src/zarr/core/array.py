@@ -25,7 +25,6 @@ from typing_extensions import deprecated
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.numcodec import Numcodec, _is_numcodec
-from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
@@ -47,6 +46,7 @@ from zarr.core.chunk_key_encodings import (
     ChunkKeyEncodingLike,
     DefaultChunkKeyEncoding,
     V2ChunkKeyEncoding,
+    parse_chunk_key_encoding,
 )
 from zarr.core.common import (
     JSON,
@@ -64,7 +64,6 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
-from zarr.core.config import categorize_data_type
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype import (
     VariableLengthBytes,
@@ -110,6 +109,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import (
     CompressorLikev2,
     get_object_codec_id,
@@ -140,9 +140,9 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.abc.codec import CodecPipeline
+    from zarr.abc.store import Store
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
-    from zarr.core.group import AsyncGroup
     from zarr.storage import StoreLike
 
 
@@ -524,13 +524,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
 
             If no codecs are provided, default codecs will be used:
-
-            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
-            - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
-
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in [`zarr.config`][zarr.config].
         dimension_names : Iterable[str | None], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -547,11 +540,25 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             If ``zarr_format`` is 3, then this parameter is deprecated, because memory order
             is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
             order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
-        filters : list[dict[str, JSON]], optional
-            Sequence of filters to use to encode chunk data prior to compression.
-            Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead. If no ``filters``
-            are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in [`zarr.config`][zarr.config].
+        filters : Iterable[Codec] | Literal["auto"], optional
+            Iterable of filters to apply to each chunk of the array, in order, before serializing that
+            chunk to bytes.
+
+            For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
+
+            For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
+            the order if your filters is consistent with the behavior of each filter.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
         compressor : dict[str, JSON], optional
             The compressor used to compress the data (default is None).
             Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
@@ -1631,24 +1638,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         Asynchronously save the array metadata.
         """
-        to_save = metadata.to_buffer_dict(cpu_buffer_prototype)
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
-
-        if ensure_parents:
-            # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
-            parents = _build_parents(self)
-
-            for parent in parents:
-                awaitables.extend(
-                    [
-                        (parent.store_path / key).set_if_not_exists(value)
-                        for key, value in parent.metadata.to_buffer_dict(
-                            cpu_buffer_prototype
-                        ).items()
-                    ]
-                )
-
-        await gather(*awaitables)
+        await save_metadata(self.store_path, metadata, ensure_parents=ensure_parents)
 
     async def _set_selection(
         self,
@@ -2066,9 +2056,6 @@ class Array:
             - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
             - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
-
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``,
-            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in [`zarr.config`][zarr.config].
         dimension_names : Iterable[str | None], optional
             The names of the dimensions (default is None).
             Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
@@ -2085,11 +2072,26 @@ class Array:
             If ``zarr_format`` is 3, then this parameter is deprecated, because memory order
             is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
             order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
-        filters : list[dict[str, JSON]], optional
-            Sequence of filters to use to encode chunk data prior to compression.
-            Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead. If no ``filters``
-            are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in [`zarr.config`][zarr.config].
+
+        filters : Iterable[Codec] | Literal["auto"], optional
+            Iterable of filters to apply to each chunk of the array, in order, before serializing that
+            chunk to bytes.
+
+            For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
+
+            For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
+            the order if your filters is consistent with the behavior of each filter.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
         compressor : dict[str, JSON], optional
             Primary compressor to compress chunk data.
             Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
@@ -2230,7 +2232,7 @@ class Array:
 
         Parameters
         ----------
-        store : Store
+        store : StoreLike
             Store containing the Array.
 
         Returns
@@ -4193,37 +4195,6 @@ async def _shards_initialized(
     )
 
 
-def _build_parents(
-    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
-) -> list[AsyncGroup]:
-    from zarr.core.group import AsyncGroup, GroupMetadata
-
-    store = node.store_path.store
-    path = node.store_path.path
-    if not path:
-        return []
-
-    required_parts = path.split("/")[:-1]
-    parents = [
-        # the root group
-        AsyncGroup(
-            metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
-            store_path=StorePath(store=store, path=""),
-        )
-    ]
-
-    for i, part in enumerate(required_parts):
-        p = "/".join(required_parts[:i] + [part])
-        parents.append(
-            AsyncGroup(
-                metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
-                store_path=StorePath(store=store, path=p),
-            )
-        )
-
-    return parents
-
-
 FiltersLike: TypeAlias = (
     Iterable[dict[str, JSON] | ArrayArrayCodec | Numcodec]
     | ArrayArrayCodec
@@ -4255,7 +4226,7 @@ ShardsLike: TypeAlias = tuple[int, ...] | ShardsConfigParam | Literal["auto"]
 
 
 async def from_array(
-    store: str | StoreLike,
+    store: StoreLike,
     *,
     data: Array | npt.ArrayLike,
     write_data: bool = True,
@@ -4273,14 +4244,14 @@ async def from_array(
     dimension_names: DimensionNames = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigLike | None = None,
+    config: ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array from an existing array or array-like.
 
     Parameters
     ----------
-    store : str or Store
-        Store or path to directory in file system or name of zip file for the new array.
+    store : StoreLike
+        Store or path to directory in file system or name of zip file.
     data : Array | array-like
         The array to copy.
     write_data : bool, default True
@@ -4309,24 +4280,27 @@ async def from_array(
         - None: No sharding.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise None.
-    filters : Iterable[Codec] or "auto" or "keep", optional
+    filters : Iterable[Codec] | Literal["auto", "keep"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of ``ArrayArrayCodec``, or dict representations
-        of ``ArrayArrayCodec``.
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
 
-        Following values are supported:
+        The default value of ``"keep"`` instructs Zarr to infer ``filters`` from ``data``.
+        If that inference is not possible, Zarr will fall back to the behavior specified by ``"auto"``,
+        which is to choose default filters based on the data type of the array and the Zarr format specified.
+        For all data types in Zarr V3, and most data types in Zarr V2, the default filters are the empty tuple ``()``.
+        The only cases where default filters are not empty is when the Zarr format is 2, and the
+        data type is a variable-length data type like [`zarr.dtype.VariableLengthUTF8`][] or
+        [`zarr.dtype.VariableLengthUTF8`][]. In these cases, the default filters is a tuple with a
+        single element which is a codec specific to that particular data type.
 
-        - Iterable[Codec]: List of filters to apply to the array.
-        - "auto": Automatically determine the filters based on the array's dtype.
-        - "keep": Retain the filters of the data array if it is a zarr Array.
-
-        If no ``filters`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
+        To create an array with no filters, provide an empty iterable or the value ``None``.
     compressors : Iterable[Codec] or "auto" or "keep", optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
@@ -4378,7 +4352,7 @@ async def from_array(
         For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
         If not specified and the data array has the same zarr format as the target array,
         the chunk key encoding of the data array is used.
-    dimension_names : Iterable[str | None], optional
+    dimension_names : Iterable[str | None] | None
         The names of the dimensions (default is None).
         Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
         If not specified, defaults to the dimension names of the data array.
@@ -4553,46 +4527,40 @@ async def init_array(
         If not specified, default are guessed based on the shape and dtype.
     shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
-    filters : Iterable[Codec], optional
+    filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of ``ArrayArrayCodec``, or dict representations
-        of ``ArrayArrayCodec``.
-        If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_filters``
-        in [`zarr.config`][zarr.config].
-        Use ``None`` to omit default filters.
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
-        If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters``
-        in [`zarr.config`][zarr.config].
-        Use ``None`` to omit default filters.
-    compressors : Iterable[Codec], optional
+
+        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+        data types in Zarr V2, the default filters are empty. The only cases where default filters
+        are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+        the default filters contains a single element which is a codec specific to that particular data type.
+
+        To create an array with no filters, provide an empty iterable or the value ``None``.
+    compressors : Iterable[Codec] | Literal["auto"], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
 
-        For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
-        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
-        If no ``compressors`` are provided, a default set of compressors will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-        in [`zarr.config`][zarr.config].
-        Use ``None`` to omit default compressors.
+        The default value of ``"auto"`` instructs Zarr to use a default of [`zarr.codecs.ZstdCodec`][].
 
-        For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
-        be provided for Zarr format 2.
-        If no ``compressor`` is provided, a default compressor will be used.
-        in [`zarr.config`][zarr.config].
-        Use ``None`` to omit the default compressor.
-    serializer : dict[str, JSON] | ArrayBytesCodec, optional
+        To create an array with no compressors, provide an empty iterable or the value ``None``.
+    serializer : dict[str, JSON] | ArrayBytesCodec | Literal["auto"], optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no ``serializer`` is provided, a default serializer will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-        in [`zarr.config`][zarr.config].
+
+        The default value of ``"auto"`` instructs Zarr to use a default codec based on the data type of the array.
+        For most data types this default codec is [`zarr.codecs.BytesCodec`][].
+        For [`zarr.dtype.VariableLengthUTF8`][], the default codec is [`zarr.codecs.VlenUTF8Codec`][].
+        For [`zarr.dtype.VariableLengthBytes`][], the default codec is [`zarr.codecs.VlenBytesCodec`][].
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -4678,6 +4646,7 @@ async def init_array(
             order_parsed = zarr_config.get("array.order")
         else:
             order_parsed = order
+        chunk_key_encoding_parsed = cast("V2ChunkKeyEncoding", chunk_key_encoding_parsed)
 
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
@@ -4739,7 +4708,7 @@ async def init_array(
 
 
 async def create_array(
-    store: str | StoreLike,
+    store: StoreLike,
     *,
     name: str | None = None,
     shape: ShapeLike | None = None,
@@ -4765,41 +4734,42 @@ async def create_array(
 
     Parameters
     ----------
-    store : str or Store
+    store : StoreLike
         Store or path to directory in file system or name of zip file.
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    shape : tuple[int, ...], optional
-        Shape of the array. Can be ``None`` if ``data`` is provided.
+    shape : ShapeLike, optional
+        Shape of the array. Must be ``None`` if ``data`` is provided.
     dtype : ZDTypeLike | None
-        Data type of the array. Can be ``None`` if ``data`` is provided.
-    data : Array-like data to use for initializing the array. If this parameter is provided, the
-        ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
-        or ``None``.
-    chunks : tuple[int, ...], optional
+        Data type of the array. Must be ``None`` if ``data`` is provided.
+    data : np.ndarray, optional
+        Array-like data to use for initializing the array. If this parameter is provided, the
+        ``shape`` and ``dtype`` parameters must be ``None``.
+    chunks : tuple[int, ...] | Literal["auto"], default="auto"
         Chunk shape of the array.
-        If not specified, default are guessed based on the shape and dtype.
+        If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
     shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
-    filters : Iterable[Codec], optional
+    filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of ``ArrayArrayCodec``, or dict representations
-        of ``ArrayArrayCodec``.
-        If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_filters``
-        in [`zarr.config`][zarr.config].
-        Use ``None`` to omit default filters.
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
-        If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters``
-        in [`zarr.config`][zarr.config].
-        Use ``None`` to omit default filters.
+
+        The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+        type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+        data types in Zarr V2, the default filters are empty. The only cases where default filters
+        are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+        the default filters contains a single element which is a codec specific to that particular data type.
+
+        To create an array with no filters, provide an empty iterable or the value ``None``.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
@@ -4848,6 +4818,7 @@ async def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
+        If ``True``, all existing paths in the store will be deleted.
     config : ArrayConfigLike, optional
         Runtime configuration for the array.
     write_data : bool
@@ -5025,13 +4996,11 @@ def _parse_chunk_key_encoding(
     """
     if data is None:
         if zarr_format == 2:
-            result = ChunkKeyEncoding.from_dict({"name": "v2", "separator": "."})
+            data = {"name": "v2", "configuration": {"separator": "."}}
         else:
-            result = ChunkKeyEncoding.from_dict({"name": "default", "separator": "/"})
-    elif isinstance(data, ChunkKeyEncoding):
-        result = data
-    else:
-        result = ChunkKeyEncoding.from_dict(data)
+            data = {"name": "default", "configuration": {"separator": "/"}}
+    result = parse_chunk_key_encoding(data)
+
     if zarr_format == 2 and result.name != "v2":
         msg = (
             "Invalid chunk key encoding. For Zarr format 2 arrays, the `name` field of the "
@@ -5039,26 +5008,6 @@ def _parse_chunk_key_encoding(
         )
         raise ValueError(msg)
     return result
-
-
-def _get_default_chunk_encoding_v3(
-    dtype: ZDType[TBaseDType, TBaseScalar],
-) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
-    """
-    Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
-    """
-
-    dtype_category = categorize_data_type(dtype)
-
-    filters = zarr_config.get("array.v3_default_filters").get(dtype_category)
-    compressors = zarr_config.get("array.v3_default_compressors").get(dtype_category)
-    serializer = zarr_config.get("array.v3_default_serializer").get(dtype_category)
-
-    return (
-        tuple(_parse_array_array_codec(f) for f in filters),
-        _parse_array_bytes_codec(serializer),
-        tuple(_parse_bytes_bytes_codec(c) for c in compressors),
-    )
 
 
 def default_filters_v3(dtype: ZDType[Any, Any]) -> tuple[ArrayArrayCodec, ...]:

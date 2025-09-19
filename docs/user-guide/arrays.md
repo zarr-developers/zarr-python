@@ -534,7 +534,7 @@ print(z.blocks[2, 1:3])
 ```python exec="true" session="arrays" source="above" result="ansi"
 root = zarr.create_group('data/example-19.zarr')
 foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='float32')
-bar = root.create_array(name='foo/bar', shape=(100,), dtype='int32')
+bar = root.create_array(name='bar', shape=(100,), dtype='int32')
 foo[:, :] = np.random.random((1000, 100))
 bar[:] = np.arange(100)
 print(root.tree())
