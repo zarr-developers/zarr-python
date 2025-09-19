@@ -1797,6 +1797,7 @@ def test_multiprocessing(
     Test that arrays can be pickled and indexed in child processes
     """
     data = np.arange(100)
+    chunks: Literal["auto"] | tuple[int, ...]
     if shards is None:
         chunks = "auto"
     else:
