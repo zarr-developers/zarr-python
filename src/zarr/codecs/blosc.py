@@ -232,7 +232,7 @@ class BloscCodec(BytesBytesCodec):
                 clevel=data["clevel"],
                 shuffle=BLOSC_SHUFFLE[data["shuffle"]],
                 blocksize=data["blocksize"],
-                typesize=data.get("typesize", 1),
+                typesize=data.get("typesize"),
             )
         msg = (
             "Invalid Zarr V2 JSON representation of the blosc codec. "

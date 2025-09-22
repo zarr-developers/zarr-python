@@ -197,6 +197,44 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     raise TypeError  # pragma: no cover
 
 
+def v2_to_v3_codecs(metadata: ArrayV2Metadata) -> tuple[Codec | NumcodecWrapper, ...]:
+    """
+    Convert the filters and compressor from Zarr v2 to a Zarr-V3-compatible sequence of codecs.
+    """
+    codecs: tuple[Codec | NumcodecWrapper, ...] = ()
+    if metadata.filters is not None:
+        codecs += metadata.filters
+    if metadata.compressor is not None:
+        codecs += (metadata.compressor,)
+    if not any(isinstance(codec, ArrayBytesCodec) for codec in codecs) and not isinstance(
+        metadata.dtype, HasObjectCodec
+    ):
+        # The role filled by the ArrayBytesCodec was implicit in zarr v2. So a valid zarr v2-style
+        # chain of filters + compressor might not contain a codec identifiable as an array-bytes codec.
+        # In such a case, we will insert a bytes codec that applies no endian transformation.
+        # We skip this insertion if the data type is an instance of HasObjectCodec, because
+        # in zarr v2 these data types required a special codec that functioned like an array bytes codec.
+
+        # find the last array-array codec, if any
+        abc_idx = 0
+        for idx, codec in enumerate(codecs):
+            if isinstance(codec, ArrayArrayCodec):
+                abc_idx = idx + 1
+        if isinstance(metadata.dtype, HasEndianness):
+            out_endianness = metadata.dtype.endianness
+        else:
+            out_endianness = None
+        codecs = codecs[:abc_idx] + (BytesCodec(endian=out_endianness),) + codecs[abc_idx:]
+    if metadata.order == "F":
+        # Zarr V2 supports declaring the order of an array in metadata. Using the zarr v3 codec
+        # framework, we express C or F ordered arrays by adding a transpose codec to the front
+        # of the list of codecs.
+        codecs = (TransposeCodec(order=tuple(reversed(range(metadata.ndim)))),) + codecs
+        # We ignore this type check failure because we don't want to change the type signature
+        # of the from_codecs method yet.
+    return codecs
+
+
 def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None) -> CodecPipeline:
     if store is not None:
         try:
@@ -208,38 +246,8 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
 
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
-    elif isinstance(metadata, ArrayV2Metadata):
-        _codecs: tuple[Codec | NumcodecWrapper, ...] = ()
-        if metadata.filters is not None:
-            _codecs += metadata.filters
-        if metadata.compressor is not None:
-            _codecs += (metadata.compressor,)
-        if not any(isinstance(codec, ArrayBytesCodec) for codec in _codecs) and not isinstance(
-            metadata.dtype, HasObjectCodec
-        ):
-            # The role filled by the ArrayBytesCodec was implicit in zarr v2. So a valid zarr v2-style
-            # chain of filters + compressor might not contain a codec identifiable as an array-bytes codec.
-            # In such a case, we will insert a bytes codec that applies no endian transformation.
-            # We skip this insertion if the data type is an instance of HasObjectCodec, because
-            # in zarr v2 these data types required a special codec that functioned like an array bytes codec.
-
-            # find the last array-array codec, if any
-            abc_idx = 0
-            for idx, codec in enumerate(_codecs):
-                if isinstance(codec, ArrayArrayCodec):
-                    abc_idx = idx + 1
-            if isinstance(metadata.dtype, HasEndianness):
-                out_endianness = metadata.dtype.endianness
-            else:
-                out_endianness = None
-            _codecs = _codecs[:abc_idx] + (BytesCodec(endian=out_endianness),) + _codecs[abc_idx:]
-        if metadata.order == "F":
-            # Zarr V2 supports declaring the order of an array in metadata. Using the zarr v3 codec
-            # framework, we express C or F ordered arrays by adding a transpose codec to the front
-            # of the list of codecs.
-            _codecs = (TransposeCodec(order=tuple(reversed(range(metadata.ndim)))),) + _codecs
-            # We ignore this type check failure because we don't want to change the type signature
-            # of the from_codecs method yet.
+    else:
+        _codecs = v2_to_v3_codecs(metadata)
         return get_pipeline_class().from_codecs(_codecs)  # type: ignore[arg-type]
     raise TypeError  # pragma: no cover
 
