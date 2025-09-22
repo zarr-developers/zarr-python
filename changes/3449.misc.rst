@@ -1,1 +1,0 @@
-Publish nightly wheels to https://anaconda.org/scientific-python-nightly-wheels/.

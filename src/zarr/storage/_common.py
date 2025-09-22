@@ -435,7 +435,11 @@ def _is_fsspec_uri(uri: str) -> bool:
     return "://" in uri or ("::" in uri and "local://" not in uri)
 
 
-async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
+async def ensure_no_existing_node(
+    store_path: StorePath,
+    zarr_format: ZarrFormat,
+    node_type: Literal["array", "group"] | None = None,
+) -> None:
     """
     Check if a store_path is safe for array / group creation.
     Returns `None` or raises an exception.
@@ -446,6 +450,8 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
         The storage location to check.
     zarr_format : ZarrFormat
         The Zarr format to check.
+    node_type : str | None, optional
+        Raise an error if an "array", or "group" exists. By default (when None), raises an error for either.
 
     Raises
     ------
@@ -456,16 +462,23 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
     elif zarr_format == 3:
         extant_node = await _contains_node_v3(store_path)
 
-    if extant_node == "array":
-        msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
-        raise ContainsArrayError(msg)
-    elif extant_node == "group":
-        msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
-        raise ContainsGroupError(msg)
-    elif extant_node == "nothing":
-        return
-    msg = f"Invalid value for extant_node: {extant_node}"  # type: ignore[unreachable]
-    raise ValueError(msg)
+    match extant_node:
+        case "array":
+            if node_type != "group":
+                msg = f"An array exists in store {store_path.store!r} at path {store_path.path!r}."
+                raise ContainsArrayError(msg)
+
+        case "group":
+            if node_type != "array":
+                msg = f"A group exists in store {store_path.store!r} at path {store_path.path!r}."
+                raise ContainsGroupError(msg)
+
+        case "nothing":
+            return
+
+        case _:
+            msg = f"Invalid value for extant_node: {extant_node}"  # type: ignore[unreachable]
+            raise ValueError(msg)
 
 
 async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", "nothing"]:

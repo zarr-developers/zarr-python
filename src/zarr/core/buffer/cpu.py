@@ -86,7 +86,7 @@ class Buffer(core.Buffer):
         Parameters
         ----------
         bytes_like
-           bytes-like object
+            bytes-like object
 
         Returns
         -------

@@ -1,0 +1,5 @@
+---
+title: load
+---
+
+::: zarr.load
