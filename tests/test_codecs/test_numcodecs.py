@@ -12,14 +12,13 @@ from zarr import config, create_array, open_array
 from zarr.abc.numcodec import Numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
 from zarr.codecs._v2 import codec_json_v2_to_v3
-from zarr.core.common import CodecJSON
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr.core.common import CodecJSON_V2, ZarrFormat
+    from zarr.core.common import CodecJSON, CodecJSON_V2, ZarrFormat
 
 CODECS_WITH_SPECS: Final = ("zstd", "gzip", "blosc")
 
@@ -59,7 +58,7 @@ if TYPE_CHECKING:
 
 
 def test_get_numcodec() -> None:
-    assert get_numcodec({"id": "gzip", "level": 2}) == GZip(level=2)  # type: ignore[typeddict-unknown-key]
+    assert get_numcodec({"id": "gzip", "level": 2}) == GZip(level=2)
 
 
 def test_is_numcodec() -> None:
