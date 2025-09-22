@@ -53,7 +53,11 @@ StoreLike
 - a `Path` or string indicating a :ref:`local store <user-guide-local-store>` location e.g.:
 
   >>> zarr.open_group(store='data/foo/bar')
+  <Group file://data/foo/bar>
+  >>>
+  >>> from pathlib import Path
   >>> zarr.open_group(store=Path('data/foo/bar'))
+  <Group file://data/foo/bar>
 
 - an FSSpec URI string, indicating a :ref:`remote store <user-guide-remote-store>` location e.g.:
 
@@ -62,21 +66,21 @@ StoreLike
    ...    mode='r',
    ...    storage_options={'anon': True}
    ... )
+   <Group <FsspecStore(S3FileSystem, noaa-nwm-retro-v2-zarr-pds)>>
 
 - an empty dictionary or None, which will create a new :ref:`memory store <user-guide-memory-store>`:
 
    >>> zarr.create_group(store={})
+   <Group memory://...>
+   >>>
    >>> zarr.create_group(store=None)
+   <Group memory://...>
 
 - a dictionary of string to :class:`Buffer <zarr.abc.buffer.Buffer>` mappings, which
-  will create a :ref:`memory store <user-guide-memory-store>`:
-
-   >>> example?
+  will create a :ref:`memory store <user-guide-memory-store>`.
 
 - an FSSpec `FSMap object <https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.FSMap>`_,
-  which will create an :ref:`FsspecStore <user-guide-remote-store>`:
-
-  >>> example?
+  which will create an :ref:`FsspecStore <user-guide-remote-store>`.
 
 - a :class:`Store <zarr.abc.store.Store>` or :class:`StorePath <zarr.storage.StorePath>` -
   see explicit store creation below.
