@@ -130,8 +130,8 @@ class _LikeArgs(TypedDict):
     chunks: NotRequired[tuple[int, ...]]
     dtype: NotRequired[np.dtype[np.generic]]
     order: NotRequired[Literal["C", "F"]]
-    filters: NotRequired[tuple[Numcodec, ...] | None]
-    compressor: NotRequired[CompressorLike_V2]
+    filters: NotRequired[tuple[Codec, ...] | None]
+    compressor: NotRequired[Codec]
     codecs: NotRequired[tuple[Codec, ...]]
 
 
