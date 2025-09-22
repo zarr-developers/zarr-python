@@ -11,8 +11,9 @@ Zarr-Python 3, stores must implement the abstract store API from
 
 ## Implicit Store Creation
 
-In most cases, it is not required to create a `Store` object explicitly. Passing a string (or other StoreLike value LINK)
-to Zarr's top level API will result in the store being created automatically:
+In most cases, it is not required to create a `Store` object explicitly. Passing a string
+(or other [StoreLike value](#storelike)) to Zarr's top level API will result in the store
+being created automatically:
 
 ```python exec="true" session="storage" source="above" result="ansi"
 import zarr
@@ -43,21 +44,18 @@ print(group)
 
 `StoreLike` values can be:
 
-- a `Path` or string indicating a :ref:`local store <user-guide-local-store>` location e.g.:
-
+- a `Path` or string indicating a [local store](#local-store) location e.g.:
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.open_group(store='data/foo/bar')
    print(group)
    ```
-
    ```python exec="true" session="storage" source="above" result="ansi"
    from pathlib import Path
    group = zarr.open_group(store=Path('data/foo/bar'))
    print(group)
    ```
 
-- an FSSpec URI string, indicating a :ref:`remote store <user-guide-remote-store>` location e.g.:
-
+- an FSSpec URI string, indicating a [remote store](#remote-store) location e.g.:
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.open_group(
       store='s3://noaa-nwm-retro-v2-zarr-pds',
@@ -67,8 +65,7 @@ print(group)
    print(group)
    ```
 
-- an empty dictionary or None, which will create a new :ref:`memory store <user-guide-memory-store>`:
-
+- an empty dictionary or None, which will create a new [memory store](#memory-store):
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.create_group(store={})
    print(group)
@@ -78,13 +75,13 @@ print(group)
    print(group)
    ```
 
-- a dictionary of string to :class:`Buffer <zarr.abc.buffer.Buffer>` mappings, which
-  will create a :ref:`memory store <user-guide-memory-store>`.
+- a dictionary of string to [`Buffer`][zarr.abc.buffer.Buffer] mappings, which
+  will create a [memory store](#memory-store).
 
 - an FSSpec [FSMap object](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.FSMap),
-  which will create an :ref:`FsspecStore <user-guide-remote-store>`.
+  which will create an [FsspecStore](#remote-store).
 
-- a :class:`Store <zarr.abc.store.Store>` or :class:`StorePath <zarr.storage.StorePath>` -
+- a [`Store`][zarr.abc.store.Store] or [`StorePath`][zarr.storage.StorePath] -
   see explicit store creation below.
 
 ## Explicit Store Creation
