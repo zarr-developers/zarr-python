@@ -1,3 +1,0 @@
-Define Zarr V3-specific codecs from numcodecs inside this repo. These codecs can be found in
-:mod:`zarr.codecs.numcodecs`. This is necessary to resolve a circular dependency between Zarr
-and Numcodecs.

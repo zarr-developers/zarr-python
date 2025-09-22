@@ -183,7 +183,7 @@ def _iter_regions(
         The linear indexing order to use.
 
     Yields
-    -------
+    ------
 
     Iterator[tuple[slice, ...]]
         An iterator over tuples of slices, where each slice spans a separate contiguous region

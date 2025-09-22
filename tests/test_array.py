@@ -1247,11 +1247,11 @@ class TestCreateArray:
         chunk_key_encoding = ChunkKeyEncodingParams(name=name, separator=separator)  # type: ignore[typeddict-item]
         error_msg = ""
         if name == "invalid":
-            error_msg = "Unknown chunk key encoding."
+            error_msg = r'Unknown chunk key encoding: "Chunk key encoding \'invalid\' not found in registered chunk key encodings: \[.*\]."'
         if zarr_format == 2 and name == "default":
             error_msg = "Invalid chunk key encoding. For Zarr format 2 arrays, the `name` field of the chunk key encoding must be 'v2'."
         if error_msg:
-            with pytest.raises(ValueError, match=re.escape(error_msg)):
+            with pytest.raises(ValueError, match=error_msg):
                 arr = await create_array(
                     store=store,
                     dtype="uint8",
@@ -1792,12 +1792,20 @@ def _index_array(arr: Array, index: Any) -> Any:
     ],
 )
 @pytest.mark.parametrize("store", ["local"], indirect=True)
-def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkserver"]) -> None:
+@pytest.mark.parametrize("shards", [None, (20,)])
+def test_multiprocessing(
+    store: Store, method: Literal["fork", "spawn", "forkserver"], shards: tuple[int, ...] | None
+) -> None:
     """
     Test that arrays can be pickled and indexed in child processes
     """
     data = np.arange(100)
-    arr = zarr.create_array(store=store, data=data)
+    chunks: Literal["auto"] | tuple[int, ...]
+    if shards is None:
+        chunks = "auto"
+    else:
+        chunks = (1,)
+    arr = zarr.create_array(store=store, data=data, shards=shards, chunks=chunks)
     ctx = mp.get_context(method)
     with ctx.Pool() as pool:
         results = pool.starmap(_index_array, [(arr, slice(len(data)))])

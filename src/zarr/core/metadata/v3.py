@@ -24,7 +24,11 @@ from typing import Any, Literal
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
+from zarr.core.chunk_key_encodings import (
+    ChunkKeyEncoding,
+    ChunkKeyEncodingLike,
+    parse_chunk_key_encoding,
+)
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -176,7 +180,7 @@ class ArrayV3Metadata(Metadata):
 
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
-        chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
+        chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
         fill_value_parsed = data_type.cast_scalar(fill_value)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import zarr.codecs
 import zarr.storage
@@ -80,6 +80,91 @@ def test_create(memory_store: Store) -> None:
     # create array with float chunk shape
     with pytest.raises(TypeError):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "func",
+    [
+        zarr.api.asynchronous.zeros_like,
+        zarr.api.asynchronous.ones_like,
+        zarr.api.asynchronous.empty_like,
+        zarr.api.asynchronous.full_like,
+        zarr.api.asynchronous.open_like,
+    ],
+)
+@pytest.mark.parametrize("out_shape", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_chunks", ["keep", (10, 10)])
+@pytest.mark.parametrize("out_dtype", ["keep", "int8"])
+@pytest.mark.parametrize("out_fill", ["keep", 4])
+async def test_array_like_creation(
+    zarr_format: ZarrFormat,
+    func: Callable[[Any], Any],
+    out_shape: Literal["keep"] | tuple[int, ...],
+    out_chunks: Literal["keep"] | tuple[int, ...],
+    out_dtype: str,
+    out_fill: Literal["keep"] | int,
+) -> None:
+    """
+    Test zeros_like, ones_like, empty_like, full_like, ensuring that we can override the
+    shape, chunks, dtype and fill_value of the array-like object provided to these functions with
+    appropriate keyword arguments
+    """
+    ref_fill = 100
+    ref_arr = zarr.create_array(
+        store={},
+        shape=(11, 12),
+        dtype="uint8",
+        chunks=(11, 12),
+        zarr_format=zarr_format,
+        fill_value=ref_fill,
+    )
+    kwargs: dict[str, object] = {}
+    if func is zarr.api.asynchronous.full_like:
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            expect_fill = out_fill
+            kwargs["fill_value"] = expect_fill
+    elif func is zarr.api.asynchronous.zeros_like:
+        expect_fill = 0
+    elif func is zarr.api.asynchronous.ones_like:
+        expect_fill = 1
+    elif func is zarr.api.asynchronous.empty_like:
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            kwargs["fill_value"] = out_fill
+            expect_fill = out_fill
+    elif func is zarr.api.asynchronous.open_like:  # type: ignore[comparison-overlap]
+        if out_fill == "keep":
+            expect_fill = ref_fill
+        else:
+            kwargs["fill_value"] = out_fill
+            expect_fill = out_fill
+        kwargs["mode"] = "w"
+    else:
+        raise AssertionError
+    if out_shape != "keep":
+        kwargs["shape"] = out_shape
+        expect_shape = out_shape
+    else:
+        expect_shape = ref_arr.shape
+    if out_chunks != "keep":
+        kwargs["chunks"] = out_chunks
+        expect_chunks = out_chunks
+    else:
+        expect_chunks = ref_arr.chunks
+    if out_dtype != "keep":
+        kwargs["dtype"] = out_dtype
+        expect_dtype = out_dtype
+    else:
+        expect_dtype = ref_arr.dtype  # type: ignore[assignment]
+
+    new_arr = await func(ref_arr, path="foo", zarr_format=zarr_format, **kwargs)  # type: ignore[call-arg]
+    assert new_arr.shape == expect_shape
+    assert new_arr.chunks == expect_chunks
+    assert new_arr.dtype == expect_dtype
+    assert np.all(Array(new_arr)[:] == expect_fill)
 
 
 # TODO: parametrize over everything this function takes
