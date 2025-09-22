@@ -77,7 +77,7 @@ class ArrayV2Metadata(Metadata):
     order: MemoryOrder = "C"
     filters: tuple[Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: Codec | NumcodecWrapper | None = None
+    compressor: Codec | None = None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
