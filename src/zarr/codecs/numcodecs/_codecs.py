@@ -421,6 +421,9 @@ class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):
     async def _encode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
         return await asyncio.to_thread(self._encode, chunk_data, chunk_spec.prototype)
 
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        raise NotImplementedError
+
 
 class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
     async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
@@ -432,6 +435,9 @@ class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
         chunk_ndarray = chunk_data.as_ndarray_like()
         out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
         return chunk_spec.prototype.nd_buffer.from_ndarray_like(out)
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        raise NotImplementedError
 
 
 class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
@@ -447,6 +453,9 @@ class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
         chunk_ndarray = chunk_data.as_ndarray_like()
         out = await asyncio.to_thread(self._codec.encode, chunk_ndarray)
         return chunk_spec.prototype.buffer.from_bytes(out)
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        raise NotImplementedError
 
 
 # bytes-to-bytes codecs
@@ -474,9 +483,6 @@ class LZ4(_NumcodecsBytesBytesCodec):
     def to_json(self, zarr_format: ZarrFormat) -> LZ4JSON_V2 | LZ4JSON_V3:
         _warn_unstable_specification(self)
         return super().to_json(zarr_format)  # type: ignore[return-value]
-
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError
 
 
 class Zstd(_NumcodecsBytesBytesCodec):
@@ -566,9 +572,6 @@ class Shuffle(_NumcodecsBytesBytesCodec):
             return type(self)(**{**self.codec_config, "elementsize": dtype.itemsize})
         return self  # pragma: no cover
 
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError
-
 
 # array-to-array codecs ("filters")
 class Delta(_NumcodecsArrayArrayCodec):
@@ -595,9 +598,6 @@ class Delta(_NumcodecsArrayArrayCodec):
             return replace(chunk_spec, dtype=dtype)
         return chunk_spec
 
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError
-
 
 class BitRound(_NumcodecsArrayArrayCodec):
     codec_name = "numcodecs.bitround"
@@ -611,9 +611,6 @@ class BitRound(_NumcodecsArrayArrayCodec):
     def to_json(self, zarr_format: ZarrFormat) -> BitRoundJSON_V2 | BitRoundJSON_V3:
         _warn_unstable_specification(self)
         return super().to_json(zarr_format)  # type: ignore[return-value]
-
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError
 
 
 class FixedScaleOffset(_NumcodecsArrayArrayCodec):
@@ -641,9 +638,6 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec):
             return type(self)(**{**self.codec_config, "dtype": str(dtype)})
         return self
 
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError
-
 
 class Quantize(_NumcodecsArrayArrayCodec):
     codec_name = "numcodecs.quantize"
@@ -663,9 +657,6 @@ class Quantize(_NumcodecsArrayArrayCodec):
             dtype = array_spec.dtype.to_native_dtype()
             return type(self)(**{**self.codec_config, "dtype": str(dtype)})
         return self
-
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError
 
 
 class PackBits(_NumcodecsArrayArrayCodec):
@@ -696,9 +687,6 @@ class PackBits(_NumcodecsArrayArrayCodec):
         if _dtype != np.dtype("bool"):
             raise ValueError(f"Packbits filter requires bool dtype. Got {dtype}.")
 
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError
-
 
 class AsType(_NumcodecsArrayArrayCodec):
     codec_name = "numcodecs.astype"
@@ -723,9 +711,6 @@ class AsType(_NumcodecsArrayArrayCodec):
             dtype = array_spec.dtype.to_native_dtype()  # pragma: no cover
             return AsType(**{**self.codec_config, "decode_dtype": str(dtype)})  # pragma: no cover
         return self
-
-    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
-        raise NotImplementedError
 
 
 # bytes-to-bytes checksum codecs
