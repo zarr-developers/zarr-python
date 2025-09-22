@@ -267,6 +267,10 @@ def _parse_codec(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecWrapp
     """
     Resolve a potential codec.
     """
+
+    if _check_codecjson_v2(data) or _check_codecjson_v3(data):
+        return _parse_codec(get_codec(data), dtype=dtype)
+
     if isinstance(data, (Codec, NumcodecWrapper)):
         # TERRIBLE HACK
         # This is necessary because the Blosc codec defaults create a broken state.
@@ -291,9 +295,6 @@ def _parse_codec(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecWrapp
             # if we could not find a v3-api compatible version of this codec, wrap it
             # in a NumcodecsWrapper
             return NumcodecWrapper(codec=data)
-
-    if _check_codecjson_v2(data) or _check_codecjson_v3(data):
-        return get_codec(data)
 
     raise TypeError(
         f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of codec. Got {type(data)} instead."
