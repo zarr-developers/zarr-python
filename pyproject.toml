@@ -318,9 +318,9 @@ ignore = [
     "RET505",
     "RET506",
     "RUF005",
+    "RUF043",
     "SIM108",
     "TRY003",
-    "UP038",  # https://github.com/astral-sh/ruff/issues/7871
     # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
     "W191",
     "E111",
