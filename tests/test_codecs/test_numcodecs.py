@@ -12,7 +12,7 @@ from zarr import config, create_array, open_array
 from zarr.abc.numcodec import Numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
 from zarr.codecs._v2 import codec_json_v2_to_v3
-from zarr.core.common import CodecJSON, CodecJSON_V3
+from zarr.core.common import CodecJSON
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
@@ -490,6 +490,7 @@ def test_json_roundtrip_default_config(
     # Helper function to compare dictionaries with potential numpy arrays
 
     # Test serialization
+    expected_transformed: CodecJSON
     if zarr_format == 3:
         expected_transformed = codec_json_v2_to_v3(expected)
     else:
