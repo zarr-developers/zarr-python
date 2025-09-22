@@ -45,7 +45,8 @@ print(group)
 
 `StoreLike` values can be:
 
-- a `Path` or string indicating a [local store](#local-store) location e.g.:
+- a `Path` or string indicating a location on the local file system.
+  This will create a [local store](#local-store):
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.open_group(store='data/foo/bar')
    print(group)
@@ -56,7 +57,7 @@ print(group)
    print(group)
    ```
 
-- an FSSpec URI string, indicating a [remote store](#remote-store) location e.g.:
+- an FSSpec URI string, indicating a [remote store](#remote-store) location:
    ```python exec="true" session="storage" source="above" result="ansi"
    group = zarr.open_group(
       store='s3://noaa-nwm-retro-v2-zarr-pds',
@@ -76,8 +77,9 @@ print(group)
    print(group)
    ```
 
-- a dictionary of string to [`Buffer`][zarr.abc.buffer.Buffer] mappings, which
-  will create a [memory store](#memory-store).
+- a dictionary of string to [`Buffer`][zarr.abc.buffer.Buffer] mappings. This will
+  create a [memory store](#memory-store), using this dictionary as the
+  [`store_dict` argument][zarr.storage.MemoryStore].
 
 - an FSSpec [FSMap object](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.FSMap),
   which will create an [FsspecStore](#remote-store).
