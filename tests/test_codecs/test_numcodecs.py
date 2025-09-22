@@ -58,7 +58,7 @@ if TYPE_CHECKING:
 
 
 def test_get_numcodec() -> None:
-    assert get_numcodec({"id": "gzip", "level": 2}) == GZip(level=2)
+    assert get_numcodec({"id": "gzip", "level": 2}) == GZip(level=2)  # type: ignore[typeddict-unknown-key]
 
 
 def test_is_numcodec() -> None:
