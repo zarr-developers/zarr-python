@@ -199,7 +199,9 @@ async def consolidate_metadata(
     Parameters
     ----------
     store : StoreLike
-        The store-like object whose metadata you wish to consolidate.
+        The store-like object whose metadata you wish to consolidate. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     path : str, optional
         A path to a group in the store to consolidate at. Only children
         below that group will be consolidated.
@@ -293,7 +295,9 @@ async def load(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     path : str or None, optional
         The path within the store from which to load.
 
@@ -337,7 +341,9 @@ async def open(
     Parameters
     ----------
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -421,7 +427,9 @@ async def save(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
@@ -457,7 +465,9 @@ async def save_array(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     arr : ndarray
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
@@ -513,7 +523,9 @@ async def save_group(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
@@ -662,7 +674,9 @@ async def group(
     Parameters
     ----------
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
@@ -724,7 +738,9 @@ async def create_group(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     path : str, optional
         Group path within store.
     overwrite : bool, optional
@@ -780,17 +796,9 @@ async def open_group(
     Parameters
     ----------
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
-
-        Strings are interpreted as paths on the local file system
-        and used as the ``root`` argument to [zarr.storage.LocalStore][].
-
-        Dictionaries are used as the ``store_dict`` argument in
-        [zarr.storage.MemoryStore][].
-
-        By default (``store=None``) a new [zarr.storage.MemoryStore][]
-        is created.
-
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -805,7 +813,9 @@ async def open_group(
     path : str, optional
         Group path within store.
     chunk_store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        Separate storage for chunks. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
@@ -939,7 +949,9 @@ async def create(
         Memory layout to be used within each chunk.
         If not specified, the ``array.order`` parameter in the global config will be used.
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
@@ -1250,7 +1262,9 @@ async def open_array(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     zarr_version : {2, 3, None}, optional
         The zarr format to use when saving. Deprecated in favor of zarr_format.
     zarr_format : {2, 3, None}, optional
