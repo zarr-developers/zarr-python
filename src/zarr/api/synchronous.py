@@ -183,7 +183,8 @@ def open(
     Parameters
     ----------
     store : StoreLike or None, default=None
-        See the [`storage documentation in the user guide`][storelike]
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
         for a description of all valid StoreLike values.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means

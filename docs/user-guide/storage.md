@@ -40,6 +40,7 @@ group = zarr.create_group(store=data)
 print(group)
 ```
 
+[](){#user-guide-store-like}
 ### StoreLike
 
 `StoreLike` values can be:
