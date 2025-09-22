@@ -71,10 +71,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     """
 
     # this class will create a native data type
-    # mypy currently disallows class variables to contain type parameters
-    # but it seems OK for us to use it here:
-    # https://github.com/python/typing/discussions/1424#discussioncomment-7989934
-    dtype_cls: ClassVar[type[TDType_co]]  # type: ignore[misc]
+    dtype_cls: ClassVar[type[TDType_co]]
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
