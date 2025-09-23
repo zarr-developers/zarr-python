@@ -58,6 +58,9 @@ DATETIME_UNIT: Final = (
 IntishFloat = NewType("IntishFloat", float)
 """A type for floats that represent integers, like 1.0 (but not 1.1)."""
 
+IntishStr = NewType("IntishStr", str)
+"""A type for strings that represent integers, like "0" or "42"."""
+
 NumpyEndiannessStr = Literal[">", "<", "="]
 NUMPY_ENDIANNESS_STR: Final = ">", "<", "="
 
@@ -486,6 +489,31 @@ def check_json_intish_float(data: JSON) -> TypeGuard[IntishFloat]:
         True if the data is an intish float, False otherwise.
     """
     return isinstance(data, float) and data.is_integer()
+
+
+def check_json_intish_str(data: JSON) -> TypeGuard[IntishStr]:
+    """
+    Check if a JSON value is a string that represents an integer, like "0", "42", or "-5".
+
+    Parameters
+    ----------
+    data : JSON
+        The JSON value to check.
+
+    Returns
+    -------
+    bool
+        True if the data is a string representing an integer, False otherwise.
+    """
+    if not isinstance(data, str):
+        return False
+
+    try:
+        int(data)
+    except ValueError:
+        return False
+    else:
+        return True
 
 
 def check_json_str(data: JSON) -> TypeGuard[str]:
