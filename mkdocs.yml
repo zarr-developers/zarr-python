@@ -62,30 +62,26 @@ theme:
   language: en
   name: material
   custom_dir: docs/overrides
-  logo: _static/logo_horizontal.svg
-  palette:
-    # Palette toggle for automatic mode
-    - media: "(prefers-color-scheme)"
-      toggle:
-        icon: material/brightness-auto
-        name: Switch to light mode
+  logo: _static/logo_bw.png
 
-    # Palette toggle for light mode
+  palette:
+    # Light mode
     - media: "(prefers-color-scheme: light)"
-      primary: blue grey
-      accent: pink
+      scheme: default
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
 
-    # Palette toggle for dark mode
+    # Dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: grey
-      accent: pink
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
-        name: Switch to system preference
+        name: Switch to light mode
 
   font:
     text: Roboto
@@ -111,6 +107,7 @@ extra_css:
   - overrides/stylesheets/extra.css
 
 plugins:
+  - autorefs
   - search
   - markdown-exec
   - mkdocstrings:

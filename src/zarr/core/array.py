@@ -509,7 +509,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Parameters
         ----------
         store : StoreLike
-            The store where the array will be created.
+            The store where the array will be created. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
         shape : ShapeLike
             The shape of the array.
         dtype : ZDTypeLike
@@ -972,7 +974,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Parameters
         ----------
         store : StoreLike
-            The store containing the Zarr array.
+            The store containing the Zarr array. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
         zarr_format : ZarrFormat | None, optional
             The Zarr format version (default is 3).
 
@@ -2039,7 +2043,9 @@ class Array:
         Parameters
         ----------
         store : StoreLike
-            The array store that has already been initialized.
+            The array store that has already been initialized. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
         shape : tuple[int, ...]
             The shape of the array.
         dtype : ZDTypeLike
@@ -2239,7 +2245,9 @@ class Array:
         Parameters
         ----------
         store : StoreLike
-            Store containing the Array.
+            Store containing the Array. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
 
         Returns
         -------
@@ -4257,7 +4265,9 @@ async def from_array(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     data : Array | array-like
         The array to copy.
     write_data : bool, default True
@@ -4741,7 +4751,9 @@ async def create_array(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
