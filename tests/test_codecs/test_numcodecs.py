@@ -13,7 +13,7 @@ from zarr.abc.numcodec import Numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
 from zarr.codecs._v2 import codec_json_v2_to_v3
 from zarr.errors import ZarrUserWarning
-from zarr.registry import get_numcodec
+from zarr.registry import get_codec_class, get_numcodec
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -81,10 +81,15 @@ EXPECTED_WARNING_STR = (
 
 ALL_CODECS = tuple(
     filter(
-        lambda v: isinstance(v, _numcodecs._NumcodecsCodec),
+        lambda v: issubclass(v, _numcodecs._NumcodecsCodec) and hasattr(v, "codec_name"),
         tuple(getattr(_numcodecs, cls_name) for cls_name in _numcodecs.__all__),
     )
 )
+
+
+@pytest.mark.parametrize("codec_cls", ALL_CODECS)
+def test_get_codec_class(codec_cls: type[_numcodecs._NumcodecsCodec]) -> None:
+    assert get_codec_class(codec_cls.codec_name) == codec_cls  # type: ignore[comparison-overlap]
 
 
 @pytest.mark.parametrize("codec_class", ALL_CODECS)
@@ -92,7 +97,7 @@ def test_docstring(codec_class: type[_numcodecs._NumcodecsCodec]) -> None:
     """
     Test that the docstring for the zarr.numcodecs codecs references the wrapped numcodecs class.
     """
-    assert "See :class:`numcodecs." in codec_class.__doc__  # type: ignore[operator]
+    assert "See [numcodecs." in codec_class.__doc__  # type: ignore[operator]
 
 
 @pytest.mark.parametrize(

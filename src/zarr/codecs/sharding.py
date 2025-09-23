@@ -570,7 +570,8 @@ class ShardingCodec(
             )
         ):
             raise ValueError(
-                "The array's `chunk_shape` needs to be divisible by the shard's inner `chunk_shape`."
+                f"The array's `chunk_shape` (got {chunk_grid.chunk_shape}) "
+                f"needs to be divisible by the shard's inner `chunk_shape` (got {self.chunk_shape})."
             )
 
     async def _decode_single(
