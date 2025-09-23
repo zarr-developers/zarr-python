@@ -85,7 +85,7 @@ register_codec("numcodecs.gzip", GZip, qualname="zarr.codecs.numcodecs.GZip")
 register_codec(
     "numcodecs.jenkins_lookup3", JenkinsLookup3, qualname="zarr.codecs.numcodecs.JenkinsLookup3"
 )
-register_codec("numcodecs.pcodec", PCodec, qualname="zarr.codecs.numcodecs.pcodec")
+register_codec("numcodecs.pcodec", PCodec, qualname="zarr.codecs.numcodecs.PCodec")
 register_codec("numcodecs.packbits", PackBits, qualname="zarr.codecs.numcodecs.PackBits")
 register_codec("numcodecs.quantize", Quantize, qualname="zarr.codecs.numcodecs.Quantize")
 register_codec("numcodecs.shuffle", Shuffle, qualname="zarr.codecs.numcodecs.Shuffle")
