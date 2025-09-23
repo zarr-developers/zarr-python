@@ -12,7 +12,8 @@ Zarr-Python 3, stores must implement the abstract store API from
 ## Implicit Store Creation
 
 In most cases, it is not required to create a `Store` object explicitly. Passing a string
-to Zarr's top level API will result in the store being created automatically:
+(or other [StoreLike value](#storelike)) to Zarr's top level API will result in the store
+being created automatically:
 
 ```python exec="true" session="storage" source="above" result="ansi"
 import zarr
@@ -38,6 +39,53 @@ data = {}
 group = zarr.create_group(store=data)
 print(group)
 ```
+
+[](){#user-guide-store-like}
+### StoreLike
+
+`StoreLike` values can be:
+
+- a `Path` or string indicating a location on the local file system.
+  This will create a [local store](#local-store):
+   ```python exec="true" session="storage" source="above" result="ansi"
+   group = zarr.open_group(store='data/foo/bar')
+   print(group)
+   ```
+   ```python exec="true" session="storage" source="above" result="ansi"
+   from pathlib import Path
+   group = zarr.open_group(store=Path('data/foo/bar'))
+   print(group)
+   ```
+
+- an FSSpec URI string, indicating a [remote store](#remote-store) location:
+   ```python exec="true" session="storage" source="above" result="ansi"
+   group = zarr.open_group(
+      store='s3://noaa-nwm-retro-v2-zarr-pds',
+      mode='r',
+      storage_options={'anon': True}
+   )
+   print(group)
+   ```
+
+- an empty dictionary or None, which will create a new [memory store](#memory-store):
+   ```python exec="true" session="storage" source="above" result="ansi"
+   group = zarr.create_group(store={})
+   print(group)
+   ```
+   ```python exec="true" session="storage" source="above" result="ansi"
+   group = zarr.create_group(store=None)
+   print(group)
+   ```
+
+- a dictionary of string to [`Buffer`][zarr.abc.buffer.Buffer] mappings. This will
+  create a [memory store](#memory-store), using this dictionary as the
+  [`store_dict` argument][zarr.storage.MemoryStore].
+
+- an FSSpec [FSMap object](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.FSMap),
+  which will create an [FsspecStore](#remote-store).
+
+- a [`Store`][zarr.abc.store.Store] or [`StorePath`][zarr.storage.StorePath] -
+  see explicit store creation below.
 
 ## Explicit Store Creation
 
