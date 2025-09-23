@@ -86,7 +86,6 @@ test = [
     "tomlkit",
     "uv",
     "pcodec",
-    "zfpy",
 ]
 remote_tests = [
     'zarr[remote]',
