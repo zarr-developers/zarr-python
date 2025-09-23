@@ -107,6 +107,7 @@ extra_css:
   - overrides/stylesheets/extra.css
 
 plugins:
+  - autorefs
   - search
   - markdown-exec
   - mkdocstrings:
