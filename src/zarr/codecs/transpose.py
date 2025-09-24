@@ -49,7 +49,7 @@ class TransposeJSON_V3(NamedRequiredConfig[Literal["transpose"], TransposeConfig
 def check_json_v2(data: object) -> TypeGuard[TransposeJSON_V2]:
     return (
         isinstance(data, Mapping)
-        and set(data.keys()) == {"id", "configuration"}
+        and set(data.keys()) == {"id", "order"}
         and data["id"] == "transpose"
         and isinstance(data["order"], Sequence)
         and not isinstance(data["order"], str)

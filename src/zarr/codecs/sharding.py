@@ -132,14 +132,19 @@ def parse_index_location(data: object) -> ShardingCodecIndexLocation:
 
 
 def check_json_v2(data: object) -> TypeGuard[ShardingJSON_V2]:
+    required_keys = {"id", "codecs", "chunk_shape", "index_codecs"}
+    optional_keys = {"index_location"}
     return (
         isinstance(data, Mapping)
-        and set(data.keys()) == {"id", "codecs", "chunk_shape"}
+        and required_keys.issubset(set(data.keys()))
+        and set(data.keys()).issubset(required_keys | optional_keys)
         and data["id"] == "sharding_indexed"
         and isinstance(data["chunk_shape"], Sequence)
         and not isinstance(data["chunk_shape"], str)
         and isinstance(data["codecs"], Sequence)
         and not isinstance(data["codecs"], str)
+        and isinstance(data["index_codecs"], Sequence)
+        and not isinstance(data["index_codecs"], str)
     )
 
 

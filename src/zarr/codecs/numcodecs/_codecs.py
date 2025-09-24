@@ -460,6 +460,12 @@ class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
 
 # bytes-to-bytes codecs
 class Blosc(_NumcodecsBytesBytesCodec):
+    """
+    A legacy wrapper used to provide a Zarr V3 API for the numcodecs blosc codec.
+
+    Use `zarr.codecs.blosc.BloscCodec` instead.
+    """
+
     codec_name = "numcodecs.blosc"
     _codec_id = "blosc"
 
@@ -486,6 +492,12 @@ class LZ4(_NumcodecsBytesBytesCodec):
 
 
 class Zstd(_NumcodecsBytesBytesCodec):
+    """
+    A legacy wrapper used to provide a Zarr V3 API for the numcodecs zstd codec.
+
+    Use `zarr.codecs.zstd.ZStdCodec` instead.
+    """
+
     codec_name = "numcodecs.zstd"
     _codec_id = "zstd"
     codec_config: ZstdConfig_V3
@@ -513,6 +525,12 @@ class Zlib(_NumcodecsBytesBytesCodec):
 
 
 class GZip(_NumcodecsBytesBytesCodec):
+    """
+    A legacy wrapper used to provide a Zarr V3 API for the numcodecs gzip codec.
+
+    Use `zarr.codecs.gzip.GzipCodec` instead.
+    """
+
     codec_name = "numcodecs.gzip"
     _codec_id = "gzip"
     codec_config: GZipConfig
