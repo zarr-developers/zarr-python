@@ -31,15 +31,27 @@ class TestZstdCodec(BaseTestCodec):
         },
     )
 
+    def test_checksum_removed(self) -> None:
+        """
+        Test that the checksum field is not serialized to Zarr V2 JSON
+        """
+        codec = self.test_cls(checksum=False)
+        assert "checksum" not in codec.to_json(zarr_format=2)
+
 
 @pytest.mark.parametrize("level", [1, 5, 9])
 @pytest.mark.parametrize("checksum", [True, False])
 def test_json(level: int, checksum: bool) -> None:
     codec = ZstdCodec(level=level, checksum=checksum)
-    expected_v2: ZstdJSON_V2 = {
-        "id": "zstd",
-        "level": level,
-    }
+    expected_v2: ZstdJSON_V2
+
+    if checksum:
+        expected_v2 = {"id": "zstd", "level": level, "checksum": True}
+    else:
+        expected_v2 = {
+            "id": "zstd",
+            "level": level,
+        }
     expected_v3: ZstdJSON_V3 = {
         "name": "zstd",
         "configuration": {"level": level, "checksum": checksum},

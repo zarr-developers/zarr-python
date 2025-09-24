@@ -75,6 +75,7 @@ if TYPE_CHECKING:
     from zarr.codecs.zstd import ZstdConfig_V3, ZstdJSON_V2, ZstdJSON_V3
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+    from zarr.core.dtype.common import DTypeSpec_V2, DTypeSpec_V3
 
 
 # TypedDict definitions for V2 and V3 JSON representations
@@ -154,21 +155,32 @@ class ShuffleJSON_V3(NamedRequiredConfig[Literal["shuffle"], ShuffleConfig]):
     """JSON representation of Shuffle codec for Zarr V3."""
 
 
-# Array-to-array codec configuration classes
-class DeltaConfig(TypedDict):
-    dtype: str
-    astype: str
+class DeltaConfig_V2(TypedDict):
+    dtype: DTypeSpec_V2
+    astype: DTypeSpec_V2
+
+
+class DeltaConfig_V3(TypedDict):
+    dtype: DTypeSpec_V3
+    astype: DTypeSpec_V3
 
 
 class BitRoundConfig(TypedDict):
     keepbits: int
 
 
-class FixedScaleOffsetConfig(TypedDict):
-    dtype: NotRequired[str]
+class FixedScaleOffsetConfig_V2(TypedDict):
+    dtype: NotRequired[DTypeSpec_V2]
+    astype: NotRequired[DTypeSpec_V2]
     scale: NotRequired[float]
     offset: NotRequired[float]
-    astype: NotRequired[str]
+
+
+class FixedScaleOffsetConfig_V3(TypedDict):
+    dtype: NotRequired[DTypeSpec_V3]
+    astype: NotRequired[DTypeSpec_V2]
+    scale: NotRequired[float]
+    offset: NotRequired[float]
 
 
 class QuantizeConfig(TypedDict):
@@ -186,13 +198,13 @@ class AsTypeConfig(TypedDict):
 
 
 # Array-to-array codec JSON representations
-class DeltaJSON_V2(DeltaConfig):
+class DeltaJSON_V2(DeltaConfig_V2):
     """JSON representation of Delta codec for Zarr V2."""
 
     id: ReadOnly[Literal["delta"]]
 
 
-class DeltaJSON_V3(NamedRequiredConfig[Literal["delta"], DeltaConfig]):
+class DeltaJSON_V3(NamedRequiredConfig[Literal["delta"], DeltaConfig_V3]):
     """JSON representation of Delta codec for Zarr V3."""
 
 
@@ -206,14 +218,14 @@ class BitRoundJSON_V3(NamedRequiredConfig[Literal["bitround"], BitRoundConfig]):
     """JSON representation of BitRound codec for Zarr V3."""
 
 
-class FixedScaleOffsetJSON_V2(FixedScaleOffsetConfig):
+class FixedScaleOffsetJSON_V2(FixedScaleOffsetConfig_V2):
     """JSON representation of FixedScaleOffset codec for Zarr V2."""
 
     id: ReadOnly[Literal["fixedscaleoffset"]]
 
 
 class FixedScaleOffsetJSON_V3(
-    NamedRequiredConfig[Literal["fixedscaleoffset"], FixedScaleOffsetConfig]
+    NamedRequiredConfig[Literal["fixedscaleoffset"], FixedScaleOffsetConfig_V3]
 ):
     """JSON representation of FixedScaleOffset codec for Zarr V3."""
 
@@ -507,7 +519,11 @@ class Zstd(_NumcodecsBytesBytesCodec):
     @overload
     def to_json(self, zarr_format: Literal[3]) -> ZstdJSON_V3: ...
     def to_json(self, zarr_format: ZarrFormat) -> ZstdJSON_V2 | ZstdJSON_V3:
-        return super().to_json(zarr_format)  # type: ignore[return-value]
+        res = super().to_json(zarr_format)
+        if zarr_format == 2 and not res.get("checksum", False):  # type: ignore[union-attr]
+            # https://github.com/zarr-developers/zarr-python/pull/2655
+            res.pop("checksum")  # type: ignore[union-attr, typeddict-item]
+        return res  # type: ignore[return-value]
 
 
 class Zlib(_NumcodecsBytesBytesCodec):
@@ -595,7 +611,7 @@ class Shuffle(_NumcodecsBytesBytesCodec):
 class Delta(_NumcodecsArrayArrayCodec):
     codec_name = "numcodecs.delta"
     _codec_id = "delta"
-    codec_config: DeltaConfig
+    codec_config: DeltaConfig_V2 | DeltaConfig_V3
 
     def __init__(self, **codec_config: Any) -> None:
         if "codec_config" in codec_config:
@@ -612,7 +628,7 @@ class Delta(_NumcodecsArrayArrayCodec):
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         if astype := self.codec_config.get("astype"):
-            dtype = parse_dtype(np.dtype(astype), zarr_format=3)
+            dtype = parse_dtype(np.dtype(astype), zarr_format=3)  # type: ignore[arg-type]
             return replace(chunk_spec, dtype=dtype)
         return chunk_spec
 
@@ -634,7 +650,7 @@ class BitRound(_NumcodecsArrayArrayCodec):
 class FixedScaleOffset(_NumcodecsArrayArrayCodec):
     codec_name = "numcodecs.fixedscaleoffset"
     _codec_id = "fixedscaleoffset"
-    codec_config: FixedScaleOffsetConfig
+    codec_config: FixedScaleOffsetConfig_V2
 
     @overload
     def to_json(self, zarr_format: Literal[2]) -> FixedScaleOffsetJSON_V2: ...
@@ -646,7 +662,7 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec):
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         if astype := self.codec_config.get("astype"):
-            dtype = parse_dtype(np.dtype(astype), zarr_format=3)
+            dtype = parse_dtype(np.dtype(astype), zarr_format=3)  # type: ignore[arg-type]
             return replace(chunk_spec, dtype=dtype)
         return chunk_spec
 

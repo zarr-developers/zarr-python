@@ -253,7 +253,6 @@ def test_generic_filter_packbits() -> None:
     "codec_class",
     [
         _numcodecs.CRC32,
-        _numcodecs.CRC32C,
         _numcodecs.Adler32,
         _numcodecs.Fletcher32,
         _numcodecs.JenkinsLookup3,

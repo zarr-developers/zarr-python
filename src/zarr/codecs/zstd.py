@@ -4,7 +4,7 @@ import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, cast, overload
+from typing import TYPE_CHECKING, Literal, NotRequired, Self, TypedDict, TypeGuard, cast, overload
 
 import numcodecs
 from numcodecs.zstd import Zstd
@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
 class ZstdConfig_V2(TypedDict):
     level: int
+    checksum: NotRequired[Literal[True]]
 
 
 class ZstdConfig_V3(TypedDict):
@@ -104,7 +105,7 @@ class ZstdCodec(BytesBytesCodec):
     def _from_json_v2(cls, data: CodecJSON) -> Self:
         if check_json_v2(data):
             if "checksum" in data:
-                return cls(level=data["level"], checksum=data["checksum"])  # type: ignore[typeddict-item]
+                return cls(level=data["level"], checksum=data["checksum"])
             else:
                 return cls(level=data["level"])
 
@@ -138,7 +139,10 @@ class ZstdCodec(BytesBytesCodec):
 
     def to_json(self, zarr_format: ZarrFormat) -> ZstdJSON_V2 | ZstdJSON_V3:
         if zarr_format == 2:
-            return {"id": "zstd", "level": self.level}
+            if self.checksum is True:
+                return {"id": "zstd", "level": self.level, "checksum": self.checksum}
+            else:
+                return {"id": "zstd", "level": self.level}
         else:
             return {
                 "name": "zstd",

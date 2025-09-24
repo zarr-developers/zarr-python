@@ -15,7 +15,6 @@ from zarr.abc.codec import (
 from zarr.core.common import (
     CodecJSON,
     CodecJSON_V2,
-    CodecJSON_V3,
     _check_codecjson_v2,
     _check_codecjson_v3,
 )
@@ -30,26 +29,6 @@ if TYPE_CHECKING:
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import BaseConfig, NamedConfig, ZarrFormat
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-
-
-def codec_json_v2_to_v3(data: CodecJSON_V2) -> CodecJSON_V3:
-    """
-    Convert V2 codec JSON to V3 codec JSON
-    """
-    name = data["id"]
-    config = {k: v for k, v in data.items() if k != "id"}
-    return {"name": name, "configuration": config}
-
-
-def codec_json_v3_to_v2(data: CodecJSON_V3) -> CodecJSON_V2:
-    """
-    Convert V3 codec JSON to V2 codec JSON
-    """
-    if isinstance(data, str):
-        return {"id": data}
-    name = data["name"]
-    config = dict(data.get("configuration", {}))
-    return {"id": name, **config}  # type: ignore[typeddict-item]
 
 
 @dataclass(frozen=True)
@@ -168,8 +147,12 @@ class NumcodecWrapper:
     @classmethod
     def _from_json_v3(cls, data: CodecJSON) -> Self:
         if _check_codecjson_v3(data):
-            # convert to a v2 codec JSON
-            codec = get_numcodec(codec_json_v3_to_v2(data))
+            request: CodecJSON_V2
+            if isinstance(data, str):
+                request = {"id": data}
+            else:
+                request = {"id": data["name"], **data["configuration"]}  # type: ignore[typeddict-item]
+            codec = get_numcodec(request)
             return cls(codec=codec)
         msg = (
             "Invalid Zarr V3 JSON representation of a codec. "

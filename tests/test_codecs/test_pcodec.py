@@ -3,7 +3,6 @@ import pytest
 
 from tests.test_codecs.conftest import BaseTestCodec
 from tests.test_codecs.test_numcodecs import EXPECTED_WARNING_STR, compare_json_dicts
-from zarr.codecs._v2 import codec_json_v2_to_v3
 from zarr.codecs.numcodecs import _NumcodecsArrayBytesCodec, _NumcodecsCodec
 from zarr.codecs.numcodecs._codecs import PCodec
 from zarr.core.array import create_array
@@ -52,7 +51,10 @@ def test_json_roundtrip_default_config(
     # Test serialization
     expected_transformed: CodecJSON
     if zarr_format == 3:
-        expected_transformed = codec_json_v2_to_v3(expected)
+        expected_transformed = {
+            "name": expected["id"],
+            "configuration": {k: v for k, v in expected.items() if k != "id"},
+        }
     else:
         expected_transformed = expected
 

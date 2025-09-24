@@ -9,18 +9,13 @@ from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec
 from zarr.codecs._v2 import NumcodecWrapper
-from zarr.codecs.blosc import BloscCodec
-from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.common import (
     CodecJSON_V2,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
 )
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS
 from zarr.errors import ZarrUserWarning
-from zarr.registry import get_codec
 
 if TYPE_CHECKING:
     from typing import Literal, Self
@@ -52,7 +47,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
-from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata.common import _parse_codec, parse_attributes
 
 
 class ArrayV2MetadataDict(TypedDict):
@@ -263,44 +258,6 @@ def parse_zarr_format(data: object) -> Literal[2]:
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def _parse_codec(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecWrapper:
-    """
-    Resolve a potential codec.
-    """
-
-    if _check_codecjson_v2(data) or _check_codecjson_v3(data):
-        return _parse_codec(get_codec(data), dtype=dtype)
-
-    if isinstance(data, (Codec, NumcodecWrapper)):
-        # TERRIBLE HACK
-        # This is necessary because the Blosc codec defaults create a broken state.
-        # We need to provide dtype information here to convert a potentially broken blosc codec to a valid one
-        if isinstance(data, BloscCodec):
-            return data.evolve_from_array_spec(
-                ArraySpec(
-                    shape=(1,),
-                    dtype=dtype,
-                    fill_value=None,
-                    config=ArrayConfig.from_dict({}),
-                    prototype=default_buffer_prototype(),
-                )
-            )
-        return data
-
-    if isinstance(data, Numcodec):
-        try:
-            # attempt to get a v3-api compatible version of this codec from the registry
-            return get_codec(data.get_config())
-        except KeyError:
-            # if we could not find a v3-api compatible version of this codec, wrap it
-            # in a NumcodecsWrapper
-            return NumcodecWrapper(codec=data)
-
-    raise TypeError(
-        f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of codec. Got {type(data)} instead."
-    )
-
-
 def parse_filters(
     data: object, dtype: ZDType[Any, Any]
 ) -> tuple[Codec | NumcodecWrapper, ...] | None:
@@ -312,8 +269,8 @@ def parse_filters(
     if data is None:
         return data
     if not isinstance(data, Iterable):
-        return (_parse_codec(data, dtype),)
-    out = [(_parse_codec(val, dtype)) for val in data]
+        return (_parse_codec(data, dtype=dtype),)
+    out = [(_parse_codec(val, dtype=dtype)) for val in data]
     if len(out) == 0:
         # Per the v2 spec, an empty tuple is not allowed -- use None to express "no filters"
         return None
@@ -329,7 +286,7 @@ def parse_compressor(data: object, dtype: ZDType[Any, Any]) -> Codec | NumcodecW
     # and again when constructing metadata
     if data is None:
         return data
-    return _parse_codec(data, dtype)
+    return _parse_codec(data, dtype=dtype)
 
 
 def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
