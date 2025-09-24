@@ -61,6 +61,9 @@ IntishFloat = NewType("IntishFloat", float)
 IntishStr = NewType("IntishStr", str)
 """A type for strings that represent integers, like "0" or "42"."""
 
+FloatishStr = NewType("FloatishStr", str)
+"""A type for strings that represent floats, like "3.14" or "-2.5"."""
+
 NumpyEndiannessStr = Literal[">", "<", "="]
 NUMPY_ENDIANNESS_STR: Final = ">", "<", "="
 
@@ -510,6 +513,34 @@ def check_json_intish_str(data: JSON) -> TypeGuard[IntishStr]:
 
     try:
         int(data)
+    except ValueError:
+        return False
+    else:
+        return True
+
+
+def check_json_floatish_str(data: JSON) -> TypeGuard[FloatishStr]:
+    """
+    Check if a JSON value is a string that represents a float, like "3.14", "-2.5", or "0.0".
+
+    Note: This function is intended to be used AFTER check_json_float_v2/v3, so it only
+    handles regular string representations that those functions don't cover.
+
+    Parameters
+    ----------
+    data : JSON
+        The JSON value to check.
+
+    Returns
+    -------
+    bool
+        True if the data is a string representing a regular float, False otherwise.
+    """
+    if not isinstance(data, str):
+        return False
+
+    try:
+        float(data)
     except ValueError:
         return False
     else:
