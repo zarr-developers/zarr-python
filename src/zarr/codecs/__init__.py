@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zarr.codecs.blosc import BloscCname, BloscCname_lit, BloscCodec, BloscShuffle, BloscShuffle_lit
+from zarr.codecs.blosc import BloscCname, BloscCname_Lit, BloscCodec, BloscShuffle, BloscShuffle_Lit
 from zarr.codecs.bytes import BytesCodec, Endian
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
@@ -31,10 +31,10 @@ from zarr.registry import register_codec
 
 __all__ = [
     "BloscCname",
-    "BloscCname_lit",
+    "BloscCname_Lit",
     "BloscCodec",
     "BloscShuffle",
-    "BloscShuffle_lit",
+    "BloscShuffle_Lit",
     "BytesCodec",
     "Crc32cCodec",
     "Endian",

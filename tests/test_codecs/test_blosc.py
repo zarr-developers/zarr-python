@@ -11,10 +11,10 @@ from zarr.codecs import BloscCodec
 from zarr.codecs.blosc import (
     BLOSC_CNAME,
     BLOSC_SHUFFLE,
-    BloscCname_lit,
+    BloscCname_Lit,
     BloscJSON_V2,
     BloscJSON_V3,
-    BloscShuffle_lit,
+    BloscShuffle_Lit,
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import StorePath
@@ -26,7 +26,7 @@ from zarr.storage import StorePath
 @pytest.mark.parametrize("blocksize", [1, 2])
 @pytest.mark.parametrize("typesize", [1, 2])
 def test_to_json_v2(
-    cname: BloscCname_lit, shuffle: BloscShuffle_lit, clevel: int, blocksize: int, typesize: int
+    cname: BloscCname_Lit, shuffle: BloscShuffle_Lit, clevel: int, blocksize: int, typesize: int
 ) -> None:
     codec = BloscCodec(
         shuffle=shuffle, cname=cname, clevel=clevel, blocksize=blocksize, typesize=typesize

@@ -67,18 +67,18 @@ class BloscCname(Enum):
 
 
 # TODO: Rename this when we retire the enums
-BloscShuffle_lit = Literal["noshuffle", "shuffle", "bitshuffle"]
+BloscShuffle_Lit = Literal["noshuffle", "shuffle", "bitshuffle"]
 """The names of the shuffle options used by the blosc codec."""
 BLOSC_SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
 
 # TODO: rename this when we retire the enums
-BloscCname_lit = Literal["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"]
+BloscCname_Lit = Literal["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"]
 """The names of the compression libraries used by the blosc codec"""
 BLOSC_CNAME: Final = ("lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib")
 
 
 class BloscConfigV2(TypedDict):
-    cname: BloscCname_lit
+    cname: BloscCname_Lit
     clevel: int
     shuffle: int
     blocksize: int
@@ -86,9 +86,9 @@ class BloscConfigV2(TypedDict):
 
 
 class BloscConfigV3(TypedDict):
-    cname: BloscCname_lit
+    cname: BloscCname_Lit
     clevel: int
-    shuffle: BloscShuffle_lit
+    shuffle: BloscShuffle_Lit
     blocksize: int
     typesize: int
 
@@ -187,9 +187,9 @@ class BloscCodec(BytesBytesCodec):
         self,
         *,
         typesize: int | None = None,
-        cname: BloscCname_lit | BloscCname = "zstd",
+        cname: BloscCname_Lit | BloscCname = "zstd",
         clevel: int = 5,
-        shuffle: BloscShuffle_lit | BloscShuffle | None = None,
+        shuffle: BloscShuffle_Lit | BloscShuffle | None = None,
         blocksize: int = 0,
     ) -> None:
         typesize_parsed = parse_typesize(typesize) if typesize is not None else None

@@ -101,7 +101,7 @@ zarr_v3_blosc_cases = [
     ArrayParams(
         values=np.arange(4, dtype="float64"),
         fill_value=1,
-        compressor=BloscCodec(clevel=1, shuffle=shuf, cname=cname),
+        compressor=BloscCodec(clevel=1, shuffle=shuf, cname=cname),  # type: ignore[arg-type]
     )
     for shuf, cname in itertools.product(BLOSC_SHUFFLE, BLOSC_CNAME)
     if cname != "snappy"
@@ -156,7 +156,7 @@ def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         shape=array_params.values.shape,
         dtype=dtype,
         chunks=array_params.values.shape,
-        compressors=compressor,
+        compressors=compressor,  # type: ignore[arg-type]
         filters=filters,
         fill_value=array_params.fill_value,
         order="C",
@@ -203,7 +203,7 @@ def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         dtype=dtype,
         chunks=array_params.values.shape,
         compressors=compressor,
-        filters=array_params.filters,
+        filters=array_params.filters,  # type: ignore[arg-type]
         serializer=serializer,
         fill_value=array_params.fill_value,
         chunk_key_encoding=chunk_key_encoding,
