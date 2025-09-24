@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 class TestBytesCodec(BaseTestCodec):
     test_cls = BytesCodec
     valid_json_v2 = (
-        {
+        {  # type: ignore[typeddict-unknown-key]
             "id": "bytes",
             "endian": "little",
         },

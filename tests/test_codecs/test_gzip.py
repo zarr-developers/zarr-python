@@ -11,7 +11,7 @@ from zarr.storage import StorePath
 class TestGZipCodec(BaseTestCodec):
     test_cls = GzipCodec
     valid_json_v2 = (
-        {
+        {  # type: ignore[typeddict-unknown-key]
             "id": "gzip",
             "level": 1,
         },

@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 class TestZstdCodec(BaseTestCodec):
     test_cls = ZstdCodec
     valid_json_v2 = (
-        {
+        {  # type: ignore[typeddict-unknown-key]
             "id": "zstd",
             "level": 0,
         },

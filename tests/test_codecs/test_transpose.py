@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 class TestTransposeCodec(BaseTestCodec):
     test_cls = TransposeCodec
     valid_json_v2 = (
-        {
+        {  # type: ignore[typeddict-unknown-key]
             "id": "transpose",
             "order": (2, 1, 0),
         },

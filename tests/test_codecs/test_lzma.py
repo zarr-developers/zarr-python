@@ -7,7 +7,7 @@ from zarr.codecs import numcodecs as _numcodecs
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 class TestLZMACodec(BaseTestCodec):
     test_cls = _numcodecs.LZMA
-    valid_json_v2 = ({"id": "lzma", "filters": None, "preset": None, "format": 1, "check": -1},)
+    valid_json_v2 = ({"id": "lzma", "filters": None, "preset": None, "format": 1, "check": -1},)  # type: ignore[typeddict-unknown-key]
     valid_json_v3 = (
         {
             "name": "lzma",

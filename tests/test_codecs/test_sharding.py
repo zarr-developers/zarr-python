@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 class TestShardingCodec(BaseTestCodec):
     test_cls = ShardingCodec
     valid_json_v2 = (
-        {
+        {  # type: ignore[typeddict-unknown-key]
             "id": "sharding_indexed",
             "chunk_shape": (32, 32),
             "codecs": ({"id": "bytes", "endian": "little"},),

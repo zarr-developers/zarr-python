@@ -16,7 +16,7 @@ pytest.importorskip("pcodec")
 class TestPCodec(BaseTestCodec):
     test_cls = PCodec
     valid_json_v2 = (
-        {
+        {  # type: ignore[typeddict-unknown-key]
             "id": "pcodec",
             "level": 8,
             "mode_spec": "auto",
@@ -86,5 +86,5 @@ def test_generic_bytes_codec(codec_class: type[_NumcodecsArrayBytesCodec]) -> No
             serializer=codec_class(),
         )
 
-    a[:, :] = data.copy()
-    np.testing.assert_array_equal(data, a[:, :])
+    a[:, :] = data.copy()  # type: ignore[index]
+    np.testing.assert_array_equal(data, a[:, :])  # type: ignore[index]

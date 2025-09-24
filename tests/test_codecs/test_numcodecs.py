@@ -103,9 +103,6 @@ def test_docstring(codec_class: type[_numcodecs._NumcodecsCodec]) -> None:
     """
     # TODO: unskip or delete when we add docstrings
     pytest.skip(f"Skipping the docstring check for {codec_class}")
-    if codec_class.__doc__ is None:
-        pytest.skip(f"{codec_class} has no docstring")
-    assert "See [numcodecs." in codec_class.__doc__
 
 
 @pytest.mark.parametrize(
