@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import zarr
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr import AsyncArray, config
 from zarr.abc.store import Store
 from zarr.codecs import TransposeCodec
@@ -14,6 +15,24 @@ from .test_codecs import _AsyncArrayProxy
 
 if TYPE_CHECKING:
     from zarr.codecs.transpose import TransposeJSON_V2, TransposeJSON_V3
+
+
+class TestTransposeCodec(BaseTestCodec):
+    test_cls = TransposeCodec
+    valid_json_v2 = (
+        {
+            "id": "transpose",
+            "order": (2, 1, 0),
+        },
+    )
+    valid_json_v3 = (
+        {
+            "name": "transpose",
+            "configuration": {
+                "order": (2, 1, 0),
+            },
+        },
+    )
 
 
 @pytest.mark.parametrize("order", [(1, 2, 3), (2, 1, 0)])

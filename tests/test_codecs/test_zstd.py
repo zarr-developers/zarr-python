@@ -4,12 +4,32 @@ import numpy as np
 import pytest
 
 import zarr
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
     from zarr.codecs.zstd import ZstdJSON_V2, ZstdJSON_V3
+
+
+class TestZstdCodec(BaseTestCodec):
+    test_cls = ZstdCodec
+    valid_json_v2 = (
+        {
+            "id": "zstd",
+            "level": 0,
+        },
+    )
+    valid_json_v3 = (
+        {
+            "name": "zstd",
+            "configuration": {
+                "level": 0,
+                "checksum": False,
+            },
+        },
+    )
 
 
 @pytest.mark.parametrize("level", [1, 5, 9])

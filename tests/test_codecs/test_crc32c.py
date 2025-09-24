@@ -15,6 +15,7 @@ import pytest
 from crc32c import crc32c
 
 import zarr
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr.abc.store import Store
 from zarr.codecs.crc32c_ import (
     Crc32cCodec,
@@ -29,6 +30,12 @@ from zarr.core.common import ZarrFormat
 from zarr.core.dtype import UInt8, parse_dtype
 from zarr.errors import CodecValidationError
 from zarr.storage import StorePath
+
+
+class TestCrc32cCodec(BaseTestCodec):
+    test_cls = Crc32cCodec
+    valid_json_v2 = ({"id": "crc32c"},)
+    valid_json_v3 = ({"name": "crc32c"},)
 
 
 class TestCrc32cCodecJSON:

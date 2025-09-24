@@ -9,6 +9,7 @@ import pytest
 import zarr
 import zarr.api
 import zarr.api.asynchronous
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr import Array
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
@@ -29,6 +30,30 @@ from .test_codecs import _AsyncArrayProxy, order_from_dim
 
 if TYPE_CHECKING:
     from zarr.codecs.sharding import ShardingJSON_V2, ShardingJSON_V3
+
+
+class TestShardingCodec(BaseTestCodec):
+    test_cls = ShardingCodec
+    valid_json_v2 = (
+        {
+            "id": "sharding_indexed",
+            "chunk_shape": (32, 32),
+            "codecs": ({"id": "bytes", "endian": "little"},),
+            "index_codecs": ({"id": "crc32c"},),
+            "index_location": "start",
+        },
+    )
+    valid_json_v3 = (
+        {
+            "name": "sharding_indexed",
+            "configuration": {
+                "chunk_shape": (32, 32),
+                "codecs": ({"name": "bytes", "configuration": {"endian": "little"}},),
+                "index_codecs": ({"name": "crc32c"},),
+                "index_location": "start",
+            },
+        },
+    )
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])

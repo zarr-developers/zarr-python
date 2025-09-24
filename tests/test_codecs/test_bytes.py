@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 import zarr
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
 from zarr.storage import StorePath
@@ -12,6 +13,24 @@ from .test_codecs import _AsyncArrayProxy
 
 if TYPE_CHECKING:
     from zarr.codecs.bytes import BytesJSON_V2, BytesJSON_V3
+
+
+class TestBytesCodec(BaseTestCodec):
+    test_cls = BytesCodec
+    valid_json_v2 = (
+        {
+            "id": "bytes",
+            "endian": "little",
+        },
+    )
+    valid_json_v3 = (
+        {
+            "name": "bytes",
+            "configuration": {
+                "endian": "little",
+            },
+        },
+    )
 
 
 @pytest.mark.parametrize("endian", ["big", "little"])

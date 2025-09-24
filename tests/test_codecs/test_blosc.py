@@ -6,6 +6,7 @@ import pytest
 from packaging.version import Version
 
 import zarr
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr.abc.store import Store
 from zarr.codecs import BloscCodec
 from zarr.codecs.blosc import (
@@ -18,6 +19,31 @@ from zarr.codecs.blosc import (
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import StorePath
+
+
+class TestBloscCodec(BaseTestCodec):
+    test_cls = BloscCodec
+    valid_json_v2 = (
+        {
+            "id": "blosc",
+            "cname": "lz4",
+            "clevel": 5,
+            "shuffle": 1,
+            "blocksize": 0,
+        },
+    )
+    valid_json_v3 = (
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "lz4",
+                "clevel": 5,
+                "shuffle": "shuffle",
+                "blocksize": 0,
+                "typesize": 1,
+            },
+        },
+    )
 
 
 @pytest.mark.parametrize("shuffle", BLOSC_SHUFFLE)
