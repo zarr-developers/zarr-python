@@ -1,3 +1,4 @@
+import itertools
 import subprocess
 from dataclasses import dataclass
 from itertools import product
@@ -13,6 +14,8 @@ import zarr.abc
 import zarr.abc.codec
 import zarr.codecs as zarrcodecs
 from zarr.abc.numcodec import Numcodec
+from zarr.codecs.blosc import BLOSC_CNAME, BLOSC_SHUFFLE, BloscCodec
+from zarr.codecs.gzip import GzipCodec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
@@ -40,9 +43,9 @@ def runner_installed() -> bool:
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
     fill_value: np.generic | str | int | bytes
-    filters: tuple[Numcodec, ...] = ()
+    filters: tuple[Numcodec | zarr.abc.codec.Codec, ...] = ()
     serializer: str | None = None
-    compressor: Numcodec
+    compressor: Numcodec | zarr.abc.codec.Codec
 
 
 basic_codecs: tuple[Numcodec, ...] = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
@@ -93,6 +96,26 @@ vlen_bytes_cases = [
         compressor=GZip(),
     )
 ]
+# Snappy is not supported by numcodecs yet
+zarr_v3_blosc_cases = [
+    ArrayParams(
+        values=np.arange(4, dtype="float64"),
+        fill_value=1,
+        compressor=BloscCodec(clevel=1, shuffle=shuf, cname=cname),
+    )
+    for shuf, cname in itertools.product(BLOSC_SHUFFLE, BLOSC_CNAME)
+    if cname != "snappy"
+]
+
+zarr_v3_gzip_cases = [
+    ArrayParams(
+        values=np.arange(4, dtype="float64"),
+        fill_value=1,
+        compressor=GzipCodec(level=level),
+    )
+    for level in [1, 2, 3]
+]
+
 array_cases_v2_18 = (
     basic_array_cases
     + bytes_array_cases
@@ -100,6 +123,8 @@ array_cases_v2_18 = (
     + string_array_cases
     + vlen_string_cases
     + vlen_bytes_cases
+    + zarr_v3_blosc_cases
+    + zarr_v3_gzip_cases
 )
 
 array_cases_v3_08 = vlen_string_cases
