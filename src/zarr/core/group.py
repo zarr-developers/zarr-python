@@ -1812,7 +1812,9 @@ class Group(SyncMixin):
         Parameters
         ----------
         store : StoreLike
-            StoreLike containing the Group.
+            StoreLike containing the Group. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
         attributes : dict, optional
             A dictionary of JSON-serializable values with user-defined attributes.
         zarr_format : {2, 3}, optional
@@ -1852,7 +1854,9 @@ class Group(SyncMixin):
         Parameters
         ----------
         store : StoreLike
-            Store containing the Group.
+            Store containing the Group. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
         zarr_format : {2, 3, None}, optional
             Zarr storage format version.
 

@@ -19,6 +19,7 @@ from zarr.core.dtype.npy.common import (
     TFloatScalar_co,
     check_json_float_v2,
     check_json_float_v3,
+    check_json_floatish_str,
     endianness_to_numpy_str,
     float_from_json_v2,
     float_from_json_v3,
@@ -270,6 +271,8 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         if zarr_format == 2:
             if check_json_float_v2(data):
                 return self._cast_scalar_unchecked(float_from_json_v2(data))
+            elif check_json_floatish_str(data):
+                return self._cast_scalar_unchecked(float(data))
             else:
                 raise TypeError(
                     f"Invalid type: {data}. Expected a float or a special string encoding of a float."
@@ -277,6 +280,8 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         elif zarr_format == 3:
             if check_json_float_v3(data):
                 return self._cast_scalar_unchecked(float_from_json_v3(data))
+            elif check_json_floatish_str(data):
+                return self._cast_scalar_unchecked(float(data))
             else:
                 raise TypeError(
                     f"Invalid type: {data}. Expected a float or a special string encoding of a float."

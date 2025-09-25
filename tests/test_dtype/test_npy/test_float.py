@@ -167,3 +167,47 @@ class TestFloat64(_BaseTestFloat):
         ("0x3ff0000000000000", 1.0),
     )
     item_size_params = (Float64(),)
+
+
+def test_check_json_floatish_str() -> None:
+    """Test the check_json_floatish_str function."""
+    from zarr.core.dtype.npy.common import check_json_floatish_str
+
+    # Test valid string floats
+    assert check_json_floatish_str("3.14")
+    assert check_json_floatish_str("0.0")
+    assert check_json_floatish_str("-2.5")
+    assert check_json_floatish_str("1.0")
+
+    # Test invalid cases
+    assert not check_json_floatish_str("not_a_number")
+    assert not check_json_floatish_str("")
+    assert not check_json_floatish_str(3.14)  # actual float, not string
+    assert not check_json_floatish_str(42)  # int
+    assert not check_json_floatish_str(None)
+
+    # Test that special cases still work via float() conversion
+    # (these will be handled by existing functions first in practice)
+    assert check_json_floatish_str("NaN")
+    assert check_json_floatish_str("Infinity")
+    assert check_json_floatish_str("-Infinity")
+
+
+def test_string_float_from_json_scalar() -> None:
+    """Test that string representations of floats can be parsed by from_json_scalar."""
+    # Test with Float32
+    dtype_instance = Float32()
+    result = dtype_instance.from_json_scalar("3.14", zarr_format=3)
+    assert abs(result - np.float32(3.14)) < 1e-6
+    assert isinstance(result, np.float32)
+
+    # Test other cases
+    result = dtype_instance.from_json_scalar("0.0", zarr_format=3)
+    assert result == np.float32(0.0)
+
+    result = dtype_instance.from_json_scalar("-2.5", zarr_format=3)
+    assert result == np.float32(-2.5)
+
+    # Test that it works for v2 format too
+    result = dtype_instance.from_json_scalar("1.5", zarr_format=2)
+    assert result == np.float32(1.5)

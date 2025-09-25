@@ -283,7 +283,9 @@ async def make_store(
     Parameters
     ----------
     store_like : StoreLike | None
-        The object to convert to a `Store` object.
+        The `StoreLike` object to convert to a `Store` object. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     mode : StoreAccessMode | None, optional
         The mode to use when creating the `Store` object.  If None, the
         default mode is 'r'.
@@ -371,7 +373,9 @@ async def make_store_path(
     Parameters
     ----------
     store_like : StoreLike or None, default=None
-        The object to convert to a `StorePath` object.
+        The `StoreLike` object to convert to a `StorePath` object. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     path : str | None, optional
         The path to use when creating the `StorePath` object.  If None, the
         default path is the empty string.

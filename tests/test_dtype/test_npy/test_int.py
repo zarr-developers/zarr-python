@@ -281,3 +281,42 @@ class TestUInt64(BaseTestZDType):
     )
     invalid_scalar_params = ((UInt64(), {"set!"}), (UInt64(), ("tuple",)))
     item_size_params = (UInt64(),)
+
+
+def test_check_json_intish_str() -> None:
+    """Test the check_json_intish_str function."""
+    from zarr.core.dtype.npy.common import check_json_intish_str
+
+    # Test valid string integers
+    assert check_json_intish_str("0")
+    assert check_json_intish_str("42")
+    assert check_json_intish_str("-5")
+    assert check_json_intish_str("123")
+
+    # Test invalid cases
+    assert not check_json_intish_str("3.14")
+    assert not check_json_intish_str("not_a_number")
+    assert not check_json_intish_str("")
+    assert not check_json_intish_str(42)  # actual int, not string
+    assert not check_json_intish_str(3.14)  # float
+    assert not check_json_intish_str(None)
+
+
+def test_string_integer_from_json_scalar() -> None:
+    """Test that string representations of integers can be parsed by from_json_scalar."""
+    # Test the specific reproducer case
+    dtype_instance = Int32()
+    result = dtype_instance.from_json_scalar("0", zarr_format=3)
+    assert result == np.int32(0)
+    assert isinstance(result, np.int32)
+
+    # Test other cases
+    result = dtype_instance.from_json_scalar("42", zarr_format=3)
+    assert result == np.int32(42)
+
+    result = dtype_instance.from_json_scalar("-5", zarr_format=3)
+    assert result == np.int32(-5)
+
+    # Test that it works for v2 format too
+    result = dtype_instance.from_json_scalar("123", zarr_format=2)
+    assert result == np.int32(123)
