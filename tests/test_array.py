@@ -38,6 +38,7 @@ from zarr.core.array import (
     _iter_shard_regions,
     _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
+    _parse_codec,
     _shards_initialized,
     create_array,
     default_filters_v2,
@@ -1762,10 +1763,11 @@ def test_roundtrip_numcodecs() -> None:
     with pytest.warns(ZarrUserWarning, match=warn_msg):
         metadata = root["test"].metadata.to_dict()
     # The names will change because numcodecs.<codec> is an alias for <codec>
-    expected = tuple(
-        {"name": v["name"].removeprefix("numcodecs."), "configuration": v["configuration"]}  # type: ignore[index, attr-defined]
-        for v in (*filters, BYTES_CODEC, *compressors)
-    )
+    with pytest.warns(ZarrUserWarning, match=warn_msg):
+        expected = tuple(
+            _parse_codec(v, dtype=UInt8()).to_json(zarr_format=3)  # type: ignore[index, attr-defined]
+            for v in (*filters, BYTES_CODEC, *compressors)
+        )
     assert metadata["codecs"] == expected
 
 
