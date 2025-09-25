@@ -34,8 +34,15 @@ from zarr.storage import StorePath
 
 class TestCrc32cCodec(BaseTestCodec):
     test_cls = Crc32cCodec
-    valid_json_v2 = ({"id": "crc32c"},)
-    valid_json_v3 = ({"name": "crc32c"},)
+    valid_json_v2 = (
+        {"id": "crc32c"},
+        pytest.param(
+            {"id": "crc32c", "location": "start"},
+            marks=pytest.mark.xfail(reason="start location not supported"),
+        ),
+        {"id": "crc32c", "location": "end"},
+    )
+    valid_json_v3 = ({"name": "crc32c"}, "crc32c")
 
 
 class TestCrc32cCodecJSON:

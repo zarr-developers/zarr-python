@@ -44,6 +44,8 @@ def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
 
 
 def check_json_v3(data: object) -> TypeGuard[Crc32cJSON_V3]:
+    if data == "crc32c":
+        return True
     return (
         isinstance(data, Mapping)
         and set(data.keys()) in ({"name", "configuration"}, {"name"})

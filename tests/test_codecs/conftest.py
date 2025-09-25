@@ -23,16 +23,24 @@ class BaseTestCodec:
     """
 
     test_cls: type[Codec]
-    valid_json_v2: ClassVar[tuple[CodecJSON_V2, ...]]
-    valid_json_v3: ClassVar[tuple[CodecJSON_V3, ...]]
+    valid_json_v2: ClassVar[tuple[CodecJSON_V2 | object, ...]]
+    valid_json_v3: ClassVar[tuple[CodecJSON_V3 | object, ...]]
 
-    def test_from_json_roundtrip_v2(self, valid_json_v2: CodecJSON_V2) -> None:
+    def test_from_json_v2(self, valid_json_v2: CodecJSON_V2) -> None:
+        """
+        Test that the codec generated from valid JSON generates a JSON representation that generates
+        the same codec
+        """
         codec = self.test_cls.from_json(valid_json_v2)
-        assert codec.to_json(zarr_format=2) == valid_json_v2
+        assert codec.from_json(codec.to_json(zarr_format=2)) == codec
 
-    def test_from_json_roundtrip_v3(self, valid_json_v3: CodecJSON_V3) -> None:
+    def test_from_json_v3(self, valid_json_v3: CodecJSON_V3) -> None:
+        """
+        Test that the codec generated from valid JSON generates a JSON representation that generates
+        the same codec
+        """
         codec = self.test_cls.from_json(valid_json_v3)
-        assert codec.to_json(zarr_format=3) == valid_json_v3
+        assert codec.from_json(codec.to_json(zarr_format=3)) == codec
 
 
 def pytest_generate_tests(metafunc: Any) -> None:
