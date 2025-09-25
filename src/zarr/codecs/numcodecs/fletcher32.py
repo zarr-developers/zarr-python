@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -19,9 +19,6 @@ from zarr.core.common import (
     _check_codecjson_v3,
 )
 
-if TYPE_CHECKING:
-    pass
-
 
 class Fletcher32Config(TypedDict):
     """Configuration parameters for Fletcher32 codec."""
@@ -32,7 +29,10 @@ class Fletcher32JSON_V2(Fletcher32Config):
 
     id: ReadOnly[Literal["fletcher32"]]
 
-class Fletcher32JSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.fletcher32"], Fletcher32Config]):
+
+class Fletcher32JSON_V3_Legacy(
+    NamedRequiredConfig[Literal["numcodecs.fletcher32"], Fletcher32Config]
+):
     """Legacy JSON representation of Fletcher32 codec for Zarr V3."""
 
 
@@ -44,10 +44,7 @@ def check_json_v2(data: object) -> TypeGuard[Fletcher32JSON_V2]:
     """
     A type guard for the Zarr V2 form of the Fletcher32 codec JSON
     """
-    return (
-        _check_codecjson_v2(data)
-        and data["id"] == "fletcher32"
-    )
+    return _check_codecjson_v2(data) and data["id"] == "fletcher32"
 
 
 def check_json_v3(data: object) -> TypeGuard[Fletcher32JSON_V3]:

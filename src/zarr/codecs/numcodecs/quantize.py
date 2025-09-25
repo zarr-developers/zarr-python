@@ -33,8 +33,10 @@ class QuantizeJSON_V2(QuantizeConfig):
 
     id: ReadOnly[Literal["quantize"]]
 
+
 class QuantizeJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.quantize"], QuantizeConfig]):
     """Legacy JSON representation of Quantize codec for Zarr V3."""
+
 
 class QuantizeJSON_V3(NamedRequiredConfig[Literal["quantize"], QuantizeConfig]):
     """JSON representation of Quantize codec for Zarr V3."""
@@ -66,7 +68,9 @@ def check_json_v3(data: object) -> TypeGuard[QuantizeJSON_V3]:
         and "digits" in data["configuration"]
         and isinstance(data["configuration"]["digits"], int)
         and data["configuration"]["digits"] > 0
-        and ("dtype" not in data["configuration"] or isinstance(data["configuration"]["dtype"], str))
+        and (
+            "dtype" not in data["configuration"] or isinstance(data["configuration"]["dtype"], str)
+        )
     )
 
 

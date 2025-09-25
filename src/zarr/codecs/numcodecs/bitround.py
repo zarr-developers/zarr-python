@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -19,9 +19,6 @@ from zarr.core.common import (
     _check_codecjson_v3,
 )
 
-if TYPE_CHECKING:
-    pass
-
 
 class BitRoundConfig(TypedDict):
     keepbits: int
@@ -35,6 +32,7 @@ class BitRoundJSON_V2(BitRoundConfig):
 
 class BitRoundJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.bitround"], BitRoundConfig]):
     """JSON representation of BitRound codec for Zarr V3."""
+
 
 class BitRoundJSON_V3(NamedRequiredConfig[Literal["bitround"], BitRoundConfig]):
     """JSON representation of BitRound codec for Zarr V3."""

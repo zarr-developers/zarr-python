@@ -31,10 +31,12 @@ def check_json_v2(data: object) -> TypeGuard[ZstdJSON_V2]:
         and isinstance(data.get("checksum", False), bool)
     )
 
+
 class ZstdJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.zstd"], ZstdConfig_V3]):
     """
     The JSON form of the ZStandard codec in Zarr v3.
     """
+
 
 def check_json_v3(data: object) -> TypeGuard[ZstdJSON_V3 | ZstdJSON_V3_Legacy]:
     """

@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 class Crc32cJSON_V3_Legacy(NamedConfig[Literal["numcodecs.crc32c"], Crc32cConfig_V3]):
     """Legacy JSON representation of Crc32c codec for Zarr V3."""
 
+
 def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
     """
     A type guard for the Zarr V2 form of the CRC32C codec JSON

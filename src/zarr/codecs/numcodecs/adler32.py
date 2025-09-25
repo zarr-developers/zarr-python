@@ -9,10 +9,19 @@ from zarr.codecs.numcodecs._codecs import (
     _NumcodecsChecksumCodec,
     _warn_unstable_specification,
 )
-from zarr.core.common import CodecJSON, CodecJSON_V2, CodecJSON_V3, NamedConfig, ZarrFormat, _check_codecjson_v2, _check_codecjson_v3
+from zarr.core.common import (
+    CodecJSON,
+    CodecJSON_V2,
+    CodecJSON_V3,
+    NamedConfig,
+    ZarrFormat,
+    _check_codecjson_v2,
+    _check_codecjson_v3,
+)
 
 if TYPE_CHECKING:
     ...
+
 
 class Adler32Config(TypedDict):
     """Configuration parameters for Adler32 codec."""
@@ -25,8 +34,10 @@ class Adler32JSON_V2(Adler32Config):
 
     id: ReadOnly[Literal["adler32"]]
 
+
 class Adler32JSON_V3_Legacy(NamedConfig[Literal["numcodecs.adler32"], Adler32Config]):
     """Legacy JSON representation of Adler32 codec for Zarr V3."""
+
 
 class Adler32JSON_V3(NamedConfig[Literal["adler32"], Adler32Config]):
     """JSON representation of Adler32 codec for Zarr V3."""
@@ -79,7 +90,6 @@ class Adler32(_NumcodecsChecksumCodec):
     def to_json(self, zarr_format: ZarrFormat) -> Adler32JSON_V2 | Adler32JSON_V3:
         _warn_unstable_specification(self)
         return super().to_json(zarr_format)  # type: ignore[return-value]
-
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON_V2) -> Self:

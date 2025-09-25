@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -19,9 +19,6 @@ from zarr.core.common import (
     _check_codecjson_v3,
 )
 
-if TYPE_CHECKING:
-    pass
-
 
 class BZ2Config(TypedDict):
     level: int
@@ -32,8 +29,10 @@ class BZ2JSON_V2(BZ2Config):
 
     id: ReadOnly[Literal["bz2"]]
 
+
 class BZ2JSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.bz2"], BZ2Config]):
     """Legacy JSON representation of BZ2 codec for Zarr V3."""
+
 
 class BZ2JSON_V3(NamedRequiredConfig[Literal["bz2"], BZ2Config]):
     """JSON representation of BZ2 codec for Zarr V3."""

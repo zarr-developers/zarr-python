@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -19,9 +19,6 @@ from zarr.core.common import (
     _check_codecjson_v3,
 )
 
-if TYPE_CHECKING:
-    pass
-
 
 class JenkinsLookup3Config(TypedDict):
     """Configuration parameters for JenkinsLookup3 codec."""
@@ -35,7 +32,10 @@ class JenkinsLookup3JSON_V2(JenkinsLookup3Config):
 
     id: ReadOnly[Literal["jenkins_lookup3"]]
 
-class JenkinsLookup3JSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.jenkins_lookup3"], JenkinsLookup3Config]):
+
+class JenkinsLookup3JSON_V3_Legacy(
+    NamedRequiredConfig[Literal["numcodecs.jenkins_lookup3"], JenkinsLookup3Config]
+):
     """Legacy JSON representation of JenkinsLookup3 codec for Zarr V3."""
 
 

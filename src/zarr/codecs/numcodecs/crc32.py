@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -9,10 +9,15 @@ from zarr.codecs.numcodecs._codecs import (
     _NumcodecsChecksumCodec,
     _warn_unstable_specification,
 )
-from zarr.core.common import CodecJSON, CodecJSON_V2, CodecJSON_V3, NamedConfig, ZarrFormat, _check_codecjson_v2, _check_codecjson_v3
-
-if TYPE_CHECKING:
-    pass
+from zarr.core.common import (
+    CodecJSON,
+    CodecJSON_V2,
+    CodecJSON_V3,
+    NamedConfig,
+    ZarrFormat,
+    _check_codecjson_v2,
+    _check_codecjson_v3,
+)
 
 
 class Crc32Config(TypedDict):
@@ -25,6 +30,7 @@ class Crc32JSON_V2(Crc32Config):
     """JSON representation of CRC32 codec for Zarr V2."""
 
     id: ReadOnly[Literal["crc32"]]
+
 
 class Crc32JSON_V3_Legacy(NamedConfig[Literal["numcodecs.crc32"], Crc32Config]):
     """Legacy JSON representation of CRC32 codec for Zarr V3."""
@@ -81,7 +87,7 @@ class CRC32(_NumcodecsChecksumCodec):
     def to_json(self, zarr_format: ZarrFormat) -> Crc32JSON_V2 | Crc32JSON_V3:
         _warn_unstable_specification(self)
         return super().to_json(zarr_format)  # type: ignore[return-value]
-    
+
     @classmethod
     def _from_json_v2(cls, data: CodecJSON_V2) -> Self:
         return cls(**data)

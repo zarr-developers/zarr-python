@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, NotRequired, Self, TypedDict, TypeGuard, overload
+from collections.abc import Mapping
+from typing import Literal, NotRequired, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -17,9 +18,6 @@ from zarr.core.common import (
     _check_codecjson_v2,
     _check_codecjson_v3,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 
 class ZFPYConfig(TypedDict):
@@ -66,10 +64,22 @@ def check_json_v3(data: object) -> TypeGuard[ZFPYJSON_V3]:
         and (
             "configuration" not in data
             or (
-                ("mode" not in data["configuration"] or isinstance(data["configuration"]["mode"], int))
-                and ("rate" not in data["configuration"] or isinstance(data["configuration"]["rate"], (int, float)))
-                and ("precision" not in data["configuration"] or isinstance(data["configuration"]["precision"], int))
-                and ("tolerance" not in data["configuration"] or isinstance(data["configuration"]["tolerance"], (int, float)))
+                (
+                    "mode" not in data["configuration"]
+                    or isinstance(data["configuration"]["mode"], int)
+                )
+                and (
+                    "rate" not in data["configuration"]
+                    or isinstance(data["configuration"]["rate"], (int, float))
+                )
+                and (
+                    "precision" not in data["configuration"]
+                    or isinstance(data["configuration"]["precision"], int)
+                )
+                and (
+                    "tolerance" not in data["configuration"]
+                    or isinstance(data["configuration"]["tolerance"], (int, float))
+                )
             )
         )
     )

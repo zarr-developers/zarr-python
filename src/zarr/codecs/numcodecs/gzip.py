@@ -31,10 +31,12 @@ def check_json_v2(data: object) -> TypeGuard[GZipJSON_V2]:
         and 0 <= data["level"] <= 9
     )
 
+
 class GZipJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.gzip"], GZipConfig]):
     """
     The JSON form of the GZip codec in Zarr V3.
     """
+
 
 def check_json_v3(data: object) -> TypeGuard[GZipJSON_V3 | GZipJSON_V3_Legacy]:
     """

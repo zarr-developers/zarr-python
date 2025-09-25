@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -19,9 +19,6 @@ from zarr.core.common import (
     _check_codecjson_v3,
 )
 
-if TYPE_CHECKING:
-    pass
-
 
 class LZ4Config(TypedDict):
     acceleration: int
@@ -35,6 +32,7 @@ class LZ4JSON_V2(LZ4Config):
 
 class LZ4JSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.lz4"], LZ4Config]):
     """Legacy JSON representation of LZ4 codec for Zarr V3."""
+
 
 class LZ4JSON_V3(NamedRequiredConfig[Literal["lz4"], LZ4Config]):
     """JSON representation of LZ4 codec for Zarr V3."""

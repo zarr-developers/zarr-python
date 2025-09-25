@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, TypeGuard, overload
+from typing import Any, Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -19,9 +19,6 @@ from zarr.core.common import (
     _check_codecjson_v3,
 )
 
-if TYPE_CHECKING:
-    pass
-
 
 class LZMAConfig(TypedDict):
     format: int
@@ -38,6 +35,7 @@ class LZMAJSON_V2(LZMAConfig):
 
 class LZMAJSON_V3_Legacy(NamedRequiredConfig[Literal["lzma"], LZMAConfig]):
     """Legacy JSON representation of LZMA codec for Zarr V3."""
+
 
 class LZMAJSON_V3(NamedRequiredConfig[Literal["lzma"], LZMAConfig]):
     """JSON representation of LZMA codec for Zarr V3."""
@@ -72,8 +70,16 @@ def check_json_v3(data: object) -> TypeGuard[LZMAJSON_V3 | LZMAJSON_V3_Legacy]:
         and "check" in data["configuration"]
         and isinstance(data["configuration"]["format"], int)
         and isinstance(data["configuration"]["check"], int)
-        and ("preset" not in data["configuration"] or data["configuration"]["preset"] is None or isinstance(data["configuration"]["preset"], int))
-        and ("filters" not in data["configuration"] or data["configuration"]["filters"] is None or isinstance(data["configuration"]["filters"], list))
+        and (
+            "preset" not in data["configuration"]
+            or data["configuration"]["preset"] is None
+            or isinstance(data["configuration"]["preset"], int)
+        )
+        and (
+            "filters" not in data["configuration"]
+            or data["configuration"]["filters"] is None
+            or isinstance(data["configuration"]["filters"], list)
+        )
     )
 
 

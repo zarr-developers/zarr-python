@@ -5,7 +5,6 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, TypeGuard, overload
 
-import numpy as np
 from typing_extensions import ReadOnly
 
 from zarr.codecs.numcodecs._codecs import (
@@ -29,7 +28,6 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
 
 
-
 class PackBitsConfig(TypedDict):
     pass  # PackBits has no configuration parameters
 
@@ -38,6 +36,7 @@ class PackBitsJSON_V2(PackBitsConfig):
     """JSON representation of PackBits codec for Zarr V2."""
 
     id: ReadOnly[Literal["packbits"]]
+
 
 class PackBitsJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.packbits"], PackBitsConfig]):
     """Legacy JSON representation of PackBits codec for Zarr V3."""
@@ -51,10 +50,7 @@ def check_json_v2(data: object) -> TypeGuard[PackBitsJSON_V2]:
     """
     A type guard for the Zarr V2 form of the PackBits codec JSON
     """
-    return (
-        _check_codecjson_v2(data)
-        and data["id"] == "packbits"
-    )
+    return _check_codecjson_v2(data) and data["id"] == "packbits"
 
 
 def check_json_v3(data: object) -> TypeGuard[PackBitsJSON_V3 | PackBitsJSON_V3_Legacy]:

@@ -16,17 +16,20 @@ from zarr.core.common import (
 if TYPE_CHECKING:
     from zarr.codecs.blosc import BloscCname_Lit, BloscJSON_V2
 
-# This is different from zarr.codecs.blosc 
+
+# This is different from zarr.codecs.blosc
 class BloscConfigV3_Legacy(TypedDict):
     cname: BloscCname_Lit
     clevel: int
     shuffle: int
     blocksize: int
 
+
 class BloscJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.blosc"], BloscConfigV3_Legacy]):
     """
     Legacy JSON form of the Blosc codec in Zarr V3.
     """
+
 
 def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3_Legacy]:
     return (
@@ -34,9 +37,9 @@ def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3_Legacy]:
         and set(data.keys()) == {"name", "configuration"}
         and data["name"] in ("blosc", "numcodecs.blosc")
         and isinstance(data["configuration"], Mapping)
-        and set(data["configuration"].keys())
-        == {"cname", "clevel", "shuffle", "blocksize"}
+        and set(data["configuration"].keys()) == {"cname", "clevel", "shuffle", "blocksize"}
     )
+
 
 class Blosc(_NumcodecsBytesBytesCodec):
     """

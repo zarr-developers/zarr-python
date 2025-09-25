@@ -32,6 +32,7 @@ class ShuffleJSON_V2(ShuffleConfig):
 
     id: ReadOnly[Literal["shuffle"]]
 
+
 class ShuffleJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.shuffle"], ShuffleConfig]):
     """JSON representation of Shuffle codec for Zarr V3."""
 

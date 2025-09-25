@@ -9,7 +9,7 @@ import zarr
 from tests.test_codecs.conftest import BaseTestCodec
 from zarr import Array
 from zarr.codecs import ZstdCodec
-from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec, VLenUTF8JSON_V2, VLenUTF8JSON_V3
+from zarr.codecs.vlen_utf8 import VLenUTF8Codec
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.metadata.v3 import ArrayV3Metadata
@@ -27,10 +27,11 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 else:
     expected_array_string_dtype = np.dtype("O")
 
+
 class TestVLenUTF8Codec(BaseTestCodec):
     test_cls = VLenUTF8Codec
     valid_json_v2 = ({"id": "vlen-utf8"},)
-    valid_json_v3 = ({"name": "vlen-utf8"},"vlen-utf8")
+    valid_json_v3 = ({"name": "vlen-utf8"}, "vlen-utf8")
 
     @staticmethod
     def check_json_v2(data: object) -> bool:
@@ -39,6 +40,7 @@ class TestVLenUTF8Codec(BaseTestCodec):
     @staticmethod
     def check_json_v3(data: object) -> bool:
         return VLenUTF8Codec._check_json_v3(data)
+
 
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])

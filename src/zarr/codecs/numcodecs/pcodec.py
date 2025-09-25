@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, NotRequired, Self, TypedDict, TypeGuard, overload
+from collections.abc import Mapping
+from typing import Literal, NotRequired, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -8,10 +9,15 @@ from zarr.codecs.numcodecs._codecs import (
     _NumcodecsArrayBytesCodec,
     _warn_unstable_specification,
 )
-from zarr.core.common import CodecJSON, CodecJSON_V2, CodecJSON_V3, NamedRequiredConfig, ZarrFormat, _check_codecjson_v2, _check_codecjson_v3
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
+from zarr.core.common import (
+    CodecJSON,
+    CodecJSON_V2,
+    CodecJSON_V3,
+    NamedRequiredConfig,
+    ZarrFormat,
+    _check_codecjson_v2,
+    _check_codecjson_v3,
+)
 
 
 class PCodecConfig(TypedDict):
@@ -54,8 +60,14 @@ def check_json_v3(data: object) -> TypeGuard[PCodecJSON_V3]:
         and (
             "configuration" not in data
             or (
-                ("level" not in data["configuration"] or isinstance(data["configuration"]["level"], int))
-                and ("delta_encoding_order" not in data["configuration"] or isinstance(data["configuration"]["delta_encoding_order"], int))
+                (
+                    "level" not in data["configuration"]
+                    or isinstance(data["configuration"]["level"], int)
+                )
+                and (
+                    "delta_encoding_order" not in data["configuration"]
+                    or isinstance(data["configuration"]["delta_encoding_order"], int)
+                )
             )
         )
     )

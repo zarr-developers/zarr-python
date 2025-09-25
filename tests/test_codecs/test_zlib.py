@@ -3,8 +3,7 @@ from __future__ import annotations
 import pytest
 
 from tests.test_codecs.conftest import BaseTestCodec
-from zarr.codecs import numcodecs as _numcodecs
-from zarr.codecs.numcodecs.zlib import check_json_v2, check_json_v3, Zlib
+from zarr.codecs.numcodecs.zlib import Zlib, check_json_v2, check_json_v3
 
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
@@ -21,6 +20,7 @@ class TestZlib(BaseTestCodec):
             "configuration": {"level": 1},
         },
     )
+
     @staticmethod
     def check_json_v2(data: object) -> bool:
         return check_json_v2(data)

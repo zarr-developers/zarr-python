@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -19,9 +19,6 @@ from zarr.core.common import (
     _check_codecjson_v3,
 )
 
-if TYPE_CHECKING:
-    pass
-
 
 class ZlibConfig(TypedDict):
     level: int
@@ -35,6 +32,7 @@ class ZlibJSON_V2(ZlibConfig):
 
 class ZlibJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.zlib"], ZlibConfig]):
     """JSON representation of Zlib codec for Zarr V3."""
+
 
 class ZlibJSON_V3(NamedRequiredConfig[Literal["zlib"], ZlibConfig]):
     """JSON representation of Zlib codec for Zarr V3."""

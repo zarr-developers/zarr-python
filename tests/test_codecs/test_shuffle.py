@@ -20,6 +20,7 @@ class TestShuffle(BaseTestCodec):
             "configuration": {"elementsize": 4},
         },
     )
+
     @staticmethod
     def check_json_v2(data: object) -> bool:
         return check_json_v2(data)
