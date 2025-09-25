@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 class TestTransposeCodec(BaseTestCodec):
     test_cls = TransposeCodec
     valid_json_v2 = (
-        {  # type: ignore[typeddict-unknown-key]
+        {
             "id": "transpose",
             "order": (2, 1, 0),
         },
@@ -127,5 +127,5 @@ def test_transpose_invalid(
                 dtype=data.dtype,
                 fill_value=0,
                 chunk_key_encoding={"name": "v2", "separator": "."},
-                filters=[TransposeCodec(order=order)],  # type: ignore[arg-type]
+                filters=[TransposeCodec(order=order)],
             )

@@ -24,7 +24,7 @@ from zarr.storage import StorePath
 class TestBloscCodec(BaseTestCodec):
     test_cls = BloscCodec
     valid_json_v2 = (
-        {  # type: ignore[typeddict-unknown-key]
+        {
             "id": "blosc",
             "cname": "lz4",
             "clevel": 5,

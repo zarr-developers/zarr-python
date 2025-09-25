@@ -8,7 +8,7 @@ from zarr.codecs import numcodecs as _numcodecs
 class TestFixedScaleOffsetCodec(BaseTestCodec):
     test_cls = _numcodecs.FixedScaleOffset
     valid_json_v2 = (
-        {"id": "fixedscaleoffset", "scale": 1.0, "offset": 0.0, "astype": "|u1", "dtype": "|u1"},  # type: ignore[typeddict-unknown-key]
+        {"id": "fixedscaleoffset", "scale": 1.0, "offset": 0.0, "astype": "|u1", "dtype": "|u1"},
     )
     valid_json_v3 = (
         {

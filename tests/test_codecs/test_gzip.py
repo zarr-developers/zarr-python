@@ -19,7 +19,7 @@ from zarr.storage import StorePath
 class TestGZipCodec(BaseTestCodec):
     test_cls = GzipCodec
     valid_json_v2 = (
-        {  # type: ignore[typeddict-unknown-key]
+        {
             "id": "gzip",
             "level": 1,
         },
@@ -35,7 +35,7 @@ class TestGZipCodec(BaseTestCodec):
 
 
 class TestNumcodecsGZipCodec(TestGZipCodec):
-    test_cls = znumcodecs.GZip  # type: ignore[assignment]
+    test_cls = znumcodecs.GZip
 
 
 @pytest.mark.parametrize(

@@ -7,7 +7,7 @@ from zarr.codecs import numcodecs as _numcodecs
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 class TestBitRoundCodec(BaseTestCodec):
     test_cls = _numcodecs.BitRound
-    valid_json_v2 = ({"id": "bitround", "keepbits": 8},)  # type: ignore[typeddict-unknown-key]
+    valid_json_v2 = ({"id": "bitround", "keepbits": 8},)
     valid_json_v3 = (
         {
             "name": "bitround",

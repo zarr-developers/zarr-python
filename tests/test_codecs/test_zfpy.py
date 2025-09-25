@@ -9,7 +9,7 @@ pytest.importorskip("zfpy")
 class TestZFPYCodec(BaseTestCodec):
     test_cls = _numcodecs.ZFPY
     valid_json_v2 = (
-        {  # type: ignore[typeddict-unknown-key]
+        {
             "id": "zfpy",
             "mode": 4,
             "compression_kwargs": {"tolerance": -1},

@@ -48,7 +48,7 @@ class _AsyncArraySelectionProxy:
         return await self.array.getitem(self.selection)
 
     async def set(self, value: np.ndarray[Any, Any]) -> None:
-        return await self.array.setitem(self.selection, value)
+        return await self.array.setitem(self.selection, value)  # type: ignore[no-any-return]
 
 
 def order_from_dim(order: MemoryOrder, ndim: int) -> tuple[int, ...]:
