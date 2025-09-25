@@ -50,9 +50,9 @@ def check_json_v2(data: object) -> TypeGuard[QuantizeJSON_V2]:
         _check_codecjson_v2(data)
         and data["id"] == "quantize"
         and "digits" in data
-        and isinstance(data["digits"], int)
-        and data["digits"] > 0
-        and ("dtype" not in data or isinstance(data["dtype"], str))
+        and isinstance(data["digits"], int)  # type: ignore[typeddict-item]
+        and data["digits"] > 0  # type: ignore[typeddict-item]
+        and ("dtype" not in data or isinstance(data["dtype"], str))  # type: ignore[typeddict-item]
     )
 
 

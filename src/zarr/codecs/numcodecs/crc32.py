@@ -47,7 +47,7 @@ def check_json_v2(data: object) -> TypeGuard[Crc32JSON_V2]:
     return (
         _check_codecjson_v2(data)
         and data["id"] == "crc32"
-        and ("location" not in data or data["location"] in ("start", "end"))
+        and ("location" not in data or data["location"] in ("start", "end"))  # type: ignore[typeddict-item]
     )
 
 

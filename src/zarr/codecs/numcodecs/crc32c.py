@@ -33,7 +33,7 @@ def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
     return (
         _check_codecjson_v2(data)
         and data["id"] == "crc32c"
-        and ("location" not in data or data["location"] in ("start", "end"))
+        and ("location" not in data or data["location"] in ("start", "end"))  # type: ignore[typeddict-item]
     )
 
 
@@ -77,8 +77,6 @@ class CRC32C(_NumcodecsChecksumCodec):
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
         if check_json_v3(data):
-            if isinstance(data, str):
-                return cls()
             config = data.get("configuration", {})
             return cls(**config)
         raise TypeError(f"Invalid JSON: {data}")

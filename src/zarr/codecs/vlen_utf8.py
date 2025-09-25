@@ -61,11 +61,11 @@ class VLenUTF8Codec(ArrayBytesCodec):
             return {"name": "vlen-utf8"}
 
     @classmethod
-    def _check_json_v2(cls, data: CodecJSON) -> TypeGuard[VLenUTF8JSON_V2]:
-        return data == {"id": "vlen-utf8"}  # type: ignore[comparison-overlap]
+    def _check_json_v2(cls, data: object) -> TypeGuard[VLenUTF8JSON_V2]:
+        return data == {"id": "vlen-utf8"}
 
     @classmethod
-    def _check_json_v3(cls, data: CodecJSON) -> TypeGuard[VLenUTF8JSON_V3]:
+    def _check_json_v3(cls, data: object) -> TypeGuard[VLenUTF8JSON_V3]:
         return data in (
             {"name": "vlen-utf8"},
             {"name": "vlen-utf8", "configuration": {}},
@@ -137,11 +137,11 @@ class VLenBytesCodec(ArrayBytesCodec):
             return {"name": "vlen-bytes"}
 
     @classmethod
-    def _check_json_v2(cls, data: CodecJSON) -> TypeGuard[VLenBytesJSON_V2]:
-        return data == {"id": "vlen-bytes"}  # type: ignore[comparison-overlap]
+    def _check_json_v2(cls, data: object) -> TypeGuard[VLenBytesJSON_V2]:
+        return data == {"id": "vlen-bytes"}
 
     @classmethod
-    def _check_json_v3(cls, data: CodecJSON) -> TypeGuard[VLenBytesJSON_V3]:
+    def _check_json_v3(cls, data: object) -> TypeGuard[VLenBytesJSON_V3]:
         return data in (
             {"name": "vlen-bytes"},
             {"name": "vlen-bytes", "configuration": {}},

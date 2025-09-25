@@ -46,10 +46,10 @@ def check_json_v2(data: object) -> TypeGuard[ZFPYJSON_V2]:
     return (
         _check_codecjson_v2(data)
         and data["id"] == "zfpy"
-        and ("mode" not in data or isinstance(data["mode"], int))
-        and ("rate" not in data or isinstance(data["rate"], (int, float)))
-        and ("precision" not in data or isinstance(data["precision"], int))
-        and ("tolerance" not in data or isinstance(data["tolerance"], (int, float)))
+        and ("mode" not in data or isinstance(data["mode"], int))  # type: ignore[typeddict-item]
+        and ("rate" not in data or isinstance(data["rate"], (int, float)))  # type: ignore[typeddict-item]
+        and ("precision" not in data or isinstance(data["precision"], int))  # type: ignore[typeddict-item]
+        and ("tolerance" not in data or isinstance(data["tolerance"], (int, float)))  # type: ignore[typeddict-item]
     )
 
 

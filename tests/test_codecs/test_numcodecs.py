@@ -60,7 +60,7 @@ if TYPE_CHECKING:
 
 
 def test_get_numcodec() -> None:
-    assert get_numcodec({"id": "gzip", "level": 2}) == GZip(level=2)
+    assert get_numcodec({"id": "gzip", "level": 2}) == GZip(level=2)  # type: ignore[typeddict-unknown-key]
 
 
 def test_is_numcodec() -> None:
@@ -94,7 +94,7 @@ ALL_CODECS = tuple(
     [codec for codec in ALL_CODECS if codec.codec_name.split(".")[-1] not in CODECS_WITH_SPECS],
 )
 def test_get_codec_class(codec_cls: type[_numcodecs._NumcodecsCodec]) -> None:
-    assert get_codec_class(codec_cls.codec_name) == codec_cls
+    assert get_codec_class(codec_cls.codec_name) == codec_cls  # type: ignore[comparison-overlap]
 
 
 @pytest.mark.parametrize("codec_class", ALL_CODECS)

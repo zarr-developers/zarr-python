@@ -50,10 +50,10 @@ def check_json_v2(data: object) -> TypeGuard[LZMAJSON_V2]:
         and data["id"] == "lzma"
         and "format" in data
         and "check" in data
-        and isinstance(data["format"], int)
-        and isinstance(data["check"], int)
-        and ("preset" not in data or data["preset"] is None or isinstance(data["preset"], int))
-        and ("filters" not in data or data["filters"] is None or isinstance(data["filters"], list))
+        and isinstance(data["format"], int)  # type: ignore[typeddict-item]
+        and isinstance(data["check"], int)  # type: ignore[typeddict-item]
+        and ("preset" not in data or data["preset"] is None or isinstance(data["preset"], int))  # type: ignore[typeddict-item]
+        and ("filters" not in data or data["filters"] is None or isinstance(data["filters"], list))  # type: ignore[typeddict-item]
     )
 
 

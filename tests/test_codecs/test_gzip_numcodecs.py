@@ -6,9 +6,9 @@ from zarr.codecs import numcodecs as _numcodecs
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 class TestGZipNumcodecsCodec(TestGZipCodec):
-    test_cls = _numcodecs.GZip
+    test_cls = _numcodecs.GZip  # type: ignore[assignment]
     valid_json_v2 = ({"id": "gzip", "level": 1},)
-    valid_json_v3 = (
+    valid_json_v3 = (  # type: ignore[assignment]
         {
             "name": "gzip",
             "configuration": {"level": 1},

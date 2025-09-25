@@ -49,8 +49,8 @@ def check_json_v2(data: object) -> TypeGuard[ShuffleJSON_V2]:
         _check_codecjson_v2(data)
         and data["id"] == "shuffle"
         and "elementsize" in data
-        and isinstance(data["elementsize"], int)
-        and data["elementsize"] > 0
+        and isinstance(data["elementsize"], int)  # type: ignore[typeddict-item]
+        and data["elementsize"] > 0  # type: ignore[typeddict-item]
     )
 
 

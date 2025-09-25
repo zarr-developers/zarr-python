@@ -46,8 +46,8 @@ def check_json_v2(data: object) -> TypeGuard[LZ4JSON_V2]:
         _check_codecjson_v2(data)
         and data["id"] == "lz4"
         and "acceleration" in data
-        and isinstance(data["acceleration"], int)
-        and data["acceleration"] >= 1
+        and isinstance(data["acceleration"], int)  # type: ignore[typeddict-item]
+        and data["acceleration"] >= 1  # type: ignore[typeddict-item]
     )
 
 

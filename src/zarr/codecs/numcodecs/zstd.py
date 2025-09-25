@@ -27,7 +27,7 @@ def check_json_v2(data: object) -> TypeGuard[ZstdJSON_V2]:
         _check_codecjson_v2(data)
         and data["id"] == "zstd"
         and "level" in data
-        and isinstance(data["level"], int)
+        and isinstance(data["level"], int)  # type: ignore[typeddict-item]
         and isinstance(data.get("checksum", False), bool)
     )
 

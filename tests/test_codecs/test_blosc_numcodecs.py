@@ -8,7 +8,7 @@ from zarr.codecs.numcodecs.blosc import Blosc, BloscConfigV3_Legacy, check_json_
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 class TestBloscNumcodecsCodec(TestBloscCodec):
-    test_cls = Blosc
+    test_cls = Blosc  # type: ignore[assignment]
     valid_json_v3 = (
         {
             "name": "blosc",

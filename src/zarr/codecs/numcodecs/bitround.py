@@ -46,8 +46,8 @@ def check_json_v2(data: object) -> TypeGuard[BitRoundJSON_V2]:
         _check_codecjson_v2(data)
         and data["id"] == "bitround"
         and "keepbits" in data
-        and isinstance(data["keepbits"], int)
-        and data["keepbits"] > 0
+        and isinstance(data["keepbits"], int)  # type: ignore[typeddict-item]
+        and data["keepbits"] > 0  # type: ignore[typeddict-item]
     )
 
 

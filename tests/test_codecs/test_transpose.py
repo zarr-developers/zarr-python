@@ -138,5 +138,5 @@ def test_transpose_invalid(
                 dtype=data.dtype,
                 fill_value=0,
                 chunk_key_encoding={"name": "v2", "separator": "."},
-                filters=[TransposeCodec(order=order)],
+                filters=[TransposeCodec(order=order)],  # type: ignore[arg-type]
             )

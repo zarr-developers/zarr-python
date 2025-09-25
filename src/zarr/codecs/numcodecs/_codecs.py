@@ -86,9 +86,9 @@ class _NumcodecsCodec:
             self,
             "_codec",
             get_numcodec(
-                {"id": self._codec_id, **{k: v for k, v in codec_config.items() if k != "id"}}
+                {"id": self._codec_id, **{k: v for k, v in codec_config.items() if k != "id"}}  # type: ignore[typeddict-item]
             ),
-        )  # type: ignore[typeddict-item]
+        )
         object.__setattr__(self, "codec_config", self._codec.get_config())
 
     def to_dict(self) -> dict[str, JSON]:

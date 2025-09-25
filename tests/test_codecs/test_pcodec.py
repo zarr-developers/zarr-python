@@ -99,5 +99,5 @@ def test_generic_bytes_codec(codec_class: type[_NumcodecsArrayBytesCodec]) -> No
             serializer=codec_class(),
         )
 
-    a[:, :] = data.copy()
-    np.testing.assert_array_equal(data, a[:, :])
+    a[:, :] = data.copy()  # type: ignore[index]
+    np.testing.assert_array_equal(data, a[:, :])  # type: ignore[index]

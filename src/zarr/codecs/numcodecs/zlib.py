@@ -46,8 +46,8 @@ def check_json_v2(data: object) -> TypeGuard[ZlibJSON_V2]:
         _check_codecjson_v2(data)
         and data["id"] == "zlib"
         and "level" in data
-        and isinstance(data["level"], int)
-        and 0 <= data["level"] <= 9
+        and isinstance(data["level"], int)  # type: ignore[typeddict-item]
+        and 0 <= data["level"] <= 9  # type: ignore[typeddict-item]
     )
 
 

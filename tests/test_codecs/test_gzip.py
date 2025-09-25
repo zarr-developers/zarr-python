@@ -45,7 +45,7 @@ class TestGZipCodec(BaseTestCodec):
 
 
 class TestNumcodecsGZipCodec(TestGZipCodec):
-    test_cls = znumcodecs.GZip
+    test_cls = znumcodecs.GZip  # type: ignore[assignment]
 
 
 @pytest.mark.parametrize(

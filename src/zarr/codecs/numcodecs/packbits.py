@@ -95,7 +95,7 @@ class PackBits(_NumcodecsArrayArrayCodec):
     # a single zarr dtype API
     def validate(self, *, dtype: ZDType[Any, Any], **_kwargs: Any) -> None:
         if not isinstance(dtype, Bool):
-            raise ValueError(f"Packbits filter requires bool dtype. Got {dtype}.")
+            raise ValueError(f"Packbits filter requires bool dtype. Got {dtype}.")  # noqa: TRY004
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON_V2) -> Self:

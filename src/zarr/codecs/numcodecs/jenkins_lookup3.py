@@ -52,8 +52,8 @@ def check_json_v2(data: object) -> TypeGuard[JenkinsLookup3JSON_V2]:
         and data["id"] == "jenkins_lookup3"
         and "initval" in data
         and "prefix" in data
-        and isinstance(data["initval"], int)
-        and isinstance(data["prefix"], bytes | None)
+        and isinstance(data["initval"], int)  # type: ignore[typeddict-item]
+        and isinstance(data["prefix"], bytes | None)  # type: ignore[typeddict-item]
     )
 
 

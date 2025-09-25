@@ -44,8 +44,8 @@ def check_json_v2(data: object) -> TypeGuard[PCodecJSON_V2]:
     return (
         _check_codecjson_v2(data)
         and data["id"] == "pcodec"
-        and ("level" not in data or isinstance(data["level"], int))
-        and ("delta_encoding_order" not in data or isinstance(data["delta_encoding_order"], int))
+        and ("level" not in data or isinstance(data["level"], int))  # type: ignore[typeddict-item]
+        and ("delta_encoding_order" not in data or isinstance(data["delta_encoding_order"], int))  # type: ignore[typeddict-item]
     )
 
 

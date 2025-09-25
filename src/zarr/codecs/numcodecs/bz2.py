@@ -46,8 +46,8 @@ def check_json_v2(data: object) -> TypeGuard[BZ2JSON_V2]:
         _check_codecjson_v2(data)
         and data["id"] == "bz2"
         and "level" in data
-        and isinstance(data["level"], int)
-        and 1 <= data["level"] <= 9
+        and isinstance(data["level"], int)  # type: ignore[typeddict-item]
+        and 1 <= data["level"] <= 9  # type: ignore[typeddict-item]
     )
 
 

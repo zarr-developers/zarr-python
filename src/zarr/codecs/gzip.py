@@ -84,8 +84,8 @@ class GzipCodec(BytesBytesCodec):
         return (
             isinstance(data, Mapping)
             and set(data.keys()) == {"id", "level"}
-            and data["id"] == "gzip"  # type: ignore[typeddict-item]
-            and isinstance(data["level"], int)  # type: ignore[typeddict-item]
+            and data["id"] == "gzip"
+            and isinstance(data["level"], int)
         )
 
     @classmethod
@@ -93,10 +93,10 @@ class GzipCodec(BytesBytesCodec):
         return (
             isinstance(data, Mapping)
             and set(data.keys()) == {"name", "configuration"}
-            and data["name"] == "gzip"  # type: ignore[typeddict-item]
-            and isinstance(data["configuration"], Mapping)  # type: ignore[typeddict-item]
-            and "level" in data["configuration"]  # type: ignore[typeddict-item]
-            and isinstance(data["configuration"]["level"], int)  # type: ignore[typeddict-item]
+            and data["name"] == "gzip"
+            and isinstance(data["configuration"], Mapping)
+            and "level" in data["configuration"]
+            and isinstance(data["configuration"]["level"], int)
         )
 
     @classmethod
