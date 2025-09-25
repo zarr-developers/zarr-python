@@ -1,3 +1,4 @@
+import itertools
 import subprocess
 from dataclasses import dataclass
 from itertools import product
@@ -13,6 +14,8 @@ import zarr.abc
 import zarr.abc.codec
 import zarr.codecs as zarrcodecs
 from zarr.abc.numcodec import Numcodec
+from zarr.codecs.blosc import BLOSC_CNAME, BLOSC_SHUFFLE, BloscCodec
+from zarr.codecs.gzip import GzipCodec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
@@ -40,9 +43,9 @@ def runner_installed() -> bool:
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
     fill_value: np.generic | str | int | bytes
-    filters: tuple[Numcodec, ...] = ()
+    filters: tuple[Numcodec | zarr.abc.codec.Codec, ...] = ()
     serializer: str | None = None
-    compressor: Numcodec
+    compressor: Numcodec | zarr.abc.codec.Codec
 
 
 basic_codecs: tuple[Numcodec, ...] = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
@@ -93,6 +96,26 @@ vlen_bytes_cases = [
         compressor=GZip(),
     )
 ]
+# Snappy is not supported by numcodecs yet
+zarr_v3_blosc_cases = [
+    ArrayParams(
+        values=np.arange(4, dtype="float64"),
+        fill_value=1,
+        compressor=BloscCodec(clevel=1, shuffle=shuf, cname=cname),  # type: ignore[arg-type]
+    )
+    for shuf, cname in itertools.product(BLOSC_SHUFFLE, BLOSC_CNAME)
+    if cname != "snappy"
+]
+
+zarr_v3_gzip_cases = [
+    ArrayParams(
+        values=np.arange(4, dtype="float64"),
+        fill_value=1,
+        compressor=GzipCodec(level=level),
+    )
+    for level in [1, 2, 3]
+]
+
 array_cases_v2_18 = (
     basic_array_cases
     + bytes_array_cases
@@ -100,6 +123,8 @@ array_cases_v2_18 = (
     + string_array_cases
     + vlen_string_cases
     + vlen_bytes_cases
+    + zarr_v3_blosc_cases
+    + zarr_v3_gzip_cases
 )
 
 array_cases_v3_08 = vlen_string_cases
@@ -131,7 +156,7 @@ def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         shape=array_params.values.shape,
         dtype=dtype,
         chunks=array_params.values.shape,
-        compressors=compressor,
+        compressors=compressor,  # type: ignore[arg-type]
         filters=filters,
         fill_value=array_params.fill_value,
         order="C",
@@ -178,7 +203,7 @@ def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         dtype=dtype,
         chunks=array_params.values.shape,
         compressors=compressor,
-        filters=array_params.filters,
+        filters=array_params.filters,  # type: ignore[arg-type]
         serializer=serializer,
         fill_value=array_params.fill_value,
         chunk_key_encoding=chunk_key_encoding,
@@ -194,6 +219,7 @@ script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
 
 
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 @pytest.mark.parametrize(
     "source_array_v2", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
 )
