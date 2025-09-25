@@ -101,7 +101,15 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec):
     def to_json(self, zarr_format: Literal[3]) -> FixedScaleOffsetJSON_V3: ...
     def to_json(self, zarr_format: ZarrFormat) -> FixedScaleOffsetJSON_V2 | FixedScaleOffsetJSON_V3:
         _warn_unstable_specification(self)
-        return super().to_json(zarr_format)  # type: ignore[return-value]
+        if zarr_format == 2:
+            return super().to_json(zarr_format)  # type: ignore[return-value]
+        return {
+            "name": "fixedscaleoffset", 
+            "configuration": {
+                "astype": parse_dtype(self.codec_config["astype"], zarr_format=2).to_json(zarr_format=3), 
+                "dtype": parse_dtype(self.codec_config["dtype"], zarr_format=2).to_json(zarr_format=3), 
+                "scale": self.codec_config["scale"], 
+                "offset": self.codec_config["offset"]}}
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON_V2) -> Self:
