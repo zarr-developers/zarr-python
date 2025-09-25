@@ -1,2 +1,0 @@
-The ``Store.set_partial_writes`` method, which was not used by Zarr-Python, has been removed.
-``store.supports_partial_writes`` is now always ``False``.

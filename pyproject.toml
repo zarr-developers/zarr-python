@@ -84,7 +84,7 @@ test = [
     "pytest-xdist",
     "packaging",
     "tomlkit",
-    "uv"
+    "uv",
 ]
 remote_tests = [
     'zarr[remote]',
@@ -96,15 +96,15 @@ remote_tests = [
 optional = ["rich", "universal-pathlib"]
 docs = [
     # Doc building
-    'sphinx==8.1.3',
-    'sphinx-autobuild>=2021.3.14',
-    'sphinx-autoapi==3.4.0',
-    'sphinx_design',
-    'sphinx-issues',
-    'sphinx-copybutton',
-    'sphinx-reredirects',
-    'pydata-sphinx-theme',
-    'numpydoc',
+    "mkdocs-material[imaging]>=9.6.14",
+    "mkdocs>=1.6.1",
+    "mkdocstrings>=0.29.1",
+    "mkdocstrings-python>=1.16.10",
+    "mike>=2.1.3",
+    "mkdocs-redirects>=1.2.0",
+    "markdown-exec[ansi]",
+    "griffe-inherited-docstrings",
+    "ruff",
     # Changelog generation
     'towncrier',
     # Optional dependencies to run examples
@@ -195,6 +195,14 @@ python = ["3.11", "3.12", "3.13"]
 numpy = ["1.26", "2.2"]
 version = ["minimal"]
 
+[tool.hatch.envs.gputest.scripts]
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
+run-mypy = "mypy src"
+run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+list-env = "pip list"
+
 [tool.hatch.envs.upstream]
 template = 'test'
 python = "3.13"
@@ -239,22 +247,15 @@ dependencies = [
     'zarr[remote_tests]',
 ]
 
-
-[tool.hatch.envs.doctest]
-features = ["test", "optional", "remote", "remote_tests"]
-description = "Test environment for doctests"
-
-[tool.hatch.envs.doctest.scripts]
-run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
-fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
-list-env = "pip list"
-
 [tool.hatch.envs.docs]
-features = ['docs']
+features = ['docs', 'remote']
 
 [tool.hatch.envs.docs.scripts]
-build = "cd docs && make html"
-serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
+serve = "mkdocs serve"
+build = "mkdocs build"
+check = "mkdocs build --strict"
+readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
+list-env = "pip list"
 
 [tool.ruff]
 line-length = 100
@@ -315,9 +316,9 @@ ignore = [
     "RET505",
     "RET506",
     "RUF005",
+    "RUF043",
     "SIM108",
     "TRY003",
-    "UP038",  # https://github.com/astral-sh/ruff/issues/7871
     # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
     "W191",
     "E111",
@@ -411,8 +412,9 @@ ignore = [
 [tool.numpydoc_validation]
 # See https://numpydoc.readthedocs.io/en/latest/validation.html#built-in-validation-checks for list of checks
 checks = [
-    "GL06",
-    "GL07",
+    # Requires third-party support; see https://github.com/numpy/numpydoc/issues/463
+    # "GL06",
+    # "GL07",
     # Currently broken; see https://github.com/numpy/numpydoc/issues/573
     # "GL09",
     "GL10",
@@ -425,9 +427,10 @@ checks = [
 
 [tool.towncrier]
 directory = 'changes'
-filename = "docs/release-notes.rst"
-underlines = ["-", "~", "^"]
-issue_format = ":issue:`{issue}`"
+filename = "docs/release-notes.md"
+underlines = ["", "", ""]
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues{issue})"
+start_string = "<!-- towncrier release notes start -->\n"
 
 [tool.codespell]
 ignore-words-list = "astroid"

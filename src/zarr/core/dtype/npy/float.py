@@ -19,6 +19,7 @@ from zarr.core.dtype.npy.common import (
     TFloatScalar_co,
     check_json_float_v2,
     check_json_float_v3,
+    check_json_floatish_str,
     endianness_to_numpy_str,
     float_from_json_v2,
     float_from_json_v3,
@@ -270,6 +271,8 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         if zarr_format == 2:
             if check_json_float_v2(data):
                 return self._cast_scalar_unchecked(float_from_json_v2(data))
+            elif check_json_floatish_str(data):
+                return self._cast_scalar_unchecked(float(data))
             else:
                 raise TypeError(
                     f"Invalid type: {data}. Expected a float or a special string encoding of a float."
@@ -277,6 +280,8 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
         elif zarr_format == 3:
             if check_json_float_v3(data):
                 return self._cast_scalar_unchecked(float_from_json_v3(data))
+            elif check_json_floatish_str(data):
+                return self._cast_scalar_unchecked(float(data))
             else:
                 raise TypeError(
                     f"Invalid type: {data}. Expected a float or a special string encoding of a float."
@@ -314,8 +319,8 @@ class Float16(BaseFloat[np.dtypes.Float16DType, np.float16]):
     """
     A Zarr data type for arrays containing 16-bit floating point numbers.
 
-    Wraps the ``np.dtypes.Float16DType`` data type. Scalars for this data type are instances
-    of ``np.float16``.
+    Wraps the [`np.dtypes.Float16DType`][numpy.dtypes.Float16DType] data type. Scalars for this data type are instances
+    of [`np.float16`][numpy.float16].
 
     Attributes
     ----------
@@ -326,7 +331,7 @@ class Float16(BaseFloat[np.dtypes.Float16DType, np.float16]):
     ----------
     This class implements the float16 data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float16DType
@@ -351,8 +356,8 @@ class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
     """
     A Zarr data type for arrays containing 32-bit floating point numbers.
 
-    Wraps the ``np.dtypes.Float32DType`` data type. Scalars for this data type are instances
-    of ``np.float32``.
+    Wraps the [`np.dtypes.Float32DType`][numpy.dtypes.Float32DType] data type. Scalars for this data type are instances
+    of [`np.float32`][numpy.float32].
 
     Attributes
     ----------
@@ -363,7 +368,7 @@ class Float32(BaseFloat[np.dtypes.Float32DType, np.float32]):
     ----------
     This class implements the float32 data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float32DType
@@ -388,8 +393,8 @@ class Float64(BaseFloat[np.dtypes.Float64DType, np.float64]):
     """
     A Zarr data type for arrays containing 64-bit floating point numbers.
 
-    Wraps the ``np.dtypes.Float64DType`` data type. Scalars for this data type are instances
-    of ``np.float64``.
+    Wraps the [`np.dtypes.Float64DType`][numpy.dtypes.Float64DType] data type. Scalars for this data type are instances
+    of [`np.float64`][numpy.float64].
 
     Attributes
     ----------
@@ -400,7 +405,7 @@ class Float64(BaseFloat[np.dtypes.Float64DType, np.float64]):
     ----------
     This class implements the float64 data type defined in Zarr V2 and V3.
 
-    See the `Zarr V2 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__ and `Zarr V3 <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst>`__ specification documents for details.
+    See the [Zarr V2](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding) and [Zarr V3](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v3/data-types/index.rst) specification documents for details.
     """
 
     dtype_cls = np.dtypes.Float64DType
