@@ -155,16 +155,6 @@ class ShuffleJSON_V3(NamedRequiredConfig[Literal["shuffle"], ShuffleConfig]):
     """JSON representation of Shuffle codec for Zarr V3."""
 
 
-class DeltaConfig_V2(TypedDict):
-    dtype: DTypeSpec_V2
-    astype: DTypeSpec_V2
-
-
-class DeltaConfig_V3(TypedDict):
-    dtype: DTypeSpec_V3
-    astype: DTypeSpec_V3
-
-
 class BitRoundConfig(TypedDict):
     keepbits: int
 
@@ -195,17 +185,6 @@ class PackBitsConfig(TypedDict):
 class AsTypeConfig(TypedDict):
     encode_dtype: str
     decode_dtype: str
-
-
-# Array-to-array codec JSON representations
-class DeltaJSON_V2(DeltaConfig_V2):
-    """JSON representation of Delta codec for Zarr V2."""
-
-    id: ReadOnly[Literal["delta"]]
-
-
-class DeltaJSON_V3(NamedRequiredConfig[Literal["delta"], DeltaConfig_V3]):
-    """JSON representation of Delta codec for Zarr V3."""
 
 
 class BitRoundJSON_V2(BitRoundConfig):
@@ -608,31 +587,6 @@ class Shuffle(_NumcodecsBytesBytesCodec):
 
 
 # array-to-array codecs ("filters")
-class Delta(_NumcodecsArrayArrayCodec):
-    codec_name = "numcodecs.delta"
-    _codec_id = "delta"
-    codec_config: DeltaConfig_V2 | DeltaConfig_V3
-
-    def __init__(self, **codec_config: Any) -> None:
-        if "codec_config" in codec_config:
-            raise ValueError("The argument 'codec_config' is not supported.")
-        super().__init__(**codec_config)
-
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> DeltaJSON_V2: ...
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> DeltaJSON_V3: ...
-    def to_json(self, zarr_format: ZarrFormat) -> DeltaJSON_V2 | DeltaJSON_V3:
-        _warn_unstable_specification(self)
-        return super().to_json(zarr_format)  # type: ignore[return-value]
-
-    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
-        if astype := self.codec_config.get("astype"):
-            dtype = parse_dtype(np.dtype(astype), zarr_format=3)  # type: ignore[arg-type]
-            return replace(chunk_spec, dtype=dtype)
-        return chunk_spec
-
-
 class BitRound(_NumcodecsArrayArrayCodec):
     codec_name = "numcodecs.bitround"
     _codec_id = "bitround"

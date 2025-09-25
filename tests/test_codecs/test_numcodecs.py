@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 from numcodecs import GZip
 
+import zarr.codecs.numcodecs.delta
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import Numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
@@ -148,7 +149,7 @@ def test_generic_compressor(codec_class: type[_numcodecs._NumcodecsBytesBytesCod
 @pytest.mark.parametrize(
     ("codec_class", "codec_config"),
     [
-        (_numcodecs.Delta, {"dtype": "float32"}),
+        (zarr.codecs.numcodecs.delta.Delta, {"dtype": "float32"}),
         (_numcodecs.FixedScaleOffset, {"offset": 0, "scale": 25.5, "dtype": "float32"}),
         (_numcodecs.FixedScaleOffset, {"offset": 0, "scale": 51, "dtype": "float32"}),
         (_numcodecs.AsType, {"encode_dtype": "float32", "decode_dtype": "float32"}),
@@ -288,7 +289,7 @@ def test_delta_astype() -> None:
             dtype=data.dtype,
             fill_value=0,
             filters=[
-                _numcodecs.Delta(dtype="i8", astype="i2"),
+                zarr.codecs.numcodecs.delta.Delta(dtype="i8", astype="i2"),
             ],
         )
 

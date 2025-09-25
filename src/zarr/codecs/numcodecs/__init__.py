@@ -13,7 +13,6 @@ from zarr.codecs.numcodecs._codecs import (
     AsType,
     BitRound,
     Blosc,
-    Delta,
     FixedScaleOffset,
     Fletcher32,
     GZip,
@@ -29,6 +28,7 @@ from zarr.codecs.numcodecs._codecs import (
     _NumcodecsBytesBytesCodec,
     _NumcodecsCodec,
 )
+from zarr.codecs.numcodecs.delta import Delta
 
 # This is a fixed dictionary of numcodecs codecs for which we have pre-made Zarr V3 wrappers
 numcodecs_wrappers: Final[dict[str, type[_NumcodecsCodec]]] = {

@@ -9,8 +9,8 @@ class TestAdler32Codec(BaseTestCodec):
     test_cls = _numcodecs.Adler32
     valid_json_v2 = (
         {"id": "adler32"},
-        {"id": "adler32", "location": "start"},
-        {"id": "adler32", "location": "end"},
+        {"id": "adler32", "location": "start"},  # type: ignore[typeddict-unknown-key]
+        {"id": "adler32", "location": "end"},  # type: ignore[typeddict-unknown-key]
     )
     valid_json_v3 = (
         {"name": "adler32", "configuration": {}},

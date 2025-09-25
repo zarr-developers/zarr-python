@@ -13,7 +13,8 @@ from zarr.abc.codec import Codec
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
-from zarr.codecs.numcodecs import LZMA, Delta
+from zarr.codecs.numcodecs import LZMA
+from zarr.codecs.numcodecs.delta import Delta
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.array import Array

@@ -13,7 +13,6 @@ from zarr.codecs.numcodecs import (
     Adler32,
     AsType,
     BitRound,
-    Delta,
     FixedScaleOffset,
     Fletcher32,
     JenkinsLookup3,
@@ -23,6 +22,7 @@ from zarr.codecs.numcodecs import (
     Shuffle,
     Zlib,
 )
+from zarr.codecs.numcodecs.delta import Delta
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
