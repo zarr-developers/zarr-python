@@ -13,6 +13,6 @@ class TestFixedScaleOffsetCodec(BaseTestCodec):
     valid_json_v3 = (
         {
             "name": "fixedscaleoffset",
-            "configuration": {"scale": 1.0, "offset": 0.0, "astype": "|u1", "dtype": "|u1"},
+            "configuration": {"scale": 1.0, "offset": 0.0, "astype": "uint8", "dtype": "float32"},
         },
     )

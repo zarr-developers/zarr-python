@@ -11,6 +11,6 @@ class TestAsTypeCodec(BaseTestCodec):
     valid_json_v3 = (
         {
             "name": "astype",
-            "configuration": {"encode_dtype": "<f4", "decode_dtype": "<f4"},
+            "configuration": {"encode_dtype": "float32", "decode_dtype": "float64"},
         },
     )

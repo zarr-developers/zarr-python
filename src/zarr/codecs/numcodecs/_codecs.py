@@ -61,7 +61,7 @@ from zarr.core.common import (
     _check_codecjson_v2,
     product,
 )
-from zarr.dtype import UInt8, ZDType, parse_dtype
+from zarr.dtype import UInt8, ZDType
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
 
@@ -75,7 +75,6 @@ if TYPE_CHECKING:
     from zarr.codecs.zstd import ZstdConfig_V3, ZstdJSON_V2, ZstdJSON_V3
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
-    from zarr.core.dtype.common import DTypeSpec_V2, DTypeSpec_V3
 
 
 # TypedDict definitions for V2 and V3 JSON representations
@@ -159,20 +158,6 @@ class BitRoundConfig(TypedDict):
     keepbits: int
 
 
-class FixedScaleOffsetConfig_V2(TypedDict):
-    dtype: NotRequired[DTypeSpec_V2]
-    astype: NotRequired[DTypeSpec_V2]
-    scale: NotRequired[float]
-    offset: NotRequired[float]
-
-
-class FixedScaleOffsetConfig_V3(TypedDict):
-    dtype: NotRequired[DTypeSpec_V3]
-    astype: NotRequired[DTypeSpec_V2]
-    scale: NotRequired[float]
-    offset: NotRequired[float]
-
-
 class QuantizeConfig(TypedDict):
     digits: int
     dtype: NotRequired[str]
@@ -180,11 +165,6 @@ class QuantizeConfig(TypedDict):
 
 class PackBitsConfig(TypedDict):
     pass  # PackBits has no configuration parameters
-
-
-class AsTypeConfig(TypedDict):
-    encode_dtype: str
-    decode_dtype: str
 
 
 class BitRoundJSON_V2(BitRoundConfig):
@@ -195,18 +175,6 @@ class BitRoundJSON_V2(BitRoundConfig):
 
 class BitRoundJSON_V3(NamedRequiredConfig[Literal["bitround"], BitRoundConfig]):
     """JSON representation of BitRound codec for Zarr V3."""
-
-
-class FixedScaleOffsetJSON_V2(FixedScaleOffsetConfig_V2):
-    """JSON representation of FixedScaleOffset codec for Zarr V2."""
-
-    id: ReadOnly[Literal["fixedscaleoffset"]]
-
-
-class FixedScaleOffsetJSON_V3(
-    NamedRequiredConfig[Literal["fixedscaleoffset"], FixedScaleOffsetConfig_V3]
-):
-    """JSON representation of FixedScaleOffset codec for Zarr V3."""
 
 
 class QuantizeJSON_V2(QuantizeConfig):
@@ -227,16 +195,6 @@ class PackBitsJSON_V2(PackBitsConfig):
 
 class PackBitsJSON_V3(NamedRequiredConfig[Literal["packbits"], PackBitsConfig]):
     """JSON representation of PackBits codec for Zarr V3."""
-
-
-class AsTypeJSON_V2(AsTypeConfig):
-    """JSON representation of AsType codec for Zarr V2."""
-
-    id: ReadOnly[Literal["astype"]]
-
-
-class AsTypeJSON_V3(NamedRequiredConfig[Literal["astype"], AsTypeConfig]):
-    """JSON representation of AsType codec for Zarr V3."""
 
 
 # Checksum codec JSON representations
@@ -601,32 +559,6 @@ class BitRound(_NumcodecsArrayArrayCodec):
         return super().to_json(zarr_format)  # type: ignore[return-value]
 
 
-class FixedScaleOffset(_NumcodecsArrayArrayCodec):
-    codec_name = "numcodecs.fixedscaleoffset"
-    _codec_id = "fixedscaleoffset"
-    codec_config: FixedScaleOffsetConfig_V2
-
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> FixedScaleOffsetJSON_V2: ...
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> FixedScaleOffsetJSON_V3: ...
-    def to_json(self, zarr_format: ZarrFormat) -> FixedScaleOffsetJSON_V2 | FixedScaleOffsetJSON_V3:
-        _warn_unstable_specification(self)
-        return super().to_json(zarr_format)  # type: ignore[return-value]
-
-    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
-        if astype := self.codec_config.get("astype"):
-            dtype = parse_dtype(np.dtype(astype), zarr_format=3)  # type: ignore[arg-type]
-            return replace(chunk_spec, dtype=dtype)
-        return chunk_spec
-
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        if self.codec_config.get("dtype") is None:
-            dtype = array_spec.dtype.to_native_dtype()
-            return type(self)(**{**self.codec_config, "dtype": str(dtype)})
-        return self
-
-
 class Quantize(_NumcodecsArrayArrayCodec):
     codec_name = "numcodecs.quantize"
     _codec_id = "quantize"
@@ -674,31 +606,6 @@ class PackBits(_NumcodecsArrayArrayCodec):
         _dtype = dtype.to_native_dtype()
         if _dtype != np.dtype("bool"):
             raise ValueError(f"Packbits filter requires bool dtype. Got {dtype}.")
-
-
-class AsType(_NumcodecsArrayArrayCodec):
-    codec_name = "numcodecs.astype"
-    _codec_id = "astype"
-    codec_config: AsTypeConfig
-
-    @overload
-    def to_json(self, zarr_format: Literal[2]) -> AsTypeJSON_V2: ...
-    @overload
-    def to_json(self, zarr_format: Literal[3]) -> AsTypeJSON_V3: ...
-    def to_json(self, zarr_format: ZarrFormat) -> AsTypeJSON_V2 | AsTypeJSON_V3:
-        _warn_unstable_specification(self)
-        return super().to_json(zarr_format)  # type: ignore[return-value]
-
-    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
-        dtype = parse_dtype(np.dtype(self.codec_config["encode_dtype"]), zarr_format=3)
-        return replace(chunk_spec, dtype=dtype)
-
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> AsType:
-        if self.codec_config.get("decode_dtype") is None:
-            # TODO: remove these coverage exemptions the correct way, i.e. with tests
-            dtype = array_spec.dtype.to_native_dtype()  # pragma: no cover
-            return AsType(**{**self.codec_config, "decode_dtype": str(dtype)})  # pragma: no cover
-        return self
 
 
 # bytes-to-bytes checksum codecs

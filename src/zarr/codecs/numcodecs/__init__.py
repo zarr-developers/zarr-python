@@ -10,10 +10,8 @@ from zarr.codecs.numcodecs._codecs import (
     LZMA,
     ZFPY,
     Adler32,
-    AsType,
     BitRound,
     Blosc,
-    FixedScaleOffset,
     Fletcher32,
     GZip,
     JenkinsLookup3,
@@ -28,10 +26,12 @@ from zarr.codecs.numcodecs._codecs import (
     _NumcodecsBytesBytesCodec,
     _NumcodecsCodec,
 )
+from zarr.codecs.numcodecs.astype import AsType
 from zarr.codecs.numcodecs.delta import Delta
+from zarr.codecs.numcodecs.fixed_scale_offset import FixedScaleOffset
 
 # This is a fixed dictionary of numcodecs codecs for which we have pre-made Zarr V3 wrappers
-numcodecs_wrappers: Final[dict[str, type[_NumcodecsCodec]]] = {
+NUMCODECS_WRAPPERS: Final[dict[str, type[_NumcodecsCodec]]] = {
     "bz2": BZ2,
     "crc32": CRC32,
     "crc32c": CRC32C,
