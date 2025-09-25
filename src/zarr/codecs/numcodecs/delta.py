@@ -43,17 +43,21 @@ class DeltaJSON_V2(DeltaConfig_V2):
     id: ReadOnly[Literal["delta"]]
 
 
+class DeltaJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.delta"], DeltaConfig_V3]):
+    """Legacy JSON representation of Delta codec for Zarr V3."""
+
+
 class DeltaJSON_V3(NamedRequiredConfig[Literal["delta"], DeltaConfig_V3]):
     """JSON representation of Delta codec for Zarr V3."""
 
 
-def check_json_v2(data: object) -> TypeGuard[DeltaJSON_V2]:
+def check_json_v2(data: object) -> TypeGuard[DeltaJSON_V2 | DeltaJSON_V3_Legacy]:
     """
     A type guard for the Zarr V2 form of the Delta codec JSON
     """
     return (
         _check_codecjson_v2(data)
-        and data["id"] == "delta"
+        and data["id"] in ("delta", "numcodecs.delta")
         and "astype" in data
         and "dtype" in data
         and check_dtype_name_v2(data["dtype"])  # type: ignore[typeddict-item]
@@ -68,7 +72,7 @@ def check_json_v3(data: object) -> TypeGuard[DeltaJSON_V3]:
     return (
         _check_codecjson_v3(data)
         and isinstance(data, Mapping)
-        and data["name"] == "delta"
+        and data["name"] in ("delta", "numcodecs.delta")
         and "configuration" in data
         and "astype" in data["configuration"]
         and "dtype" in data["configuration"]

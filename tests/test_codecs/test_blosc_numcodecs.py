@@ -1,16 +1,35 @@
+from typing import TypeGuard
+
 import pytest
 
-from tests.test_codecs.conftest import BaseTestCodec
-from zarr.codecs import numcodecs as _numcodecs
+from tests.test_codecs.test_blosc import TestBloscCodec
+from zarr.codecs.numcodecs.blosc import Blosc, BloscConfigV3_Legacy, check_json_v3
 
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
-class TestBloscNumcodecsCodec(BaseTestCodec):
-    test_cls = _numcodecs.Blosc
-    valid_json_v2 = ({"id": "blosc", "clevel": 5, "shuffle": 1, "blocksize": 0, "cname": "lz4"},)
+class TestBloscNumcodecsCodec(TestBloscCodec):
+    test_cls = Blosc
     valid_json_v3 = (
         {
             "name": "blosc",
-            "configuration": {"clevel": 5, "shuffle": 1, "blocksize": 0, "cname": "lz4"},
+            "configuration": {
+                "cname": "lz4",
+                "clevel": 5,
+                "shuffle": 1,
+                "blocksize": 0,
+            },
+        },
+        {
+            "name": "numcodecs.blosc",
+            "configuration": {
+                "cname": "lz4",
+                "clevel": 5,
+                "shuffle": 1,
+                "blocksize": 0,
+            },
         },
     )
+
+    @staticmethod
+    def check_json_v3(data: object) -> TypeGuard[BloscConfigV3_Legacy]:
+        return check_json_v3(data)

@@ -80,7 +80,7 @@ class GzipCodec(BytesBytesCodec):
         )  # pragma: no cover
 
     @classmethod
-    def _check_json_v2(cls, data: CodecJSON) -> TypeGuard[GZipJSON_V2]:
+    def _check_json_v2(cls, data: object) -> TypeGuard[GZipJSON_V2]:
         return (
             isinstance(data, Mapping)
             and set(data.keys()) == {"id", "level"}
@@ -89,7 +89,7 @@ class GzipCodec(BytesBytesCodec):
         )
 
     @classmethod
-    def _check_json_v3(cls, data: CodecJSON) -> TypeGuard[GZipJSON_V3]:
+    def _check_json_v3(cls, data: object) -> TypeGuard[GZipJSON_V3]:
         return (
             isinstance(data, Mapping)
             and set(data.keys()) == {"name", "configuration"}

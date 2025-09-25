@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import pytest
 
 from tests.test_codecs.conftest import BaseTestCodec
 from zarr.codecs.numcodecs import delta as _numcodecs
+from zarr.codecs.numcodecs.delta import check_json_v2, check_json_v3
 
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
@@ -13,4 +16,23 @@ class TestDeltaCodec(BaseTestCodec):
             "name": "delta",
             "configuration": {"dtype": "uint16", "astype": "uint8"},
         },
+        pytest.param(
+            {
+                "name": "numcodecs.delta",
+                "configuration": {"dtype": ">i2", "astype": "<i1"},
+            },
+            marks=pytest.mark.xfail(reason="astype will fail with mixed endianness in zarr v3"),
+        ),
+        {
+            "name": "numcodecs.delta",
+            "configuration": {"dtype": "|i1", "astype": "|i1"},
+        },
     )
+
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        return check_json_v2(data)
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        return check_json_v3(data)

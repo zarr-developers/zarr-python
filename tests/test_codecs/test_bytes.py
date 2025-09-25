@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
@@ -5,13 +7,14 @@ import pytest
 
 import zarr
 from tests.test_codecs.conftest import BaseTestCodec
-from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
+from zarr.codecs.bytes import check_json_v2, check_json_v3
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
 
 if TYPE_CHECKING:
+    from zarr.abc.store import Store
     from zarr.codecs.bytes import BytesJSON_V2, BytesJSON_V3
 
 
@@ -31,6 +34,14 @@ class TestBytesCodec(BaseTestCodec):
             },
         },
     )
+
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        return check_json_v2(data)
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        return check_json_v3(data)
 
 
 @pytest.mark.parametrize("endian", ["big", "little"])

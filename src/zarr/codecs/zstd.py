@@ -124,7 +124,7 @@ class ZstdCodec(BytesBytesCodec):
         msg = (
             "Invalid Zarr V3 JSON representation of the zstd codec. "
             f"Got {data!r}, expected a Mapping with keys ('name', 'configuration') "
-            "Where the 'configuration' key is a Mapping with keys ('level', 'checksum')"
+            "where the 'configuration' key is a Mapping with keys ('level', 'checksum')"
         )
         raise CodecValidationError(msg)
 

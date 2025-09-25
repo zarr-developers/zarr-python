@@ -4,7 +4,7 @@ import pytest
 from tests.test_codecs.conftest import BaseTestCodec
 from tests.test_codecs.test_numcodecs import EXPECTED_WARNING_STR, compare_json_dicts
 from zarr.codecs.numcodecs import _NumcodecsArrayBytesCodec, _NumcodecsCodec
-from zarr.codecs.numcodecs._codecs import PCodec
+from zarr.codecs.numcodecs.pcodec import PCodec
 from zarr.core.array import create_array
 from zarr.core.common import CodecJSON, CodecJSON_V2, ZarrFormat
 from zarr.errors import ZarrUserWarning
@@ -28,6 +28,17 @@ class TestPCodec(BaseTestCodec):
     valid_json_v3 = (
         {
             "name": "pcodec",
+            "configuration": {
+                "level": 8,
+                "mode_spec": "auto",
+                "delta_spec": "auto",
+                "paging_spec": "equal_pages_up_to",
+                "delta_encoding_order": 1,
+                "equal_pages_up_to": 262144,
+            },
+        },
+        {
+            "name": "numcodecs.pcodec",
             "configuration": {
                 "level": 8,
                 "mode_spec": "auto",

@@ -40,6 +40,10 @@ class AsTypeJSON_V2(AsTypeConfig_V2):
     id: ReadOnly[Literal["astype"]]
 
 
+class AsTypeJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.astype"], AsTypeConfig_V2]):
+    """Legacy JSON representation of AsType codec for Zarr V3."""
+
+
 class AsTypeJSON_V3(NamedRequiredConfig[Literal["astype"], AsTypeConfig_V3]):
     """JSON representation of AsType codec for Zarr V3."""
 
@@ -58,19 +62,27 @@ def check_json_v2(data: object) -> TypeGuard[AsTypeJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[AsTypeJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[AsTypeJSON_V3 | AsTypeJSON_V3_Legacy]:
     """
-    A type guard for the Zarr V3 form of the Astype codec JSON
+    A type guard for the Zarr V3 form of the Astype codec JSON.
+
+    This check is backwards compatible the the Zarr V2 data type representation.
     """
     return (
         _check_codecjson_v3(data)
         and isinstance(data, Mapping)
-        and data["name"] == "astype"
+        and data["name"] in ("astype", "numcodecs.astype")
         and "configuration" in data
         and "encode_dtype" in data["configuration"]
         and "decode_dtype" in data["configuration"]
-        and check_dtype_spec_v3(data["configuration"]["decode_dtype"])
-        and check_dtype_spec_v3(data["configuration"]["encode_dtype"])
+        and (
+            check_dtype_spec_v3(data["configuration"]["decode_dtype"])
+            or check_dtype_name_v2(data["configuration"]["decode_dtype"])
+        )
+        and (
+            check_dtype_spec_v3(data["configuration"]["encode_dtype"])
+            or check_dtype_name_v2(data["configuration"]["encode_dtype"])
+        )
     )
 
 

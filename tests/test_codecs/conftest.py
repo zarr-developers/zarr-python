@@ -26,6 +26,14 @@ class BaseTestCodec:
     valid_json_v2: ClassVar[tuple[CodecJSON_V2 | object, ...]]
     valid_json_v3: ClassVar[tuple[CodecJSON_V3 | object, ...]]
 
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        raise NotImplementedError
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        raise NotImplementedError
+
     def test_from_json_v2(self, valid_json_v2: CodecJSON_V2) -> None:
         """
         Test that the codec generated from valid JSON generates a JSON representation that generates
@@ -33,6 +41,7 @@ class BaseTestCodec:
         """
         codec = self.test_cls.from_json(valid_json_v2)
         assert codec.from_json(codec.to_json(zarr_format=2)) == codec
+        assert self.check_json_v2(codec.to_json(zarr_format=2))
 
     def test_from_json_v3(self, valid_json_v3: CodecJSON_V3) -> None:
         """
@@ -41,6 +50,7 @@ class BaseTestCodec:
         """
         codec = self.test_cls.from_json(valid_json_v3)
         assert codec.from_json(codec.to_json(zarr_format=3)) == codec
+        assert self.check_json_v3(codec.to_json(zarr_format=3))
 
 
 def pytest_generate_tests(metafunc: Any) -> None:

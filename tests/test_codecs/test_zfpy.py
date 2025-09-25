@@ -29,4 +29,14 @@ class TestZFPYCodec(BaseTestCodec):
                 "tolerance": -1,
             },
         },
+        {
+            "name": "numcodecs.zfpy",
+            "configuration": {
+                "mode": 4,
+                "compression_kwargs": {"tolerance": -1},
+                "precision": -1,
+                "rate": -1,
+                "tolerance": -1,
+            },
+        },
     )

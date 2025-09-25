@@ -170,6 +170,8 @@ def parse_shuffle(data: object) -> BloscShuffle:
         return data
     if data in BLOSC_SHUFFLE:
         return BloscShuffle[data]  # type: ignore[misc]
+    if data in range(len(BLOSC_SHUFFLE)):
+        return BloscShuffle.from_int(data)  # type: ignore[arg-type]
     raise TypeError(f"Value must be one of {BLOSC_SHUFFLE}. Got {data} instead.")
 
 

@@ -1,6 +1,24 @@
+from __future__ import annotations
+
 from tests.test_codecs.test_zstd import TestZstdCodec
-from zarr.codecs import numcodecs as znumcodecs
+from zarr.codecs.numcodecs import Zstd
 
 
 class TestNumcodecsZstdCodec(TestZstdCodec):
-    test_cls = znumcodecs.Zstd  # type: ignore[assignment]
+    test_cls = Zstd  # type: ignore[assignment]
+    valid_json_v3 = (
+        {
+            "name": "zstd",
+            "configuration": {
+                "level": 0,
+                "checksum": False,
+            },
+        },
+        {
+            "name": "numcodecs.zstd",
+            "configuration": {
+                "level": 0,
+                "checksum": False,
+            },
+        },
+    )

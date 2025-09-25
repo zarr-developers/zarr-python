@@ -4,18 +4,23 @@ import pytest
 
 from tests.test_codecs.conftest import BaseTestCodec
 from zarr.codecs import numcodecs as _numcodecs
-from zarr.codecs.numcodecs.crc32 import check_json_v2, check_json_v3
+from zarr.codecs.numcodecs.zlib import check_json_v2, check_json_v3, Zlib
 
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
-class TestCRC32Codec(BaseTestCodec):
-    test_cls = _numcodecs.CRC32
-    valid_json_v2 = ({"id": "crc32"},)
+class TestZlib(BaseTestCodec):
+    test_cls = Zlib
+    valid_json_v2 = ({"id": "zlib", "level": 1},)
     valid_json_v3 = (
-        {"name": "crc32", "configuration": {}},
-        {"name": "numcodecs.crc32", "configuration": {}},
+        {
+            "name": "zlib",
+            "configuration": {"level": 1},
+        },
+        {
+            "name": "numcodecs.zlib",
+            "configuration": {"level": 1},
+        },
     )
-
     @staticmethod
     def check_json_v2(data: object) -> bool:
         return check_json_v2(data)

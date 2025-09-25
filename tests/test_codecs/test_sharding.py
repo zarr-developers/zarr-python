@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pickle
 import re
 from typing import TYPE_CHECKING, Any, Literal
@@ -11,8 +13,6 @@ import zarr.api
 import zarr.api.asynchronous
 from tests.test_codecs.conftest import BaseTestCodec
 from zarr import Array
-from zarr.abc.codec import Codec
-from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,
     ShardingCodec,
@@ -21,6 +21,7 @@ from zarr.codecs import (
 )
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.codecs.sharding import check_json_v2, check_json_v3
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.errors import ZarrUserWarning
 from zarr.storage import StorePath, ZipStore
@@ -29,6 +30,8 @@ from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
 
 if TYPE_CHECKING:
+    from zarr.abc.codec import Codec
+    from zarr.abc.store import Store
     from zarr.codecs.sharding import ShardingJSON_V2, ShardingJSON_V3
 
 
@@ -54,6 +57,14 @@ class TestShardingCodec(BaseTestCodec):
             },
         },
     )
+
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        return check_json_v2(data)
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        return check_json_v3(data)
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])

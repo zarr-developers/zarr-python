@@ -1,4 +1,5 @@
 import json
+from typing import Any
 
 import numcodecs
 import numpy as np
@@ -6,6 +7,7 @@ import pytest
 from packaging.version import Version
 
 import zarr
+import zarr.codecs.numcodecs
 from tests.test_codecs.conftest import BaseTestCodec
 from zarr.abc.store import Store
 from zarr.codecs import BloscCodec
@@ -16,8 +18,11 @@ from zarr.codecs.blosc import (
     BloscJSON_V2,
     BloscJSON_V3,
     BloscShuffle_Lit,
+    check_json_v2,
+    check_json_v3,
 )
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.common import ZarrFormat
 from zarr.storage import StorePath
 
 
@@ -43,7 +48,25 @@ class TestBloscCodec(BaseTestCodec):
                 "typesize": 1,
             },
         },
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "lz4",
+                "clevel": 5,
+                "shuffle": 1,
+                "blocksize": 0,
+                "typesize": 1,
+            },
+        },
     )
+
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        return check_json_v2(data)
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        return check_json_v3(data)
 
 
 @pytest.mark.parametrize("shuffle", BLOSC_SHUFFLE)
@@ -76,6 +99,37 @@ def test_to_json_v2(
     }
     assert codec.to_json(zarr_format=2) == expected_v2
     assert codec.to_json(zarr_format=3) == expected_v3
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize(
+    "codec",
+    [
+        BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0),
+        zarr.codecs.numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0),
+        numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0),
+    ],
+)
+def test_blosc_compression(zarr_format: ZarrFormat, codec: Any) -> None:
+    """
+    Test that any of the blosc-like codecs can be used for compression, and that
+    reading the array back uses the primary blosc codec class.
+    """
+    ref_codec = BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0, typesize=8)
+    store: dict[str, Any] = {}
+    z_w = zarr.create_array(
+        store=store,
+        dtype="int",
+        shape=(1,),
+        chunks=(10,),
+        zarr_format=zarr_format,
+        compressors=codec,
+    )
+    z_w[:] = 5
+
+    z_r = zarr.open_array(store=store, zarr_format=zarr_format)
+    assert np.all(z_r[:] == 5)
+    assert z_r.compressors == (ref_codec,)
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])

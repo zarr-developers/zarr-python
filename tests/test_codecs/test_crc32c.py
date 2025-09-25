@@ -1,22 +1,15 @@
-"""
-Comprehensive tests for the Crc32c codec.
+from __future__ import annotations
 
-Tests cover:
-- JSON serialization/deserialization for both Zarr v2 and v3 formats
-- Encoding and decoding functionality with various data types
-- Error handling for corrupted data and invalid configurations
-- Integration with Zarr arrays
-"""
+from typing import TYPE_CHECKING, Any
 
-from typing import Any
-
+import numcodecs
 import numpy as np
 import pytest
 from crc32c import crc32c
 
 import zarr
+import zarr.codecs.numcodecs
 from tests.test_codecs.conftest import BaseTestCodec
-from zarr.abc.store import Store
 from zarr.codecs.crc32c_ import (
     Crc32cCodec,
     Crc32cJSON_V2,
@@ -26,10 +19,13 @@ from zarr.codecs.crc32c_ import (
 )
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.common import ZarrFormat
 from zarr.core.dtype import UInt8, parse_dtype
 from zarr.errors import CodecValidationError
 from zarr.storage import StorePath
+
+if TYPE_CHECKING:
+    from zarr.abc.store import Store
+    from zarr.core.common import ZarrFormat
 
 
 class TestCrc32cCodec(BaseTestCodec):
@@ -43,6 +39,14 @@ class TestCrc32cCodec(BaseTestCodec):
         {"id": "crc32c", "location": "end"},
     )
     valid_json_v3 = ({"name": "crc32c"}, "crc32c")
+
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        return check_json_v2(data)
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        return check_json_v3(data)
 
 
 class TestCrc32cCodecJSON:
@@ -631,3 +635,29 @@ class TestCrc32cCodecManualVerification:
         stored_checksum = np.frombuffer(stored_checksum_bytes, dtype=np.uint32)[0]
 
         assert stored_checksum == expected_checksum
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize(
+    "codec", [Crc32cCodec(), zarr.codecs.numcodecs.CRC32C(), numcodecs.CRC32C()]
+)
+def test_crc32c_compression(zarr_format: ZarrFormat, codec: Any) -> None:
+    """
+    Test that any of the crc32c-like codecs can be used for compression, and that
+    reading the array back uses the primary crc32c codec class.
+    """
+    store: dict[str, Any] = {}
+    ref_codec = Crc32cCodec()
+    z_w = zarr.create_array(
+        store=store,
+        dtype="int",
+        shape=(1,),
+        chunks=(10,),
+        zarr_format=zarr_format,
+        compressors=codec,
+    )
+    z_w[:] = 5
+
+    z_r = zarr.open_array(store=store, zarr_format=zarr_format)
+    assert np.all(z_r[:] == 5)
+    assert z_r.compressors == (ref_codec,)
