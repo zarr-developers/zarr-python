@@ -24,6 +24,7 @@ from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
+from zarr.errors import ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -72,6 +73,27 @@ def test_config_defaults_set() -> None:
                     "transpose": "zarr.codecs.transpose.TransposeCodec",
                     "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                     "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
+                    "numcodecs.bz2": "zarr.codecs.numcodecs.BZ2",
+                    "numcodecs.crc32": "zarr.codecs.numcodecs.CRC32",
+                    "numcodecs.crc32c": "zarr.codecs.numcodecs.CRC32C",
+                    "numcodecs.lz4": "zarr.codecs.numcodecs.LZ4",
+                    "numcodecs.lzma": "zarr.codecs.numcodecs.LZMA",
+                    "numcodecs.zfpy": "zarr.codecs.numcodecs.ZFPY",
+                    "numcodecs.adler32": "zarr.codecs.numcodecs.Adler32",
+                    "numcodecs.astype": "zarr.codecs.numcodecs.AsType",
+                    "numcodecs.bitround": "zarr.codecs.numcodecs.BitRound",
+                    "numcodecs.blosc": "zarr.codecs.numcodecs.Blosc",
+                    "numcodecs.delta": "zarr.codecs.numcodecs.Delta",
+                    "numcodecs.fixedscaleoffset": "zarr.codecs.numcodecs.FixedScaleOffset",
+                    "numcodecs.fletcher32": "zarr.codecs.numcodecs.Fletcher32",
+                    "numcodecs.gzip": "zarr.codecs.numcodecs.GZip",
+                    "numcodecs.jenkins_lookup3": "zarr.codecs.numcodecs.JenkinsLookup3",
+                    "numcodecs.pcodec": "zarr.codecs.numcodecs.PCodec",
+                    "numcodecs.packbits": "zarr.codecs.numcodecs.PackBits",
+                    "numcodecs.shuffle": "zarr.codecs.numcodecs.Shuffle",
+                    "numcodecs.quantize": "zarr.codecs.numcodecs.Quantize",
+                    "numcodecs.zlib": "zarr.codecs.numcodecs.Zlib",
+                    "numcodecs.zstd": "zarr.codecs.numcodecs.Zstd",
                 },
                 "buffer": "zarr.buffer.cpu.Buffer",
                 "ndbuffer": "zarr.buffer.cpu.NDBuffer",
@@ -287,7 +309,9 @@ def test_warning_on_missing_codec_config() -> None:
 
     # warning because multiple implementations are available but none is selected in the config
     register_codec("new_codec", NewCodec2)
-    with pytest.warns(UserWarning, match="not configured in config. Selecting any implementation"):
+    with pytest.warns(
+        ZarrUserWarning, match="not configured in config. Selecting any implementation"
+    ):
         get_codec_class("new_codec")
 
     # no warning if multiple implementations are available and one is selected in the config

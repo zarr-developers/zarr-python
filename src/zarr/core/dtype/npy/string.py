@@ -70,17 +70,17 @@ class FixedLengthUTF32JSON_V2(DTypeConfig_V2[str, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
     Examples
     --------
 
-    .. code-block:: python
-
-        {
-            "name": "<U12",
-            "object_codec_id": None
-        }
+    ```python
+    {
+        "name": "<U12",
+        "object_codec_id": None
+    }
+    ```
     """
 
 
@@ -94,13 +94,13 @@ class FixedLengthUTF32JSON_V3(NamedConfig[Literal["fixed_length_utf32"], LengthB
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "fixed_length_utf32",
-            "configuration": {
-                "length_bytes": 12
-        }
+    ```python
+    {
+        "name": "fixed_length_utf32",
+        "configuration": {
+            "length_bytes": 12
+    }
+    ```
     """
 
 
@@ -434,17 +434,17 @@ class VariableLengthUTF8JSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "|O",
-            "object_codec_id": "vlen-utf8"
-        }
+    ```python
+    {
+        "name": "|O",
+        "object_codec_id": "vlen-utf8"
+    }
+    ```
     """
 
 
@@ -467,7 +467,7 @@ class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
     ----------
     This data type does not have a Zarr V3 specification.
 
-    The Zarr V2 data type specification can be found `here <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    The Zarr V2 data type specification can be found [here](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
     """
 
     _zarr_v3_name: ClassVar[Literal["string"]] = "string"

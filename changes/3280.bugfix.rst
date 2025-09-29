@@ -1,2 +1,0 @@
-Fix a regression introduced in 3.1.0 that prevented ``inf``, ``-inf``, and ``nan`` values
-from being stored in ``attributes``.
