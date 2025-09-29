@@ -22,7 +22,7 @@ type(z[:10, :10])
 Note that the output type is a `cupy.ndarray` rather than a NumPy array.
 
 For supported codecs, data will be decoded using the GPU via the [nvcomp] library.
-See [`user-guide-config`][] for more. Isseus and feature requestsfor NVIDIA nvCOMP can be reported in the nvcomp [issue tracker].
+See [runtime-configuration][] for more. Isseus and feature requestsfor NVIDIA nvCOMP can be reported in the nvcomp [issue tracker].
 
 [nvcomp]: https://docs.nvidia.com/cuda/nvcomp/samples/python_samples.html
 [issue tradcker]: https://github.com/NVIDIA/CUDALibrarySamples/issues
