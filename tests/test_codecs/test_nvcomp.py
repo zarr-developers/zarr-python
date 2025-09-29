@@ -83,6 +83,11 @@ def test_gpu_codec_compatibility(host_encode: bool) -> None:
         write_data = np.arange(16, dtype="int32").reshape(4, 4)
         read_data = cp.array(write_data)
         xp = cp
+        # MemoryStore holds Buffers; We write a CPU buffer, but read a GPU buffer
+        # which emits a warning.
+        expected_warning: pytest.WarningsRecorder | contextlib.AbstractContextManager[None] = (
+            pytest.warns(zarr.errors.ZarrUserWarning)
+        )
     else:
         # GPU encode, CPU decode
         write_ctx = gpu_context()
@@ -90,6 +95,7 @@ def test_gpu_codec_compatibility(host_encode: bool) -> None:
         write_data = cp.arange(16, dtype="int32").reshape(4, 4)
         read_data = write_data.get()
         xp = np
+        expected_warning = contextlib.nullcontext()
 
     store = zarr.storage.MemoryStore()
 
@@ -102,7 +108,7 @@ def test_gpu_codec_compatibility(host_encode: bool) -> None:
         )
         z[:] = write_data
 
-    with read_ctx:
+    with read_ctx, expected_warning:
         # We need to reopen z, because `z.codec_pipeline` is set at creation
         z = zarr.open_array(store=store, mode="r")
         result = z[:]
