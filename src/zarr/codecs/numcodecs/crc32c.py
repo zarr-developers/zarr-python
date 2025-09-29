@@ -77,6 +77,8 @@ class CRC32C(_NumcodecsChecksumCodec):
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
         if check_json_v3(data):
+            if data == "crc32c":
+                return cls()
             config = data.get("configuration", {})
             return cls(**config)
         raise TypeError(f"Invalid JSON: {data}")

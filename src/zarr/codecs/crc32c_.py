@@ -31,7 +31,7 @@ class Crc32cJSON_V2(Crc32cConfig_V2):
     id: ReadOnly[Literal["crc32c"]]
 
 
-class Crc32cJSON_V3(NamedConfig[Literal["crc32c"], Crc32cConfig_V3]): ...
+Crc32cJSON_V3 = NamedConfig[Literal["crc32c"], Crc32cConfig_V3] | Literal["crc32c"]
 
 
 def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
