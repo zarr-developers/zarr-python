@@ -19,7 +19,7 @@ def check_json_v3(data: object) -> TypeGuard[AsTypeJSON_V3]:
     return (
         _check_codecjson_v3(data)
         and isinstance(data, Mapping)
-        and data["name"] == "astype"
+        and data["name"] == "numcodecs.astype"
         and "configuration" in data
         and "encode_dtype" in data["configuration"]
         and "decode_dtype" in data["configuration"]
