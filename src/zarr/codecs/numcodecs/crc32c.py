@@ -41,7 +41,7 @@ def check_json_v3(data: object) -> TypeGuard[Crc32cJSON_V3 | Crc32cJSON_V3_Legac
     """
     A type guard for the Zarr V3 form of the CRC32C codec JSON
     """
-    if data == "crc32c":
+    if data in ("crc32c", "numcodecs.crc32c"):
         return True
     return (
         _check_codecjson_v3(data)
@@ -77,7 +77,7 @@ class CRC32C(_NumcodecsChecksumCodec):
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
         if check_json_v3(data):
-            if data == "crc32c":
+            if data in ("crc32c", "numcodecs.crc32c"):
                 return cls()
             config = data.get("configuration", {})
             return cls(**config)

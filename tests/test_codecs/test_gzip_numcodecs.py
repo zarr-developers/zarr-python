@@ -18,3 +18,9 @@ class TestGZipNumcodecsCodec(TestGZipCodec):
             "configuration": {"level": 1},
         },
     )
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        from zarr.codecs.numcodecs.gzip import check_json_v3
+
+        return check_json_v3(data)

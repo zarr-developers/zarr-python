@@ -121,7 +121,7 @@ class _NumcodecsCodec:
         if zarr_format == 2:
             return {"id": codec_id, **codec_config}  # type: ignore[return-value, typeddict-item]
         else:
-            return {"name": codec_id, "configuration": codec_config}
+            return {"name": self.codec_name, "configuration": codec_config}
 
 
 class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):

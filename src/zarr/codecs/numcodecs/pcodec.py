@@ -33,6 +33,10 @@ class PCodecJSON_V2(PCodecConfig):
     id: ReadOnly[Literal["pcodec"]]
 
 
+class PCodecJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.pcodec"], PCodecConfig]):
+    """Legacy JSON representation of PCodec codec for Zarr V3."""
+
+
 class PCodecJSON_V3(NamedRequiredConfig[Literal["pcodec"], PCodecConfig]):
     """JSON representation of PCodec codec for Zarr V3."""
 
@@ -49,14 +53,14 @@ def check_json_v2(data: object) -> TypeGuard[PCodecJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[PCodecJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[PCodecJSON_V3 | PCodecJSON_V3_Legacy]:
     """
     A type guard for the Zarr V3 form of the PCodec codec JSON
     """
     return (
         _check_codecjson_v3(data)
         and isinstance(data, Mapping)
-        and data["name"] == "pcodec"
+        and data["name"] in ("pcodec", "numcodecs.pcodec")
         and (
             "configuration" not in data
             or (

@@ -100,10 +100,19 @@ class AsType(_NumcodecsArrayArrayCodec):
     @overload
     def to_json(self, zarr_format: Literal[2]) -> AsTypeJSON_V2: ...
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> AsTypeJSON_V3: ...
-    def to_json(self, zarr_format: ZarrFormat) -> AsTypeJSON_V2 | AsTypeJSON_V3:
+    def to_json(self, zarr_format: Literal[3]) -> AsTypeJSON_V3_Legacy: ...
+    def to_json(self, zarr_format: ZarrFormat) -> AsTypeJSON_V2 | AsTypeJSON_V3_Legacy:
         _warn_unstable_specification(self)
-        return super().to_json(zarr_format)  # type: ignore[return-value]
+        if zarr_format == 2:
+            return super().to_json(zarr_format)  # type: ignore[return-value]
+        # For v3, we need to convert dtype format
+        conf = self.codec_config
+        encode_dtype_v3 = parse_dtype(conf["encode_dtype"], zarr_format=2).to_json(zarr_format=3)
+        decode_dtype_v3 = parse_dtype(conf["decode_dtype"], zarr_format=2).to_json(zarr_format=3)
+        return {
+            "name": "numcodecs.astype",
+            "configuration": {"encode_dtype": encode_dtype_v3, "decode_dtype": decode_dtype_v3},
+        }
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         dtype = parse_dtype(self.codec_config["encode_dtype"], zarr_format=3)

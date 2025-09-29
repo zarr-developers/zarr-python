@@ -51,7 +51,7 @@ class FixedScaleOffsetJSON_V3_Legacy(
 
 
 class FixedScaleOffsetJSON_V3(
-    NamedRequiredConfig[Literal["fixedscaleoffset"], FixedScaleOffsetConfig_V3]
+    NamedRequiredConfig[Literal["numcodecs.fixedscaleoffset"], FixedScaleOffsetConfig_V3]
 ):
     """JSON representation of FixedScaleOffset codec for Zarr V3."""
 
@@ -118,7 +118,7 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec):
         if zarr_format == 2:
             return super().to_json(zarr_format)  # type: ignore[return-value]
         return {
-            "name": "fixedscaleoffset",
+            "name": "numcodecs.fixedscaleoffset",
             "configuration": {
                 "astype": parse_dtype(self.codec_config["astype"], zarr_format=2).to_json(
                     zarr_format=3

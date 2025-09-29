@@ -47,7 +47,7 @@ def check_json_v2(data: object) -> TypeGuard[Fletcher32JSON_V2]:
     return _check_codecjson_v2(data) and data["id"] == "fletcher32"
 
 
-def check_json_v3(data: object) -> TypeGuard[Fletcher32JSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[Fletcher32JSON_V3 | Fletcher32JSON_V3_Legacy]:
     """
     A type guard for the Zarr V3 form of the Fletcher32 codec JSON
     """

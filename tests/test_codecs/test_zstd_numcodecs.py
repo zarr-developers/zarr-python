@@ -22,3 +22,9 @@ class TestNumcodecsZstdCodec(TestZstdCodec):
             },
         },
     )
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        from zarr.codecs.numcodecs.zstd import check_json_v3
+
+        return check_json_v3(data)

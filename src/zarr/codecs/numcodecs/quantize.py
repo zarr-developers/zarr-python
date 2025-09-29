@@ -56,7 +56,7 @@ def check_json_v2(data: object) -> TypeGuard[QuantizeJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[QuantizeJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[QuantizeJSON_V3 | QuantizeJSON_V3_Legacy]:
     """
     A type guard for the Zarr V3 form of the Quantize codec JSON
     """

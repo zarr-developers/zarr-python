@@ -54,7 +54,7 @@ def check_json_v2(data: object) -> TypeGuard[ShuffleJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[ShuffleJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[ShuffleJSON_V3 | ShuffleJSON_V3_Legacy]:
     """
     A type guard for the Zarr V3 form of the Shuffle codec JSON
     """

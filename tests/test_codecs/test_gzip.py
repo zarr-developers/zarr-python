@@ -47,6 +47,12 @@ class TestGZipCodec(BaseTestCodec):
 class TestNumcodecsGZipCodec(TestGZipCodec):
     test_cls = znumcodecs.GZip  # type: ignore[assignment]
 
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        from zarr.codecs.numcodecs.gzip import check_json_v3
+
+        return check_json_v3(data)
+
 
 @pytest.mark.parametrize(
     ("data", "expected"),

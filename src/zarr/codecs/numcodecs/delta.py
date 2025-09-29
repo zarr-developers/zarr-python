@@ -65,7 +65,7 @@ def check_json_v2(data: object) -> TypeGuard[DeltaJSON_V2 | DeltaJSON_V3_Legacy]
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[DeltaJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[DeltaJSON_V3 | DeltaJSON_V3_Legacy]:
     """
     A type guard for the Zarr V3 form of the Delta codec JSON
     """
@@ -120,8 +120,8 @@ class Delta(_NumcodecsArrayArrayCodec):
     @overload
     def to_json(self, zarr_format: Literal[2]) -> DeltaJSON_V2: ...
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> DeltaJSON_V3: ...
-    def to_json(self, zarr_format: ZarrFormat) -> DeltaJSON_V2 | DeltaJSON_V3:
+    def to_json(self, zarr_format: Literal[3]) -> DeltaJSON_V3_Legacy: ...
+    def to_json(self, zarr_format: ZarrFormat) -> DeltaJSON_V2 | DeltaJSON_V3_Legacy:
         _warn_unstable_specification(self)
         if zarr_format == 2:
             return self.codec_config
@@ -129,7 +129,7 @@ class Delta(_NumcodecsArrayArrayCodec):
         astype_v3 = parse_dtype(conf["astype"], zarr_format=2).to_json(zarr_format=3)
         dtype_v3 = parse_dtype(conf["dtype"], zarr_format=2).to_json(zarr_format=3)
         return {
-            "name": "delta",
+            "name": self.codec_name,
             "configuration": {"astype": astype_v3, "dtype": dtype_v3},
         }
 

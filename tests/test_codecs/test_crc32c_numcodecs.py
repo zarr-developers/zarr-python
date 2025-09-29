@@ -13,3 +13,9 @@ class TestCRC32CCodec(TestCrc32cCodec):
         {"id": "crc32c", "location": "start"},
         {"id": "crc32c", "location": "end"},
     )
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        from zarr.codecs.numcodecs.crc32c import check_json_v3
+
+        return check_json_v3(data)

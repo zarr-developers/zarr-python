@@ -35,6 +35,10 @@ class ZFPYJSON_V2(ZFPYConfig):
     id: ReadOnly[Literal["zfpy"]]
 
 
+class ZFPYJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.zfpy"], ZFPYConfig]):
+    """Legacy JSON representation of ZFPY codec for Zarr V3."""
+
+
 class ZFPYJSON_V3(NamedRequiredConfig[Literal["zfpy"], ZFPYConfig]):
     """JSON representation of ZFPY codec for Zarr V3."""
 
@@ -53,14 +57,14 @@ def check_json_v2(data: object) -> TypeGuard[ZFPYJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[ZFPYJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[ZFPYJSON_V3 | ZFPYJSON_V3_Legacy]:
     """
     A type guard for the Zarr V3 form of the ZFPY codec JSON
     """
     return (
         _check_codecjson_v3(data)
         and isinstance(data, Mapping)
-        and data["name"] == "zfpy"
+        and data["name"] in ("zfpy", "numcodecs.zfpy")
         and (
             "configuration" not in data
             or (

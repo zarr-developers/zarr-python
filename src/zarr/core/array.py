@@ -264,7 +264,7 @@ def _parse_bytes_bytes_codec(
         return _codec_or_numcodec_wrapper.to_bytes_bytes()
     elif isinstance(_codec_or_numcodec_wrapper, BytesBytesCodec):
         return _codec_or_numcodec_wrapper
-    msg = f"Expected a NumcodecWrapper or ArrayBytesCodec or a dict representation thereof; got {data} instead."
+    msg = f"Expected a NumcodecWrapper or BytesBytesCodec or a dict representation thereof; got {data} instead."
     raise ValueError(msg)
 
 
