@@ -23,6 +23,7 @@ from zarr.codecs.blosc import (
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
+from zarr.core.dtype.npy.int import Int64
 from zarr.storage import StorePath
 
 
@@ -119,7 +120,7 @@ def test_blosc_compression(zarr_format: ZarrFormat, codec: Any) -> None:
     store: dict[str, Any] = {}
     z_w = zarr.create_array(
         store=store,
-        dtype="int",
+        dtype=Int64(),
         shape=(1,),
         chunks=(10,),
         zarr_format=zarr_format,
