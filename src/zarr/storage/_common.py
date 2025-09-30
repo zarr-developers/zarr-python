@@ -343,6 +343,9 @@ async def make_store(
     elif isinstance(store_like, str):
         # Either a FSSpec URI or a local filesystem path
         if _is_fsspec_uri(store_like):
+            # Check if this is an S3-compatible store accessed via HTTPS
+            # and convert it to use the s3:// protocol for proper support
+            store_like, storage_options = _maybe_convert_http_to_s3(store_like, storage_options)
             return FsspecStore.from_url(
                 store_like, storage_options=storage_options, read_only=_read_only
             )
@@ -437,6 +440,99 @@ def _is_fsspec_uri(uri: str) -> bool:
     False
     """
     return "://" in uri or ("::" in uri and "local://" not in uri)
+
+
+def _maybe_convert_http_to_s3(
+    url: str, storage_options: dict[str, Any] | None
+) -> tuple[str, dict[str, Any]]:
+    """
+    Detect if an HTTP(S) URL is actually an S3-compatible object store and convert it.
+
+    Checks if the URL hostname contains S3-related keywords (s3, minio, ceph, rgw, etc.)
+    and if so, converts it to use the s3:// protocol with proper endpoint configuration.
+
+    Parameters
+    ----------
+    url : str
+        The HTTP(S) URL to check.
+    storage_options : dict | None
+        Existing storage options (will be updated with S3 config if detected).
+
+    Returns
+    -------
+    tuple[str, dict[str, Any]]
+        The (potentially converted) URL and storage options.
+    """
+    from urllib.parse import urlparse
+
+    # Only process HTTP(S) URLs
+    if not url.startswith(("http://", "https://")):
+        return url, storage_options or {}
+
+    # Don't override if user already specified endpoint_url
+    opts = storage_options or {}
+    if "endpoint_url" in opts.get("client_kwargs", {}):
+        return url, opts
+
+    # Check hostname for S3-compatible patterns
+    parsed = urlparse(url)
+    # Extract hostname without port (e.g., "example.com:8080" -> "example.com")
+    hostname = parsed.hostname or parsed.netloc
+    hostname = hostname.lower()
+
+    # Use more precise matching - look for S3 keywords as separate parts
+    # Split by common separators (dots, dashes) to avoid false positives
+    # e.g., "uk1s3.example.com" -> ["uk1s3", "example", "com"]
+    hostname_parts = hostname.replace("-", ".").split(".")
+
+    # Check if any part contains s3 as a distinct token (not buried in random chars)
+    # - Exact match: "s3" in parts (s3.amazonaws.com)
+    # - Starts with "s3-": s3-us-west-2.amazonaws.com
+    # - Ends with "s3": uk1s3.embassy.ebi.ac.uk
+    def has_s3_token(part: str) -> bool:
+        return part == "s3" or part.startswith("s3-") or part.endswith("s3")
+
+    is_likely_s3 = (
+        any(has_s3_token(part) for part in hostname_parts)
+        or "object-store" in hostname  # Less likely to have false positives
+        or "objectstore" in hostname
+        or "minio" in hostname_parts  # minio.example.com
+        or "ceph" in hostname_parts  # ceph.example.com
+        or "rgw" in hostname_parts  # rgw.example.com (Ceph RADOS Gateway)
+    )
+
+    if not is_likely_s3:
+        return url, opts
+
+    # Parse S3 path components from URL path
+    endpoint = f"{parsed.scheme}://{parsed.netloc}"
+    s3_path = parsed.path.lstrip("/")
+
+    # Simple bucket/key parsing - split on first slash
+    # Format: https://endpoint/bucket/key/path -> s3://bucket/key/path
+    if s3_path:
+        parts = s3_path.split("/", 1)
+        bucket = parts[0]
+        key = parts[1] if len(parts) > 1 else ""
+    else:
+        bucket = ""
+        key = ""
+
+    # Convert to S3 URL
+    s3_url = f"s3://{bucket}/{key}"
+
+    # Update storage options - add endpoint_url without overriding user preferences
+    # Note: We already checked that endpoint_url is not set (line 474)
+    if "client_kwargs" not in opts:
+        opts["client_kwargs"] = {}
+    opts["client_kwargs"]["endpoint_url"] = endpoint
+
+    # Note: We intentionally do NOT set 'anon' by default because:
+    # - If we set anon=True, it breaks users with credentials in environment variables
+    # - s3fs ignores env credentials when anon=True is explicitly set
+    # Users accessing public data should explicitly pass storage_options={"anon": True}
+
+    return s3_url, opts
 
 
 async def ensure_no_existing_node(

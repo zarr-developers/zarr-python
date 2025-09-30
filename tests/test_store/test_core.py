@@ -154,6 +154,36 @@ async def test_make_store_path_fsspec(monkeypatch) -> None:
     assert isinstance(store_path.store, FsspecStore)
 
 
+async def test_make_store_s3_url_detection() -> None:
+    """Test that make_store correctly detects and converts S3-compatible HTTPS URLs."""
+    pytest.importorskip("fsspec")
+    pytest.importorskip("s3fs")
+
+    from zarr.storage._common import make_store
+
+    url = "https://uk1s3.example.com/bucket/path"
+
+    # Create store from HTTP URL - should auto-detect S3 and create FsspecStore
+    store = await make_store(url, mode="r")
+
+    # Verify we got an FsspecStore
+    assert isinstance(store, FsspecStore)
+
+    # Verify the underlying filesystem is S3FileSystem
+    # Protocol can be "s3", ["s3"], or ("s3", "s3a") depending on s3fs version
+    protocol = store.fs.protocol
+    if isinstance(protocol, list | tuple):
+        assert "s3" in protocol
+    else:
+        assert protocol == "s3"
+
+    # Verify the endpoint was set correctly
+    assert store.fs.client_kwargs.get("endpoint_url") == "https://uk1s3.example.com"
+
+    # Note: We don't set anon by default to respect environment credentials
+    # Users must explicitly add storage_options={"anon": True} for public data
+
+
 async def test_make_store_path_storage_options_raises(store_like: StoreLike) -> None:
     with pytest.raises(TypeError, match="storage_options"):
         await make_store_path(store_like, storage_options={"foo": "bar"})
