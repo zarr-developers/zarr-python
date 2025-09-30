@@ -14,9 +14,6 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from zarr.core.buffer.core import Buffer, BufferPrototype
 
-if TYPE_CHECKING:
-    from zarr.core.buffer.core import Buffer, BufferPrototype
-
 
 def buffer_size(v: Any) -> int:
     """Calculate the size in bytes of a value, handling Buffer objects properly."""
@@ -123,7 +120,7 @@ class CacheStore(WrapperStore[Store]):
         # For now, we'll estimate by getting the data when we cache it
         return 0  # Will be properly set when caching
 
-    def _accommodate_value(self, value_size: int) -> None:
+    async def _accommodate_value(self, value_size: int) -> None:
         """Ensure there is enough space in the cache for a new value."""
         if self.max_size is None:
             return
@@ -132,9 +129,9 @@ class CacheStore(WrapperStore[Store]):
         while self._current_size + value_size > self.max_size and self._cache_order:
             # Get the least recently used key (first in OrderedDict)
             lru_key = next(iter(self._cache_order))
-            self._evict_key(lru_key)
+            await self._evict_key(lru_key)
 
-    def _evict_key(self, key: str) -> None:
+    async def _evict_key(self, key: str) -> None:
         """Remove a key from cache and update size tracking."""
         try:
             # Get the size of the key being evicted
@@ -150,11 +147,15 @@ class CacheStore(WrapperStore[Store]):
 
             # Update current size
             self._current_size = max(0, self._current_size - key_size)
+
+            # Actually delete from cache store
+            await self._cache.delete(key)
+
             logger.info("_evict_key: evicted key %s from cache, size %d", key, key_size)
         except Exception as e:
             logger.warning("_evict_key: failed to evict key %s: %s", key, e)
 
-    def _cache_value(self, key: str, value: Any) -> None:
+    async def _cache_value(self, key: str, value: Any) -> None:
         """Cache a value with size tracking."""
         value_size = buffer_size(value)
 
@@ -167,8 +168,14 @@ class CacheStore(WrapperStore[Store]):
             )
             return
 
+        # If key already exists, subtract old size first (Bug fix #3)
+        if key in self._key_sizes:
+            old_size = self._key_sizes[key]
+            self._current_size -= old_size
+            logger.info("_cache_value: updating existing key %s, old size %d", key, old_size)
+
         # Make room for the new value
-        self._accommodate_value(value_size)
+        await self._accommodate_value(value_size)
 
         # Update tracking
         self._cache_order[key] = None  # OrderedDict to track access order
@@ -221,7 +228,7 @@ class CacheStore(WrapperStore[Store]):
                 self._remove_from_tracking(key)
             else:
                 await self._cache.set(key, maybe_fresh_result)
-                self._cache_value(key, maybe_fresh_result)
+                await self._cache_value(key, maybe_fresh_result)
             return maybe_fresh_result
 
     async def _get_no_cache(
@@ -236,7 +243,7 @@ class CacheStore(WrapperStore[Store]):
         else:
             logger.info("_get_no_cache: key %s found in store, setting in cache", key)
             await self._cache.set(key, maybe_fresh_result)
-            self._cache_value(key, maybe_fresh_result)
+            await self._cache_value(key, maybe_fresh_result)
         return maybe_fresh_result
 
     async def get(
@@ -285,7 +292,7 @@ class CacheStore(WrapperStore[Store]):
         if self.cache_set_data:
             logger.info("set: setting key %s in cache", key)
             await self._cache.set(key, value)
-            self._cache_value(key, value)
+            await self._cache_value(key, value)
         else:
             logger.info("set: deleting key %s from cache", key)
             await self._cache.delete(key)

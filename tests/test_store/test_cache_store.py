@@ -10,8 +10,8 @@ import pytest
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
+from zarr.experimental.cache_store import CacheStore
 from zarr.storage import MemoryStore
-from zarr.storage._caching_store import CacheStore
 
 
 class TestCacheStore:
@@ -455,7 +455,7 @@ class TestCacheStore:
 
     async def test_buffer_size_function_coverage(self) -> None:
         """Test different branches of the buffer_size function."""
-        from zarr.storage._caching_store import buffer_size
+        from zarr.experimental.cache_store import buffer_size
 
         # Test with Buffer object (nbytes attribute)
         buffer_data = CPUBuffer.from_bytes(b"test data")
@@ -517,7 +517,7 @@ class TestCacheStore:
         del cached_store._cache_order["test_key"]
 
         # Try to evict - should handle the KeyError gracefully
-        cached_store._evict_key("test_key")
+        await cached_store._evict_key("test_key")
 
         # Should still work and not crash
         info = cached_store.cache_info()
@@ -532,7 +532,7 @@ class TestCacheStore:
         # First, add key to cache tracking but not to source
         test_data = CPUBuffer.from_bytes(b"test data")
         await cache_store.set("phantom_key", test_data)
-        cached_store._cache_value("phantom_key", test_data)
+        await cached_store._cache_value("phantom_key", test_data)
 
         # Verify it's in tracking
         assert "phantom_key" in cached_store._cache_order
@@ -550,7 +550,7 @@ class TestCacheStore:
         """Test buffer_size ImportError fallback."""
         from unittest.mock import patch
 
-        from zarr.storage._caching_store import buffer_size
+        from zarr.experimental.cache_store import buffer_size
 
         # Mock numpy import to raise ImportError
         with patch.dict("sys.modules", {"numpy": None}):
@@ -570,8 +570,184 @@ class TestCacheStore:
         )
 
         # This should return early without doing anything
-        cached_store._accommodate_value(1000000)  # Large value
+        await cached_store._accommodate_value(1000000)  # Large value
 
         # Should not affect anything since max_size is None
         info = cached_store.cache_info()
         assert info["current_size"] == 0
+
+    async def test_concurrent_set_operations(self) -> None:
+        """Test that concurrent set operations don't corrupt cache size tracking."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_size=1000)
+
+        # Create 10 concurrent set operations
+        async def set_data(key: str) -> None:
+            data = CPUBuffer.from_bytes(b"x" * 50)
+            await cached_store.set(key, data)
+
+        # Run concurrently
+        await asyncio.gather(*[set_data(f"key_{i}") for i in range(10)])
+
+        info = cached_store.cache_info()
+        # Expected: 10 keys * 50 bytes = 500 bytes
+        assert info["cached_keys"] == 10
+        assert info["current_size"] == 500  # WOULD FAIL due to race condition
+
+    async def test_concurrent_eviction_race(self) -> None:
+        """Test concurrent evictions don't corrupt size tracking."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_size=200)
+
+        # Fill cache to near capacity
+        data = CPUBuffer.from_bytes(b"x" * 80)
+        await cached_store.set("key1", data)
+        await cached_store.set("key2", data)
+
+        # Now trigger two concurrent sets that both need to evict
+        async def set_large(key: str) -> None:
+            large_data = CPUBuffer.from_bytes(b"y" * 100)
+            await cached_store.set(key, large_data)
+
+        await asyncio.gather(set_large("key3"), set_large("key4"))
+
+        info = cached_store.cache_info()
+        # Size should be consistent with tracked keys
+        assert info["current_size"] <= 200  # Might pass
+        # But verify actual cache store size matches tracking
+        total_size = sum(cached_store._key_sizes.get(k, 0) for k in cached_store._cache_order)
+        assert total_size == info["current_size"]  # WOULD FAIL
+
+    async def test_concurrent_get_and_evict(self) -> None:
+        """Test get operations during eviction don't cause corruption."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_size=100)
+
+        # Setup
+        data = CPUBuffer.from_bytes(b"x" * 40)
+        await cached_store.set("key1", data)
+        await cached_store.set("key2", data)
+
+        # Concurrent: read key1 while adding key3 (triggers eviction)
+        async def read_key() -> None:
+            for _ in range(100):
+                await cached_store.get("key1", default_buffer_prototype())
+
+        async def write_key() -> None:
+            for i in range(10):
+                new_data = CPUBuffer.from_bytes(b"y" * 40)
+                await cached_store.set(f"new_{i}", new_data)
+
+        await asyncio.gather(read_key(), write_key())
+
+        # Verify consistency
+        info = cached_store.cache_info()
+        assert info["current_size"] <= 100
+        assert len(cached_store._cache_order) == len(cached_store._key_sizes)
+
+    async def test_eviction_actually_deletes_from_cache_store(self) -> None:
+        """Test that eviction removes keys from cache_store, not just tracking."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_size=100)
+
+        # Add data that will be evicted
+        data1 = CPUBuffer.from_bytes(b"x" * 60)
+        data2 = CPUBuffer.from_bytes(b"y" * 60)
+
+        await cached_store.set("key1", data1)
+
+        # Verify key1 is in cache_store
+        assert await cache_store.exists("key1")
+
+        # Add key2, which should evict key1
+        await cached_store.set("key2", data2)
+
+        # Check tracking - key1 should be removed
+        assert "key1" not in cached_store._cache_order
+        assert "key1" not in cached_store._key_sizes
+
+        # CRITICAL: key1 should also be removed from cache_store
+        assert not await cache_store.exists("key1"), (
+            "Evicted key still exists in cache_store! _evict_key doesn't actually delete."
+        )
+
+        # But key1 should still exist in source store
+        assert await source_store.exists("key1")
+
+    async def test_eviction_no_orphaned_keys(self) -> None:
+        """Test that eviction doesn't leave orphaned keys in cache_store."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_size=150)
+
+        # Add multiple keys that will cause evictions
+        for i in range(10):
+            data = CPUBuffer.from_bytes(b"x" * 60)
+            await cached_store.set(f"key_{i}", data)
+
+        # Check tracking
+        info = cached_store.cache_info()
+        tracked_keys = info["cached_keys"]
+
+        # Count actual keys in cache_store
+        actual_keys = 0
+        async for _ in cache_store.list():
+            actual_keys += 1
+
+        # Cache store should have same number of keys as tracking
+        assert actual_keys == tracked_keys, (
+            f"Cache store has {actual_keys} keys but tracking shows {tracked_keys}. "
+            f"Eviction doesn't delete from cache_store!"
+        )
+
+    async def test_size_accounting_with_key_updates(self) -> None:
+        """Test that updating the same key replaces size instead of accumulating."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_size=500)
+
+        # Set initial value
+        data1 = CPUBuffer.from_bytes(b"x" * 100)
+        await cached_store.set("same_key", data1)
+
+        info1 = cached_store.cache_info()
+        assert info1["current_size"] == 100
+
+        # Update with different size
+        data2 = CPUBuffer.from_bytes(b"y" * 200)
+        await cached_store.set("same_key", data2)
+
+        info2 = cached_store.cache_info()
+
+        # Should be 200, not 300 (update replaces, doesn't accumulate)
+        assert info2["current_size"] == 200, (
+            f"Expected size 200 but got {info2['current_size']}. "
+            "Updating same key should replace, not accumulate."
+        )
+
+    async def test_all_tracked_keys_exist_in_cache_store(self) -> None:
+        """Test invariant: all keys in tracking should exist in cache_store."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_size=500)
+
+        # Add some data
+        for i in range(5):
+            data = CPUBuffer.from_bytes(b"x" * 50)
+            await cached_store.set(f"key_{i}", data)
+
+        # Every key in tracking should exist in cache_store
+        for key in cached_store._cache_order:
+            assert await cache_store.exists(key), (
+                f"Key '{key}' is tracked but doesn't exist in cache_store"
+            )
+
+        # Every key in _key_sizes should exist in cache_store
+        for key in cached_store._key_sizes:
+            assert await cache_store.exists(key), (
+                f"Key '{key}' has size tracked but doesn't exist in cache_store"
+            )
