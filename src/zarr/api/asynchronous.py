@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.core.metadata.v2 import CompressorLikev2
     from zarr.storage import StoreLike
 
     # TODO: this type could use some more thought
@@ -124,10 +125,20 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple
     return shape, chunks
 
 
-def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
+class _LikeArgs(TypedDict):
+    shape: NotRequired[tuple[int, ...]]
+    chunks: NotRequired[tuple[int, ...]]
+    dtype: NotRequired[np.dtype[np.generic]]
+    order: NotRequired[Literal["C", "F"]]
+    filters: NotRequired[tuple[Numcodec, ...] | None]
+    compressor: NotRequired[CompressorLikev2]
+    codecs: NotRequired[tuple[Codec, ...]]
+
+
+def _like_args(a: ArrayLike) -> _LikeArgs:
     """Set default values for shape and chunks if they are not present in the array-like object"""
 
-    new = kwargs.copy()
+    new: _LikeArgs = {}
 
     shape, chunks = _get_shape_chunks(a)
     if shape is not None:
@@ -138,9 +149,9 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
     if hasattr(a, "dtype"):
         new["dtype"] = a.dtype
 
-    if isinstance(a, AsyncArray):
-        new["order"] = a.order
+    if isinstance(a, AsyncArray | Array):
         if isinstance(a.metadata, ArrayV2Metadata):
+            new["order"] = a.order
             new["compressor"] = a.metadata.compressor
             new["filters"] = a.metadata.filters
         else:
@@ -188,7 +199,9 @@ async def consolidate_metadata(
     Parameters
     ----------
     store : StoreLike
-        The store-like object whose metadata you wish to consolidate.
+        The store-like object whose metadata you wish to consolidate. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     path : str, optional
         A path to a group in the store to consolidate at. Only children
         below that group will be consolidated.
@@ -282,7 +295,9 @@ async def load(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     path : str or None, optional
         The path within the store from which to load.
 
@@ -295,7 +310,7 @@ async def load(
 
     See Also
     --------
-    save, savez
+    save
 
     Notes
     -----
@@ -326,7 +341,9 @@ async def open(
     Parameters
     ----------
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -341,8 +358,8 @@ async def open(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Additional parameters are passed through to :func:`zarr.creation.open_array` or
-        :func:`zarr.hierarchy.open_group`.
+        Additional parameters are passed through to [`zarr.creation.open_array`][] or
+        [`open_group`][zarr.api.asynchronous.open_group].
 
     Returns
     -------
@@ -387,7 +404,7 @@ async def open_consolidated(
     *args: Any, use_consolidated: Literal[True] = True, **kwargs: Any
 ) -> AsyncGroup:
     """
-    Alias for :func:`open_group` with ``use_consolidated=True``.
+    Alias for [`open_group`][zarr.api.asynchronous.open_group] with ``use_consolidated=True``.
     """
     if use_consolidated is not True:
         raise TypeError(
@@ -410,7 +427,9 @@ async def save(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
@@ -446,7 +465,9 @@ async def save_array(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     arr : ndarray
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
@@ -458,7 +479,7 @@ async def save_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Passed through to :func:`create`, e.g., compressor.
+        Passed through to [`create`][zarr.api.asynchronous.create], e.g., compressor.
     """
     zarr_format = (
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
@@ -502,7 +523,9 @@ async def save_group(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
@@ -557,8 +580,8 @@ async def save_group(
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
-    .. deprecated:: 3.0.0
-        `zarr.tree()` is deprecated and will be removed in a future release.
+    !!! warning "Deprecated"
+        `zarr.tree()` is deprecated since v3.0.0 and will be removed in a future release.
         Use `group.tree()` instead.
 
     Parameters
@@ -588,7 +611,7 @@ async def array(
     data : array_like
         The data to fill the array with.
     **kwargs
-        Passed through to :func:`create`.
+        Passed through to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -651,7 +674,9 @@ async def group(
     Parameters
     ----------
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
         creating the group.
@@ -713,7 +738,9 @@ async def create_group(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     path : str, optional
         Group path within store.
     overwrite : bool, optional
@@ -723,7 +750,7 @@ async def create_group(
         The zarr format to use when saving.
         If no ``zarr_format`` is provided, the default format will be used.
         This default can be changed by modifying the value of ``default_zarr_format``
-        in :mod:`zarr.core.config`.
+        in [`zarr.config`][zarr.config].
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
@@ -769,17 +796,9 @@ async def open_group(
     Parameters
     ----------
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
-
-        Strings are interpreted as paths on the local file system
-        and used as the ``root`` argument to :class:`zarr.storage.LocalStore`.
-
-        Dictionaries are used as the ``store_dict`` argument in
-        :class:`zarr.storage.MemoryStore``.
-
-        By default (``store=None``) a new :class:`zarr.storage.MemoryStore`
-        is created.
-
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -794,7 +813,9 @@ async def open_group(
     path : str, optional
         Group path within store.
     chunk_store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        Separate storage for chunks. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
@@ -917,7 +938,7 @@ async def create(
         Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
 
         If neither ``compressor`` nor ``filters`` are provided, the default compressor
-        :class:`zarr.codecs.ZstdCodec` is used.
+        [`zarr.codecs.ZstdCodec`][] is used.
 
         If ``compressor`` is set to ``None``, no compression is used.
     fill_value : Any, optional
@@ -928,7 +949,9 @@ async def create(
         Memory layout to be used within each chunk.
         If not specified, the ``array.order`` parameter in the global config will be used.
     store : StoreLike or None, default=None
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
@@ -944,8 +967,8 @@ async def create(
         chunk to bytes.
 
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-        and these values must be instances of :class:`zarr.abc.codec.ArrayArrayCodec`, or a
-        dict representations of :class:`zarr.abc.codec.ArrayArrayCodec`.
+        and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+        dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
@@ -954,7 +977,7 @@ async def create(
         type of the array and the Zarr format specified. For all data types in Zarr V3, and most
         data types in Zarr V2, the default filters are empty. The only cases where default filters
         are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
-        :class:`zarr.dtype.VariableLengthUTF8` or :class:`zarr.dtype.VariableLengthUTF8`. In these cases,
+        [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
         the default filters contains a single element which is a codec specific to that particular data type.
 
         To create an array with no filters, provide an empty iterable or the value ``None``.
@@ -1005,8 +1028,8 @@ async def create(
 
         If no codecs are provided, default codecs will be used based on the data type of the array.
         For most data types, the default codecs are the tuple ``(BytesCodec(), ZstdCodec())``;
-        data types that require a special :class:`zarr.abc.codec.ArrayBytesCodec`, like variable-length strings or bytes,
-        will use the :class:`zarr.abc.codec.ArrayBytesCodec` required for the data type instead of :class:`zarr.codecs.BytesCodec`.
+        data types that require a special [`zarr.abc.codec.ArrayBytesCodec`][], like variable-length strings or bytes,
+        will use the [`zarr.abc.codec.ArrayBytesCodec`][] required for the data type instead of [`zarr.codecs.BytesCodec`][].
     dimension_names : Iterable[str | None] | None = None
         An iterable of dimension names. Zarr format 3 only.
     storage_options : dict
@@ -1087,14 +1110,14 @@ async def empty(
     shape: tuple[int, ...], **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an empty array with the specified shape. The contents will be filled with the
-    array's fill value or zeros if no fill value is provided.
+    specified fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Notes
     -----
@@ -1102,8 +1125,7 @@ async def empty(
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-
-    return await create(shape=shape, fill_value=None, **kwargs)
+    return await create(shape=shape, **kwargs)
 
 
 async def empty_like(
@@ -1117,7 +1139,7 @@ async def empty_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1130,8 +1152,10 @@ async def empty_like(
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
-    like_kwargs = _like_args(a, kwargs)
-    return await empty(**like_kwargs)
+    like_kwargs = _like_args(a) | kwargs
+    if isinstance(a, (AsyncArray | Array)):
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
+    return await empty(**like_kwargs)  # type: ignore[arg-type]
 
 
 # TODO: add type annotations for fill_value and kwargs
@@ -1148,7 +1172,7 @@ async def full(
     fill_value : scalar
         Fill value.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1169,17 +1193,17 @@ async def full_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
     Array
         The new array.
     """
-    like_kwargs = _like_args(a, kwargs)
-    if isinstance(a, AsyncArray):
+    like_kwargs = _like_args(a) | kwargs
+    if isinstance(a, (AsyncArray | Array)):
         like_kwargs.setdefault("fill_value", a.metadata.fill_value)
-    return await full(**like_kwargs)
+    return await full(**like_kwargs)  # type: ignore[arg-type]
 
 
 async def ones(
@@ -1193,7 +1217,7 @@ async def ones(
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1213,15 +1237,15 @@ async def ones_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
     Array
         The new array.
     """
-    like_kwargs = _like_args(a, kwargs)
-    return await ones(**like_kwargs)
+    like_kwargs = _like_args(a) | kwargs
+    return await ones(**like_kwargs)  # type: ignore[arg-type]
 
 
 async def open_array(
@@ -1238,7 +1262,9 @@ async def open_array(
     Parameters
     ----------
     store : StoreLike
-        Store or path to directory in file system or name of zip file.
+        StoreLike object to open. See the
+        [storage documentation in the user guide][user-guide-store-like]
+        for a description of all valid StoreLike values.
     zarr_version : {2, 3, None}, optional
         The zarr format to use when saving. Deprecated in favor of zarr_format.
     zarr_format : {2, 3, None}, optional
@@ -1249,7 +1275,7 @@ async def open_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Any keyword arguments to pass to :func:`create`.
+        Any keyword arguments to pass to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
@@ -1300,10 +1326,10 @@ async def open_like(
     AsyncArray
         The opened array.
     """
-    like_kwargs = _like_args(a, kwargs)
+    like_kwargs = _like_args(a) | kwargs
     if isinstance(a, (AsyncArray | Array)):
-        kwargs.setdefault("fill_value", a.metadata.fill_value)
-    return await open_array(path=path, **like_kwargs)
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
+    return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
 
 
 async def zeros(
@@ -1317,7 +1343,7 @@ async def zeros(
     shape : int or tuple of int
         Shape of the empty array.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [`zarr.api.asynchronous.create`][].
 
     Returns
     -------
@@ -1337,12 +1363,12 @@ async def zeros_like(
     a : array-like
         The array to create an empty array like.
     **kwargs
-        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        Keyword arguments passed to [`create`][zarr.api.asynchronous.create].
 
     Returns
     -------
     Array
         The new array.
     """
-    like_kwargs = _like_args(a, kwargs)
-    return await zeros(**like_kwargs)
+    like_kwargs = _like_args(a) | kwargs
+    return await zeros(**like_kwargs)  # type: ignore[arg-type]
