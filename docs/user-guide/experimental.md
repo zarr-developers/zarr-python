@@ -4,7 +4,7 @@ This section contains documentation for experimental Zarr Python features. The f
 
 ## `CacheStore`
 
-Zarr Python 3.1.4 adds `zarr.storage.CacheStore` provides a dual-store caching implementation
+Zarr Python 3.1.4 adds `zarr.experimental.cache_store.CacheStore` provides a dual-store caching implementation
 that can be wrapped around any Zarr store to improve performance for repeated data access.
 This is particularly useful when working with remote stores (e.g., S3, HTTP) where network
 latency can significantly impact data access speed.
@@ -24,15 +24,16 @@ Because the `CacheStore` uses an ordinary Zarr `Store` object as the caching lay
 Creating a CacheStore requires both a source store and a cache store. The cache store
 can be any Store implementation, providing flexibility in cache persistence:
 
-```python
+```python exec="true" session="experimental" source="above" result="ansi"
 import zarr
 import zarr.storage
 import numpy as np
+from zarr.experimental.cache_store import CacheStore
 
 # Create a local store and a separate cache store
 source_store = zarr.storage.LocalStore('test.zarr')
 cache_store = zarr.storage.MemoryStore()  # In-memory cache
-cached_store = zarr.storage.CacheStore(
+cached_store = CacheStore(
     store=source_store,
     cache_store=cache_store,
     max_size=256*1024*1024  # 256MB cache
@@ -52,7 +53,7 @@ such as a remote store for source data and a local store for persistent caching.
 
 The CacheStore provides significant performance improvements for repeated data access:
 
-```python
+```python exec="true" session="experimental" source="above" result="ansi"
 import time
 
 # Benchmark reading with cache
@@ -80,23 +81,34 @@ The CacheStore is most beneficial when used with remote stores where network lat
 is a significant factor. You can use different store types for source and cache:
 
 ```python
-from zarr.storage import FsspecStore, LocalStore
+# This example shows remote store setup but requires network access
+# from zarr.storage import FsspecStore, LocalStore
 
-# Create a remote store (S3 example) - for demonstration only
-remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})
+# # Create a remote store (S3 example) - for demonstration only
+# remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})
 
-# Use a local store for persistent caching
-local_cache_store = LocalStore('cache_data')
+# # Use a local store for persistent caching
+# local_cache_store = LocalStore('cache_data')
 
-# Create cached store with persistent local cache
-cached_store = zarr.storage.CacheStore(
-    store=remote_store,
-    cache_store=local_cache_store,
+# # Create cached store with persistent local cache
+# cached_store = CacheStore(
+#     store=remote_store,
+#     cache_store=local_cache_store,
+#     max_size=512*1024*1024  # 512MB cache
+# )
+
+# # Open array through cached store
+# z = zarr.open(cached_store)
+
+# For demonstration, use local stores instead
+from zarr.storage import LocalStore
+local_source = LocalStore('remote_data.zarr')
+local_cache = LocalStore('cache_data')
+cached_store = CacheStore(
+    store=local_source,
+    cache_store=local_cache,
     max_size=512*1024*1024  # 512MB cache
 )
-
-# Open array through cached store
-z = zarr.open(cached_store)
 ```
 
 The first access to any chunk will be slow (network retrieval), but subsequent accesses
@@ -109,16 +121,16 @@ The CacheStore can be configured with several parameters:
 
 **max_size**: Controls the maximum size of cached data in bytes
 
-```python
+```python exec="true" session="experimental" source="above" result="ansi"
 # 256MB cache with size limit
-cache = zarr.storage.CacheStore(
+cache = CacheStore(
     store=source_store,
     cache_store=cache_store,
     max_size=256*1024*1024
 )
 
 # Unlimited cache size (use with caution)
-cache = zarr.storage.CacheStore(
+cache = CacheStore(
     store=source_store,
     cache_store=cache_store,
     max_size=None
@@ -127,16 +139,16 @@ cache = zarr.storage.CacheStore(
 
 **max_age_seconds**: Controls time-based cache expiration
 
-```python
+```python exec="true" session="experimental" source="above" result="ansi"
 # Cache expires after 1 hour
-cache = zarr.storage.CacheStore(
+cache = CacheStore(
     store=source_store,
     cache_store=cache_store,
     max_age_seconds=3600
 )
 
 # Cache never expires
-cache = zarr.storage.CacheStore(
+cache = CacheStore(
     store=source_store,
     cache_store=cache_store,
     max_age_seconds="infinity"
@@ -145,16 +157,16 @@ cache = zarr.storage.CacheStore(
 
 **cache_set_data**: Controls whether written data is cached
 
-```python
+```python exec="true" session="experimental" source="above" result="ansi"
 # Cache data when writing (default)
-cache = zarr.storage.CacheStore(
+cache = CacheStore(
     store=source_store,
     cache_store=cache_store,
     cache_set_data=True
 )
 
 # Don't cache written data (read-only cache)
-cache = zarr.storage.CacheStore(
+cache = CacheStore(
     store=source_store,
     cache_store=cache_store,
     cache_set_data=False
@@ -165,7 +177,7 @@ cache = zarr.storage.CacheStore(
 
 The CacheStore provides statistics to monitor cache performance and state:
 
-```python
+```python exec="true" session="experimental" source="above" result="ansi"
 # Access some data to generate cache activity
 data = zarr_array[0:50, 0:50]  # First access - cache miss
 data = zarr_array[0:50, 0:50]  # Second access - cache hit
@@ -187,7 +199,7 @@ The `cache_info()` method returns a dictionary with detailed information about t
 
 The CacheStore provides methods for manual cache management:
 
-```python
+```python exec="true" session="experimental" source="above" result="ansi"
 # Clear all cached data and tracking information
 import asyncio
 asyncio.run(cached_store.clear_cache())
@@ -217,11 +229,12 @@ and use any store type for the cache backend:
 
 ### Local Store with Memory Cache
 
-```python
+```python exec="true" session="experimental-memory-cache" source="above" result="ansi"
 from zarr.storage import LocalStore, MemoryStore
+from zarr.experimental.cache_store import CacheStore
 source_store = LocalStore('data.zarr')
 cache_store = MemoryStore()
-cached_store = zarr.storage.CacheStore(
+cached_store = CacheStore(
     store=source_store,
     cache_store=cache_store,
     max_size=128*1024*1024
@@ -230,12 +243,25 @@ cached_store = zarr.storage.CacheStore(
 
 ### Remote Store with Local Cache
 
-```python
-from zarr.storage import FsspecStore, LocalStore
-remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})
+```python exec="true" session="experimental-remote-cache" source="above" result="ansi"
+# Remote store example (commented out as it requires network access)
+# from zarr.storage import FsspecStore, LocalStore
+# remote_store = FsspecStore.from_url('s3://bucket/data.zarr', storage_options={'anon': True})
+# local_cache = LocalStore('local_cache')
+# cached_store = CacheStore(
+#     store=remote_store,
+#     cache_store=local_cache,
+#     max_size=1024*1024*1024,
+#     max_age_seconds=3600
+# )
+
+# Local store example for demonstration
+from zarr.storage import LocalStore
+from zarr.experimental.cache_store import CacheStore
+remote_like_store = LocalStore('remote_like_data.zarr')
 local_cache = LocalStore('local_cache')
-cached_store = zarr.storage.CacheStore(
-    store=remote_store,
+cached_store = CacheStore(
+    store=remote_like_store,
     cache_store=local_cache,
     max_size=1024*1024*1024,
     max_age_seconds=3600
@@ -244,11 +270,12 @@ cached_store = zarr.storage.CacheStore(
 
 ### Memory Store with Persistent Cache
 
-```python
+```python exec="true" session="experimental-local-cache" source="above" result="ansi"
 from zarr.storage import MemoryStore, LocalStore
+from zarr.experimental.cache_store import CacheStore
 memory_store = MemoryStore()
 persistent_cache = LocalStore('persistent_cache')
-cached_store = zarr.storage.CacheStore(
+cached_store = CacheStore(
     store=memory_store,
     cache_store=persistent_cache,
     max_size=256*1024*1024
@@ -262,16 +289,17 @@ of source and cache stores for your specific use case.
 
 Here's a complete example demonstrating cache effectiveness:
 
-```python
+```python exec="true" session="experimental-final" source="above" result="ansi"
 import zarr
 import zarr.storage
 import time
 import numpy as np
+from zarr.experimental.cache_store import CacheStore
 
 # Create test data with dual-store cache
 source_store = zarr.storage.LocalStore('benchmark.zarr')
 cache_store = zarr.storage.MemoryStore()
-cached_store = zarr.storage.CacheStore(
+cached_store = CacheStore(
     store=source_store,
     cache_store=cache_store,
     max_size=256*1024*1024
@@ -292,6 +320,7 @@ second_access = time.time() - start
 info = cached_store.cache_info()
 assert info['cached_keys'] > 0  # Should have cached keys
 assert info['current_size'] > 0  # Should have cached data
+print(f"Cache contains {info['cached_keys']} keys with {info['current_size']} bytes")
 ```
 
 This example shows how the CacheStore can significantly reduce access times for repeated
