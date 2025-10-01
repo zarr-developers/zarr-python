@@ -1171,7 +1171,7 @@ class AsyncGroup:
     ) -> AnyAsyncArray:
         """Obtain an array, creating if it doesn't exist.
 
-        Other `kwargs` are as per [zarr.AsyncGroup.create_dataset][].
+        Other `kwargs` are as per [zarr.AsyncGroup.create_array][].
 
         Parameters
         ----------
