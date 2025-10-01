@@ -23,8 +23,9 @@ group = zarr.create_group(store='data/foo/bar')
 print(group)
 ```
 
-```python exec="true" session="storage" source="above" result="ansi"
+```python
 # Implicitly create a read-only FsspecStore
+# Note: requires s3fs to be installed
 group = zarr.open_group(
    store='s3://noaa-nwm-retro-v2-zarr-pds',
    mode='r',
@@ -58,7 +59,8 @@ print(group)
    ```
 
 - an FSSpec URI string, indicating a [remote store](#remote-store) location:
-   ```python exec="true" session="storage" source="above" result="ansi"
+   ```python
+   # Note: requires s3fs to be installed
    group = zarr.open_group(
       store='s3://noaa-nwm-retro-v2-zarr-pds',
       mode='r',
@@ -124,7 +126,8 @@ such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Stor
 that implements the [AbstractFileSystem](https://filesystem-spec.readthedocs.io/en/stable/api.html#fsspec.spec.AbstractFileSystem)
 API. `storage_options` can be used to configure the fsspec backend:
 
-```python exec="true" session="storage" source="above" result="ansi"
+```python
+# Note: requires s3fs to be installed
 store = zarr.storage.FsspecStore.from_url(
    's3://noaa-nwm-retro-v2-zarr-pds',
    read_only=True,
@@ -137,7 +140,8 @@ print(group)
 The type of filesystem (e.g. S3, https, etc..) is inferred from the scheme of the url (e.g. s3 for "**s3**://noaa-nwm-retro-v2-zarr-pds").
 In case a specific filesystem is needed, one can explicitly create it. For example to create a S3 filesystem:
 
-```python exec="true" session="storage" source="above" result="ansi"
+```python
+# Note: requires s3fs to be installed
 import fsspec
 fs = fsspec.filesystem(
    's3', anon=True, asynchronous=True,

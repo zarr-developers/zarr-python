@@ -257,6 +257,19 @@ check = "mkdocs build --strict"
 readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
 list-env = "pip list"
 
+[tool.hatch.envs.doctest]
+description = "Test environment for validating executable code blocks in documentation"
+features = ['test', 'remote']  # Include remote dependencies for s3fs
+dependencies = [
+    "pytest",
+    "pytest-examples",
+]
+
+[tool.hatch.envs.doctest.scripts]
+test = "pytest tests/test_docs.py -v"
+test-file = "python tests/test_docs.py --test {args}"
+list-env = "pip list"
+
 [tool.ruff]
 line-length = 100
 force-exclude = true
@@ -396,7 +409,8 @@ addopts = [
 ]
 filterwarnings = [
     "error",
-    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
+    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning",
+    "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning"
 ]
 markers = [
     "asyncio: mark test as asyncio test",
