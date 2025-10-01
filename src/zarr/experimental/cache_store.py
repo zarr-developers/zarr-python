@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, Literal
 from zarr.abc.store import ByteRequest, Store
 from zarr.storage._wrapper import WrapperStore
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
@@ -115,11 +114,6 @@ class CacheStore(WrapperStore[Store]):
             elapsed = now - self.key_insert_times.get(key, 0)
             return elapsed < self.max_age_seconds
 
-    def _get_cache_size(self, key: str) -> int:
-        """Get the size of a cached item."""
-        # For now, we'll estimate by getting the data when we cache it
-        return 0  # Will be properly set when caching
-
     async def _accommodate_value(self, value_size: int) -> None:
         """Ensure there is enough space in the cache for a new value."""
         if self.max_size is None:
@@ -132,12 +126,12 @@ class CacheStore(WrapperStore[Store]):
             await self._evict_key(lru_key)
 
     async def _evict_key(self, key: str) -> None:
-        """Remove a key from cache and update size tracking."""
         try:
-            # Get the size of the key being evicted
             key_size = self._key_sizes.get(key, 0)
+            # Delete from cache store FIRST
+            await self._cache.delete(key)
 
-            # Remove from tracking structures
+            # Only update tracking after successful deletion
             if key in self._cache_order:
                 del self._cache_order[key]
             if key in self.key_insert_times:
@@ -145,15 +139,11 @@ class CacheStore(WrapperStore[Store]):
             if key in self._key_sizes:
                 del self._key_sizes[key]
 
-            # Update current size
             self._current_size = max(0, self._current_size - key_size)
-
-            # Actually delete from cache store
-            await self._cache.delete(key)
-
-            logger.info("_evict_key: evicted key %s from cache, size %d", key, key_size)
+            logger.info("_evict_key: evicted key %s, freed %d bytes", key, key_size)
         except Exception as e:
             logger.warning("_evict_key: failed to evict key %s: %s", key, e)
+            # Don't update tracking if deletion failed
 
     async def _cache_value(self, key: str, value: Any) -> None:
         """Cache a value with size tracking."""
@@ -209,17 +199,7 @@ class CacheStore(WrapperStore[Store]):
             logger.info("_get_try_cache: key %s found in cache", key)
             # Update access order for LRU
             self._update_access_order(key)
-            # Verify the key still exists in source store before returning cached data
-            if await super().exists(key):
-                return maybe_cached_result
-            else:
-                # Key no longer exists in source, clean up cache
-                logger.info(
-                    "_get_try_cache: key %s no longer exists in source, cleaning up cache", key
-                )
-                await self._cache.delete(key)
-                self._remove_from_tracking(key)
-                return None
+            return maybe_cached_result
         else:
             logger.info("_get_try_cache: key %s not found in cache, fetching from store", key)
             maybe_fresh_result = await super().get(key, prototype, byte_range)
