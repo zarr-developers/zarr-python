@@ -1,6 +1,10 @@
-# CacheStore guide
+# Experimental features
 
-The `zarr.storage.CacheStore` provides a dual-store caching implementation
+This section contains documentation for experimental Zarr Python features. The features described here are exciting and potentially useful, but also volatile -- we might change them at any time. Take this into account if you consider depending on these features.
+
+## `CacheStore`
+
+Zarr Python 3.1.4 adds `zarr.storage.CacheStore` provides a dual-store caching implementation
 that can be wrapped around any Zarr store to improve performance for repeated data access.
 This is particularly useful when working with remote stores (e.g., S3, HTTP) where network
 latency can significantly impact data access speed.
@@ -9,6 +13,8 @@ The CacheStore implements a cache that uses a separate Store instance as the cac
 providing persistent caching capabilities with time-based expiration, size-based eviction,
 and flexible cache storage options. It automatically evicts the least recently used items
 when the cache reaches its maximum size.
+
+Because the `CacheStore` uses an ordinary Zarr `Store` object as the caching layer, you can reuse the data stored in the cache later.
 
 > **Note:** The CacheStore is a wrapper store that maintains compatibility with the full
 > `zarr.abc.store.Store` API while adding transparent caching functionality.
