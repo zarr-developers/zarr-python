@@ -190,22 +190,56 @@ class TestCacheStore:
         await asyncio.sleep(0.1)
         assert cached_store._is_key_fresh("eternal_key")
 
-    async def test_missing_key_cleanup(self, cached_store: CacheStore, source_store: Store) -> None:
-        """Test that accessing non-existent keys cleans up cache."""
+    async def test_cache_returns_cached_data_for_performance(
+        self, cached_store: CacheStore, source_store: Store
+    ) -> None:
+        """Test that cache returns cached data for performance, even if not in source."""
         # Skip test if key_insert_times attribute doesn't exist
         if not hasattr(cached_store, "key_insert_times"):
             pytest.skip("key_insert_times attribute not implemented")
 
-        # Put data in cache but not source
+        # Put data in cache but not source (simulates orphaned cache entry)
         test_data = CPUBuffer.from_bytes(b"orphaned data")
         await cached_store._cache.set("orphan_key", test_data)
         cached_store.key_insert_times["orphan_key"] = time.monotonic()
 
-        # Access should clean up cache
+        # Cache should return data for performance (no source verification)
         result = await cached_store.get("orphan_key", default_buffer_prototype())
-        assert result is None
-        assert not await cached_store._cache.exists("orphan_key")
-        assert "orphan_key" not in cached_store.key_insert_times
+        assert result is not None
+        assert result.to_bytes() == b"orphaned data"
+
+        # Cache entry should remain (performance optimization)
+        assert await cached_store._cache.exists("orphan_key")
+        assert "orphan_key" in cached_store.key_insert_times
+
+    async def test_cache_coherency_through_expiration(self) -> None:
+        """Test that cache coherency is managed through cache expiration, not source verification."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            source_store,
+            cache_store=cache_store,
+            max_age_seconds=1,  # Short expiration for coherency
+        )
+
+        # Add data to both stores
+        test_data = CPUBuffer.from_bytes(b"original data")
+        await cached_store.set("coherency_key", test_data)
+
+        # Remove from source (simulating external deletion)
+        await source_store.delete("coherency_key")
+
+        # Cache should still return cached data (performance optimization)
+        result = await cached_store.get("coherency_key", default_buffer_prototype())
+        assert result is not None
+        assert result.to_bytes() == b"original data"
+
+        # Wait for cache expiration
+        await asyncio.sleep(1.1)
+
+        # Now stale cache should be refreshed from source
+        result = await cached_store.get("coherency_key", default_buffer_prototype())
+        assert result is None  # Key no longer exists in source
 
     async def test_cache_info(self, cached_store: CacheStore) -> None:
         """Test cache_info method returns correct information."""
