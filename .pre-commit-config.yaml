@@ -6,7 +6,7 @@ ci:
 default_stages: [pre-commit, pre-push]
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.11
+    rev: v0.13.1
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
@@ -20,9 +20,10 @@ repos:
     rev: v6.0.0
     hooks:
       - id: check-yaml
+        exclude: mkdocs.yml
       - id: trailing-whitespace
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.1
+    rev: v1.18.2
     hooks:
       - id: mypy
         files: src|tests

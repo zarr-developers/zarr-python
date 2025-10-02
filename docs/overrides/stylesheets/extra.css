@@ -1,0 +1,214 @@
+:root {
+  --gradient-start: #e58077;
+  --gradient-mid-1: #e57a77;
+  --gradient-mid-2: #e46876;
+  --gradient-mid-3: #e34b75;
+  --gradient-mid-4: #e12374;
+  --gradient-mid-5: #e01073;
+  --gradient-end: #bb1085;
+
+  /* Primary theme colors
+  --md-primary-fg-color: #e34b75;
+  --md-primary-fg-color--light: #e57a77;
+  --md-primary-fg-color--dark: #bb1085;
+
+  /* Accent colors */
+  --md-accent-fg-color: #e01073;
+  --md-accent-fg-color--transparent: rgba(224, 16, 115, 0.1);
+
+  /* Text colors that work well with the palette */
+  --md-text-color: #333333;
+  --md-text-color--light: #666666;
+}
+
+/* Dark mode color adjustments */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #e57a77;
+  --md-primary-fg-color--light: #e58077;
+  --md-primary-fg-color--dark: #bb1085;
+  --md-accent-fg-color: #e46876;
+  --md-accent-fg-color--transparent: rgba(228, 104, 118, 0.1);
+}
+
+/* Header styling with gradient background */
+.md-header {
+  background: linear-gradient(
+    135deg,
+    var(--gradient-start) 0%,
+    var(--gradient-mid-1) 16.66%,
+    var(--gradient-mid-2) 33.33%,
+    var(--gradient-mid-3) 50%,
+    var(--gradient-mid-4) 66.66%,
+    var(--gradient-mid-5) 83.33%,
+    var(--gradient-end) 100%
+  );
+  box-shadow: 0 2px 8px rgba(187, 16, 133, 0.15);
+}
+
+/* Ensure header text is readable over gradient */
+.md-header__title,
+.md-header__button,
+.md-header .md-icon {
+  color: white;
+}
+
+/* Search box styling */
+.md-search__input {
+  background-color: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.md-search__input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Navigation tabs */
+.md-tabs {
+  background: linear-gradient(
+    90deg,
+    var(--gradient-mid-3) 0%,
+    var(--gradient-mid-4) 50%,
+    var(--gradient-mid-5) 100%
+  );
+}
+
+.md-tabs__link {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  color: white;
+  opacity: 1;
+}
+
+/* Sidebar navigation */
+.md-nav__link--active {
+  color: var(--md-primary-fg-color);
+  font-weight: 500;
+}
+
+.md-nav__link:hover {
+  color: var(--md-accent-fg-color);
+}
+
+/* Code blocks */
+.highlight {
+  border-left: 4px solid var(--md-accent-fg-color);
+  background-color: rgba(228, 104, 118, 0.05);
+}
+
+/* Admonitions */
+.md-typeset .admonition.note {
+  border-color: var(--md-primary-fg-color);
+}
+
+.md-typeset .admonition.note > .admonition-title {
+  background-color: rgba(227, 75, 117, 0.1);
+  border-color: var(--md-primary-fg-color);
+}
+
+.md-typeset .admonition.tip {
+  border-color: var(--gradient-mid-1);
+}
+
+.md-typeset .admonition.tip > .admonition-title {
+  background-color: rgba(229, 122, 119, 0.1);
+  border-color: var(--gradient-mid-1);
+}
+
+.md-typeset .admonition.warning {
+  border-color: var(--gradient-end);
+}
+
+.md-typeset .admonition.warning > .admonition-title {
+  background-color: rgba(187, 16, 133, 0.1);
+  border-color: var(--gradient-end);
+}
+
+/* Links */
+.md-content a {
+  color: var(--md-accent-fg-color);
+}
+
+.md-content a:hover {
+  color: var(--gradient-end);
+}
+
+/* Table of contents */
+.md-nav--secondary .md-nav__link--active {
+  color: var(--md-accent-fg-color);
+  border-left: 2px solid var(--md-accent-fg-color);
+  padding-left: calc(1rem - 2px);
+}
+
+/* Footer */
+.md-footer {
+  background-color: var(--gradient-end);
+}
+
+/* Buttons and interactive elements */
+.md-button {
+  background: linear-gradient(135deg, var(--md-primary-fg-color), var(--md-accent-fg-color));
+  border: none;
+  color: white;
+  transition: all 0.3s ease;
+}
+
+.md-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(187, 16, 133, 0.3);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(187, 16, 133, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    180deg,
+    var(--md-primary-fg-color),
+    var(--md-accent-fg-color)
+  );
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(
+    180deg,
+    var(--md-accent-fg-color),
+    var(--gradient-end)
+  );
+}
+
+/* Search results highlighting */
+.md-search-result__title {
+  color: var(--md-primary-fg-color);
+}
+
+.md-search-result__teaser mark {
+  background-color: rgba(224, 16, 115, 0.2);
+  color: var(--gradient-end);
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+    height: 42px !important;  /* Increase from default ~24px */
+    width: auto !important;
+    max-height: none !important;
+    padding: 0 0 0 16px !important;  /* Keep left padding, remove others */
+    margin: 0 !important;   /* Remove any margin */
+}
+
+/* Also remove padding from the logo button container except left */
+.md-header__button.md-logo {
+    padding: 0 0 0 8px !important;  /* Keep some left padding on container */
+    margin: 0 !important;
+    min-width: auto !important;
+}

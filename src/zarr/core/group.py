@@ -28,7 +28,6 @@ from zarr.core.array import (
     FiltersLike,
     SerializerLike,
     ShardsLike,
-    _build_parents,
     _parse_deprecated_compressor,
     create_array,
 )
@@ -49,10 +48,12 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.io import save_metadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
+    GroupNotFoundError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -73,7 +74,7 @@ if TYPE_CHECKING:
     )
     from typing import Any
 
-    from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
+    from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
@@ -673,6 +674,13 @@ class AsyncGroup:
         store_path: StorePath,
         data: dict[str, Any],
     ) -> AsyncGroup:
+        node_type = data.pop("node_type", None)
+        if node_type == "array":
+            msg = f"An array already exists in store {store_path.store} at path {store_path.path}."
+            raise ContainsArrayError(msg)
+        elif node_type not in ("group", None):
+            msg = f"Node type in metadata ({node_type}) is not 'group'"
+            raise GroupNotFoundError(msg)
         return cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
@@ -810,22 +818,7 @@ class AsyncGroup:
             return default
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
-        to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
-
-        if ensure_parents:
-            parents = _build_parents(self)
-            for parent in parents:
-                awaitables.extend(
-                    [
-                        (parent.store_path / key).set_if_not_exists(value)
-                        for key, value in parent.metadata.to_buffer_dict(
-                            default_buffer_prototype()
-                        ).items()
-                    ]
-                )
-
-        await asyncio.gather(*awaitables)
+        await save_metadata(self.store_path, self.metadata, ensure_parents=ensure_parents)
 
     @property
     def path(self) -> str:
@@ -864,9 +857,9 @@ class AsyncGroup:
         -------
         GroupInfo
 
-        See Also
-        --------
-        AsyncGroup.info_complete
+        Related
+        -------
+        [zarr.AsyncGroup.info_complete][]
             All information about a group, including dynamic information
         """
 
@@ -888,9 +881,9 @@ class AsyncGroup:
         -------
         GroupInfo
 
-        See Also
-        --------
-        AsyncGroup.info
+        Related
+        -------
+        [zarr.AsyncGroup.info][]
         """
         members = [x[1].metadata async for x in self.members(max_depth=None)]
         return self._info(members=members)
@@ -1038,7 +1031,7 @@ class AsyncGroup:
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array within this group.
 
-        This method lightly wraps :func:`zarr.core.array.create_array`.
+        This method lightly wraps [zarr.core.array.create_array][].
 
         Parameters
         ----------
@@ -1054,24 +1047,25 @@ class AsyncGroup:
             If not specified, default are guessed based on the shape and dtype.
         shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
-        filters : Iterable[Codec], optional
+        filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
-            of ``ArrayArrayCodec``.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
@@ -1080,13 +1074,13 @@ class AsyncGroup:
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
             Use ``None`` to omit default compressors.
 
             For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
             be provided for Zarr format 2.
             If no ``compressor`` is provided, a default compressor will be used.
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
             Use ``None`` to omit the default compressor.
         compressor : Codec, optional
             Deprecated in favor of ``compressors``.
@@ -1095,7 +1089,7 @@ class AsyncGroup:
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
             If no ``serializer`` is provided, a default serializer will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
@@ -1105,7 +1099,7 @@ class AsyncGroup:
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
             order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
             If no ``order`` is provided, a default order will be used.
-            This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
@@ -1165,18 +1159,19 @@ class AsyncGroup:
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
+        !!! warning "Deprecated"
+            `AsyncGroup.create_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
+            Use `AsyncGroup.create_array` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.require_dataset` method.
+        with h5py, Zarr groups also implement the [zarr.AsyncGroup.require_dataset][] method.
 
         Parameters
         ----------
         name : str
             Array name.
         **kwargs : dict
-            Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
+            Additional arguments passed to [zarr.AsyncGroup.create_array][].
 
         Returns
         -------
@@ -1205,13 +1200,14 @@ class AsyncGroup:
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.require_dataset` instead.
+        !!! warning "Deprecated"
+            `AsyncGroup.require_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
+            Use `AsyncGroup.require_dataset` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
+        with h5py, Zarr groups also implement the [zarr.AsyncGroup.create_dataset][] method.
 
-        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
+        Other `kwargs` are as per [zarr.AsyncGroup.create_dataset][].
 
         Parameters
         ----------
@@ -1242,7 +1238,7 @@ class AsyncGroup:
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
-        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
+        Other `kwargs` are as per [zarr.AsyncGroup.create_dataset][].
 
         Parameters
         ----------
@@ -1629,7 +1625,7 @@ class AsyncGroup:
         shape : int or tuple of int
             Shape of the empty array.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Notes
         -----
@@ -1651,7 +1647,7 @@ class AsyncGroup:
         shape : int or tuple of int
             Shape of the empty array.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -1672,7 +1668,7 @@ class AsyncGroup:
         shape : int or tuple of int
             Shape of the empty array.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -1695,7 +1691,7 @@ class AsyncGroup:
         fill_value : scalar
             Value to fill the array with.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -1723,7 +1719,7 @@ class AsyncGroup:
         data : array-like
             The array to create an empty array like.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -1744,7 +1740,7 @@ class AsyncGroup:
         data : array-like
             The array to create the new array like.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -1765,7 +1761,7 @@ class AsyncGroup:
         data : array-like
             The array to create the new array like.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -1786,7 +1782,7 @@ class AsyncGroup:
         data : array-like
             The array to create the new array like.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -1827,7 +1823,9 @@ class Group(SyncMixin):
         Parameters
         ----------
         store : StoreLike
-            StoreLike containing the Group.
+            StoreLike containing the Group. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
         attributes : dict, optional
             A dictionary of JSON-serializable values with user-defined attributes.
         zarr_format : {2, 3}, optional
@@ -1867,7 +1865,9 @@ class Group(SyncMixin):
         Parameters
         ----------
         store : StoreLike
-            Store containing the Group.
+            Store containing the Group. See the
+            [storage documentation in the user guide][user-guide-store-like]
+            for a description of all valid StoreLike values.
         zarr_format : {2, 3, None}, optional
             Zarr storage format version.
 
@@ -2073,9 +2073,9 @@ class Group(SyncMixin):
         -------
         GroupInfo
 
-        See Also
-        --------
-        Group.info_complete
+        Related
+        -------
+        [zarr.Group.info_complete][]
             All information about a group, including dynamic information
             like the children members.
         """
@@ -2092,9 +2092,9 @@ class Group(SyncMixin):
         -------
         GroupInfo
 
-        See Also
-        --------
-        Group.info
+        Related
+        -------
+        [zarr.Group.info][]
         """
         return self._sync(self._async_group.info_complete())
 
@@ -2440,9 +2440,149 @@ class Group(SyncMixin):
         """
         return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
 
-    def create(self, *args: Any, **kwargs: Any) -> Array:
-        # Backwards compatibility for 2.x
-        return self.create_array(*args, **kwargs)
+    def create(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike | None = None,
+        dtype: ZDTypeLike | None = None,
+        data: np.ndarray[Any, np.dtype[Any]] | None = None,
+        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        shards: ShardsLike | None = None,
+        filters: FiltersLike = "auto",
+        compressors: CompressorsLike = "auto",
+        compressor: CompressorLike = "auto",
+        serializer: SerializerLike = "auto",
+        fill_value: Any | None = DEFAULT_FILL_VALUE,
+        order: MemoryOrder | None = None,
+        attributes: dict[str, JSON] | None = None,
+        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
+        dimension_names: DimensionNames = None,
+        storage_options: dict[str, Any] | None = None,
+        overwrite: bool = False,
+        config: ArrayConfigLike | None = None,
+        write_data: bool = True,
+    ) -> Array:
+        """Create an array within this group.
+
+        This method lightly wraps [`zarr.core.array.create_array`][].
+
+        Parameters
+        ----------
+        name : str
+            The name of the array relative to the group. If ``path`` is ``None``, the array will be located
+            at the root of the store.
+        shape : ShapeLike, optional
+            Shape of the array. Must be ``None`` if ``data`` is provided.
+        dtype : npt.DTypeLike | None
+            Data type of the array. Must be ``None`` if ``data`` is provided.
+        data : Array-like data to use for initializing the array. If this parameter is provided, the
+            ``shape`` and ``dtype`` parameters must be ``None``.
+        chunks : tuple[int, ...], optional
+            Chunk shape of the array.
+            If not specified, default are guessed based on the shape and dtype.
+        shards : tuple[int, ...], optional
+            Shard shape of the array. The default value of ``None`` results in no sharding at all.
+        filters : Iterable[Codec] | Literal["auto"], optional
+            Iterable of filters to apply to each chunk of the array, in order, before serializing that
+            chunk to bytes.
+
+            For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
+
+            For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
+            the order if your filters is consistent with the behavior of each filter.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
+        compressors : Iterable[Codec], optional
+            List of compressors to apply to the array. Compressors are applied in order, and after any
+            filters are applied (if any are specified) and the data is serialized into bytes.
+
+            For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
+            returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+            If no ``compressors`` are provided, a default set of compressors will be used.
+            These defaults can be changed by modifying the value of ``array.v3_default_compressors``
+            in [`zarr.config`][].
+            Use ``None`` to omit default compressors.
+
+            For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
+            be provided for Zarr format 2.
+            If no ``compressor`` is provided, a default compressor will be used.
+            in [`zarr.config`][].
+            Use ``None`` to omit the default compressor.
+        compressor : Codec, optional
+            Deprecated in favor of ``compressors``.
+        serializer : dict[str, JSON] | ArrayBytesCodec, optional
+            Array-to-bytes codec to use for encoding the array data.
+            Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
+            If no ``serializer`` is provided, a default serializer will be used.
+            These defaults can be changed by modifying the value of ``array.v3_default_serializer``
+            in [`zarr.config`][].
+        fill_value : Any, optional
+            Fill value for the array.
+        order : {"C", "F"}, optional
+            The memory of the array (default is "C").
+            For Zarr format 2, this parameter sets the memory order of the array.
+            For Zarr format 3, this parameter is deprecated, because memory order
+            is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
+            order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+            If no ``order`` is provided, a default order will be used.
+            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][].
+        attributes : dict, optional
+            Attributes for the array.
+        chunk_key_encoding : ChunkKeyEncoding, optional
+            A specification of how the chunk keys are represented in storage.
+            For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
+            For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        dimension_names : Iterable[str], optional
+            The names of the dimensions (default is None).
+            Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
+        storage_options : dict, optional
+            If using an fsspec URL to create the store, these will be passed to the backend implementation.
+            Ignored otherwise.
+        overwrite : bool, default False
+            Whether to overwrite an array with the same name in the store, if one exists.
+        config : ArrayConfig or ArrayConfigLike, optional
+            Runtime configuration for the array.
+        write_data : bool
+            If a pre-existing array-like object was provided to this function via the ``data`` parameter
+            then ``write_data`` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            array will be left empty.
+
+        Returns
+        -------
+        AsyncArray
+        """
+        return self.create_array(
+            name,
+            shape=shape,
+            dtype=dtype,
+            data=data,
+            chunks=chunks,
+            shards=shards,
+            filters=filters,
+            compressors=compressors,
+            compressor=compressor,
+            serializer=serializer,
+            fill_value=fill_value,
+            order=order,
+            attributes=attributes,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+            storage_options=storage_options,
+            overwrite=overwrite,
+            config=config,
+            write_data=write_data,
+        )
 
     def create_array(
         self,
@@ -2469,7 +2609,7 @@ class Group(SyncMixin):
     ) -> Array:
         """Create an array within this group.
 
-        This method lightly wraps :func:`zarr.core.array.create_array`.
+        This method lightly wraps [zarr.core.array.create_array][].
 
         Parameters
         ----------
@@ -2487,24 +2627,25 @@ class Group(SyncMixin):
             If not specified, default are guessed based on the shape and dtype.
         shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
-        filters : Iterable[Codec], optional
+        filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
-            of ``ArrayArrayCodec``.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
@@ -2513,13 +2654,13 @@ class Group(SyncMixin):
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
             Use ``None`` to omit default compressors.
 
             For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
             be provided for Zarr format 2.
             If no ``compressor`` is provided, a default compressor will be used.
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
             Use ``None`` to omit the default compressor.
         compressor : Codec, optional
             Deprecated in favor of ``compressors``.
@@ -2528,7 +2669,7 @@ class Group(SyncMixin):
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
             If no ``serializer`` is provided, a default serializer will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
@@ -2538,7 +2679,7 @@ class Group(SyncMixin):
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
             order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
             If no ``order`` is provided, a default order will be used.
-            This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
@@ -2597,19 +2738,20 @@ class Group(SyncMixin):
     def create_dataset(self, name: str, **kwargs: Any) -> Array:
         """Create an array.
 
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `Group.create_array` instead.
+        !!! warning "Deprecated"
+            `Group.create_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
+            Use `Group.create_array` instead.
 
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the :func:`zarr.Group.require_dataset` method.
+        with h5py, Zarr groups also implement the [zarr.Group.require_dataset][] method.
 
         Parameters
         ----------
         name : str
             Array name.
         **kwargs : dict
-            Additional arguments passed to :func:`zarr.Group.create_array`
+            Additional arguments passed to [zarr.Group.create_array][]
 
         Returns
         -------
@@ -2621,20 +2763,21 @@ class Group(SyncMixin):
     def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
+        !!! warning "Deprecated"
+            `Group.require_dataset()` is deprecated since v3.0.0 and will be removed in v3.1.0.
+            Use `Group.require_array` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the :func:`zarr.Group.create_dataset` method.
+        with h5py, Zarr groups also implement the [zarr.Group.create_dataset][] method.
 
-        Other `kwargs` are as per :func:`zarr.Group.create_dataset`.
+        Other `kwargs` are as per [zarr.Group.create_dataset][].
 
         Parameters
         ----------
         name : str
             Array name.
         **kwargs :
-            See :func:`zarr.Group.create_dataset`.
+            See [zarr.Group.create_dataset][].
 
         Returns
         -------
@@ -2645,14 +2788,14 @@ class Group(SyncMixin):
     def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
-        Other `kwargs` are as per :func:`zarr.Group.create_array`.
+        Other `kwargs` are as per [zarr.Group.create_array][].
 
         Parameters
         ----------
         name : str
             Array name.
         **kwargs :
-            See :func:`zarr.Group.create_array`.
+            See [zarr.Group.create_array][].
 
         Returns
         -------
@@ -2671,7 +2814,7 @@ class Group(SyncMixin):
         shape : int or tuple of int
             Shape of the empty array.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Notes
         -----
@@ -2691,7 +2834,7 @@ class Group(SyncMixin):
         shape : int or tuple of int
             Shape of the empty array.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -2710,7 +2853,7 @@ class Group(SyncMixin):
         shape : int or tuple of int
             Shape of the empty array.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -2733,7 +2876,7 @@ class Group(SyncMixin):
         fill_value : scalar
             Value to fill the array with.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -2757,7 +2900,7 @@ class Group(SyncMixin):
         data : array-like
             The array to create an empty array like.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -2782,7 +2925,7 @@ class Group(SyncMixin):
         data : array-like
             The array to create the new array like.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -2802,7 +2945,7 @@ class Group(SyncMixin):
         data : array-like
             The array to create the new array like.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -2821,7 +2964,7 @@ class Group(SyncMixin):
         data : array-like
             The array to create the new array like.
         **kwargs
-            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+            Keyword arguments passed to [zarr.api.asynchronous.create][].
 
         Returns
         -------
@@ -2859,15 +3002,16 @@ class Group(SyncMixin):
         dimension_names: DimensionNames = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigLike | None = None,
+        config: ArrayConfigLike | None = None,
         data: npt.ArrayLike | None = None,
     ) -> Array:
         """Create an array within this group.
 
-        .. deprecated:: 3.0.0
+        !!! warning "Deprecated"
+            `Group.array()` is deprecated since v3.0.0 and will be removed in a future release.
             Use `Group.create_array` instead.
 
-        This method lightly wraps :func:`zarr.core.array.create_array`.
+        This method lightly wraps [zarr.core.array.create_array][].
 
         Parameters
         ----------
@@ -2883,24 +3027,25 @@ class Group(SyncMixin):
             If not specified, default are guessed based on the shape and dtype.
         shards : tuple[int, ...], optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
-        filters : Iterable[Codec], optional
+        filters : Iterable[Codec] | Literal["auto"], optional
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
             For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
-            and these values must be instances of ``ArrayArrayCodec``, or dict representations
-            of ``ArrayArrayCodec``.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v3_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+            and these values must be instances of [`zarr.abc.codec.ArrayArrayCodec`][], or a
+            dict representations of [`zarr.abc.codec.ArrayArrayCodec`][].
 
             For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
-            If no ``filters`` are provided, a default set of filters will be used.
-            These defaults can be changed by modifying the value of ``array.v2_default_filters``
-            in :mod:`zarr.core.config`.
-            Use ``None`` to omit default filters.
+
+            The default value of ``"auto"`` instructs Zarr to use a default used based on the data
+            type of the array and the Zarr format specified. For all data types in Zarr V3, and most
+            data types in Zarr V2, the default filters are empty. The only cases where default filters
+            are not empty is when the Zarr format is 2, and the data type is a variable-length data type like
+            [`zarr.dtype.VariableLengthUTF8`][] or [`zarr.dtype.VariableLengthUTF8`][]. In these cases,
+            the default filters contains a single element which is a codec specific to that particular data type.
+
+            To create an array with no filters, provide an empty iterable or the value ``None``.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
@@ -2909,13 +3054,13 @@ class Group(SyncMixin):
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
             Use ``None`` to omit default compressors.
 
             For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
             be provided for Zarr format 2.
             If no ``compressor`` is provided, a default compressor will be used.
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
             Use ``None`` to omit the default compressor.
         compressor : Codec, optional
             Deprecated in favor of ``compressors``.
@@ -2924,7 +3069,7 @@ class Group(SyncMixin):
             Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
             If no ``serializer`` is provided, a default serializer will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_serializer``
-            in :mod:`zarr.core.config`.
+            in [`zarr.config`][zarr.config].
         fill_value : Any, optional
             Fill value for the array.
         order : {"C", "F"}, optional
@@ -2934,7 +3079,7 @@ class Group(SyncMixin):
             is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
             order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
             If no ``order`` is provided, a default order will be used.
-            This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+            This default can be changed by modifying the value of ``array.order`` in [`zarr.config`][zarr.config].
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional

@@ -44,11 +44,11 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0  # grab all branches and tags
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -86,11 +86,11 @@ jobs:
           - python-version: "3.11"
             dependency-set: upstream
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -115,11 +115,11 @@ jobs:
     name: doctests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: '3.13'
         cache: 'pip'
@@ -129,11 +129,11 @@ jobs:
         pip install hatch
     - name: Set Up Hatch Env
       run: |
-        hatch env create doctest
-        hatch env run -e doctest list-env
+        hatch env create docs
+        hatch env run -e docs list-env
     - name: Run Tests
       run: |
-        hatch env run --env doctest run
+        hatch env run --env docs check
 
   test-complete:
     name: Test complete

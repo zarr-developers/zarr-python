@@ -308,7 +308,7 @@ def test_invalid_metadata(codecs: tuple[Codec, ...]) -> None:
         ArrayV3Metadata(
             shape=shape,
             chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks}},
-            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},  # type: ignore[arg-type]
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
             fill_value=0,
             data_type=data_type,
             codecs=codecs,
