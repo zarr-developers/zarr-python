@@ -266,7 +266,6 @@ dependencies = [
 
 [tool.hatch.envs.doctest.scripts]
 test = "pytest tests/test_docs.py -v"
-test-file = "python tests/test_docs.py --test {args}"
 list-env = "pip list"
 
 [tool.ruff]
