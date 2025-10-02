@@ -255,7 +255,6 @@ serve = "mkdocs serve"
 build = "mkdocs build"
 check = "mkdocs build --strict"
 readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
-list-env = "pip list"
 
 [tool.hatch.envs.doctest]
 description = "Test environment for validating executable code blocks in documentation"

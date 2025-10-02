@@ -129,8 +129,7 @@ jobs:
         pip install hatch
     - name: Set Up Hatch Env
       run: |
-        hatch env create doctest
-        hatch env run doctest:list-env
+        hatch env run doctest:pip list
     - name: Run Tests
       run: |
         hatch env run doctest:test
