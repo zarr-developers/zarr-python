@@ -25,6 +25,8 @@ nav:
       - user-guide/extending.md
       - user-guide/gpu.md
       - user-guide/consolidated_metadata.md
+      - Examples:
+          - user-guide/examples/custom_dtype.md
   - API Reference:
       - api/index.md
       - api/array.md
