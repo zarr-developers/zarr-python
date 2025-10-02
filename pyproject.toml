@@ -371,6 +371,11 @@ module = [
     "tests.test_store.test_memory",
     "tests.test_codecs.test_codecs",
     "tests.test_metadata.*",
+    "tests.test_store.test_core",
+    "tests.test_store.test_logging",
+    "tests.test_store.test_object",
+    "tests.test_store.test_stateful",
+    "tests.test_store.test_wrapper",
 ]
 strict = false
 
@@ -378,11 +383,6 @@ strict = false
 # and fix the errors
 [[tool.mypy.overrides]]
 module = [
-    "tests.test_store.test_core",
-    "tests.test_store.test_logging",
-    "tests.test_store.test_object",
-    "tests.test_store.test_stateful",
-    "tests.test_store.test_wrapper",
     "tests.test_group",
     "tests.test_indexing",
     "tests.test_properties",
