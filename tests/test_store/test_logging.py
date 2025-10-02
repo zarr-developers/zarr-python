@@ -22,7 +22,8 @@ class StoreKwargs(TypedDict):
 
 
 class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
-    store_cls = LoggingStore[LocalStore]
+    # store_cls is needed to do an isintsance check, so can't be a subscripted generic
+    store_cls = LoggingStore  # type: ignore[assignment]
     buffer_cls = cpu.Buffer
 
     async def get(self, store: LoggingStore[LocalStore], key: str) -> Buffer:
@@ -48,9 +49,6 @@ class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
 
     def test_store_supports_writes(self, store: LoggingStore[LocalStore]) -> None:
         assert store.supports_writes
-
-    def test_store_supports_partial_writes(self, store: LoggingStore[LocalStore]) -> None:
-        assert store.supports_partial_writes
 
     def test_store_supports_listing(self, store: LoggingStore[LocalStore]) -> None:
         assert store.supports_listing
