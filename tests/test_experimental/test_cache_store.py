@@ -487,35 +487,6 @@ class TestCacheStore:
         with pytest.raises(ValueError, match="max_age_seconds string value must be 'infinity'"):
             CacheStore(source_store, cache_store=cache_store, max_age_seconds="invalid")
 
-    async def test_buffer_size_function_coverage(self) -> None:
-        """Test different branches of the buffer_size function."""
-        from zarr.experimental.cache_store import buffer_size
-
-        # Test with Buffer object (nbytes attribute)
-        buffer_data = CPUBuffer.from_bytes(b"test data")
-        size = buffer_size(buffer_data)
-        assert size > 0
-
-        # Test with bytes
-        bytes_data = b"test bytes"
-        size = buffer_size(bytes_data)
-        assert size == len(bytes_data)
-
-        # Test with bytearray
-        bytearray_data = bytearray(b"test bytearray")
-        size = buffer_size(bytearray_data)
-        assert size == len(bytearray_data)
-
-        # Test with memoryview
-        memoryview_data = memoryview(b"test memoryview")
-        size = buffer_size(memoryview_data)
-        assert size == len(memoryview_data)
-
-        # Test fallback for other types - use a simple object
-        # This will go through the numpy fallback or string encoding
-        size = buffer_size("test string")
-        assert size > 0
-
     async def test_unlimited_cache_size(self) -> None:
         """Test behavior when max_size is None (unlimited)."""
         source_store = MemoryStore()
@@ -579,19 +550,6 @@ class TestCacheStore:
         # Should have cleaned up tracking
         assert "phantom_key" not in cached_store._cache_order
         assert "phantom_key" not in cached_store.key_insert_times
-
-    async def test_buffer_size_import_error_fallback(self) -> None:
-        """Test buffer_size ImportError fallback."""
-        from unittest.mock import patch
-
-        from zarr.experimental.cache_store import buffer_size
-
-        # Mock numpy import to raise ImportError
-        with patch.dict("sys.modules", {"numpy": None}):
-            with patch("builtins.__import__", side_effect=ImportError("No module named 'numpy'")):
-                # This should trigger the ImportError fallback
-                size = buffer_size("test string")
-                assert size == len(b"test string")
 
     async def test_accommodate_value_no_max_size(self) -> None:
         """Test _accommodate_value early return when max_size is None."""
@@ -785,3 +743,122 @@ class TestCacheStore:
             assert await cache_store.exists(key), (
                 f"Key '{key}' has size tracked but doesn't exist in cache_store"
             )
+
+    # Additional coverage tests for 100% coverage
+
+    async def test_cache_store_requires_delete_support(self) -> None:
+        """Test that CacheStore validates cache_store supports deletes."""
+        from unittest.mock import MagicMock
+
+        # Create a mock store that doesn't support deletes
+        source_store = MemoryStore()
+        cache_store = MagicMock()
+        cache_store.supports_deletes = False
+
+        with pytest.raises(ValueError, match="does not support deletes"):
+            CacheStore(store=source_store, cache_store=cache_store)
+
+    async def test_evict_key_exception_handling_with_real_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Test _evict_key exception handling when deletion fails."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(store=source_store, cache_store=cache_store, max_size=100)
+
+        # Set up a key in tracking
+        buffer = CPUBuffer.from_bytes(b"test data")
+        await cached_store.set("test_key", buffer)
+
+        # Mock the cache delete to raise an exception
+        async def failing_delete(key: str) -> None:
+            raise RuntimeError("Simulated cache deletion failure")
+
+        monkeypatch.setattr(cache_store, "delete", failing_delete)
+
+        # Attempt to evict should raise the exception
+        with pytest.raises(RuntimeError, match="Simulated cache deletion failure"):
+            async with cached_store._lock:
+                await cached_store._evict_key("test_key")
+
+    async def test_cache_stats_method(self) -> None:
+        """Test cache_stats method returns correct statistics."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(store=source_store, cache_store=cache_store, max_size=1000)
+
+        # Initially, stats should be zero
+        stats = cached_store.cache_stats()
+        assert stats["hits"] == 0
+        assert stats["misses"] == 0
+        assert stats["evictions"] == 0
+        assert stats["total_requests"] == 0
+        assert stats["hit_rate"] == 0.0
+
+        # Perform some operations
+        buffer = CPUBuffer.from_bytes(b"x" * 100)
+
+        # Write to source store directly to avoid affecting stats
+        await source_store.set("key1", buffer)
+
+        # First get is a miss (not in cache yet)
+        result1 = await cached_store.get("key1", default_buffer_prototype())
+        assert result1 is not None
+
+        # Second get is a hit (now in cache)
+        result2 = await cached_store.get("key1", default_buffer_prototype())
+        assert result2 is not None
+
+        stats = cached_store.cache_stats()
+        assert stats["hits"] == 1
+        assert stats["misses"] == 1
+        assert stats["total_requests"] == 2
+        assert stats["hit_rate"] == 0.5
+
+    async def test_cache_stats_with_evictions(self) -> None:
+        """Test cache_stats tracks evictions correctly."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            store=source_store,
+            cache_store=cache_store,
+            max_size=150,  # Small size to force eviction
+        )
+
+        # Add items that will trigger eviction
+        buffer1 = CPUBuffer.from_bytes(b"x" * 100)
+        buffer2 = CPUBuffer.from_bytes(b"y" * 100)
+
+        await cached_store.set("key1", buffer1)
+        await cached_store.set("key2", buffer2)  # Should evict key1
+
+        stats = cached_store.cache_stats()
+        assert stats["evictions"] == 1
+
+    def test_repr_method(self) -> None:
+        """Test __repr__ returns useful string representation."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(
+            store=source_store, cache_store=cache_store, max_age_seconds=60, max_size=1024
+        )
+
+        repr_str = repr(cached_store)
+
+        # Check that repr contains key information
+        assert "CacheStore" in repr_str
+        assert "max_age_seconds=60" in repr_str
+        assert "max_size=1024" in repr_str
+        assert "current_size=0" in repr_str
+        assert "cached_keys=0" in repr_str
+
+    async def test_cache_stats_zero_division_protection(self) -> None:
+        """Test cache_stats handles zero requests correctly."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(store=source_store, cache_store=cache_store)
+
+        # With no requests, hit_rate should be 0.0 (not NaN or error)
+        stats = cached_store.cache_stats()
+        assert stats["hit_rate"] == 0.0
+        assert stats["total_requests"] == 0
