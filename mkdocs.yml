@@ -27,6 +27,7 @@ nav:
       - user-guide/consolidated_metadata.md
       - Examples:
           - user-guide/examples/custom_dtype.md
+      - user-guide/experimental.md
   - API Reference:
       - api/index.md
       - api/array.md
