@@ -132,7 +132,7 @@ jobs:
         hatch run doctest:pip list
     - name: Run Tests
       run: |
-        hatch env run doctest:test
+        hatch run doctest:test
 
   test-complete:
     name: Test complete
