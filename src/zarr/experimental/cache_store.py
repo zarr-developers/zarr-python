@@ -163,7 +163,7 @@ class CacheStore(WrapperStore[Store]):
 
             logger.debug("_evict_key: evicted key %s, freed %d bytes", key, key_size)
         except Exception:
-            logger.exception("_evict_key: failed to evict key %s: %s", key)
+            logger.exception("_evict_key: failed to evict key %s", key)
             raise  # Re-raise to signal eviction failure
 
     async def _cache_value(self, key: str, value: Buffer) -> None:
