@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections import OrderedDict
@@ -12,27 +13,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from zarr.core.buffer.core import Buffer, BufferPrototype
-
-
-def buffer_size(v: Any) -> int:
-    """Calculate the size in bytes of a value, handling Buffer objects properly."""
-    if hasattr(v, "__len__") and hasattr(v, "nbytes"):
-        # This is likely a Buffer object
-        return int(v.nbytes)
-    elif hasattr(v, "to_bytes"):
-        # This is a Buffer object, get its bytes representation
-        return len(v.to_bytes())
-    elif isinstance(v, (bytes, bytearray, memoryview)):
-        return len(v)
-    else:
-        # Fallback to numpy if available
-        try:
-            import numpy as np
-
-            return int(np.asarray(v).nbytes)
-        except ImportError:
-            # If numpy not available, estimate size
-            return len(str(v).encode("utf-8"))
 
 
 class CacheStore(WrapperStore[Store]):
@@ -49,21 +29,38 @@ class CacheStore(WrapperStore[Store]):
         The underlying store to wrap with caching
     cache_store : Store
         The store to use for caching (can be any Store implementation)
-    max_age_seconds : int | str, optional
-        Maximum age of cached entries in seconds, or "infinity" for no expiration.
-        Default is "infinity".
+    max_age_seconds : int | None, optional
+        Maximum age of cached entries in seconds. None means no expiration.
+        Default is None.
     max_size : int | None, optional
         Maximum size of the cache in bytes. When exceeded, least recently used
         items are evicted. None means unlimited size. Default is None.
+        Note: Individual values larger than max_size will not be cached.
+    key_insert_times : dict[str, float] | None, optional
+        Dictionary to track insertion times (using monotonic time).
+        Primarily for internal use. Default is None (creates new dict).
     cache_set_data : bool, optional
         Whether to cache data when it's written to the store. Default is True.
 
     Examples
     --------
-    >>> from zarr.storage._memory import MemoryStore
-    >>> store_a = MemoryStore({})
-    >>> store_b = MemoryStore({})
-    >>> cached_store = CacheStore(store=store_a, cache_store=store_b, max_age_seconds=10, max_size=1024*1024)
+    >>> import zarr
+    >>> from zarr.storage import MemoryStore
+    >>> from zarr.experimental.cache_store import CacheStore
+    >>>
+    >>> # Create a cached store
+    >>> source_store = MemoryStore()
+    >>> cache_store = MemoryStore()
+    >>> cached_store = CacheStore(
+    ...     store=source_store,
+    ...     cache_store=cache_store,
+    ...     max_age_seconds=60,
+    ...     max_size=1024*1024
+    ... )
+    >>>
+    >>> # Use it like any other store
+    >>> array = zarr.create(shape=(100,), store=cached_store)
+    >>> array[:] = 42
 
     """
 
@@ -75,6 +72,10 @@ class CacheStore(WrapperStore[Store]):
     _cache_order: OrderedDict[str, None]  # Track access order for LRU
     _current_size: int  # Track current cache size
     _key_sizes: dict[str, int]  # Track size of each cached key
+    _lock: asyncio.Lock
+    _hits: int  # Cache hit counter
+    _misses: int  # Cache miss counter
+    _evictions: int  # Cache eviction counter
 
     def __init__(
         self,
@@ -87,8 +88,16 @@ class CacheStore(WrapperStore[Store]):
         cache_set_data: bool = True,
     ) -> None:
         super().__init__(store)
+
+        if not cache_store.supports_deletes:
+            msg = (
+                f"The provided cache store {cache_store} does not support deletes. "
+                "The cache_store must support deletes for CacheStore to function properly."
+            )
+            raise ValueError(msg)
+
         self._cache = cache_store
-        # Validate and convert max_age_seconds
+        # Validate and set max_age_seconds
         if isinstance(max_age_seconds, str):
             if max_age_seconds != "infinity":
                 raise ValueError("max_age_seconds string value must be 'infinity'")
@@ -104,18 +113,27 @@ class CacheStore(WrapperStore[Store]):
         self._cache_order = OrderedDict()
         self._current_size = 0
         self._key_sizes = {}
+        self._lock = asyncio.Lock()
+        self._hits = 0
+        self._misses = 0
+        self._evictions = 0
 
     def _is_key_fresh(self, key: str) -> bool:
-        """Check if a cached key is still fresh based on max_age_seconds."""
+        """Check if a cached key is still fresh based on max_age_seconds.
+
+        Uses monotonic time for accurate elapsed time measurement.
+        """
         if self.max_age_seconds == "infinity":
             return True
-        else:
-            now = time.monotonic()
-            elapsed = now - self.key_insert_times.get(key, 0)
-            return elapsed < self.max_age_seconds
+        now = time.monotonic()
+        elapsed = now - self.key_insert_times.get(key, 0)
+        return elapsed < self.max_age_seconds
 
     async def _accommodate_value(self, value_size: int) -> None:
-        """Ensure there is enough space in the cache for a new value."""
+        """Ensure there is enough space in the cache for a new value.
+
+        Must be called while holding self._lock.
+        """
         if self.max_size is None:
             return
 
@@ -126,69 +144,76 @@ class CacheStore(WrapperStore[Store]):
             await self._evict_key(lru_key)
 
     async def _evict_key(self, key: str) -> None:
+        """Evict a key from the cache.
+
+        Must be called while holding self._lock.
+        Updates size tracking atomically with deletion.
+        """
         try:
             key_size = self._key_sizes.get(key, 0)
-            # Delete from cache store FIRST
+
+            # Delete from cache store
             await self._cache.delete(key)
 
-            # Only update tracking after successful deletion
-            if key in self._cache_order:
-                del self._cache_order[key]
-            if key in self.key_insert_times:
-                del self.key_insert_times[key]
-            if key in self._key_sizes:
-                del self._key_sizes[key]
-
+            # Update tracking after successful deletion
+            self._remove_from_tracking(key)
             self._current_size = max(0, self._current_size - key_size)
-            logger.info("_evict_key: evicted key %s, freed %d bytes", key, key_size)
-        except Exception as e:
-            logger.warning("_evict_key: failed to evict key %s: %s", key, e)
-            # Don't update tracking if deletion failed
+            self._evictions += 1
 
-    async def _cache_value(self, key: str, value: Any) -> None:
-        """Cache a value with size tracking."""
-        value_size = buffer_size(value)
+            logger.debug("_evict_key: evicted key %s, freed %d bytes", key, key_size)
+        except Exception:
+            logger.exception("_evict_key: failed to evict key %s", key)
+            raise  # Re-raise to signal eviction failure
+
+    async def _cache_value(self, key: str, value: Buffer) -> None:
+        """Cache a value with size tracking.
+
+        This method holds the lock for the entire operation to ensure atomicity.
+        """
+        value_size = len(value)
 
         # Check if value exceeds max size
         if self.max_size is not None and value_size > self.max_size:
             logger.warning(
-                "_cache_value: value size %d exceeds max_size %d, not caching",
+                "_cache_value: value size %d exceeds max_size %d, skipping cache",
                 value_size,
                 self.max_size,
             )
             return
 
-        # If key already exists, subtract old size first (Bug fix #3)
-        if key in self._key_sizes:
-            old_size = self._key_sizes[key]
-            self._current_size -= old_size
-            logger.info("_cache_value: updating existing key %s, old size %d", key, old_size)
+        async with self._lock:
+            # If key already exists, subtract old size first
+            if key in self._key_sizes:
+                old_size = self._key_sizes[key]
+                self._current_size -= old_size
+                logger.debug("_cache_value: updating existing key %s, old size %d", key, old_size)
 
-        # Make room for the new value
-        await self._accommodate_value(value_size)
+            # Make room for the new value (this calls _evict_key_locked internally)
+            await self._accommodate_value(value_size)
 
-        # Update tracking
-        self._cache_order[key] = None  # OrderedDict to track access order
-        self._current_size += value_size
-        self._key_sizes[key] = value_size
-        self.key_insert_times[key] = time.monotonic()
+            # Update tracking atomically
+            self._cache_order[key] = None  # OrderedDict to track access order
+            self._current_size += value_size
+            self._key_sizes[key] = value_size
+            self.key_insert_times[key] = time.monotonic()
 
-        logger.info("_cache_value: cached key %s with size %d bytes", key, value_size)
+            logger.debug("_cache_value: cached key %s with size %d bytes", key, value_size)
 
-    def _update_access_order(self, key: str) -> None:
+    async def _update_access_order(self, key: str) -> None:
         """Update the access order for LRU tracking."""
         if key in self._cache_order:
-            # Move to end (most recently used)
-            self._cache_order.move_to_end(key)
+            async with self._lock:
+                # Move to end (most recently used)
+                self._cache_order.move_to_end(key)
 
     def _remove_from_tracking(self, key: str) -> None:
-        """Remove a key from all tracking structures."""
-        if key in self._cache_order:
-            del self._cache_order[key]
-        if key in self.key_insert_times:
-            del self.key_insert_times[key]
-        if key in self._key_sizes:
-            del self._key_sizes[key]
+        """Remove a key from all tracking structures.
+
+        Must be called while holding self._lock.
+        """
+        self._cache_order.pop(key, None)
+        self.key_insert_times.pop(key, None)
+        self._key_sizes.pop(key, None)
 
     async def _get_try_cache(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
@@ -196,17 +221,24 @@ class CacheStore(WrapperStore[Store]):
         """Try to get data from cache first, falling back to source store."""
         maybe_cached_result = await self._cache.get(key, prototype, byte_range)
         if maybe_cached_result is not None:
-            logger.info("_get_try_cache: key %s found in cache", key)
+            logger.debug("_get_try_cache: key %s found in cache (HIT)", key)
+            self._hits += 1
             # Update access order for LRU
-            self._update_access_order(key)
+            await self._update_access_order(key)
             return maybe_cached_result
         else:
-            logger.info("_get_try_cache: key %s not found in cache, fetching from store", key)
+            logger.debug(
+                "_get_try_cache: key %s not found in cache (MISS), fetching from store", key
+            )
+            self._misses += 1
             maybe_fresh_result = await super().get(key, prototype, byte_range)
             if maybe_fresh_result is None:
+                # Key doesn't exist in source store
                 await self._cache.delete(key)
-                self._remove_from_tracking(key)
+                async with self._lock:
+                    self._remove_from_tracking(key)
             else:
+                # Cache the newly fetched value
                 await self._cache.set(key, maybe_fresh_result)
                 await self._cache_value(key, maybe_fresh_result)
             return maybe_fresh_result
@@ -215,13 +247,15 @@ class CacheStore(WrapperStore[Store]):
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         """Get data directly from source store and update cache."""
+        self._misses += 1
         maybe_fresh_result = await super().get(key, prototype, byte_range)
         if maybe_fresh_result is None:
             # Key doesn't exist in source, remove from cache and tracking
             await self._cache.delete(key)
-            self._remove_from_tracking(key)
+            async with self._lock:
+                self._remove_from_tracking(key)
         else:
-            logger.info("_get_no_cache: key %s found in store, setting in cache", key)
+            logger.debug("_get_no_cache: key %s found in store, setting in cache", key)
             await self._cache.set(key, maybe_fresh_result)
             await self._cache_value(key, maybe_fresh_result)
         return maybe_fresh_result
@@ -250,10 +284,10 @@ class CacheStore(WrapperStore[Store]):
             The retrieved data, or None if not found
         """
         if not self._is_key_fresh(key):
-            logger.info("get: key %s is not fresh, fetching from store", key)
+            logger.debug("get: key %s is not fresh, fetching from store", key)
             return await self._get_no_cache(key, prototype, byte_range)
         else:
-            logger.info("get: key %s is fresh, trying cache", key)
+            logger.debug("get: key %s is fresh, trying cache", key)
             return await self._get_try_cache(key, prototype, byte_range)
 
     async def set(self, key: str, value: Buffer) -> None:
@@ -267,16 +301,17 @@ class CacheStore(WrapperStore[Store]):
         value : Buffer
             The data to store
         """
-        logger.info("set: setting key %s in store", key)
+        logger.debug("set: setting key %s in store", key)
         await super().set(key, value)
         if self.cache_set_data:
-            logger.info("set: setting key %s in cache", key)
+            logger.debug("set: setting key %s in cache", key)
             await self._cache.set(key, value)
             await self._cache_value(key, value)
         else:
-            logger.info("set: deleting key %s from cache", key)
+            logger.debug("set: deleting key %s from cache", key)
             await self._cache.delete(key)
-            self._remove_from_tracking(key)
+            async with self._lock:
+                self._remove_from_tracking(key)
 
     async def delete(self, key: str) -> None:
         """
@@ -287,11 +322,12 @@ class CacheStore(WrapperStore[Store]):
         key : str
             The key to delete
         """
-        logger.info("delete: deleting key %s from store", key)
+        logger.debug("delete: deleting key %s from store", key)
         await super().delete(key)
-        logger.info("delete: deleting key %s from cache", key)
+        logger.debug("delete: deleting key %s from cache", key)
         await self._cache.delete(key)
-        self._remove_from_tracking(key)
+        async with self._lock:
+            self._remove_from_tracking(key)
 
     def cache_info(self) -> dict[str, Any]:
         """Return information about the cache state."""
@@ -307,6 +343,18 @@ class CacheStore(WrapperStore[Store]):
             "cached_keys": len(self._cache_order),
         }
 
+    def cache_stats(self) -> dict[str, Any]:
+        """Return cache performance statistics."""
+        total_requests = self._hits + self._misses
+        hit_rate = self._hits / total_requests if total_requests > 0 else 0.0
+        return {
+            "hits": self._hits,
+            "misses": self._misses,
+            "evictions": self._evictions,
+            "total_requests": total_requests,
+            "hit_rate": hit_rate,
+        }
+
     async def clear_cache(self) -> None:
         """Clear all cached data and tracking information."""
         # Clear the cache store if it supports clear
@@ -314,8 +362,21 @@ class CacheStore(WrapperStore[Store]):
             await self._cache.clear()
 
         # Reset tracking
-        self.key_insert_times.clear()
-        self._cache_order.clear()
-        self._key_sizes.clear()
-        self._current_size = 0
-        logger.info("clear_cache: cleared all cache data")
+        async with self._lock:
+            self.key_insert_times.clear()
+            self._cache_order.clear()
+            self._key_sizes.clear()
+            self._current_size = 0
+        logger.debug("clear_cache: cleared all cache data")
+
+    def __repr__(self) -> str:
+        """Return string representation of the cache store."""
+        return (
+            f"{self.__class__.__name__}("
+            f"store={self._store!r}, "
+            f"cache_store={self._cache!r}, "
+            f"max_age_seconds={self.max_age_seconds}, "
+            f"max_size={self.max_size}, "
+            f"current_size={self._current_size}, "
+            f"cached_keys={len(self._cache_order)})"
+        )
