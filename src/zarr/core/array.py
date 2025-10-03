@@ -4014,7 +4014,7 @@ class Array:
     def resize(self, new_shape: ShapeLike) -> None:
         """
         Change the shape of the array by growing or shrinking one or more
-        dimensions.
+        dimensions. This is an in-place operation that modifies the array.
 
         Parameters
         ----------
@@ -4032,20 +4032,20 @@ class Array:
 
         Examples
         --------
-        >>> import zarr
-        >>> z = zarr.zeros(shape=(10000, 10000),
-        >>>                chunk_shape=(1000, 1000),
-        >>>                dtype="i4",)
-        >>> z.shape
-        (10000, 10000)
-        >>> z = z.resize(20000, 1000)
-        >>> z.shape
-        (20000, 1000)
-        >>> z2 = z.resize(50, 50)
-        >>> z.shape
-        (20000, 1000)
-        >>> z2.shape
-        (50, 50)
+        ```python
+        import zarr
+        z = zarr.zeros(shape=(10000, 10000),
+                        chunk_shape=(1000, 1000),
+                        dtype="int32",)
+        z.shape
+        #> (10000, 10000)
+        z.resize((20000, 1000))
+        z.shape
+        #> (20000, 1000)
+        z.resize((50, 50))
+        z.shape
+        #>(50, 50)
+        ```
         """
         sync(self._async_array.resize(new_shape))
 
