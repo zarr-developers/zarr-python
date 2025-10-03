@@ -12,17 +12,19 @@ from pathlib import Path
 
 import pytest
 
-pytest_examples = pytest.importorskip("pytest_examples")
+pytest.importorskip("pytest_examples")
+from pytest_examples import CodeExample, EvalExample, find_examples
 
 # Find all markdown files with executable code blocks
-docs_root = Path(__file__).parent.parent / "docs"
+DOCS_ROOT = Path(__file__).parent.parent / "docs"
+SOURCES_ROOT = Path(__file__).parent.parent / "src" / "zarr"
 
 
 def find_markdown_files_with_exec() -> list[Path]:
     """Find all markdown files containing exec="true" code blocks."""
     markdown_files = []
 
-    for md_file in docs_root.rglob("*.md"):
+    for md_file in DOCS_ROOT.rglob("*.md"):
         try:
             content = md_file.read_text(encoding="utf-8")
             if 'exec="true"' in content:
@@ -41,7 +43,7 @@ def group_examples_by_session() -> list[tuple[str, str]]:
     Returns a list of session_key tuples where session_key is
     (file_path, session_name).
     """
-    all_examples = list(pytest_examples.find_examples(docs_root))
+    all_examples = list(find_examples(DOCS_ROOT))
 
     # Group by file and session
     sessions = defaultdict(list)
@@ -64,7 +66,7 @@ def group_examples_by_session() -> list[tuple[str, str]]:
 
 def name_example(path: str, session: str) -> str:
     """Generate a readable name for a test case from file path and session."""
-    return f"{Path(path).relative_to(docs_root)}:{session}"
+    return f"{Path(path).relative_to(DOCS_ROOT)}:{session}"
 
 
 # Get all example sessions
@@ -73,7 +75,7 @@ def name_example(path: str, session: str) -> str:
 )
 def test_documentation_examples(
     session_key: tuple[str, str],
-    eval_example: pytest_examples.EvalExample,  # type: ignore[name-defined]
+    eval_example: EvalExample,
 ) -> None:
     """
     Test that all exec="true" code examples in documentation execute successfully.
@@ -91,7 +93,7 @@ def test_documentation_examples(
     file_path, session_name = session_key
 
     # Get examples for this session
-    all_examples = list(pytest_examples.find_examples(docs_root))
+    all_examples = list(find_examples(DOCS_ROOT))
     examples = []
     for example in all_examples:
         settings = example.prefix_settings()
@@ -103,6 +105,16 @@ def test_documentation_examples(
     # Run all examples in this session sequentially, preserving state
     module_globals: dict[str, object] = {}
     for example in examples:
+        # TODO: uncomment this line when we are ready to fix output checks
+        # result = eval_example.run_print_check(example, module_globals=module_globals)
         result = eval_example.run(example, module_globals=module_globals)
         # Update globals with the results from this execution
         module_globals.update(result)
+
+
+@pytest.mark.parametrize("example", find_examples(str(SOURCES_ROOT)), ids=str)
+def test_docstrings(example: CodeExample, eval_example: EvalExample) -> None:
+    """Test our docstring examples."""
+    if example.path.name == "config.py" and "your.module" in example.source:
+        pytest.skip("Skip testing docstring example that assumes nonexistent module.")
+    eval_example.run_print_check(example)
