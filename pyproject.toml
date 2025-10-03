@@ -251,7 +251,7 @@ dependencies = [
 features = ['docs', 'remote']
 
 [tool.hatch.envs.docs.scripts]
-serve = "mkdocs serve"
+serve = "mkdocs serve --watch src"
 build = "mkdocs build"
 check = "mkdocs build --strict"
 readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
