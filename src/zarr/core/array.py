@@ -983,7 +983,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Examples
         --------
         ```python
+        import asyncio
         import zarr
+        from zarr.core.array import AsyncArray
 
         async def example():
             store = zarr.storage.MemoryStore()
@@ -995,8 +997,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             async_arr = await AsyncArray.open(store)
             return async_arr
 
-        # async_arr = await example()
-        # AsyncArray(...)
+        async_arr = asyncio.run(example())
+        # <AsyncArray memory://... shape=(100, 100) dtype=int32>
         ```
         """
         store_path = await make_store_path(store)
@@ -1313,18 +1315,21 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Examples
         --------
         ```python
+        import asyncio
         import zarr.api.asynchronous
 
         async def example():
-            arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(1,), shards=(2,))
+            arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(1,))
             count = await arr.nchunks_initialized()
-            # 0
+            print(f"Initial: {count}")
+            #> Initial: 0
             await arr.setitem(slice(5), 1)
             count = await arr.nchunks_initialized()
-            # 6
+            print(f"After write: {count}")
+            #> After write: 5
             return count
 
-        # result = await example()
+        result = asyncio.run(example())
         ```
         """
         if self.shards is None:
@@ -1354,18 +1359,21 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Examples
         --------
         ```python
+        import asyncio
         import zarr.api.asynchronous
 
         async def example():
             arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
             count = await arr._nshards_initialized()
-            # 0
+            print(f"Initial: {count}")
+            #> Initial: 0
             await arr.setitem(slice(5), 1)
             count = await arr._nshards_initialized()
-            # 3
+            print(f"After write: {count}")
+            #> After write: 3
             return count
 
-        # result = await example()
+        result = asyncio.run(example())
         ```
         """
         return len(await _shards_initialized(self))
@@ -1595,6 +1603,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Examples
         --------
         ```python
+        import asyncio
         import zarr.api.asynchronous
 
         async def example():
@@ -1606,10 +1615,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                  dtype='i4',
                  fill_value=0)
             result = await async_arr.getitem((0,1))
-            # array(0, dtype=int32)
+            print(result)
+            #> 0
             return result
 
-        # value = await example()
+        value = asyncio.run(example())
         ```
         """
         if prototype is None:
