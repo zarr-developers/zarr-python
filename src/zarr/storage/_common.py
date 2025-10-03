@@ -429,12 +429,15 @@ def _is_fsspec_uri(uri: str) -> bool:
 
     Examples
     --------
-    >>> _is_fsspec_uri("s3://bucket")
-    True
-    >>> _is_fsspec_uri("my-directory")
-    False
-    >>> _is_fsspec_uri("local://my-directory")
-    False
+    ```python
+    from zarr.storage._common import _is_fsspec_uri
+    _is_fsspec_uri("s3://bucket")
+    # True
+    _is_fsspec_uri("my-directory")
+    # False
+    _is_fsspec_uri("local://my-directory")
+    # False
+    ```
     """
     return "://" in uri or ("::" in uri and "local://" not in uri)
 

@@ -982,10 +982,22 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> import zarr
-        >>>  store = zarr.storage.MemoryStore()
-        >>>  async_arr = await AsyncArray.open(store) # doctest: +ELLIPSIS
-        <AsyncArray memory://... shape=(100, 100) dtype=int32>
+        ```python
+        import zarr
+
+        async def example():
+            store = zarr.storage.MemoryStore()
+            # First create an array to open
+            await zarr.api.asynchronous.create_array(
+                store=store, shape=(100, 100), dtype="int32"
+            )
+            # Now open it
+            async_arr = await AsyncArray.open(store)
+            return async_arr
+
+        # async_arr = await example()
+        # AsyncArray(...)
+        ```
         """
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
@@ -1300,12 +1312,20 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(1,), shards=(2,))
-        >>> await arr.nchunks_initialized()
-        0
-        >>> await arr.setitem(slice(5), 1)
-        >>> await arr.nchunks_initialized()
-        6
+        ```python
+        import zarr.api.asynchronous
+
+        async def example():
+            arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(1,), shards=(2,))
+            count = await arr.nchunks_initialized()
+            # 0
+            await arr.setitem(slice(5), 1)
+            count = await arr.nchunks_initialized()
+            # 6
+            return count
+
+        # result = await example()
+        ```
         """
         if self.shards is None:
             chunks_per_shard = 1
@@ -1333,12 +1353,20 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
-        >>> await arr._nshards_initialized()
-        0
-        >>> await arr.setitem(slice(5), 1)
-        >>> await arr._nshards_initialized()
-        3
+        ```python
+        import zarr.api.asynchronous
+
+        async def example():
+            arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
+            count = await arr._nshards_initialized()
+            # 0
+            await arr.setitem(slice(5), 1)
+            count = await arr._nshards_initialized()
+            # 3
+            return count
+
+        # result = await example()
+        ```
         """
         return len(await _shards_initialized(self))
 
@@ -1566,18 +1594,23 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> import zarr
-        >>>  store = zarr.storage.MemoryStore()
-        >>>  async_arr = await zarr.api.asynchronous.create_array(
-        ...      store=store,
-        ...      shape=(100,100),
-        ...      chunks=(10,10),
-        ...      dtype='i4',
-        ...      fill_value=0)
-        <AsyncArray memory://... shape=(100, 100) dtype=int32>
-        >>> await async_arr.getitem((0,1)) # doctest: +ELLIPSIS
-        array(0, dtype=int32)
+        ```python
+        import zarr.api.asynchronous
 
+        async def example():
+            store = zarr.storage.MemoryStore()
+            async_arr = await zarr.api.asynchronous.create_array(
+                 store=store,
+                 shape=(100,100),
+                 chunks=(10,10),
+                 dtype='i4',
+                 fill_value=0)
+            result = await async_arr.getitem((0,1))
+            # array(0, dtype=int32)
+            return result
+
+        # value = await example()
+        ```
         """
         if prototype is None:
             prototype = default_buffer_prototype()
