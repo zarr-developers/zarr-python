@@ -44,23 +44,25 @@ class CacheStore(WrapperStore[Store]):
 
     Examples
     --------
-    >>> import zarr
-    >>> from zarr.storage import MemoryStore
-    >>> from zarr.experimental.cache_store import CacheStore
-    >>>
-    >>> # Create a cached store
-    >>> source_store = MemoryStore()
-    >>> cache_store = MemoryStore()
-    >>> cached_store = CacheStore(
-    ...     store=source_store,
-    ...     cache_store=cache_store,
-    ...     max_age_seconds=60,
-    ...     max_size=1024*1024
-    ... )
-    >>>
-    >>> # Use it like any other store
-    >>> array = zarr.create(shape=(100,), store=cached_store)
-    >>> array[:] = 42
+    ```python
+    import zarr
+    from zarr.storage import MemoryStore
+    from zarr.experimental.cache_store import CacheStore
+
+    # Create a cached store
+    source_store = MemoryStore()
+    cache_store = MemoryStore()
+    cached_store = CacheStore(
+        store=source_store,
+        cache_store=cache_store,
+        max_age_seconds=60,
+        max_size=1024*1024
+    )
+
+    # Use it like any other store
+    array = zarr.create(shape=(100,), store=cached_store)
+    array[:] = 42
+    ```
 
     """
 
@@ -109,7 +111,6 @@ class CacheStore(WrapperStore[Store]):
             self.key_insert_times = {}
         else:
             self.key_insert_times = key_insert_times
-
         self.cache_set_data = cache_set_data
         self._cache_order = OrderedDict()
         self._current_size = 0

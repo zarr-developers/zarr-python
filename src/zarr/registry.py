@@ -325,10 +325,12 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
 
     Examples
     --------
-
-    >>> codec = get_codec({'id': 'zlib', 'level': 1})
-    >>> codec
-    Zlib(level=1)
+    ```python
+    from zarr.registry import get_numcodec
+    codec = get_numcodec({'id': 'zlib', 'level': 1})
+    codec
+    # Zlib(level=1)
+    ```
     """
 
     from numcodecs.registry import get_codec
