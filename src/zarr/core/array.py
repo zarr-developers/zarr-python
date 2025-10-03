@@ -982,10 +982,24 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> import zarr
-        >>>  store = zarr.storage.MemoryStore()
-        >>>  async_arr = await AsyncArray.open(store) # doctest: +ELLIPSIS
-        <AsyncArray memory://... shape=(100, 100) dtype=int32>
+        ```python
+        import asyncio
+        import zarr
+        from zarr.core.array import AsyncArray
+
+        async def example():
+            store = zarr.storage.MemoryStore()
+            # First create an array to open
+            await zarr.api.asynchronous.create_array(
+                store=store, shape=(100, 100), dtype="int32"
+            )
+            # Now open it
+            async_arr = await AsyncArray.open(store)
+            return async_arr
+
+        async_arr = asyncio.run(example())
+        # <AsyncArray memory://... shape=(100, 100) dtype=int32>
+        ```
         """
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
@@ -1300,12 +1314,23 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(1,), shards=(2,))
-        >>> await arr.nchunks_initialized()
-        0
-        >>> await arr.setitem(slice(5), 1)
-        >>> await arr.nchunks_initialized()
-        6
+        ```python
+        import asyncio
+        import zarr.api.asynchronous
+
+        async def example():
+            arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(1,))
+            count = await arr.nchunks_initialized()
+            print(f"Initial: {count}")
+            #> Initial: 0
+            await arr.setitem(slice(5), 1)
+            count = await arr.nchunks_initialized()
+            print(f"After write: {count}")
+            #> After write: 5
+            return count
+
+        result = asyncio.run(example())
+        ```
         """
         if self.shards is None:
             chunks_per_shard = 1
@@ -1333,12 +1358,23 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
-        >>> await arr._nshards_initialized()
-        0
-        >>> await arr.setitem(slice(5), 1)
-        >>> await arr._nshards_initialized()
-        3
+        ```python
+        import asyncio
+        import zarr.api.asynchronous
+
+        async def example():
+            arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
+            count = await arr._nshards_initialized()
+            print(f"Initial: {count}")
+            #> Initial: 0
+            await arr.setitem(slice(5), 1)
+            count = await arr._nshards_initialized()
+            print(f"After write: {count}")
+            #> After write: 3
+            return count
+
+        result = asyncio.run(example())
+        ```
         """
         return len(await _shards_initialized(self))
 
@@ -1566,18 +1602,25 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Examples
         --------
-        >>> import zarr
-        >>>  store = zarr.storage.MemoryStore()
-        >>>  async_arr = await zarr.api.asynchronous.create_array(
-        ...      store=store,
-        ...      shape=(100,100),
-        ...      chunks=(10,10),
-        ...      dtype='i4',
-        ...      fill_value=0)
-        <AsyncArray memory://... shape=(100, 100) dtype=int32>
-        >>> await async_arr.getitem((0,1)) # doctest: +ELLIPSIS
-        array(0, dtype=int32)
+        ```python
+        import asyncio
+        import zarr.api.asynchronous
 
+        async def example():
+            store = zarr.storage.MemoryStore()
+            async_arr = await zarr.api.asynchronous.create_array(
+                 store=store,
+                 shape=(100,100),
+                 chunks=(10,10),
+                 dtype='i4',
+                 fill_value=0)
+            result = await async_arr.getitem((0,1))
+            print(result)
+            #> 0
+            return result
+
+        value = asyncio.run(example())
+        ```
         """
         if prototype is None:
             prototype = default_buffer_prototype()
@@ -4014,7 +4057,7 @@ class Array:
     def resize(self, new_shape: ShapeLike) -> None:
         """
         Change the shape of the array by growing or shrinking one or more
-        dimensions.
+        dimensions. This is an in-place operation that modifies the array.
 
         Parameters
         ----------
@@ -4032,20 +4075,20 @@ class Array:
 
         Examples
         --------
-        >>> import zarr
-        >>> z = zarr.zeros(shape=(10000, 10000),
-        >>>                chunk_shape=(1000, 1000),
-        >>>                dtype="i4",)
-        >>> z.shape
-        (10000, 10000)
-        >>> z = z.resize(20000, 1000)
-        >>> z.shape
-        (20000, 1000)
-        >>> z2 = z.resize(50, 50)
-        >>> z.shape
-        (20000, 1000)
-        >>> z2.shape
-        (50, 50)
+        ```python
+        import zarr
+        z = zarr.zeros(shape=(10000, 10000),
+                        chunk_shape=(1000, 1000),
+                        dtype="int32",)
+        z.shape
+        #> (10000, 10000)
+        z.resize((20000, 1000))
+        z.shape
+        #> (20000, 1000)
+        z.resize((50, 50))
+        z.shape
+        #>(50, 50)
+        ```
         """
         sync(self._async_array.resize(new_shape))
 

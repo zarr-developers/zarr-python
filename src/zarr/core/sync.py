@@ -128,10 +128,6 @@ def sync(
 ) -> T:
     """
     Make loop run coroutine until it returns. Runs in other thread
-
-    Examples
-    --------
-    >>> sync(async_function(), existing_loop)
     """
     if loop is None:
         # NB: if the loop is not running *yet*, it is OK to submit work

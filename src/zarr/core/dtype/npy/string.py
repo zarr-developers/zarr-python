@@ -99,6 +99,7 @@ class FixedLengthUTF32JSON_V3(NamedConfig[Literal["fixed_length_utf32"], LengthB
         "name": "fixed_length_utf32",
         "configuration": {
             "length_bytes": 12
+            }
     }
     ```
     """
