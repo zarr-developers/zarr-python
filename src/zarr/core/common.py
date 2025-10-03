@@ -14,13 +14,15 @@ from typing import (
     Final,
     Generic,
     Literal,
+    NotRequired,
     TypedDict,
     TypeVar,
     cast,
     overload,
 )
 
-from typing_extensions import ReadOnly
+import numpy as np
+from typing_extensions import ReadOnly, TypeIs
 
 from zarr.core.config import config as zarr_config
 from zarr.errors import ZarrRuntimeWarning
@@ -48,13 +50,32 @@ ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
 
 TName = TypeVar("TName", bound=str)
-TConfig = TypeVar("TConfig", bound=Mapping[str, object])
+BaseConfig = Mapping[str, object]
+TConfig = TypeVar("TConfig", bound=BaseConfig)
 
 
 class NamedConfig(TypedDict, Generic[TName, TConfig]):
     """
-    A typed dictionary representing an object with a name and configuration, where the configuration
-    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+    A typed dictionary representing an object with a `"name"` and `"configuration"` keys.
+
+    The configuration key is not required.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+    """
+
+    name: ReadOnly[TName]
+    """The name of the object."""
+
+    configuration: NotRequired[ReadOnly[TConfig]]
+    """The configuration of the object."""
+
+
+class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
+    """
+    A typed dictionary representing an object with a `"name"` and `"configuration"` keys.
+
+    The configuration is required.
 
     This class is generic with two type parameters: the type of the name (``TName``) and the type of
     the configuration (``TConfig``).
@@ -65,6 +86,43 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
 
     configuration: ReadOnly[TConfig]
     """The configuration of the object."""
+
+
+class CodecJSON_V2(TypedDict):
+    """The JSON representation of a codec for Zarr V2"""
+
+    id: ReadOnly[str]
+
+
+def _check_codecjson_v2(data: object) -> TypeIs[CodecJSON_V2]:
+    """
+    A type narrowing function for the CodecJSON_V2 type
+    """
+    return isinstance(data, Mapping) and "id" in data and isinstance(data["id"], str)
+
+
+CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
+"""The JSON representation of a codec for Zarr V3."""
+
+
+def _check_codecjson_v3(data: object) -> TypeIs[CodecJSON_V3]:
+    """
+    A type narrowing function for the CodecJSON_V3 type
+    """
+    if isinstance(data, str):
+        return True
+    return (
+        isinstance(data, Mapping)
+        and "name" in data
+        and isinstance(data["name"], str)
+        and isinstance(data.get("configuration", {}), Mapping)
+    )
+
+
+# The widest type we will *accept* for a codec JSON
+# This covers v2 and v3
+CodecJSON = CodecJSON_V2 | CodecJSON_V3
+"""The widest type of JSON-like input that could specify a codec."""
 
 
 def product(tup: tuple[int, ...]) -> int:
@@ -223,3 +281,11 @@ def _warn_order_kwarg() -> None:
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_version"""
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
+
+
+def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
+    if np.isscalar(value):
+        return True
+    if hasattr(value, "shape") and value.shape == ():
+        return True
+    return isinstance(value, tuple) and dtype.names is not None and len(value) == len(dtype.names)
