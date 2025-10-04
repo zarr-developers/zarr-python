@@ -67,6 +67,7 @@ remote = [
 ]
 gpu = [
     "cupy-cuda12x",
+    "nvidia-nvcomp-cu12",
 ]
 cli = ["typer"]
 # Development extras
