@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 import zarr
-import zarr.api
 from zarr import zeros
 from zarr.abc.codec import CodecPipeline
 from zarr.abc.store import ByteSetter, Store
