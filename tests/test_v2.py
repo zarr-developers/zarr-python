@@ -2,11 +2,9 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-import numcodecs.abc
-import numcodecs.vlen
 import numpy as np
 import pytest
-from numcodecs import Delta
+from numcodecs import Delta, Zlib
 from numcodecs.blosc import Blosc
 from numcodecs.zstd import Zstd
 
@@ -124,7 +122,7 @@ def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str) -> None
     np.testing.assert_equal(data, expected)
 
 
-@pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
+@pytest.mark.parametrize("filters", [[], [Delta(dtype="<i4")], [Zlib(level=2)]])
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
