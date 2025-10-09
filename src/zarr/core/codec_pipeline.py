@@ -17,7 +17,7 @@ from zarr.abc.codec import (
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
-from zarr.errors import ZarrUserWarning
+from zarr.errors import MissingChunkError, ZarrUserWarning
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -265,7 +265,10 @@ class BatchedCodecPipeline(CodecPipeline):
                 if chunk_array is not None:
                     out[out_selection] = chunk_array
                 else:
-                    out[out_selection] = fill_value_or_default(chunk_spec)
+                    if config.get("codec_pipeline.fill_missing_chunks", True):
+                        out[out_selection] = fill_value_or_default(chunk_spec)
+                    else:
+                        raise MissingChunkError()
         else:
             chunk_bytes_batch = await concurrent_map(
                 [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
@@ -289,7 +292,10 @@ class BatchedCodecPipeline(CodecPipeline):
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
                 else:
-                    out[out_selection] = fill_value_or_default(chunk_spec)
+                    if config.get("codec_pipeline.fill_missing_chunks", True):
+                        out[out_selection] = fill_value_or_default(chunk_spec)
+                    else:
+                        raise MissingChunkError()
 
     def _merge_chunk_array(
         self,
