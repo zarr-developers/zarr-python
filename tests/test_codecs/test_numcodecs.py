@@ -7,7 +7,12 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 from numcodecs import GZip
-from numcodecs.errors import UnknownCodecError
+
+try:
+    from numcodecs.errors import UnknownCodecError
+except ImportError:
+    # Older versions of numcodecs don't have a separate errors module
+    UnknownCodecError = ValueError
 
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
