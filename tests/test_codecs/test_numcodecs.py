@@ -8,6 +8,12 @@ import numpy as np
 import pytest
 from numcodecs import GZip
 
+try:
+    from numcodecs.errors import UnknownCodecError
+except ImportError:
+    # Older versions of numcodecs don't have a separate errors module
+    UnknownCodecError = ValueError
+
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
@@ -243,6 +249,13 @@ def test_generic_filter_packbits() -> None:
     ],
 )
 def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec]) -> None:
+    # Check if the codec is available in numcodecs
+    try:
+        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+            codec_class()._codec  # noqa: B018
+    except UnknownCodecError as e:  # pragma: no cover
+        pytest.skip(f"{codec_class.codec_name} is not available in numcodecs: {e}")
+
     data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
 
     with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
@@ -352,8 +365,12 @@ def test_to_dict() -> None:
     ],
 )
 def test_codecs_pickleable(codec_cls: type[_numcodecs._NumcodecsCodec]) -> None:
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        codec = codec_cls()
+    # Check if the codec is available in numcodecs
+    try:
+        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+            codec = codec_cls()
+    except UnknownCodecError as e:  # pragma: no cover
+        pytest.skip(f"{codec_cls.codec_name} is not available in numcodecs: {e}")
 
     expected = codec
 
