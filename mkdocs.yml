@@ -45,6 +45,7 @@ nav:
       - api/registry.md
       - api/storage.md
       - api/testing.md
+      - api/types.md
       - Async API: api/api_async.md
       - Sync API: api/api_sync.md
       - ABC:
