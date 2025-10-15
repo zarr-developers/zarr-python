@@ -129,6 +129,7 @@ from zarr.registry import (
     _parse_array_bytes_codec,
     _parse_bytes_bytes_codec,
     get_pipeline_class,
+    infer_prototype,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
 from zarr.storage._utils import _relativize_path
@@ -1787,7 +1788,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = infer_prototype(value)
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
@@ -3195,7 +3196,7 @@ class Array:
 
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = infer_prototype(value)
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
@@ -3442,7 +3443,7 @@ class Array:
         [__setitem__][zarr.Array.__setitem__]
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = infer_prototype(value)
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
@@ -3620,7 +3621,7 @@ class Array:
 
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = infer_prototype(value)
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
@@ -3800,7 +3801,7 @@ class Array:
 
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = infer_prototype(value)
         # setup indexer
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
 
@@ -4024,7 +4025,7 @@ class Array:
 
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = infer_prototype(value)
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
