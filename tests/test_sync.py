@@ -1,5 +1,7 @@
 import asyncio
 import sys
+import threading
+import time
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
@@ -15,8 +17,10 @@ from zarr.core.sync import (
     _get_loop,
     cleanup_resources,
     loop,
+    set_event_loop,
     sync,
 )
+from zarr.storage import MemoryStore
 
 
 @pytest.fixture(params=[True, False])
@@ -171,25 +175,13 @@ def test_cleanup_resources_idempotent() -> None:
 
 
 def test_create_event_loop_default_config() -> None:
-    """Test that _create_event_loop respects the default config."""
-    # Reset config to default
-    with zarr.config.set({"async.use_uvloop": True}):
-        loop = _create_event_loop()
-        if sys.platform != "win32":
-            try:
-                import uvloop
-
-                assert isinstance(loop, uvloop.Loop)
-            except ImportError:
-                # uvloop not available, should use asyncio
-                assert isinstance(loop, asyncio.AbstractEventLoop)
-                assert "uvloop" not in str(type(loop))
-        else:
-            # Windows doesn't support uvloop
-            assert isinstance(loop, asyncio.AbstractEventLoop)
-            assert "uvloop" not in str(type(loop))
-
-        loop.close()
+    """Test that _create_event_loop uses asyncio by default."""
+    # Default config should use asyncio (not uvloop)
+    loop = _create_event_loop()
+    # Should always use asyncio by default
+    assert isinstance(loop, asyncio.AbstractEventLoop)
+    assert "uvloop" not in str(type(loop))
+    loop.close()
 
 
 def test_create_event_loop_uvloop_disabled() -> None:
@@ -237,3 +229,208 @@ def test_uvloop_mock_import_error(clean_state) -> None:
             assert isinstance(loop, asyncio.AbstractEventLoop)
             assert "uvloop" not in str(type(loop))
             loop.close()
+
+
+# Tests for set_event_loop
+
+
+def test_set_event_loop_basic(clean_state) -> None:
+    """Test basic functionality of set_event_loop."""
+    # Create a custom event loop
+    custom_loop = asyncio.new_event_loop()
+
+    # Start it in a background thread
+    thread = threading.Thread(target=custom_loop.run_forever, daemon=True)
+    thread.start()
+    time.sleep(0.1)
+
+    # Set it as Zarr's loop
+    set_event_loop(custom_loop)
+
+    # Verify that Zarr operations use this loop
+    store = MemoryStore()
+    group = zarr.open_group(store=store, mode="w")
+    array = group.create_array("test", shape=(10, 10), chunks=(5, 5), dtype="float32")
+
+    # Write and read data
+    import numpy as np
+
+    data = np.random.random((10, 10)).astype("float32")
+    array[:] = data
+    result = array[:]
+
+    assert np.array_equal(data, result)
+
+    # Clean up
+    custom_loop.call_soon_threadsafe(custom_loop.stop)
+    thread.join(timeout=1.0)
+    custom_loop.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="uvloop not supported on Windows")
+def test_set_event_loop_with_uvloop(clean_state) -> None:
+    """Test set_event_loop with uvloop."""
+    uvloop = pytest.importorskip("uvloop")
+
+    # Create uvloop instance
+    uvloop_instance = uvloop.new_event_loop()
+
+    # Start it in a background thread
+    thread = threading.Thread(target=uvloop_instance.run_forever, daemon=True)
+    thread.start()
+    time.sleep(0.1)
+
+    # Set as Zarr's loop
+    set_event_loop(uvloop_instance)
+
+    # Perform Zarr operations
+    store = MemoryStore()
+    group = zarr.open_group(store=store, mode="w")
+    array = group.create_array("test", shape=(20, 20), chunks=(10, 10), dtype="int32")
+
+    # Verify operations work
+    import numpy as np
+
+    data = np.arange(400).reshape(20, 20).astype("int32")
+    array[:] = data
+    result = array[:]
+
+    assert np.array_equal(data, result)
+
+    # Verify we're actually using uvloop
+    assert "uvloop" in str(type(uvloop_instance))
+
+    # Clean up
+    uvloop_instance.call_soon_threadsafe(uvloop_instance.stop)
+    thread.join(timeout=1.0)
+    uvloop_instance.close()
+
+
+def test_set_event_loop_type_validation() -> None:
+    """Test that set_event_loop validates the input type."""
+    # Should raise TypeError for non-loop objects
+    with pytest.raises(TypeError, match="must be an instance of asyncio.AbstractEventLoop"):
+        set_event_loop("not a loop")  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="must be an instance of asyncio.AbstractEventLoop"):
+        set_event_loop(123)  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="must be an instance of asyncio.AbstractEventLoop"):
+        set_event_loop(None)  # type: ignore[arg-type]
+
+
+def test_set_event_loop_warns_on_replacement(clean_state, caplog) -> None:
+    """Test that replacing an existing loop produces a warning."""
+    # First, trigger creation of Zarr's default loop
+    store = MemoryStore()
+    _ = zarr.open_group(store=store, mode="w")
+
+    # Now try to replace it
+    custom_loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=custom_loop.run_forever, daemon=True)
+    thread.start()
+    time.sleep(0.1)
+
+    # Should produce a warning
+    with caplog.at_level("WARNING"):
+        set_event_loop(custom_loop)
+
+    assert "Replacing existing Zarr event loop" in caplog.text
+
+    # Clean up
+    custom_loop.call_soon_threadsafe(custom_loop.stop)
+    thread.join(timeout=1.0)
+    custom_loop.close()
+
+
+def test_set_event_loop_concurrent_operations(clean_state) -> None:
+    """Test that custom loop handles concurrent Zarr operations."""
+    custom_loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=custom_loop.run_forever, daemon=True)
+    thread.start()
+    time.sleep(0.1)
+
+    set_event_loop(custom_loop)
+
+    # Create multiple arrays and perform concurrent operations
+    store = MemoryStore()
+    group = zarr.open_group(store=store, mode="w")
+
+    arrays = []
+    for i in range(5):
+        arr = group.create_array(f"array_{i}", shape=(10, 10), chunks=(5, 5), dtype="float32")
+        arrays.append(arr)
+
+    import numpy as np
+
+    # Write to all arrays
+    data = np.random.random((10, 10)).astype("float32")
+    for arr in arrays:
+        arr[:] = data
+
+    # Read from all arrays
+    for arr in arrays:
+        result = arr[:]
+        assert np.array_equal(data, result)
+
+    # Clean up
+    custom_loop.call_soon_threadsafe(custom_loop.stop)
+    thread.join(timeout=1.0)
+    custom_loop.close()
+
+
+def test_set_event_loop_before_first_use(clean_state) -> None:
+    """Test setting custom loop before any Zarr operations (recommended usage)."""
+    # Create and set custom loop BEFORE any Zarr operations
+    custom_loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=custom_loop.run_forever, daemon=True)
+    thread.start()
+    time.sleep(0.1)
+
+    # Set the loop before doing anything with Zarr
+    set_event_loop(custom_loop)
+
+    # Now perform Zarr operations
+    store = MemoryStore()
+    group = zarr.open_group(store=store, mode="w")
+    array = group.create_array("test", shape=(10, 10), chunks=(5, 5), dtype="float32")
+
+    import numpy as np
+
+    data = np.random.random((10, 10)).astype("float32")
+    array[:] = data
+    result = array[:]
+
+    assert np.array_equal(data, result)
+
+    # Clean up
+    custom_loop.call_soon_threadsafe(custom_loop.stop)
+    thread.join(timeout=1.0)
+    custom_loop.close()
+
+
+def test_set_event_loop_thread_safety(clean_state) -> None:
+    """Test that set_event_loop is thread-safe."""
+    import concurrent.futures
+
+    custom_loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=custom_loop.run_forever, daemon=True)
+    thread.start()
+    time.sleep(0.1)
+
+    # Try setting the loop from multiple threads simultaneously
+    def set_loop():
+        set_event_loop(custom_loop)
+        return True
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(set_loop) for _ in range(10)]
+        results = [f.result() for f in concurrent.futures.as_completed(futures)]
+
+    # All should succeed
+    assert all(results)
+
+    # Clean up
+    custom_loop.call_soon_threadsafe(custom_loop.stop)
+    thread.join(timeout=1.0)
+    custom_loop.close()

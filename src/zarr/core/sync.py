@@ -167,8 +167,13 @@ def sync(
 
 
 def _create_event_loop() -> asyncio.AbstractEventLoop:
-    """Create a new event loop, optionally using uvloop if available and enabled."""
-    use_uvloop = config.get("async.use_uvloop", True)
+    """Create a new event loop, optionally using uvloop if available and enabled.
+
+    By default, creates a standard asyncio event loop. If uvloop is desired for
+    improved performance in I/O-intensive workloads, set the config option
+    ``async.use_uvloop`` to ``True``.
+    """
+    use_uvloop = config.get("async.use_uvloop", False)
 
     if use_uvloop and sys.platform != "win32":
         try:
@@ -254,3 +259,96 @@ async def _with_semaphore(
         return await func()
     async with semaphore:
         return await func()
+
+
+def set_event_loop(new_loop: asyncio.AbstractEventLoop) -> None:
+    """Set a custom event loop for Zarr operations.
+
+    This function allows third-party developers to provide their own event loop
+    implementation (e.g., uvloop) for Zarr to use for async operations. The provided
+    event loop should already be running in a background thread, or be managed by
+    the caller.
+
+    .. warning::
+        This is an advanced API. Setting a custom event loop after Zarr has already
+        created its own internal loop may lead to unexpected behavior. It's recommended
+        to call this function before any Zarr operations are performed.
+
+    .. note::
+        The provided event loop must be running and will be used for all subsequent
+        Zarr async operations. The caller is responsible for managing the loop's
+        lifecycle (starting, stopping, cleanup).
+
+    Parameters
+    ----------
+    new_loop : asyncio.AbstractEventLoop
+        The event loop instance to use for Zarr operations. Must be an instance of
+        asyncio.AbstractEventLoop (or a compatible implementation like uvloop.Loop).
+
+    Raises
+    ------
+    TypeError
+        If new_loop is not an instance of asyncio.AbstractEventLoop
+
+    Examples
+    --------
+    Using uvloop with Zarr:
+
+    >>> import asyncio
+    >>> import threading
+    >>> import uvloop
+    >>> from zarr.core.sync import set_event_loop
+    >>>
+    >>> # Create and start uvloop in a background thread
+    >>> uvloop_instance = uvloop.new_event_loop()
+    >>> thread = threading.Thread(target=uvloop_instance.run_forever, daemon=True)
+    >>> thread.start()
+    >>>
+    >>> # Set it as Zarr's event loop
+    >>> set_event_loop(uvloop_instance)
+    >>>
+    >>> # Now all Zarr operations will use uvloop
+    >>> import zarr
+    >>> store = zarr.storage.MemoryStore()
+    >>> group = zarr.open_group(store=store, mode="w")
+
+    Using a custom event loop with specific configuration:
+
+    >>> import asyncio
+    >>> import threading
+    >>> from zarr.core.sync import set_event_loop
+    >>>
+    >>> # Create event loop with custom settings
+    >>> custom_loop = asyncio.new_event_loop()
+    >>> custom_loop.set_debug(True)  # Enable debug mode
+    >>>
+    >>> # Start the loop in a background thread
+    >>> thread = threading.Thread(target=custom_loop.run_forever, daemon=True)
+    >>> thread.start()
+    >>>
+    >>> # Set as Zarr's loop
+    >>> set_event_loop(custom_loop)
+
+    See Also
+    --------
+    zarr.core.sync.cleanup_resources : Clean up Zarr's event loop and thread pool
+    """
+    if not isinstance(new_loop, asyncio.AbstractEventLoop):
+        raise TypeError(
+            f"new_loop must be an instance of asyncio.AbstractEventLoop, "
+            f"got {type(new_loop).__name__}"
+        )
+
+    global loop, iothread
+
+    with _get_lock():
+        if loop[0] is not None:
+            logger.warning(
+                "Replacing existing Zarr event loop. This may cause issues if the "
+                "previous loop had pending operations. Consider calling "
+                "cleanup_resources() first."
+            )
+
+        loop[0] = new_loop
+        # Note: iothread is managed by the caller when using set_event_loop
+        iothread[0] = None
