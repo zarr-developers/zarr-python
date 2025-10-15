@@ -3,6 +3,7 @@ This module provides compatibility for :py:mod:`numcodecs` in Zarr version 3.
 
 These codecs were previously defined in :py:mod:`numcodecs`, and have now been moved to `zarr`.
 
+>>> import numpy as np
 >>> import zarr
 >>> import zarr.codecs.numcodecs as numcodecs
 >>>
@@ -11,9 +12,9 @@ These codecs were previously defined in :py:mod:`numcodecs`, and have now been m
 ...   shape=(1024, 1024),
 ...   chunks=(64, 64),
 ...   dtype="uint32",
-...   filters=[numcodecs.zarr3.Delta()],
-...   compressors=[numcodecs.zarr3.BZ2(level=5)])
->>> array[:] = np.arange(*array.shape).astype(array.dtype)
+...   filters=[numcodecs.Delta(dtype="uint32")],
+...   compressors=[numcodecs.BZ2(level=5)])
+>>> array[:] = np.arange(np.prod(array.shape), dtype=array.dtype).reshape(*array.shape)
 
 .. note::
 
