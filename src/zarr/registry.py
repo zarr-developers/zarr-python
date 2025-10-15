@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
+from dataclasses import dataclass, field
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
@@ -10,7 +11,10 @@ from zarr.core.dtype import data_type_registry
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from importlib.metadata import EntryPoint
+
+    import numpy.typing as npt
 
     from zarr.abc.codec import (
         ArrayArrayCodec,
@@ -21,7 +25,7 @@ if TYPE_CHECKING:
         CodecPipeline,
     )
     from zarr.abc.numcodec import Numcodec
-    from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.common import JSON
 
@@ -136,6 +140,51 @@ def _reload_config() -> None:
 def fully_qualified_name(cls: type) -> str:
     module = cls.__module__
     return module + "." + cls.__qualname__
+
+
+@dataclass
+class ArrayTypeRegistry:
+    registry: dict[type[npt.ArrayLike], Callable[[npt.ArrayLike], BufferPrototype]] = field(
+        default_factory=dict
+    )
+
+    def register(
+        self,
+        array_type: type[npt.ArrayLike],
+        converter: Callable[[npt.ArrayLike], BufferPrototype],
+    ) -> None:
+        self.registry[array_type] = converter
+
+    def lookup(self, value: npt.ArrayLike) -> BufferPrototype:
+        from zarr.core.buffer.core import default_buffer_prototype
+
+        converter = self.registry.get(type(value), None)
+        if converter is None:
+            return default_buffer_prototype()
+
+        return converter(value)
+
+
+__array_type_registry = ArrayTypeRegistry()
+
+
+def register_array_type(
+    array_type: type[npt.ArrayLike],
+) -> Callable[
+    [Callable[[npt.ArrayLike], BufferPrototype]], Callable[[npt.ArrayLike], BufferPrototype]
+]:
+    def wrapper(
+        func: Callable[[npt.ArrayLike], BufferPrototype],
+    ) -> Callable[[npt.ArrayLike], BufferPrototype]:
+        __array_type_registry.register(array_type, func)
+
+        return func
+
+    return wrapper
+
+
+def infer_prototype(value: npt.ArrayLike) -> BufferPrototype:
+    return __array_type_registry.lookup(value)
 
 
 def register_codec(key: str, codec_cls: type[Codec], *, qualname: str | None = None) -> None:
