@@ -8,7 +8,7 @@ import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import numpy as np
 
@@ -27,6 +27,107 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array import ShardsLike
+
+from collections.abc import Sequence
+
+# Type alias for chunk edge length specification
+# Can be either an integer or a run-length encoded tuple [value, count]
+ChunkEdgeLength = int | tuple[int, int]
+
+
+class RectilinearChunkGridConfigurationDict(TypedDict):
+    """TypedDict for rectilinear chunk grid configuration"""
+
+    kind: Literal["inline"]
+    chunk_shapes: Sequence[Sequence[ChunkEdgeLength]]
+
+
+def _expand_run_length_encoding(spec: Sequence[ChunkEdgeLength]) -> tuple[int, ...]:
+    """
+    Expand a chunk edge length specification into a tuple of integers.
+
+    The specification can contain:
+    - integers: representing explicit edge lengths
+    - tuples [value, count]: representing run-length encoded sequences
+
+    Parameters
+    ----------
+    spec : Sequence[ChunkEdgeLength]
+        The chunk edge length specification for one axis
+
+    Returns
+    -------
+    tuple[int, ...]
+        Expanded sequence of chunk edge lengths
+
+    Examples
+    --------
+    >>> _expand_run_length_encoding([2, 3])
+    (2, 3)
+    >>> _expand_run_length_encoding([[2, 3]])
+    (2, 2, 2)
+    >>> _expand_run_length_encoding([1, [2, 1], 3])
+    (1, 2, 3)
+    >>> _expand_run_length_encoding([[1, 3], 3])
+    (1, 1, 1, 3)
+    """
+    result: list[int] = []
+    for item in spec:
+        if isinstance(item, int):
+            # Explicit edge length
+            result.append(item)
+        elif isinstance(item, (list, tuple)):
+            # Run-length encoded: [value, count]
+            if len(item) != 2:
+                raise TypeError(
+                    f"Run-length encoded items must be [int, int], got list of length {len(item)}"
+                )
+            value, count = item
+            # Runtime validation of JSON data
+            if not isinstance(value, int) or not isinstance(count, int):  # type: ignore[redundant-expr]
+                raise TypeError(
+                    f"Run-length encoded items must be [int, int], got [{type(value).__name__}, {type(count).__name__}]"
+                )
+            if count < 0:
+                raise ValueError(f"Run-length count must be non-negative, got {count}")
+            result.extend([value] * count)
+        else:
+            raise TypeError(
+                f"Chunk edge length must be int or [int, int] for run-length encoding, got {type(item)}"
+            )
+    return tuple(result)
+
+
+def _parse_chunk_shapes(
+    data: Sequence[Sequence[ChunkEdgeLength]],
+) -> tuple[tuple[int, ...], ...]:
+    """
+    Parse and expand chunk_shapes from metadata.
+
+    Parameters
+    ----------
+    data : Sequence[Sequence[ChunkEdgeLength]]
+        The chunk_shapes specification from metadata
+
+    Returns
+    -------
+    tuple[tuple[int, ...], ...]
+        Tuple of expanded chunk edge lengths for each axis
+    """
+    # Runtime validation - strings are sequences but we don't want them
+    # Type annotation is for static typing, this validates actual JSON data
+    if isinstance(data, str) or not isinstance(data, Sequence):  # type: ignore[redundant-expr,unreachable]
+        raise TypeError(f"chunk_shapes must be a sequence, got {type(data)}")
+
+    result = []
+    for i, axis_spec in enumerate(data):
+        # Runtime validation for each axis spec
+        if isinstance(axis_spec, str) or not isinstance(axis_spec, Sequence):  # type: ignore[redundant-expr,unreachable]
+            raise TypeError(f"chunk_shapes[{i}] must be a sequence, got {type(axis_spec)}")
+        expanded = _expand_run_length_encoding(axis_spec)
+        result.append(expanded)
+
+    return tuple(result)
 
 
 def _guess_chunks(
@@ -159,6 +260,8 @@ class ChunkGrid(Metadata):
         name_parsed, _ = parse_named_configuration(data)
         if name_parsed == "regular":
             return RegularChunkGrid._from_dict(data)
+        elif name_parsed == "rectilinear":
+            return RectilinearChunkGrid._from_dict(data)
         raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
 
     @abstractmethod
@@ -199,6 +302,183 @@ class RegularChunkGrid(ChunkGrid):
             itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
             1,
         )
+
+
+@dataclass(frozen=True)
+class RectilinearChunkGrid(ChunkGrid):
+    """
+    A rectilinear chunk grid where chunk sizes vary along each axis.
+
+    Attributes
+    ----------
+    chunk_shapes : tuple[tuple[int, ...], ...]
+        For each axis, a tuple of chunk edge lengths along that axis.
+        The sum of edge lengths must equal the array shape along that axis.
+    """
+
+    chunk_shapes: tuple[tuple[int, ...], ...]
+
+    def __init__(self, *, chunk_shapes: Sequence[Sequence[int]]) -> None:
+        """
+        Initialize a RectilinearChunkGrid.
+
+        Parameters
+        ----------
+        chunk_shapes : Sequence[Sequence[int]]
+            For each axis, a sequence of chunk edge lengths.
+        """
+        # Convert to nested tuples and validate
+        parsed_shapes: list[tuple[int, ...]] = []
+        for i, axis_chunks in enumerate(chunk_shapes):
+            if not isinstance(axis_chunks, Sequence):
+                raise TypeError(f"chunk_shapes[{i}] must be a sequence, got {type(axis_chunks)}")
+            # Validate all are positive integers
+            axis_tuple = tuple(axis_chunks)
+            for j, size in enumerate(axis_tuple):
+                if not isinstance(size, int):
+                    raise TypeError(
+                        f"chunk_shapes[{i}][{j}] must be an int, got {type(size).__name__}"
+                    )
+                if size <= 0:
+                    raise ValueError(f"chunk_shapes[{i}][{j}] must be positive, got {size}")
+            parsed_shapes.append(axis_tuple)
+
+        object.__setattr__(self, "chunk_shapes", tuple(parsed_shapes))
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, JSON]) -> Self:
+        """
+        Parse a RectilinearChunkGrid from metadata dict.
+
+        Parameters
+        ----------
+        data : dict[str, JSON]
+            Metadata dictionary with 'name' and 'configuration' keys
+
+        Returns
+        -------
+        Self
+            A RectilinearChunkGrid instance
+        """
+        _, configuration = parse_named_configuration(data, "rectilinear")
+
+        if not isinstance(configuration, dict):
+            raise TypeError(f"configuration must be a dict, got {type(configuration)}")
+
+        # Validate kind field
+        kind = configuration.get("kind")
+        if kind != "inline":
+            raise ValueError(f"Only 'inline' kind is supported, got {kind!r}")
+
+        # Parse chunk_shapes with run-length encoding support
+        chunk_shapes_raw = configuration.get("chunk_shapes")
+        if chunk_shapes_raw is None:
+            raise ValueError("configuration must contain 'chunk_shapes'")
+
+        # Type ignore: JSON data validated at runtime by _parse_chunk_shapes
+        chunk_shapes_expanded = _parse_chunk_shapes(chunk_shapes_raw)  # type: ignore[arg-type]
+
+        return cls(chunk_shapes=chunk_shapes_expanded)
+
+    def to_dict(self) -> dict[str, JSON]:
+        """
+        Convert to metadata dict format.
+
+        Returns
+        -------
+        dict[str, JSON]
+            Metadata dictionary with 'name' and 'configuration' keys
+        """
+        # Convert to list for JSON serialization
+        chunk_shapes_list = [list(axis_chunks) for axis_chunks in self.chunk_shapes]
+
+        return {
+            "name": "rectilinear",
+            "configuration": {
+                "kind": "inline",
+                "chunk_shapes": chunk_shapes_list,
+            },
+        }
+
+    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+        """
+        Generate all chunk coordinates for the given array shape.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+
+        Yields
+        ------
+        tuple[int, ...]
+            Chunk coordinates
+
+        Raises
+        ------
+        ValueError
+            If array_shape doesn't match chunk_shapes
+        """
+        if len(array_shape) != len(self.chunk_shapes):
+            raise ValueError(
+                f"array_shape has {len(array_shape)} dimensions but "
+                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
+            )
+
+        # Validate that chunk sizes sum to array shape
+        for axis, (arr_size, axis_chunks) in enumerate(
+            zip(array_shape, self.chunk_shapes, strict=False)
+        ):
+            chunk_sum = sum(axis_chunks)
+            if chunk_sum != arr_size:
+                raise ValueError(
+                    f"Sum of chunk sizes along axis {axis} is {chunk_sum} "
+                    f"but array shape is {arr_size}"
+                )
+
+        # Generate coordinates
+        # For each axis, we have len(axis_chunks) chunks
+        nchunks_per_axis = [len(axis_chunks) for axis_chunks in self.chunk_shapes]
+        return itertools.product(*(range(n) for n in nchunks_per_axis))
+
+    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
+        """
+        Get the total number of chunks for the given array shape.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+
+        Returns
+        -------
+        int
+            Total number of chunks
+
+        Raises
+        ------
+        ValueError
+            If array_shape doesn't match chunk_shapes
+        """
+        if len(array_shape) != len(self.chunk_shapes):
+            raise ValueError(
+                f"array_shape has {len(array_shape)} dimensions but "
+                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
+            )
+
+        # Validate that chunk sizes sum to array shape
+        for axis, (arr_size, axis_chunks) in enumerate(
+            zip(array_shape, self.chunk_shapes, strict=False)
+        ):
+            chunk_sum = sum(axis_chunks)
+            if chunk_sum != arr_size:
+                raise ValueError(
+                    f"Sum of chunk sizes along axis {axis} is {chunk_sum} "
+                    f"but array shape is {arr_size}"
+                )
+
+        # Total chunks is the product of number of chunks per axis
+        return reduce(operator.mul, (len(axis_chunks) for axis_chunks in self.chunk_shapes), 1)
 
 
 def _auto_partition(
