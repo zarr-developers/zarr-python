@@ -15,7 +15,6 @@ from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
 from zarr.errors import ZarrUserWarning
 from zarr.registry import (
-    register_array_type,
     register_buffer,
     register_ndbuffer,
 )
@@ -228,13 +227,6 @@ class NDBuffer(core.NDBuffer):
 
 
 buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
-
-if cp is not None:
-
-    @register_array_type(cp.ndarray)
-    def _(value: cp.ndarray) -> BufferPrototype:
-        return buffer_prototype
-
 
 register_buffer(Buffer, qualname="zarr.buffer.gpu.Buffer")
 register_ndbuffer(NDBuffer, qualname="zarr.buffer.gpu.NDBuffer")

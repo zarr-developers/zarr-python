@@ -11,7 +11,6 @@ import numpy.typing as npt
 
 from zarr.core.buffer import core
 from zarr.registry import (
-    register_array_type,
     register_buffer,
     register_ndbuffer,
 )
@@ -229,11 +228,6 @@ buffer_prototype = core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 # The numpy prototype used for E.g. when reading the shard index
 def numpy_buffer_prototype() -> core.BufferPrototype:
     return core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
-
-
-@register_array_type(np.ndarray)
-def create_numpy_buffer(value: npt.ArrayLike) -> core.BufferPrototype:
-    return buffer_prototype
 
 
 register_buffer(Buffer, qualname="zarr.buffer.cpu.Buffer")
