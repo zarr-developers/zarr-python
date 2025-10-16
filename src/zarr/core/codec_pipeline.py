@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import islice, pairwise
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 from warnings import warn
 
 from zarr.abc.codec import (
@@ -14,6 +14,7 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
+from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer, default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
@@ -26,7 +27,6 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
@@ -81,6 +81,29 @@ class BatchedCodecPipeline(CodecPipeline):
     array_bytes_codec: ArrayBytesCodec
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
     batch_size: int
+
+    @property
+    def prototype(self) -> BufferPrototype:
+        all_codecs = self.array_array_codecs + (self.array_bytes_codec,) + self.bytes_bytes_codecs
+
+        current_buffer = all_codecs[0].codec_output
+        for codec in all_codecs[1:]:
+            if codec.codec_input is not current_buffer:
+                print(codec.codec_input, current_buffer)
+                raise ValueError("input buffer do not match the codec's predecessor")
+
+            current_buffer = codec.codec_output
+
+        nd_buffer = cast(type[NDBuffer], all_codecs[0].codec_input)
+        buffer = cast(type[Buffer], all_codecs[0].codec_output)
+
+        if nd_buffer is NDBuffer and buffer is Buffer:
+            return default_buffer_prototype()
+
+        return BufferPrototype(
+            nd_buffer=all_codecs[0].codec_input,
+            buffer=all_codecs[-1].codec_output,
+        )
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
