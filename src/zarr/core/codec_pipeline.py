@@ -100,10 +100,7 @@ class BatchedCodecPipeline(CodecPipeline):
         if nd_buffer is NDBuffer and buffer is Buffer:
             return default_buffer_prototype()
 
-        return BufferPrototype(
-            nd_buffer=all_codecs[0].codec_input,
-            buffer=all_codecs[-1].codec_output,
-        )
+        return BufferPrototype(nd_buffer=nd_buffer, buffer=buffer)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
