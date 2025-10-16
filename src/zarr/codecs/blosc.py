@@ -11,6 +11,7 @@ from numcodecs.blosc import Blosc
 from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
+from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasItemSize
@@ -19,7 +20,6 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer
 
 
 class BloscShuffle(Enum):
@@ -87,6 +87,9 @@ def parse_blocksize(data: JSON) -> int:
 @dataclass(frozen=True)
 class BloscCodec(BytesBytesCodec):
     """blosc codec"""
+
+    codec_input = Buffer
+    codec_output = Buffer
 
     is_fixed_size = False
 

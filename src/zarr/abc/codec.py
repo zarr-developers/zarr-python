@@ -185,13 +185,22 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
 
+    codec_input: type[NDBuffer]
+    codec_output: type[NDBuffer]
+
 
 class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
     """Base class for array-to-bytes codecs."""
 
+    codec_input: type[NDBuffer]
+    codec_output: type[Buffer]
+
 
 class BytesBytesCodec(BaseCodec[Buffer, Buffer]):
     """Base class for bytes-to-bytes codecs."""
+
+    codec_input: type[Buffer]
+    codec_output: type[Buffer]
 
 
 Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec

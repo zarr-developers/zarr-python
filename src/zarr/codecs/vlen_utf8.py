@@ -25,6 +25,9 @@ _vlen_bytes_codec = VLenBytes()
 class VLenUTF8Codec(ArrayBytesCodec):
     """Variable-length UTF8 codec"""
 
+    codec_input = NDBuffer
+    codec_output = Buffer
+
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
@@ -71,6 +74,9 @@ class VLenUTF8Codec(ArrayBytesCodec):
 
 @dataclass(frozen=True)
 class VLenBytesCodec(ArrayBytesCodec):
+    codec_input = NDBuffer
+    codec_output = Buffer
+
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(

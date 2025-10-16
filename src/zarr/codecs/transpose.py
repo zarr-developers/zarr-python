@@ -8,12 +8,12 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Self
 
-    from zarr.core.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
@@ -29,6 +29,9 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
     """Transpose codec"""
+
+    codec_input = NDBuffer
+    codec_output = NDBuffer
 
     is_fixed_size = True
 
