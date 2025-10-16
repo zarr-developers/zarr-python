@@ -13,7 +13,7 @@ from zarr.core.sync_group import create_hierarchy
 from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
     import numpy as np
     import numpy.typing as npt
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     )
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,
@@ -821,7 +822,7 @@ def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -857,9 +858,14 @@ def create_array(
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be ``None``.
-    chunks : tuple[int, ...] | Literal["auto"], default="auto"
-        Chunk shape of the array.
-        If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+    chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"], default="auto"
+        Chunk shape of the array. Several formats are supported:
+
+        - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``
+        - nested sequence: Creates a RectilinearChunkGrid with variable-sized chunks (Zarr format 3 only),
+          e.g., ``[[10, 20, 30], [5, 5]]`` creates variable chunks along each dimension
+        - ChunkGrid instance: Uses the provided chunk grid directly (Zarr format 3 only)
+        - "auto": Automatically determines chunk shape based on array shape and dtype
     shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional

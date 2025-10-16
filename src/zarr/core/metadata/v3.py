@@ -259,12 +259,9 @@ class ArrayV3Metadata(Metadata):
                 return self.chunk_grid.chunk_shape
             else:
                 return None
-
-        msg = (
-            f"The `shards` attribute is only defined for arrays using `RegularChunkGrid`."
-            f"This array has a {self.chunk_grid} instead."
-        )
-        raise NotImplementedError(msg)
+        else:
+            # RectilinearChunkGrid and other chunk grids don't support sharding
+            return None
 
     @property
     def inner_codecs(self) -> tuple[Codec, ...]:
@@ -278,11 +275,16 @@ class ArrayV3Metadata(Metadata):
     def get_chunk_spec(
         self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
-        assert isinstance(self.chunk_grid, RegularChunkGrid), (
-            "Currently, only regular chunk grid is supported"
-        )
+        # For RegularChunkGrid, use the uniform chunk_shape for all chunks
+        # The indexing and codec layers handle partial chunks at array edges
+        # For RectilinearChunkGrid and other grids, get the actual chunk shape per chunk
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            chunk_shape = self.chunk_grid.chunk_shape
+        else:
+            chunk_shape = self.chunk_grid.get_chunk_shape(self.shape, _chunk_coords)
+
         return ArraySpec(
-            shape=self.chunk_grid.chunk_shape,
+            shape=chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
             config=array_config,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 import itertools
 import math
 import numbers
@@ -7,7 +8,7 @@ import operator
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
-from functools import reduce
+from functools import cached_property, reduce
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 
 import numpy as np
@@ -272,6 +273,100 @@ class ChunkGrid(Metadata):
     def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
         pass
 
+    @abstractmethod
+    def get_chunk_shape(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Get the shape of a specific chunk.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        chunk_coord : tuple[int, ...]
+            Coordinates of the chunk in the chunk grid.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Shape of the chunk at the given coordinates.
+        """
+
+    @abstractmethod
+    def get_chunk_start(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Get the starting position of a chunk in the array.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        chunk_coord : tuple[int, ...]
+            Coordinates of the chunk in the chunk grid.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Starting position (offset) of the chunk in the array.
+        """
+
+    @abstractmethod
+    def array_index_to_chunk_coord(
+        self, array_shape: tuple[int, ...], array_index: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Map an array index to the chunk coordinates that contain it.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        array_index : tuple[int, ...]
+            Index in the array.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Coordinates of the chunk containing the array index.
+        """
+
+    @abstractmethod
+    def chunks_per_dim(self, array_shape: tuple[int, ...], dim: int) -> int:
+        """
+        Get the number of chunks along a specific dimension.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        dim : int
+            Dimension index.
+
+        Returns
+        -------
+        int
+            Number of chunks along the dimension.
+        """
+
+    @abstractmethod
+    def get_chunk_grid_shape(self, array_shape: tuple[int, ...]) -> tuple[int, ...]:
+        """
+        Get the shape of the chunk grid (number of chunks along each dimension).
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Number of chunks along each dimension.
+        """
+
 
 @dataclass(frozen=True)
 class RegularChunkGrid(ChunkGrid):
@@ -301,6 +396,64 @@ class RegularChunkGrid(ChunkGrid):
             operator.mul,
             itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
             1,
+        )
+
+    def get_chunk_shape(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Get the shape of a specific chunk.
+
+        For RegularChunkGrid, all chunks have the same shape except possibly
+        the last chunk in each dimension.
+        """
+        return tuple(
+            int(min(self.chunk_shape[i], array_shape[i] - chunk_coord[i] * self.chunk_shape[i]))
+            for i in range(len(array_shape))
+        )
+
+    def get_chunk_start(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Get the starting position of a chunk in the array.
+
+        For RegularChunkGrid, this is simply chunk_coord * chunk_shape.
+        """
+        return tuple(
+            coord * size for coord, size in zip(chunk_coord, self.chunk_shape, strict=False)
+        )
+
+    def array_index_to_chunk_coord(
+        self, array_shape: tuple[int, ...], array_index: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Map an array index to chunk coordinates.
+
+        For RegularChunkGrid, this is simply array_index // chunk_shape.
+        """
+        return tuple(
+            0 if size == 0 else idx // size
+            for idx, size in zip(array_index, self.chunk_shape, strict=False)
+        )
+
+    def chunks_per_dim(self, array_shape: tuple[int, ...], dim: int) -> int:
+        """
+        Get the number of chunks along a specific dimension.
+
+        For RegularChunkGrid, this is ceildiv(array_shape[dim], chunk_shape[dim]).
+        """
+        return ceildiv(array_shape[dim], self.chunk_shape[dim])
+
+    def get_chunk_grid_shape(self, array_shape: tuple[int, ...]) -> tuple[int, ...]:
+        """
+        Get the shape of the chunk grid (number of chunks along each dimension).
+
+        For RegularChunkGrid, this is computed using ceildiv for each dimension.
+        """
+        return tuple(
+            ceildiv(array_len, chunk_len)
+            for array_len, chunk_len in zip(array_shape, self.chunk_shape, strict=False)
         )
 
 
@@ -479,6 +632,392 @@ class RectilinearChunkGrid(ChunkGrid):
 
         # Total chunks is the product of number of chunks per axis
         return reduce(operator.mul, (len(axis_chunks) for axis_chunks in self.chunk_shapes), 1)
+
+    def _validate_array_shape(self, array_shape: tuple[int, ...]) -> None:
+        """
+        Validate that array_shape is compatible with chunk_shapes.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+
+        Raises
+        ------
+        ValueError
+            If array_shape is incompatible with chunk_shapes
+        """
+        if len(array_shape) != len(self.chunk_shapes):
+            raise ValueError(
+                f"array_shape has {len(array_shape)} dimensions but "
+                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
+            )
+
+        for axis, (arr_size, axis_chunks) in enumerate(
+            zip(array_shape, self.chunk_shapes, strict=False)
+        ):
+            chunk_sum = sum(axis_chunks)
+            if chunk_sum != arr_size:
+                raise ValueError(
+                    f"Sum of chunk sizes along axis {axis} is {chunk_sum} "
+                    f"but array shape is {arr_size}"
+                )
+
+    @cached_property
+    def _cumulative_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """
+        Compute cumulative sizes for each axis.
+
+        Returns a tuple of tuples where each inner tuple contains cumulative
+        chunk sizes for an axis. Used for efficient chunk boundary calculations.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            Cumulative sizes for each axis
+
+        Examples
+        --------
+        For chunk_shapes = [[2, 3, 1], [4, 2]]:
+        Returns ((0, 2, 5, 6), (0, 4, 6))
+        """
+        result = []
+        for axis_chunks in self.chunk_shapes:
+            cumsum = [0]
+            for size in axis_chunks:
+                cumsum.append(cumsum[-1] + size)
+            result.append(tuple(cumsum))
+        return tuple(result)
+
+    def get_chunk_start(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Get the starting position (offset) of a chunk in the array.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+        chunk_coord : tuple[int, ...]
+            Chunk coordinates (indices into the chunk grid)
+
+        Returns
+        -------
+        tuple[int, ...]
+            Starting index of the chunk in the array
+
+        Raises
+        ------
+        ValueError
+            If array_shape is incompatible with chunk_shapes
+        IndexError
+            If chunk_coord is out of bounds
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+        >>> grid.get_chunk_start((6, 6), (0, 0))
+        (0, 0)
+        >>> grid.get_chunk_start((6, 6), (1, 1))
+        (2, 3)
+        """
+        self._validate_array_shape(array_shape)
+
+        if len(chunk_coord) != len(self.chunk_shapes):
+            raise IndexError(
+                f"chunk_coord has {len(chunk_coord)} dimensions but "
+                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
+            )
+
+        # Validate chunk coordinates are in bounds
+        for axis, (coord, axis_chunks) in enumerate(
+            zip(chunk_coord, self.chunk_shapes, strict=False)
+        ):
+            if not (0 <= coord < len(axis_chunks)):
+                raise IndexError(
+                    f"chunk_coord[{axis}] = {coord} is out of bounds [0, {len(axis_chunks)})"
+                )
+
+        # Use cumulative sizes to get start position
+        return tuple(self._cumulative_sizes[axis][coord] for axis, coord in enumerate(chunk_coord))
+
+    def get_chunk_shape(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Get the shape of a specific chunk.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+        chunk_coord : tuple[int, ...]
+            Chunk coordinates (indices into the chunk grid)
+
+        Returns
+        -------
+        tuple[int, ...]
+            Shape of the chunk
+
+        Raises
+        ------
+        ValueError
+            If array_shape is incompatible with chunk_shapes
+        IndexError
+            If chunk_coord is out of bounds
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[2, 3, 1], [4, 2]])
+        >>> grid.get_chunk_shape((6, 6), (0, 0))
+        (2, 4)
+        >>> grid.get_chunk_shape((6, 6), (1, 0))
+        (3, 4)
+        """
+        self._validate_array_shape(array_shape)
+
+        if len(chunk_coord) != len(self.chunk_shapes):
+            raise IndexError(
+                f"chunk_coord has {len(chunk_coord)} dimensions but "
+                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
+            )
+
+        # Validate chunk coordinates are in bounds
+        for axis, (coord, axis_chunks) in enumerate(
+            zip(chunk_coord, self.chunk_shapes, strict=False)
+        ):
+            if not (0 <= coord < len(axis_chunks)):
+                raise IndexError(
+                    f"chunk_coord[{axis}] = {coord} is out of bounds [0, {len(axis_chunks)})"
+                )
+
+        # Get shape directly from chunk_shapes
+        return tuple(
+            axis_chunks[coord]
+            for axis_chunks, coord in zip(self.chunk_shapes, chunk_coord, strict=False)
+        )
+
+    def get_chunk_slice(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[slice, ...]:
+        """
+        Get the slice for indexing into an array for a specific chunk.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+        chunk_coord : tuple[int, ...]
+            Chunk coordinates (indices into the chunk grid)
+
+        Returns
+        -------
+        tuple[slice, ...]
+            Slice tuple for indexing the array
+
+        Raises
+        ------
+        ValueError
+            If array_shape is incompatible with chunk_shapes
+        IndexError
+            If chunk_coord is out of bounds
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+        >>> grid.get_chunk_slice((6, 6), (0, 0))
+        (slice(0, 2, None), slice(0, 3, None))
+        >>> grid.get_chunk_slice((6, 6), (1, 1))
+        (slice(2, 4, None), slice(3, 6, None))
+        """
+        start = self.get_chunk_start(array_shape, chunk_coord)
+        shape = self.get_chunk_shape(array_shape, chunk_coord)
+
+        return tuple(slice(s, s + length) for s, length in zip(start, shape, strict=False))
+
+    def get_chunk_grid_shape(self, array_shape: tuple[int, ...]) -> tuple[int, ...]:
+        """
+        Get the shape of the chunk grid (number of chunks per axis).
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+
+        Returns
+        -------
+        tuple[int, ...]
+            Number of chunks along each axis
+
+        Raises
+        ------
+        ValueError
+            If array_shape is incompatible with chunk_shapes
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+        >>> grid.get_chunk_grid_shape((6, 6))
+        (3, 2)
+        """
+        self._validate_array_shape(array_shape)
+
+        return tuple(len(axis_chunks) for axis_chunks in self.chunk_shapes)
+
+    def array_index_to_chunk_coord(
+        self, array_shape: tuple[int, ...], array_index: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Find which chunk contains a given array index.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+        array_index : tuple[int, ...]
+            Index into the array
+
+        Returns
+        -------
+        tuple[int, ...]
+            Chunk coordinates containing the array index
+
+        Raises
+        ------
+        ValueError
+            If array_shape is incompatible with chunk_shapes
+        IndexError
+            If array_index is out of bounds
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[2, 3, 1], [4, 2]])
+        >>> grid.array_index_to_chunk_coord((6, 6), (0, 0))
+        (0, 0)
+        >>> grid.array_index_to_chunk_coord((6, 6), (2, 0))
+        (1, 0)
+        >>> grid.array_index_to_chunk_coord((6, 6), (5, 5))
+        (2, 1)
+        """
+        self._validate_array_shape(array_shape)
+
+        if len(array_index) != len(array_shape):
+            raise IndexError(
+                f"array_index has {len(array_index)} dimensions but "
+                f"array_shape has {len(array_shape)} dimensions"
+            )
+
+        # Validate array index is in bounds
+        for axis, (idx, size) in enumerate(zip(array_index, array_shape, strict=False)):
+            if not (0 <= idx < size):
+                raise IndexError(f"array_index[{axis}] = {idx} is out of bounds [0, {size})")
+
+        # Use binary search in cumulative sizes to find chunk coordinate
+        result = []
+        for axis, idx in enumerate(array_index):
+            cumsum = self._cumulative_sizes[axis]
+            # bisect_right gives us the chunk index + 1, so subtract 1
+            chunk_idx = bisect.bisect_right(cumsum, idx) - 1
+            result.append(chunk_idx)
+
+        return tuple(result)
+
+    def chunks_in_selection(
+        self, array_shape: tuple[int, ...], selection: tuple[slice, ...]
+    ) -> Iterator[tuple[int, ...]]:
+        """
+        Get all chunks that intersect with a given selection.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+        selection : tuple[slice, ...]
+            Selection (slices) into the array
+
+        Yields
+        ------
+        tuple[int, ...]
+            Chunk coordinates that intersect with the selection
+
+        Raises
+        ------
+        ValueError
+            If array_shape is incompatible with chunk_shapes or selection is invalid
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+        >>> selection = (slice(1, 5), slice(2, 5))
+        >>> list(grid.chunks_in_selection((6, 6), selection))
+        [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
+        """
+        self._validate_array_shape(array_shape)
+
+        if len(selection) != len(array_shape):
+            raise ValueError(
+                f"selection has {len(selection)} dimensions but "
+                f"array_shape has {len(array_shape)} dimensions"
+            )
+
+        # Normalize slices and find chunk ranges for each axis
+        chunk_ranges = []
+        for axis, (sel, size) in enumerate(zip(selection, array_shape, strict=False)):
+            if not isinstance(sel, slice):
+                raise TypeError(f"selection[{axis}] must be a slice, got {type(sel)}")
+
+            # Normalize slice with array size
+            start, stop, step = sel.indices(size)
+
+            if step != 1:
+                raise ValueError(f"selection[{axis}] has step={step}, only step=1 is supported")
+
+            if start >= stop:
+                # Empty selection
+                return
+
+            # Find first and last chunk that intersect with [start, stop)
+            start_chunk = self.array_index_to_chunk_coord(
+                array_shape, tuple(start if i == axis else 0 for i in range(len(array_shape)))
+            )[axis]
+
+            # stop-1 is the last index we need
+            end_chunk = self.array_index_to_chunk_coord(
+                array_shape, tuple(stop - 1 if i == axis else 0 for i in range(len(array_shape)))
+            )[axis]
+
+            chunk_ranges.append(range(start_chunk, end_chunk + 1))
+
+        # Generate all combinations of chunk coordinates
+        yield from itertools.product(*chunk_ranges)
+
+    def chunks_per_dim(self, array_shape: tuple[int, ...], dim: int) -> int:
+        """
+        Get the number of chunks along a specific dimension.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the array
+        dim : int
+            Dimension index
+
+        Returns
+        -------
+        int
+            Number of chunks along the dimension
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[10, 20], [5, 5, 5]])
+        >>> grid.chunks_per_dim((30, 15), 0)  # 2 chunks along axis 0
+        2
+        >>> grid.chunks_per_dim((30, 15), 1)  # 3 chunks along axis 1
+        3
+        """
+        self._validate_array_shape(array_shape)
+        return len(self.chunk_shapes[dim])
 
 
 def _auto_partition(
