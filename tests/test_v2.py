@@ -2,11 +2,10 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+import numcodecs.blosc
 import numpy as np
 import pytest
-from numcodecs import Delta, Zlib
-from numcodecs.blosc import Blosc
-from numcodecs.zstd import Zstd
+from numcodecs import Blosc, Delta, Zlib, Zstd
 
 import zarr
 import zarr.core.buffer
@@ -146,11 +145,11 @@ def test_create_array_defaults(store: Store) -> None:
     assert not (arr.filters)
     arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
     assert arr._async_array.compressors == (
-        numcodecs.Blosc(cname="lz4", clevel=5, shuffle=numcodecs.blosc.SHUFFLE, blocksize=0),
+        Blosc(cname="lz4", clevel=5, shuffle=numcodecs.blosc.SHUFFLE, blocksize=0),
     )
     assert not (arr.filters)
     arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
-    assert arr._async_array.compressors == (numcodecs.Zstd(level=0),)
+    assert arr._async_array.compressors == (Zstd(level=0),)
     assert not (arr.filters)
     with pytest.raises(ValueError):
         g.create_array(
