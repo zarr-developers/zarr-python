@@ -334,6 +334,9 @@ class ShardingCodec(
 ):
     """Sharding codec"""
 
+    codec_input = NDBuffer
+    codec_output = Buffer
+
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
