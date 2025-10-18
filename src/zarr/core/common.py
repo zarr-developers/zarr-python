@@ -14,6 +14,7 @@ from typing import (
     Final,
     Generic,
     Literal,
+    NotRequired,
     TypedDict,
     TypeVar,
     cast,
@@ -63,8 +64,8 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
     name: ReadOnly[TName]
     """The name of the object."""
 
-    configuration: ReadOnly[TConfig]
-    """The configuration of the object."""
+    configuration: NotRequired[ReadOnly[TConfig]]
+    """The configuration of the object. Not required."""
 
 
 def product(tup: tuple[int, ...]) -> int:
@@ -134,18 +135,24 @@ def parse_configuration(data: JSON) -> JSON:
 
 @overload
 def parse_named_configuration(
-    data: JSON, expected_name: str | None = None
+    data: JSON | NamedConfig[str, Any], expected_name: str | None = None
 ) -> tuple[str, dict[str, JSON]]: ...
 
 
 @overload
 def parse_named_configuration(
-    data: JSON, expected_name: str | None = None, *, require_configuration: bool = True
+    data: JSON | NamedConfig[str, Any],
+    expected_name: str | None = None,
+    *,
+    require_configuration: bool = True,
 ) -> tuple[str, dict[str, JSON] | None]: ...
 
 
 def parse_named_configuration(
-    data: JSON, expected_name: str | None = None, *, require_configuration: bool = True
+    data: JSON | NamedConfig[str, Any],
+    expected_name: str | None = None,
+    *,
+    require_configuration: bool = True,
 ) -> tuple[str, JSON | None]:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
