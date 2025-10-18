@@ -54,7 +54,7 @@ def test_config_defaults_set() -> None:
                     "order": "C",
                     "write_empty_chunks": False,
                 },
-                "async": {"concurrency": 10, "timeout": None},
+                "async": {"concurrency": 64, "timeout": None},
                 "threading": {"max_workers": None},
                 "json_indent": 2,
                 "codec_pipeline": {
@@ -100,7 +100,7 @@ def test_config_defaults_set() -> None:
         ]
     )
     assert config.get("array.order") == "C"
-    assert config.get("async.concurrency") == 10
+    assert config.get("async.concurrency") == 64
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
@@ -108,7 +108,7 @@ def test_config_defaults_set() -> None:
 
 @pytest.mark.parametrize(
     ("key", "old_val", "new_val"),
-    [("array.order", "C", "F"), ("async.concurrency", 10, 20), ("json_indent", 2, 0)],
+    [("array.order", "C", "F"), ("async.concurrency", 64, 128), ("json_indent", 2, 0)],
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
     assert config.get(key) == old_val
