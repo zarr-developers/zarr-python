@@ -4744,15 +4744,8 @@ async def init_array(
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
         codecs_out: tuple[Codec, ...]
 
-        # Validate that RectilinearChunkGrid is not used with sharding
-        if shard_shape_parsed is not None and chunk_grid is not None:
-            from zarr.core.chunk_grids import RectilinearChunkGrid
-
-            if isinstance(chunk_grid, RectilinearChunkGrid):
-                raise ValueError(
-                    "Sharding is not supported with RectilinearChunkGrid (variable-sized chunks). "
-                    "Use RegularChunkGrid (uniform chunks) with sharding, or use RectilinearChunkGrid without sharding."
-                )
+        # Note: RectilinearChunkGrid + sharding validation is now handled in resolve_chunk_spec()
+        # which is called in create_array() before calling init_array()
 
         if shard_shape_parsed is not None:
             index_location = None
@@ -4941,73 +4934,44 @@ async def create_array(
     >>>     fill_value=0)
     <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
     """
-    # Handle chunks as ChunkGrid or nested sequence - convert to chunk_grid for init_array
-    chunk_grid: ChunkGrid | None = None
+    data_parsed, shape_param, dtype_parsed = _parse_data_params(data=data, shape=shape, dtype=dtype)
 
-    if isinstance(chunks, ChunkGrid):
-        chunk_grid = chunks
-        chunks = "auto"  # Will be ignored since chunk_grid is set
-    elif chunks != "auto" and not isinstance(chunks, (tuple, int)):
-        # Check if it's a nested sequence for RectilinearChunkGrid
-        # We need to distinguish between flat sequences like [10, 10] and nested like [[10, 20], [5, 5]]
-        is_nested = False
-        try:
-            # Try to iterate and check if elements are sequences
-            if hasattr(chunks, "__iter__") and not isinstance(chunks, (str, bytes)):  # type: ignore[unreachable]
-                first_elem = next(iter(chunks), None)
-                if (
-                    first_elem is not None
-                    and hasattr(first_elem, "__iter__")
-                    and not isinstance(first_elem, (str, bytes, int))
-                ):
-                    is_nested = True
-        except (TypeError, StopIteration):
-            pass
+    # Parse shape to tuple for resolve_chunk_spec
+    shape_parsed = parse_shapelike(shape_param)
 
-        if is_nested:
-            # It's a nested sequence - create RectilinearChunkGrid
-            from zarr.core.chunk_grids import RectilinearChunkGrid
+    # Parse dtype to get item_size for chunk grid parsing
+    # Ensure zarr_format is not None for resolve_chunk_spec
+    zarr_format_resolved: ZarrFormat = zarr_format or 3
+    zdtype = parse_dtype(dtype_parsed, zarr_format=zarr_format_resolved)
+    item_size = 1
+    if isinstance(zdtype, HasItemSize):
+        item_size = zdtype.item_size
 
-            if zarr_format == 2:
-                raise ValueError(
-                    "Variable chunks (nested sequences) are only supported in Zarr format 3. "
-                    "Use zarr_format=3 or provide a regular tuple for chunks."
-                )
+    # Resolve chunk specification using consolidated function
+    # This handles all validation and returns resolved chunks, shards, and chunk_grid
+    from zarr.core.chunk_grids import resolve_chunk_spec
 
-            try:
-                # Convert nested sequence to list of lists for RectilinearChunkGrid
-                chunk_shapes = [list(dim) for dim in chunks]
-                chunk_grid = RectilinearChunkGrid(chunk_shapes=chunk_shapes)
-                chunks = "auto"  # Will be ignored since chunk_grid is set
-            except (TypeError, ValueError) as e:
-                raise TypeError(
-                    f"Invalid chunks argument: {chunks}. "
-                    "Expected a tuple of integers, a nested sequence for variable chunks, "
-                    f"a ChunkGrid instance, or 'auto'. Got error: {e}"
-                ) from e
-        # else: it's a flat sequence like [10, 10] or single int, let it pass through to existing code
-
-    data_parsed, shape_parsed, dtype_parsed = _parse_data_params(
-        data=data, shape=shape, dtype=dtype
+    resolved = resolve_chunk_spec(
+        chunks=chunks,
+        shards=shards,
+        shape=shape_parsed,
+        dtype_itemsize=item_size,
+        zarr_format=zarr_format_resolved,
+        has_data=data_parsed is not None,
     )
-    if data_parsed is not None:
-        # from_array doesn't support ChunkGrid parameter, so error if chunk_grid was set
-        if chunk_grid is not None:
-            raise ValueError(
-                "Cannot use ChunkGrid or nested sequences for chunks when creating array from data. "
-                "Use a regular tuple for chunks instead."
-            )
-        # At this point, chunks must be Literal["auto"] | tuple[int, ...] since chunk_grid is None
-        from typing import cast
 
-        chunks_narrowed = cast("Literal['auto', 'keep'] | tuple[int, ...]", chunks)
+    chunks_param = resolved.chunks
+    shards_param = resolved.shards
+    chunk_grid_param = resolved.chunk_grid
+
+    if data_parsed is not None:
         return await from_array(
             store,
             data=data_parsed,
             write_data=write_data,
             name=name,
-            chunks=chunks_narrowed,
-            shards=shards,
+            chunks=chunks_param,
+            shards=shards_param,
             filters=filters,
             compressors=compressors,
             serializer=serializer,
@@ -5027,16 +4991,12 @@ async def create_array(
         store_path = await make_store_path(
             store, path=name, mode=mode, storage_options=storage_options
         )
-        # At this point, chunks must be Literal["auto"] | tuple[int, ...] since we set it to "auto" when chunk_grid is set
-        from typing import cast
-
-        chunks_narrowed = cast("tuple[int, ...] | Literal['auto']", chunks)
         return await init_array(
             store_path=store_path,
             shape=shape_parsed,
             dtype=dtype_parsed,
-            chunks=chunks_narrowed,
-            shards=shards,
+            chunks=chunks_param,
+            shards=shards_param,
             filters=filters,
             compressors=compressors,
             serializer=serializer,
@@ -5048,7 +5008,7 @@ async def create_array(
             dimension_names=dimension_names,
             overwrite=overwrite,
             config=config,
-            chunk_grid=chunk_grid,
+            chunk_grid=chunk_grid_param,
         )
 
 

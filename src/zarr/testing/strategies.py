@@ -439,7 +439,14 @@ def arrays(
         # shards also raises NotImplementedError for RectilinearChunkGrid
         assert shard_shape is None  # We don't use sharding with RectilinearChunkGrid
     else:
-        assert chunk_shape == a.chunks
+        # For RegularChunkGrid, the chunks property returns the normalized chunk_shape
+        # which may differ from the input (e.g., (0,) becomes (1,) after normalization)
+        # We should compare against the actual chunk_grid's chunk_shape
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+        assert isinstance(a.metadata.chunk_grid, RegularChunkGrid)
+        expected_chunks = a.metadata.chunk_grid.chunk_shape
+        assert expected_chunks == a.chunks
         assert shard_shape == a.shards
 
     assert a.basename == name, (a.basename, name)
@@ -552,7 +559,7 @@ def orthogonal_indices(
         zindexer.append(idxr)
         if isinstance(idxr, slice):
             idxr = np.arange(*idxr.indices(size))
-        elif isinstance(idxr, (tuple, int)):
+        elif isinstance(idxr, tuple | int):
             idxr = np.array(idxr)
         newshape = [1] * ndim
         newshape[axis] = idxr.size

@@ -1440,9 +1440,8 @@ class TestCreateArray:
         """
         Test that creating a Zarr v2 array with ``shard_shape`` set to a non-None value raises an error.
         """
-        msg = re.escape(
-            "Zarr format 2 arrays can only be created with `shard_shape` set to `None`. Got `shard_shape=(5,)` instead."
-        )
+        # Updated error message from consolidated resolve_chunk_spec validation
+        msg = "Sharding is only supported in Zarr format 3"
         with pytest.raises(ValueError, match=msg):
             _ = await create_array(
                 store=store,
@@ -1934,7 +1933,7 @@ def test_chunk_grid_shape(
     if zarr_format == 2 and shard_shape is not None:
         with pytest.raises(
             ValueError,
-            match="Zarr format 2 arrays can only be created with `shard_shape` set to `None`.",
+            match="Sharding is only supported in Zarr format 3",
         ):
             arr = zarr.create_array(
                 {},

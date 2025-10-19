@@ -77,7 +77,7 @@ def _expand_run_length_encoding(spec: Sequence[ChunkEdgeLength]) -> tuple[int, .
         if isinstance(item, int):
             # Explicit edge length
             result.append(item)
-        elif isinstance(item, (list, tuple)):
+        elif isinstance(item, list | tuple):
             # Run-length encoded: [value, count]
             if len(item) != 2:
                 raise TypeError(
@@ -1069,3 +1069,514 @@ def _auto_partition(
             _shards_out = shard_shape
 
     return _shards_out, _chunks_out
+
+
+def _is_nested_sequence(chunks: Any) -> bool:
+    """
+    Check if chunks is a nested sequence (tuple of tuples/lists).
+
+    Returns True for inputs like [[10, 20], [5, 5]] or [(10, 20), (5, 5)].
+    Returns False for flat sequences like (10, 10) or [10, 10].
+    """
+    # Not a sequence if it's a string, int, tuple of basic types, or ChunkGrid
+    if isinstance(chunks, str | int | ChunkGrid):
+        return False
+
+    # Check if it's iterable
+    if not hasattr(chunks, "__iter__"):
+        return False
+
+    # Check if first element is a sequence (but not string/bytes/int)
+    try:
+        first_elem = next(iter(chunks), None)
+        if first_elem is None:
+            return False
+        return hasattr(first_elem, "__iter__") and not isinstance(first_elem, str | bytes | int)
+    except (TypeError, StopIteration):
+        return False
+
+
+def _normalize_rectilinear_chunks(
+    chunks: Sequence[Sequence[int]], shape: tuple[int, ...]
+) -> tuple[tuple[int, ...], ...]:
+    """
+    Normalize and validate variable chunks for RectilinearChunkGrid.
+
+    Parameters
+    ----------
+    chunks : Sequence[Sequence[int]]
+        Nested sequence where each element is a sequence of chunk sizes along that dimension.
+    shape : tuple[int, ...]
+        The shape of the array.
+
+    Returns
+    -------
+    tuple[tuple[int, ...], ...]
+        Normalized chunk shapes as tuple of tuples.
+
+    Raises
+    ------
+    ValueError
+        If chunks don't match shape or sum incorrectly.
+    """
+    # Convert to tuple of tuples
+    try:
+        chunk_shapes = tuple(tuple(int(c) for c in dim) for dim in chunks)
+    except (TypeError, ValueError) as e:
+        raise TypeError(
+            f"Invalid variable chunks: {chunks}. Expected nested sequence of integers."
+        ) from e
+
+    # Validate dimensionality
+    if len(chunk_shapes) != len(shape):
+        raise ValueError(
+            f"Variable chunks dimensionality ({len(chunk_shapes)}) "
+            f"must match array shape dimensionality ({len(shape)})"
+        )
+
+    # Validate that chunks sum to shape for each dimension
+    for i, (dim_chunks, dim_size) in enumerate(zip(chunk_shapes, shape, strict=False)):
+        chunk_sum = sum(dim_chunks)
+        if chunk_sum != dim_size:
+            raise ValueError(
+                f"Variable chunks along dimension {i} sum to {chunk_sum} "
+                f"but array shape is {dim_size}. Chunks must sum exactly to shape."
+            )
+
+    return chunk_shapes
+
+
+def parse_chunk_grid(
+    chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int,
+    *,
+    shape: ShapeLike,
+    item_size: int = 1,
+    zarr_format: int | None = None,
+) -> ChunkGrid:
+    """
+    Parse a chunks parameter into a ChunkGrid instance.
+
+    This function handles multiple input formats for the chunks parameter and always
+    returns a concrete ChunkGrid instance:
+    - ChunkGrid instances: Returned as-is
+    - Nested sequences (e.g., [[10, 20], [5, 5]]): Converted to RectilinearChunkGrid (Zarr v3 only)
+    - Regular tuples/ints (e.g., (10, 10) or 10): Converted to RegularChunkGrid
+    - Literal "auto": Computed using auto-chunking heuristics and converted to RegularChunkGrid
+
+    Parameters
+    ----------
+    chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int
+        The chunks parameter to parse. Can be:
+        - A ChunkGrid instance
+        - A nested sequence for variable-sized chunks
+        - A tuple of integers for uniform chunks
+        - A single integer (for 1D arrays or uniform chunks across all dimensions)
+        - The literal "auto"
+    shape : ShapeLike
+        The shape of the array. Required to create RegularChunkGrid for "auto" or tuple inputs.
+    item_size : int, default=1
+        The size of each array element in bytes. Used for auto-chunking heuristics.
+    zarr_format : {2, 3, None}, optional
+        The Zarr format version. Required for validating nested sequences
+        (which are only supported in Zarr v3).
+
+    Returns
+    -------
+    ChunkGrid
+        A concrete ChunkGrid instance (either RegularChunkGrid or RectilinearChunkGrid).
+
+    Raises
+    ------
+    ValueError
+        If nested sequences are used with zarr_format=2, or if variable chunks don't sum to shape.
+    TypeError
+        If the chunks parameter cannot be parsed.
+
+    Examples
+    --------
+    >>> # ChunkGrid instance
+    >>> from zarr.core.chunk_grids import RegularChunkGrid
+    >>> grid = RegularChunkGrid(chunk_shape=(10, 10))
+    >>> result = parse_chunk_grid(grid, shape=(100, 100))
+    >>> result is grid
+    True
+
+    >>> # Nested sequence for RectilinearChunkGrid
+    >>> result = parse_chunk_grid([[10, 20, 30], [5, 5]], shape=(60, 10), zarr_format=3)
+    >>> type(result).__name__
+    'RectilinearChunkGrid'
+    >>> result.chunk_shapes
+    ((10, 20, 30), (5, 5))
+
+    >>> # Regular tuple
+    >>> result = parse_chunk_grid((10, 10), shape=(100, 100))
+    >>> type(result).__name__
+    'RegularChunkGrid'
+    >>> result.chunk_shape
+    (10, 10)
+
+    >>> # Literal "auto"
+    >>> result = parse_chunk_grid("auto", shape=(100, 100), item_size=4)
+    >>> type(result).__name__
+    'RegularChunkGrid'
+    >>> isinstance(result.chunk_shape, tuple)
+    True
+
+    >>> # Single int
+    >>> result = parse_chunk_grid(10, shape=(100, 100))
+    >>> result.chunk_shape
+    (10, 10)
+    """
+    # Parse shape to ensure it's a tuple
+    shape_parsed = parse_shapelike(shape)
+
+    # Case 1: Already a ChunkGrid instance
+    if isinstance(chunks, ChunkGrid):
+        return chunks
+
+    # Case 2: String "auto" -> RegularChunkGrid
+    if isinstance(chunks, str):
+        # chunks can only be "auto" based on type annotation
+        # normalize_chunks expects None or True for auto-chunking, not "auto"
+        chunk_shape = normalize_chunks(None, shape_parsed, item_size)
+        return RegularChunkGrid(chunk_shape=chunk_shape)
+
+    # Case 3: Single int -> RegularChunkGrid
+    if isinstance(chunks, int):
+        chunk_shape = normalize_chunks(chunks, shape_parsed, item_size)
+        return RegularChunkGrid(chunk_shape=chunk_shape)
+
+    # Case 4: Tuple or sequence - determine if regular or variable chunks
+    if _is_nested_sequence(chunks):
+        # Variable chunks (nested sequence) -> RectilinearChunkGrid
+        if zarr_format == 2:
+            raise ValueError(
+                "Variable chunks (nested sequences) are only supported in Zarr format 3. "
+                "Use zarr_format=3 or provide a regular tuple for chunks."
+            )
+
+        # Normalize and validate variable chunks
+        chunk_shapes = _normalize_rectilinear_chunks(chunks, shape_parsed)  # type: ignore[arg-type]
+        return RectilinearChunkGrid(chunk_shapes=chunk_shapes)
+    else:
+        # Regular tuple of ints -> RegularChunkGrid
+        chunk_shape = normalize_chunks(chunks, shape_parsed, item_size)
+        return RegularChunkGrid(chunk_shape=chunk_shape)
+
+
+@dataclass(frozen=True)
+class ResolvedChunkSpec:
+    """
+    Result of resolving chunk specification.
+
+    This dataclass encapsulates the resolved chunk grid, chunks, and shards
+    parameters for creating a Zarr array.
+
+    Attributes
+    ----------
+    chunk_grid : ChunkGrid | None
+        The resolved chunk grid. None if using legacy chunks parameter only
+        (e.g., for Zarr v2 or when no ChunkGrid is needed).
+    chunks : tuple[int, ...] | Literal["auto"]
+        The chunks parameter to pass to init_array/from_array.
+        For sharded arrays, this is the inner chunk size.
+        For non-sharded arrays, this is the actual chunk size.
+    shards : tuple[int, ...] | None
+        The shards parameter to pass to init_array/from_array.
+        None if sharding is not used.
+    """
+
+    chunk_grid: ChunkGrid | None
+    chunks: tuple[int, ...] | Literal["auto"]
+    shards: tuple[int, ...] | None
+
+
+def _validate_zarr_format_compatibility(
+    chunks: Any,
+    shards: Any,
+    zarr_format: int,
+) -> None:
+    """
+    Validate that chunk specification is compatible with Zarr format.
+
+    Parameters
+    ----------
+    chunks : Any
+        The chunks specification.
+    shards : Any
+        The shards specification.
+    zarr_format : {2, 3}
+        The Zarr format version.
+
+    Raises
+    ------
+    ValueError
+        If the specification is not compatible with the Zarr format.
+    """
+    if zarr_format == 2:
+        # Zarr v2 doesn't support ChunkGrid instances
+        if isinstance(chunks, ChunkGrid):
+            raise ValueError(
+                "ChunkGrid instances are only supported in Zarr format 3. "
+                "For Zarr format 2, use a tuple of integers for chunks."
+            )
+
+        # Zarr v2 doesn't support nested sequences (variable chunks)
+        if _is_nested_sequence(chunks):
+            raise ValueError(
+                "Variable chunks (nested sequences) are only supported in Zarr format 3. "
+                "Use zarr_format=3 or provide a regular tuple for chunks."
+            )
+
+        # Zarr v2 doesn't support sharding
+        if shards is not None:
+            raise ValueError(
+                f"Sharding is only supported in Zarr format 3. "
+                f"Got zarr_format={zarr_format} with shards={shards}."
+            )
+
+
+def _validate_sharding_compatibility(
+    chunks: Any,
+    shards: Any,
+) -> None:
+    """
+    Validate that chunk specification is compatible with sharding.
+
+    Parameters
+    ----------
+    chunks : Any
+        The chunks specification.
+    shards : Any
+        The shards specification.
+
+    Raises
+    ------
+    ValueError
+        If the chunk specification is not compatible with sharding.
+    """
+    if shards is not None:
+        # ChunkGrid instances can't be used with sharding
+        if isinstance(chunks, ChunkGrid):
+            raise ValueError(
+                "Cannot use ChunkGrid instances with sharding. "
+                "When shards parameter is provided, chunks must be a tuple of integers or 'auto'."
+            )
+
+        # Variable chunks (nested sequences) can't be used with sharding
+        if _is_nested_sequence(chunks):
+            raise ValueError(
+                "Cannot use variable chunks (nested sequences) with sharding. "
+                "Sharding requires uniform chunk sizes."
+            )
+
+
+def _validate_data_compatibility(
+    chunk_grid: ChunkGrid | None,
+    has_data: bool,
+) -> None:
+    """
+    Validate that chunk grid is compatible with creating from data.
+
+    Parameters
+    ----------
+    chunk_grid : ChunkGrid | None
+        The chunk grid.
+    has_data : bool
+        Whether the array is being created from existing data.
+
+    Raises
+    ------
+    ValueError
+        If the chunk grid is not compatible with from_array.
+    """
+    if has_data and chunk_grid is not None and isinstance(chunk_grid, RectilinearChunkGrid):
+        # RectilinearChunkGrid doesn't work with from_array
+        raise ValueError(
+            "Cannot use RectilinearChunkGrid (variable-sized chunks) when creating array from data. "
+            "The from_array function requires uniform chunk sizes. "
+            "Use regular chunks instead, or create an empty array first and write data separately."
+        )
+
+
+def resolve_chunk_spec(
+    *,
+    chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int,
+    shards: ShardsLike | None,
+    shape: tuple[int, ...],
+    dtype_itemsize: int,
+    zarr_format: int,
+    has_data: bool = False,
+) -> ResolvedChunkSpec:
+    """
+    Resolve chunk specification into chunk_grid, chunks, and shards parameters.
+
+    This function centralizes all chunk grid creation logic and error handling.
+    It validates the chunk specification for compatibility with:
+    - Zarr format version (v2 vs v3)
+    - Sharding requirements
+    - Data source requirements (from_array vs init_array)
+
+    Parameters
+    ----------
+    chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int
+        The chunks specification from the user. Can be:
+        - A ChunkGrid instance (Zarr v3 only)
+        - A nested sequence for variable-sized chunks (Zarr v3 only)
+        - A tuple of integers for uniform chunks
+        - A single integer (applied to all dimensions)
+        - The literal "auto"
+    shards : ShardsLike | None
+        The shards specification from the user. When provided, chunks represents
+        the inner chunk size and shards represents the outer shard size.
+    shape : tuple[int, ...]
+        The array shape. Required for auto-chunking and validation.
+    dtype_itemsize : int
+        The item size of the dtype in bytes. Used for auto-chunking heuristics.
+    zarr_format : {2, 3}
+        The Zarr format version.
+    has_data : bool, default=False
+        Whether the array is being created from existing data. If True,
+        RectilinearChunkGrid (variable chunks) will raise an error since
+        from_array requires uniform chunks.
+
+    Returns
+    -------
+    ResolvedChunkSpec
+        A dataclass containing the resolved chunk_grid, chunks, and shards.
+
+    Raises
+    ------
+    ValueError
+        If the chunk specification is invalid for the given zarr_format,
+        or if incompatible options are specified (e.g., RectilinearChunkGrid + shards,
+        ChunkGrid + Zarr v2, variable chunks + sharding).
+    TypeError
+        If the chunks parameter has an invalid type.
+
+    Examples
+    --------
+    >>> # Regular chunks, no sharding
+    >>> spec = resolve_chunk_spec(
+    ...     chunks=(10, 10),
+    ...     shards=None,
+    ...     shape=(100, 100),
+    ...     dtype_itemsize=4,
+    ...     zarr_format=3
+    ... )
+    >>> spec.chunks
+    (10, 10)
+    >>> spec.shards is None
+    True
+
+    >>> # Sharding enabled
+    >>> spec = resolve_chunk_spec(
+    ...     chunks=(5, 5),
+    ...     shards=(20, 20),
+    ...     shape=(100, 100),
+    ...     dtype_itemsize=4,
+    ...     zarr_format=3
+    ... )
+    >>> spec.chunks
+    (5, 5)
+    >>> spec.shards
+    (20, 20)
+
+    >>> # Variable chunks (RectilinearChunkGrid)
+    >>> spec = resolve_chunk_spec(
+    ...     chunks=[[10, 20, 30], [25, 25, 25, 25]],
+    ...     shards=None,
+    ...     shape=(60, 100),
+    ...     dtype_itemsize=4,
+    ...     zarr_format=3
+    ... )
+    >>> isinstance(spec.chunk_grid, RectilinearChunkGrid)
+    True
+
+    >>> # Error: variable chunks with Zarr v2
+    >>> try:
+    ...     resolve_chunk_spec(
+    ...         chunks=[[10, 20], [5, 5]],
+    ...         shards=None,
+    ...         shape=(30, 10),
+    ...         dtype_itemsize=4,
+    ...         zarr_format=2
+    ...     )
+    ... except ValueError as e:
+    ...     print(str(e))
+    Variable chunks (nested sequences) are only supported in Zarr format 3...
+    """
+    # Step 1: Validate Zarr format compatibility
+    _validate_zarr_format_compatibility(chunks, shards, zarr_format)
+
+    # Step 2: Validate sharding compatibility
+    _validate_sharding_compatibility(chunks, shards)
+
+    # Step 3: Resolve the chunk specification
+    if shards is not None:
+        # Sharding enabled: pass chunks and shards directly
+        # init_array expects: chunks = inner chunk size, shards = outer shard size
+        # The _auto_partition function in init_array will handle the sharding logic
+        chunks_param: tuple[int, ...] | Literal["auto"]
+        if isinstance(chunks, tuple):
+            chunks_param = chunks
+        elif chunks == "auto":
+            chunks_param = "auto"
+        elif isinstance(chunks, int):
+            # Convert single int to tuple for all dimensions
+            chunks_param = normalize_chunks(chunks, shape, dtype_itemsize)
+        else:
+            # This should have been caught by _validate_sharding_compatibility
+            # but be defensive
+            raise TypeError(
+                f"Invalid chunks type when sharding is enabled: {type(chunks)}. "
+                "Expected tuple, int, or 'auto'."
+            )
+
+        # Normalize shards to tuple[int, ...] for ResolvedChunkSpec
+        shards_param: tuple[int, ...] | None
+        if isinstance(shards, tuple):
+            shards_param = shards
+        elif isinstance(shards, dict):
+            # ShardsConfigParam - extract the shape
+            shards_param = shards.get("shape")
+        else:
+            # shards == "auto" or other cases
+            # For "auto" shards, we pass None and let init_array handle it
+            shards_param = None
+
+        return ResolvedChunkSpec(
+            chunk_grid=None,
+            chunks=chunks_param,
+            shards=shards_param,
+        )
+    else:
+        # No sharding - use parse_chunk_grid to handle ChunkGrid, nested sequences, etc.
+        chunk_grid = parse_chunk_grid(
+            chunks, shape=shape, item_size=dtype_itemsize, zarr_format=zarr_format
+        )
+
+        # Step 4: Validate data compatibility
+        _validate_data_compatibility(chunk_grid, has_data)
+
+        # Step 5: Determine parameters to return
+        if isinstance(chunk_grid, RectilinearChunkGrid):
+            # RectilinearChunkGrid: pass via chunk_grid parameter, use "auto" for chunks
+            return ResolvedChunkSpec(
+                chunk_grid=chunk_grid,
+                chunks="auto",
+                shards=None,
+            )
+        else:
+            # RegularChunkGrid: extract chunk_shape
+            assert isinstance(chunk_grid, RegularChunkGrid)
+            chunks_param = chunk_grid.chunk_shape
+
+            # For zarr v3, also pass chunk_grid; for zarr v2, only chunks is used
+            chunk_grid_param = chunk_grid if zarr_format == 3 else None
+
+            return ResolvedChunkSpec(
+                chunk_grid=chunk_grid_param,
+                chunks=chunks_param,
+                shards=None,
+            )
