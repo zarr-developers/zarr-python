@@ -34,7 +34,8 @@ requires-python = ">=3.11"
 dependencies = [
     'packaging>=22.0',
     'numpy>=1.26',
-    'numcodecs[crc32c]>=0.14',
+    'numcodecs>=0.14',
+    'google-crc32c>=1.5',
     'typing_extensions>=4.9',
     'donfig>=0.8',
 ]

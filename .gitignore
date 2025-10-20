@@ -90,3 +90,4 @@ tests/.hypothesis
 .hypothesis/
 
 zarr/version.py
+zarr.egg-info/
