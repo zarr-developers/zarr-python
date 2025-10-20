@@ -6,7 +6,7 @@ ci:
 default_stages: [pre-commit, pre-push]
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.12.7
+    rev: v0.13.1
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
@@ -17,12 +17,13 @@ repos:
       - id: codespell
         args: ["-L", "fo,ihs,kake,te", "-S", "fixture"]
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: check-yaml
+        exclude: mkdocs.yml
       - id: trailing-whitespace
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.17.1
+    rev: v1.18.2
     hooks:
       - id: mypy
         files: src|tests
@@ -30,7 +31,8 @@ repos:
           # Package dependencies
           - packaging
           - donfig
-          - numcodecs[crc32c]
+          - numcodecs
+          - google-crc32c>=1.5
           - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
           - typing_extensions
           - universal-pathlib
@@ -53,6 +55,6 @@ repos:
     hooks:
       - id: numpydoc-validation
   - repo: https://github.com/twisted/towncrier
-    rev: 24.8.0
+    rev: 25.8.0
     hooks:
       - id: towncrier-check

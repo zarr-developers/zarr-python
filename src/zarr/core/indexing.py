@@ -28,6 +28,12 @@ import numpy.typing as npt
 
 from zarr.core.common import ceildiv, product
 from zarr.core.metadata import T_ArrayMetadata
+from zarr.errors import (
+    ArrayIndexError,
+    BoundsCheckError,
+    NegativeStepError,
+    VindexInvalidSelectionError,
+)
 
 if TYPE_CHECKING:
     from zarr.core.array import Array, AsyncArray
@@ -49,29 +55,6 @@ SelectionNormalized = tuple[Selector, ...] | ArrayOfIntOrBool
 SelectionWithFields = Selection | str | Sequence[str]
 SelectorTuple = tuple[Selector, ...] | npt.NDArray[np.intp] | slice
 Fields = str | list[str] | tuple[str, ...]
-
-
-class ArrayIndexError(IndexError):
-    pass
-
-
-class BoundsCheckError(IndexError):
-    _msg = ""
-
-    def __init__(self, dim_len: int) -> None:
-        self._msg = f"index out of bounds for dimension with length {dim_len}"
-
-
-class NegativeStepError(IndexError):
-    _msg = "only slices with step >= 1 are supported"
-
-
-class VindexInvalidSelectionError(IndexError):
-    _msg = (
-        "unsupported selection type for vectorized indexing; only "
-        "coordinate selection (tuple of integer arrays) and mask selection "
-        "(single Boolean array) are supported; got {!r}"
-    )
 
 
 def err_too_many_indices(selection: Any, shape: tuple[int, ...]) -> None:
@@ -128,17 +111,20 @@ def _iter_grid(
 
     Examples
     --------
-    >>> tuple(iter_grid((1,)))
-    ((0,),)
+    ```python
+    from zarr.core.indexing import _iter_grid
+    tuple(_iter_grid((1,)))
+    # ((0,),)
 
-    >>> tuple(iter_grid((2,3)))
-    ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
+    tuple(_iter_grid((2,3)))
+    # ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3), origin=(1,1)))
-    ((1, 1), (1, 2))
+    tuple(_iter_grid((2,3), origin=(1,1)))
+    # ((1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3), origin=(0,0), selection_shape=(2,2)))
-    ((0, 0), (0, 1), (1, 0), (1, 1))
+    tuple(_iter_grid((2,3), origin=(0,0), selection_shape=(2,2)))
+    # ((0, 0), (0, 1), (1, 0), (1, 1))
+    ```
     """
     if origin is None:
         origin_parsed = (0,) * len(grid_shape)
@@ -200,24 +186,27 @@ def _iter_regions(
         The linear indexing order to use.
 
     Yields
-    -------
+    ------
 
     Iterator[tuple[slice, ...]]
         An iterator over tuples of slices, where each slice spans a separate contiguous region
 
     Examples
     --------
-    >>> tuple(iter_regions((1,), (1,)))
-    ((slice(0, 1, 1),),)
+    ```python
+    from zarr.core.indexing import _iter_regions
+    tuple(_iter_regions((1,), (1,)))
+    # ((slice(0, 1, 1),),)
 
-    >>> tuple(iter_regions((2, 3), (1, 2)))
-    ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
+    tuple(_iter_regions((2, 3), (1, 2)))
+    # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
 
-    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1))
-    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+    tuple(_iter_regions((2,3), (1,2), origin=(1,1)))
+    # ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
 
-    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1), selection_shape=(2,2))
-    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+    tuple(_iter_regions((2,3), (1,2), origin=(0,0), selection_shape=(2,2)))
+    # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
+    ```
     """
     grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
     for grid_position in _iter_grid(
@@ -361,7 +350,8 @@ def normalize_integer_selection(dim_sel: int, dim_len: int) -> int:
 
     # handle out of bounds
     if dim_sel >= dim_len or dim_sel < 0:
-        raise BoundsCheckError(dim_len)
+        msg = f"index out of bounds for dimension with length {dim_len}"
+        raise BoundsCheckError(msg)
 
     return dim_sel
 
@@ -421,7 +411,7 @@ class SliceDimIndexer:
         # normalize
         start, stop, step = dim_sel.indices(dim_len)
         if step < 1:
-            raise NegativeStepError
+            raise NegativeStepError("only slices with step >= 1 are supported.")
 
         object.__setattr__(self, "start", start)
         object.__setattr__(self, "stop", stop)
@@ -744,7 +734,8 @@ def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
 
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
     if np.any(x < 0) or np.any(x >= dim_len):
-        raise BoundsCheckError(dim_len)
+        msg = f"index out of bounds for dimension with length {dim_len}"
+        raise BoundsCheckError(msg)
 
 
 @dataclass(frozen=True)
@@ -1098,7 +1089,8 @@ class BlockIndexer(Indexer):
             dim_indexers.append(dim_indexer)
 
             if start >= dim_len or start < 0:
-                raise BoundsCheckError(dim_len)
+                msg = f"index out of bounds for dimension with length {dim_len}"
+                raise BoundsCheckError(msg)
 
         shape = tuple(s.nitems for s in dim_indexers)
 
@@ -1329,7 +1321,12 @@ class VIndex:
         elif is_mask_selection(new_selection, self.array.shape):
             return self.array.get_mask_selection(new_selection, fields=fields)
         else:
-            raise VindexInvalidSelectionError(new_selection)
+            msg = (
+                "unsupported selection type for vectorized indexing; only "
+                "coordinate selection (tuple of integer arrays) and mask selection "
+                f"(single Boolean array) are supported; got {new_selection!r}"
+            )
+            raise VindexInvalidSelectionError(msg)
 
     def __setitem__(
         self, selection: CoordinateSelection | MaskSelection, value: npt.ArrayLike
@@ -1342,7 +1339,12 @@ class VIndex:
         elif is_mask_selection(new_selection, self.array.shape):
             self.array.set_mask_selection(new_selection, value, fields=fields)
         else:
-            raise VindexInvalidSelectionError(new_selection)
+            msg = (
+                "unsupported selection type for vectorized indexing; only "
+                "coordinate selection (tuple of integer arrays) and mask selection "
+                f"(single Boolean array) are supported; got {new_selection!r}"
+            )
+            raise VindexInvalidSelectionError(msg)
 
 
 @dataclass(frozen=True)
@@ -1368,7 +1370,12 @@ class AsyncVIndex(Generic[T_ArrayMetadata]):
         elif is_mask_selection(new_selection, self.array.shape):
             return await self.array.get_mask_selection(new_selection, fields=fields)
         else:
-            raise VindexInvalidSelectionError(new_selection)
+            msg = (
+                "unsupported selection type for vectorized indexing; only "
+                "coordinate selection (tuple of integer arrays) and mask selection "
+                f"(single Boolean array) are supported; got {new_selection!r}"
+            )
+            raise VindexInvalidSelectionError(msg)
 
 
 def check_fields(fields: Fields | None, dtype: np.dtype[Any]) -> np.dtype[Any]:
@@ -1487,7 +1494,12 @@ def get_indexer(
         elif is_mask_selection(new_selection, shape):
             return MaskIndexer(cast("MaskSelection", selection), shape, chunk_grid)
         else:
-            raise VindexInvalidSelectionError(new_selection)
+            msg = (
+                "unsupported selection type for vectorized indexing; only "
+                "coordinate selection (tuple of integer arrays) and mask selection "
+                f"(single Boolean array) are supported; got {new_selection!r}"
+            )
+            raise VindexInvalidSelectionError(msg)
     elif is_pure_orthogonal_indexing(pure_selection, len(shape)):
         return OrthogonalIndexer(cast("OrthogonalSelection", selection), shape, chunk_grid)
     else:

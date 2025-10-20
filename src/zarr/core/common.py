@@ -38,7 +38,7 @@ ZMETADATA_V2_JSON = ".zmetadata"
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = Iterable[int] | int
 # For backwards compatibility
-ChunkCoords: tuple[int, ...]
+ChunkCoords = tuple[int, ...]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
 JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None

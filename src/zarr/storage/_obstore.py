@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
-from typing import TYPE_CHECKING, TypedDict
+from typing import TYPE_CHECKING, Generic, Self, TypedDict, TypeVar
 
 from zarr.abc.store import (
     ByteRequest,
@@ -13,6 +13,7 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
+from zarr.core.common import concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
@@ -23,7 +24,6 @@ if TYPE_CHECKING:
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 __all__ = ["ObjectStore"]
 
@@ -34,7 +34,10 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
-class ObjectStore(Store):
+T_Store = TypeVar("T_Store", bound="_UpstreamObjectStore")
+
+
+class ObjectStore(Store, Generic[T_Store]):
     """
     Store that uses obstore for fast read/write from AWS, GCP, Azure.
 
@@ -51,7 +54,7 @@ class ObjectStore(Store):
     raise an issue with any comments/concerns about the store.
     """
 
-    store: _UpstreamObjectStore
+    store: T_Store
     """The underlying obstore instance."""
 
     def __eq__(self, value: object) -> bool:
@@ -61,15 +64,15 @@ class ObjectStore(Store):
         if not self.read_only == value.read_only:
             return False
 
-        return self.store == value.store
+        return self.store == value.store  # type: ignore[no-any-return]
 
-    def __init__(self, store: _UpstreamObjectStore, *, read_only: bool = False) -> None:
+    def __init__(self, store: T_Store, *, read_only: bool = False) -> None:
         if not store.__class__.__module__.startswith("obstore"):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
         super().__init__(read_only=read_only)
         self.store = store
 
-    def with_read_only(self, read_only: bool = False) -> ObjectStore:
+    def with_read_only(self, read_only: bool = False) -> Self:
         # docstring inherited
         return type(self)(
             store=self.store,
@@ -196,16 +199,17 @@ class ObjectStore(Store):
         with contextlib.suppress(FileNotFoundError):
             await obs.delete_async(self.store, key)
 
-    @property
-    def supports_partial_writes(self) -> bool:
+    async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
-        return False
+        import obstore as obs
 
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
+        self._check_writable()
+        if prefix != "" and not prefix.endswith("/"):
+            prefix += "/"
+
+        metas = await obs.list(self.store, prefix).collect_async()
+        keys = [(m["path"],) for m in metas]
+        await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
 
     @property
     def supports_listing(self) -> bool:

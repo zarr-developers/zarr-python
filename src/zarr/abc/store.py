@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from asyncio import gather
 from dataclasses import dataclass
 from itertools import starmap
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from typing import Any, Self, TypeAlias
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 __all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
@@ -310,25 +309,12 @@ class Store(ABC):
         ...
 
     @property
-    @abstractmethod
-    def supports_partial_writes(self) -> bool:
-        """Does the store support partial writes?"""
-        ...
+    def supports_partial_writes(self) -> Literal[False]:
+        """Does the store support partial writes?
 
-    @abstractmethod
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        """Store values at a given key, starting at byte range_start.
-
-        Parameters
-        ----------
-        key_start_values : list[tuple[str, int, BytesLike]]
-            set of key, range_start, values triples, a key may occur multiple times with different
-            range_starts, range_starts (considering the length of the respective values) must not
-            specify overlapping ranges for the same key
+        Partial writes are no longer used by Zarr, so this is always false.
         """
-        ...
+        return False
 
     @property
     @abstractmethod
@@ -464,7 +450,7 @@ class Store(ABC):
         Notes
         -----
         ``getsize_prefix`` is just provided as a potentially faster alternative to
-        listing all the keys under a prefix calling :meth:`Store.getsize` on each.
+        listing all the keys under a prefix calling [`Store.getsize`][zarr.abc.store.Store.getsize] on each.
 
         In general, ``prefix`` should be the path of an Array or Group in the Store.
         Implementations may differ on the behavior when some other ``prefix``
@@ -499,7 +485,7 @@ class ByteSetter(Protocol):
         self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None: ...
 
-    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None: ...
+    async def set(self, value: Buffer) -> None: ...
 
     async def delete(self) -> None: ...
 
