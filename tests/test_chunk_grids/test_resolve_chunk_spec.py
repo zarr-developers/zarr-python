@@ -21,9 +21,9 @@ def test_resolve_chunk_spec_regular_chunks_no_sharding() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == (10, 10)
-    assert spec.shards is None
     assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (10, 10)
+    assert spec.shards is None
 
 
 def test_resolve_chunk_spec_regular_chunks_with_sharding() -> None:
@@ -35,9 +35,10 @@ def test_resolve_chunk_spec_regular_chunks_with_sharding() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == (5, 5)
+    # With sharding, chunk_grid represents inner chunks
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (5, 5)
     assert spec.shards == (20, 20)
-    assert spec.chunk_grid is None  # sharding uses init_array's _auto_partition
 
 
 def test_resolve_chunk_spec_auto_chunks_no_sharding() -> None:
@@ -49,10 +50,10 @@ def test_resolve_chunk_spec_auto_chunks_no_sharding() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert isinstance(spec.chunks, tuple)
-    assert len(spec.chunks) == 2
-    assert spec.shards is None
     assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert isinstance(spec.chunk_grid.chunk_shape, tuple)
+    assert len(spec.chunk_grid.chunk_shape) == 2
+    assert spec.shards is None
 
 
 def test_resolve_chunk_spec_auto_chunks_with_sharding() -> None:
@@ -64,9 +65,10 @@ def test_resolve_chunk_spec_auto_chunks_with_sharding() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == "auto"
+    # With sharding and auto chunks, chunk_grid has auto-computed inner chunks
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert isinstance(spec.chunk_grid.chunk_shape, tuple)
     assert spec.shards == (20, 20)
-    assert spec.chunk_grid is None
 
 
 def test_resolve_chunk_spec_single_int_chunks() -> None:
@@ -78,9 +80,9 @@ def test_resolve_chunk_spec_single_int_chunks() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == (10, 10)
-    assert spec.shards is None
     assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (10, 10)
+    assert spec.shards is None
 
 
 def test_resolve_chunk_spec_variable_chunks_no_sharding() -> None:
@@ -92,9 +94,9 @@ def test_resolve_chunk_spec_variable_chunks_no_sharding() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == "auto"
-    assert spec.shards is None
     assert isinstance(spec.chunk_grid, RectilinearChunkGrid)
+    assert spec.chunk_grid.chunk_shapes == ((10, 20, 30), (25, 25, 25, 25))
+    assert spec.shards is None
 
 
 def test_resolve_chunk_spec_chunk_grid_instance() -> None:
@@ -107,9 +109,9 @@ def test_resolve_chunk_spec_chunk_grid_instance() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == (15, 15)
-    assert spec.shards is None
     assert spec.chunk_grid is grid
+    assert grid.chunk_shape == (15, 15)  # Use grid directly since we verified identity
+    assert spec.shards is None
 
 
 def test_resolve_chunk_spec_zarr_v2_regular_chunks() -> None:
@@ -121,9 +123,10 @@ def test_resolve_chunk_spec_zarr_v2_regular_chunks() -> None:
         dtype_itemsize=4,
         zarr_format=2,
     )
-    assert spec.chunks == (10, 10)
+    # Zarr v2 also gets a chunk_grid now (for consistency)
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (10, 10)
     assert spec.shards is None
-    assert spec.chunk_grid is None  # Zarr v2 doesn't use chunk_grid
 
 
 def test_resolve_chunk_spec_result_is_dataclass() -> None:
@@ -137,8 +140,8 @@ def test_resolve_chunk_spec_result_is_dataclass() -> None:
     )
     assert isinstance(spec, ResolvedChunkSpec)
     assert hasattr(spec, "chunk_grid")
-    assert hasattr(spec, "chunks")
     assert hasattr(spec, "shards")
+    # Note: 'chunks' field has been removed from ResolvedChunkSpec
 
 
 # Zarr format compatibility error tests
@@ -266,7 +269,8 @@ def test_resolve_chunk_spec_regular_chunks_with_data_ok() -> None:
         zarr_format=3,
         has_data=True,
     )
-    assert spec.chunks == (10, 10)
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (10, 10)
     assert spec.shards is None
 
 
@@ -310,7 +314,8 @@ def test_resolve_chunk_spec_empty_array_shape() -> None:
         zarr_format=3,
     )
     # normalize_chunks may adjust chunk size for empty arrays
-    assert isinstance(spec.chunks, tuple)
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert isinstance(spec.chunk_grid.chunk_shape, tuple)
     assert spec.shards is None
 
 
@@ -323,7 +328,8 @@ def test_resolve_chunk_spec_1d_array() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == (10,)
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (10,)
     assert spec.shards is None
 
 
@@ -336,7 +342,8 @@ def test_resolve_chunk_spec_high_dimensional_array() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == (10, 10, 10, 10)
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (10, 10, 10, 10)
     assert spec.shards is None
 
 
@@ -349,7 +356,8 @@ def test_resolve_chunk_spec_single_int_with_sharding() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == (5, 5)  # Converted to tuple
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (5, 5)  # Converted to tuple
     assert spec.shards == (20, 20)
 
 
@@ -366,7 +374,8 @@ def test_resolve_chunk_spec_maintains_chunk_normalization() -> None:
         dtype_itemsize=4,
         zarr_format=3,
     )
-    assert spec.chunks == (100, 10)  # -1 replaced with full dimension
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert spec.chunk_grid.chunk_shape == (100, 10)  # -1 replaced with full dimension
 
 
 def test_resolve_chunk_spec_maintains_auto_chunking_heuristics() -> None:
@@ -379,6 +388,7 @@ def test_resolve_chunk_spec_maintains_auto_chunking_heuristics() -> None:
         zarr_format=3,
     )
     # Auto-chunking should produce reasonable chunk sizes
-    assert isinstance(spec.chunks, tuple)
-    assert len(spec.chunks) == 2
-    assert all(c > 0 for c in spec.chunks)
+    assert isinstance(spec.chunk_grid, RegularChunkGrid)
+    assert isinstance(spec.chunk_grid.chunk_shape, tuple)
+    assert len(spec.chunk_grid.chunk_shape) == 2
+    assert all(c > 0 for c in spec.chunk_grid.chunk_shape)

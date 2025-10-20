@@ -7,9 +7,10 @@ import numbers
 import operator
 import warnings
 from abc import abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import cached_property, reduce
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict, Union
 
 import numpy as np
 
@@ -29,11 +30,20 @@ if TYPE_CHECKING:
 
     from zarr.core.array import ShardsLike
 
-from collections.abc import Sequence
 
 # Type alias for chunk edge length specification
 # Can be either an integer or a run-length encoded tuple [value, count]
 ChunkEdgeLength = int | tuple[int, int]
+
+# User-facing chunk specification types
+# Note: ChunkGrid is defined later in this file but can be used via string literal
+ChunksLike: TypeAlias = Union[
+    tuple[int, ...],  # Regular chunks: (10, 10) → RegularChunkGrid
+    int,  # Uniform chunks: 10 → RegularChunkGrid
+    Sequence[Sequence[int]],  # Variable chunks: [[10,20],[5,5]] → RectilinearChunkGrid
+    "ChunkGrid",  # Explicit ChunkGrid instance (forward reference)
+    Literal["auto"],  # Auto-chunking → RegularChunkGrid
+]
 
 
 class RectilinearChunkGridConfigurationDict(TypedDict):
@@ -205,7 +215,7 @@ def _guess_chunks(
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tuple[int, ...]:
+def _normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tuple[int, ...]:
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
 
@@ -225,10 +235,19 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
 
     # handle dask-style chunks (iterable of iterables)
     if all(isinstance(c, (tuple | list)) for c in chunks):
+        # Check for irregular chunks and warn user
+        for dim_idx, c in enumerate(chunks):
+            if len(c) > 1 and not all(chunk_size == c[0] for chunk_size in c):
+                warnings.warn(
+                    f"Irregular chunks detected in dimension {dim_idx}: {c}. "
+                    f"Only the first chunk size ({c[0]}) will be used, "
+                    f"resulting in regular chunks. "
+                    f"For variable chunk sizes, use RectilinearChunkGrid instead.",
+                    UserWarning,
+                    stacklevel=2,
+                )
         # take first chunk size for each dimension
-        chunks = tuple(
-            c[0] for c in chunks
-        )  # TODO: check/error/warn for irregular chunks (e.g. if c[0] != c[1:-1])
+        chunks = tuple(c[0] for c in chunks)
 
     # handle bad dimensionality
     if len(chunks) > len(shape):
@@ -1227,23 +1246,24 @@ def parse_chunk_grid(
     >>> result.chunk_shape
     (10, 10)
     """
-    # Parse shape to ensure it's a tuple
-    shape_parsed = parse_shapelike(shape)
 
     # Case 1: Already a ChunkGrid instance
     if isinstance(chunks, ChunkGrid):
         return chunks
 
+    # Parse shape to ensure it's a tuple
+    shape_parsed = parse_shapelike(shape)
+
     # Case 2: String "auto" -> RegularChunkGrid
     if isinstance(chunks, str):
         # chunks can only be "auto" based on type annotation
-        # normalize_chunks expects None or True for auto-chunking, not "auto"
-        chunk_shape = normalize_chunks(None, shape_parsed, item_size)
+        # _normalize_chunks expects None or True for auto-chunking, not "auto"
+        chunk_shape = _normalize_chunks(None, shape_parsed, item_size)
         return RegularChunkGrid(chunk_shape=chunk_shape)
 
     # Case 3: Single int -> RegularChunkGrid
     if isinstance(chunks, int):
-        chunk_shape = normalize_chunks(chunks, shape_parsed, item_size)
+        chunk_shape = _normalize_chunks(chunks, shape_parsed, item_size)
         return RegularChunkGrid(chunk_shape=chunk_shape)
 
     # Case 4: Tuple or sequence - determine if regular or variable chunks
@@ -1260,7 +1280,7 @@ def parse_chunk_grid(
         return RectilinearChunkGrid(chunk_shapes=chunk_shapes)
     else:
         # Regular tuple of ints -> RegularChunkGrid
-        chunk_shape = normalize_chunks(chunks, shape_parsed, item_size)
+        chunk_shape = _normalize_chunks(chunks, shape_parsed, item_size)
         return RegularChunkGrid(chunk_shape=chunk_shape)
 
 
@@ -1269,25 +1289,24 @@ class ResolvedChunkSpec:
     """
     Result of resolving chunk specification.
 
-    This dataclass encapsulates the resolved chunk grid, chunks, and shards
+    This dataclass encapsulates the resolved chunk grid and shards
     parameters for creating a Zarr array.
+
+    After resolution, all chunk specifications are converted to a concrete
+    ChunkGrid instance (either RegularChunkGrid or RectilinearChunkGrid).
+    The shards parameter is kept separate as it wraps the chunk_grid in
+    a ShardingCodec.
 
     Attributes
     ----------
-    chunk_grid : ChunkGrid | None
-        The resolved chunk grid. None if using legacy chunks parameter only
-        (e.g., for Zarr v2 or when no ChunkGrid is needed).
-    chunks : tuple[int, ...] | Literal["auto"]
-        The chunks parameter to pass to init_array/from_array.
-        For sharded arrays, this is the inner chunk size.
-        For non-sharded arrays, this is the actual chunk size.
+    chunk_grid : ChunkGrid
+        The resolved chunk grid. Always a concrete instance after resolution.
     shards : tuple[int, ...] | None
         The shards parameter to pass to init_array/from_array.
         None if sharding is not used.
     """
 
-    chunk_grid: ChunkGrid | None
-    chunks: tuple[int, ...] | Literal["auto"]
+    chunk_grid: ChunkGrid
     shards: tuple[int, ...] | None
 
 
@@ -1409,10 +1428,11 @@ def resolve_chunk_spec(
     has_data: bool = False,
 ) -> ResolvedChunkSpec:
     """
-    Resolve chunk specification into chunk_grid, chunks, and shards parameters.
+    Resolve chunk specification into a ChunkGrid and shards parameters.
 
     This function centralizes all chunk grid creation logic and error handling.
-    It validates the chunk specification for compatibility with:
+    It converts any chunk specification format into a concrete ChunkGrid instance
+    and validates compatibility with:
     - Zarr format version (v2 vs v3)
     - Sharding requirements
     - Data source requirements (from_array vs init_array)
@@ -1428,7 +1448,7 @@ def resolve_chunk_spec(
         - The literal "auto"
     shards : ShardsLike | None
         The shards specification from the user. When provided, chunks represents
-        the inner chunk size and shards represents the outer shard size.
+        the inner chunk size within each shard, and shards represents the outer shard size.
     shape : tuple[int, ...]
         The array shape. Required for auto-chunking and validation.
     dtype_itemsize : int
@@ -1443,7 +1463,8 @@ def resolve_chunk_spec(
     Returns
     -------
     ResolvedChunkSpec
-        A dataclass containing the resolved chunk_grid, chunks, and shards.
+        A dataclass containing the resolved chunk_grid and shards.
+        The chunk_grid is always a concrete ChunkGrid instance.
 
     Raises
     ------
@@ -1464,7 +1485,7 @@ def resolve_chunk_spec(
     ...     dtype_itemsize=4,
     ...     zarr_format=3
     ... )
-    >>> spec.chunks
+    >>> spec.chunk_grid.chunk_shape
     (10, 10)
     >>> spec.shards is None
     True
@@ -1477,9 +1498,9 @@ def resolve_chunk_spec(
     ...     dtype_itemsize=4,
     ...     zarr_format=3
     ... )
-    >>> spec.chunks
+    >>> spec.chunk_grid.chunk_shape  # Inner chunks
     (5, 5)
-    >>> spec.shards
+    >>> spec.shards  # Outer shards
     (20, 20)
 
     >>> # Variable chunks (RectilinearChunkGrid)
@@ -1512,19 +1533,21 @@ def resolve_chunk_spec(
     # Step 2: Validate sharding compatibility
     _validate_sharding_compatibility(chunks, shards)
 
-    # Step 3: Resolve the chunk specification
+    # Step 3: Resolve the chunk specification to a ChunkGrid
     if shards is not None:
-        # Sharding enabled: pass chunks and shards directly
-        # init_array expects: chunks = inner chunk size, shards = outer shard size
-        # The _auto_partition function in init_array will handle the sharding logic
-        chunks_param: tuple[int, ...] | Literal["auto"]
+        # Sharding enabled: create ChunkGrid for inner chunks
+        # Parse the inner chunks specification (must be regular, not variable)
         if isinstance(chunks, tuple):
-            chunks_param = chunks
+            # Already normalized tuple
+            inner_chunk_grid = RegularChunkGrid(chunk_shape=chunks)
         elif chunks == "auto":
-            chunks_param = "auto"
+            # Auto-chunk for inner chunks - use smaller target (1MB default for sharding)
+            inner_chunks = _guess_chunks(shape, dtype_itemsize, max_bytes=1024 * 1024)
+            inner_chunk_grid = RegularChunkGrid(chunk_shape=inner_chunks)
         elif isinstance(chunks, int):
             # Convert single int to tuple for all dimensions
-            chunks_param = normalize_chunks(chunks, shape, dtype_itemsize)
+            inner_chunks = _normalize_chunks(chunks, shape, dtype_itemsize)
+            inner_chunk_grid = RegularChunkGrid(chunk_shape=inner_chunks)
         else:
             # This should have been caught by _validate_sharding_compatibility
             # but be defensive
@@ -1546,8 +1569,7 @@ def resolve_chunk_spec(
             shards_param = None
 
         return ResolvedChunkSpec(
-            chunk_grid=None,
-            chunks=chunks_param,
+            chunk_grid=inner_chunk_grid,
             shards=shards_param,
         )
     else:
@@ -1559,24 +1581,8 @@ def resolve_chunk_spec(
         # Step 4: Validate data compatibility
         _validate_data_compatibility(chunk_grid, has_data)
 
-        # Step 5: Determine parameters to return
-        if isinstance(chunk_grid, RectilinearChunkGrid):
-            # RectilinearChunkGrid: pass via chunk_grid parameter, use "auto" for chunks
-            return ResolvedChunkSpec(
-                chunk_grid=chunk_grid,
-                chunks="auto",
-                shards=None,
-            )
-        else:
-            # RegularChunkGrid: extract chunk_shape
-            assert isinstance(chunk_grid, RegularChunkGrid)
-            chunks_param = chunk_grid.chunk_shape
-
-            # For zarr v3, also pass chunk_grid; for zarr v2, only chunks is used
-            chunk_grid_param = chunk_grid if zarr_format == 3 else None
-
-            return ResolvedChunkSpec(
-                chunk_grid=chunk_grid_param,
-                chunks=chunks_param,
-                shards=None,
-            )
+        # Step 5: Return the chunk_grid
+        return ResolvedChunkSpec(
+            chunk_grid=chunk_grid,
+            shards=None,
+        )

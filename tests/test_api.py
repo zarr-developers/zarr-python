@@ -521,6 +521,8 @@ def test_array_order(
 
 
 async def test_init_order_warns() -> None:
+    from zarr.core.chunk_grids import RegularChunkGrid
+
     with pytest.warns(
         RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
     ):
@@ -528,6 +530,7 @@ async def test_init_order_warns() -> None:
             store_path=StorePath(store=MemoryStore()),
             shape=(1,),
             dtype="uint8",
+            chunk_grid=RegularChunkGrid(chunk_shape=(1,)),
             zarr_format=3,
             order="F",
         )
