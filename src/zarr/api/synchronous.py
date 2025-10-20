@@ -1039,6 +1039,10 @@ def from_array(
         - tuple[int, ...]: A tuple of integers representing the chunk shape.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
+
+        .. note::
+            Variable chunking (RectilinearChunkGrid) is not supported when creating arrays from
+            existing data. Use regular chunking (uniform chunk sizes) instead.
     shards : tuple[int, ...], optional
         Shard shape of the array.
         Following values are supported:
