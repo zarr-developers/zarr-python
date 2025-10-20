@@ -166,7 +166,7 @@ def parse_extra_fields(
             msg = (
                 "Invalid extra fields. "
                 "The following keys: "
-                f"{conflict_keys} "
+                f"{sorted(conflict_keys)} "
                 "are invalid because they collide with keys reserved for use by the "
                 "array metadata document."
             )
@@ -389,7 +389,7 @@ class ArrayV3Metadata(Metadata):
         if len(invalid_extra_fields) > 0:
             msg = (
                 "Got a Zarr V3 metadata document with the following disallowed extra fields:"
-                f"{sorted(invalid_extra_fields)}."
+                f"{sorted(invalid_extra_fields.keys())}."
                 'Extra fields are not allowed unless they are a dict with a "must_understand" key'
                 "which is assigned the value `False`."
             )
