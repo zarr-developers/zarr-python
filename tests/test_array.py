@@ -44,7 +44,7 @@ from zarr.core.array import (
     default_serializer_v3,
 )
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
-from zarr.core.chunk_grids import _auto_partition
+from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
 from zarr.core.common import JSON, ZarrFormat, ceildiv
 from zarr.core.dtype import (
@@ -80,7 +80,6 @@ from .test_dtype.conftest import zdtype_examples
 
 if TYPE_CHECKING:
     from zarr.abc.codec import CodecJSON_V3
-    from zarr.core.metadata.v3 import ArrayV3Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -1450,6 +1449,74 @@ class TestCreateArray:
                 shards=(5,),
                 zarr_format=2,
             )
+
+    @staticmethod
+    async def test_v2_rejects_rectilinear_chunk_grid(store: Store) -> None:
+        """
+        Test that creating a Zarr v2 array with RectilinearChunkGrid (nested chunks) raises an error.
+        Zarr v2 only supports RegularChunkGrid.
+        """
+        msg = "Variable chunks.*only supported in Zarr format 3"
+        with pytest.raises(ValueError, match=msg):
+            _ = await create_array(
+                store=store,
+                dtype="uint8",
+                shape=(30, 20),
+                chunks=[[10, 10, 10], [5, 5, 5, 5]],  # RectilinearChunkGrid
+                zarr_format=2,
+            )
+
+    @staticmethod
+    async def test_shards_dict_config(store: Store) -> None:
+        """
+        Test that creating an array with dict-based shards configuration works.
+        This tests the code path where shards is a dict (lines 4760-4762 in array.py).
+        """
+        from typing import cast
+
+        from zarr.core.array import ShardsConfigParam
+
+        arr = await create_array(
+            store=store,
+            dtype="uint8",
+            shape=(100, 100),
+            chunks=(10, 10),
+            shards=cast(ShardsConfigParam, {"shape": (20, 20)}),
+            zarr_format=3,
+        )
+        # With sharding, chunk_grid represents the outer shard structure
+        assert isinstance(arr.metadata.chunk_grid, RegularChunkGrid)
+        assert arr.metadata.chunk_grid.chunk_shape == (20, 20)
+        # Verify sharding codec was applied with inner chunks (10, 10)
+        assert isinstance(arr.metadata, ArrayV3Metadata)
+        sharding_codecs = [c for c in arr.metadata.codecs if hasattr(c, "chunk_shape")]
+        assert len(sharding_codecs) == 1
+        # Inner chunks (from chunks parameter) are stored in the sharding codec
+        assert sharding_codecs[0].chunk_shape == (10, 10)
+
+    @staticmethod
+    async def test_shards_auto(store: Store) -> None:
+        """
+        Test that creating an array with auto shards works.
+        This tests the code path where shards == "auto" (lines 4763-4770 in array.py).
+
+        Note: Auto sharding may or may not apply sharding depending on the heuristics.
+        This test just verifies the code path executes without error.
+        """
+        arr = await create_array(
+            store=store,
+            dtype="uint8",
+            shape=(1000, 1000),
+            chunks=(10, 10),
+            shards="auto",
+            zarr_format=3,
+        )
+        # Array should be created successfully
+        assert isinstance(arr.metadata.chunk_grid, RegularChunkGrid)
+        chunk_shape = arr.metadata.chunk_grid.chunk_shape
+        assert chunk_shape is not None
+        assert isinstance(chunk_shape, tuple)
+        assert len(chunk_shape) == 2
 
     @staticmethod
     @pytest.mark.parametrize("impl", ["sync", "async"])
