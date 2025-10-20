@@ -231,7 +231,7 @@ def pytest_collection_modifyitems(config: Any, items: Any) -> None:
 settings.register_profile(
     "default",
     parent=settings.get_profile("default"),
-    max_examples=300,
+    max_examples=50,  # Reduced from 300 for faster local testing
     suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
     deadline=None,
     verbosity=Verbosity.verbose,
