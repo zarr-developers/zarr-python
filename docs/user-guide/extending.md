@@ -85,4 +85,6 @@ classes by implementing the interface defined in [`zarr.abc.buffer.BufferPrototy
 
 ## Other extensions
 
-In the future, Zarr will support writing custom custom data types and chunk grids.
+Zarr now includes built-in support for `RectilinearChunkGrid` (variable chunking), which allows arrays to have different chunk sizes along each dimension. See the [Variable Chunking](arrays.md#variable-chunking-zarr-v3) section in the Arrays guide for more information.
+
+In the future, Zarr will support writing fully custom chunk grids and custom data types.
