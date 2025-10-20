@@ -390,7 +390,7 @@ def test_init_invalid_extra_fields() -> None:
     msg = (
         "Invalid extra fields. "
         "The following keys: "
-        f"{conflict_keys} "
+        f"{sorted(conflict_keys)} "
         "are invalid because they collide with keys reserved for use by the "
         "array metadata document."
     )
