@@ -110,7 +110,7 @@ class TestVariableLengthBytes(BaseTestZDType):
         np.dtype("|U10"),
     )
     valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-bytes"},)
-    valid_json_v3 = ("variable_length_bytes",)
+    valid_json_v3 = ("variable_length_bytes", "bytes")
     invalid_json_v2 = (
         "|S",
         "|U10",
