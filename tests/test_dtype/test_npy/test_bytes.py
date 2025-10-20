@@ -110,7 +110,7 @@ class TestVariableLengthBytes(BaseTestZDType):
         np.dtype("|U10"),
     )
     valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-bytes"},)
-    valid_json_v3 = ("variable_length_bytes", "bytes")
+    valid_json_v3 = ("variable_length_bytes",)
     invalid_json_v2 = (
         "|S",
         "|U10",
@@ -138,6 +138,13 @@ class TestVariableLengthBytes(BaseTestZDType):
     )
     invalid_scalar_params = ((VariableLengthBytes(), 1.0),)
     item_size_params = (VariableLengthBytes(),)
+
+
+def test_vlen_bytes_alias() -> None:
+    """Test that "bytes" is an accepted alias for "variable_length_bytes" in JSON metadata"""
+    a = VariableLengthBytes.from_json("bytes", zarr_format=3)
+    b = VariableLengthBytes.from_json("variable_length_bytes", zarr_format=3)
+    assert a == b
 
 
 @pytest.mark.parametrize(
