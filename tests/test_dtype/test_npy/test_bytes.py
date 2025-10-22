@@ -140,6 +140,13 @@ class TestVariableLengthBytes(BaseTestZDType):
     item_size_params = (VariableLengthBytes(),)
 
 
+def test_vlen_bytes_alias() -> None:
+    """Test that "bytes" is an accepted alias for "variable_length_bytes" in JSON metadata"""
+    a = VariableLengthBytes.from_json("bytes", zarr_format=3)
+    b = VariableLengthBytes.from_json("variable_length_bytes", zarr_format=3)
+    assert a == b
+
+
 @pytest.mark.parametrize(
     "zdtype", [NullTerminatedBytes(length=10), RawBytes(length=10), VariableLengthBytes()]
 )
