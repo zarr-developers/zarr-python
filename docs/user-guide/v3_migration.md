@@ -99,6 +99,10 @@ The following sections provide details on breaking changes in Zarr-Python 3.
    Zarr specification. To continue using version 2, set `zarr_format=2` when creating arrays
    or set `default_zarr_version=2` in Zarr's runtime configuration.
 
+3. Function signature change to [`zarr.Array.resize`][] - the `resize` function now takes a
+   `zarr.core.common.ShapeLike` input rather than separate arguments for each dimension.
+   Use `resize((10,10))` in place of `resize(10,10)`.
+
 ### The Group class
 
 1. Disallow direct construction - use [`zarr.open_group`][] or [`zarr.create_group`][]
