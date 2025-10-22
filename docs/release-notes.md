@@ -6,16 +6,16 @@
 
 ## Features
 
-- Adds the `zarr.experimental` module for unstable user-facing features. ([#3490](https://github.com/zarr-developers/zarr-python/issues3490))
-- Adds `zarr.experimental.cache_store.CacheStore`, a `Store` that implements caching by combining two other `Store` instances. See the [docs page](https://zarr.readthedocs.io/en/latest/user-guide/experimental#cachestore) for more information about this feature. ([#3366](https://github.com/zarr-developers/zarr-python/issues3366))
-- Increases the default value of `async.concurrency` from 10 to 64 to improve parallelism and throughput for concurrent I/O operations. This change enables better performance out-of-the-box for most workloads. Users with specific resource constraints or when using many Dask threads may want to lower this value via the `ZARR_ASYNC_CONCURRENCY` environment variable or by setting `zarr.config.set({'async.concurrency': N})`. ([#3526](https://github.com/zarr-developers/zarr-python/issues3526))
+- Add the `zarr.experimental` module for unstable user-facing features. ([#3490](https://github.com/zarr-developers/zarr-python/issues3490))
+- Add `zarr.experimental.cache_store.CacheStore`, a `Store` that implements caching by combining two other `Store` instances. See the [docs page](https://zarr.readthedocs.io/en/latest/user-guide/experimental#cachestore) for more information about this feature. ([#3366](https://github.com/zarr-developers/zarr-python/issues3366))
+- Increase the default value of `async.concurrency` from 10 to 64 to improve parallelism and throughput for concurrent I/O operations. This change enables better performance out-of-the-box for most workloads. Users with specific resource constraints or when using many Dask threads may want to lower this value via the `ZARR_ASYNC_CONCURRENCY` environment variable or by setting `zarr.config.set({'async.concurrency': N})`. ([#3526](https://github.com/zarr-developers/zarr-python/issues3526))
 
 ## Bugfixes
 
-- Fixes a bug that prevented `PCodec` from being properly resolved when loading arrays using that compressor. ([#3483](https://github.com/zarr-developers/zarr-python/issues3483))
-- Fixes a bug where the `"consolidated_metadata"` key was written to metadata documents even when
+- Fix a bug that prevented `PCodec` from being properly resolved when loading arrays using that compressor. ([#3483](https://github.com/zarr-developers/zarr-python/issues3483))
+- Fix a bug where the `"consolidated_metadata"` key was written to metadata documents even when
   consolidated metadata was not used, resulting in invalid metadata documents. ([#3535](https://github.com/zarr-developers/zarr-python/issues3535))
-- Fixed a bug that prevented Zarr Python from opening Zarr V3 array metadata documents that contained
+- Fixe a bug that prevented Zarr Python from opening Zarr V3 array metadata documents that contained
   extra keys with permissible values (dicts with a `"must_understand"` key set to `"false"`). ([#3530](https://github.com/zarr-developers/zarr-python/issues3530))
 
 ## Improved Documentation
@@ -23,7 +23,7 @@
 - Use mkdocs-material for Zarr-Python documentation ([#3118](https://github.com/zarr-developers/zarr-python/issues3118))
 - Document different values of StoreLike with examples in the user guide. ([#3303](https://github.com/zarr-developers/zarr-python/issues3303))
 - Reorganize the top-level `examples` directory to give each example its own sub-directory. Adds content to the docs for each example. ([#3502](https://github.com/zarr-developers/zarr-python/issues3502))
-- Updated 3.0 Migration Guide to include function signature change to zarr.Array.resize function. ([#3536](https://github.com/zarr-developers/zarr-python/issues3536))
+- Update 3.0 Migration Guide to include function signature change to zarr.Array.resize function. ([#3536](https://github.com/zarr-developers/zarr-python/issues3536))
 
 ## Misc
 
