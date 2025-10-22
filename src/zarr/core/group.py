@@ -432,8 +432,11 @@ class GroupMetadata(Metadata):
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(replace(self, consolidated_metadata=None))
-        if self.consolidated_metadata:
+        if self.consolidated_metadata is not None:
             result["consolidated_metadata"] = self.consolidated_metadata.to_dict()
+        else:
+            # Leave consolidated metadata unset if it's None
+            result.pop("consolidated_metadata")
         return result
 
 
