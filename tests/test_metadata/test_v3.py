@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import pytest
 
+from zarr import consolidate_metadata, create_group
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
@@ -22,7 +23,12 @@ from zarr.core.metadata.v3 import (
     parse_dimension_names,
     parse_zarr_format,
 )
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
+from zarr.errors import (
+    MetadataValidationError,
+    NodeTypeValidationError,
+    UnknownCodecError,
+    ZarrUserWarning,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -406,3 +412,52 @@ def test_init_invalid_extra_fields() -> None:
             dimension_names=None,
             extra_fields=extra_fields,  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.parametrize("use_consolidated", [True, False])
+@pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
+def test_group_to_dict(use_consolidated: bool, attributes: None | dict[str, Any]) -> None:
+    """
+    Test that the output of GroupMetadata.to_dict() is what we expect
+    """
+    store: dict[str, object] = {}
+    if attributes is None:
+        expect_attributes = {}
+    else:
+        expect_attributes = attributes
+
+    group = create_group(store, attributes=attributes, zarr_format=3)
+    group.create_group("foo")
+    if use_consolidated:
+        with pytest.warns(
+            ZarrUserWarning,
+            match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+        ):
+            group = consolidate_metadata(store)
+        meta = group.metadata
+        expect = {
+            "node_type": "group",
+            "zarr_format": 3,
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": False,
+                "metadata": {
+                    "foo": {
+                        "attributes": {},
+                        "zarr_format": 3,
+                        "node_type": "group",
+                        "consolidated_metadata": {
+                            "kind": "inline",
+                            "metadata": {},
+                            "must_understand": False,
+                        },
+                    }
+                },
+            },
+            "attributes": expect_attributes,
+        }
+    else:
+        meta = group.metadata
+        expect = {"node_type": "group", "zarr_format": 3, "attributes": expect_attributes}
+
+    assert meta.to_dict() == expect
