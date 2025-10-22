@@ -1,3 +1,4 @@
+import itertools
 import subprocess
 from dataclasses import dataclass
 from itertools import product
@@ -6,13 +7,23 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
-from numcodecs import LZ4, LZMA, Blosc, GZip, VLenBytes, VLenUTF8, Zstd
+from numcodecs import (
+    LZ4,
+    LZMA,
+    Blosc,
+    GZip,
+    VLenBytes,
+    VLenUTF8,
+    Zstd,
+)
 
 import zarr
 import zarr.abc
 import zarr.abc.codec
 import zarr.codecs as zarrcodecs
 from zarr.abc.numcodec import Numcodec
+from zarr.codecs.blosc import BLOSC_CNAME, BLOSC_SHUFFLE, BloscCodec
+from zarr.codecs.gzip import GzipCodec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
@@ -40,9 +51,9 @@ def runner_installed() -> bool:
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
     fill_value: np.generic | str | int | bytes
-    filters: tuple[Numcodec, ...] = ()
+    filters: tuple[Numcodec | zarr.abc.codec.Codec, ...] = ()
     serializer: str | None = None
-    compressor: Numcodec
+    compressor: Numcodec | zarr.abc.codec.Codec | None
 
 
 basic_codecs: tuple[Numcodec, ...] = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
@@ -93,6 +104,108 @@ vlen_bytes_cases = [
         compressor=GZip(),
     )
 ]
+# Snappy is not supported by numcodecs yet
+zarr_v3_blosc_cases = [
+    ArrayParams(
+        values=np.arange(4, dtype="float64"),
+        fill_value=1,
+        compressor=BloscCodec(clevel=1, shuffle=shuf, cname=cname),  # type: ignore[arg-type]
+    )
+    for shuf, cname in itertools.product(BLOSC_SHUFFLE, BLOSC_CNAME)
+    if cname != "snappy"
+]
+
+zarr_v3_gzip_cases = [
+    ArrayParams(
+        values=np.arange(4, dtype="float64"),
+        fill_value=1,
+        compressor=GzipCodec(level=level),
+    )
+    for level in [1, 2, 3]
+]
+
+# Numcodecs codec test cases - testing all codecs from src/zarr/codecs/numcodecs
+# Compression codecs
+numcodecs_codec_cases = [
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        compressor=zarrcodecs.BZ2(level=5),
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        compressor=zarrcodecs.Zlib(level=5),
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(),
+        compressor=zarrcodecs.Adler32(),
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(),
+        compressor=zarrcodecs.CRC32(),
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(),
+        compressor=zarrcodecs.Fletcher32(),
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(),
+        compressor=zarrcodecs.JenkinsLookup3(),
+    ),
+    # Array transformation filters
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(zarrcodecs.AsType(encode_dtype="<i4", decode_dtype="<f8"),),
+        compressor=None,
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(zarrcodecs.BitRound(keepbits=10),),
+        compressor=None,
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="int32"),
+        fill_value=1,
+        filters=(zarrcodecs.Delta(dtype="<i4", astype="<i4"),),
+        compressor=None,
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(zarrcodecs.FixedScaleOffset(dtype="<f8", astype="<i4", scale=10.0, offset=100.0),),
+        compressor=None,
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(zarrcodecs.Quantize(digits=3, dtype="<f8"),),
+        compressor=None,
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="int32"),
+        fill_value=1,
+        filters=(),
+        compressor=zarrcodecs.Shuffle(elementsize=4),
+    ),
+    ArrayParams(
+        values=np.array([True, False, True, False] * 25, dtype=bool),
+        fill_value=False,
+        filters=(zarrcodecs.PackBits(),),
+        compressor=None,
+    ),
+]
+
 array_cases_v2_18 = (
     basic_array_cases
     + bytes_array_cases
@@ -100,9 +213,13 @@ array_cases_v2_18 = (
     + string_array_cases
     + vlen_string_cases
     + vlen_bytes_cases
+    + zarr_v3_blosc_cases
+    + zarr_v3_gzip_cases
 )
 
-array_cases_v3_08 = vlen_string_cases
+array_cases_v3_08 = (
+    vlen_string_cases + numcodecs_codec_cases + zarr_v3_blosc_cases + zarr_v3_gzip_cases
+)
 
 
 @pytest.fixture
@@ -131,7 +248,7 @@ def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         shape=array_params.values.shape,
         dtype=dtype,
         chunks=array_params.values.shape,
-        compressors=compressor,
+        compressors=compressor,  # type: ignore[arg-type]
         filters=filters,
         fill_value=array_params.fill_value,
         order="C",
@@ -164,21 +281,13 @@ def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
     else:
         dtype = array_params.values.dtype
         serializer = "auto"
-    if array_params.compressor == GZip():
-        compressor = zarrcodecs.GzipCodec()
-    else:
-        msg = (
-            "This test is only compatible with gzip compression at the moment, because the author"
-            "did not want to implement a complete abstraction layer for v2 and v3 codecs in this test."
-        )
-        raise ValueError(msg)
     z = zarr.create_array(
         store,
         shape=array_params.values.shape,
         dtype=dtype,
         chunks=array_params.values.shape,
-        compressors=compressor,
-        filters=array_params.filters,
+        compressors=array_params.compressor,
+        filters=array_params.filters,  # type: ignore[arg-type]
         serializer=serializer,
         fill_value=array_params.fill_value,
         chunk_key_encoding=chunk_key_encoding,
@@ -194,6 +303,7 @@ script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
 
 
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 @pytest.mark.parametrize(
     "source_array_v2", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
 )
@@ -218,6 +328,7 @@ def test_roundtrip_v2(source_array_v2: Array, tmp_path: Path, script_path: Path)
 
 
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize(
     "source_array_v3", array_cases_v3_08, indirect=True, ids=tuple(map(str, array_cases_v3_08))

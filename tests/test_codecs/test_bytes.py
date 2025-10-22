@@ -1,14 +1,64 @@
-from typing import Literal
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pytest
 
 import zarr
-from zarr.abc.store import Store
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr.codecs import BytesCodec
+from zarr.codecs.bytes import check_json_v2, check_json_v3
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
+
+if TYPE_CHECKING:
+    from zarr.abc.store import Store
+    from zarr.codecs.bytes import BytesJSON_V2, BytesJSON_V3
+
+
+class TestBytesCodec(BaseTestCodec):
+    test_cls = BytesCodec
+    valid_json_v2 = (
+        {
+            "id": "bytes",
+            "endian": "little",
+        },
+    )
+    valid_json_v3 = (
+        {
+            "name": "bytes",
+            "configuration": {
+                "endian": "little",
+            },
+        },
+    )
+
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        return check_json_v2(data)
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        return check_json_v3(data)
+
+
+@pytest.mark.parametrize("endian", ["big", "little"])
+def test_bytescodec_to_json(endian: Literal["big", "little"]) -> None:
+    codec = BytesCodec(endian=endian)
+    expected_v2: BytesJSON_V2 = {
+        "id": "bytes",
+        "endian": endian,
+    }
+    expected_v3: BytesJSON_V3 = {
+        "name": "bytes",
+        "configuration": {
+            "endian": endian,
+        },
+    }
+    assert codec.to_json(zarr_format=2) == expected_v2
+    assert codec.to_json(zarr_format=3) == expected_v3
 
 
 @pytest.mark.filterwarnings("ignore:The endianness of the requested serializer")
