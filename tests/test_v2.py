@@ -132,8 +132,11 @@ def test_v2_encode_decode_with_data(dtype: ZDType[Any, Any], value: str) -> None
 def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
     with config.set({"array.order": order}):
-        with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+        if filters == []:
             arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
+        else:
+            with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
+                arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)

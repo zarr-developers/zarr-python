@@ -328,7 +328,6 @@ def test_to_dict() -> None:
         # because they require mandatory parameters
         _numcodecs.PackBits,
         _numcodecs.CRC32,
-        _numcodecs.CRC32C,
         _numcodecs.Adler32,
         _numcodecs.Fletcher32,
         _numcodecs.JenkinsLookup3,

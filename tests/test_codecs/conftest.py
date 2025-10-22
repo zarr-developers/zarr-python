@@ -6,6 +6,14 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.core.common import CodecJSON_V2, CodecJSON_V3
 
+# Check if the numcodecs crc32c codec is available
+try:
+    from numcodecs import CRC32C
+
+    numcodecs_crc32c_available = True
+except ImportError:
+    numcodecs_crc32c_available = False
+
 
 class BaseTestCodec:
     """

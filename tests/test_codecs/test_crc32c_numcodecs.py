@@ -3,8 +3,13 @@ import pytest
 from tests.test_codecs.test_crc32c import TestCrc32cCodec
 from zarr.codecs import numcodecs as _numcodecs
 
+from .conftest import numcodecs_crc32c_available
+
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
+@pytest.mark.skipif(
+    not numcodecs_crc32c_available, reason="numcodecs crc32c codec is not available"
+)
 class TestCRC32CCodec(TestCrc32cCodec):
     test_cls = _numcodecs.CRC32C  # type: ignore[assignment]
     valid_json_v2 = (  # type: ignore[assignment]

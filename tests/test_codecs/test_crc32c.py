@@ -2,14 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-import numcodecs
+import google_crc32c
 import numpy as np
 import pytest
-from crc32c import crc32c
 
 import zarr
-import zarr.codecs.numcodecs
-from tests.test_codecs.conftest import BaseTestCodec
 from zarr.codecs.crc32c_ import (
     Crc32cCodec,
     Crc32cJSON_V2,
@@ -22,6 +19,8 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.dtype import UInt8, parse_dtype
 from zarr.errors import CodecValidationError
 from zarr.storage import StorePath
+
+from .conftest import BaseTestCodec, numcodecs_crc32c_available
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
@@ -574,7 +573,7 @@ class TestCrc32cCodecManualVerification:
     async def test_checksum_matches_crc32c_library(self) -> None:
         """Test that our checksum matches the crc32c library directly."""
         test_data = b"Hello, World!"
-        expected_checksum = crc32c(test_data)
+        expected_checksum = google_crc32c.value(test_data)
 
         # Create numpy array from bytes
         data_array = np.frombuffer(test_data, dtype=np.uint8)
@@ -614,7 +613,7 @@ class TestCrc32cCodecManualVerification:
     )
     async def test_various_data_checksums(self, test_data: bytes) -> None:
         """Test checksum calculation with various data patterns."""
-        expected_checksum = crc32c(test_data)
+        expected_checksum = google_crc32c.value(test_data)
 
         data_array = np.frombuffer(test_data, dtype=np.uint8)
         codec = Crc32cCodec()
@@ -639,7 +638,16 @@ class TestCrc32cCodecManualVerification:
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize(
-    "codec", [Crc32cCodec(), zarr.codecs.numcodecs.CRC32C(), numcodecs.CRC32C()]
+    "codec",
+    [
+        Crc32cCodec(),
+        pytest.param(
+            {"id": "numcodecs.crc32c"},
+            marks=pytest.mark.skipif(
+                not numcodecs_crc32c_available, reason="numcodecs crc32c codec is not available"
+            ),
+        ),
+    ],
 )
 def test_crc32c_compression(zarr_format: ZarrFormat, codec: Any) -> None:
     """
