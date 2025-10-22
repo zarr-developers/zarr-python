@@ -5,6 +5,8 @@ from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+import numcodecs
+
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
 from zarr.errors import ZarrUserWarning
@@ -196,6 +198,20 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
     return get_codec_class(data["name"]).from_dict(data)  # type: ignore[arg-type]
 
 
+def numcodec_to_zarr3_codec(codec: numcodecs.abc.Codec) -> Codec:
+    """
+    Convert a numcodecs codec to a zarr v3 compatible numcodecs.zarr3 codec instance.
+    """
+    codec_config = codec.get_config()
+    codec_name = codec_config.pop("id", None)
+    if codec_name is None:
+        raise ValueError(f"Codec configuration does not contain 'id': {codec_config}")
+    codec_cls = get_codec_class(f"numcodecs.{codec_name}")
+    if codec_cls is None:
+        raise ValueError(f"Codec class for 'numcodecs.{codec_name}' not found.")
+    return codec_cls.from_dict({"name": f"numcodecs.{codec_name}", "configuration": codec_config})
+
+
 def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     """
     Normalize the input to a ``BytesBytesCodec`` instance.
@@ -204,15 +220,17 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     """
     from zarr.abc.codec import BytesBytesCodec
 
-    if isinstance(data, dict):
+    if isinstance(data, numcodecs.abc.Codec):
+        result = numcodec_to_zarr3_codec(data)
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, BytesBytesCodec):
             msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
-        if not isinstance(data, BytesBytesCodec):
-            raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, BytesBytesCodec):
+        raise TypeError(f"Expected a BytesBytesCodec. Got {type(result)} instead.")
     return result
 
 
@@ -224,15 +242,17 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
     """
     from zarr.abc.codec import ArrayBytesCodec
 
-    if isinstance(data, dict):
+    if isinstance(data, numcodecs.abc.Codec):
+        result = numcodec_to_zarr3_codec(data)
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, ArrayBytesCodec):
             msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
-        if not isinstance(data, ArrayBytesCodec):
-            raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, ArrayBytesCodec):
+        raise TypeError(f"Expected a ArrayBytesCodec. Got {type(result)} instead.")
     return result
 
 
@@ -244,15 +264,17 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
     """
     from zarr.abc.codec import ArrayArrayCodec
 
-    if isinstance(data, dict):
+    if isinstance(data, numcodecs.abc.Codec):
+        result = numcodec_to_zarr3_codec(data)
+    elif isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, ArrayArrayCodec):
             msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
-        if not isinstance(data, ArrayArrayCodec):
-            raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")
         result = data
+    if not isinstance(result, ArrayArrayCodec):
+        raise TypeError(f"Expected a ArrayArrayCodec. Got {type(result)} instead.")
     return result
 
 
