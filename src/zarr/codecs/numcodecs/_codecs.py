@@ -1,24 +1,26 @@
 """
-This module provides compatibility for :py:mod:`numcodecs` in Zarr version 3.
+This module provides compatibility for [numcodecs][] in Zarr version 3.
 
-These codecs were previously defined in :py:mod:`numcodecs`, and have now been moved to `zarr`.
+These codecs were previously defined in [numcodecs][], and have now been moved to `zarr`.
 
->>> import numpy as np
->>> import zarr
->>> import zarr.codecs.numcodecs as numcodecs
->>>
->>> array = zarr.create_array(
-...   store="data.zarr",
-...   shape=(1024, 1024),
-...   chunks=(64, 64),
-...   dtype="uint32",
-...   filters=[numcodecs.Delta(dtype="uint32")],
-...   compressors=[numcodecs.BZ2(level=5)])
->>> array[:] = np.arange(np.prod(array.shape), dtype=array.dtype).reshape(*array.shape)
+```python
+import numpy as np
+import zarr
+import zarr.codecs.numcodecs as numcodecs
 
-.. note::
+array = zarr.create_array(
+  store="data_numcodecs.zarr",
+  shape=(1024, 1024),
+  chunks=(64, 64),
+  dtype="uint32",
+  filters=[numcodecs.Delta(dtype="uint32")],
+  compressors=[numcodecs.BZ2(level=5)],
+  overwrite=True)
+array[:] = np.arange(np.prod(array.shape), dtype=array.dtype).reshape(*array.shape)
+```
 
-    Please note that the codecs in :py:mod:`zarr.codecs.numcodecs` are not part of the Zarr version
+!!! note
+    Please note that the codecs in [zarr.codecs.numcodecs][] are not part of the Zarr version
     3 specification. Using these codecs might cause interoperability issues with other Zarr
     implementations.
 """
@@ -82,7 +84,7 @@ class _NumcodecsCodec(Metadata):
             cls_name = f"{CODEC_PREFIX}{namespace}.{cls.__name__}"
             cls.codec_name = f"{CODEC_PREFIX}{namespace}"
             cls.__doc__ = f"""
-            See :class:`{cls_name}` for more details and parameters.
+            See [{cls_name}][] for more details and parameters.
             """
 
     def __init__(self, **codec_config: JSON) -> None:

@@ -111,17 +111,20 @@ def _iter_grid(
 
     Examples
     --------
-    >>> tuple(iter_grid((1,)))
-    ((0,),)
+    ```python
+    from zarr.core.indexing import _iter_grid
+    tuple(_iter_grid((1,)))
+    # ((0,),)
 
-    >>> tuple(iter_grid((2,3)))
-    ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
+    tuple(_iter_grid((2,3)))
+    # ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3), origin=(1,1)))
-    ((1, 1), (1, 2))
+    tuple(_iter_grid((2,3), origin=(1,1)))
+    # ((1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3), origin=(0,0), selection_shape=(2,2)))
-    ((0, 0), (0, 1), (1, 0), (1, 1))
+    tuple(_iter_grid((2,3), origin=(0,0), selection_shape=(2,2)))
+    # ((0, 0), (0, 1), (1, 0), (1, 1))
+    ```
     """
     if origin is None:
         origin_parsed = (0,) * len(grid_shape)
@@ -183,24 +186,27 @@ def _iter_regions(
         The linear indexing order to use.
 
     Yields
-    -------
+    ------
 
     Iterator[tuple[slice, ...]]
         An iterator over tuples of slices, where each slice spans a separate contiguous region
 
     Examples
     --------
-    >>> tuple(iter_regions((1,), (1,)))
-    ((slice(0, 1, 1),),)
+    ```python
+    from zarr.core.indexing import _iter_regions
+    tuple(_iter_regions((1,), (1,)))
+    # ((slice(0, 1, 1),),)
 
-    >>> tuple(iter_regions((2, 3), (1, 2)))
-    ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
+    tuple(_iter_regions((2, 3), (1, 2)))
+    # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
 
-    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1))
-    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+    tuple(_iter_regions((2,3), (1,2), origin=(1,1)))
+    # ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
 
-    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1), selection_shape=(2,2))
-    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+    tuple(_iter_regions((2,3), (1,2), origin=(0,0), selection_shape=(2,2)))
+    # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
+    ```
     """
     grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
     for grid_position in _iter_grid(

@@ -1789,12 +1789,20 @@ def _index_array(arr: Array, index: Any) -> Any:
     ],
 )
 @pytest.mark.parametrize("store", ["local"], indirect=True)
-def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkserver"]) -> None:
+@pytest.mark.parametrize("shards", [None, (20,)])
+def test_multiprocessing(
+    store: Store, method: Literal["fork", "spawn", "forkserver"], shards: tuple[int, ...] | None
+) -> None:
     """
     Test that arrays can be pickled and indexed in child processes
     """
     data = np.arange(100)
-    arr = zarr.create_array(store=store, data=data)
+    chunks: Literal["auto"] | tuple[int, ...]
+    if shards is None:
+        chunks = "auto"
+    else:
+        chunks = (1,)
+    arr = zarr.create_array(store=store, data=data, shards=shards, chunks=chunks)
     ctx = mp.get_context(method)
     with ctx.Pool() as pool:
         results = pool.starmap(_index_array, [(arr, slice(len(data)))])

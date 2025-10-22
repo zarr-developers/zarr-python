@@ -8,21 +8,21 @@ Example:
     to be ``your.module.NewBytesCodec``. Donfig can be configured programmatically, by environment variables, or from
     YAML files in standard locations.
 
-    .. code-block:: python
+    ```python
+    from your.module import NewBytesCodec
+    from zarr.core.config import register_codec, config
 
-        from your.module import NewBytesCodec
-        from zarr.core.config import register_codec, config
-
-        register_codec("bytes", NewBytesCodec)
-        config.set({"codecs.bytes": "your.module.NewBytesCodec"})
+    register_codec("bytes", NewBytesCodec)
+    config.set({"codecs.bytes": "your.module.NewBytesCodec"})
+    ```
 
     Instead of setting the value programmatically with ``config.set``, you can also set the value with an environment
     variable. The environment variable ``ZARR_CODECS__BYTES`` can be set to ``your.module.NewBytesCodec``. The double
     underscore ``__`` is used to indicate nested access.
 
-    .. code-block:: bash
-
-        export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
+    ```bash
+    export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
+    ```
 
 For more information, see the Donfig documentation at https://github.com/pytroll/donfig.
 """
@@ -107,7 +107,7 @@ config = Config(
                 "order": "C",
                 "write_empty_chunks": False,
             },
-            "async": {"concurrency": 10, "timeout": None},
+            "async": {"concurrency": 64, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
