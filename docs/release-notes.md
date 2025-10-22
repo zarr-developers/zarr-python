@@ -9,7 +9,7 @@
 - Add a command-line interface to migrate v2 Zarr metadata to v3. Corresponding functions are also provided under zarr.metadata. ([#1798](https://github.com/zarr-developers/zarr-python/issues/1798))
 - Add obstore implementation of delete_dir. ([#3310](https://github.com/zarr-developers/zarr-python/issues/3310))
 - Adds a registry for chunk key encodings for extensibility. This allows users to implement a custom `ChunkKeyEncoding`, which can be registered via `register_chunk_key_encoding` or as an entry point under `zarr.chunk_key_encoding`. ([#3436](https://github.com/zarr-developers/zarr-python/issues/3436))
-- Trying to open a group at a path were a array already exists now raises a helpful error. ([#3444](https://github.com/zarr-developers/zarr-python/issues/3444))
+- Trying to open a group at a path where an array already exists now raises a helpful error. ([#3444](https://github.com/zarr-developers/zarr-python/issues/3444))
 
 ## Bugfixes
 
