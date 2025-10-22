@@ -2,6 +2,31 @@
 
 <!-- towncrier release notes start -->
 
+# zarr 3.1.4 (2025-10-22)
+
+## Features
+
+- Adds `zarr.experimental.cache_store.CacheStore`, a `Store` that implements caching by combining two other `Store` instances. See the [docs page](https://zarr.readthedocs.io/en/latest/user-guide/experimental#cachestore) for more information about this feature. ([#3366](https://github.com/zarr-developers/zarr-python/issues3366))
+- Adds a `zarr.experimental` module for unstable user-facing features. ([#3490](https://github.com/zarr-developers/zarr-python/issues3490))
+- Increased the default value of `async.concurrency` from 10 to 64 to improve parallelism and throughput for concurrent I/O operations. This change enables better performance out-of-the-box for most workloads. Users with specific resource constraints or when using many Dask threads may want to lower this value via the `ZARR_ASYNC_CONCURRENCY` environment variable or by setting `zarr.config.set({'async.concurrency': N})`. ([#3526](https://github.com/zarr-developers/zarr-python/issues3526))
+
+## Bugfixes
+
+- Fix a bug that prevented `PCodec` from being properly resolved when loading arrays using that compressor. ([#3483](https://github.com/zarr-developers/zarr-python/issues3483))
+- Fixed a bug where the `"consolidated_metadata"` key was written to metadata documents even when
+  consolidated metadata was not used, resulting in invalid metadata documents. ([#3535](https://github.com/zarr-developers/zarr-python/issues3535))
+
+## Improved Documentation
+
+- Use mkdocs-material for Zarr-Python documentation ([#3118](https://github.com/zarr-developers/zarr-python/issues3118))
+- Document different values of StoreLike with examples in the user guide. ([#3303](https://github.com/zarr-developers/zarr-python/issues3303))
+- Reorganize the top-level `examples` directory to give each example its own sub-directory. Adds content to the docs for each example. ([#3502](https://github.com/zarr-developers/zarr-python/issues3502))
+
+## Misc
+
+- [#3515](https://github.com/zarr-developers/zarr-python/issues3515)
+
+
 # zarr 3.1.3 (2025-09-18)
 
 ## Features
