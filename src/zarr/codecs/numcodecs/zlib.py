@@ -24,14 +24,30 @@ class ZlibConfig(TypedDict):
     level: int
 
 
+DEFAULT_ZLIB_CONFIG = {"level": 1}
+
+
+def _handle_json_alias(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle JSON representations of the codec that are invalid but accepted aliases.
+    """
+    if data in (
+        {"name": "numcodecs.zlib", "configuration": {}},
+        {"name": "numcodecs.zlib"},
+        "numcodecs.zlib",
+    ):
+        return data | {"configuration": DEFAULT_ZLIB_CONFIG}
+    return data
+
+
 class ZlibJSON_V2(ZlibConfig):
     """JSON representation of Zlib codec for Zarr V2."""
 
     id: ReadOnly[Literal["zlib"]]
 
 
-class ZlibJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.zlib"], ZlibConfig]):
-    """JSON representation of Zlib codec for Zarr V3."""
+class LegacyZlibJSON_V3(NamedRequiredConfig[Literal["numcodecs.zlib"], ZlibConfig]):
+    """Legacy JSON representation of Zlib codec for Zarr V3."""
 
 
 class ZlibJSON_V3(NamedRequiredConfig[Literal["zlib"], ZlibConfig]):
@@ -51,7 +67,7 @@ def check_json_v2(data: object) -> TypeGuard[ZlibJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[ZlibJSON_V3 | ZlibJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[ZlibJSON_V3 | LegacyZlibJSON_V3]:
     """
     A type guard for the Zarr V3 form of the Zlib codec JSON
     """
@@ -91,6 +107,7 @@ class Zlib(_NumcodecsBytesBytesCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias(data)
         if check_json_v3(data):
             config = data["configuration"]
             return cls(**config)
