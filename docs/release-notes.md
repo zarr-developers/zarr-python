@@ -15,7 +15,7 @@
 - Fix a bug that prevented `PCodec` from being properly resolved when loading arrays using that compressor. ([#3483](https://github.com/zarr-developers/zarr-python/issues3483))
 - Fix a bug where the `"consolidated_metadata"` key was written to metadata documents even when
   consolidated metadata was not used, resulting in invalid metadata documents. ([#3535](https://github.com/zarr-developers/zarr-python/issues3535))
-- Fixe a bug that prevented Zarr Python from opening Zarr V3 array metadata documents that contained
+- Fix a bug that prevented Zarr Python from opening Zarr V3 array metadata documents that contained
   extra keys with permissible values (dicts with a `"must_understand"` key set to `"false"`). ([#3530](https://github.com/zarr-developers/zarr-python/issues3530))
 
 ## Improved Documentation
