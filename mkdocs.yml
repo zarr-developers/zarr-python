@@ -6,6 +6,7 @@ site_description: An implementation of chunked, compressed, N-dimensional arrays
 site_author: Alistair Miles
 site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr.readthedocs.io/']
 docs_dir: docs
+use_directory_urls: true
 
 nav:
   - "index.md"
