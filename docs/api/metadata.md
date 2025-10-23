@@ -1,0 +1,5 @@
+---
+title: metadata
+---
+
+::: zarr.metadata

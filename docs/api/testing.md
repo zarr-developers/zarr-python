@@ -21,3 +21,7 @@ title: testing
 ## Utils
 
 ::: zarr.testing.utils
+
+## Conftest
+
+::: zarr.testing.conftest

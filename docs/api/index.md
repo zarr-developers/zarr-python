@@ -2,12 +2,6 @@
 
 Complete reference documentation for the Zarr-Python API.
 
-::: zarr
-    options:
-      members: false
-      show_root_heading: true
-      show_root_toc_entry: true
-
 ## Core API
 
 ### Essential Classes and Functions
