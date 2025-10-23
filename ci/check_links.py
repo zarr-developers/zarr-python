@@ -25,34 +25,32 @@ from bs4 import BeautifulSoup
 STABLE_BASE = "https://zarr.readthedocs.io/en/stable"
 LATEST_BASE = "https://zarr.readthedocs.io/en/latest"
 
+
 class DocumentationValidator:
     def __init__(self, stable_base: str, latest_base: str) -> None:
-        self.stable_base = stable_base.rstrip('/')
-        self.latest_base = latest_base.rstrip('/')
+        self.stable_base = stable_base.rstrip("/")
+        self.latest_base = latest_base.rstrip("/")
         self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Documentation Validator)'
-        })
+        self.session.headers.update({"User-Agent": "Mozilla/5.0 (Documentation Validator)"})
 
     def get_relative_path(self, url: str, base: str) -> str:
         """Extract the relative path from a full URL."""
         if url.startswith(base):
-            path = url[len(base):]
+            path = url[len(base) :]
             # Remove fragment identifiers
-            if '#' in path:
-                path = path.split('#')[0]
+            if "#" in path:
+                path = path.split("#")[0]
             return path
         return ""
 
     def is_valid_doc_url(self, url: str, base: str) -> bool:
         """Check if URL is part of the documentation."""
-        if not url.startswith(('http://', 'https://')):
+        if not url.startswith(("http://", "https://")):
             return False
         parsed = urlparse(url)
         base_parsed = urlparse(base)
         # Must be same domain and start with base path
-        return (parsed.netloc == base_parsed.netloc and
-                url.startswith(base))
+        return parsed.netloc == base_parsed.netloc and url.startswith(base)
 
     def fetch_page(self, url: str) -> tuple[int, str]:
         """Fetch a page and return status code and content."""
@@ -65,16 +63,16 @@ class DocumentationValidator:
 
     def extract_links(self, html: str, base_url: str) -> set[str]:
         """Extract all documentation links from HTML."""
-        soup = BeautifulSoup(html, 'html.parser')
+        soup = BeautifulSoup(html, "html.parser")
         links = set()
 
-        for a_tag in soup.find_all('a', href=True):
-            href = a_tag['href']
+        for a_tag in soup.find_all("a", href=True):
+            href = a_tag["href"]
             full_url = urljoin(base_url, href)
 
             # Remove fragment identifiers for deduplication
-            if '#' in full_url:
-                full_url = full_url.split('#')[0]
+            if "#" in full_url:
+                full_url = full_url.split("#")[0]
 
             if self.is_valid_doc_url(full_url, self.stable_base):
                 links.add(full_url)
@@ -117,11 +115,7 @@ class DocumentationValidator:
         """Check if all stable URLs exist in latest docs."""
         print(f"🔍 Validating pages in latest documentation: {self.latest_base}")
 
-        results = {
-            'valid': [],
-            'missing': [],
-            'error': []
-        }
+        results = {"valid": [], "missing": [], "error": []}
 
         for stable_url in sorted(stable_urls):
             relative_path = self.get_relative_path(stable_url, self.stable_base)
@@ -131,13 +125,13 @@ class DocumentationValidator:
             status_code, _ = self.fetch_page(latest_url)
 
             if status_code == 200:
-                results['valid'].append(relative_path)
+                results["valid"].append(relative_path)
                 print("    ✓ Valid (200)")
             elif status_code == 404:
-                results['missing'].append(relative_path)
+                results["missing"].append(relative_path)
                 print("    ✗ Missing (404)")
             else:
-                results['error'].append(f"{relative_path} (status: {status_code})")
+                results["error"].append(f"{relative_path} (status: {status_code})")
                 print(f"    ⚠ Error (status: {status_code})")
 
             time.sleep(0.1)
@@ -146,37 +140,38 @@ class DocumentationValidator:
 
     def print_summary(self, results: dict[str, list[str]]) -> None:
         """Print validation summary."""
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("VALIDATION SUMMARY")
-        print("="*70)
+        print("=" * 70)
 
-        total = len(results['valid']) + len(results['missing']) + len(results['error'])
+        total = len(results["valid"]) + len(results["missing"]) + len(results["error"])
 
         print(f"\n✓ Valid pages: {len(results['valid'])}/{total}")
         print(f"✗ Missing pages: {len(results['missing'])}/{total}")
         print(f"⚠ Error pages: {len(results['error'])}/{total}")
 
-        if results['missing']:
-            print("\n" + "-"*70)
+        if results["missing"]:
+            print("\n" + "-" * 70)
             print("MISSING PAGES:")
-            print("-"*70)
-            for path in results['missing']:
+            print("-" * 70)
+            for path in results["missing"]:
                 print(f"  • {path}")
 
-        if results['error']:
-            print("\n" + "-"*70)
+        if results["error"]:
+            print("\n" + "-" * 70)
             print("ERROR PAGES:")
-            print("-"*70)
-            for info in results['error']:
+            print("-" * 70)
+            for info in results["error"]:
                 print(f"  • {info}")
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
 
-        if not results['missing'] and not results['error']:
+        if not results["missing"] and not results["error"]:
             print("🎉 All pages validated successfully!")
         else:
             print(f"⚠️  {len(results['missing']) + len(results['error'])} issues found")
-        print("="*70)
+        print("=" * 70)
+
 
 def main() -> None:
     validator = DocumentationValidator(STABLE_BASE, LATEST_BASE)
@@ -191,10 +186,11 @@ def main() -> None:
     validator.print_summary(results)
 
     # Exit with error code if there are missing pages
-    if results['missing'] or results['error']:
+    if results["missing"] or results["error"]:
         exit(1)
     else:
         exit(0)
+
 
 if __name__ == "__main__":
     main()
