@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, ClassVar, Literal, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeAlias, TypedDict, cast
 
 if TYPE_CHECKING:
     from typing import NotRequired, Self
@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
     JSON,
+    NamedConfig,
     parse_named_configuration,
 )
 from zarr.registry import get_chunk_key_encoding_class, register_chunk_key_encoding
@@ -61,7 +62,9 @@ class ChunkKeyEncoding(ABC, Metadata):
         """
 
 
-ChunkKeyEncodingLike: TypeAlias = dict[str, JSON] | ChunkKeyEncodingParams | ChunkKeyEncoding
+ChunkKeyEncodingLike: TypeAlias = (
+    dict[str, JSON] | ChunkKeyEncodingParams | ChunkKeyEncoding | NamedConfig[str, Any]
+)
 
 
 @dataclass(frozen=True)
@@ -108,7 +111,7 @@ def parse_chunk_key_encoding(data: ChunkKeyEncodingLike) -> ChunkKeyEncoding:
 
     # handle ChunkKeyEncodingParams
     if "name" in data and "separator" in data:
-        data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
+        data = {"name": data["name"], "configuration": {"separator": data["separator"]}}  # type: ignore[typeddict-item]
 
     # Now must be a named config
     data = cast("dict[str, JSON]", data)
