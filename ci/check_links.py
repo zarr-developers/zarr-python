@@ -58,10 +58,10 @@ class DocumentationValidator:
         """Fetch a page and return status code and content."""
         try:
             response = self.session.get(url, timeout=10, allow_redirects=True)
-            return response.status_code, response.text
         except requests.RequestException as e:
             print(f"  ✗ Error fetching {url}: {e}")
             return 0, ""
+        return response.status_code, response.text
 
     def extract_links(self, html: str, base_url: str) -> set[str]:
         """Extract all documentation links from HTML."""
