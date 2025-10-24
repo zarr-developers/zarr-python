@@ -464,11 +464,9 @@ class Store(ABC):
 
         # avoid circular import
         from zarr.core.common import concurrent_map
-        from zarr.core.config import config
 
         keys = [(x,) async for x in self.list_prefix(prefix)]
-        limit = config.get("async.concurrency")
-        sizes = await concurrent_map(keys, self.getsize, limit=limit)
+        sizes = await concurrent_map(keys, self.getsize)
         return sum(sizes)
 
 

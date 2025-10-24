@@ -22,7 +22,6 @@ from warnings import warn
 import numpy as np
 from typing_extensions import deprecated
 
-import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
@@ -1853,7 +1852,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
                 ],
                 _delete_key,
-                zarr_config.get("async.concurrency"),
             )
 
         # Write new metadata
@@ -4530,7 +4528,6 @@ async def from_array(
             await concurrent_map(
                 [(region, data) for region in result._iter_shard_regions()],
                 _copy_array_region,
-                zarr.core.config.config.get("async.concurrency"),
             )
         else:
 
@@ -4541,7 +4538,6 @@ async def from_array(
             await concurrent_map(
                 [(region, data) for region in result._iter_shard_regions()],
                 _copy_arraylike_region,
-                zarr.core.config.config.get("async.concurrency"),
             )
     return result
 

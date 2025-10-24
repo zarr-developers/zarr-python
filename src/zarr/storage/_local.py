@@ -217,7 +217,8 @@ class LocalStore(Store):
             assert isinstance(key, str)
             path = self.root / key
             args.append((_get, path, prototype, byte_range))
-        return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
+        # Use global semaphore to limit concurrent thread spawning
+        return await concurrent_map(args, asyncio.to_thread)
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited

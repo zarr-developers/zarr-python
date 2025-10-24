@@ -13,8 +13,7 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.common import concurrent_map
-from zarr.core.config import config
+from zarr.core.common import concurrent_map, get_global_semaphore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
@@ -209,7 +208,7 @@ class ObjectStore(Store, Generic[T_Store]):
 
         metas = await obs.list(self.store, prefix).collect_async()
         keys = [(m["path"],) for m in metas]
-        await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
+        await concurrent_map(keys, self.delete)
 
     @property
     def supports_listing(self) -> bool:
@@ -485,7 +484,8 @@ async def _get_partial_values(
         else:
             raise ValueError(f"Unsupported range input: {byte_range}")
 
-    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+    # Use global semaphore for process-wide concurrency limiting
+    semaphore = get_global_semaphore()
 
     futs: list[Coroutine[Any, Any, list[_Response]]] = []
     for path, bounded_ranges in per_file_bounded_requests.items():
