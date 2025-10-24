@@ -156,6 +156,9 @@ plugins:
         'spec/v2.md': 'https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html'
         'spec/v3.md': 'https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html'
         'license.md': 'https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt'
+        'genindex.html.md': 'index.md'
+        'py-modindex.html.md': 'index.md'
+        'search.html.md': 'index.md'
         'tutorial.md': 'user-guide/installation.md'
         'getting-started.md': 'quick-start.md'
         'roadmap.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
@@ -223,6 +226,7 @@ plugins:
         'api/zarr/testing/store/index.html.md': 'api/testing.md'
         'api/zarr/testing/strategies/index.html.md': 'api/testing.md'
         'api/zarr/testing/utils/index.html.md': 'api/testing.md'
+        
 
 # https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
 markdown_extensions:
