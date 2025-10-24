@@ -226,7 +226,7 @@ plugins:
         'api/zarr/testing/store/index.html.md': 'api/testing.md'
         'api/zarr/testing/strategies/index.html.md': 'api/testing.md'
         'api/zarr/testing/utils/index.html.md': 'api/testing.md'
-        
+
 
 # https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
 markdown_extensions:
