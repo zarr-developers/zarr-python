@@ -1,4 +1,5 @@
 import json
+from typing import Literal
 
 import numcodecs
 import numpy as np
@@ -6,19 +7,22 @@ import pytest
 from packaging.version import Version
 
 import zarr
-from zarr.abc.store import Store
 from zarr.codecs import BloscCodec
+from zarr.codecs.blosc import BloscShuffle
+from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import default_buffer_prototype
-from zarr.storage import StorePath
+from zarr.core.dtype import UInt16
+from zarr.errors import ZarrDeprecationWarning
+from zarr.storage import MemoryStore, StorePath
 
 
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("dtype", ["uint8", "uint16"])
-async def test_blosc_evolve(store: Store, dtype: str) -> None:
+async def test_blosc_evolve(dtype: str) -> None:
     typesize = np.dtype(dtype).itemsize
     path = "blosc_evolve"
+    store = MemoryStore()
     spath = StorePath(store, path)
-    await zarr.api.asynchronous.create_array(
+    zarr.create_array(
         spath,
         shape=(16, 16),
         chunks=(16, 16),
@@ -38,7 +42,7 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
 
     path2 = "blosc_evolve_sharding"
     spath2 = StorePath(store, path2)
-    await zarr.api.asynchronous.create_array(
+    zarr.create_array(
         spath2,
         shape=(16, 16),
         chunks=(16, 16),
@@ -56,6 +60,38 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
         assert blosc_configuration_json["shuffle"] == "bitshuffle"
     else:
         assert blosc_configuration_json["shuffle"] == "shuffle"
+
+
+@pytest.mark.parametrize("tunable_attrs", [{"typesize"}, {"shuffle"}, {"typesize", "shuffle"}])
+def test_tunable_attrs(tunable_attrs: set[Literal["typesize", "shuffle"]]) -> None:
+    """
+    Test that the tunable_attrs parameter is respected when calling evolve_from_array_spec
+    """
+    codec = BloscCodec(tunable_attrs=tunable_attrs)
+    new_dtype = UInt16()
+    array_spec = ArraySpec(
+        shape=(1,),
+        dtype=new_dtype,
+        fill_value=1,
+        prototype=default_buffer_prototype(),
+        config={},  # type: ignore[arg-type]
+    )
+
+    evolved_codec = codec.evolve_from_array_spec(array_spec=array_spec)
+    if "typesize" in tunable_attrs:
+        assert evolved_codec.typesize == new_dtype.item_size
+    else:
+        assert evolved_codec.typesize == codec.typesize
+    if "shuffle" in tunable_attrs:
+        assert evolved_codec.shuffle == BloscShuffle.shuffle
+    else:
+        assert evolved_codec.shuffle == codec.shuffle
+
+
+@pytest.mark.parametrize("kwargs", [{"typesize": None}, {"shuffle": None}])
+def test_invalid_parameters_warns(kwargs: dict[str, object]) -> None:
+    with pytest.warns(ZarrDeprecationWarning, match="The .* parameter was set to None."):
+        BloscCodec(**kwargs)  # type: ignore[arg-type]
 
 
 async def test_typesize() -> None:
