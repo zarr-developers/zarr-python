@@ -3,7 +3,7 @@ Tests for global per-process concurrency limiting.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import numpy as np
 import pytest
@@ -11,9 +11,6 @@ import pytest
 import zarr
 from zarr.core.common import get_global_semaphore, reset_global_semaphores
 from zarr.core.config import config
-
-if TYPE_CHECKING:
-    from numpy.typing import NDArray
 
 
 class TestGlobalSemaphore:
@@ -241,7 +238,7 @@ class TestArrayConcurrency:
             arr[:] = 42
 
             # Read data (synchronously)
-            data: NDArray[Any] = arr[:]
+            data = arr[:]
 
             # Verify we got the right data
             assert np.all(data == 42)
