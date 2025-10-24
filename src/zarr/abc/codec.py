@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from abc import abstractmethod
+from abc import abstractmethod, abstractproperty
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
 
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter, Store
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
     from zarr.core.indexing import SelectorTuple
@@ -185,13 +186,22 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
 
+    codec_input: type[NDBuffer]
+    codec_output: type[NDBuffer]
+
 
 class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
     """Base class for array-to-bytes codecs."""
 
+    codec_input: type[NDBuffer]
+    codec_output: type[Buffer]
+
 
 class BytesBytesCodec(BaseCodec[Buffer, Buffer]):
     """Base class for bytes-to-bytes codecs."""
+
+    codec_input: type[Buffer]
+    codec_output: type[Buffer]
 
 
 Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
@@ -275,6 +285,11 @@ class CodecPipeline:
     On the read path, it is responsible for fetching chunks from a store (via ByteGetter),
     decoding them and assembling an output array. On the write path, it encodes the chunks
     and writes them to a store (via ByteSetter)."""
+
+    @abstractproperty
+    def prototype(self) -> BufferPrototype:
+        """The buffer prototype of the codec pipeline"""
+        ...
 
     @abstractmethod
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from numcodecs.gzip import GZip
 
 from zarr.abc.codec import BytesBytesCodec
+from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration
 
@@ -14,7 +15,6 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer
 
 
 def parse_gzip_level(data: JSON) -> int:
@@ -30,6 +30,9 @@ def parse_gzip_level(data: JSON) -> int:
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
     """gzip codec"""
+
+    codec_input = Buffer
+    codec_output = Buffer
 
     is_fixed_size = False
 

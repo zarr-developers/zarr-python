@@ -8,16 +8,19 @@ import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
 from zarr.abc.codec import ArrayBytesCodec
+from zarr.core.buffer import Buffer, NDBuffer
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, NDBuffer
 
 
 @dataclass(frozen=True)
 class V2Codec(ArrayBytesCodec):
+    codec_input = NDBuffer
+    codec_output = Buffer
+
     filters: tuple[Numcodec, ...] | None
     compressor: Numcodec | None
 

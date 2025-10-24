@@ -34,6 +34,9 @@ default_system_endian = Endian(sys.byteorder)
 class BytesCodec(ArrayBytesCodec):
     """bytes codec"""
 
+    codec_input = NDBuffer
+    codec_output = Buffer
+
     is_fixed_size = True
 
     endian: Endian | None

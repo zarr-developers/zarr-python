@@ -8,18 +8,21 @@ import numpy as np
 import typing_extensions
 
 from zarr.abc.codec import BytesBytesCodec
+from zarr.core.buffer import Buffer
 from zarr.core.common import JSON, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer
 
 
 @dataclass(frozen=True)
 class Crc32cCodec(BytesBytesCodec):
     """crc32c codec"""
+
+    codec_input = Buffer
+    codec_output = Buffer
 
     is_fixed_size = True
 

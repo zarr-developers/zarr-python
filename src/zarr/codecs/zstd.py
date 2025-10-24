@@ -10,6 +10,7 @@ from numcodecs.zstd import Zstd
 from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
+from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration
 
@@ -17,7 +18,6 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -37,6 +37,9 @@ def parse_checksum(data: JSON) -> bool:
 @dataclass(frozen=True)
 class ZstdCodec(BytesBytesCodec):
     """zstd codec"""
+
+    codec_input = Buffer
+    codec_output = Buffer
 
     is_fixed_size = True
 
