@@ -55,7 +55,7 @@ TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 class NamedConfig(TypedDict, Generic[TName, TConfig]):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
-    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+    is an optional mapping of string keys to values, e.g. another typed dictionary or a JSON object.
 
     This class is generic with two type parameters: the type of the name (``TName``) and the type of
     the configuration (``TConfig``).
@@ -66,6 +66,22 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
 
     configuration: NotRequired[ReadOnly[TConfig]]
     """The configuration of the object. Not required."""
+
+
+class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
+    """
+    A typed dictionary representing an object with a name and configuration, where the configuration
+    is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+    """
+
+    name: ReadOnly[TName]
+    """The name of the object."""
+
+    configuration: ReadOnly[TConfig]
+    """The configuration of the object."""
 
 
 def product(tup: tuple[int, ...]) -> int:
