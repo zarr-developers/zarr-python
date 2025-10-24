@@ -270,7 +270,6 @@ class BatchedCodecPipeline(CodecPipeline):
             chunk_bytes_batch = await concurrent_map(
                 [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
                 lambda byte_getter, prototype: byte_getter.get(prototype),
-                config.get("async.concurrency"),
             )
             chunk_array_batch = await self.decode_batch(
                 [
@@ -375,7 +374,6 @@ class BatchedCodecPipeline(CodecPipeline):
                     for byte_setter, chunk_spec, chunk_selection, _, is_complete_chunk in batch_info
                 ],
                 _read_key,
-                config.get("async.concurrency"),
             )
             chunk_array_decoded = await self.decode_batch(
                 [
@@ -441,7 +439,6 @@ class BatchedCodecPipeline(CodecPipeline):
                     )
                 ],
                 _write_key,
-                config.get("async.concurrency"),
             )
 
     async def decode(
@@ -474,7 +471,6 @@ class BatchedCodecPipeline(CodecPipeline):
                 for single_batch_info in batched(batch_info, self.batch_size)
             ],
             self.read_batch,
-            config.get("async.concurrency"),
         )
 
     async def write(
@@ -489,7 +485,6 @@ class BatchedCodecPipeline(CodecPipeline):
                 for single_batch_info in batched(batch_info, self.batch_size)
             ],
             self.write_batch,
-            config.get("async.concurrency"),
         )
 
 

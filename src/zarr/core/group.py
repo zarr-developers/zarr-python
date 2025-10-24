@@ -44,6 +44,7 @@ from zarr.core.common import (
     NodeType,
     ShapeLike,
     ZarrFormat,
+    get_global_semaphore,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -1441,8 +1442,8 @@ class AsyncGroup:
             )
 
             raise ValueError(msg)
-        # enforce a concurrency limit by passing a semaphore to all the recursive functions
-        semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+        # Use global semaphore for process-wide concurrency limiting
+        semaphore = get_global_semaphore()
         async for member in _iter_members_deep(
             self,
             max_depth=max_depth,
@@ -3338,9 +3339,8 @@ async def create_nodes(
         The created nodes in the order they are created.
     """
 
-    # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
-    # then we should consider adding a keyword argument this this function
-    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+    # Use global semaphore for process-wide concurrency limiting
+    semaphore = get_global_semaphore()
     create_tasks: list[Coroutine[None, None, str]] = []
 
     for key, value in nodes.items():
