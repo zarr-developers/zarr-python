@@ -3208,11 +3208,13 @@ async def create_hierarchy(
     nodes_parsed = _parse_hierarchy_dict(data=nodes_normed_keys)
     redundant_implicit_groups = []
 
-    # empty hierarchies should be a no-op
-    if len(nodes_parsed) > 0:
+    try:
         # figure out which zarr format we are using
         zarr_format = next(iter(nodes_parsed.values())).zarr_format
-
+    except StopIteration:
+        # empty hierarchies should be a no-op
+        pass
+    else:
         # check which implicit groups will require materialization
         implicit_group_keys = tuple(
             filter(lambda k: isinstance(nodes_parsed[k], ImplicitGroupMarker), nodes_parsed)
