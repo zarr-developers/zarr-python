@@ -921,7 +921,7 @@ def resolve_outer_and_inner_chunks(
                 max_bytes=target_shard_size_bytes,
                 array_shape=array_shape,
             )
-            if (has_auto_shard := (target_shard_size_bytes is not None))
+            if (has_auto_shard := target_shard_size_bytes is not None)
             else 2
         )
         for a_shape, c_shape in zip(array_shape, chunk_shape_flat, strict=True):
