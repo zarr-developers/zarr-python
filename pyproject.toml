@@ -504,21 +504,24 @@ zarr = "zarr.testing"
 
 [tool.pylint]
 disable = [
+    "E0203", # access-member-before-definition
     "E0401", # import-error
     "E0606", # possibly-used-before-assignment  # FIXME
+    "E1101", # no-member
     "E1123", # unexpected-keyword-arg  # FIXME
     "E1125", # missing-kwoa  # FIXME
     "E1136", # unsubscriptable-object
+    "W0101", # unreachable
     "W0104", # pointless-statement
     "W0105", # pointless-string-statement
     "W0106", # expression-not-assigned
+    "W0201", # attribute-defined-outside-init  # FIXME
     "W0212", # protected-access
     "W0223", # abstract-method  # FIXME
-    "W0246", # useless-parent-delegation  # FIXME
     "W0511", # fixme
     "W0602", # global-variable-not-assigned
     "W0603", # global-statement
-    "W0611", # unused-import  # FIXME
+    "W0611", # unused-import
     "W0613", # unused-argument
     "W0621", # redefined-outer-name
     "W0622", # redefined-builtin
@@ -531,6 +534,7 @@ disable = [
     "C0115", # missing-class-docstring
     "C0116", # missing-function-docstring
     "C0123", # unidiomatic-typecheck
+    "C0206", # consider-using-dict-items
     "C0301", # line-too-long
     "C0302", # too-many-lines
     "C0411", # wrong-import-order
