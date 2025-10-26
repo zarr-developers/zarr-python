@@ -148,8 +148,6 @@ def unpack_dtype_json(data: DTypeSpec_V2 | DTypeSpec_V3) -> DTypeJSON:
 
 def __getattr__(name: str) -> object:
     if name == "DataTypeValidationError":
-        import warnings
-
         from zarr.errors import DataTypeValidationError, ZarrDeprecationWarning
 
         warnings.warn(

@@ -224,8 +224,12 @@ def test_blosc_enum_classes_import_silently() -> None:
     """
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        from zarr.codecs.blosc import BloscCname as _BloscCname  # noqa: F401
-        from zarr.codecs.blosc import BloscShuffle as _BloscShuffle  # noqa: F401
+        from zarr.codecs.blosc import (  # pylint: disable=reimported
+            BloscCname as _BloscCname,  # noqa: F401
+        )
+        from zarr.codecs.blosc import (  # pylint: disable=reimported
+            BloscShuffle as _BloscShuffle,  # noqa: F401
+        )
 
 
 def test_blosc_codec_init_with_enum_instance_warns() -> None:

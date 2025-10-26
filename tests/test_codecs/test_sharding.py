@@ -789,8 +789,6 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     Mixed integer/list indexing on sharded arrays should return the same
     shape and data as on equivalent chunked arrays.
     """
-    import numpy as np
-
     data = np.arange(200 * 100 * 10, dtype=np.uint8).reshape(200, 100, 10)
 
     chunked = zarr.create_array(
@@ -984,7 +982,7 @@ def test_sharding_index_location_class_imports_silently() -> None:
     """
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        from zarr.codecs.sharding import (  # noqa: F401
+        from zarr.codecs.sharding import (  # noqa: F401  # pylint: disable=reimported
             ShardingCodecIndexLocation as _SCIL,
         )
 

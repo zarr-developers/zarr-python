@@ -170,8 +170,6 @@ def test_fill_value_transformed() -> None:
 
 def test_identity_is_noop() -> None:
     """Default codec (offset=0, scale=1) is a no-op."""
-    import zarr
-
     arr = zarr.create_array(
         store={},
         shape=(50,),

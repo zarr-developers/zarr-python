@@ -409,8 +409,6 @@ async def test_fsspec_store_open_group_via_reference_filesystem() -> None:
     ``GroupNotFoundError``. This test pins ``path="/"`` explicitly to keep
     coverage even if the default value changes later.
     """
-    import json
-
     from fsspec.implementations.reference import ReferenceFileSystem
 
     group_json = json.dumps({"zarr_format": 3, "node_type": "group", "attributes": {}})
@@ -434,9 +432,6 @@ async def test_fsspec_store_read_array_chunk_via_reference_filesystem() -> None:
     fetch path (used by kerchunk-style virtualization) would surface here
     rather than at metadata-open time.
     """
-    import json
-
-    import numpy as np
     from fsspec.implementations.reference import ReferenceFileSystem
 
     # Construct a minimal v3 zarr: a single 1-D uint8 array of length 4 with

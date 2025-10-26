@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
