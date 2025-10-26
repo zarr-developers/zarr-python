@@ -80,7 +80,7 @@ def check_structured_dtype_v2_inner(data: object) -> TypeGuard[StructuredName_V2
         return False
     if len(data) != 2:
         return False
-    if not (isinstance(data[0], str)):
+    if not isinstance(data[0], str):
         return False
     if isinstance(data[-1], str):
         return True

@@ -144,13 +144,13 @@ def test_create_array_defaults(store: Store) -> None:
     assert isinstance(g, Group)
     arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
     assert arr._async_array.compressor is None
-    assert not (arr.filters)
+    assert not arr.filters
     arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
     assert arr._async_array.compressor is not None
-    assert not (arr.filters)
+    assert not arr.filters
     arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
     assert arr._async_array.compressor is not None
-    assert not (arr.filters)
+    assert not arr.filters
     with pytest.raises(ValueError):
         g.create_array(
             "four", dtype="i8", shape=(1,), chunks=(1,), compressor=None, compressors=None
