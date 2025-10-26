@@ -43,11 +43,11 @@ class Attributes(MutableMapping[str, JSON]):
         Equivalent to the following pseudo-code, but performed atomically.
 
         ```python
-        >>> attrs = {"a": 1, "b": 2}
-        >>> attrs.clear()
-        >>> attrs.update({"a": 3", "c": 4})
-        >>> attrs
-        {'a': 3, 'c': 4}
+        attrs = {"a": 1, "b": 2}
+        attrs.clear()
+        attrs.update({"a": "3", "c": 4})
+        print(attrs)
+        #> {'a': '3', 'c': 4}
         ```
         """
         self._obj.metadata.attributes.clear()

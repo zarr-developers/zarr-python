@@ -74,7 +74,7 @@ class StructuredJSON_V3(
         "name": "structured",
         "configuration": {
             "fields": [
-                ["f0", "int32],
+                ["f0", "int32"],
                 ["f1", "float64"],
             ]
         }

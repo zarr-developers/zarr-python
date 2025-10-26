@@ -94,15 +94,17 @@ def create_hierarchy(
 
     Examples
     --------
-    >>> from zarr import create_hierarchy
-    >>> from zarr.storage import MemoryStore
-    >>> from zarr.core.group import GroupMetadata
+    ```python
+    from zarr import create_hierarchy
+    from zarr.storage import MemoryStore
+    from zarr.core.group import GroupMetadata
 
-    >>> store = MemoryStore()
-    >>> nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
-    >>> nodes_created = dict(create_hierarchy(store=store, nodes=nodes))
-    >>> print(nodes)
+    store = MemoryStore()
+    nodes = {'a': GroupMetadata(attributes={'name': 'leaf'})}
+    nodes_created = dict(create_hierarchy(store=store, nodes=nodes))
+    print(nodes)
     # {'a': GroupMetadata(attributes={'name': 'leaf'}, zarr_format=3, consolidated_metadata=None, node_type='group')}
+    ```
     """
     coro = create_hierarchy_async(store=store, nodes=nodes, overwrite=overwrite)
 

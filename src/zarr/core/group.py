@@ -292,21 +292,24 @@ class ConsolidatedMetadata:
 
         Examples
         --------
-        >>> cm = ConsolidatedMetadata(
-        ...     metadata={
-        ...         "group-0": GroupMetadata(
-        ...             consolidated_metadata=ConsolidatedMetadata(
-        ...                 {
-        ...                     "group-0-0": GroupMetadata(),
-        ...                 }
-        ...             )
-        ...         ),
-        ...         "group-1": GroupMetadata(),
-        ...     }
-        ... )
-        {'group-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
-         'group-0/group-0-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
-         'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group')}
+        ```python
+        from zarr.core.group import ConsolidatedMetadata, GroupMetadata
+        cm = ConsolidatedMetadata(
+            metadata={
+                "group-0": GroupMetadata(
+                    consolidated_metadata=ConsolidatedMetadata(
+                        {
+                            "group-0-0": GroupMetadata(),
+                        }
+                    )
+                ),
+                "group-1": GroupMetadata(),
+            }
+        )
+        # {'group-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
+        #  'group-0/group-0-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
+        #  'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group')}
+        ```
         """
         metadata = {}
 
@@ -429,8 +432,11 @@ class GroupMetadata(Metadata):
 
     def to_dict(self) -> dict[str, Any]:
         result = asdict(replace(self, consolidated_metadata=None))
-        if self.consolidated_metadata:
+        if self.consolidated_metadata is not None:
             result["consolidated_metadata"] = self.consolidated_metadata.to_dict()
+        else:
+            # Leave consolidated metadata unset if it's None
+            result.pop("consolidated_metadata")
         return result
 
 
@@ -1894,16 +1900,19 @@ class Group(SyncMixin):
 
         Examples
         --------
-        >>> import zarr
-        >>> group = Group.from_store(zarr.storage.MemoryStore()
-        >>> group.create_array(name="subarray", shape=(10,), chunks=(10,))
-        >>> group.create_group(name="subgroup").create_array(name="subarray", shape=(10,), chunks=(10,))
-        >>> group["subarray"]
-        <Array memory://132270269438272/subarray shape=(10,) dtype=float64>
-        >>> group["subgroup"]
-        <Group memory://132270269438272/subgroup>
-        >>> group["subgroup"]["subarray"]
-        <Array memory://132270269438272/subgroup/subarray shape=(10,) dtype=float64>
+        ```python
+        import zarr
+        from zarr.core.group import Group
+        group = Group.from_store(zarr.storage.MemoryStore())
+        group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="float64")
+        group.create_group(name="subgroup").create_array(name="subarray", shape=(10,), chunks=(10,), dtype="float64")
+        group["subarray"]
+        # <Array memory://... shape=(10,) dtype=float64>
+        group["subgroup"]
+        # <Group memory://...>
+        group["subgroup"]["subarray"]
+        # <Array memory://... shape=(10,) dtype=float64>
+        ```
 
         """
         obj = self._sync(self._async_group.getitem(path))
@@ -1929,15 +1938,19 @@ class Group(SyncMixin):
 
         Examples
         --------
-        >>> import zarr
-        >>> group = Group.from_store(zarr.storage.MemoryStore()
-        >>> group.create_array(name="subarray", shape=(10,), chunks=(10,))
-        >>> group.create_group(name="subgroup")
-        >>> group.get("subarray")
-        <Array memory://132270269438272/subarray shape=(10,) dtype=float64>
-        >>> group.get("subgroup")
-        <Group memory://132270269438272/subgroup>
-        >>> group.get("nonexistent", None)
+        ```python
+        import zarr
+        from zarr.core.group import Group
+        group = Group.from_store(zarr.storage.MemoryStore())
+        group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="float64")
+        group.create_group(name="subgroup")
+        group.get("subarray")
+        # <Array memory://... shape=(10,) dtype=float64>
+        group.get("subgroup")
+        # <Group memory://...>
+        group.get("nonexistent", None)
+        # None
+        ```
 
         """
         try:

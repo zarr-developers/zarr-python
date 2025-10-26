@@ -34,7 +34,8 @@ requires-python = ">=3.11"
 dependencies = [
     'packaging>=22.0',
     'numpy>=1.26',
-    'numcodecs[crc32c]>=0.14',
+    'numcodecs>=0.14',
+    'google-crc32c>=1.5',
     'typing_extensions>=4.9',
     'donfig>=0.8',
 ]
@@ -251,10 +252,22 @@ dependencies = [
 features = ['docs', 'remote']
 
 [tool.hatch.envs.docs.scripts]
-serve = "mkdocs serve"
+serve = "mkdocs serve --watch src"
 build = "mkdocs build"
 check = "mkdocs build --strict"
 readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT/html"
+
+[tool.hatch.envs.doctest]
+description = "Test environment for validating executable code blocks in documentation"
+features = ['test', 'remote']  # Include remote dependencies for s3fs
+dependencies = [
+    "s3fs>=2023.10.0",
+    "pytest",
+    "pytest-examples",
+]
+
+[tool.hatch.envs.doctest.scripts]
+test = "pytest tests/test_docs.py -v"
 list-env = "pip list"
 
 [tool.ruff]
@@ -359,6 +372,11 @@ module = [
     "tests.test_store.test_memory",
     "tests.test_codecs.test_codecs",
     "tests.test_metadata.*",
+    "tests.test_store.test_core",
+    "tests.test_store.test_logging",
+    "tests.test_store.test_object",
+    "tests.test_store.test_stateful",
+    "tests.test_store.test_wrapper",
 ]
 strict = false
 
@@ -366,11 +384,6 @@ strict = false
 # and fix the errors
 [[tool.mypy.overrides]]
 module = [
-    "tests.test_store.test_core",
-    "tests.test_store.test_logging",
-    "tests.test_store.test_object",
-    "tests.test_store.test_stateful",
-    "tests.test_store.test_wrapper",
     "tests.test_group",
     "tests.test_indexing",
     "tests.test_properties",
@@ -396,9 +409,11 @@ addopts = [
 ]
 filterwarnings = [
     "error",
-    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning"
+    "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning",
+    "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning"
 ]
 markers = [
+    "asyncio: mark test as asyncio test",
     "gpu: mark a test as requiring CuPy and GPU",
     "slow_hypothesis: slow hypothesis tests",
 ]

@@ -4,7 +4,7 @@ repo_name: zarr-developers/zarr-python
 repo_url: https://github.com/zarr-developers/zarr-python
 site_description: An implementation of chunked, compressed, N-dimensional arrays for Python.
 site_author: Alistair Miles
-site_url: https://zarr.readthedocs.io/
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr.readthedocs.io/']
 docs_dir: docs
 
 nav:
@@ -25,6 +25,9 @@ nav:
       - user-guide/extending.md
       - user-guide/gpu.md
       - user-guide/consolidated_metadata.md
+      - user-guide/experimental.md
+  - Examples:
+      - user-guide/examples/custom_dtype.md
   - API Reference:
       - api/index.md
       - api/array.md
