@@ -24,7 +24,6 @@ class Numcodec(Protocol):
         enc: Any
             Encoded data.
         """
-        ...
 
     def decode(self, buf: Any, out: Any | None = None) -> Any:
         """
@@ -43,14 +42,12 @@ class Numcodec(Protocol):
         dec : Any
             Decoded data.
         """
-        ...
 
     def get_config(self) -> Any:
         """
         Return a JSON-serializable configuration dictionary for this
         codec. Must include an ``'id'`` field with the codec identifier.
         """
-        ...
 
     @classmethod
     def from_config(cls, config: Any) -> Self:
@@ -62,7 +59,6 @@ class Numcodec(Protocol):
         config : Any
             A configuration dictionary for this codec.
         """
-        ...
 
 
 def _is_numcodec_cls(obj: object) -> TypeGuard[type[Numcodec]]:

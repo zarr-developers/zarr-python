@@ -109,7 +109,6 @@ class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
         -------
         int
         """
-        ...
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         """Computed the spec of the chunk after it has been encoded by the codec.
@@ -310,7 +309,6 @@ class CodecPipeline:
         -------
         Self
         """
-        ...
 
     @classmethod
     @abstractmethod
@@ -325,7 +323,6 @@ class CodecPipeline:
         -------
         Self
         """
-        ...
 
     @classmethod
     def from_array_metadata_and_store(cls, array_metadata: ArrayMetadata, store: Store) -> Self:
@@ -374,7 +371,6 @@ class CodecPipeline:
         chunk_grid : ChunkGridMetadata
             The array chunk grid metadata
         """
-        ...
 
     @abstractmethod
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
@@ -390,7 +386,6 @@ class CodecPipeline:
         -------
         int
         """
-        ...
 
     @abstractmethod
     async def decode(
@@ -409,7 +404,6 @@ class CodecPipeline:
         -------
         Iterable[NDBuffer | None]
         """
-        ...
 
     @abstractmethod
     async def encode(
@@ -428,7 +422,6 @@ class CodecPipeline:
         -------
         Iterable[Buffer | None]
         """
-        ...
 
     @abstractmethod
     async def read(
@@ -460,7 +453,6 @@ class CodecPipeline:
         tuple[GetResult, ...]
             One result per chunk in ``batch_info``.
         """
-        ...
 
     @abstractmethod
     async def write(
@@ -483,7 +475,6 @@ class CodecPipeline:
             The chunk spec contains information about the chunk.
         value : NDBuffer
         """
-        ...
 
 
 async def _batching_helper[CI: CodecInput, CO: CodecOutput](
