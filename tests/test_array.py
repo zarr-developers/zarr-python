@@ -66,7 +66,6 @@ from zarr.core.dtype.npy.string import UTF8Base
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, _iter_grid, _iter_regions
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.errors import (
     ContainsArrayError,
