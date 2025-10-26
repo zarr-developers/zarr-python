@@ -45,7 +45,6 @@ class StoreTests(Generic[S, B]):
         This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
-        ...
 
     @abstractmethod
     async def get(self, store: S, key: str) -> Buffer:
@@ -54,13 +53,11 @@ class StoreTests(Generic[S, B]):
         This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
-        ...
 
     @abstractmethod
     @pytest.fixture
     def store_kwargs(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
         """Kwargs for instantiating a store"""
-        ...
 
     @abstractmethod
     def test_store_repr(self, store: S) -> None: ...
