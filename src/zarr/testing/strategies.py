@@ -137,11 +137,11 @@ def array_metadata(
     # separator = draw(st.sampled_from(['/', '\\']))
     shape = draw(array_shapes())
     ndim = len(shape)
-    chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
     np_dtype = draw(dtypes())
     dtype = get_data_type_from_native_dtype(np_dtype)
     fill_value = draw(npst.from_dtype(np_dtype))
     if zarr_format == 2:
+        chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
         return ArrayV2Metadata(
             shape=shape,
             chunks=chunk_shape,
@@ -155,7 +155,7 @@ def array_metadata(
         )
     else:
         # Use chunk_grids strategy to randomly generate either RegularChunkGrid or RectilinearChunkGrid
-        chunk_grid = draw(chunk_grids(shape=shape, chunk_shape=chunk_shape))
+        chunk_grid = draw(chunk_grids(shape=shape))
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
@@ -211,9 +211,7 @@ def chunk_shapes(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[int, ...]:
 
 
 @st.composite
-def rectilinear_chunks(
-    draw: st.DrawFn, *, shape: tuple[int, ...], chunk_shape: tuple[int, ...]
-) -> list[list[int]]:
+def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
     """
     Generate a RectilinearChunkGrid configuration from a shape and target chunk_shape.
 
@@ -221,79 +219,47 @@ def rectilinear_chunks(
     Sometimes uses uniform chunks, sometimes uses variable-sized chunks.
     """
     chunk_shapes: list[list[int]] = []
-
-    for dim_size, target_chunk_size in zip(shape, chunk_shape, strict=True):
-        if dim_size == 0 or target_chunk_size == 0:
-            chunk_shapes.append([0])
-            continue
-
-        # Calculate number of chunks
-        num_chunks = (dim_size + target_chunk_size - 1) // target_chunk_size
-
-        if num_chunks == 1:
-            # Only one chunk, no variation possible
-            chunk_shapes.append([dim_size])
-            event("rectilinear single chunk")
+    for size in shape:
+        assert size > 0
+        if size > 1:
+            nchunks = draw(st.integers(min_value=1, max_value=size - 1))
+            dividers = sorted(
+                draw(
+                    st.lists(
+                        st.integers(min_value=1, max_value=size - 1),
+                        min_size=nchunks - 1,
+                        max_size=nchunks - 1,
+                        unique=True,
+                    )
+                )
+            )
+            chunk_shapes.append(
+                [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
+            )
         else:
-            # Decide whether to use uniform or variable chunks
-            use_uniform = draw(st.booleans())
-
-            if use_uniform:
-                # Create uniform chunks (same as RegularChunkGrid)
-                chunks_for_dim = []
-                remaining = dim_size
-                for _ in range(num_chunks - 1):
-                    chunks_for_dim.append(target_chunk_size)
-                    remaining -= target_chunk_size
-                if remaining > 0:
-                    chunks_for_dim.append(remaining)
-                chunk_shapes.append(chunks_for_dim)
-                event("rectilinear uniform chunks")
-            else:
-                # Create variable-sized chunks
-                chunks_for_dim = []
-                remaining = dim_size
-                for i in range(num_chunks - 1):
-                    # Generate a chunk size that's not too far from target
-                    min_size = max(1, target_chunk_size // 2)
-                    max_size = min(remaining - (num_chunks - i - 1), target_chunk_size * 2)
-                    if min_size < max_size:
-                        chunk_size = draw(st.integers(min_value=min_size, max_value=max_size))
-                    else:
-                        chunk_size = min_size
-                    chunks_for_dim.append(chunk_size)
-                    remaining -= chunk_size
-                if remaining > 0:
-                    chunks_for_dim.append(remaining)
-                chunk_shapes.append(chunks_for_dim)
-                event("rectilinear variable chunks")
-
+            chunk_shapes.append([1])
     return chunk_shapes
 
 
 @st.composite
-def chunk_grids(
-    draw: st.DrawFn, *, shape: tuple[int, ...], chunk_shape: tuple[int, ...]
-) -> ChunkGrid:
+def chunk_grids(draw: st.DrawFn, *, shape: tuple[int, ...]) -> ChunkGrid:
     """
     Generate either a RegularChunkGrid or RectilinearChunkGrid.
 
     This allows property tests to exercise both chunk grid types.
     """
     # RectilinearChunkGrid doesn't support zero-sized chunks, so use RegularChunkGrid if any dimension is 0
-    if any(s == 0 or c == 0 for s, c in zip(shape, chunk_shape, strict=True)):
+    if any(s == 0 for s in shape):
         event("using RegularChunkGrid (zero-sized dimensions)")
-        return RegularChunkGrid(chunk_shape=chunk_shape)
+        return RegularChunkGrid(chunk_shape=draw(chunk_shapes(shape=shape)))
 
-    use_rectilinear = draw(st.booleans())
-
-    if use_rectilinear:
-        chunks = draw(rectilinear_chunks(shape=shape, chunk_shape=chunk_shape))
+    if draw(st.booleans()):
+        chunks = draw(rectilinear_chunks(shape=shape))
         event("using RectilinearChunkGrid")
         return RectilinearChunkGrid(chunk_shapes=chunks)
     else:
         event("using RegularChunkGrid")
-        return RegularChunkGrid(chunk_shape=chunk_shape)
+        return RegularChunkGrid(chunk_shape=draw(chunk_shapes(shape=shape)))
 
 
 @st.composite
@@ -361,16 +327,13 @@ def arrays(
     if arrays is None:
         arrays = numpy_arrays(shapes=shapes)
     nparray = draw(arrays, label="array data")
-    chunk_shape = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
     dim_names: None | list[str | None] = None
 
     # For v3 arrays, optionally use RectilinearChunkGrid
     chunk_grid_param: ChunkGrid | None = None
     shard_shape = None  # Default to no sharding
     if zarr_format == 3:
-        chunk_grid_param = draw(
-            chunk_grids(shape=nparray.shape, chunk_shape=chunk_shape), label="chunk grid"
-        )
+        chunk_grid_param = draw(chunk_grids(shape=nparray.shape), label="chunk grid")
 
         # Decide about sharding based on chunk grid type:
         # - RectilinearChunkGrid: NEVER use sharding (not supported)
@@ -405,10 +368,10 @@ def arrays(
     # For v3 with chunk_grid_param, pass it via chunks parameter (which now accepts ChunkGrid)
     # For v2 or v3 with RegularChunkGrid, pass chunk_shape
     chunks_param: ChunkGrid | tuple[int, ...]
-    if zarr_format == 3 and chunk_grid_param is not None:
+    if zarr_format == 3 and chunk_grid_param is not None and draw(st.booleans()):
         chunks_param = chunk_grid_param
     else:
-        chunks_param = chunk_shape
+        chunks_param = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
 
     a = root.create_array(
         array_path,
