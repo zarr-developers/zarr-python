@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Literal, Self, TypeGuard, overload
 
+from typing_extensions import deprecated
+
 from zarr.codecs.gzip import GZipConfig
 from zarr.codecs.numcodecs._codecs import _NumcodecsBytesBytesCodec
 from zarr.core.common import (
@@ -14,6 +16,7 @@ from zarr.core.common import (
     _check_codecjson_v2,
     _check_codecjson_v3,
 )
+from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from zarr.codecs.gzip import GZipJSON_V2, GZipJSON_V3
@@ -53,6 +56,7 @@ def check_json_v3(data: object) -> TypeGuard[GZipJSON_V3 | GZipJSON_V3_Legacy]:
     )
 
 
+@deprecated("Use `zarr.codecs.GzipCodec` instead.", category=ZarrDeprecationWarning)
 class GZip(_NumcodecsBytesBytesCodec):
     """
     A legacy wrapper used to provide a Zarr V3 API for the numcodecs gzip codec.

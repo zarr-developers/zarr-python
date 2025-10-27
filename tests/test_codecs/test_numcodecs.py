@@ -106,6 +106,7 @@ def test_docstring(codec_class: type[_numcodecs._NumcodecsCodec]) -> None:
     pytest.skip(f"Skipping the docstring check for {codec_class}")
 
 
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrDeprecationWarning")
 @pytest.mark.parametrize(
     "codec_class",
     [
@@ -313,6 +314,7 @@ def test_to_dict() -> None:
         assert codec.to_dict() == {"name": "numcodecs.lz4", "configuration": {"acceleration": 5}}
 
 
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrDeprecationWarning")
 @pytest.mark.parametrize(
     "codec_cls",
     [

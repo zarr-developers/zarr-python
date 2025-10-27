@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numcodecs
 import numpy as np
@@ -12,6 +12,7 @@ from tests.test_codecs.conftest import BaseTestCodec
 from zarr.codecs import GzipCodec
 from zarr.core.dtype.npy.int import UInt8
 from zarr.core.metadata.common import _parse_codec
+from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec
@@ -44,16 +45,6 @@ class TestGZipCodec(BaseTestCodec):
         return GzipCodec._check_json_v3(data)
 
 
-class TestNumcodecsGZipCodec(TestGZipCodec):
-    test_cls = znumcodecs.GZip  # type: ignore[assignment]
-
-    @staticmethod
-    def check_json_v3(data: object) -> bool:
-        from zarr.codecs.numcodecs.gzip import check_json_v3
-
-        return check_json_v3(data)
-
-
 @pytest.mark.parametrize(
     ("data", "expected"),
     [
@@ -61,27 +52,37 @@ class TestNumcodecsGZipCodec(TestGZipCodec):
         ({"name": "gzip", "configuration": {"level": 1}}, GzipCodec(level=1)),
         (GzipCodec(level=1), GzipCodec(level=1)),
         (numcodecs.GZip(level=1), GzipCodec(level=1)),
-        (zarr.codecs.numcodecs.GZip(level=1), GzipCodec(level=1)),
+        ("zarr3_gzip", GzipCodec(level=1)),
     ],
 )
 def test_parse_codec(data: Any, expected: Codec) -> None:
     """
     Ensure that the _parse_codec function properly resolves a codec-like input into the expected output
     """
-    # TODO: remove the dtype parameter when we fix the problem with the blosc codec.
+    if data == "zarr3_gzip":
+        with pytest.warns(ZarrDeprecationWarning):
+            data = znumcodecs.GZip(level=1)
     assert _parse_codec(data, dtype=UInt8()) == expected
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize(
-    "codec", [GzipCodec(level=1), znumcodecs.GZip(level=1), numcodecs.GZip(level=1)]
-)
-def test_gzip_compression(zarr_format: ZarrFormat, codec: Any) -> None:
+@pytest.mark.parametrize("codec_type", ["legacy_zarr3", "numcodecs"])
+def test_gzip_compression(
+    zarr_format: ZarrFormat, codec_type: Literal["legacy_zarr3", "numcodecs"]
+) -> None:
     """
     Test that any of the gzip-like codecs can be used for compression, and that
     reading the array back uses the primary gzip codec class.
     """
     store: dict[str, Any] = {}
+    ref_codec = GzipCodec(level=1)
+
+    if codec_type == "legacy_zarr3":
+        with pytest.warns(ZarrDeprecationWarning):
+            codec = znumcodecs.GZip(level=1)
+    else:
+        codec = numcodecs.GZip(level=1)
+
     z_w = zarr.create_array(
         store=store,
         dtype="int",
@@ -94,4 +95,4 @@ def test_gzip_compression(zarr_format: ZarrFormat, codec: Any) -> None:
 
     z_r = zarr.open_array(store=store, zarr_format=zarr_format)
     assert np.all(z_r[:] == 5)
-    assert z_r.compressors == (GzipCodec(level=1),)
+    assert z_r.compressors == (ref_codec,)

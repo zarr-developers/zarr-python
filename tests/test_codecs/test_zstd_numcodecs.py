@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from tests.test_codecs.test_zstd import TestZstdCodec
 from zarr.codecs.numcodecs import Zstd
 
 
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrDeprecationWarning")
 class TestNumcodecsZstdCodec(TestZstdCodec):
     test_cls = Zstd  # type: ignore[assignment]
     valid_json_v3 = (  # type: ignore[assignment]

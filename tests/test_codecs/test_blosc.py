@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Literal
 
 import numcodecs
 import numpy as np
@@ -15,6 +15,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
 from zarr.core.dtype import UInt16
 from zarr.core.dtype.npy.int import Int64
+from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import StorePath
 from zarr.storage._memory import MemoryStore
 
@@ -96,19 +97,29 @@ def test_to_json_v2(
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize(
-    "codec",
+    "codec_type",
     [
-        blosc.BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0),
-        zarr.codecs.numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0),
-        numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0),
+        "legacy_zarr3",
+        "numcodecs",
     ],
 )
-def test_blosc_compression(zarr_format: ZarrFormat, codec: Any) -> None:
+def test_blosc_compression(
+    zarr_format: ZarrFormat, codec_type: Literal["legacy_zarr3", "numcodecs"]
+) -> None:
     """
     Test that any of the blosc-like codecs can be used for compression, and that
     reading the array back uses the primary blosc codec class.
     """
     ref_codec = blosc.BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0, typesize=8)
+    if codec_type == "legacy_zarr3":
+        with pytest.warns(ZarrDeprecationWarning):
+            codec: zarr.codecs.numcodecs.Blosc = zarr.codecs.numcodecs.Blosc(
+                cname="lz4", clevel=5, shuffle=1, blocksize=0
+            )
+    elif codec_type == "numcodecs":
+        codec = numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0, typesize=8)
+    else:
+        raise ValueError(f"Unknown codec_type: {codec_type}")
     store: dict[str, Any] = {}
     z_w = zarr.create_array(
         store=store,

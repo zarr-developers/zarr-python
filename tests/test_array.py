@@ -1719,6 +1719,7 @@ async def test_orthogonal_set_total_slice() -> None:
         array[:] = 1
 
 
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
 @pytest.mark.skipif(
     Version(numcodecs.__version__) < Version("0.15.1"),
     reason="codec configuration is overwritten on older versions. GH2800",
@@ -1763,11 +1764,10 @@ def test_roundtrip_numcodecs() -> None:
     with pytest.warns(ZarrUserWarning, match=warn_msg):
         metadata = root["test"].metadata.to_dict()
     # The names will change because numcodecs.<codec> is an alias for <codec>
-    with pytest.warns(ZarrUserWarning, match=warn_msg):
-        expected = tuple(
-            _parse_codec(v, dtype=UInt8()).to_json(zarr_format=3)
-            for v in (*filters, BYTES_CODEC, *compressors)
-        )
+    expected = tuple(
+        _parse_codec(v, dtype=Float64()).to_json(zarr_format=3)
+        for v in (*filters, BYTES_CODEC, *compressors)
+    )
     assert metadata["codecs"] == expected
 
 

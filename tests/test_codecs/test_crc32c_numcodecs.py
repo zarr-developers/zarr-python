@@ -7,6 +7,7 @@ from .conftest import numcodecs_crc32c_available
 
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrDeprecationWarning")
 @pytest.mark.skipif(
     not numcodecs_crc32c_available, reason="numcodecs crc32c codec is not available"
 )

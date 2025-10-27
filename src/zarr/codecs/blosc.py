@@ -113,6 +113,10 @@ def check_json_v2(data: object) -> TypeGuard[BloscJSON_V2]:
         isinstance(data, Mapping)
         and set(data.keys()) == {"id", "clevel", "cname", "shuffle", "blocksize"}
         and data["id"] == "blosc"
+        and data["cname"] in CNAME
+        and isinstance(data["clevel"], int)
+        and isinstance(data["shuffle"], int)
+        and data["shuffle"] in (0, 1, 2)
     )
 
 
@@ -131,7 +135,7 @@ def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3]:
     )
 
 
-def handle_json_alias_v3(data: CodecJSON) -> CodecJSON:
+def _handle_json_alias_v3(data: CodecJSON) -> CodecJSON:
     """
     Handle JSON representations of the codec that are invalid but accepted aliases.
     """
@@ -353,7 +357,7 @@ class BloscCodec(BytesBytesCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON) -> Self:
-        data = handle_json_alias_v3(data)
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             return cls(
                 typesize=data["configuration"]["typesize"],

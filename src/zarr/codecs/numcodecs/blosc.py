@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
 
+from typing_extensions import deprecated
+
 from zarr.codecs.numcodecs._codecs import _NumcodecsBytesBytesCodec
 from zarr.core.common import (
     CodecJSON,
@@ -12,6 +14,7 @@ from zarr.core.common import (
     ZarrFormat,
     _check_codecjson_v2,
 )
+from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from zarr.codecs.blosc import BloscCname_Lit, BloscJSON_V2
@@ -41,6 +44,7 @@ def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3_Legacy]:
     )
 
 
+@deprecated("Use `zarr.codecs.BloscCodec` instead.", category=ZarrDeprecationWarning)
 class Blosc(_NumcodecsBytesBytesCodec):
     """
     A legacy wrapper used to provide a Zarr V3 API for the numcodecs blosc codec.

@@ -24,7 +24,6 @@ def parse_attributes(data: dict[str, JSON] | None) -> dict[str, JSON]:
     return data
 
 
-# TODO: Fix the bug w
 def _parse_codec(data: object, *, dtype: ZDType[Any, Any]) -> Codec | NumcodecWrapper:
     """
     Resolve a potential codec.

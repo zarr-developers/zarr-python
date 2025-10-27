@@ -27,7 +27,7 @@ class ZlibConfig(TypedDict):
 DEFAULT_ZLIB_CONFIG = {"level": 1}
 
 
-def _handle_json_alias(data: CodecJSON_V3) -> CodecJSON_V3:
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
     """
     Handle JSON representations of the codec that are invalid but accepted aliases.
     """
@@ -107,7 +107,7 @@ class Zlib(_NumcodecsBytesBytesCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
-        data = _handle_json_alias(data)
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             return cls(**config)
