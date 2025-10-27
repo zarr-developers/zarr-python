@@ -178,7 +178,6 @@ class Store(ABC):
     @abstractmethod
     def __eq__(self, value: object) -> bool:
         """Equality comparison."""
-        ...
 
     @abstractmethod
     async def get(
@@ -204,7 +203,6 @@ class Store(ABC):
         -------
         Buffer
         """
-        ...
 
     @abstractmethod
     async def get_partial_values(
@@ -225,7 +223,6 @@ class Store(ABC):
         -------
         list of values, in the order of the key_ranges, may contain null/none for missing keys
         """
-        ...
 
     @abstractmethod
     async def exists(self, key: str) -> bool:
@@ -239,13 +236,11 @@ class Store(ABC):
         -------
         bool
         """
-        ...
 
     @property
     @abstractmethod
     def supports_writes(self) -> bool:
         """Does the store support writes?"""
-        ...
 
     @abstractmethod
     async def set(self, key: str, value: Buffer) -> None:
@@ -256,7 +251,6 @@ class Store(ABC):
         key : str
         value : Buffer
         """
-        ...
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         """
@@ -296,7 +290,6 @@ class Store(ABC):
     @abstractmethod
     def supports_deletes(self) -> bool:
         """Does the store support deletes?"""
-        ...
 
     @abstractmethod
     async def delete(self, key: str) -> None:
@@ -306,7 +299,6 @@ class Store(ABC):
         ----------
         key : str
         """
-        ...
 
     @property
     def supports_partial_writes(self) -> Literal[False]:
@@ -320,7 +312,6 @@ class Store(ABC):
     @abstractmethod
     def supports_listing(self) -> bool:
         """Does the store support listing?"""
-        ...
 
     @abstractmethod
     def list(self) -> AsyncIterator[str]:

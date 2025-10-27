@@ -452,3 +452,57 @@ ignore-words-list = "astroid"
 
 [project.entry-points.pytest11]
 zarr = "zarr.testing"
+
+[tool.pylint]
+disable = [
+    "E0401", # import-error
+    "E0606", # possibly-used-before-assignment  # FIXME
+    "E1123", # unexpected-keyword-arg  # FIXME
+    "E1125", # missing-kwoa  # FIXME
+    "E1136", # unsubscriptable-object
+    "W0104", # pointless-statement
+    "W0105", # pointless-string-statement
+    "W0106", # expression-not-assigned
+    "W0212", # protected-access
+    "W0223", # abstract-method  # FIXME
+    "W0246", # useless-parent-delegation  # FIXME
+    "W0511", # fixme
+    "W0602", # global-variable-not-assigned
+    "W0603", # global-statement
+    "W0611", # unused-import  # FIXME
+    "W0613", # unused-argument
+    "W0621", # redefined-outer-name
+    "W0622", # redefined-builtin
+    "W0718", # broad-exception-caught
+    "W1510", # subprocess-run-check
+    "C0103", # invalid-name
+    "C0104", # disallowed-name
+    "C0105", # typevar-name-incorrect-variance
+    "C0114", # missing-module-docstring
+    "C0115", # missing-class-docstring
+    "C0116", # missing-function-docstring
+    "C0123", # unidiomatic-typecheck
+    "C0301", # line-too-long
+    "C0302", # too-many-lines
+    "C0411", # wrong-import-order
+    "C0412", # ungrouped-imports
+    "C0413", # wrong-import-position
+    "C0415", # import-outside-toplevel
+    "C1803", # use-implicit-booleaness-not-comparison
+    "R0124", # comparison-with-itself
+    "R0801", # duplicate-code
+    "R0902", # too-many-instance-attributes
+    "R0903", # too-few-public-methods
+    "R0904", # too-many-public-methods
+    "R0911", # too-many-return-statements
+    "R0912", # too-many-branches
+    "R0913", # too-many-arguments
+    "R0914", # too-many-locals
+    "R0915", # too-many-statements
+    "R0917", # too-many-positional-arguments
+    "R1702", # too-many-nested-blocks
+    "R1705", # no-else-return
+    "R1720", # no-else-raise
+    "R1728", # consider-using-generator
+    "R1732", # consider-using-with  # FIXME
+]

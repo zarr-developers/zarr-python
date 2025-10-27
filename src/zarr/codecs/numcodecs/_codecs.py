@@ -137,9 +137,6 @@ class _NumcodecsCodec(Metadata):
 
 
 class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):
-    def __init__(self, **codec_config: JSON) -> None:
-        super().__init__(**codec_config)
-
     async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> Buffer:
         return await asyncio.to_thread(
             as_numpy_array_wrapper,
@@ -159,9 +156,6 @@ class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):
 
 
 class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
-    def __init__(self, **codec_config: JSON) -> None:
-        super().__init__(**codec_config)
-
     async def _decode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_ndarray = chunk_data.as_ndarray_like()
         out = await asyncio.to_thread(self._codec.decode, chunk_ndarray)
@@ -174,9 +168,6 @@ class _NumcodecsArrayArrayCodec(_NumcodecsCodec, ArrayArrayCodec):
 
 
 class _NumcodecsArrayBytesCodec(_NumcodecsCodec, ArrayBytesCodec):
-    def __init__(self, **codec_config: JSON) -> None:
-        super().__init__(**codec_config)
-
     async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
         chunk_bytes = chunk_data.to_bytes()
         out = await asyncio.to_thread(self._codec.decode, chunk_bytes)
@@ -253,9 +244,6 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec, codec_name="fixedscaleoffset")
 
 
 class Quantize(_NumcodecsArrayArrayCodec, codec_name="quantize"):
-    def __init__(self, **codec_config: JSON) -> None:
-        super().__init__(**codec_config)
-
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Quantize:
         if self.codec_config.get("dtype") is None:
             dtype = array_spec.dtype.to_native_dtype()

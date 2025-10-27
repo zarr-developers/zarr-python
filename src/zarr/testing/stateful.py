@@ -161,7 +161,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     @with_frequency(0.25)
     def clear(self) -> None:
         note("clearing")
-        import zarr
+        import zarr  # pylint: disable=reimported
 
         self._sync(self.store.clear())
         self._sync(self.model.clear())

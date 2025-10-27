@@ -153,3 +153,20 @@ jobs:
         run: exit 1
       - name: Success
         run: echo Success!
+
+  pylint:
+    name: Pylint
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.*'
+    - name: Install Pylint
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint
+    - name: Analyse the code with Pylint
+      run: |
+        pylint .

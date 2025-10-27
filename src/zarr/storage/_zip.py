@@ -84,6 +84,7 @@ class ZipStore(Store):
         assert isinstance(path, Path)
         self.path = path  # root?
 
+        self._is_open = False
         self._zmode = mode
         self.compression = compression
         self.allowZip64 = allowZip64
@@ -123,6 +124,7 @@ class ZipStore(Store):
         super().close()
         with self._lock:
             self._zf.close()
+        self._is_open = False
 
     async def clear(self) -> None:
         # docstring inherited
