@@ -269,33 +269,34 @@ class BloscCodec(BytesBytesCodec):
         blocksize: int = 0,
         tunable_attrs: set[Literal["typesize", "shuffle"]] | None = None,
     ) -> None:
-        # set default value of tunable_attrs
         if tunable_attrs is None:
-            object.__setattr__(self, "tunable_attrs", {"typesize", "shuffle"})
+            object.__setattr__(self, "tunable_attrs", set())
         else:
             object.__setattr__(self, "tunable_attrs", tunable_attrs)
 
         # If typesize was set to None: warn, replace it with a valid typesize
         # and flag the typesize attribute as safe to replace later
-        if typesize is None:
-            msg = (
-                "The typesize parameter was set to None. This is deprecated. "
-                "Provide a positive int for the typesize parameter instead. "
-            )
-            warnings.warn(msg, ZarrDeprecationWarning, stacklevel=2)
-            typesize = 1
+        if typesize in (None, 1):
+            if typesize is None:
+                msg = (
+                    "The typesize parameter was set to None. This is deprecated. "
+                    "Provide a positive int for the typesize parameter instead. "
+                )
+                warnings.warn(msg, ZarrDeprecationWarning, stacklevel=2)
+                typesize = 1
             self.tunable_attrs.update({"typesize"})
 
         # If shuffle was set to None: warn, replace it with a valid typesize
         # and flag the shuffle attribute as safe to replace later
-        if shuffle is None:
-            msg = (
-                "The shuffle parameter was set to None. This is deprecated. "
-                "Provide a valid shuffle literal string -- "
-                f"one of {SHUFFLE!r} -- instead."
-            )
-            warnings.warn(msg, ZarrDeprecationWarning, stacklevel=2)
-            shuffle = BloscShuffle.bitshuffle
+        if shuffle is None or shuffle == "bitshuffle" or shuffle == BloscShuffle.bitshuffle:
+            if shuffle is None:
+                msg = (
+                    "The shuffle parameter was set to None. This is deprecated. "
+                    "Provide a valid shuffle literal string -- "
+                    f"one of {SHUFFLE!r} -- instead."
+                )
+                warnings.warn(msg, ZarrDeprecationWarning, stacklevel=2)
+                shuffle = BloscShuffle.bitshuffle
             self.tunable_attrs.update({"shuffle"})
 
         typesize_parsed = parse_typesize(typesize)
