@@ -132,6 +132,7 @@ plugins:
             show_source: true
             show_symbol_type_toc: true
             signature_crossrefs: true
+            show_if_no_docstring: true
             extensions:
             - griffe_inherited_docstrings
 
