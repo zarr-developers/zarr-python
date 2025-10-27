@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypedDict
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, NotRequired, TypedDict, TypeGuard, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
@@ -33,6 +34,7 @@ from zarr.core.common import (
     JSON,
     ZARR_JSON,
     DimensionNames,
+    NamedConfig,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -138,13 +140,61 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
     )
 
 
-class ArrayV3MetadataDict(TypedDict):
+class AllowedExtraField(TypedDict):
+    """
+    This class models allowed extra fields in array metadata.
+    They are ignored by Zarr Python.
+    """
+
+    must_understand: Literal[False]
+
+
+def check_allowed_extra_field(data: object) -> TypeGuard[AllowedExtraField]:
+    """
+    Check if the extra field is allowed according to the Zarr v3 spec. The object
+    must be a mapping with a "must_understand" key set to `False`.
+    """
+    return isinstance(data, Mapping) and data.get("must_understand") is False
+
+
+def parse_extra_fields(
+    data: Mapping[str, AllowedExtraField] | None,
+) -> dict[str, AllowedExtraField]:
+    if data is None:
+        return {}
+    else:
+        conflict_keys = ARRAY_METADATA_KEYS & set(data.keys())
+        if len(conflict_keys) > 0:
+            msg = (
+                "Invalid extra fields. "
+                "The following keys: "
+                f"{sorted(conflict_keys)} "
+                "are invalid because they collide with keys reserved for use by the "
+                "array metadata document."
+            )
+            raise ValueError(msg)
+        return dict(data)
+
+
+class ArrayMetadataJSON_V3(TypedDict):
     """
     A typed dictionary model for zarr v3 metadata.
     """
 
     zarr_format: Literal[3]
-    attributes: dict[str, JSON]
+    node_type: Literal["array"]
+    data_type: str | NamedConfig[str, Mapping[str, object]]
+    shape: tuple[int, ...]
+    chunk_grid: NamedConfig[str, Mapping[str, object]]
+    chunk_key_encoding: NamedConfig[str, Mapping[str, object]]
+    fill_value: object
+    codecs: tuple[str | NamedConfig[str, Mapping[str, object]], ...]
+    attributes: NotRequired[Mapping[str, JSON]]
+    storage_transformers: NotRequired[tuple[NamedConfig[str, Mapping[str, object]], ...]]
+    dimension_names: NotRequired[tuple[str | None]]
+
+
+ARRAY_METADATA_KEYS = set(ArrayMetadataJSON_V3.__annotations__.keys())
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -160,19 +210,21 @@ class ArrayV3Metadata(Metadata):
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["array"] = field(default="array", init=False)
     storage_transformers: tuple[dict[str, JSON], ...]
+    extra_fields: dict[str, AllowedExtraField]
 
     def __init__(
         self,
         *,
         shape: Iterable[int],
         data_type: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: dict[str, JSON] | ChunkGrid,
+        chunk_grid: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any],
         chunk_key_encoding: ChunkKeyEncodingLike,
         fill_value: object,
-        codecs: Iterable[Codec | dict[str, JSON]],
+        codecs: Iterable[Codec | dict[str, JSON] | NamedConfig[str, Any] | str],
         attributes: dict[str, JSON] | None,
         dimension_names: DimensionNames,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
+        extra_fields: Mapping[str, AllowedExtraField] | None = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
@@ -187,7 +239,7 @@ class ArrayV3Metadata(Metadata):
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
-
+        extra_fields_parsed = parse_extra_fields(extra_fields)
         array_spec = ArraySpec(
             shape=shape_parsed,
             dtype=data_type,
@@ -207,6 +259,7 @@ class ArrayV3Metadata(Metadata):
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
         object.__setattr__(self, "storage_transformers", storage_transformers_parsed)
+        object.__setattr__(self, "extra_fields", extra_fields_parsed)
 
         self._validate_metadata()
 
@@ -325,16 +378,45 @@ class ArrayV3Metadata(Metadata):
         except ValueError as e:
             raise TypeError(f"Invalid fill_value: {fill!r}") from e
 
-        # dimension_names key is optional, normalize missing to `None`
-        _data["dimension_names"] = _data.pop("dimension_names", None)
+        # check if there are extra keys
+        extra_keys = set(_data.keys()) - ARRAY_METADATA_KEYS
+        allowed_extra_fields: dict[str, AllowedExtraField] = {}
+        invalid_extra_fields = {}
+        for key in extra_keys:
+            val = _data[key]
+            if check_allowed_extra_field(val):
+                allowed_extra_fields[key] = val
+            else:
+                invalid_extra_fields[key] = val
+        if len(invalid_extra_fields) > 0:
+            msg = (
+                "Got a Zarr V3 metadata document with the following disallowed extra fields:"
+                f"{sorted(invalid_extra_fields.keys())}."
+                'Extra fields are not allowed unless they are a dict with a "must_understand" key'
+                "which is assigned the value `False`."
+            )
+            raise MetadataValidationError(msg)
+        # TODO: replace this with a real type check!
+        _data_typed = cast(ArrayMetadataJSON_V3, _data)
 
-        # attributes key is optional, normalize missing to `None`
-        _data["attributes"] = _data.pop("attributes", None)
-
-        return cls(**_data, fill_value=fill_value_parsed, data_type=data_type)  # type: ignore[arg-type]
+        return cls(
+            shape=_data_typed["shape"],
+            chunk_grid=_data_typed["chunk_grid"],
+            chunk_key_encoding=_data_typed["chunk_key_encoding"],
+            codecs=_data_typed["codecs"],
+            attributes=_data_typed.get("attributes", {}),  # type: ignore[arg-type]
+            dimension_names=_data_typed.get("dimension_names", None),
+            fill_value=fill_value_parsed,
+            data_type=data_type,
+            extra_fields=allowed_extra_fields,
+            storage_transformers=_data_typed.get("storage_transformers", ()),  # type: ignore[arg-type]
+        )
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
+        extra_fields = out_dict.pop("extra_fields")
+        out_dict = out_dict | extra_fields  # type: ignore[operator]
+
         out_dict["fill_value"] = self.data_type.to_json_scalar(
             self.fill_value, zarr_format=self.zarr_format
         )
@@ -353,7 +435,6 @@ class ArrayV3Metadata(Metadata):
         dtype_meta = out_dict["data_type"]
         if isinstance(dtype_meta, ZDType):
             out_dict["data_type"] = dtype_meta.to_json(zarr_format=3)  # type: ignore[unreachable]
-
         return out_dict
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:

@@ -7,28 +7,20 @@ import pytest
 from packaging.version import Version
 
 import zarr
+import zarr.codecs.blosc as blosc
 import zarr.codecs.numcodecs
 from tests.test_codecs.conftest import BaseTestCodec
-from zarr.abc.store import Store
-from zarr.codecs import BloscCodec
-from zarr.codecs.blosc import (
-    BLOSC_CNAME,
-    BLOSC_SHUFFLE,
-    BloscCname_Lit,
-    BloscJSON_V2,
-    BloscJSON_V3,
-    BloscShuffle_Lit,
-    check_json_v2,
-    check_json_v3,
-)
+from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
+from zarr.core.dtype import UInt16
 from zarr.core.dtype.npy.int import Int64
 from zarr.storage import StorePath
+from zarr.storage._memory import MemoryStore
 
 
 class TestBloscCodec(BaseTestCodec):
-    test_cls = BloscCodec
+    test_cls = blosc.BloscCodec
     valid_json_v2 = (
         {
             "id": "blosc",
@@ -63,32 +55,32 @@ class TestBloscCodec(BaseTestCodec):
 
     @staticmethod
     def check_json_v2(data: object) -> bool:
-        return check_json_v2(data)
+        return blosc.check_json_v2(data)
 
     @staticmethod
     def check_json_v3(data: object) -> bool:
-        return check_json_v3(data)
+        return blosc.check_json_v3(data)
 
 
-@pytest.mark.parametrize("shuffle", BLOSC_SHUFFLE)
-@pytest.mark.parametrize("cname", BLOSC_CNAME)
+@pytest.mark.parametrize("shuffle", blosc.SHUFFLE)
+@pytest.mark.parametrize("cname", blosc.CNAME)
 @pytest.mark.parametrize("clevel", [1, 2])
 @pytest.mark.parametrize("blocksize", [1, 2])
 @pytest.mark.parametrize("typesize", [1, 2])
 def test_to_json_v2(
-    cname: BloscCname_Lit, shuffle: BloscShuffle_Lit, clevel: int, blocksize: int, typesize: int
+    cname: blosc.CName, shuffle: blosc.Shuffle, clevel: int, blocksize: int, typesize: int
 ) -> None:
-    codec = BloscCodec(
+    codec = blosc.BloscCodec(
         shuffle=shuffle, cname=cname, clevel=clevel, blocksize=blocksize, typesize=typesize
     )
-    expected_v2: BloscJSON_V2 = {
+    expected_v2: blosc.BloscJSON_V2 = {
         "id": "blosc",
         "cname": cname,
         "clevel": clevel,
-        "shuffle": BLOSC_SHUFFLE.index(shuffle),
+        "shuffle": blosc.SHUFFLE.index(shuffle),
         "blocksize": blocksize,
     }
-    expected_v3: BloscJSON_V3 = {
+    expected_v3: blosc.BloscJSON_V3 = {
         "name": "blosc",
         "configuration": {
             "cname": cname,
@@ -106,7 +98,7 @@ def test_to_json_v2(
 @pytest.mark.parametrize(
     "codec",
     [
-        BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0),
+        blosc.BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0),
         zarr.codecs.numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0),
         numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0),
     ],
@@ -116,7 +108,7 @@ def test_blosc_compression(zarr_format: ZarrFormat, codec: Any) -> None:
     Test that any of the blosc-like codecs can be used for compression, and that
     reading the array back uses the primary blosc codec class.
     """
-    ref_codec = BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0, typesize=8)
+    ref_codec = blosc.BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0, typesize=8)
     store: dict[str, Any] = {}
     z_w = zarr.create_array(
         store=store,
@@ -133,19 +125,19 @@ def test_blosc_compression(zarr_format: ZarrFormat, codec: Any) -> None:
     assert z_r.compressors == (ref_codec,)
 
 
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("dtype", ["uint8", "uint16"])
-async def test_blosc_evolve(store: Store, dtype: str) -> None:
+async def test_blosc_evolve(dtype: str) -> None:
     typesize = np.dtype(dtype).itemsize
     path = "blosc_evolve"
+    store = MemoryStore()
     spath = StorePath(store, path)
-    await zarr.api.asynchronous.create_array(
+    zarr.create_array(
         spath,
         shape=(16, 16),
         chunks=(16, 16),
         dtype=dtype,
         fill_value=0,
-        compressors=BloscCodec(),
+        compressors=blosc.BloscCodec(),
     )
     buf = await store.get(f"{path}/zarr.json", prototype=default_buffer_prototype())
     assert buf is not None
@@ -159,14 +151,14 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
 
     path2 = "blosc_evolve_sharding"
     spath2 = StorePath(store, path2)
-    await zarr.api.asynchronous.create_array(
+    zarr.create_array(
         spath2,
         shape=(16, 16),
         chunks=(16, 16),
         shards=(16, 16),
         dtype=dtype,
         fill_value=0,
-        compressors=BloscCodec(),
+        compressors=blosc.BloscCodec(),
     )
     buf = await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype())
     assert buf is not None
@@ -177,6 +169,43 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
         assert blosc_configuration_json["shuffle"] == "bitshuffle"
     else:
         assert blosc_configuration_json["shuffle"] == "shuffle"
+
+
+@pytest.mark.parametrize("shuffle", [None, "bitshuffle", blosc.BloscShuffle.shuffle])
+@pytest.mark.parametrize("typesize", [None, 1, 2])
+def test_tunable_attrs_param(
+    shuffle: None | blosc.Shuffle | blosc.BloscShuffle, typesize: None | int
+) -> None:
+    """
+    Test that the tunable_attrs parameter is set as expected when creating a BloscCodec,
+    """
+    codec = blosc.BloscCodec(typesize=typesize, shuffle=shuffle)
+
+    if shuffle is None:
+        assert codec.shuffle == blosc.BloscShuffle.bitshuffle  # default shuffle
+        assert "shuffle" in codec._tunable_attrs
+    if typesize is None:
+        assert codec.typesize == 1  # default typesize
+        assert "typesize" in codec._tunable_attrs
+
+    new_dtype = UInt16()
+    array_spec = ArraySpec(
+        shape=(1,),
+        dtype=new_dtype,
+        fill_value=1,
+        prototype=default_buffer_prototype(),
+        config={},  # type: ignore[arg-type]
+    )
+
+    evolved_codec = codec.evolve_from_array_spec(array_spec=array_spec)
+    if typesize is None:
+        assert evolved_codec.typesize == new_dtype.item_size
+    else:
+        assert evolved_codec.typesize == codec.typesize
+    if shuffle is None:
+        assert evolved_codec.shuffle == blosc.BloscShuffle.shuffle
+    else:
+        assert evolved_codec.shuffle == codec.shuffle
 
 
 async def test_typesize() -> None:

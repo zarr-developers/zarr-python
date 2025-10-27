@@ -36,19 +36,9 @@ from donfig import Config as DConfig
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
 
-    from zarr.core.dtype.wrapper import ZDType
-
 
 class BadConfigError(ValueError):
     _msg = "bad Config: %r"
-
-
-# These values are used for rough categorization of data types
-# we use this for choosing a default encoding scheme based on the data type. Specifically,
-# these categories are keys in a configuration dictionary.
-# it is not a part of the ZDType class because these categories are more of an implementation detail
-# of our config system rather than a useful attribute of any particular data type.
-DTypeCategory = Literal["variable-length-string", "default"]
 
 
 class Config(DConfig):  # type: ignore[misc]
@@ -177,17 +167,3 @@ def parse_indexing_order(data: Any) -> Literal["C", "F"]:
         return cast("Literal['C', 'F']", data)
     msg = f"Expected one of ('C', 'F'), got {data} instead."
     raise ValueError(msg)
-
-
-def categorize_data_type(dtype: ZDType[Any, Any]) -> DTypeCategory:
-    """
-    Classify a ZDType. The return value is a string which belongs to the type ``DTypeCategory``.
-
-    This is used by the config system to determine how to encode arrays with the associated data type
-    when the user has not specified a particular serialization scheme.
-    """
-    from zarr.core.dtype import VariableLengthUTF8
-
-    if isinstance(dtype, VariableLengthUTF8):
-        return "variable-length-string"
-    return "default"

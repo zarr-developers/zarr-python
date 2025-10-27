@@ -104,10 +104,10 @@ from zarr.core.indexing import (
 from zarr.core.metadata import (
     ArrayMetadata,
     ArrayMetadataDict,
+    ArrayMetadataJSON_V3,
     ArrayV2Metadata,
     ArrayV2MetadataDict,
     ArrayV3Metadata,
-    ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
 from zarr.core.metadata.common import _parse_codec
@@ -410,7 +410,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @overload
     def __init__(
         self: AsyncArray[ArrayV3Metadata],
-        metadata: ArrayV3Metadata | ArrayV3MetadataDict,
+        metadata: ArrayV3Metadata | ArrayMetadataJSON_V3,
         store_path: StorePath,
         config: ArrayConfigLike | None = None,
     ) -> None: ...
@@ -1061,7 +1061,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
-        _metadata_dict = cast("ArrayV3MetadataDict", metadata_dict)
+        _metadata_dict = cast("ArrayMetadataJSON_V3", metadata_dict)
         return cls(store_path=store_path, metadata=_metadata_dict)
 
     @property

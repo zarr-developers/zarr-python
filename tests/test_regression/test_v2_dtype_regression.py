@@ -22,7 +22,7 @@ import zarr.abc
 import zarr.abc.codec
 import zarr.codecs as zarrcodecs
 from zarr.abc.numcodec import Numcodec
-from zarr.codecs.blosc import BLOSC_CNAME, BLOSC_SHUFFLE, BloscCodec
+from zarr.codecs import blosc
 from zarr.codecs.gzip import GzipCodec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
@@ -109,9 +109,9 @@ zarr_v3_blosc_cases = [
     ArrayParams(
         values=np.arange(4, dtype="float64"),
         fill_value=1,
-        compressor=BloscCodec(clevel=1, shuffle=shuf, cname=cname),  # type: ignore[arg-type]
+        compressor=blosc.BloscCodec(clevel=1, shuffle=shuf, cname=cname),  # type: ignore[arg-type]
     )
-    for shuf, cname in itertools.product(BLOSC_SHUFFLE, BLOSC_CNAME)
+    for shuf, cname in itertools.product(blosc.SHUFFLE, blosc.CNAME)
     if cname != "snappy"
 ]
 
