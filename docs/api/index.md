@@ -48,14 +48,6 @@ The ABC module defines interfaces for extending Zarr:
 - **[Errors](errors.md)** - Exception classes and error handling
 - **[Testing](testing.md)** - Utilities for testing Zarr-based code
 
-
-## Migration and Compatibility
-
-- **[Deprecated Functions](deprecated/convenience.md)** - Legacy convenience functions
-- **[Deprecated Creation](deprecated/creation.md)** - Legacy array creation functions
-
-These deprecated modules are maintained for backward compatibility but should be avoided in new code.
-
 ## Getting Help
 
 - Check the [User Guide](../user-guide/index.md) for tutorials and examples
