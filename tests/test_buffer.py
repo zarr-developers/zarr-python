@@ -194,6 +194,19 @@ def test_numpy_buffer_prototype() -> None:
 
 
 @gpu_test
+def test_gpu_buffer_raises() -> None:
+    import cupy as cp
+
+    arr = cp.empty((10, 10), dtype="B")
+    with pytest.raises(ValueError, match="array_like: only 1-dim allowed"):
+        gpu.Buffer(arr)
+
+    arr = cp.arange(12, dtype="int32")
+    with pytest.raises(ValueError, match="array_like: only dtypes"):
+        gpu.Buffer(arr)
+
+
+@gpu_test
 def test_gpu_buffer_prototype() -> None:
     buffer = gpu.buffer_prototype.buffer.create_zero_length()
     ndbuffer = gpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=cp.dtype("int64"))
