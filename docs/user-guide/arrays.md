@@ -540,7 +540,7 @@ bar[:] = np.arange(100)
 print(root.tree())
 ```
 
-## Sharding
+## Sharding {#user-guide-sharding}
 
 Using small chunk shapes in very large arrays can lead to a very large number of chunks.
 This can become a performance issue for file systems and object storage.
