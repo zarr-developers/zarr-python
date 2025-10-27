@@ -562,3 +562,78 @@ def chunk_paths(draw: st.DrawFn, ndim: int, numblocks: tuple[int, ...], subset: 
     )
     subset_slicer = slice(draw(st.integers(min_value=0, max_value=ndim))) if subset else slice(None)
     return "/".join(map(str, blockidx[subset_slicer]))
+
+
+@st.composite
+def complex_chunk_grids(draw: st.DrawFn) -> RectilinearChunkGrid:
+    ndim = draw(st.integers(min_value=1, max_value=3))
+    nchunks = draw(st.integers(min_value=10, max_value=100))
+    dim_chunks = st.lists(
+        st.integers(min_value=1, max_value=10), unique=True, min_size=nchunks, max_size=nchunks
+    )
+    if draw(st.booleans()):
+        event("using RectilinearChunkGrid")
+        chunk_shapes = draw(st.lists(dim_chunks, min_size=ndim, max_size=ndim))
+        return RectilinearChunkGrid(chunk_shapes=chunk_shapes)
+
+    else:
+        event("using RectilinearChunkGrid (run length encoded)")
+        repeats = st.lists(
+            st.integers(min_value=1, max_value=20), min_size=nchunks, max_size=nchunks
+        )
+        chunk_shapes_rle = [
+            [[c, r] for c, r in zip(draw(dim_chunks), draw(repeats), strict=True)]
+            for _ in range(ndim)
+        ]
+        return RectilinearChunkGrid(chunk_shapes=chunk_shapes_rle)
+
+
+@st.composite
+def complex_chunked_arrays(
+    draw: st.DrawFn,
+    *,
+    stores: st.SearchStrategy[StoreLike] = stores,
+) -> Array:
+    store = draw(stores, label="store")
+    chunks = draw(complex_chunk_grids(), label="chunk grid")
+    assert isinstance(chunks, RectilinearChunkGrid)
+    shape = tuple(x[-1] for x in chunks._cumulative_sizes)
+    nparray = draw(numpy_arrays(shapes=st.just(shape)), label="array data")
+    root = zarr.open_group(store, mode="w")
+
+    a = root.create_array(
+        "/foo",
+        shape=nparray.shape,
+        chunks=chunks,
+        shards=None,
+        dtype=nparray.dtype,
+        attributes={},
+        fill_value=None,
+        dimension_names=None,
+    )
+
+    assert isinstance(a, Array)
+    if a.metadata.zarr_format == 3:
+        assert a.fill_value is not None
+    assert nparray.shape == a.shape
+
+    # Verify chunks - for RegularChunkGrid check exact match
+    # For RectilinearChunkGrid, skip chunks check since it raises NotImplementedError
+    if isinstance(a.metadata.chunk_grid, RectilinearChunkGrid):
+        # Just verify the chunk_grid is set correctly
+        assert isinstance(a.metadata.chunk_grid, RectilinearChunkGrid)
+        # shards also raises NotImplementedError for RectilinearChunkGrid
+    else:
+        # For RegularChunkGrid, the chunks property returns the normalized chunk_shape
+        # which may differ from the input (e.g., (0,) becomes (1,) after normalization)
+        # We should compare against the actual chunk_grid's chunk_shape
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+        assert isinstance(a.metadata.chunk_grid, RegularChunkGrid)
+        expected_chunks = a.metadata.chunk_grid.chunk_shape
+        assert expected_chunks == a.chunks
+
+    assert a.shards is None  # We don't use sharding with RectilinearChunkGrid
+
+    a[:] = nparray
+    return a
