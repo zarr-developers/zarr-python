@@ -91,3 +91,6 @@ tests/.hypothesis
 
 zarr/version.py
 zarr.egg-info/
+
+# air speed velocity benchmarking
+/.asv/

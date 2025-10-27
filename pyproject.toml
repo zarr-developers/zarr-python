@@ -115,7 +115,7 @@ docs = [
     'astroid<4',
     'pytest'
 ]
-
+benchmark = ["asv>=0.6.5"]
 [project.scripts]
 zarr = "zarr._cli.cli:app"
 
@@ -269,6 +269,12 @@ dependencies = [
 [tool.hatch.envs.doctest.scripts]
 test = "pytest tests/test_docs.py -v"
 list-env = "pip list"
+
+[tool.hatch.envs.benchmark]
+features = ["benchmark"]
+
+[tool.hatch.envs.benchmark.scripts]
+run = "asv run --dry-run --show-stderr"
 
 [tool.ruff]
 line-length = 100
