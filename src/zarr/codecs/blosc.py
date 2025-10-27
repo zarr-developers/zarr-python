@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-import warnings
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import cached_property
 from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
@@ -15,7 +14,6 @@ from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, NamedRequiredConfig, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasItemSize
-from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from typing import Self
@@ -131,12 +129,6 @@ class BloscCodec(BytesBytesCodec):
 
     Attributes
     ----------
-    tunable_attrs : set of {'typesize', 'shuffle'}
-        Attributes that will be automatically tuned when `evolve_from_array_spec()`
-        is called. By default, contains {'typesize', 'shuffle'}. When either
-        `typesize` or `shuffle` is explicitly set to None during initialization,
-        the corresponding attribute is added to this set (if not already present),
-        allowing it to be overridden based on the array's dtype.
     is_fixed_size : bool
         Always False for Blosc codec, as compression produces variable-sized output.
     typesize : int
@@ -154,8 +146,8 @@ class BloscCodec(BytesBytesCodec):
     ----------
     typesize : int, optional
         The data type size in bytes. This affects how the shuffle filter processes
-        the data. If None (deprecated), defaults to 1 and the attribute is marked
-        as tunable. Default: 1.
+        the data. If None, defaults to 1 and the attribute is marked as tunable.
+        Default: 1.
     cname : BloscCname or {'lz4', 'lz4hc', 'blosclz', 'snappy', 'zlib', 'zstd'}, optional
         The compression algorithm to use. Default: 'zstd'.
     clevel : int, optional
@@ -168,47 +160,17 @@ class BloscCodec(BytesBytesCodec):
         - 'shuffle': Byte shuffling (better for typesize > 1)
         - 'bitshuffle': Bit shuffling (better for typesize == 1)
 
-        If None (deprecated), defaults to 'bitshuffle' and the attribute is marked
+        If None, defaults to 'bitshuffle' and the attribute is marked
         as tunable. Default: 'bitshuffle'.
     blocksize : int, optional
         The requested size of compressed blocks in bytes. A value of 0 means
         automatic block size selection. Default: 0.
-    tunable_attrs : set of {'typesize', 'shuffle'}, optional
-        Names of attributes that can be automatically adjusted by
-        `evolve_from_array_spec()`. This allows the codec to adapt its parameters
-        based on the array's data type when the array is created. If None, defaults
-        to {'typesize', 'shuffle'}.
 
     Notes
     -----
-    **Tunable Attributes Logic**:
-
-    The `tunable_attrs` mechanism allows codec parameters to be automatically
-    adjusted based on the array's data type:
-
-    1. **Initialization**: During `__init__`, if `tunable_attrs` is None, it
-       defaults to {'typesize', 'shuffle'}. This means both attributes can be
-       tuned by default.
-
-    2. **Deprecated None Values**: If `typesize` or `shuffle` is explicitly set
-       to None:
-
-       - A deprecation warning is issued
-       - The parameter is set to a default value (1 for typesize, 'bitshuffle'
-         for shuffle)
-       - The attribute name is added to `tunable_attrs`
-
-    3. **Evolution**: When `evolve_from_array_spec()` is called (typically during
-       array creation), it creates a new codec instance with updated parameters:
-
-       - If 'typesize' is in `tunable_attrs`, it's set to the array dtype's
-         item size
-       - If 'shuffle' is in `tunable_attrs`, it's set to 'bitshuffle' if
-         item_size == 1, otherwise 'shuffle'
-
-    4. **Explicit Values**: If you explicitly set `typesize=4` or
-       `shuffle='noshuffle'`, these values are NOT in `tunable_attrs` by default
-       and will not be changed by `evolve_from_array_spec()`.
+    **Tunable attributes**: If `typesize` or `shuffle` are set to None during
+    initialization, they are marked as tunable attributes. This means they can be
+    adjusted later based on the data type of the array being compressed.
 
     **Thread Safety**: This codec sets `numcodecs.blosc.use_threads = False` at
     module import time to avoid threading issues in asyncio contexts.
@@ -229,28 +191,14 @@ class BloscCodec(BytesBytesCodec):
     >>> codec.cname
     <BloscCname.zstd: 'zstd'>
 
-    Use deprecated None values (will be tuned automatically):
-
-    >>> codec = BloscCodec(typesize=None, shuffle=None)  # doctest: +SKIP
-    DeprecationWarning: The typesize parameter was set to None...
-    >>> 'typesize' in codec.tunable_attrs
-    True
-    >>> 'shuffle' in codec.tunable_attrs
-    True
-
-    Prevent automatic tuning:
-
-    >>> codec = BloscCodec(typesize=4, shuffle='noshuffle', tunable_attrs=set())
-    >>> codec.tunable_attrs
-    set()
-
     See Also
     --------
     BloscShuffle : Enum for shuffle filter options
     BloscCname : Enum for compression algorithm options
     """
 
-    tunable_attrs: set[Literal["typesize", "shuffle"]]
+    # This attribute tracks parameters were set to None at init time, and thus tunable
+    _tunable_attrs: set[Literal["typesize", "shuffle"]] = field(init=False)
     is_fixed_size = False
 
     typesize: int
@@ -262,42 +210,25 @@ class BloscCodec(BytesBytesCodec):
     def __init__(
         self,
         *,
-        typesize: int | None = 1,
+        typesize: int | None = None,
         cname: BloscCname | CName = BloscCname.zstd,
         clevel: int = 5,
-        shuffle: BloscShuffle | Shuffle | None = "bitshuffle",
+        shuffle: BloscShuffle | Shuffle | None = None,
         blocksize: int = 0,
-        tunable_attrs: set[Literal["typesize", "shuffle"]] | None = None,
     ) -> None:
-        if tunable_attrs is None:
-            object.__setattr__(self, "tunable_attrs", set())
-        else:
-            object.__setattr__(self, "tunable_attrs", tunable_attrs)
+        object.__setattr__(self, "_tunable_attrs", set())
 
-        # If typesize was set to None: warn, replace it with a valid typesize
+        # If typesize was set to None, replace it with a valid typesize
         # and flag the typesize attribute as safe to replace later
-        if typesize in (None, 1):
-            if typesize is None:
-                msg = (
-                    "The typesize parameter was set to None. This is deprecated. "
-                    "Provide a positive int for the typesize parameter instead. "
-                )
-                warnings.warn(msg, ZarrDeprecationWarning, stacklevel=2)
-                typesize = 1
-            self.tunable_attrs.update({"typesize"})
+        if typesize is None:
+            typesize = 1
+            self._tunable_attrs.update({"typesize"})
 
-        # If shuffle was set to None: warn, replace it with a valid typesize
+        # If shuffle was set to None, replace it with a valid shuffle
         # and flag the shuffle attribute as safe to replace later
-        if shuffle is None or shuffle == "bitshuffle" or shuffle == BloscShuffle.bitshuffle:
-            if shuffle is None:
-                msg = (
-                    "The shuffle parameter was set to None. This is deprecated. "
-                    "Provide a valid shuffle literal string -- "
-                    f"one of {SHUFFLE!r} -- instead."
-                )
-                warnings.warn(msg, ZarrDeprecationWarning, stacklevel=2)
-                shuffle = BloscShuffle.bitshuffle
-            self.tunable_attrs.update({"shuffle"})
+        if shuffle is None:
+            shuffle = BloscShuffle.bitshuffle
+            self._tunable_attrs.update({"shuffle"})
 
         typesize_parsed = parse_typesize(typesize)
         cname_parsed = parse_enum(cname, BloscCname)
@@ -340,9 +271,9 @@ class BloscCodec(BytesBytesCodec):
         if isinstance(array_spec.dtype, HasItemSize):
             item_size = array_spec.dtype.item_size
         new_codec = self
-        if "typesize" in self.tunable_attrs:
+        if "typesize" in self._tunable_attrs:
             new_codec = replace(new_codec, typesize=item_size)
-        if "shuffle" in self.tunable_attrs:
+        if "shuffle" in self._tunable_attrs:
             new_codec = replace(
                 new_codec,
                 shuffle=(BloscShuffle.bitshuffle if item_size == 1 else BloscShuffle.shuffle),
