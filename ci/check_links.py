@@ -43,6 +43,10 @@ class DocumentationValidator:
             return path
         return ""
 
+    def should_ignore_path(self, path: str) -> bool:
+        """Check if path should be ignored (contains _sources or _modules)."""
+        return "/_sources" in path or "/_modules" in path
+
     def is_valid_doc_url(self, url: str, base: str) -> bool:
         """Check if URL is part of the documentation."""
         if not url.startswith(("http://", "https://")):
@@ -50,7 +54,12 @@ class DocumentationValidator:
         parsed = urlparse(url)
         base_parsed = urlparse(base)
         # Must be same domain and start with base path
-        return parsed.netloc == base_parsed.netloc and url.startswith(base)
+        if not (parsed.netloc == base_parsed.netloc and url.startswith(base)):
+            return False
+
+        # Ignore paths containing _sources or _modules
+        relative_path = self.get_relative_path(url, base)
+        return not self.should_ignore_path(relative_path)
 
     def fetch_page(self, url: str) -> tuple[int, str]:
         """Fetch a page and return status code and content."""
@@ -119,6 +128,11 @@ class DocumentationValidator:
 
         for stable_url in sorted(stable_urls):
             relative_path = self.get_relative_path(stable_url, self.stable_base)
+
+            # Skip ignored paths
+            if self.should_ignore_path(relative_path):
+                continue
+
             latest_url = self.latest_base + relative_path
 
             print(f"  Checking: {relative_path}")
