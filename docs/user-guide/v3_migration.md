@@ -123,7 +123,7 @@ The Store API has changed significant in Zarr-Python 3.
 
 The `MutableMapping` base class has been replaced in favor of a custom abstract base class ([`zarr.abc.store.Store`][]).
 An asynchronous interface is used for all store methods that use I/O.
-This change ensures that all store methods are non-blocking and are as performant as possible.
+This change ensures that these store methods are non-blocking and are as performant as possible.
 
 #### Store implementations
 
