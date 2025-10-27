@@ -203,7 +203,7 @@ class _ShardReader(ShardMapping):
             buffer_prototype = default_buffer_prototype()
         index = _ShardIndex.create_empty(chunks_per_shard)
         obj = cls()
-        obj.buf = buffer_prototype.buffer.create_zero_length()
+        obj.buf = buffer_prototype.buffer.Delayed.create_zero_length()
         obj.index = index
         return obj
 
@@ -252,7 +252,7 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
         if buffer_prototype is None:
             buffer_prototype = default_buffer_prototype()
         obj = cls()
-        obj.buf = buffer_prototype.buffer.create_zero_length()
+        obj.buf = buffer_prototype.buffer.Delayed.create_zero_length()
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
