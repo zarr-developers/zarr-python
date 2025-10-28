@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
@@ -15,8 +14,8 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 
 
@@ -30,10 +29,6 @@ class BitRoundJSON_V2(BitRoundConfig):
     id: ReadOnly[Literal["bitround"]]
 
 
-class BitRoundJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.bitround"], BitRoundConfig]):
-    """JSON representation of BitRound codec for Zarr V3."""
-
-
 class BitRoundJSON_V3(NamedRequiredConfig[Literal["bitround"], BitRoundConfig]):
     """JSON representation of BitRound codec for Zarr V3."""
 
@@ -43,26 +38,22 @@ def check_json_v2(data: object) -> TypeGuard[BitRoundJSON_V2]:
     A type guard for the Zarr V2 form of the BitRound codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "bitround"
         and "keepbits" in data
         and isinstance(data["keepbits"], int)  # type: ignore[typeddict-item]
-        and data["keepbits"] > 0  # type: ignore[typeddict-item]
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[BitRoundJSON_V3 | BitRoundJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[BitRoundJSON_V3]:
     """
     A type guard for the Zarr V3 form of the BitRound codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("bitround", "numcodecs.bitround")
-        and "configuration" in data
+        check_named_required_config(data)
+        and data["name"] == "bitround"
         and "keepbits" in data["configuration"]
         and isinstance(data["configuration"]["keepbits"], int)
-        and data["configuration"]["keepbits"] > 0
     )
 
 
@@ -98,6 +89,6 @@ class BitRound(_NumcodecsArrayArrayCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

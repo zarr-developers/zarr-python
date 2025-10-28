@@ -234,3 +234,16 @@ async def test_typesize() -> None:
     else:
         expected_size = 10216
     assert size == expected_size, msg
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrDeprecationWarning")
+def test_v3_json_alias() -> None:
+    from zarr.codecs import numcodecs as _numcodecs
+
+    """
+    Test that the default JSON output of the legacy numcodecs.zarr3.Blosc codec is readable, even if it's
+    underspecified.
+    """
+    assert _numcodecs.Blosc.from_json(
+        {"name": "numcodecs.blosc", "configuration": {}}
+    ) == _numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0)

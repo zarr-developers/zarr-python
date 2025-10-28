@@ -15,12 +15,12 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 
 
-class Crc32Config(TypedDict):
+class Crc32Config(TypedDict, total=False):
     """Configuration parameters for CRC32 codec."""
 
     location: Literal["start", "end"]
@@ -32,10 +32,6 @@ class Crc32JSON_V2(Crc32Config):
     id: ReadOnly[Literal["crc32"]]
 
 
-class Crc32JSON_V3_Legacy(NamedConfig[Literal["numcodecs.crc32"], Crc32Config]):
-    """Legacy JSON representation of CRC32 codec for Zarr V3."""
-
-
 class Crc32JSON_V3(NamedConfig[Literal["crc32"], Crc32Config]):
     """JSON representation of CRC32 codec for Zarr V3."""
 
@@ -45,28 +41,36 @@ def check_json_v2(data: object) -> TypeGuard[Crc32JSON_V2]:
     A type guard for the Zarr V2 form of the CRC32 codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "crc32"
         and ("location" not in data or data["location"] in ("start", "end"))  # type: ignore[typeddict-item]
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[Crc32JSON_V3 | Crc32JSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[Crc32JSON_V3]:
     """
     A type guard for the Zarr V3 form of the CRC32 codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("crc32", "numcodecs.crc32")
+        check_named_required_config(data)
+        and data["name"] == "crc32"
         and (
-            "configuration" not in data
-            or (
-                "location" not in data["configuration"]
-                or data["configuration"]["location"] in ("start", "end")
-            )
+            "location" not in data["configuration"]
+            or data["configuration"]["location"] in ("start", "end")
         )
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle underspecified JSON representation of the codec produced by legacy code
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if data.get("name") == "numcodecs.crc32":
+            data_copy = data_copy | {"name": "crc32"}
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 class CRC32(_NumcodecsChecksumCodec):
@@ -94,13 +98,14 @@ class CRC32(_NumcodecsChecksumCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
-            config = data["configuration"]
+            config = data.get("configuration", {})
             return cls(**config)
         raise TypeError(f"Invalid JSON: {data}")
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

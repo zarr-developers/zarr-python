@@ -16,10 +16,6 @@ class TestQuantizeCodec(BaseTestCodec):
             "name": "quantize",
             "configuration": {"digits": 3, "astype": "float32", "dtype": "float32"},
         },
-        {
-            "name": "numcodecs.quantize",
-            "configuration": {"digits": 3, "astype": "<f4", "dtype": "<f4"},
-        },
     )
 
     @staticmethod

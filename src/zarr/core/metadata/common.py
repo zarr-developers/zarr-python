@@ -9,7 +9,7 @@ from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.numcodecs._codecs import _NumcodecsCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.common import _check_codecjson_v2, _check_codecjson_v3
+from zarr.core.common import check_codecjson_v2, check_codecjson_v3
 from zarr.registry import get_codec
 
 if TYPE_CHECKING:
@@ -28,7 +28,7 @@ def _parse_codec(data: object, *, dtype: ZDType[Any, Any]) -> Codec | NumcodecWr
     """
     Resolve a potential codec.
     """
-    if _check_codecjson_v2(data) or _check_codecjson_v3(data):
+    if check_codecjson_v2(data) or check_codecjson_v3(data):
         return _parse_codec(get_codec(data), dtype=dtype)
 
     # This must come before the isinstance(data, Codec) check because _NumcodecsCodec instances

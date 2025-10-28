@@ -16,10 +16,6 @@ class TestBitRoundCodec(BaseTestCodec):
             "name": "bitround",
             "configuration": {"keepbits": 8},
         },
-        {
-            "name": "numcodecs.bitround",
-            "configuration": {"keepbits": 8},
-        },
     )
 
     @staticmethod

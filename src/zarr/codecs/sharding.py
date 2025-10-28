@@ -55,6 +55,8 @@ from zarr.core.common import (
     NamedRequiredConfig,
     ShapeLike,
     ZarrFormat,
+    check_codecjson_v2,
+    check_named_required_config,
     parse_enum,
     parse_shapelike,
     product,
@@ -135,26 +137,24 @@ def check_json_v2(data: object) -> TypeGuard[ShardingJSON_V2]:
     required_keys = {"id", "codecs", "chunk_shape", "index_codecs"}
     optional_keys = {"index_location"}
     return (
-        isinstance(data, Mapping)
+        check_codecjson_v2(data)
         and required_keys.issubset(set(data.keys()))
         and set(data.keys()).issubset(required_keys | optional_keys)
         and data["id"] == "sharding_indexed"
-        and isinstance(data["chunk_shape"], Sequence)
-        and not isinstance(data["chunk_shape"], str)
-        and isinstance(data["codecs"], Sequence)
-        and not isinstance(data["codecs"], str)
-        and isinstance(data["index_codecs"], Sequence)
-        and not isinstance(data["index_codecs"], str)
+        and isinstance(data["chunk_shape"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["chunk_shape"], str)  # type: ignore[typeddict-item]
+        and isinstance(data["codecs"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["codecs"], str)  # type: ignore[typeddict-item]
+        and isinstance(data["index_codecs"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["index_codecs"], str)  # type: ignore[typeddict-item]
     )
 
 
 def check_json_v3(data: object) -> TypeGuard[ShardingJSON_V3]:
-    # TODO: Automate this with a function that does runtime type checking on typeddicts.
     return (
-        isinstance(data, Mapping)
+        check_named_required_config(data)
         and set(data.keys()) == {"name", "configuration"}
         and data["name"] == "sharding_indexed"
-        and isinstance(data["configuration"], Mapping)
         and set(data["configuration"].keys())
         == {"codecs", "chunk_shape", "index_codecs", "index_location"}
         and isinstance(data["configuration"]["chunk_shape"], Sequence)
@@ -421,7 +421,14 @@ class _MergingShardBuilder(ShardMutableMapping):
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
 ):
-    """Sharding codec"""
+    """
+    Sharding codec
+
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/sharding-indexed/index.html
+    """
 
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]

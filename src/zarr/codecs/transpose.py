@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, cast, overload
 
@@ -9,7 +9,14 @@ from typing_extensions import ReadOnly
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import JSON, CodecJSON, NamedRequiredConfig, ZarrFormat
+from zarr.core.common import (
+    JSON,
+    CodecJSON,
+    NamedRequiredConfig,
+    ZarrFormat,
+    check_codecjson_v2,
+    check_named_required_config,
+)
 from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:
@@ -48,26 +55,32 @@ class TransposeJSON_V3(NamedRequiredConfig[Literal["transpose"], TransposeConfig
 
 def check_json_v2(data: object) -> TypeGuard[TransposeJSON_V2]:
     return (
-        isinstance(data, Mapping)
+        check_codecjson_v2(data)
         and set(data.keys()) == {"id", "order"}
         and data["id"] == "transpose"
-        and isinstance(data["order"], Sequence)
-        and not isinstance(data["order"], str)
+        and isinstance(data["order"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["order"], str)  # type: ignore[typeddict-item]
     )
 
 
 def check_json_v3(data: object) -> TypeGuard[TransposeJSON_V3]:
     return (
-        isinstance(data, Mapping)
+        check_named_required_config(data)
         and set(data.keys()) == {"name", "configuration"}
         and data["name"] == "transpose"
-        and isinstance(data["configuration"], Mapping)
         and set(data["configuration"].keys()) == {"order"}
     )
 
 
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/transpose/index.html
+    """
+
     is_fixed_size = True
 
     order: tuple[int, ...]

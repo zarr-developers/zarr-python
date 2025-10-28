@@ -1,31 +1,7 @@
-from collections.abc import Mapping
-from typing import TypeGuard
-
 import pytest
 
 from tests.test_codecs.conftest import BaseTestCodec
-from zarr.codecs.numcodecs.astype import AsType, AsTypeJSON_V3, check_json_v2
-from zarr.core.common import _check_codecjson_v3
-from zarr.core.dtype.common import check_dtype_spec_v3
-
-
-def check_json_v3(data: object) -> TypeGuard[AsTypeJSON_V3]:
-    """
-    A type guard for the Zarr V3 form of the Astype codec JSON.
-
-    This check is more strict than the one we use for input data, because we are using it
-    to check output data.
-    """
-    return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] == "numcodecs.astype"
-        and "configuration" in data
-        and "encode_dtype" in data["configuration"]
-        and "decode_dtype" in data["configuration"]
-        and check_dtype_spec_v3(data["configuration"]["decode_dtype"])
-        and check_dtype_spec_v3(data["configuration"]["encode_dtype"])
-    )
+from zarr.codecs.numcodecs.astype import AsType, check_json_v2, check_json_v3
 
 
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrUserWarning")
@@ -37,10 +13,6 @@ class TestAsType(BaseTestCodec):
             "name": "astype",
             "configuration": {"encode_dtype": "float32", "decode_dtype": "float64"},
         },
-        {
-            "name": "numcodecs.astype",
-            "configuration": {"encode_dtype": "|u1", "decode_dtype": "|u1"},
-        },
     )
 
     @staticmethod
@@ -50,3 +22,16 @@ class TestAsType(BaseTestCodec):
     @staticmethod
     def check_json_v3(data: object) -> bool:
         return check_json_v3(data)
+
+
+def test_v3_json_alias() -> None:
+    """
+    Test that the default JSON output of the legacy numcodecs.zarr3.AsType codec is readable, even if it's
+    underspecified.
+    """
+    assert AsType.from_json(
+        {
+            "name": "numcodecs.astype",
+            "configuration": {"encode_dtype": ">i2", "decode_dtype": "|i1"},
+        }
+    ) == AsType(encode_dtype=">i2", decode_dtype="|i1")

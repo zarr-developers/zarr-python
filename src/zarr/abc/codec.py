@@ -17,7 +17,7 @@ from zarr.core.common import (
     CodecJSON_V2,
     CodecJSON_V3,
     ZarrFormat,
-    _check_codecjson_v2,
+    check_codecjson_v2,
     concurrent_map,
 )
 from zarr.core.config import config
@@ -191,7 +191,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)
 

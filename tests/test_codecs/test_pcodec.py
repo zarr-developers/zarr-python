@@ -101,3 +101,22 @@ def test_generic_bytes_codec(codec_class: type[_NumcodecsArrayBytesCodec]) -> No
 
     a[:, :] = data.copy()  # type: ignore[index]
     np.testing.assert_array_equal(data, a[:, :])  # type: ignore[index]
+
+
+def test_v3_json_alias() -> None:
+    from zarr.codecs import numcodecs as _numcodecs
+
+    """
+    Test that the default JSON output of the legacy numcodecs.zarr3.PCodec codec is readable, even if it's
+    underspecified.
+    """
+    assert _numcodecs.PCodec.from_json(
+        {"name": "numcodecs.pcodec", "configuration": {}}
+    ) == _numcodecs.PCodec(
+        level=8,
+        mode_spec="auto",
+        delta_spec="auto",
+        paging_spec="equal_pages_up_to",
+        delta_encoding_order=None,
+        equal_pages_up_to=262144,
+    )

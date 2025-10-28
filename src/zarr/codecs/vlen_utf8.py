@@ -43,6 +43,13 @@ VLenBytesJSON_V3 = NamedConfig[Literal["vlen-bytes"], VLenBytesConfig] | Literal
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/vlen-utf8
+    """
+
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         return cls.from_json(data)  # type: ignore[arg-type]

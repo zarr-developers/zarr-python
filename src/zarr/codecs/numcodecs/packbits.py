@@ -17,8 +17,8 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_config,
     product,
 )
 from zarr.core.dtype.npy.bool import Bool
@@ -38,10 +38,6 @@ class PackBitsJSON_V2(PackBitsConfig):
     id: ReadOnly[Literal["packbits"]]
 
 
-class PackBitsJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.packbits"], PackBitsConfig]):
-    """Legacy JSON representation of PackBits codec for Zarr V3."""
-
-
 class PackBitsJSON_V3(NamedRequiredConfig[Literal["packbits"], PackBitsConfig]):
     """JSON representation of PackBits codec for Zarr V3."""
 
@@ -50,19 +46,30 @@ def check_json_v2(data: object) -> TypeGuard[PackBitsJSON_V2]:
     """
     A type guard for the Zarr V2 form of the PackBits codec JSON
     """
-    return _check_codecjson_v2(data) and data["id"] == "packbits"
+    return check_codecjson_v2(data) and data["id"] == "packbits"
 
 
-def check_json_v3(data: object) -> TypeGuard[PackBitsJSON_V3 | PackBitsJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[PackBitsJSON_V3]:
     """
     A type guard for the Zarr V3 form of the PackBits codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("packbits", "numcodecs.packbits")
+        check_named_config(data)
+        and data["name"] == "packbits"
         and ("configuration" not in data or data["configuration"] == {})
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle underspecified JSON representation of the codec produced by legacy code
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if data.get("name") == "numcodecs.packbits":
+            data_copy = data_copy | {"name": "packbits"}
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 class PackBits(_NumcodecsArrayArrayCodec):
@@ -103,6 +110,7 @@ class PackBits(_NumcodecsArrayArrayCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             return cls(**config)
@@ -110,6 +118,6 @@ class PackBits(_NumcodecsArrayArrayCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

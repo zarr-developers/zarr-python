@@ -27,3 +27,17 @@ class TestBZ2Codec(BaseTestCodec):
     @staticmethod
     def check_json_v3(data: object) -> bool:
         return check_json_v3(data)
+
+
+def test_v3_json_alias() -> None:
+    from zarr.codecs import numcodecs as _numcodecs
+
+    """
+    Test that the default JSON output of the legacy numcodecs.zarr3.BZ2 codec is readable, even if it's
+    underspecified.
+    """
+    assert _numcodecs.BZ2.from_json(
+        {"name": "numcodecs.bz2", "configuration": {}}
+    ) == _numcodecs.BZ2(level=1)
+
+    assert _numcodecs.BZ2.from_json({"name": "bz2", "configuration": {}}) == _numcodecs.BZ2(level=1)

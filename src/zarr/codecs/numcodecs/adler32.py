@@ -13,17 +13,17 @@ from zarr.core.common import (
     CodecJSON,
     CodecJSON_V2,
     CodecJSON_V3,
-    NamedConfig,
+    NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 
 if TYPE_CHECKING:
     ...
 
 
-class Adler32Config(TypedDict):
+class Adler32Config(TypedDict, total=False):
     """Configuration parameters for Adler32 codec."""
 
     location: Literal["start", "end"]
@@ -35,11 +35,7 @@ class Adler32JSON_V2(Adler32Config):
     id: ReadOnly[Literal["adler32"]]
 
 
-class Adler32JSON_V3_Legacy(NamedConfig[Literal["numcodecs.adler32"], Adler32Config]):
-    """Legacy JSON representation of Adler32 codec for Zarr V3."""
-
-
-class Adler32JSON_V3(NamedConfig[Literal["adler32"], Adler32Config]):
+class Adler32JSON_V3(NamedRequiredConfig[Literal["adler32"], Adler32Config]):
     """JSON representation of Adler32 codec for Zarr V3."""
 
 
@@ -48,28 +44,36 @@ def check_json_v2(data: object) -> TypeGuard[Adler32JSON_V2]:
     A type guard for the Zarr V2 form of the Adler32 codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "adler32"
         and ("location" not in data or data["location"] in ("start", "end"))  # type: ignore[typeddict-item]
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[Adler32JSON_V3 | Adler32JSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[Adler32JSON_V3]:
     """
     A type guard for the Zarr V3 form of the Adler32 codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("adler32", "numcodecs.adler32")
+        check_named_required_config(data)
+        and data["name"] == "adler32"
         and (
-            "configuration" not in data
-            or (
-                "location" not in data["configuration"]
-                or data["configuration"]["location"] in ("start", "end")
-            )
+            "location" not in data["configuration"]
+            or data["configuration"]["location"] in ("start", "end")
         )
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle underspecified JSON representation of the codec produced by legacy code
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if data.get("name") == "numcodecs.adler32":
+            data_copy = data_copy | {"name": "adler32"}
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 class Adler32(_NumcodecsChecksumCodec):
@@ -97,6 +101,7 @@ class Adler32(_NumcodecsChecksumCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             return cls(**config)
@@ -104,6 +109,6 @@ class Adler32(_NumcodecsChecksumCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

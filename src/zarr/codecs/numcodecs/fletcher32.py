@@ -15,8 +15,8 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_config,
 )
 
 
@@ -30,12 +30,6 @@ class Fletcher32JSON_V2(Fletcher32Config):
     id: ReadOnly[Literal["fletcher32"]]
 
 
-class Fletcher32JSON_V3_Legacy(
-    NamedRequiredConfig[Literal["numcodecs.fletcher32"], Fletcher32Config]
-):
-    """Legacy JSON representation of Fletcher32 codec for Zarr V3."""
-
-
 class Fletcher32JSON_V3(NamedRequiredConfig[Literal["fletcher32"], Fletcher32Config]):
     """JSON representation of Fletcher32 codec for Zarr V3."""
 
@@ -44,19 +38,30 @@ def check_json_v2(data: object) -> TypeGuard[Fletcher32JSON_V2]:
     """
     A type guard for the Zarr V2 form of the Fletcher32 codec JSON
     """
-    return _check_codecjson_v2(data) and data["id"] == "fletcher32"
+    return check_codecjson_v2(data) and data["id"] == "fletcher32"
 
 
-def check_json_v3(data: object) -> TypeGuard[Fletcher32JSON_V3 | Fletcher32JSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[Fletcher32JSON_V3]:
     """
     A type guard for the Zarr V3 form of the Fletcher32 codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("fletcher32", "numcodecs.fletcher32")
+        check_named_config(data)
+        and data["name"] == "fletcher32"
         and ("configuration" not in data or data["configuration"] == {})
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle underspecified JSON representation of the codec produced by legacy code
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if data.get("name") == "numcodecs.fletcher32":
+            data_copy = data_copy | {"name": "fletcher32"}
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 class Fletcher32(_NumcodecsChecksumCodec):
@@ -84,6 +89,7 @@ class Fletcher32(_NumcodecsChecksumCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             return cls(**config)
@@ -91,6 +97,6 @@ class Fletcher32(_NumcodecsChecksumCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

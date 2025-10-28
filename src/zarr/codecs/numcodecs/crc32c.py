@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Literal, Self, TypeGuard, overload
 
-from zarr.codecs.crc32c_ import Crc32cConfig_V3
+from typing_extensions import deprecated
+
 from zarr.codecs.numcodecs._codecs import (
     _NumcodecsChecksumCodec,
     _warn_unstable_specification,
@@ -12,18 +13,14 @@ from zarr.core.common import (
     CodecJSON,
     CodecJSON_V2,
     CodecJSON_V3,
-    NamedConfig,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_config,
 )
+from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
     from zarr.codecs.crc32c_ import Crc32cConfig_V2, Crc32cJSON_V2, Crc32cJSON_V3
     from zarr.core.common import ZarrFormat
-
-
-class Crc32cJSON_V3_Legacy(NamedConfig[Literal["numcodecs.crc32c"], Crc32cConfig_V3]):
-    """Legacy JSON representation of Crc32c codec for Zarr V3."""
 
 
 def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
@@ -31,26 +28,38 @@ def check_json_v2(data: object) -> TypeGuard[Crc32cJSON_V2]:
     A type guard for the Zarr V2 form of the CRC32C codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "crc32c"
         and ("location" not in data or data["location"] in ("start", "end"))  # type: ignore[typeddict-item]
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[Crc32cJSON_V3 | Crc32cJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[Crc32cJSON_V3]:
     """
     A type guard for the Zarr V3 form of the CRC32C codec JSON
     """
-    if data in ("crc32c", "numcodecs.crc32c"):
+    if data == "crc32c":
         return True
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("crc32c", "numcodecs.crc32c")
-        and ("configuration" not in data or data["configuration"] in ({}, None))
+        check_named_config(data)
+        and data["name"] == "crc32c"
+        and data.get("configuration") in ({}, None)
     )
 
 
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle JSON representation of the codec produced by numcodecs.zarr3 codec.
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if data.get("name") == "numcodecs.crc32c":
+            data_copy = data_copy | {"name": "crc32c"}
+        return data_copy  # type: ignore[return-value]
+    return data
+
+
+@deprecated("Use `zarr.codecs.CRC32CCodec` instead.", category=ZarrDeprecationWarning)
 class CRC32C(_NumcodecsChecksumCodec):
     """
     A wrapper around the numcodecs.CRC32C codec that provides Zarr V3 compatibility.
@@ -76,8 +85,9 @@ class CRC32C(_NumcodecsChecksumCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
-            if data in ("crc32c", "numcodecs.crc32c"):
+            if isinstance(data, str):
                 return cls()
             config = data.get("configuration", {})
             return cls(**config)
@@ -85,6 +95,6 @@ class CRC32C(_NumcodecsChecksumCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

@@ -15,8 +15,8 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 
 
@@ -33,10 +33,6 @@ class LZMAJSON_V2(LZMAConfig):
     id: ReadOnly[Literal["lzma"]]
 
 
-class LZMAJSON_V3_Legacy(NamedRequiredConfig[Literal["lzma"], LZMAConfig]):
-    """Legacy JSON representation of LZMA codec for Zarr V3."""
-
-
 class LZMAJSON_V3(NamedRequiredConfig[Literal["lzma"], LZMAConfig]):
     """JSON representation of LZMA codec for Zarr V3."""
 
@@ -46,7 +42,7 @@ def check_json_v2(data: object) -> TypeGuard[LZMAJSON_V2]:
     A type guard for the Zarr V2 form of the LZMA codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "lzma"
         and "format" in data
         and "check" in data
@@ -57,15 +53,13 @@ def check_json_v2(data: object) -> TypeGuard[LZMAJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[LZMAJSON_V3 | LZMAJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[LZMAJSON_V3]:
     """
     A type guard for the Zarr V3 form of the LZMA codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("lzma", "numcodecs.lzma")
-        and "configuration" in data
+        check_named_required_config(data)
+        and data["name"] == "lzma"
         and "format" in data["configuration"]
         and "check" in data["configuration"]
         and isinstance(data["configuration"]["format"], int)
@@ -81,6 +75,22 @@ def check_json_v3(data: object) -> TypeGuard[LZMAJSON_V3 | LZMAJSON_V3_Legacy]:
             or isinstance(data["configuration"]["filters"], list)
         )
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle underspecified JSON representation of the codec produced by legacy code
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if "configuration" in data and data["configuration"] == {}:
+            data_copy = data_copy | {
+                "configuration": {"format": 1, "check": -1, "preset": None, "filters": None}
+            }
+        if data.get("name") == "numcodecs.lzma":
+            data_copy = data_copy | {"name": "lzma"}
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 class LZMA(_NumcodecsBytesBytesCodec):
@@ -108,6 +118,7 @@ class LZMA(_NumcodecsBytesBytesCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             return cls(**config)
@@ -115,6 +126,6 @@ class LZMA(_NumcodecsBytesBytesCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

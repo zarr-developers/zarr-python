@@ -3,7 +3,7 @@ import subprocess
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
@@ -20,10 +20,11 @@ from numcodecs import (
 import zarr
 import zarr.abc
 import zarr.abc.codec
-import zarr.codecs as zarrcodecs
+import zarr.codecs.numcodecs as znumcodecs
 from zarr.abc.numcodec import Numcodec
 from zarr.codecs import blosc
 from zarr.codecs.gzip import GzipCodec
+from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
@@ -50,7 +51,7 @@ def runner_installed() -> bool:
 @dataclass(kw_only=True)
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
-    fill_value: np.generic | str | int | bytes
+    fill_value: Any
     filters: tuple[Numcodec | zarr.abc.codec.Codec, ...] = ()
     serializer: str | None = None
     compressor: Numcodec | zarr.abc.codec.Codec | None
@@ -130,78 +131,78 @@ numcodecs_codec_cases = [
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
-        compressor=zarrcodecs.BZ2(level=5),
+        compressor=znumcodecs.BZ2(level=5),
     ),
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
-        compressor=zarrcodecs.Zlib(level=5),
-    ),
-    ArrayParams(
-        values=np.arange(100, dtype="float64"),
-        fill_value=1.0,
-        filters=(),
-        compressor=zarrcodecs.Adler32(),
+        compressor=znumcodecs.Zlib(level=5),
     ),
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
         filters=(),
-        compressor=zarrcodecs.CRC32(),
+        compressor=znumcodecs.Adler32(),
     ),
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
         filters=(),
-        compressor=zarrcodecs.Fletcher32(),
+        compressor=znumcodecs.CRC32(),
     ),
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
         filters=(),
-        compressor=zarrcodecs.JenkinsLookup3(),
+        compressor=znumcodecs.Fletcher32(),
+    ),
+    ArrayParams(
+        values=np.arange(100, dtype="float64"),
+        fill_value=1.0,
+        filters=(),
+        compressor=znumcodecs.JenkinsLookup3(),
     ),
     # Array transformation filters
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
-        filters=(zarrcodecs.AsType(encode_dtype="<i4", decode_dtype="<f8"),),
+        filters=(znumcodecs.AsType(encode_dtype="<i4", decode_dtype="<f8"),),
         compressor=None,
     ),
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
-        filters=(zarrcodecs.BitRound(keepbits=10),),
+        filters=(znumcodecs.BitRound(keepbits=10),),
         compressor=None,
     ),
     ArrayParams(
         values=np.arange(100, dtype="int32"),
         fill_value=1,
-        filters=(zarrcodecs.Delta(dtype="<i4", astype="<i4"),),
+        filters=(znumcodecs.Delta(dtype="<i4", astype="<i4"),),
         compressor=None,
     ),
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
-        filters=(zarrcodecs.FixedScaleOffset(dtype="<f8", astype="<i4", scale=10.0, offset=100.0),),
+        filters=(znumcodecs.FixedScaleOffset(dtype="<f8", astype="<i4", scale=10.0, offset=100.0),),
         compressor=None,
     ),
     ArrayParams(
         values=np.arange(100, dtype="float64"),
         fill_value=1.0,
-        filters=(zarrcodecs.Quantize(digits=3, dtype="<f8"),),
+        filters=(znumcodecs.Quantize(digits=3, dtype="<f8"),),
         compressor=None,
     ),
     ArrayParams(
         values=np.arange(100, dtype="int32"),
         fill_value=1,
         filters=(),
-        compressor=zarrcodecs.Shuffle(elementsize=4),
+        compressor=znumcodecs.Shuffle(elementsize=4),
     ),
     ArrayParams(
         values=np.array([True, False, True, False] * 25, dtype=bool),
         fill_value=False,
-        filters=(zarrcodecs.PackBits(),),
+        filters=(znumcodecs.PackBits(),),
         compressor=None,
     ),
 ]
@@ -274,10 +275,10 @@ def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
     serializer: Literal["auto"] | zarr.abc.codec.Codec
     if array_params.values.dtype == np.dtype("|O") and array_params.serializer == "vlen-utf8":
         dtype = VariableLengthUTF8()  # type: ignore[assignment]
-        serializer = zarrcodecs.VLenUTF8Codec()
+        serializer = VLenUTF8Codec()
     elif array_params.values.dtype == np.dtype("|O") and array_params.serializer == "vlen-bytes":
         dtype = VariableLengthBytes()
-        serializer = zarrcodecs.VLenBytesCodec()
+        serializer = VLenBytesCodec()
     else:
         dtype = array_params.values.dtype
         serializer = "auto"
@@ -286,7 +287,7 @@ def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
         shape=array_params.values.shape,
         dtype=dtype,
         chunks=array_params.values.shape,
-        compressors=array_params.compressor,
+        compressors=array_params.compressor,  # type: ignore[arg-type]
         filters=array_params.filters,  # type: ignore[arg-type]
         serializer=serializer,
         fill_value=array_params.fill_value,

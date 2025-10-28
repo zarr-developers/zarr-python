@@ -12,8 +12,8 @@ from zarr.core.common import (
     CodecJSON_V2,
     CodecJSON_V3,
     NamedRequiredConfig,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 from zarr.core.dtype import parse_dtype
 from zarr.core.dtype.common import check_dtype_name_v2, check_dtype_spec_v3
@@ -44,14 +44,8 @@ class FixedScaleOffsetJSON_V2(FixedScaleOffsetConfig_V2):
     id: ReadOnly[Literal["fixedscaleoffset"]]
 
 
-class FixedScaleOffsetJSON_V3_Legacy(
-    NamedRequiredConfig[Literal["numcodecs.fixedscaleoffset"], FixedScaleOffsetConfig_V2]
-):
-    """Legacy JSON representation of FixedScaleOffset codec for Zarr V3."""
-
-
 class FixedScaleOffsetJSON_V3(
-    NamedRequiredConfig[Literal["numcodecs.fixedscaleoffset"], FixedScaleOffsetConfig_V3]
+    NamedRequiredConfig[Literal["fixedscaleoffset"], FixedScaleOffsetConfig_V3]
 ):
     """JSON representation of FixedScaleOffset codec for Zarr V3."""
 
@@ -61,8 +55,8 @@ def check_json_v2(data: object) -> TypeGuard[FixedScaleOffsetJSON_V2]:
     A type guard for the Zarr V2 form of the Delta codec JSON
     """
     return (
-        _check_codecjson_v2(data)
-        and data["id"] in {"fixedscaleoffset", "numcodecs.fixedscaleoffset"}
+        check_codecjson_v2(data)
+        and data["id"] == "fixedscaleoffset"
         and "scale" in data
         and "offset" in data
         and "dtype" in data
@@ -74,28 +68,46 @@ def check_json_v2(data: object) -> TypeGuard[FixedScaleOffsetJSON_V2]:
 
 def check_json_v3(
     data: object,
-) -> TypeGuard[FixedScaleOffsetJSON_V3 | FixedScaleOffsetJSON_V3_Legacy]:
+) -> TypeGuard[FixedScaleOffsetJSON_V3]:
     """
     A type guard for the Zarr V3 form of the Delta codec JSON
 
     We accept the Zarr V2 data type spec for backwards compatibility.
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in {"fixedscaleoffset", "numcodecs.fixedscaleoffset"}
-        and "configuration" in data
-        and isinstance(data["configuration"], Mapping)
-        and data["configuration"].keys() == {"astype", "dtype", "scale", "offset"}
-        and (
-            check_dtype_spec_v3(data["configuration"]["dtype"])
-            or check_dtype_name_v2(data["configuration"]["dtype"])
-        )
-        and (
-            check_dtype_spec_v3(data["configuration"]["astype"])
-            or check_dtype_name_v2(data["configuration"]["astype"])
-        )
+        check_named_required_config(data)
+        and data["name"] == "fixedscaleoffset"
+        and set(data["configuration"].keys()) == {"astype", "dtype", "scale", "offset"}
+        and check_dtype_spec_v3(data["configuration"]["dtype"])
+        and check_dtype_spec_v3(data["configuration"]["astype"])
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle JSON representation of the codec produced by legacy numcodecs.zarr3 codecs.
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if data.get("name") == "numcodecs.fixedscaleoffset":
+            data_copy = data_copy | {"name": "fixedscaleoffset"}
+            if isinstance(data_copy.get("configuration"), Mapping):
+                config_copy: dict[str, object] = dict(data_copy["configuration"])  # type: ignore[call-overload]
+                if "dtype" in config_copy:
+                    dtype_v2 = config_copy["dtype"]
+                    if check_dtype_name_v2(dtype_v2):
+                        config_copy["dtype"] = parse_dtype(dtype_v2, zarr_format=2).to_json(
+                            zarr_format=3
+                        )
+                if "astype" in config_copy:
+                    astype_v2 = config_copy["astype"]
+                    if check_dtype_name_v2(astype_v2):
+                        config_copy["astype"] = parse_dtype(astype_v2, zarr_format=2).to_json(
+                            zarr_format=3
+                        )
+                data_copy["configuration"] = config_copy
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 class FixedScaleOffset(_NumcodecsArrayArrayCodec):
@@ -118,7 +130,7 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec):
         if zarr_format == 2:
             return super().to_json(zarr_format)  # type: ignore[return-value]
         return {
-            "name": "numcodecs.fixedscaleoffset",
+            "name": "fixedscaleoffset",
             "configuration": {
                 "astype": parse_dtype(self.codec_config["astype"], zarr_format=2).to_json(
                     zarr_format=3
@@ -137,17 +149,17 @@ class FixedScaleOffset(_NumcodecsArrayArrayCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             astype = parse_dtype(config["astype"], zarr_format=3).to_json(zarr_format=2)["name"]
             dtype = parse_dtype(config["dtype"], zarr_format=3).to_json(zarr_format=2)["name"]
-
             return cls(astype=astype, dtype=dtype, scale=config["scale"], offset=config["offset"])
         raise TypeError(f"Invalid JSON: {data}")
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)
 

@@ -5,7 +5,7 @@ from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from zarr.core.common import CodecJSON_V2, CodecJSON_V3, _check_codecjson_v2
+from zarr.core.common import CodecJSON_V2, CodecJSON_V3, check_codecjson_v2
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
 from zarr.errors import ZarrUserWarning
@@ -191,7 +191,7 @@ def get_codec(request: CodecJSON_V2 | CodecJSON_V3) -> Codec:
     """
     Get an instance of a codec from either a Zarr V2 or V3 JSON codec declaration.
     """
-    if _check_codecjson_v2(request):
+    if check_codecjson_v2(request):
         return _get_codec_v2(request)
     return _get_codec_v3(request)
 

@@ -92,7 +92,7 @@ class CodecJSON_V2(TypedDict):
     id: ReadOnly[str]
 
 
-def _check_codecjson_v2(data: object) -> TypeIs[CodecJSON_V2]:
+def check_codecjson_v2(data: object) -> TypeIs[CodecJSON_V2]:
     """
     A type narrowing function for the CodecJSON_V2 type
     """
@@ -103,17 +103,40 @@ CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
 """The JSON representation of a codec for Zarr V3."""
 
 
-def _check_codecjson_v3(data: object) -> TypeIs[CodecJSON_V3]:
+def check_codecjson_v3(data: object) -> TypeIs[CodecJSON_V3]:
     """
-    A type narrowing function for the CodecJSON_V3 type
+    A type narrowing function for the CodecJSON_V3 type. Checks if the input is a string or
+    a namedconfig.
     """
     if isinstance(data, str):
         return True
+    return check_named_config(data)
+
+
+def check_named_config(data: object) -> TypeIs[NamedConfig[str, Mapping[str, object]]]:
+    """
+    A type guard for NamedConfig with string name and Mapping configuration
+    """
     return (
         isinstance(data, Mapping)
         and "name" in data
         and isinstance(data["name"], str)
         and isinstance(data.get("configuration", {}), Mapping)
+    )
+
+
+def check_named_required_config(
+    data: object,
+) -> TypeIs[NamedRequiredConfig[str, Mapping[str, object]]]:
+    """
+    A type guard for NamedRequiredConfig with string name and Mapping configuration
+    """
+    return (
+        isinstance(data, Mapping)
+        and "name" in data
+        and isinstance(data["name"], str)
+        and "configuration" in data
+        and isinstance(data["configuration"], Mapping)
     )
 
 

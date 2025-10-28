@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal, NotRequired, Self, TypedDict, TypeGuard, overload
+from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
 
@@ -15,26 +15,26 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 
 
 class PCodecConfig(TypedDict):
     """Configuration parameters for PCodec codec."""
 
-    level: NotRequired[int]
-    delta_encoding_order: NotRequired[int]
+    level: int
+    mode_spec: Literal["auto", "classic"]
+    delta_spec: Literal["auto", "none", "try_consecutive", "try_lookback"]
+    paging_spec: Literal["equal_pages_up_to"]
+    delta_encoding_order: int | None
+    equal_pages_up_to: int
 
 
 class PCodecJSON_V2(PCodecConfig):
     """JSON representation of PCodec codec for Zarr V2."""
 
     id: ReadOnly[Literal["pcodec"]]
-
-
-class PCodecJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.pcodec"], PCodecConfig]):
-    """Legacy JSON representation of PCodec codec for Zarr V3."""
 
 
 class PCodecJSON_V3(NamedRequiredConfig[Literal["pcodec"], PCodecConfig]):
@@ -46,35 +46,59 @@ def check_json_v2(data: object) -> TypeGuard[PCodecJSON_V2]:
     A type guard for the Zarr V2 form of the PCodec codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "pcodec"
-        and ("level" not in data or isinstance(data["level"], int))  # type: ignore[typeddict-item]
-        and ("delta_encoding_order" not in data or isinstance(data["delta_encoding_order"], int))  # type: ignore[typeddict-item]
+        and set(data.keys())
+        == {
+            "id",
+            "level",
+            "mode_spec",
+            "delta_spec",
+            "paging_spec",
+            "equal_pages_up_to",
+            "delta_encoding_order",
+        }
+        and isinstance(data["level"], int)  # type: ignore[typeddict-item]
+        and isinstance(data["delta_encoding_order"], int)  # type: ignore[typeddict-item]
+        and isinstance(data["mode_spec"], str)  # type: ignore[typeddict-item]
+        and isinstance(data["delta_spec"], str)  # type: ignore[typeddict-item]
+        and isinstance(data["paging_spec"], str)  # type: ignore[typeddict-item]
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[PCodecJSON_V3 | PCodecJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[PCodecJSON_V3]:
     """
     A type guard for the Zarr V3 form of the PCodec codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("pcodec", "numcodecs.pcodec")
-        and (
-            "configuration" not in data
-            or (
-                (
-                    "level" not in data["configuration"]
-                    or isinstance(data["configuration"]["level"], int)
-                )
-                and (
-                    "delta_encoding_order" not in data["configuration"]
-                    or isinstance(data["configuration"]["delta_encoding_order"], int)
-                )
-            )
-        )
+        check_named_required_config(data)
+        and data["name"] == "pcodec"
+        and isinstance(data["configuration"].get("level"), int)
+        and isinstance(data["configuration"].get("delta_encoding_order"), int)
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle underspecified JSON representation of the codec produced by legacy code
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if "configuration" in data and data["configuration"] == {}:
+            data_copy = data_copy | {
+                "configuration": {
+                    "level": 8,
+                    "mode_spec": "auto",
+                    "delta_spec": "auto",
+                    "paging_spec": "equal_pages_up_to",
+                    "delta_encoding_order": None,
+                    "equal_pages_up_to": 262144,
+                }
+            }
+        if data.get("name") == "numcodecs.pcodec":
+            data_copy = data_copy | {"name": "pcodec"}
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 class PCodec(_NumcodecsArrayBytesCodec):
@@ -102,6 +126,7 @@ class PCodec(_NumcodecsArrayBytesCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             return cls(**config)
@@ -109,6 +134,6 @@ class PCodec(_NumcodecsArrayBytesCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

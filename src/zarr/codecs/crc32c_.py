@@ -10,7 +10,14 @@ import typing_extensions
 from typing_extensions import ReadOnly
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.core.common import JSON, CodecJSON, NamedConfig, ZarrFormat, parse_named_configuration
+from zarr.core.common import (
+    JSON,
+    CodecJSON,
+    NamedConfig,
+    ZarrFormat,
+    check_named_config,
+    parse_named_configuration,
+)
 from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:
@@ -47,7 +54,7 @@ def check_json_v3(data: object) -> TypeGuard[Crc32cJSON_V3]:
     if data == "crc32c":
         return True
     return (
-        isinstance(data, Mapping)
+        check_named_config(data)
         and set(data.keys()) in ({"name", "configuration"}, {"name"})
         and data["name"] == "crc32c"
         and data.get("configuration") in ({}, None)
@@ -56,6 +63,13 @@ def check_json_v3(data: object) -> TypeGuard[Crc32cJSON_V3]:
 
 @dataclass(frozen=True)
 class Crc32cCodec(BytesBytesCodec):
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/crc32c/index.html
+    """
+
     is_fixed_size = True
 
     @classmethod

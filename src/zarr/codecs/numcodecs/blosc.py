@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, overload
+from typing import TYPE_CHECKING, Literal, Self, TypeGuard, overload
 
 from typing_extensions import deprecated
 
@@ -10,38 +10,41 @@ from zarr.core.common import (
     CodecJSON,
     CodecJSON_V2,
     CodecJSON_V3,
-    NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
-    from zarr.codecs.blosc import BloscCname_Lit, BloscJSON_V2
+    from zarr.codecs.blosc import BloscJSON_V2, BloscJSON_V3
 
 
-# This is different from zarr.codecs.blosc
-class BloscConfigV3_Legacy(TypedDict):
-    cname: BloscCname_Lit
-    clevel: int
-    shuffle: int
-    blocksize: int
-
-
-class BloscJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.blosc"], BloscConfigV3_Legacy]):
-    """
-    Legacy JSON form of the Blosc codec in Zarr V3.
-    """
-
-
-def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3]:
     return (
-        isinstance(data, Mapping)
-        and set(data.keys()) == {"name", "configuration"}
-        and data["name"] in ("blosc", "numcodecs.blosc")
-        and isinstance(data["configuration"], Mapping)
-        and set(data["configuration"].keys()) == {"cname", "clevel", "shuffle", "blocksize"}
+        check_named_required_config(data)
+        and data["name"] == "blosc"
+        and set(data["configuration"].keys()).issuperset(
+            {"cname", "clevel", "shuffle", "blocksize"}
+        )
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle underspecified JSON representation of the codec produced by legacy code
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if "configuration" in data and data["configuration"] == {}:
+            data_copy = data_copy | {
+                "configuration": {"cname": "lz4", "clevel": 5, "shuffle": 1, "blocksize": 0}
+            }
+        if data.get("name") == "numcodecs.blosc":
+            data_copy = data_copy | {"name": "blosc"}
+
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 @deprecated("Use `zarr.codecs.BloscCodec` instead.", category=ZarrDeprecationWarning)
@@ -58,8 +61,14 @@ class Blosc(_NumcodecsBytesBytesCodec):
     @overload
     def to_json(self, zarr_format: Literal[2]) -> BloscJSON_V2: ...
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> BloscJSON_V3_Legacy: ...
-    def to_json(self, zarr_format: ZarrFormat) -> BloscJSON_V2 | BloscJSON_V3_Legacy:
+    def to_json(self, zarr_format: Literal[3]) -> BloscJSON_V3: ...
+    def to_json(self, zarr_format: ZarrFormat) -> BloscJSON_V2 | BloscJSON_V3:
+        if zarr_format == 3:
+            # Add typesize for v3 format (required by official blosc codec)
+            config = dict(self.codec_config)
+            config.pop("id", None)
+            config["typesize"] = 1  # Default typesize for numcodecs blosc
+            return {"name": "blosc", "configuration": config}  # type: ignore[typeddict-item]
         return super().to_json(zarr_format)  # type: ignore[return-value]
 
     @classmethod
@@ -68,6 +77,7 @@ class Blosc(_NumcodecsBytesBytesCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             return cls(**config)
@@ -75,6 +85,6 @@ class Blosc(_NumcodecsBytesBytesCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

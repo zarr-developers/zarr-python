@@ -12,8 +12,8 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 from zarr.core.dtype import parse_dtype
 from zarr.core.dtype.common import (
@@ -40,10 +40,6 @@ class AsTypeJSON_V2(AsTypeConfig_V2):
     id: ReadOnly[Literal["astype"]]
 
 
-class AsTypeJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.astype"], AsTypeConfig_V2]):
-    """Legacy JSON representation of AsType codec for Zarr V3."""
-
-
 class AsTypeJSON_V3(NamedRequiredConfig[Literal["astype"], AsTypeConfig_V3]):
     """JSON representation of AsType codec for Zarr V3."""
 
@@ -53,7 +49,7 @@ def check_json_v2(data: object) -> TypeGuard[AsTypeJSON_V2]:
     A type guard for the Zarr V2 form of the Astype codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "astype"
         and "encode_dtype" in data
         and "decode_dtype" in data
@@ -62,28 +58,30 @@ def check_json_v2(data: object) -> TypeGuard[AsTypeJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[AsTypeJSON_V3 | AsTypeJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[AsTypeJSON_V3]:
     """
     A type guard for the Zarr V3 form of the Astype codec JSON.
-
-    This check is backwards compatible the the Zarr V2 data type representation.
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("astype", "numcodecs.astype")
-        and "configuration" in data
+        check_named_required_config(data)
+        and data["name"] == "astype"
         and "encode_dtype" in data["configuration"]
         and "decode_dtype" in data["configuration"]
-        and (
-            check_dtype_spec_v3(data["configuration"]["decode_dtype"])
-            or check_dtype_name_v2(data["configuration"]["decode_dtype"])
-        )
-        and (
-            check_dtype_spec_v3(data["configuration"]["encode_dtype"])
-            or check_dtype_name_v2(data["configuration"]["encode_dtype"])
-        )
+        and check_dtype_spec_v3(data["configuration"]["decode_dtype"])
+        and check_dtype_spec_v3(data["configuration"]["encode_dtype"])
     )
+
+
+def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
+    """
+    Handle underspecified JSON representation of the codec produced by legacy code
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if data.get("name") == "numcodecs.astype":
+            data_copy = data_copy | {"name": "astype"}
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 class AsType(_NumcodecsArrayArrayCodec):
@@ -100,8 +98,8 @@ class AsType(_NumcodecsArrayArrayCodec):
     @overload
     def to_json(self, zarr_format: Literal[2]) -> AsTypeJSON_V2: ...
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> AsTypeJSON_V3_Legacy: ...
-    def to_json(self, zarr_format: ZarrFormat) -> AsTypeJSON_V2 | AsTypeJSON_V3_Legacy:
+    def to_json(self, zarr_format: Literal[3]) -> AsTypeJSON_V3: ...
+    def to_json(self, zarr_format: ZarrFormat) -> AsTypeJSON_V2 | AsTypeJSON_V3:
         _warn_unstable_specification(self)
         if zarr_format == 2:
             return super().to_json(zarr_format)  # type: ignore[return-value]
@@ -110,7 +108,7 @@ class AsType(_NumcodecsArrayArrayCodec):
         encode_dtype_v3 = parse_dtype(conf["encode_dtype"], zarr_format=2).to_json(zarr_format=3)
         decode_dtype_v3 = parse_dtype(conf["decode_dtype"], zarr_format=2).to_json(zarr_format=3)
         return {
-            "name": "numcodecs.astype",
+            "name": "astype",
             "configuration": {"encode_dtype": encode_dtype_v3, "decode_dtype": decode_dtype_v3},
         }
 
@@ -128,6 +126,7 @@ class AsType(_NumcodecsArrayArrayCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
+        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
             config = data["configuration"]
             encode_dtype = parse_dtype(config["encode_dtype"], zarr_format=3).to_json(
@@ -142,6 +141,6 @@ class AsType(_NumcodecsArrayArrayCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

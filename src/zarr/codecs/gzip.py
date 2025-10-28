@@ -49,6 +49,13 @@ class GZipJSON_V3(NamedRequiredConfig[Literal["gzip"], GZipConfig]):
 
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/gzip/index.html
+    """
+
     is_fixed_size = False
 
     level: int = 5

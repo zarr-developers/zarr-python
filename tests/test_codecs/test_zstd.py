@@ -124,3 +124,15 @@ def test_zstd(store: Store, checksum: bool) -> None:
 
     a[:, :] = data
     assert np.array_equal(data, a[:, :])
+
+
+def test_v3_json_alias() -> None:
+    from zarr.codecs import numcodecs as _numcodecs
+
+    """
+    Test that the default JSON output of the legacy numcodecs.zarr3.Zstd codec is readable, even if it's
+    underspecified.
+    """
+    assert _numcodecs.Zstd.from_json(
+        {"name": "numcodecs.zstd", "configuration": {}}
+    ) == _numcodecs.Zstd(level=0, checksum=False)

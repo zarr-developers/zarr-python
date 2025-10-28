@@ -54,7 +54,7 @@ from zarr.core.common import (
     CodecJSON_V2,
     CodecJSON_V3,
     ZarrFormat,
-    _check_codecjson_v2,
+    check_codecjson_v2,
 )
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_numcodec
@@ -109,7 +109,7 @@ class _NumcodecsCodec:
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)
 
@@ -124,7 +124,7 @@ class _NumcodecsCodec:
         if zarr_format == 2:
             return {"id": codec_id, **codec_config}  # type: ignore[return-value, typeddict-item]
         else:
-            return {"name": self.codec_name, "configuration": codec_config}
+            return {"name": codec_id, "configuration": codec_config}
 
 
 class _NumcodecsBytesBytesCodec(_NumcodecsCodec, BytesBytesCodec):

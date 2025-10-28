@@ -308,12 +308,6 @@ def test_repr() -> None:
     )
 
 
-def test_to_dict() -> None:
-    codec = _numcodecs.LZ4(acceleration=5)
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        assert codec.to_dict() == {"name": "numcodecs.lz4", "configuration": {"acceleration": 5}}
-
-
 @pytest.mark.filterwarnings("ignore::zarr.errors.ZarrDeprecationWarning")
 @pytest.mark.parametrize(
     "codec_cls",

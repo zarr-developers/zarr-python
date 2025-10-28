@@ -56,7 +56,9 @@ register_codec("vlen-utf8", VLenUTF8Codec)
 register_codec("vlen-bytes", VLenBytesCodec)
 register_codec("transpose", TransposeCodec)
 
-# Register all the codecs formerly contained in numcodecs.zarr3
+# Register all the codecs formerly contained in numcodecs.zarr3 except
+# for the codecs that have Zarr V3 specific implementations,
+# namely, Blosc, CRC32C, Gzip
 
 register_codec("numcodecs.bz2", BZ2, qualname="zarr.codecs.numcodecs.BZ2")
 register_codec("bz2", BZ2, qualname="zarr.codecs.numcodecs.BZ2")

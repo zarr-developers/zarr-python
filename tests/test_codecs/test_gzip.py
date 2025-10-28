@@ -96,3 +96,20 @@ def test_gzip_compression(
     z_r = zarr.open_array(store=store, zarr_format=zarr_format)
     assert np.all(z_r[:] == 5)
     assert z_r.compressors == (ref_codec,)
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrDeprecationWarning")
+def test_v3_json_alias() -> None:
+    from zarr.codecs import numcodecs as _numcodecs
+
+    """
+    Test that the default JSON output of the legacy numcodecs.zarr3.GZip codec is readable, even if it's
+    underspecified.
+    """
+    assert _numcodecs.GZip.from_json(
+        {"name": "numcodecs.gzip", "configuration": {}}
+    ) == _numcodecs.GZip(level=1)
+
+    assert _numcodecs.GZip.from_json({"name": "gzip", "configuration": {}}) == _numcodecs.GZip(
+        level=1
+    )

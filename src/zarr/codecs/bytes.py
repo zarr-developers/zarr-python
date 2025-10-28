@@ -81,6 +81,13 @@ def check_json_v3(data: object) -> TypeGuard[BytesJSON_V3]:
 
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
+    """
+
     is_fixed_size = True
 
     endian: Endian | None

@@ -15,8 +15,8 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
 
 
@@ -24,19 +24,17 @@ class ZlibConfig(TypedDict):
     level: int
 
 
-DEFAULT_ZLIB_CONFIG = {"level": 1}
-
-
 def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
     """
     Handle JSON representations of the codec that are invalid but accepted aliases.
     """
-    if data in (
-        {"name": "numcodecs.zlib", "configuration": {}},
-        {"name": "numcodecs.zlib"},
-        "numcodecs.zlib",
-    ):
-        return data | {"configuration": DEFAULT_ZLIB_CONFIG}
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        if data_copy.get("name") == "numcodecs.zlib":
+            data_copy = data_copy | {"name": "zlib"}
+        if data.get("configuration") == {}:
+            data_copy = data_copy | {"configuration": {"level": 1}}
+        return data_copy  # type: ignore[return-value]
     return data
 
 
@@ -44,10 +42,6 @@ class ZlibJSON_V2(ZlibConfig):
     """JSON representation of Zlib codec for Zarr V2."""
 
     id: ReadOnly[Literal["zlib"]]
-
-
-class LegacyZlibJSON_V3(NamedRequiredConfig[Literal["numcodecs.zlib"], ZlibConfig]):
-    """Legacy JSON representation of Zlib codec for Zarr V3."""
 
 
 class ZlibJSON_V3(NamedRequiredConfig[Literal["zlib"], ZlibConfig]):
@@ -59,7 +53,7 @@ def check_json_v2(data: object) -> TypeGuard[ZlibJSON_V2]:
     A type guard for the Zarr V2 form of the Zlib codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "zlib"
         and "level" in data
         and isinstance(data["level"], int)  # type: ignore[typeddict-item]
@@ -67,18 +61,15 @@ def check_json_v2(data: object) -> TypeGuard[ZlibJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[ZlibJSON_V3 | LegacyZlibJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[ZlibJSON_V3]:
     """
     A type guard for the Zarr V3 form of the Zlib codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("numcodecs.zlib", "zlib")
-        and "configuration" in data
+        check_named_required_config(data)
+        and data["name"] == "zlib"
         and "level" in data["configuration"]
         and isinstance(data["configuration"]["level"], int)
-        and 0 <= data["configuration"]["level"] <= 9
     )
 
 
@@ -115,6 +106,6 @@ class Zlib(_NumcodecsBytesBytesCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

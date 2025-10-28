@@ -15,8 +15,8 @@ from zarr.abc.codec import (
 from zarr.core.common import (
     CodecJSON,
     CodecJSON_V2,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_codecjson_v3,
 )
 from zarr.errors import CodecValidationError
 from zarr.registry import get_ndbuffer_class, get_numcodec
@@ -135,7 +135,7 @@ class NumcodecWrapper:
 
     @classmethod
     def _from_json_v2(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             codec = get_numcodec(data)
             return cls(codec=codec)
         msg = (
@@ -146,7 +146,7 @@ class NumcodecWrapper:
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v3(data):
+        if check_codecjson_v3(data):
             request: CodecJSON_V2
             if isinstance(data, str):
                 request = {"id": data}

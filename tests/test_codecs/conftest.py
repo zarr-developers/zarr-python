@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 
 # Check if the numcodecs crc32c codec is available
 try:
-    from numcodecs import CRC32C
+    from numcodecs import CRC32C  # noqa: F401
 
     numcodecs_crc32c_available = True
 except ImportError:

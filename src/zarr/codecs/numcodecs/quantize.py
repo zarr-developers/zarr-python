@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import TYPE_CHECKING, Literal, NotRequired, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
@@ -15,9 +14,10 @@ from zarr.core.common import (
     CodecJSON_V3,
     NamedRequiredConfig,
     ZarrFormat,
-    _check_codecjson_v2,
-    _check_codecjson_v3,
+    check_codecjson_v2,
+    check_named_required_config,
 )
+from zarr.core.dtype.common import check_dtype_spec_v3
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
@@ -34,10 +34,6 @@ class QuantizeJSON_V2(QuantizeConfig):
     id: ReadOnly[Literal["quantize"]]
 
 
-class QuantizeJSON_V3_Legacy(NamedRequiredConfig[Literal["numcodecs.quantize"], QuantizeConfig]):
-    """Legacy JSON representation of Quantize codec for Zarr V3."""
-
-
 class QuantizeJSON_V3(NamedRequiredConfig[Literal["quantize"], QuantizeConfig]):
     """JSON representation of Quantize codec for Zarr V3."""
 
@@ -47,7 +43,7 @@ def check_json_v2(data: object) -> TypeGuard[QuantizeJSON_V2]:
     A type guard for the Zarr V2 form of the Quantize codec JSON
     """
     return (
-        _check_codecjson_v2(data)
+        check_codecjson_v2(data)
         and data["id"] == "quantize"
         and "digits" in data
         and isinstance(data["digits"], int)  # type: ignore[typeddict-item]
@@ -56,21 +52,17 @@ def check_json_v2(data: object) -> TypeGuard[QuantizeJSON_V2]:
     )
 
 
-def check_json_v3(data: object) -> TypeGuard[QuantizeJSON_V3 | QuantizeJSON_V3_Legacy]:
+def check_json_v3(data: object) -> TypeGuard[QuantizeJSON_V3]:
     """
     A type guard for the Zarr V3 form of the Quantize codec JSON
     """
     return (
-        _check_codecjson_v3(data)
-        and isinstance(data, Mapping)
-        and data["name"] in ("numcodecs.quantize", "quantize")
-        and "configuration" in data
+        check_named_required_config(data)
+        and data["name"] == "quantize"
         and "digits" in data["configuration"]
         and isinstance(data["configuration"]["digits"], int)
-        and data["configuration"]["digits"] > 0
-        and (
-            "dtype" not in data["configuration"] or isinstance(data["configuration"]["dtype"], str)
-        )
+        and "dtype" in data["configuration"]
+        and check_dtype_spec_v3(data["configuration"]["dtype"])
     )
 
 
@@ -112,6 +104,6 @@ class Quantize(_NumcodecsArrayArrayCodec):
 
     @classmethod
     def from_json(cls, data: CodecJSON) -> Self:
-        if _check_codecjson_v2(data):
+        if check_codecjson_v2(data):
             return cls._from_json_v2(data)
         return cls._from_json_v3(data)

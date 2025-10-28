@@ -40,3 +40,15 @@ class TestZFPYCodec(BaseTestCodec):
             },
         },
     )
+
+
+def test_v3_json_alias() -> None:
+    from zarr.codecs import numcodecs as _numcodecs
+
+    """
+    Test that the default JSON output of the legacy numcodecs.zarr3.ZFPY codec is readable, even if it's
+    underspecified.
+    """
+    assert _numcodecs.ZFPY.from_json(
+        {"name": "numcodecs.zfpy", "configuration": {}}
+    ) == _numcodecs.ZFPY(mode=4, tolerance=-1, rate=-1, precision=-1)

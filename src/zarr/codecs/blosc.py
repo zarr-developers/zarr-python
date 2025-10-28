@@ -18,6 +18,8 @@ from zarr.core.common import (
     CodecJSON,
     NamedRequiredConfig,
     ZarrFormat,
+    check_codecjson_v2,
+    check_named_required_config,
     parse_enum,
 )
 from zarr.core.dtype.common import HasItemSize
@@ -110,22 +112,20 @@ class BloscCname(Enum):
 
 def check_json_v2(data: object) -> TypeGuard[BloscJSON_V2]:
     return (
-        isinstance(data, Mapping)
+        check_codecjson_v2(data)
         and set(data.keys()) == {"id", "clevel", "cname", "shuffle", "blocksize"}
         and data["id"] == "blosc"
-        and data["cname"] in CNAME
-        and isinstance(data["clevel"], int)
-        and isinstance(data["shuffle"], int)
-        and data["shuffle"] in (0, 1, 2)
+        and data["cname"] in CNAME  # type: ignore[typeddict-item]
+        and isinstance(data["clevel"], int)  # type: ignore[typeddict-item]
+        and isinstance(data["shuffle"], int)  # type: ignore[typeddict-item]
+        and data["shuffle"] in (0, 1, 2)  # type: ignore[typeddict-item]
     )
 
 
 def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3]:
     return (
-        isinstance(data, Mapping)
-        and set(data.keys()) == {"name", "configuration"}
+        check_named_required_config(data)
         and data["name"] == "blosc"
-        and isinstance(data["configuration"], Mapping)
         and set(data["configuration"].keys())
         == {"cname", "clevel", "shuffle", "blocksize", "typesize"}
         and data["configuration"]["cname"] in CNAME
@@ -140,13 +140,21 @@ def _handle_json_alias_v3(data: CodecJSON) -> CodecJSON:
     Handle JSON representations of the codec that are invalid but accepted aliases.
     """
     if isinstance(data, Mapping):
-        data_copy = data.copy()
+        data_copy = dict(data)
         # map int shuffle to string form
+        if "name" in data and data["name"] == "numcodecs.blosc":  # type: ignore[typeddict-item]
+            data_copy = data_copy | {"name": "blosc"}
         if "configuration" in data and "shuffle" in data["configuration"]:  # type: ignore[typeddict-item]
             shuf = data["configuration"]["shuffle"]  # type: ignore[typeddict-item]
             if isinstance(shuf, int) and shuf in range(len(SHUFFLE)):
-                data_copy["configuration"]["shuffle"] = SHUFFLE[shuf]  # type: ignore[typeddict-item, index]
-    return data_copy
+                config = {**data_copy["configuration"], "shuffle": SHUFFLE[shuf]}  # type: ignore[dict-item]
+                data_copy = data_copy | {"configuration": config}
+        # Add default typesize if missing (for legacy numcodecs.blosc JSON)
+        if "configuration" in data and "typesize" not in data["configuration"]:  # type: ignore[typeddict-item]
+            config = {**data_copy["configuration"], "typesize": 1}  # type: ignore[dict-item]
+            data_copy = data_copy | {"configuration": config}
+        return data_copy  # type: ignore[return-value]
+    return data
 
 
 def parse_cname(value: object) -> BloscCname:
@@ -270,6 +278,11 @@ class BloscCodec(BytesBytesCodec):
     >>> codec = BloscCodec(cname='zstd', clevel=9, shuffle='shuffle')
     >>> codec.cname
     <BloscCname.zstd: 'zstd'>
+
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
 
     See Also
     --------

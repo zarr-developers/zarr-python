@@ -13,7 +13,13 @@ from typing_extensions import ReadOnly
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, CodecJSON, NamedRequiredConfig, ZarrFormat
+from zarr.core.common import (
+    JSON,
+    CodecJSON,
+    NamedRequiredConfig,
+    ZarrFormat,
+    check_named_required_config,
+)
 from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:
@@ -53,10 +59,9 @@ def check_json_v2(data: object) -> TypeGuard[ZstdJSON_V2]:
 
 def check_json_v3(data: object) -> TypeGuard[ZstdJSON_V3]:
     return (
-        isinstance(data, Mapping)
+        check_named_required_config(data)
         and set(data.keys()) == {"name", "configuration"}
         and data["name"] == "zstd"
-        and isinstance(data["configuration"], Mapping)
         and set(data["configuration"].keys()) == {"level", "checksum"}
     )
 
@@ -77,6 +82,13 @@ def parse_checksum(data: JSON) -> bool:
 
 @dataclass(frozen=True)
 class ZstdCodec(BytesBytesCodec):
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/zstd
+    """
+
     is_fixed_size = True
 
     level: int = 0
