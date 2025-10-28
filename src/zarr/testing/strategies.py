@@ -584,16 +584,24 @@ def complex_chunk_grids(draw: st.DrawFn) -> RectilinearChunkGrid:
 
     else:
         event("using RectilinearChunkGrid (run length encoded)")
-        repeats = st.lists(
-            st.integers(min_value=1, max_value=20), min_size=nchunks, max_size=nchunks
-        )
+        # For RLE, we need to carefully control the total expanded chunks
+        # to avoid creating arrays that are too large
+        # Use a small number of RLE entries with small repeat counts
+        num_rle_entries = draw(st.integers(min_value=5, max_value=20))
         chunk_shapes_rle = [
-            [[c, r] for c, r in zip(draw(dim_chunks), draw(repeats), strict=True)]
+            [
+                [
+                    draw(st.integers(min_value=1, max_value=10)),  # chunk size
+                    draw(st.integers(min_value=1, max_value=3)),  # repeat count
+                ]
+                for _ in range(num_rle_entries)
+            ]
             for _ in range(ndim)
         ]
         # Expand RLE to explicit chunk shapes before passing to __init__
         chunk_shapes_expanded = [
-            _expand_run_length_encoding(dim_rle) for dim_rle in chunk_shapes_rle
+            _expand_run_length_encoding(dim_rle)  # type: ignore[arg-type]
+            for dim_rle in chunk_shapes_rle
         ]
         return RectilinearChunkGrid(chunk_shapes=chunk_shapes_expanded)
 

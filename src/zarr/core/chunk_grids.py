@@ -1228,7 +1228,10 @@ def _normalize_rectilinear_chunks(
     """
     # Expand RLE for each dimension
     try:
-        chunk_shapes = tuple(_expand_run_length_encoding(dim) for dim in chunks)
+        chunk_shapes = tuple(
+            _expand_run_length_encoding(dim)  # type: ignore[arg-type]
+            for dim in chunks
+        )
     except (TypeError, ValueError) as e:
         raise TypeError(
             f"Invalid variable chunks: {chunks}. Expected nested sequence of integers "

@@ -338,7 +338,7 @@ def test_roundtrip_with_compression() -> None:
     metadata = grid1.to_dict()
 
     # Verify it's compressed
-    assert metadata["configuration"]["chunk_shapes"] == [[[10, 6]], [[5, 5]]]
+    assert metadata["configuration"]["chunk_shapes"] == [[[10, 6]], [[5, 5]]]  # type: ignore[call-overload, index]
 
     # Deserialize from dict
     grid2 = RectilinearChunkGrid._from_dict(metadata)
@@ -396,7 +396,7 @@ async def test_api_create_array_with_rle_simple() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(60, 60),
-        chunks=[[[10, 6]], [[10, 6]]],
+        chunks=[[[10, 6]], [[10, 6]]],  # type: ignore[list-item]
         dtype="i4",
         zarr_format=3,
     )
@@ -423,7 +423,7 @@ async def test_api_create_array_with_mixed_rle_and_explicit() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(6, 6),
-        chunks=[[[2, 3]], [1, [2, 1], 3]],
+        chunks=[[[2, 3]], [1, [2, 1], 3]],  # type: ignore[list-item]
         dtype="f8",
         zarr_format=3,
     )
@@ -435,7 +435,7 @@ async def test_api_create_array_with_mixed_rle_and_explicit() -> None:
     data = np.random.random((6, 6))
     await arr.setitem(slice(None), data)
     result = await arr.getitem(slice(None))
-    np.testing.assert_array_almost_equal(result, data)
+    np.testing.assert_array_almost_equal(result, data)  # type: ignore[arg-type]
 
 
 async def test_api_rle_chunk_grid_roundtrip_persistence() -> None:
@@ -447,7 +447,7 @@ async def test_api_rle_chunk_grid_roundtrip_persistence() -> None:
         store=store,
         name="rle_array",
         shape=(100, 50),
-        chunks=[[[10, 10]], [[10, 5]]],
+        chunks=[[[10, 10]], [[10, 5]]],  # type: ignore[list-item]
         dtype="u2",
         zarr_format=3,
     )
@@ -479,10 +479,10 @@ async def test_api_rle_spec_example() -> None:
         store=store,
         shape=(6, 6, 6, 4, 6),
         chunks=[
-            [[2, 3]],
-            [[1, 6]],
-            [1, [2, 1], 3],
-            [[1, 3], 1],
+            [[2, 3]],  # type: ignore[list-item]
+            [[1, 6]],  # type: ignore[list-item]
+            [1, [2, 1], 3],  # type: ignore[list-item]
+            [[1, 3], 1],  # type: ignore[list-item]
             [6],
         ],
         dtype="i1",
@@ -512,7 +512,7 @@ def test_api_synchronous_api_with_rle_chunks() -> None:
     arr = zarr.create_array(
         store=store,
         shape=(30, 40),
-        chunks=[[[10, 3]], [[10, 4]]],
+        chunks=[[[10, 3]], [[10, 4]]],  # type: ignore[list-item]
         dtype="f4",
         zarr_format=3,
     )
@@ -523,7 +523,7 @@ def test_api_synchronous_api_with_rle_chunks() -> None:
     # Test write/read
     data = np.random.random((30, 40)).astype("f4")
     arr[:] = data
-    np.testing.assert_array_almost_equal(arr[:], data)
+    np.testing.assert_array_almost_equal(arr[:], data)  # type: ignore[arg-type]
 
 
 async def test_api_rle_with_zero_count() -> None:
@@ -533,7 +533,7 @@ async def test_api_rle_with_zero_count() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(10, 10),
-        chunks=[[[5, 0], 5, 5], [[5, 2]]],
+        chunks=[[[5, 0], 5, 5], [[5, 2]]],  # type: ignore[list-item]
         dtype="u1",
         zarr_format=3,
     )
@@ -556,7 +556,7 @@ def test_api_group_create_array_with_rle() -> None:
     arr = root.create_array(
         "rle_test",
         shape=(50, 50),
-        chunks=[[[10, 5]], [[10, 5]]],
+        chunks=[[[10, 5]], [[10, 5]]],  # type: ignore[list-item]
         dtype="i8",
     )
 
@@ -568,7 +568,7 @@ def test_api_group_create_array_with_rle() -> None:
 
     # Verify the array is accessible from the group
     arr2 = root["rle_test"]
-    assert isinstance(arr2.metadata.chunk_grid, RectilinearChunkGrid)
+    assert isinstance(arr2.metadata.chunk_grid, RectilinearChunkGrid)  # type: ignore[union-attr]
 
 
 async def test_api_rle_with_large_repeat_count() -> None:
@@ -578,7 +578,7 @@ async def test_api_rle_with_large_repeat_count() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(1000, 1000),
-        chunks=[[[10, 100]], [[10, 100]]],
+        chunks=[[[10, 100]], [[10, 100]]],  # type: ignore[list-item]
         dtype="i2",
         zarr_format=3,
     )
@@ -603,7 +603,7 @@ async def test_api_rle_mixed_with_irregular_chunks() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(100, 100),
-        chunks=[[[10, 5], 50], [25, 30, 20, 25]],
+        chunks=[[[10, 5], 50], [25, 30, 20, 25]],  # type: ignore[list-item]
         dtype="u4",
         zarr_format=3,
     )
@@ -630,7 +630,7 @@ async def test_api_v2_rejects_rle_chunks(zarr_format: Literal[2, 3]) -> None:
         await zarr.api.asynchronous.create_array(
             store=store,
             shape=(60, 60),
-            chunks=[[[10, 6]], [[10, 6]]],
+            chunks=[[[10, 6]], [[10, 6]]],  # type: ignore[list-item]
             dtype="i4",
             zarr_format=zarr_format,
         )
@@ -648,6 +648,6 @@ async def test_api_from_array_rejects_rle_chunks() -> None:
         await zarr.api.asynchronous.from_array(
             store=store,
             data=data,
-            chunks=[[[10, 3]], [[10, 3]]],
+            chunks=[[[10, 3]], [[10, 3]]],  # type: ignore[arg-type]
             zarr_format=3,
         )
