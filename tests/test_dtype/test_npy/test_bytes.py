@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
-from zarr.core.dtype.npy.bytes import NullTerminatedBytes, RawBytes, VariableLengthBytes
+from zarr.core.dtype.npy.bytes import Bytes, NullTerminatedBytes, RawBytes, VariableLengthBytes
 from zarr.errors import UnstableSpecificationWarning
 
 
@@ -99,6 +99,55 @@ class TestRawBytes(BaseTestZDType):
         RawBytes(length=4),
         RawBytes(length=10),
     )
+
+
+class TestBytes(BaseTestZDType):
+    test_cls = Bytes
+    valid_dtype = (np.dtype("|O"),)
+    invalid_dtype = (
+        np.dtype(np.int8),
+        np.dtype(np.float64),
+        np.dtype("|U10"),
+    )
+    valid_json_v2 = ({"name": "|O", "object_codec_id": "vlen-bytes"},)
+    valid_json_v3 = ("bytes",)
+    invalid_json_v2 = (
+        "|S",
+        "|U10",
+        "|f8",
+    )
+
+    invalid_json_v3 = (
+        {"name": "fixed_length_ascii", "configuration": {"length_bits": 0}},
+        {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": "invalid"}},
+    )
+
+    scalar_v2_params = (
+        (Bytes(), ()),
+        (Bytes(), (1, 2)),
+    )
+    scalar_v3_params = (
+        (Bytes(), ()),
+        (Bytes(), (1, 2)),
+    )
+    cast_value_params = (
+        (Bytes(), "", b""),
+        (Bytes(), "ab", b"ab"),
+        (Bytes(), "abcdefg", b"abcdefg"),
+    )
+    invalid_scalar_params = ((Bytes(), 1.0),)
+    item_size_params = (Bytes(),)
+
+
+def test_bytes_string_fill_alias() -> None:
+    """
+    Test that the bytes dtype reads the base64-string-encoded fill value
+    used by the variable_length_bytes dtype.
+    """
+    data = "YWJjZA=="
+    a = Bytes().from_json_scalar(data, zarr_format=3)
+    b = VariableLengthBytes().from_json_scalar(data, zarr_format=3)
+    assert a == b
 
 
 class TestVariableLengthBytes(BaseTestZDType):
