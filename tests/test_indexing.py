@@ -1870,8 +1870,8 @@ def test_indexing_equals_numpy(store: StorePath, selection: Selection) -> None:
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
     # note: in python 3.10 a[*selection] is not valid unpacking syntax
-    expected = a[*selection,]
-    actual = z[*selection,]
+    expected = a[tuple(selection)]
+    actual = z[tuple(selection)]
     assert_array_equal(expected, actual, err_msg=f"selection: {selection}")
 
 
@@ -1891,7 +1891,7 @@ def test_orthogonal_bool_indexing_like_numpy_ix(
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
     expected = a[np.ix_(*selection)]
     # note: in python 3.10 z[*selection] is not valid unpacking syntax
-    actual = z[*selection,]
+    actual = z[tuple(selection)]
     assert_array_equal(expected, actual, err_msg=f"{selection=}")
 
 

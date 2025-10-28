@@ -1,19 +1,29 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict
+from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict, TypeGuard, overload
 
 import numcodecs
 from numcodecs.blosc import Blosc
 from packaging.version import Version
+from typing_extensions import ReadOnly
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, NamedRequiredConfig, parse_enum, parse_named_configuration
+from zarr.core.common import (
+    JSON,
+    CodecJSON,
+    NamedRequiredConfig,
+    ZarrFormat,
+    check_codecjson_v2,
+    check_named_required_config,
+    parse_enum,
+)
 from zarr.core.dtype.common import HasItemSize
+from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:
     from typing import Self
@@ -28,6 +38,8 @@ SHUFFLE: Final = ("noshuffle", "shuffle", "bitshuffle")
 
 CName = Literal["lz4", "lz4hc", "blosclz", "snappy", "zlib", "zstd"]
 """The codec identifiers used in the blosc codec """
+
+CNAME: Final = ("lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib")
 
 
 class BloscConfigV2(TypedDict):
@@ -48,6 +60,14 @@ class BloscConfigV3(TypedDict):
     shuffle: Shuffle
     blocksize: int
     typesize: int
+
+
+class BloscJSON_V2(BloscConfigV2):
+    """
+    The JSON form of the Blosc codec in Zarr V2.
+    """
+
+    id: ReadOnly[Literal["blosc"]]
 
 
 class BloscJSON_V3(NamedRequiredConfig[Literal["blosc"], BloscConfigV3]):
@@ -90,6 +110,64 @@ class BloscCname(Enum):
     zlib = "zlib"
 
 
+def check_json_v2(data: object) -> TypeGuard[BloscJSON_V2]:
+    return (
+        check_codecjson_v2(data)
+        and set(data.keys()) == {"id", "clevel", "cname", "shuffle", "blocksize"}
+        and data["id"] == "blosc"
+        and data["cname"] in CNAME  # type: ignore[typeddict-item]
+        and isinstance(data["clevel"], int)  # type: ignore[typeddict-item]
+        and isinstance(data["shuffle"], int)  # type: ignore[typeddict-item]
+        and data["shuffle"] in (0, 1, 2)  # type: ignore[typeddict-item]
+    )
+
+
+def check_json_v3(data: object) -> TypeGuard[BloscJSON_V3]:
+    return (
+        check_named_required_config(data)
+        and data["name"] == "blosc"
+        and set(data["configuration"].keys())
+        == {"cname", "clevel", "shuffle", "blocksize", "typesize"}
+        and data["configuration"]["cname"] in CNAME
+        and isinstance(data["configuration"]["clevel"], int)
+        and data["configuration"]["shuffle"] in SHUFFLE
+        and isinstance(data["configuration"]["blocksize"], int)
+    )
+
+
+def _handle_json_alias_v3(data: CodecJSON) -> CodecJSON:
+    """
+    Handle JSON representations of the codec that are invalid but accepted aliases.
+    """
+    if isinstance(data, Mapping):
+        data_copy = dict(data)
+        # map int shuffle to string form
+        if "name" in data and data["name"] == "numcodecs.blosc":  # type: ignore[typeddict-item]
+            data_copy = data_copy | {"name": "blosc"}
+        if "configuration" in data and "shuffle" in data["configuration"]:  # type: ignore[typeddict-item]
+            shuf = data["configuration"]["shuffle"]  # type: ignore[typeddict-item]
+            if isinstance(shuf, int) and shuf in range(len(SHUFFLE)):
+                config = {**data_copy["configuration"], "shuffle": SHUFFLE[shuf]}  # type: ignore[dict-item]
+                data_copy = data_copy | {"configuration": config}
+        # Add default typesize if missing (for legacy numcodecs.blosc JSON)
+        if "configuration" in data and "typesize" not in data["configuration"]:  # type: ignore[typeddict-item]
+            config = {**data_copy["configuration"], "typesize": 1}  # type: ignore[dict-item]
+            data_copy = data_copy | {"configuration": config}
+        return data_copy  # type: ignore[return-value]
+    return data
+
+
+def parse_cname(value: object) -> BloscCname:
+    if isinstance(value, BloscCname):
+        return value
+    if isinstance(value, str):
+        if value not in CNAME:
+            raise ValueError(f"Value must be one of {CNAME}. Got {value} instead.")
+        return BloscCname[value]
+    msg = f"Value must be an instance of `BloscCname` or a string in {CNAME}. Got {value} instead."
+    raise TypeError(msg)
+
+
 # See https://zarr.readthedocs.io/en/stable/user-guide/performance.html#configuring-blosc
 numcodecs.blosc.use_threads = False
 
@@ -116,6 +194,16 @@ def parse_blocksize(data: JSON) -> int:
     if isinstance(data, int):
         return data
     raise TypeError(f"Value should be an int. Got {type(data)} instead.")
+
+
+def parse_shuffle(data: object) -> BloscShuffle:
+    if isinstance(data, BloscShuffle):
+        return data
+    if data in SHUFFLE:
+        return BloscShuffle[data]  # type: ignore[misc]
+    if data in range(len(SHUFFLE)):
+        return BloscShuffle.from_int(data)  # type: ignore[arg-type]
+    raise TypeError(f"Value must be one of {SHUFFLE}. Got {data} instead.")
 
 
 @dataclass(frozen=True)
@@ -191,6 +279,11 @@ class BloscCodec(BytesBytesCodec):
     >>> codec.cname
     <BloscCname.zstd: 'zstd'>
 
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/blosc/index.html
+
     See Also
     --------
     BloscShuffle : Enum for shuffle filter options
@@ -244,21 +337,73 @@ class BloscCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "blosc")
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         result: BloscJSON_V3 = {
             "name": "blosc",
             "configuration": {
-                "typesize": self.typesize,
-                "cname": self.cname.value,
                 "clevel": self.clevel,
+                "cname": self.cname.value,
                 "shuffle": self.shuffle.value,
+                "typesize": self.typesize,
                 "blocksize": self.blocksize,
             },
         }
         return result  # type: ignore[return-value]
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        if check_json_v2(data):
+            return cls(
+                cname=data["cname"],
+                clevel=data["clevel"],
+                shuffle=SHUFFLE[data["shuffle"]],
+                blocksize=data["blocksize"],
+                typesize=data.get("typesize"),
+            )
+        msg = (
+            "Invalid Zarr V2 JSON representation of the blosc codec. "
+            f"Got {data!r}, expected a Mapping with keys ('id', 'cname', 'clevel', 'shuffle', 'blocksize', 'typesize')"
+        )
+        raise CodecValidationError(msg)
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        data = _handle_json_alias_v3(data)
+        if check_json_v3(data):
+            return cls(
+                typesize=data["configuration"]["typesize"],
+                cname=data["configuration"]["cname"],
+                clevel=data["configuration"]["clevel"],
+                shuffle=data["configuration"]["shuffle"],
+                blocksize=data["configuration"]["blocksize"],
+            )
+        msg = (
+            "Invalid Zarr V3 JSON representation of the blosc codec. "
+            f"Got {data!r}, expected a mapping consistent with the type BloscJSON_V3."
+        )
+        raise CodecValidationError(msg)
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> BloscJSON_V2: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> BloscJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> BloscJSON_V2 | BloscJSON_V3:
+        if zarr_format == 2:
+            return {
+                "id": "blosc",
+                "clevel": self.clevel,
+                "cname": self.cname.value,
+                "shuffle": SHUFFLE.index(self.shuffle.value),
+                "blocksize": self.blocksize,
+            }
+        elif zarr_format == 3:
+            return self.to_dict()  # type: ignore[return-value]
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         """
@@ -276,22 +421,17 @@ class BloscCodec(BytesBytesCodec):
         if "shuffle" in self._tunable_attrs:
             new_codec = replace(
                 new_codec,
-                shuffle=(BloscShuffle.bitshuffle if item_size == 1 else BloscShuffle.shuffle),
+                shuffle=BloscShuffle.bitshuffle if item_size == 1 else BloscShuffle.shuffle,
             )
 
         return new_codec
 
     @cached_property
     def _blosc_codec(self) -> Blosc:
-        map_shuffle_str_to_int = {
-            BloscShuffle.noshuffle: 0,
-            BloscShuffle.shuffle: 1,
-            BloscShuffle.bitshuffle: 2,
-        }
         config_dict: BloscConfigV2 = {
             "cname": self.cname.name,  # type: ignore[typeddict-item]
             "clevel": self.clevel,
-            "shuffle": map_shuffle_str_to_int[self.shuffle],
+            "shuffle": SHUFFLE.index(self.shuffle.value),
             "blocksize": self.blocksize,
         }
         # See https://github.com/zarr-developers/numcodecs/pull/713
@@ -304,6 +444,8 @@ class BloscCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
+        from zarr.core.buffer.cpu import as_numpy_array_wrapper
+
         return await asyncio.to_thread(
             as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes, chunk_spec.prototype
         )

@@ -1,14 +1,23 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, Self, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
+from typing_extensions import ReadOnly
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import (
+    JSON,
+    CodecJSON,
+    NamedRequiredConfig,
+    ZarrFormat,
+    check_codecjson_v2,
+    check_named_required_config,
+)
+from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:
     from typing import Self
@@ -26,9 +35,51 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
     return tuple(cast("Iterable[int]", data))
 
 
+class TransposeConfig(TypedDict):
+    order: tuple[int, ...]
+
+
+class TransposeJSON_V2(TransposeConfig):
+    """
+    The JSON form of the Transpose codec in Zarr V2.
+    """
+
+    id: ReadOnly[Literal["transpose"]]
+
+
+class TransposeJSON_V3(NamedRequiredConfig[Literal["transpose"], TransposeConfig]):
+    """
+    The JSON form of the Transpose codec in Zarr V3.
+    """
+
+
+def check_json_v2(data: object) -> TypeGuard[TransposeJSON_V2]:
+    return (
+        check_codecjson_v2(data)
+        and set(data.keys()) == {"id", "order"}
+        and data["id"] == "transpose"
+        and isinstance(data["order"], Sequence)  # type: ignore[typeddict-item]
+        and not isinstance(data["order"], str)  # type: ignore[typeddict-item]
+    )
+
+
+def check_json_v3(data: object) -> TypeGuard[TransposeJSON_V3]:
+    return (
+        check_named_required_config(data)
+        and set(data.keys()) == {"name", "configuration"}
+        and data["name"] == "transpose"
+        and set(data["configuration"].keys()) == {"order"}
+    )
+
+
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
-    """Transpose codec"""
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/transpose/index.html
+    """
 
     is_fixed_size = True
 
@@ -41,11 +92,46 @@ class TransposeCodec(ArrayArrayCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "transpose")
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
+        return cls.from_json(data)  # type: ignore[arg-type]
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        if check_json_v2(data):
+            return cls(order=data["order"])
+        msg = (
+            "Invalid Zarr V2 JSON representation of the transpose codec. "
+            f"Got {data!r}, expected a Mapping with keys ('id', 'order')"
+        )
+        raise CodecValidationError(msg)
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        if check_json_v3(data):
+            return cls(order=data["configuration"]["order"])
+        msg = (
+            "Invalid Zarr V3 JSON representation of the transpose codec. "
+            f"Got {data!r}, expected a Mapping with keys ('name', 'configuration')"
+            "Where the 'configuration' key is a Mapping with keys ('order')"
+        )
+        raise CodecValidationError(msg)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": tuple(self.order)}}
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> TransposeJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> TransposeJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> TransposeJSON_V2 | TransposeJSON_V3:
+        if zarr_format == 2:
+            return {"id": "transpose", "order": self.order}
+        elif zarr_format == 3:
+            return {"name": "transpose", "configuration": {"order": self.order}}
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
 
     def validate(
         self,
