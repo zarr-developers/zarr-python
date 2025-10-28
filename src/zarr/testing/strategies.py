@@ -14,7 +14,12 @@ import zarr
 from zarr.abc.store import RangeByteRequest, Store
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import Array
-from zarr.core.chunk_grids import ChunkGrid, RectilinearChunkGrid, RegularChunkGrid
+from zarr.core.chunk_grids import (
+    ChunkGrid,
+    RectilinearChunkGrid,
+    RegularChunkGrid,
+    _expand_run_length_encoding,
+)
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
@@ -568,8 +573,9 @@ def chunk_paths(draw: st.DrawFn, ndim: int, numblocks: tuple[int, ...], subset: 
 def complex_chunk_grids(draw: st.DrawFn) -> RectilinearChunkGrid:
     ndim = draw(st.integers(min_value=1, max_value=3))
     nchunks = draw(st.integers(min_value=10, max_value=100))
+    # Don't require unique chunk sizes - rectilinear grids can have repeated sizes
     dim_chunks = st.lists(
-        st.integers(min_value=1, max_value=10), unique=True, min_size=nchunks, max_size=nchunks
+        st.integers(min_value=1, max_value=10), min_size=nchunks, max_size=nchunks
     )
     if draw(st.booleans()):
         event("using RectilinearChunkGrid")
@@ -585,7 +591,11 @@ def complex_chunk_grids(draw: st.DrawFn) -> RectilinearChunkGrid:
             [[c, r] for c, r in zip(draw(dim_chunks), draw(repeats), strict=True)]
             for _ in range(ndim)
         ]
-        return RectilinearChunkGrid(chunk_shapes=chunk_shapes_rle)
+        # Expand RLE to explicit chunk shapes before passing to __init__
+        chunk_shapes_expanded = [
+            _expand_run_length_encoding(dim_rle) for dim_rle in chunk_shapes_rle
+        ]
+        return RectilinearChunkGrid(chunk_shapes=chunk_shapes_expanded)
 
 
 @st.composite

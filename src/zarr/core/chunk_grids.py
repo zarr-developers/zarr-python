@@ -109,6 +109,67 @@ def _expand_run_length_encoding(spec: Sequence[ChunkEdgeLength]) -> tuple[int, .
     return tuple(result)
 
 
+def _compress_run_length_encoding(chunks: tuple[int, ...]) -> list[int | list[int]]:
+    """
+    Compress a sequence of chunk sizes to RLE format where beneficial.
+
+    This function automatically detects runs of identical values and compresses them
+    using the [value, count] format. Single values or short runs are kept as-is.
+
+    Parameters
+    ----------
+    chunks : tuple[int, ...]
+        Sequence of chunk sizes along one dimension
+
+    Returns
+    -------
+    list[int | list[int]]
+        Compressed representation using RLE where beneficial
+
+    Examples
+    --------
+    >>> _compress_run_length_encoding((10, 10, 10, 10, 10, 10))
+    [[10, 6]]
+    >>> _compress_run_length_encoding((10, 20, 30))
+    [10, 20, 30]
+    >>> _compress_run_length_encoding((10, 10, 10, 20, 20, 30))
+    [[10, 3], [20, 2], 30]
+    >>> _compress_run_length_encoding((5, 5, 10, 10, 10, 10, 15))
+    [[5, 2], [10, 4], 15]
+    """
+    if not chunks:
+        return []
+
+    result: list[int | list[int]] = []
+    current_value = chunks[0]
+    current_count = 1
+
+    for value in chunks[1:]:
+        if value == current_value:
+            current_count += 1
+        else:
+            # Decide whether to use RLE or explicit value
+            # Use RLE if count >= 3 to save space (tradeoff: [v,c] vs v,v,v)
+            if current_count >= 3:
+                result.append([current_value, current_count])
+            elif current_count == 2:
+                # For count=2, RLE doesn't save space, but use it for consistency
+                result.append([current_value, current_count])
+            else:
+                result.append(current_value)
+
+            current_value = value
+            current_count = 1
+
+    # Handle the last run
+    if current_count >= 3 or current_count == 2:
+        result.append([current_value, current_count])
+    else:
+        result.append(current_value)
+
+    return result
+
+
 def _parse_chunk_shapes(
     data: Sequence[Sequence[ChunkEdgeLength]],
 ) -> tuple[tuple[int, ...], ...]:
@@ -554,21 +615,33 @@ class RectilinearChunkGrid(ChunkGrid):
 
     def to_dict(self) -> dict[str, JSON]:
         """
-        Convert to metadata dict format.
+        Convert to metadata dict format with automatic RLE compression.
+
+        This method automatically compresses chunk shapes using run-length encoding
+        where beneficial (runs of 2 or more identical values). This reduces metadata
+        size for arrays with many uniform chunks.
 
         Returns
         -------
         dict[str, JSON]
             Metadata dictionary with 'name' and 'configuration' keys
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[10, 10, 10, 10, 10, 10], [5, 5, 5, 5, 5]])
+        >>> grid.to_dict()['configuration']['chunk_shapes']
+        [[[10, 6]], [[5, 5]]]
         """
-        # Convert to list for JSON serialization
-        chunk_shapes_list = [list(axis_chunks) for axis_chunks in self.chunk_shapes]
+        # Compress each dimension using RLE where beneficial
+        chunk_shapes_compressed = [
+            _compress_run_length_encoding(axis_chunks) for axis_chunks in self.chunk_shapes
+        ]
 
         return {
             "name": "rectilinear",
             "configuration": {
                 "kind": "inline",
-                "chunk_shapes": chunk_shapes_list,
+                "chunk_shapes": chunk_shapes_compressed,
             },
         }
 
@@ -1116,15 +1189,21 @@ def _is_nested_sequence(chunks: Any) -> bool:
 
 
 def _normalize_rectilinear_chunks(
-    chunks: Sequence[Sequence[int]], shape: tuple[int, ...]
+    chunks: Sequence[Sequence[int | Sequence[int]]], shape: tuple[int, ...]
 ) -> tuple[tuple[int, ...], ...]:
     """
     Normalize and validate variable chunks for RectilinearChunkGrid.
 
+    Supports both explicit chunk sizes and run-length encoding (RLE).
+    RLE format: [[value, count]] expands to 'count' repetitions of 'value'.
+
     Parameters
     ----------
-    chunks : Sequence[Sequence[int]]
+    chunks : Sequence[Sequence[int | Sequence[int]]]
         Nested sequence where each element is a sequence of chunk sizes along that dimension.
+        Each chunk size can be:
+        - An integer: explicit chunk size
+        - A sequence [value, count]: RLE format (expands to 'count' chunks of size 'value')
     shape : tuple[int, ...]
         The shape of the array.
 
@@ -1137,13 +1216,23 @@ def _normalize_rectilinear_chunks(
     ------
     ValueError
         If chunks don't match shape or sum incorrectly.
+    TypeError
+        If chunk specification format is invalid.
+
+    Examples
+    --------
+    >>> _normalize_rectilinear_chunks([[10, 20, 30], [25, 25]], (60, 50))
+    ((10, 20, 30), (25, 25))
+    >>> _normalize_rectilinear_chunks([[[10, 6]], [[10, 5]]], (60, 50))
+    ((10, 10, 10, 10, 10, 10), (10, 10, 10, 10, 10))
     """
-    # Convert to tuple of tuples
+    # Expand RLE for each dimension
     try:
-        chunk_shapes = tuple(tuple(int(c) for c in dim) for dim in chunks)
+        chunk_shapes = tuple(_expand_run_length_encoding(dim) for dim in chunks)
     except (TypeError, ValueError) as e:
         raise TypeError(
-            f"Invalid variable chunks: {chunks}. Expected nested sequence of integers."
+            f"Invalid variable chunks: {chunks}. Expected nested sequence of integers "
+            f"or RLE format [[value, count]]."
         ) from e
 
     # Validate dimensionality
@@ -1179,6 +1268,7 @@ def parse_chunk_grid(
     returns a concrete ChunkGrid instance:
     - ChunkGrid instances: Returned as-is
     - Nested sequences (e.g., [[10, 20], [5, 5]]): Converted to RectilinearChunkGrid (Zarr v3 only)
+    - Nested sequences with RLE (e.g., [[[10, 6]], [[10, 5]]]): Expanded and converted to RectilinearChunkGrid
     - Regular tuples/ints (e.g., (10, 10) or 10): Converted to RegularChunkGrid
     - Literal "auto": Computed using auto-chunking heuristics and converted to RegularChunkGrid
 
@@ -1187,10 +1277,13 @@ def parse_chunk_grid(
     chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int
         The chunks parameter to parse. Can be:
         - A ChunkGrid instance
-        - A nested sequence for variable-sized chunks
+        - A nested sequence for variable-sized chunks (supports RLE format)
         - A tuple of integers for uniform chunks
         - A single integer (for 1D arrays or uniform chunks across all dimensions)
         - The literal "auto"
+
+        RLE (Run-Length Encoding) format: [[value, count]] expands to 'count' repetitions of 'value'.
+        Example: [[[10, 6]]] creates 6 chunks of size 10 each.
     shape : ShapeLike
         The shape of the array. Required to create RegularChunkGrid for "auto" or tuple inputs.
     item_size : int, default=1
@@ -1226,6 +1319,13 @@ def parse_chunk_grid(
     'RectilinearChunkGrid'
     >>> result.chunk_shapes
     ((10, 20, 30), (5, 5))
+
+    >>> # RLE format for RectilinearChunkGrid
+    >>> result = parse_chunk_grid([[[10, 6]], [[10, 5]]], shape=(60, 50), zarr_format=3)
+    >>> type(result).__name__
+    'RectilinearChunkGrid'
+    >>> result.chunk_shapes
+    ((10, 10, 10, 10, 10, 10), (10, 10, 10, 10, 10))
 
     >>> # Regular tuple
     >>> result = parse_chunk_grid((10, 10), shape=(100, 100))
