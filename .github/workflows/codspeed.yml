@@ -27,4 +27,4 @@ jobs:
       uses: CodSpeedHQ/action@v4
       with:
           mode: instrumentation
-          run: hatch run test:run-benchmark
+          run: hatch run test.py3.11-1.26-minimal:run-benchmark
