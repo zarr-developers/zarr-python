@@ -219,31 +219,10 @@ class _ShardReader(ShardMapping):
     def __iter__(self) -> Iterator[tuple[int, ...]]:
         return c_order_iter(self.index.offsets_and_lengths.shape[:-1])
 
-    def is_empty(self) -> bool:
-        return self.index.is_all_empty()
 
-
-class _ShardBuilder(_ShardReader, ShardMutableMapping):
+class _ShardBuilder(ShardMutableMapping):
     buf: Buffer
-    index: _ShardIndex
-
-    @classmethod
-    def merge_with_morton_order(
-        cls,
-        chunks_per_shard: tuple[int, ...],
-        tombstones: set[tuple[int, ...]],
-        *shard_dicts: ShardMapping,
-    ) -> _ShardBuilder:
-        obj = cls.create_empty(chunks_per_shard)
-        for chunk_coords in morton_order_iter(chunks_per_shard):
-            if chunk_coords in tombstones:
-                continue
-            for shard_dict in shard_dicts:
-                maybe_value = shard_dict.get(chunk_coords, None)
-                if maybe_value is not None:
-                    obj[chunk_coords] = maybe_value
-                    break
-        return obj
+    _index: _ShardIndex
 
     @classmethod
     def create_empty(
@@ -253,14 +232,14 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
             buffer_prototype = default_buffer_prototype()
         obj = cls()
         obj.buf = buffer_prototype.buffer.create_zero_length()
-        obj.index = _ShardIndex.create_empty(chunks_per_shard)
+        obj._index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
     def __setitem__(self, chunk_coords: tuple[int, ...], value: Buffer) -> None:
         chunk_start = len(self.buf)
         chunk_length = len(value)
         self.buf += value
-        self.index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
+        self._index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
 
     def __delitem__(self, chunk_coords: tuple[int, ...]) -> None:
         raise NotImplementedError
@@ -270,21 +249,34 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
         index_location: ShardingCodecIndexLocation,
         index_encoder: Callable[[_ShardIndex], Awaitable[Buffer]],
     ) -> Buffer:
-        index_bytes = await index_encoder(self.index)
+        index_bytes = await index_encoder(self._index)
         if index_location == ShardingCodecIndexLocation.start:
-            empty_chunks_mask = self.index.offsets_and_lengths[..., 0] == MAX_UINT_64
-            self.index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
-            index_bytes = await index_encoder(self.index)  # encode again with corrected offsets
+            empty_chunks_mask = self._index.offsets_and_lengths[..., 0] == MAX_UINT_64
+            self._index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
+            index_bytes = await index_encoder(self._index)  # encode again with corrected offsets
             out_buf = index_bytes + self.buf
         else:
             out_buf = self.buf + index_bytes
         return out_buf
+
+    def __getitem__(self, chunk_coords: tuple[int, ...]) -> Buffer:
+        chunk_byte_slice = self._index.get_chunk_slice(chunk_coords)
+        if chunk_byte_slice:
+            return self.buf[chunk_byte_slice[0] : chunk_byte_slice[1]]
+        raise KeyError
+
+    def __len__(self) -> int:
+        return int(self._index.offsets_and_lengths.size / 2)
+
+    def __iter__(self) -> Iterator[tuple[int, ...]]:
+        return c_order_iter(self._index.offsets_and_lengths.shape[:-1])
 
 
 @dataclass(frozen=True)
 class _MergingShardBuilder(ShardMutableMapping):
     old_dict: _ShardReader
     new_dict: _ShardBuilder
+    chunks_per_shard: tuple[int, ...]
     tombstones: set[tuple[int, ...]] = field(default_factory=set)
 
     def __getitem__(self, chunk_coords: tuple[int, ...]) -> Buffer:
@@ -300,32 +292,32 @@ class _MergingShardBuilder(ShardMutableMapping):
         self.tombstones.add(chunk_coords)
 
     def __len__(self) -> int:
-        return self.old_dict.__len__()
+        return len(self._keys())
+
+    def _keys(self) -> set[tuple[int, ...]]:
+        return set(self.old_dict).union(self.new_dict)
 
     def __iter__(self) -> Iterator[tuple[int, ...]]:
-        return self.old_dict.__iter__()
+        return iter(self._keys())
 
     def is_empty(self) -> bool:
-        full_chunk_coords_map = self.old_dict.index.get_full_chunk_map()
-        full_chunk_coords_map = np.logical_or(
-            full_chunk_coords_map, self.new_dict.index.get_full_chunk_map()
-        )
-        for tombstone in self.tombstones:
-            full_chunk_coords_map[tombstone] = False
-        return bool(np.array_equiv(full_chunk_coords_map, False))
+        return len(self) == 0
 
     async def finalize(
         self,
         index_location: ShardingCodecIndexLocation,
         index_encoder: Callable[[_ShardIndex], Awaitable[Buffer]],
     ) -> Buffer:
-        shard_builder = _ShardBuilder.merge_with_morton_order(
-            self.new_dict.index.chunks_per_shard,
-            self.tombstones,
-            self.new_dict,
-            self.old_dict,
-        )
-        return await shard_builder.finalize(index_location, index_encoder)
+        obj = self.new_dict.create_empty(self.chunks_per_shard)
+        for chunk_coords in morton_order_iter(self.chunks_per_shard):
+            if chunk_coords in self.tombstones:
+                continue
+            for shard_dict in [self.old_dict, self.new_dict]:
+                maybe_value = shard_dict.get(chunk_coords, None)
+                if maybe_value is not None:
+                    obj[chunk_coords] = maybe_value
+                    break
+        return await obj.finalize(index_location, index_encoder)
 
 
 @dataclass(frozen=True)
@@ -611,6 +603,7 @@ class ShardingCodec(
             )
             or _ShardReader.create_empty(chunks_per_shard),
             _ShardBuilder.create_empty(chunks_per_shard),
+            chunks_per_shard=chunks_per_shard,
         )
 
         indexer = list(
@@ -633,7 +626,7 @@ class ShardingCodec(
             shard_array,
         )
 
-        if shard_dict.is_empty():
+        if len(shard_dict) == 0:
             await byte_setter.delete()
         else:
             await byte_setter.set(
