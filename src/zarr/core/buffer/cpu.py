@@ -112,7 +112,7 @@ class Buffer(core.Buffer):
         for buf in others:
             other_array = buf.as_array_like()
             assert other_array.dtype == np.dtype("B")
-            data.append(np.asanyarray(np.asanyarray(other_array)))
+            data.append(np.asanyarray(other_array))
         return self.__class__(np.concatenate(data))
 
 
