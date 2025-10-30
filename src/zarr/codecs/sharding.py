@@ -224,8 +224,9 @@ class _ShardReader(ShardMapping):
 
 
 class _ShardBuilder(_ShardReader, ShardMutableMapping):
-    buf: Buffer
+    buffers: list[Buffer]
     index: _ShardIndex
+    buf: Buffer
 
     @classmethod
     def merge_with_morton_order(
@@ -253,13 +254,14 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
             buffer_prototype = default_buffer_prototype()
         obj = cls()
         obj.buf = buffer_prototype.buffer.create_zero_length()
+        obj.buffers = []
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
     def __setitem__(self, chunk_coords: tuple[int, ...], value: Buffer) -> None:
-        chunk_start = len(self.buf)
+        chunk_start = sum(len(buf) for buf in self.buffers)
         chunk_length = len(value)
-        self.buf += value
+        self.buffers.append(value)
         self.index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
 
     def __delitem__(self, chunk_coords: tuple[int, ...]) -> None:
@@ -275,10 +277,11 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
             empty_chunks_mask = self.index.offsets_and_lengths[..., 0] == MAX_UINT_64
             self.index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
             index_bytes = await index_encoder(self.index)  # encode again with corrected offsets
-            out_buf = index_bytes + self.buf
+            self.buffers.insert(0, index_bytes)
         else:
-            out_buf = self.buf + index_bytes
-        return out_buf
+            self.buffers.append(index_bytes)
+        self.buf = self.buf.combine(self.buffers)
+        return self.buf
 
 
 @dataclass(frozen=True)
