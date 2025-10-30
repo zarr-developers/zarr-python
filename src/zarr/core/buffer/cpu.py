@@ -107,10 +107,6 @@ class Buffer(core.Buffer):
         """
         return np.asanyarray(self._data)
 
-    def __add__(self, other: core.Buffer) -> Self:
-        """Concatenate two buffers"""
-        return self.combine([other])
-
     def combine(self, others: Iterable[core.Buffer]) -> Self:
         data = [np.asanyarray(self._data)]
         for buf in others:
