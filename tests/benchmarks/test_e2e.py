@@ -61,7 +61,7 @@ def test_write_array(
         shape=layout.shape,
         chunks=layout.chunks,
         shards=layout.shards,
-        compressors=compressors[compression_name],
+        compressors=compressors[compression_name],  # type: ignore[arg-type]
         fill_value=0,
     )
 
@@ -83,7 +83,7 @@ def test_read_array(
         shape=layout.shape,
         chunks=layout.chunks,
         shards=layout.shards,
-        compressors=compressors[compression_name],
+        compressors=compressors[compression_name],  # type: ignore[arg-type]
         fill_value=0,
     )
     arr[:] = 1
