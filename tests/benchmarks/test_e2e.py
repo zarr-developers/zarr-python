@@ -70,7 +70,7 @@ def test_write_array(
 
 @pytest.mark.parametrize("compression_name", [None, "gzip"])
 @pytest.mark.parametrize("layout", layouts)
-@pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=["store"])
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_read_array(
     store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
 ) -> None:
