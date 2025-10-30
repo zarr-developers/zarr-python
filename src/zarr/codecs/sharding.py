@@ -526,16 +526,15 @@ class ShardingCodec(
             ],
             shard_array,
         )
+        buf = await self._encode_shard_dict(
+            shard_dict,
+            chunks_per_shard=chunks_per_shard,
+            buffer_prototype=default_buffer_prototype(),
+        )
 
-        if len(shard_dict) == 0:
+        if buf is None:
             await byte_setter.delete()
         else:
-            buf = await self._encode_shard_dict(
-                shard_dict,
-                chunks_per_shard=chunks_per_shard,
-                buffer_prototype=default_buffer_prototype(),
-            )
-
             await byte_setter.set(buf)
 
     async def _encode_shard_dict(
@@ -543,21 +542,28 @@ class ShardingCodec(
         map: ShardMapping,
         chunks_per_shard: tuple[int, ...],
         buffer_prototype: BufferPrototype,
-    ) -> Buffer:
+    ) -> Buffer | None:
         index = _ShardIndex.create_empty(chunks_per_shard)
 
         buffers = []
 
+        template = buffer_prototype.buffer.create_zero_length()
         chunk_start = 0
         for chunk_coords in morton_order_iter(chunks_per_shard):
             value = map.get(chunk_coords)
             if value is None:
                 continue
 
+            if len(value) == 0:
+                continue
+
             chunk_length = len(value)
             buffers.append(value)
             index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
             chunk_start += chunk_length
+
+        if len(buffers) == 0:
+            return None
 
         index_bytes = await self._encode_shard_index(index)
         if self.index_location == ShardingCodecIndexLocation.start:
@@ -570,7 +576,6 @@ class ShardingCodec(
         else:
             buffers.append(index_bytes)
 
-        template = buffer_prototype.buffer.create_zero_length()
         return template.combine(buffers)
 
     def _is_total_shard(
