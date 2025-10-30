@@ -65,7 +65,7 @@ def test_write_array(
         fill_value=0,
     )
 
-    benchmark.pedantic(setitem, args=(arr, Ellipsis, 1), rounds=16)
+    benchmark(setitem, arr, Ellipsis, 1)
 
 
 @pytest.mark.parametrize("compression_name", [None, "gzip"])
@@ -87,4 +87,4 @@ def test_read_array(
         fill_value=0,
     )
     arr[:] = 1
-    benchmark.pedantic(getitem, args=(arr, Ellipsis), rounds=16)
+    benchmark(getitem, arr, Ellipsis)
