@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, MutableMapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from enum import Enum
 from functools import lru_cache
 from operator import itemgetter
@@ -54,15 +54,15 @@ from zarr.core.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterator
+    from collections.abc import Iterator
     from typing import Self
 
     from zarr.core.common import JSON
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 MAX_UINT_64 = 2**64 - 1
-ShardMapping = Mapping[tuple[int, ...], Buffer]
-ShardMutableMapping = MutableMapping[tuple[int, ...], Buffer]
+ShardMapping = Mapping[tuple[int, ...], Buffer | None]
+ShardMutableMapping = MutableMapping[tuple[int, ...], Buffer | None]
 
 
 class ShardingCodecIndexLocation(Enum):
@@ -218,106 +218,6 @@ class _ShardReader(ShardMapping):
 
     def __iter__(self) -> Iterator[tuple[int, ...]]:
         return c_order_iter(self.index.offsets_and_lengths.shape[:-1])
-
-
-class _ShardBuilder(ShardMutableMapping):
-    buf: Buffer
-    _index: _ShardIndex
-
-    @classmethod
-    def create_empty(
-        cls, chunks_per_shard: tuple[int, ...], buffer_prototype: BufferPrototype | None = None
-    ) -> _ShardBuilder:
-        if buffer_prototype is None:
-            buffer_prototype = default_buffer_prototype()
-        obj = cls()
-        obj.buf = buffer_prototype.buffer.create_zero_length()
-        obj._index = _ShardIndex.create_empty(chunks_per_shard)
-        return obj
-
-    def __setitem__(self, chunk_coords: tuple[int, ...], value: Buffer) -> None:
-        chunk_start = len(self.buf)
-        chunk_length = len(value)
-        self.buf += value
-        self._index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
-
-    def __delitem__(self, chunk_coords: tuple[int, ...]) -> None:
-        raise NotImplementedError
-
-    async def finalize(
-        self,
-        index_location: ShardingCodecIndexLocation,
-        index_encoder: Callable[[_ShardIndex], Awaitable[Buffer]],
-    ) -> Buffer:
-        index_bytes = await index_encoder(self._index)
-        if index_location == ShardingCodecIndexLocation.start:
-            empty_chunks_mask = self._index.offsets_and_lengths[..., 0] == MAX_UINT_64
-            self._index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
-            index_bytes = await index_encoder(self._index)  # encode again with corrected offsets
-            out_buf = index_bytes + self.buf
-        else:
-            out_buf = self.buf + index_bytes
-        return out_buf
-
-    def __getitem__(self, chunk_coords: tuple[int, ...]) -> Buffer:
-        chunk_byte_slice = self._index.get_chunk_slice(chunk_coords)
-        if chunk_byte_slice:
-            return self.buf[chunk_byte_slice[0] : chunk_byte_slice[1]]
-        raise KeyError
-
-    def __len__(self) -> int:
-        return int(self._index.offsets_and_lengths.size / 2)
-
-    def __iter__(self) -> Iterator[tuple[int, ...]]:
-        return c_order_iter(self._index.offsets_and_lengths.shape[:-1])
-
-
-@dataclass(frozen=True)
-class _MergingShardBuilder(ShardMutableMapping):
-    old_dict: _ShardReader
-    new_dict: _ShardBuilder
-    chunks_per_shard: tuple[int, ...]
-    tombstones: set[tuple[int, ...]] = field(default_factory=set)
-
-    def __getitem__(self, chunk_coords: tuple[int, ...]) -> Buffer:
-        chunk_bytes_maybe = self.new_dict.get(chunk_coords)
-        if chunk_bytes_maybe is not None:
-            return chunk_bytes_maybe
-        return self.old_dict[chunk_coords]
-
-    def __setitem__(self, chunk_coords: tuple[int, ...], value: Buffer) -> None:
-        self.new_dict[chunk_coords] = value
-
-    def __delitem__(self, chunk_coords: tuple[int, ...]) -> None:
-        self.tombstones.add(chunk_coords)
-
-    def __len__(self) -> int:
-        return len(self._keys())
-
-    def _keys(self) -> set[tuple[int, ...]]:
-        return set(self.old_dict).union(self.new_dict)
-
-    def __iter__(self) -> Iterator[tuple[int, ...]]:
-        return iter(self._keys())
-
-    def is_empty(self) -> bool:
-        return len(self) == 0
-
-    async def finalize(
-        self,
-        index_location: ShardingCodecIndexLocation,
-        index_encoder: Callable[[_ShardIndex], Awaitable[Buffer]],
-    ) -> Buffer:
-        obj = self.new_dict.create_empty(self.chunks_per_shard)
-        for chunk_coords in morton_order_iter(self.chunks_per_shard):
-            if chunk_coords in self.tombstones:
-                continue
-            for shard_dict in [self.old_dict, self.new_dict]:
-                maybe_value = shard_dict.get(chunk_coords, None)
-                if maybe_value is not None:
-                    obj[chunk_coords] = maybe_value
-                    break
-        return await obj.finalize(index_location, index_encoder)
 
 
 @dataclass(frozen=True)
@@ -565,7 +465,7 @@ class ShardingCodec(
             )
         )
 
-        shard_builder = _ShardBuilder.create_empty(chunks_per_shard)
+        shard_builder = dict.fromkeys(morton_order_iter(chunks_per_shard))
 
         await self.codec_pipeline.write(
             [
@@ -581,7 +481,11 @@ class ShardingCodec(
             shard_array,
         )
 
-        return await shard_builder.finalize(self.index_location, self._encode_shard_index)
+        return await self._encode_shard_dict(
+            shard_builder,
+            chunks_per_shard=chunks_per_shard,
+            buffer_prototype=default_buffer_prototype(),
+        )
 
     async def _encode_partial_single(
         self,
@@ -595,16 +499,13 @@ class ShardingCodec(
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
 
-        shard_dict = _MergingShardBuilder(
-            await self._load_full_shard_maybe(
-                byte_getter=byte_setter,
-                prototype=chunk_spec.prototype,
-                chunks_per_shard=chunks_per_shard,
-            )
-            or _ShardReader.create_empty(chunks_per_shard),
-            _ShardBuilder.create_empty(chunks_per_shard),
+        shard_reader = await self._load_full_shard_maybe(
+            byte_getter=byte_setter,
+            prototype=chunk_spec.prototype,
             chunks_per_shard=chunks_per_shard,
         )
+        shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
+        shard_dict = {k: shard_reader.get(k) for k in morton_order_iter(chunks_per_shard)}
 
         indexer = list(
             get_indexer(
@@ -629,12 +530,46 @@ class ShardingCodec(
         if len(shard_dict) == 0:
             await byte_setter.delete()
         else:
-            await byte_setter.set(
-                await shard_dict.finalize(
-                    self.index_location,
-                    self._encode_shard_index,
-                )
+            buf = await self._encode_shard_dict(
+                shard_dict,
+                chunks_per_shard=chunks_per_shard,
+                buffer_prototype=default_buffer_prototype(),
             )
+
+            await byte_setter.set(buf)
+
+    async def _encode_shard_dict(
+        self,
+        map: ShardMapping,
+        chunks_per_shard: tuple[int, ...],
+        buffer_prototype: BufferPrototype,
+    ) -> Buffer:
+        index = _ShardIndex.create_empty(chunks_per_shard)
+
+        buf = buffer_prototype.buffer.create_zero_length()
+
+        for chunk_coords in morton_order_iter(chunks_per_shard):
+            value = map.get(chunk_coords)
+            if value is None:
+                continue
+
+            chunk_start = len(buf)
+            chunk_length = len(value)
+            buf += value
+            index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
+
+        index_bytes = await self._encode_shard_index(index)
+        if self.index_location == ShardingCodecIndexLocation.start:
+            empty_chunks_mask = index.offsets_and_lengths[..., 0] == MAX_UINT_64
+            index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
+            index_bytes = await self._encode_shard_index(
+                index
+            )  # encode again with corrected offsets
+            out_buf = index_bytes + buf
+        else:
+            out_buf = buf + index_bytes
+
+        return out_buf
 
     def _is_total_shard(
         self, all_chunk_coords: set[tuple[int, ...]], chunks_per_shard: tuple[int, ...]
