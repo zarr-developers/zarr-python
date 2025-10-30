@@ -183,6 +183,7 @@ run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+run-benchmark = "pytest --benchmark-enable tests/benchmarks"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
@@ -407,7 +408,12 @@ doctest_optionflags = [
     "IGNORE_EXCEPTION_DETAIL",
 ]
 addopts = [
-    "--durations=10", "-ra", "--strict-config", "--strict-markers",
+    "--benchmark-columns", "min,mean,stddev,outliers,rounds,iterations",
+    "--benchmark-group-by", "group",
+    "--benchmark-warmup", "on",
+    "--benchmark-disable", # run benchmark routines but don't do benchmarking
+    "--durations", "10",
+    "-ra", "--strict-config", "--strict-markers",
 ]
 filterwarnings = [
     "error",
