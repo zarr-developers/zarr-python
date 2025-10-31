@@ -1,11 +1,12 @@
 """
-Test the basic end-to-end read/write performance of Zarr
+Benchmarks for end-to-end read/write performance of Zarr
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
+
+from tests.benchmarks.common import Layout
 
 if TYPE_CHECKING:
     from pytest_benchmark.fixture import BenchmarkFixture
@@ -27,17 +28,10 @@ compressors: dict[CompressorName, NamedConfig[Any, Any] | None] = {
 }
 
 
-@dataclass(kw_only=True, frozen=True)
-class Layout:
-    shape: tuple[int, ...]
-    chunks: tuple[int, ...]
-    shards: tuple[int, ...] | None
-
-
 layouts: tuple[Layout, ...] = (
     Layout(shape=(1024**2,), chunks=(1024,), shards=None),
     Layout(shape=(1024**2,), chunks=(1024,), shards=(1024,)),
-    Layout(shape=(1024**2,), chunks=(1024,), shards=(1024 * 16,)),
+    Layout(shape=(1024**2,), chunks=(1024,), shards=(1024 * 64,)),
 )
 
 
