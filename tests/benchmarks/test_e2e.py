@@ -35,20 +35,15 @@ class Layout:
 
 
 layouts: tuple[Layout, ...] = (
-    Layout(shape=(16,), chunks=(1,), shards=None),
-    Layout(shape=(16,), chunks=(16,), shards=None),
-    Layout(shape=(16,), chunks=(1,), shards=(1,)),
-    Layout(shape=(16,), chunks=(1,), shards=(16,)),
-    Layout(shape=(16,) * 2, chunks=(1,) * 2, shards=None),
-    Layout(shape=(16,) * 2, chunks=(16,) * 2, shards=None),
-    Layout(shape=(16,) * 2, chunks=(1,) * 2, shards=(1,) * 2),
-    Layout(shape=(16,) * 2, chunks=(1,) * 2, shards=(16,) * 2),
+    Layout(shape=(1024**2,), chunks=(1024,), shards=None),
+    Layout(shape=(1024**2,), chunks=(1024,), shards=(1024,)),
+    Layout(shape=(1024**2,), chunks=(1024,), shards=(1024 * 16,)),
 )
 
 
 @pytest.mark.parametrize("compression_name", [None, "gzip"])
-@pytest.mark.parametrize("layout", layouts)
-@pytest.mark.parametrize("store", ["memory", "local", "zip"], indirect=["store"])
+@pytest.mark.parametrize("layout", layouts, ids=str)
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_write_array(
     store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
 ) -> None:
