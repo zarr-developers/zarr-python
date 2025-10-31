@@ -107,14 +107,15 @@ class Buffer(core.Buffer):
     def as_numpy_array(self) -> npt.NDArray[Any]:
         return cast("npt.NDArray[Any]", cp.asnumpy(self._data))
 
-    def __add__(self, other: core.Buffer) -> Self:
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("B")
-        gpu_other = Buffer(other_array)
-        gpu_other_array = gpu_other.as_array_like()
-        return self.__class__(
-            cp.concatenate((cp.asanyarray(self._data), cp.asanyarray(gpu_other_array)))
-        )
+    def combine(self, others: Iterable[core.Buffer]) -> Self:
+        data = [cp.asanyarray(self._data)]
+        for other in others:
+            other_array = other.as_array_like()
+            assert other_array.dtype == np.dtype("B")
+            gpu_other = Buffer(other_array)
+            gpu_other_array = gpu_other.as_array_like()
+            data.append(cp.asanyarray(gpu_other_array))
+        return self.__class__(cp.concatenate(data))
 
 
 class NDBuffer(core.NDBuffer):
