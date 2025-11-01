@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.12"
 # dependencies = [
 #   "zarr @ git+https://github.com/zarr-developers/zarr-python.git@main",
 #   "ml_dtypes==0.5.1",

@@ -155,7 +155,7 @@ When submitting a pull request, coverage will also be collected across all suppo
 
 ### Documentation
 
-Docstrings for user-facing classes and functions should follow the [numpydoc](https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard) standard, including sections for Parameters and Examples. All examples should run and pass as doctests under Python 3.11.
+Docstrings for user-facing classes and functions should follow the [numpydoc](https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard) standard, including sections for Parameters and Examples. All examples should run and pass as doctests under Python 3.12.
 
 Zarr uses mkdocs for documentation, hosted on readthedocs.org. Documentation is written in the Markdown markup language (.md files) in the `docs` folder. The documentation consists both of prose and API documentation. All user-facing classes and functions are included in the API documentation, under the `docs/api` folder using the [mkdocstrings](https://mkdocstrings.github.io/) extension. Add any new public functions or classes to the relevant markdown file in `docs/api/*.md`. Any new features or important usage information should be included in the user-guide (`docs/user-guide`). Any changes should also be included as a new file in the `changes` directory.
 

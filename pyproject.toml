@@ -29,11 +29,11 @@ maintainers = [
     { name = "Tom Augspurger", email = "tom.w.augspurger@gmail.com" },
     { name = "Deepak Cherian" }
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'packaging>=22.0',
-    'numpy>=1.26',
+    'numpy>=2',
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
     'typing_extensions>=4.9',
@@ -52,9 +52,9 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
 ]
 license = "MIT"
 license-files = ["LICENSE.txt"]
@@ -163,8 +163,8 @@ COV_CORE_CONFIG = ".coveragerc"
 COV_CORE_DATAFILE = ".coverage.eager"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12", "3.13"]
-numpy = ["1.26", "2.2"]
+python = ["3.12", "3.13", "3.14"]
+numpy = ["2", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -192,8 +192,8 @@ dependencies = [
 features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
-python = ["3.11", "3.12", "3.13"]
-numpy = ["1.26", "2.2"]
+python = ["3.12", "3.13"]
+numpy = ["2", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
@@ -206,7 +206,7 @@ list-env = "pip list"
 
 [tool.hatch.envs.upstream]
 template = 'test'
-python = "3.13"
+python = "3.14"
 dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
@@ -231,11 +231,11 @@ description = """Test environment for minimum supported dependencies
 See Spec 0000 for details and drop schedule: https://scientific-python.org/specs/spec-0000/
 """
 template = "test"
-python = "3.11"
+python = "3.12"
 dependencies = [
     'zarr[remote]',
     'packaging==22.*',
-    'numpy==1.26.*',
+    'numpy==2.0.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
@@ -352,7 +352,7 @@ ignore = [
 "tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 ignore_missing_imports = true
 namespace_packages = false
 
