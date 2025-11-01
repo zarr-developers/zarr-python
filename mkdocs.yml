@@ -6,6 +6,7 @@ site_description: An implementation of chunked, compressed, N-dimensional arrays
 site_author: Alistair Miles
 site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr.readthedocs.io/']
 docs_dir: docs
+use_directory_urls: true
 
 nav:
   - "index.md"
@@ -42,6 +43,7 @@ nav:
       - api/config.md
       - api/codecs.md
       - api/errors.md
+      - api/metadata.md
       - api/registry.md
       - api/storage.md
       - api/testing.md
@@ -130,6 +132,7 @@ plugins:
             show_source: true
             show_symbol_type_toc: true
             signature_crossrefs: true
+            show_if_no_docstring: true
             extensions:
             - griffe_inherited_docstrings
 
@@ -154,11 +157,77 @@ plugins:
         'spec/v2.md': 'https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html'
         'spec/v3.md': 'https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html'
         'license.md': 'https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt'
+        'genindex.html.md': 'index.md'
+        'py-modindex.html.md': 'index.md'
+        'search.html.md': 'index.md'
         'tutorial.md': 'user-guide/installation.md'
         'getting-started.md': 'quick-start.md'
         'roadmap.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
         'installation.md': 'user-guide/installation.md'
         'release.md': 'release-notes.md'
+        'about.html.md': 'index.md'
+        'arrays.html.md': 'user-guide/arrays.md'
+        'attributes.html.md': 'user-guide/attributes.md'
+        'cli.html.md': 'user-guide/cli.md'
+        'config.html.md': 'user-guide/config.md'
+        'consolidated_metadata.html.md': 'user-guide/consolidated_metadata.md'
+        'data_types.html.md': 'user-guide/data_types.md'
+        'extending.html.md': 'user-guide/extending.md'
+        'gpu.html.md': 'user-guide/gpu.md'
+        'groups.html.md': 'user-guide/groups.md'
+        'installation.html.md': 'user-guide/installation.md'
+        'performance.html.md': 'user-guide/performance.md'
+        'quickstart.html.md': 'quick-start.md'
+        'release-notes.html.md': 'release-notes.md'
+        'storage.html.md': 'user-guide/storage.md'
+        'v3_migration.html.md': 'user-guide/v3_migration.md'
+        'user-guide/arrays.html.md': 'user-guide/arrays.md'
+        'user-guide/attributes.html.md': 'user-guide/attributes.md'
+        'user-guide/cli.html.md': 'user-guide/cli.md'
+        'user-guide/config.html.md': 'user-guide/config.md'
+        'user-guide/consolidated_metadata.html.md': 'user-guide/consolidated_metadata.md'
+        'user-guide/data_types.html.md': 'user-guide/data_types.md'
+        'user-guide/extending.html.md': 'user-guide/extending.md'
+        'user-guide/gpu.html.md': 'user-guide/gpu.md'
+        'user-guide/groups.html.md': 'user-guide/groups.md'
+        'user-guide/installation.html.md': 'user-guide/installation.md'
+        'user-guide/performance.html.md': 'user-guide/performance.md'
+        'user-guide/storage.html.md': 'user-guide/storage.md'
+        'user-guide/v3_migration.html.md': 'user-guide/v3_migration.md'
+        'developers/contributing.html.md': 'contributing.md'
+        'developers/index.html.md': 'contributing.md'
+        'developers/roadmap.html.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
+        'api/zarr/index.html.md': 'api/index.md'
+        'api/zarr/abc/index.html.md': 'api/abc/buffer.md'
+        'api/zarr/abc/buffer/index.html.md': 'api/abc/buffer.md'
+        'api/zarr/abc/codec/index.html.md': 'api/abc/codec.md'
+        'api/zarr/abc/metadata/index.html.md': 'api/abc/metadata.md'
+        'api/zarr/abc/numcodec/index.html.md': 'api/abc/codec.md'
+        'api/zarr/abc/store/index.html.md': 'api/abc/store.md'
+        'api/zarr/api/index.html.md': 'api/index.md'
+        'api/zarr/api/asynchronous/index.html.md': 'api/api_async.md'
+        'api/zarr/api/synchronous/index.html.md': 'api/api_sync.md'
+        'api/zarr/buffer/index.html.md': 'api/buffer.md'
+        'api/zarr/buffer/cpu/index.html.md': 'api/buffer.md'
+        'api/zarr/buffer/gpu/index.html.md': 'api/buffer.md'
+        'api/zarr/codecs/index.html.md': 'api/codecs.md'
+        'api/zarr/codecs/numcodecs/index.html.md': 'api/codecs.md'
+        'api/zarr/convenience/index.html.md': 'api/convenience.md'
+        'api/zarr/creation/index.html.md': 'api/deprecated/creation.md'
+        'api/zarr/dtype/index.html.md': 'api/dtype.md'
+        'api/zarr/errors/index.html.md': 'api/errors.md'
+        'api/zarr/metadata/index.html.md': 'api/metadata.md'
+        'api/zarr/metadata/migrate_v3/index.html.md': 'api/metadata.md'
+        'api/zarr/registry/index.html.md': 'api/registry.md'
+        'api/zarr/storage/index.html.md': 'api/storage.md'
+        'api/zarr/testing/index.html.md': 'api/testing.md'
+        'api/zarr/testing/buffer/index.html.md': 'api/testing.md'
+        'api/zarr/testing/conftest/index.html.md': 'api/testing.md'
+        'api/zarr/testing/stateful/index.html.md': 'api/testing.md'
+        'api/zarr/testing/store/index.html.md': 'api/testing.md'
+        'api/zarr/testing/strategies/index.html.md': 'api/testing.md'
+        'api/zarr/testing/utils/index.html.md': 'api/testing.md'
+
 
 # https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
 markdown_extensions:
