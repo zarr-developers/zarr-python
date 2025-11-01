@@ -239,7 +239,7 @@ dependencies = [
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
-    'universal_pathlib==0.0.22',
+    'universal_pathlib==0.2.0',
     'typing_extensions==4.9.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
