@@ -2870,3 +2870,59 @@ async def test_zep8_url_edge_cases_final() -> None:
     assert is_zep8_url(123) is False
     assert is_zep8_url([]) is False
     assert is_zep8_url({}) is False
+
+
+async def test_storage_options_propagate_as_nested_dict_through_adapter_chains() -> None:
+    """
+    Test that storage_options are passed as a nested dictionary, not unpacked.
+
+    When using adapter chains like "s3://bucket/data|log:", the storage_options
+    parameter must be passed to each adapter as storage_options={'anon': True},
+    not unpacked as individual keyword arguments like anon=True.
+
+    This is critical for cloud storage adapters (S3, GCS) which expect
+    storage_options as a nested dict to pass to fsspec.
+
+    Regression test for: storage_options={'anon': True} being unpacked to anon=True
+    """
+    from typing import Any
+    from unittest.mock import AsyncMock, patch
+
+    # Track kwargs passed to S3Adapter
+    s3_call_kwargs: dict[str, Any] = {}
+
+    async def mock_s3_from_url_segment(
+        cls: type[S3Adapter], /, segment: URLSegment, preceding_url: str, **kwargs: Any
+    ) -> Store:
+        s3_call_kwargs.update(kwargs)
+        # Return mock store that LoggingAdapter can wrap
+        return AsyncMock(spec=Store)
+
+    with patch.object(S3Adapter, "from_url_segment", new=classmethod(mock_s3_from_url_segment)):
+        resolver = URLStoreResolver()
+
+        # Use adapter chain to ensure storage_options propagate through
+        storage_opts = {"anon": True, "client_kwargs": {"endpoint_url": "https://example.com"}}
+        await resolver.resolve_url("s3://bucket/data.zarr|log:", storage_options=storage_opts)
+
+        # Verify storage_options was passed as a nested parameter
+        assert "storage_options" in s3_call_kwargs, (
+            "storage_options must be passed as a nested parameter to adapters, "
+            "not unpacked into individual kwargs"
+        )
+
+        assert s3_call_kwargs["storage_options"] == storage_opts, (
+            f"storage_options should preserve dict structure. "
+            f"Expected: {storage_opts}, Got: {s3_call_kwargs.get('storage_options')}"
+        )
+
+        # Verify individual keys were NOT unpacked (common bug)
+        assert "anon" not in s3_call_kwargs, (
+            "storage_options must not be unpacked. 'anon' should be inside "
+            "storage_options dict, not a top-level kwarg"
+        )
+
+        assert "client_kwargs" not in s3_call_kwargs, (
+            "storage_options must not be unpacked. 'client_kwargs' should be inside "
+            "storage_options dict, not a top-level kwarg"
+        )

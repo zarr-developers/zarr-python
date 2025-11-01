@@ -456,7 +456,7 @@ class URLStoreResolver:
             # Create the store using the adapter with preceding URL
             store_kwargs = kwargs.copy()
             if storage_options:
-                store_kwargs.update(storage_options)
+                store_kwargs["storage_options"] = storage_options
 
             current_store = await adapter_cls.from_url_segment(
                 segment, preceding_url=preceding_url, **store_kwargs
