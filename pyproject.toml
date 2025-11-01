@@ -164,7 +164,7 @@ COV_CORE_DATAFILE = ".coverage.eager"
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.12", "3.13", "3.14"]
-numpy = ["2", "2.2"]
+numpy = ["2.0", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -193,7 +193,7 @@ features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.12", "3.13"]
-numpy = ["2", "2.2"]
+numpy = ["2.0", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
