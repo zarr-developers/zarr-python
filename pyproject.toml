@@ -248,6 +248,9 @@ dependencies = [
     'zarr[remote_tests]',
 ]
 
+[tool.hatch.envs.defaults]
+installer = "uv"
+
 [tool.hatch.envs.docs]
 features = ['docs', 'remote']
 
