@@ -22,8 +22,6 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import (
     ComplexLike,
-    TComplexDType_co,
-    TComplexScalar_co,
     check_json_complex_float_v2,
     check_json_complex_float_v3,
     complex_float_from_json_v2,
@@ -40,7 +38,10 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, HasItemSize):
+class BaseComplex[
+    DType: np.dtypes.Complex64DType | np.dtypes.Complex128DType,
+    Scalar: np.complex64 | np.complex128,
+](ZDType[DType, Scalar], HasEndianness, HasItemSize):
     """
     A base class for Zarr data types that wrap NumPy complex float data types.
     """
@@ -74,13 +75,13 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
 
-    def to_native_dtype(self) -> TComplexDType_co:
+    def to_native_dtype(self) -> DType:
         """
         Convert this class to a NumPy complex dtype with the appropriate byte order.
 
         Returns
         -------
-        TComplexDType_co
+        DType
             A NumPy data type object representing the complex data type with the specified byte order.
         """
 
@@ -235,7 +236,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         """
         return isinstance(data, ComplexLike)
 
-    def _cast_scalar_unchecked(self, data: ComplexLike) -> TComplexScalar_co:
+    def _cast_scalar_unchecked(self, data: ComplexLike) -> Scalar:
         """
         Cast the provided scalar data to the native scalar type of this class.
 
@@ -246,7 +247,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
         Returns
         -------
-        TComplexScalar_co
+        Scalar
             The casted data as a numpy complex scalar.
 
         Notes
@@ -256,7 +257,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         """
         return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
-    def cast_scalar(self, data: object) -> TComplexScalar_co:
+    def cast_scalar(self, data: object) -> Scalar:
         """
         Attempt to cast a given object to a numpy complex scalar.
 
@@ -267,7 +268,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
 
         Returns
         -------
-        TComplexScalar_co
+        Scalar
             The data cast as a numpy complex scalar.
 
         Raises
@@ -283,7 +284,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         )
         raise TypeError(msg)
 
-    def default_scalar(self) -> TComplexScalar_co:
+    def default_scalar(self) -> Scalar:
         """
         Get the default value, which is 0 cast to this dtype
 
@@ -294,7 +295,7 @@ class BaseComplex(ZDType[TComplexDType_co, TComplexScalar_co], HasEndianness, Ha
         """
         return self._cast_scalar_unchecked(0)
 
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> TComplexScalar_co:
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> Scalar:
         """
         Read a JSON-serializable value as a numpy float.
 

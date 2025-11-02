@@ -217,7 +217,10 @@ class DateTime64JSON_V2(DTypeConfig_V2[str, None]):
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, HasItemSize):
+class TimeDTypeBase[
+    DType: np.dtypes.TimeDelta64DType | np.dtypes.DateTime64DType,
+    Scalar: np.timedelta64 | np.datetime64,
+](ZDType[DType, Scalar], HasEndianness, HasItemSize):
     """
     A base class for data types that represent time via the NumPy TimeDelta64 and DateTime64 data
     types.
@@ -275,7 +278,7 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
             f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
         )
 
-    def to_native_dtype(self) -> BaseTimeDType_co:
+    def to_native_dtype(self) -> DType:
         # Numpy does not allow creating datetime64 or timedelta64 via
         # np.dtypes.{dtype_name}()
         # so we use np.dtype with a formatted string.
@@ -285,7 +288,7 @@ class TimeDTypeBase(ZDType[BaseTimeDType_co, BaseTimeScalar_co], HasEndianness, 
 
         Returns
         -------
-        BaseTimeDType_co
+        DType
             A NumPy data type object representing the time data type with
             the specified unit, scale factor, and byte order.
         """
