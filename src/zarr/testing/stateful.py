@@ -1,7 +1,7 @@
 import builtins
 import functools
 from collections.abc import Callable
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -36,10 +36,8 @@ from zarr.testing.strategies import keys as zarr_keys
 
 MAX_BINARY_SIZE = 100
 
-F = TypeVar("F", bound=Callable[..., Any])
 
-
-def with_frequency(frequency: float) -> Callable[[F], F]:
+def with_frequency[F: Callable[..., Any]](frequency: float) -> Callable[[F], F]:
     """This needs to be deterministic for hypothesis replaying"""
 
     def decorator(func: F) -> F:

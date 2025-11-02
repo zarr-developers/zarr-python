@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar, cast
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -37,13 +37,10 @@ def has_cupy() -> bool:
         return False
 
 
-T = TypeVar("T")
-
-
 gpu_mark = pytest.mark.gpu
 skip_if_no_gpu = pytest.mark.skipif(not has_cupy(), reason="CuPy not installed or no GPU available")
 
 
 # Decorator for GPU tests
-def gpu_test(func: T) -> T:
+def gpu_test[T](func: T) -> T:
     return cast(T, gpu_mark(skip_if_no_gpu(func)))

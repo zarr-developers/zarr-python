@@ -57,7 +57,7 @@ TDType_co = TypeVar("TDType_co", bound=TBaseDType, covariant=True)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class ZDType(ABC, Generic[TDType_co, TScalar_co]):
+class ZDType(ABC, Generic[TDType_co, TScalar_co]):  # noqa: UP046
     """
     Abstract base class for wrapping native array data types, e.g. numpy dtypes
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
@@ -259,7 +259,7 @@ class StorePath:
         return False
 
 
-StoreLike: TypeAlias = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
+type StoreLike = Store | StorePath | FSMap | Path | str | dict[str, Buffer]
 
 
 async def make_store(

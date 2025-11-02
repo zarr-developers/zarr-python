@@ -12,13 +12,10 @@ from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
     Any,
-    Generic,
     Literal,
     NamedTuple,
     Protocol,
-    TypeAlias,
     TypeGuard,
-    TypeVar,
     cast,
     runtime_checkable,
 )
@@ -27,7 +24,8 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.common import ceildiv, product
-from zarr.core.metadata import T_ArrayMetadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.errors import (
     ArrayIndexError,
     BoundsCheckError,
@@ -78,7 +76,7 @@ class Indexer(Protocol):
     def __iter__(self) -> Iterator[ChunkProjection]: ...
 
 
-_ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
+type _ArrayIndexingOrder = Literal["lexicographic"]
 
 
 def _iter_grid(
@@ -519,9 +517,6 @@ def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
     return tuple(
         np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel for dim_sel in selection
     )
-
-
-T = TypeVar("T")
 
 
 def ensure_tuple(v: Any) -> SelectionNormalized:
@@ -1008,7 +1003,7 @@ class OIndex:
 
 
 @dataclass(frozen=True)
-class AsyncOIndex(Generic[T_ArrayMetadata]):
+class AsyncOIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     array: AsyncArray[T_ArrayMetadata]
 
     async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
@@ -1348,7 +1343,7 @@ class VIndex:
 
 
 @dataclass(frozen=True)
-class AsyncVIndex(Generic[T_ArrayMetadata]):
+class AsyncVIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     array: AsyncArray[T_ArrayMetadata]
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool

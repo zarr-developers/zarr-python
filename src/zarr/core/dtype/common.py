@@ -57,7 +57,7 @@ TDTypeNameV2_co = TypeVar("TDTypeNameV2_co", bound=DTypeName_V2, covariant=True)
 TObjectCodecID_co = TypeVar("TObjectCodecID_co", bound=None | str, covariant=True)
 
 
-class DTypeConfig_V2(TypedDict, Generic[TDTypeNameV2_co, TObjectCodecID_co]):
+class DTypeConfig_V2(TypedDict, Generic[TDTypeNameV2_co, TObjectCodecID_co]):  # noqa: UP046
     name: ReadOnly[TDTypeNameV2_co]
     object_codec_id: ReadOnly[TObjectCodecID_co]
 
