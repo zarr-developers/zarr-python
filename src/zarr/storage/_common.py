@@ -319,6 +319,11 @@ async def make_store_path(
     """
     from zarr.storage._fsspec import FsspecStore  # circular import
 
+    # Validate mode parameter early
+    if mode not in (None, "r", "r+", "a", "w", "w-"):
+        raise ValueError(f"Invalid mode '{mode}'. Must be one of: None, 'r', 'r+', 'a', 'w', 'w-'")
+    _read_only = mode == "r"
+
     path_normalized = normalize_path(path)
 
     # Check if store_like is a ZEP 8 URL
@@ -338,17 +343,12 @@ async def make_store_path(
         store = await resolver.resolve_url(store_like, **store_kwargs)
         return await StorePath.open(store, path=combined_path, mode=mode)
 
-    if (
-        not (isinstance(store_like, str) and is_zep8_url(store_like))
-        and storage_options is not None
-    ):
+    if storage_options is not None:
         raise TypeError(
             "'storage_options' was provided but unused. "
-            "'storage_options' is only used when the store is passed as a URL string.",
+            "'storage_options' is only used when the store"
+            "is passed as a URL string."
         )
-
-    assert mode in (None, "r", "r+", "a", "w", "w-")
-    _read_only = mode == "r"
 
     if isinstance(store_like, StorePath):
         # Already a StorePath
@@ -358,6 +358,10 @@ async def make_store_path(
         # Already a Store
         store = store_like
 
+    elif store_like is None:
+        # Create a new in-memory store
+        store = await MemoryStore.open(read_only=_read_only)
+
     elif isinstance(store_like, dict):
         # Already a dictionary that can be a MemoryStore
         #
@@ -365,19 +369,13 @@ async def make_store_path(
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
         store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
 
-    elif store_like is None:
-        # Create a new in-memory store
-        return await make_store_path({}, path=path, mode=mode, storage_options=storage_options)
-
     elif isinstance(store_like, Path):
         # Create a new LocalStore
         store = await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str):
-        # Assume a local filesystem path (URLs are handled by ZEP 8 above)
-        return await make_store_path(
-            Path(store_like), path=path, mode=mode, storage_options=storage_options
-        )
+        # Plain filesystem path (URLs are handled by ZEP 8 above)
+        store = await LocalStore.open(root=Path(store_like), mode=mode, read_only=_read_only)
 
     elif _has_fsspec and isinstance(store_like, FSMap):
         if path:

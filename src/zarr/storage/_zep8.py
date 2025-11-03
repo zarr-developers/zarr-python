@@ -329,20 +329,14 @@ class URLStoreResolver:
         KeyError
             If a required store adapter is not registered.
         """
-        # Handle simple scheme URLs (like file:/path, s3://bucket/path) by treating them as single-segment URLs
+        # Validate that this is a ZEP 8 URL
+        # Note: make_store_path() already checks this before calling us, but we validate
+        # again here since resolve_url() is a public API that can be called directly
         if not is_zep8_url(url):
-            # Check if it's a simple scheme URL that we can handle
-            if "://" in url or ((":" in url) and not url.startswith("/")):
-                # Parse as a single segment URL - the parser should handle this
-                try:
-                    segments = self.parser.parse(url)
-                except Exception:
-                    raise ValueError(f"Not a valid URL: {url}") from None
-            else:
-                raise ValueError(f"Not a valid URL: {url}")
-        else:
-            # Parse ZEP 8 URL normally
-            segments = self.parser.parse(url)
+            raise ValueError(f"Not a valid URL: {url}")
+
+        # Parse the URL into segments
+        segments = self.parser.parse(url)
 
         if not segments:
             raise ValueError(f"Empty URL segments in: {url}")
