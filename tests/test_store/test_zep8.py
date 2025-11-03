@@ -236,16 +236,21 @@ def test_path_extraction() -> None:
 
 def test_zep8_url_detection() -> None:
     """Test that ZEP 8 URLs are detected correctly."""
-    # Should detect ZEP 8 URLs
+    # ZEP 8 URLs with adapter chains
     assert is_zep8_url("s3://bucket/data|zip:")
     assert is_zep8_url("memory:|zarr3:")
     assert is_zep8_url("file:/path/data.zip|zip:subdir/")
 
-    # Should not detect regular URLs
-    assert not is_zep8_url("s3://bucket/data")
-    assert not is_zep8_url("/local/path")
-    assert not is_zep8_url("https://example.com/data")
+    # Simple scheme URLs - these ARE ZEP 8 URLs (single segment)
+    assert is_zep8_url("s3://bucket/data")
+    assert is_zep8_url("https://example.com/data")
+    assert is_zep8_url("file:///local/path")
 
+    # Plain paths - NOT ZEP 8 URLs
+    assert not is_zep8_url("/local/path")
+    assert not is_zep8_url("relative/path")
+
+    # Non-string - NOT ZEP 8 URL
     assert not is_zep8_url(MemoryStore())
 
 
@@ -256,23 +261,6 @@ async def test_make_store_path_with_zep8_url() -> None:
     assert store_path.store is not None
     assert isinstance(store_path.store, MemoryStore)
     assert store_path.path == ""
-
-
-async def test_make_store_path_with_regular_url() -> None:
-    """Test make_store_path with regular URLs (backward compatibility)."""
-    pytest.importorskip("fsspec", reason="fsspec not available")
-    pytest.importorskip(
-        "fsspec",
-        minversion="2024.12.0",
-        reason="fsspec >= 2024.12.0 required for AsyncFileSystemWrapper",
-    )
-
-    # Test that regular fsspec paths still work
-    # Note: We test with memory:// which doesn't require network
-    store_path = await make_store_path("memory://test")
-    assert store_path.store is not None
-    # Path should be preserved in the store
-    assert "test" in str(store_path)
 
 
 # =============================================================================
@@ -516,27 +504,24 @@ async def test_fsspec_store_creation_mock() -> None:
 
 
 async def test_make_store_path_with_fsspec_urls() -> None:
-    """Test make_store_path with fsspec-style URLs."""
+    """Test that scheme URLs are handled by ZEP 8."""
     pytest.importorskip("fsspec", reason="fsspec not available")
 
-    # Test that fsspec URLs still work with make_store_path
-    # Note: These will fail to connect but should parse correctly
-    fsspec_urls = ["s3://bucket/path", "gs://bucket/path", "https://example.com/data"]
+    # All scheme URLs are valid ZEP 8 URLs (single-segment)
+    # They are now routed through the ZEP 8 resolver, not fsspec directly
+    scheme_urls = ["s3://bucket/path", "gs://bucket/path", "https://example.com/data"]
 
-    for url in fsspec_urls:
-        # These should not be detected as ZEP 8 URLs
-        assert not is_zep8_url(url)
-
-        # make_store_path should handle them via fsspec logic
-        # We don't actually call it here to avoid network requests
+    for url in scheme_urls:
+        # These ARE ZEP 8 URLs (single segment, no adapter chain)
+        assert is_zep8_url(url)
 
 
 def test_fsspec_zep8_url_detection() -> None:
     """Test ZEP 8 URL detection with fsspec schemes."""
     pytest.importorskip("fsspec", reason="fsspec not available")
 
-    # These should be detected as ZEP 8 URLs
-    zep8_urls = [
+    # Chained URLs with adapters - clearly ZEP 8
+    zep8_chained_urls = [
         "s3://bucket/data.zip|zip:",
         "s3+http://minio.local:9000/bucket/data.zip|zip:",
         "s3+https://storage.example.com/bucket/data.zarr|zarr3:",
@@ -544,18 +529,18 @@ def test_fsspec_zep8_url_detection() -> None:
         "gs://bucket/data.zarr|zarr2:",
     ]
 
-    for url in zep8_urls:
+    for url in zep8_chained_urls:
         assert is_zep8_url(url), f"Should detect {url} as ZEP 8"
 
-    # These should NOT be detected as ZEP 8 URLs
-    regular_urls = [
+    # Simple scheme URLs - ALSO ZEP 8 (single segment)
+    simple_urls = [
         "s3://bucket/data.zarr",
         "https://example.com/data.zarr",
         "gs://bucket/data",
     ]
 
-    for url in regular_urls:
-        assert not is_zep8_url(url), f"Should NOT detect {url} as ZEP 8"
+    for url in simple_urls:
+        assert is_zep8_url(url), f"Should detect {url} as ZEP 8 (single segment)"
 
 
 async def test_fsspec_adapter_error_handling() -> None:
@@ -760,15 +745,14 @@ def test_logging_adapter_zep8_url_detection() -> None:
     for url in logging_urls:
         assert is_zep8_url(url), f"Should detect {url} as ZEP 8 URL"
 
-    # Regular URLs should not be detected as ZEP 8
-    regular_urls = [
-        "file:/tmp/zarr.log",
+    # Plain paths (not URLs) should not be detected as ZEP 8
+    plain_paths = [
         "/local/log",
-        "https://example.com/data.zarr/log",
+        "relative/path/to/log",
     ]
 
-    for url in regular_urls:
-        assert not is_zep8_url(url), f"Should NOT detect {url} as ZEP 8 URL"
+    for path in plain_paths:
+        assert not is_zep8_url(path), f"Should NOT detect {path} as ZEP 8 URL"
 
 
 def test_logging_adapter_integration_with_zarr() -> None:
@@ -967,7 +951,7 @@ async def test_url_resolver_error_handling() -> None:
     resolver = URLStoreResolver()
 
     # Test unregistered adapter
-    with pytest.raises(ValueError, match="Unknown store adapter"):
+    with pytest.raises(ValueError, match="Unknown adapter"):
         await resolver.resolve_url("file:/test|unregistered_adapter:")
 
     # Test invalid URL format
@@ -1350,12 +1334,12 @@ async def test_s3_https_adapter_functionality() -> None:
 async def test_s3_custom_endpoint_zep8_url_detection() -> None:
     """Test ZEP 8 URL detection with custom S3 endpoints."""
 
-    # Standard S3 URLs (not ZEP 8)
-    assert not is_zep8_url("s3://bucket/data")
-    assert not is_zep8_url("s3+http://minio.local:9000/bucket/data")
-    assert not is_zep8_url("s3+https://storage.example.com/bucket/data")
+    # Standard S3 URLs - these ARE ZEP 8 URLs (single segment)
+    assert is_zep8_url("s3://bucket/data")
+    assert is_zep8_url("s3+http://minio.local:9000/bucket/data")
+    assert is_zep8_url("s3+https://storage.example.com/bucket/data")
 
-    # ZEP 8 URLs with custom S3 endpoints
+    # ZEP 8 URLs with custom S3 endpoints and adapter chains
     assert is_zep8_url("s3://bucket/data.zip|zip:")
     assert is_zep8_url("s3+http://minio.local:9000/bucket/data.zip|zip:")
     assert is_zep8_url("s3+https://storage.example.com/bucket/data|zarr3:")
@@ -1432,25 +1416,25 @@ async def test_url_store_resolver_error_conditions() -> None:
 
 
 async def test_extract_zarr_format_exception_handling() -> None:
-    """Test URLStoreResolver.extract_zarr_format exception handling covering lines 538-539."""
+    """Test URLStoreResolver.extract_zarr_format propagates exceptions from parser."""
 
     resolver = URLStoreResolver()
 
-    # Test exception handling in extract_zarr_format (lines 538-539)
+    # Test that exceptions from parser are propagated
     with unittest.mock.patch.object(resolver.parser, "parse", side_effect=Exception("Parse error")):
-        result = resolver.extract_zarr_format("file://test|zarr3:")
-        assert result is None  # Should return None on exception
+        with pytest.raises(Exception, match="Parse error"):
+            resolver.extract_zarr_format("file://test|zarr3:")
 
 
 async def test_extract_path_exception_handling() -> None:
-    """Test URLStoreResolver.extract_path exception handling covering lines 577-578, 581."""
+    """Test URLStoreResolver.extract_path propagates exceptions from parser."""
 
     resolver = URLStoreResolver()
 
-    # Test exception handling in extract_path (lines 577-578)
+    # Test that exceptions from parser are propagated
     with unittest.mock.patch.object(resolver.parser, "parse", side_effect=Exception("Parse error")):
-        result = resolver.extract_path("file://test|zarr3:path")
-        assert result == ""  # Should return empty string on exception
+        with pytest.raises(Exception, match="Parse error"):
+            resolver.extract_path("file://test|zarr3:path")
 
     # Test empty segments handling (line 581)
     with unittest.mock.patch.object(resolver.parser, "parse", return_value=[]):
@@ -1458,23 +1442,54 @@ async def test_extract_path_exception_handling() -> None:
         assert result == ""  # Should return empty string for no segments
 
 
-async def test_icechunk_path_extraction_edge_cases() -> None:
-    """Test basic icechunk path extraction cases (complex icechunk logic marked pragma no cover)."""
+async def test_adapter_extract_zarr_path_extensibility() -> None:
+    """Test that adapters can customize path extraction via extract_zarr_path()."""
+    from typing import Any, Never
+
+    from zarr.abc.store_adapter import StoreAdapter, URLSegment
+    from zarr.registry import register_store_adapter
+
+    # Create a mock icechunk adapter that only implements extract_zarr_path
+    class MockIcechunkAdapter(StoreAdapter):
+        adapter_name = "icechunk"
+
+        @classmethod
+        async def from_url_segment(
+            cls, segment: URLSegment, preceding_url: str, **kwargs: Any
+        ) -> Never:
+            raise NotImplementedError("Not needed for this test")
+
+        @classmethod
+        def extract_zarr_path(cls, segment: URLSegment) -> str:
+            """Custom path extraction for icechunk metadata."""
+            # Skip metadata-only paths
+            if ":" in segment.path and segment.path.split(":")[0] in ("branch", "tag", "snapshot"):
+                return ""
+
+            # Extract path from "@branch.main/path" format
+            if segment.path.startswith("@") and "/" in segment.path:
+                _, zarr_path = segment.path.split("/", 1)
+                return zarr_path
+
+            # Default
+            return segment.path
+
+    # Register the adapter
+    register_store_adapter(MockIcechunkAdapter)
 
     resolver = URLStoreResolver()
 
-    # Test icechunk metadata path skipping (line 610 is marked pragma no cover)
-    segments = [URLSegment(adapter="icechunk", path="branch:main")]
-    with unittest.mock.patch.object(resolver.parser, "parse", return_value=segments):
-        result = resolver.extract_path("fake://url")
-        assert result == ""  # Should skip branch:main metadata paths
+    # Test metadata-only paths return empty string
+    assert resolver.extract_path("icechunk:branch:main") == ""
+    assert resolver.extract_path("icechunk:tag:v1.0") == ""
+    assert resolver.extract_path("icechunk:snapshot:abc123") == ""
 
-    # Test other icechunk metadata formats (line 610 is marked pragma no cover)
-    for metadata_path in ["tag:v1.0", "snapshot:abc123"]:
-        segments = [URLSegment(adapter="icechunk", path=metadata_path)]
-        with unittest.mock.patch.object(resolver.parser, "parse", return_value=segments):
-            result = resolver.extract_path("fake://url")
-            assert result == ""  # Should skip all metadata paths
+    # Test @-format with path extraction
+    assert resolver.extract_path("icechunk:@branch.main/group/array") == "group/array"
+    assert resolver.extract_path("icechunk:@abc123def/data") == "data"
+
+    # Test simple paths work too
+    assert resolver.extract_path("icechunk:simple/path") == "simple/path"
 
 
 async def test_zip_adapter_comprehensive(tmp_path: Path) -> None:
@@ -2051,6 +2066,45 @@ async def test_s3_url_parsing_edge_cases() -> None:
     assert storage_options == {"endpoint_url": "https://endpoint.com", "use_ssl": True}
 
 
+async def test_s3_plus_schemes_url_reconstruction() -> None:
+    """Test that s3+http and s3+https URLs are reconstructed correctly (B6 fix)."""
+    parser = URLParser()
+
+    # Test that s3+http URLs are reconstructed with :// separator
+    segments = parser.parse("s3+http://endpoint.com/bucket/data")
+    assert len(segments) == 1
+    assert segments[0].scheme == "s3+http"
+    assert segments[0].path == "endpoint.com/bucket/data"
+
+    # Reconstruct the URL as the resolver would do
+    segment = segments[0]
+    reconstructed = f"{segment.scheme}://{segment.path}"
+    assert reconstructed == "s3+http://endpoint.com/bucket/data"
+
+    # Verify it can be parsed by S3Adapter
+    s3_url, endpoint_url, storage_options = S3Adapter._parse_s3_url(reconstructed)
+    assert s3_url == "s3://bucket/data"
+    assert endpoint_url == "http://endpoint.com"
+    assert storage_options["use_ssl"] is False
+
+    # Test that s3+https URLs are reconstructed with :// separator
+    segments = parser.parse("s3+https://endpoint.com/bucket/data")
+    assert len(segments) == 1
+    assert segments[0].scheme == "s3+https"
+    assert segments[0].path == "endpoint.com/bucket/data"
+
+    # Reconstruct the URL
+    segment = segments[0]
+    reconstructed = f"{segment.scheme}://{segment.path}"
+    assert reconstructed == "s3+https://endpoint.com/bucket/data"
+
+    # Verify it can be parsed by S3Adapter
+    s3_url, endpoint_url, storage_options = S3Adapter._parse_s3_url(reconstructed)
+    assert s3_url == "s3://bucket/data"
+    assert endpoint_url == "https://endpoint.com"
+    assert storage_options["use_ssl"] is True
+
+
 async def test_zip_adapter_additional_coverage() -> None:
     """Test ZipAdapter additional functionality for coverage."""
 
@@ -2088,7 +2142,7 @@ async def test_url_store_resolver_edge_cases() -> None:
     resolver = URLStoreResolver()
 
     # Test resolving with unknown adapter (should raise error)
-    with pytest.raises(ValueError, match="Unknown store adapter"):
+    with pytest.raises(ValueError, match="Unknown adapter"):
         await resolver.resolve_url("nonexistent_adapter:")
 
     # Test path extraction from various URL formats (exercises internal path handling via public API)
@@ -2161,9 +2215,11 @@ async def test_is_zep8_url_complete_coverage() -> None:
     assert is_zep8_url("valid-adapter:") is True
     assert is_zep8_url("valid123:") is True
 
-    # Test exclusions
-    assert is_zep8_url("file://path") is False
-    assert is_zep8_url("http://example.com") is False
+    # Test that scheme URLs are recognized as ZEP 8
+    assert is_zep8_url("file://path") is True
+    assert is_zep8_url("http://example.com") is True
+
+    # Test exclusions - plain paths
     assert is_zep8_url("invalid/adapter:") is False  # Contains slash in adapter name
     assert is_zep8_url("invalid\\adapter:") is False  # Contains backslash in adapter name
 
@@ -2258,11 +2314,11 @@ async def test_url_store_resolver_error_handling() -> None:
     resolver = URLStoreResolver()
 
     # Test unknown adapter
-    with pytest.raises(ValueError, match="Unknown store adapter"):
+    with pytest.raises(ValueError, match="Unknown adapter"):
         await resolver.resolve_url("unknown_adapter:")
 
     # Test valid adapter name format but unknown adapter
-    with pytest.raises(ValueError, match="Unknown store adapter"):
+    with pytest.raises(ValueError, match="Unknown adapter"):
         await resolver.resolve_url("validbutunknown:")
 
     # Test invalid adapter name format (starts with number)
@@ -2857,13 +2913,13 @@ async def test_zep8_url_edge_cases_final() -> None:
     assert is_zep8_url("simple:") is True
 
     # Test URLs with complex pipe positioning
-    assert is_zep8_url("scheme://host/path|adapter:") is True
-    assert is_zep8_url("data|adapter:path") is True
+    assert is_zep8_url("scheme://host/path|adapter:")
+    assert is_zep8_url("data|adapter:path")
 
-    # Test standard schemes that should be excluded
-    assert is_zep8_url("github://user/repo") is False
-    assert is_zep8_url("gitlab://project") is False
-    assert is_zep8_url("webhdfs://cluster/path") is False
+    # Test that all scheme URLs are recognized as ZEP 8
+    assert is_zep8_url("github://user/repo")
+    assert is_zep8_url("gitlab://project")
+    assert is_zep8_url("webhdfs://cluster/path")
 
     # Test non-string inputs
     assert is_zep8_url(None) is False
@@ -2926,3 +2982,44 @@ async def test_storage_options_propagate_as_nested_dict_through_adapter_chains()
             "storage_options must not be unpacked. 'client_kwargs' should be inside "
             "storage_options dict, not a top-level kwarg"
         )
+
+
+def test_is_zep8_url_recognizes_all_valid_urls() -> None:
+    """
+    Test that is_zep8_url() correctly identifies all valid ZEP 8 URLs.
+
+    According to the ZEP 8 spec, ALL URLs are valid ZEP 8 URLs, including
+    simple scheme URLs like s3://bucket/path or file:///data.zarr.
+
+    The function should return True for:
+    - Simple scheme URLs (s3://bucket/path, file:///data.zarr)
+    - Chained URLs (s3://bucket|zip:)
+    - Adapter-only URLs (memory:, zip:path)
+
+    It should only return False for non-URL strings or invalid formats.
+    """
+    from zarr.storage._zep8 import is_zep8_url
+
+    # Simple scheme URLs - these ARE ZEP 8 URLs (single segment)
+    assert is_zep8_url("s3://bucket/data.zarr"), "s3:// URLs are valid ZEP 8 URLs"
+    assert is_zep8_url("file:///data/zarr"), "file:// URLs are valid ZEP 8 URLs"
+    assert is_zep8_url("gs://bucket/path"), "gs:// URLs are valid ZEP 8 URLs"
+    assert is_zep8_url("https://example.com/data.zarr"), "https:// URLs are valid ZEP 8 URLs"
+
+    # Chained URLs - obviously ZEP 8
+    assert is_zep8_url("s3://bucket/data.zip|zip:"), "Chained URLs with | are ZEP 8"
+    assert is_zep8_url("file:data.zip|zip:|log:"), "Multi-chain URLs are ZEP 8"
+
+    # Adapter-only URLs - also ZEP 8
+    assert is_zep8_url("memory:"), "memory: adapter is ZEP 8"
+    assert is_zep8_url("zip:path/to/file"), "zip:path is ZEP 8"
+
+    # Edge case: s3+https:// composite schemes (B6 issue)
+    assert is_zep8_url("s3+https://endpoint/bucket/path"), "s3+https:// is valid ZEP 8"
+    assert is_zep8_url("s3+http://endpoint/bucket/path"), "s3+http:// is valid ZEP 8"
+
+    # Invalid formats - should return False
+    assert not is_zep8_url(""), "Empty string is not ZEP 8"
+    assert not is_zep8_url("not a url"), "Plain text is not ZEP 8"
+    assert not is_zep8_url("/absolute/path"), "Absolute paths alone are not ZEP 8"
+    assert not is_zep8_url("relative/path"), "Relative paths alone are not ZEP 8"

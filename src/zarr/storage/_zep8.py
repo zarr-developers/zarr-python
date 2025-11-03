@@ -92,24 +92,26 @@ class URLParser:
     @staticmethod
     def _parse_base_url(url: str) -> URLSegment:
         """Parse the base URL component."""
-        parsed = urlparse(url)
+        # Fast path: Standard URLs with :// (most common: s3://, https://, file://)
+        if "://" in url:
+            parsed = urlparse(url)
+            path = f"{parsed.netloc}{parsed.path}" if parsed.netloc else parsed.path
+            return URLSegment(scheme=parsed.scheme, path=path)
 
-        if parsed.scheme and ("://" in url or parsed.scheme == "file"):
-            # Handle schemes like s3://, file://, https://, and also file: (without //)
-            if parsed.scheme == "file":
-                return URLSegment(scheme="file", path=parsed.path)
+        # Check for Windows paths before other colon processing (C:\, D:\, etc.)
+        if URLParser._is_windows_path(url):
+            return URLSegment(scheme="file", path=url)
+
+        # Adapter syntax with colon but no :// (memory:, zip:path, file:path)
+        if ":" in url:
+            scheme_or_adapter, path = url.split(":", 1)
+            if scheme_or_adapter == "file":
+                return URLSegment(scheme="file", path=path)
             else:
-                return URLSegment(scheme=parsed.scheme, path=f"{parsed.netloc}{parsed.path}")
-        elif URLParser._is_windows_path(url):
-            # Windows absolute path like C:\... or C:/... - treat as filesystem path
-            return URLSegment(scheme="file", path=url)
-        elif ":" in url:
-            # Adapter syntax like "memory:", "zip:path", etc.
-            adapter, path = url.split(":", 1)
-            return URLSegment(adapter=adapter, path=path)
-        else:
-            # Local filesystem path
-            return URLSegment(scheme="file", path=url)
+                return URLSegment(adapter=scheme_or_adapter, path=path)
+
+        # Plain filesystem path (no colon at all)
+        return URLSegment(scheme="file", path=url)
 
     @staticmethod
     def _parse_adapter_spec(spec: str) -> URLSegment:
@@ -195,9 +197,18 @@ def is_zep8_url(url: Any) -> bool:
     """
     Check if a string is a ZEP 8 URL.
 
-    ZEP 8 URLs are identified by:
-    1. Presence of pipe (|) characters (for chained URLs)
-    2. Simple adapter syntax like "memory:", "zip:", etc. (single segment)
+    According to ZEP 8, all URLs with schemes (like s3://, file://, https://)
+    are valid ZEP 8 URLs, either as single segments or chained with adapters.
+
+    Returns True for:
+    - Chained URLs with pipe separators: "s3://bucket/data.zip|zip:"
+    - Simple scheme URLs: "s3://bucket/path", "file:///data", "https://example.com"
+    - Adapter-only URLs: "memory:", "zip:path"
+
+    Returns False for:
+    - Plain file paths: "/absolute/path", "relative/path"
+    - Empty or non-string inputs
+    - Windows drive letters: "C:/path"
 
     Parameters
     ----------
@@ -216,75 +227,54 @@ def is_zep8_url(url: Any) -> bool:
     >>> is_zep8_url("memory:")
     True
     >>> is_zep8_url("s3://bucket/data.zarr")
-    False
+    True
     >>> is_zep8_url("file:///data.zarr")
+    True
+    >>> is_zep8_url("/absolute/path")
+    False
+    >>> is_zep8_url("relative/path")
     False
     """
     if not url or not isinstance(url, str):
         return False
 
-    # Check for pipe character (chained URLs)
+    # Check for pipe character (chained URLs) - definitely ZEP 8
     if "|" in url:
-        # Exclude FSSpec URIs that might contain pipes in query parameters
-        # This is a simple heuristic - FSSpec URIs with pipes are rare
-        if "://" in url:
-            # If there's a pipe after the first ://, it's likely ZEP 8
-            scheme_pos = url.find("://")
-            pipe_pos = url.find("|")
-            if (pipe_pos != -1 and pipe_pos > scheme_pos) or (
-                pipe_pos != -1 and pipe_pos < scheme_pos
-            ):
-                return True
-        else:
-            # No scheme, so any pipe indicates ZEP 8
-            return True
+        return True
 
-    # Check for simple adapter syntax (single colon at end or with simple path)
-    if ":" in url and "://" not in url:
-        # Could be adapter syntax like "memory:", "zip:path", etc.
-        parts = url.split(":")
+    # Check for scheme URLs (scheme://) - these are ZEP 8 URLs
+    # TODO: Consider optimizing file:// and local:// to use LocalStore directly
+    # instead of routing through FsspecStore for better performance.
+    if "://" in url:
+        # Exclude Windows UNC paths (//server/share)
+        return not url.startswith("//")
+
+    # Check for simple adapter syntax (single colon without ://)
+    # Examples: "memory:", "zip:path", or custom scheme adapters
+    # TODO: Consider checking against registered adapters via get_store_adapter(scheme)
+    # to return True only for known adapters. This would make is_zep8_url() more accurate
+    # but adds a dependency on the registry. Current approach is permissive - any
+    # valid-looking scheme returns True, runtime will fail if adapter not registered.
+    # Trade-off: Syntax check (current) vs semantic check (proposed).
+    if ":" in url:
+        parts = url.split(":", 1)
         if len(parts) == 2:
-            adapter_name = parts[0]
+            scheme = parts[0]
+            path_part = parts[1]
 
-            # Exclude standard URI schemes that should NOT be treated as ZEP 8 URLs
-            standard_schemes = {
-                "file",
-                "http",
-                "https",
-                "ftp",
-                "ftps",
-                "s3",
-                "gcs",
-                "gs",
-                "azure",
-                "abfs",
-                "hdfs",
-                "ssh",
-                "sftp",
-                "webhdfs",
-                "github",
-                "gitlab",
-            }
-
-            # Check if adapter name looks like a ZEP 8 adapter and is not a standard scheme
-            # Exclude Windows drive letters (single letter followed by backslash or forward slash)
+            # Exclude Windows drive letters (C:\path or D:/path)
+            # But allow single letters as adapter names (z:, a:) if not followed by path separator
             if (
-                adapter_name
-                and adapter_name.lower() not in standard_schemes
-                and "/" not in adapter_name
-                and "\\" not in adapter_name
-                and not (
-                    len(adapter_name) == 1
-                    and adapter_name.isalpha()
-                    and len(parts) == 2
-                    and (parts[1].startswith("/") or parts[1].startswith("\\"))
-                )
-                and (
-                    adapter_name.isalnum()
-                    or adapter_name.replace("_", "").replace("-", "").isalnum()
-                )
+                len(scheme) == 1
+                and scheme.isalpha()
+                and path_part
+                and path_part.startswith(("/", "\\"))
             ):
-                # Looks like a ZEP 8 adapter name
+                return False  # Windows path like C:/path or D:\path
+
+            # If scheme looks like a valid adapter name, it's ZEP 8
+            # Valid adapter names are alphanumeric with optional underscores/hyphens
+            if scheme and (scheme.isalnum() or scheme.replace("_", "").replace("-", "").isalnum()):
                 return True
 
     return False
@@ -357,6 +347,21 @@ class URLStoreResolver:
         if not segments:
             raise ValueError(f"Empty URL segments in: {url}")
 
+        # Validate all adapters are registered BEFORE creating any stores
+        # This prevents side effects (disk writes, network calls) before discovering missing adapters
+
+        for segment in segments:
+            adapter_name = segment.adapter or segment.scheme
+            if adapter_name and adapter_name not in ("zarr2", "zarr3"):
+                try:
+                    get_store_adapter(adapter_name)
+                except KeyError:
+                    raise ValueError(
+                        f"Unknown adapter '{adapter_name}' in URL: {url}. "
+                        f"Ensure the required package is installed and provides "
+                        f'an entry point under [project.entry-points."zarr.stores"].'
+                    ) from None
+
         # Process segments in order, building preceding URL for each adapter
         current_store: Store | None = None
 
@@ -409,6 +414,8 @@ class URLStoreResolver:
                     # Handle schemes that need :// vs :
                     if segment.scheme in (
                         "s3",
+                        "s3+http",
+                        "s3+https",
                         "gcs",
                         "gs",
                         "http",
@@ -435,6 +442,8 @@ class URLStoreResolver:
                         # Handle schemes that need :// vs :
                         if prev_segment.scheme in (
                             "s3",
+                            "s3+http",
+                            "s3+https",
                             "gcs",
                             "gs",
                             "http",
@@ -493,10 +502,7 @@ class URLStoreResolver:
         if not is_zep8_url(url):
             return None
 
-        try:
-            segments = self.parser.parse(url)
-        except Exception:
-            return None
+        segments = self.parser.parse(url)
 
         # Look for zarr format segments (scan from right to left for latest)
         for segment in reversed(segments):
@@ -532,79 +538,37 @@ class URLStoreResolver:
         if not is_zep8_url(url):
             return ""
 
-        try:
-            segments = self.parser.parse(url)
-        except Exception:
-            return ""
+        segments = self.parser.parse(url)
 
         if not segments:
             return ""
 
-        # Look for path in segments, prioritizing zarr format segments for zarr paths
+        # Look for path in segments, prioritizing zarr format segments
         zarr_path = ""
         adapter_path = ""
 
         for segment in reversed(segments):
-            # Check for zarr format segments first (these contain the zarr path)
+            # Priority 1: zarr format segments (zarr2:, zarr3:) contain the zarr path
             if segment.adapter in ("zarr2", "zarr3") and segment.path and not zarr_path:
                 zarr_path = segment.path
-            elif (
-                segment.adapter
-                and segment.adapter not in ("zarr2", "zarr3")
-                and segment.path
-                and not adapter_path
-                and not segment.scheme
-            ):
-                # Only extract paths from adapter segments, not scheme segments
-                # Scheme segments (like file:, s3:, https:) contain paths to the resource, not zarr paths within it
-                # Special handling for icechunk: paths with metadata references
-                # Both old format "branch:main", "tag:v1.0", "snapshot:abc123"
-                # and new format "@branch.main", "@tag.v1.0", "@abc123def456"
-                if segment.adapter in ("icechunk", "ic"):
-                    # Check old format: branch:main, tag:v1.0, snapshot:abc123
-                    if ":" in segment.path and segment.path.split(":")[0] in (
-                        "branch",
-                        "tag",
-                        "snapshot",
-                    ):  # pragma: no cover
-                        continue  # Skip icechunk metadata paths  # pragma: no cover
+                continue
 
-                    # Check new format: @branch.main, @tag.v1.0, @abc123def456
-                    # Parse the path to extract the zarr path component
-                    if segment.path.startswith("@"):
-                        try:
-                            # Use icechunk's parser to extract the zarr path
-                            from zarr.registry import get_store_adapter
+            # Priority 2: adapter segments may contain paths (but skip if we found one already)
+            if segment.adapter and segment.path and not adapter_path and not segment.scheme:
+                # Delegate to the adapter's extract_zarr_path() method if registered
+                # This allows adapters to customize path extraction (e.g., icechunk metadata handling)
+                from zarr.registry import get_store_adapter
 
-                            # Try both possible registry names for icechunk
-                            adapter_cls = None
-                            for name in ("icechunk", "icechunk.zarr_adapter.IcechunkStoreAdapter"):
-                                try:
-                                    adapter_cls = get_store_adapter(name)
-                                    break
-                                except KeyError:
-                                    continue
-
-                            if adapter_cls and hasattr(
-                                adapter_cls, "_extract_zarr_path_from_segment"
-                            ):  # pragma: no cover
-                                zarr_path_component = (
-                                    adapter_cls._extract_zarr_path_from_segment(  # pragma: no cover
-                                        segment.path  # pragma: no cover
-                                    )
-                                )  # pragma: no cover
-                                if zarr_path_component:  # pragma: no cover
-                                    adapter_path = zarr_path_component  # pragma: no cover
-                                continue  # pragma: no cover
-                            # Fallback: if starts with @ and has /, extract part after first /
-                            if "/" in segment.path:
-                                _, path_part = segment.path.split("/", 1)
-                                adapter_path = path_part
-                            continue
-                        except Exception:  # pragma: no cover
-                            # If parsing fails, treat as regular path  # pragma: no cover
-                            pass  # pragma: no cover
-                adapter_path = segment.path
+                try:
+                    adapter_cls = get_store_adapter(segment.adapter)
+                    extracted_path = adapter_cls.extract_zarr_path(segment)
+                    if extracted_path:
+                        adapter_path = extracted_path
+                except KeyError:
+                    # Adapter not registered - use default behavior (path is zarr path)
+                    # Most standard adapters (zip, zarr3, etc.) follow this pattern
+                    # resolve_url() will error later if adapter is actually needed
+                    adapter_path = segment.path
 
         # Prefer zarr format path over adapter path
         return zarr_path or adapter_path

@@ -178,6 +178,40 @@ class StoreAdapter(ABC):
         """
         return []
 
+    @classmethod
+    def extract_zarr_path(cls, segment: URLSegment) -> str:
+        """
+        Extract the zarr path component from a URL segment.
+
+        This method allows adapters to customize how paths are extracted from their
+        URL segments. By default, it returns the segment's path directly, but adapters
+        that embed metadata in paths (like icechunk with version control refs) can
+        override this to extract just the zarr filesystem path.
+
+        Parameters
+        ----------
+        segment : URLSegment
+            The URL segment to extract path from.
+
+        Returns
+        -------
+        str
+            The zarr path component, or empty string if no path.
+
+        Examples
+        --------
+        Default behavior (most adapters):
+        >>> segment = URLSegment(adapter="zip", path="inner/data")
+        >>> ZipAdapter.extract_zarr_path(segment)
+        'inner/data'
+
+        Custom behavior (icechunk with version metadata):
+        >>> segment = URLSegment(adapter="icechunk", path="@branch.main/group/array")
+        >>> IcechunkAdapter.extract_zarr_path(segment)
+        'group/array'
+        """
+        return segment.path
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Validate adapter implementation on subclass creation."""
         super().__init_subclass__(**kwargs)

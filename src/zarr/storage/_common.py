@@ -339,12 +339,12 @@ async def make_store_path(
         return await StorePath.open(store, path=combined_path, mode=mode)
 
     if (
-        not (isinstance(store_like, str) and _is_fsspec_uri(store_like))
+        not (isinstance(store_like, str) and is_zep8_url(store_like))
         and storage_options is not None
     ):
         raise TypeError(
             "'storage_options' was provided but unused. "
-            "'storage_options' is only used when the store is passed as a FSSpec URI string.",
+            "'storage_options' is only used when the store is passed as a URL string.",
         )
 
     assert mode in (None, "r", "r+", "a", "w", "w-")
@@ -374,16 +374,10 @@ async def make_store_path(
         store = await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str):
-        # Either a FSSpec URI or a local filesystem path
-        if _is_fsspec_uri(store_like):
-            store = FsspecStore.from_url(
-                store_like, storage_options=storage_options, read_only=_read_only
-            )
-        else:
-            # Assume a filesystem path
-            return await make_store_path(
-                Path(store_like), path=path, mode=mode, storage_options=storage_options
-            )
+        # Assume a local filesystem path (URLs are handled by ZEP 8 above)
+        return await make_store_path(
+            Path(store_like), path=path, mode=mode, storage_options=storage_options
+        )
 
     elif _has_fsspec and isinstance(store_like, FSMap):
         if path:
@@ -395,22 +389,6 @@ async def make_store_path(
         raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
 
     return await StorePath.open(store, path=path_normalized, mode=mode)
-
-
-def _is_fsspec_uri(uri: str) -> bool:
-    """
-    Check if a URI looks like a non-local fsspec URI.
-
-    Examples
-    --------
-    >>> _is_fsspec_uri("s3://bucket")
-    True
-    >>> _is_fsspec_uri("my-directory")
-    False
-    >>> _is_fsspec_uri("local://my-directory")
-    False
-    """
-    return "://" in uri or ("::" in uri and "local://" not in uri)
 
 
 def _combine_paths(url_path: str, additional_path: str) -> str:
