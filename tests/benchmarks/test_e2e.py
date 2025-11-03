@@ -34,7 +34,7 @@ layouts: tuple[Layout, ...] = (
     # 1:1 chunk:shard shape, should test overhead of sharding
     Layout(shape=(1_000_000,), chunks=(1000,), shards=(1000,)),
     # Sharding with 100 chunks per shard
-    Layout(shape=(1_000_000,), chunks=(1000,), shards=(100_000,)),
+    Layout(shape=(1000 * 100_000,), chunks=(100_000,), shards=(100 * 100_000,)),
 )
 
 
