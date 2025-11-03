@@ -301,6 +301,22 @@ class BatchedCodecPipeline(CodecPipeline):
         is_complete_chunk: bool,
         drop_axes: tuple[int, ...],
     ) -> NDBuffer:
+        if (
+            is_complete_chunk
+            and value.shape == chunk_spec.shape
+            # Guard that this is not a partial chunk at the end with is_complete_chunk=True
+            and value[out_selection].shape == chunk_spec.shape
+        ):
+            return value
+        if existing_chunk_array is None:
+            chunk_array = chunk_spec.prototype.nd_buffer.create(
+                shape=chunk_spec.shape,
+                dtype=chunk_spec.dtype.to_native_dtype(),
+                order=chunk_spec.order,
+                fill_value=fill_value_or_default(chunk_spec),
+            )
+        else:
+            chunk_array = existing_chunk_array.copy()  # make a writable copy
         if chunk_selection == () or is_scalar(
             value.as_ndarray_like(), chunk_spec.dtype.to_native_dtype()
         ):
@@ -316,20 +332,6 @@ class BatchedCodecPipeline(CodecPipeline):
                     for idx in range(chunk_spec.ndim)
                 )
                 chunk_value = chunk_value[item]
-        if is_complete_chunk and chunk_value.shape == chunk_spec.shape:
-            # TODO: For the last chunk, we could have is_complete_chunk=True
-            #       that is smaller than the chunk_spec.shape but this throws
-            #       an error in the _decode_single
-            return chunk_value
-        if existing_chunk_array is None:
-            chunk_array = chunk_spec.prototype.nd_buffer.create(
-                shape=chunk_spec.shape,
-                dtype=chunk_spec.dtype.to_native_dtype(),
-                order=chunk_spec.order,
-                fill_value=fill_value_or_default(chunk_spec),
-            )
-        else:
-            chunk_array = existing_chunk_array.copy()  # make a writable copy
         chunk_array[chunk_selection] = chunk_value
         return chunk_array
 
