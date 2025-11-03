@@ -335,12 +335,10 @@ async def make_store_path(
         if storage_options:
             store_kwargs["storage_options"] = storage_options
 
-        # Extract path from URL and combine with provided path
-        url_path = resolver.extract_path(store_like)
+        # Resolve URL and extract path in a single pass (more efficient than separate calls)
+        store, url_path = await resolver.resolve_url_with_path(store_like, **store_kwargs)
         combined_path = _combine_paths(url_path, path_normalized)
 
-        # Resolve the ZEP 8 URL to a store
-        store = await resolver.resolve_url(store_like, **store_kwargs)
         return await StorePath.open(store, path=combined_path, mode=mode)
 
     if storage_options is not None:

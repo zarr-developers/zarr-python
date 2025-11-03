@@ -302,6 +302,56 @@ class URLStoreResolver:
     def __init__(self) -> None:
         self.parser = URLParser()
 
+    async def resolve_url_with_path(
+        self, url: str, storage_options: dict[str, Any] | None = None, **kwargs: Any
+    ) -> tuple[Store, str]:
+        """
+        Resolve a ZEP 8 URL to a store and extract the zarr path in one pass.
+
+        This is more efficient than calling resolve_url() and extract_path() separately
+        since it only parses the URL once.
+
+        Parameters
+        ----------
+        url : str
+            ZEP 8 URL (with pipes) or simple scheme URL to resolve.
+        storage_options : dict, optional
+            Storage options to pass to store adapters.
+        **kwargs : Any
+            Additional keyword arguments to pass to store adapters.
+
+        Returns
+        -------
+        tuple[Store, str]
+            The resolved store and the extracted zarr path.
+
+        Raises
+        ------
+        ValueError
+            If the URL is malformed or contains unsupported segments.
+        KeyError
+            If a required store adapter is not registered.
+        """
+        # Validate that this is a ZEP 8 URL
+        if not is_zep8_url(url):
+            raise ValueError(f"Not a valid URL: {url}")
+
+        # Parse the URL into segments (only once!)
+        segments = self.parser.parse(url)
+
+        if not segments:
+            raise ValueError(f"Empty URL segments in: {url}")
+
+        # Extract path from segments
+        zarr_path = self._extract_path_from_segments(segments)
+
+        # Resolve store from segments
+        store = await self._resolve_store_from_segments(
+            url, segments, storage_options=storage_options, **kwargs
+        )
+
+        return store, zarr_path
+
     async def resolve_url(
         self, url: str, storage_options: dict[str, Any] | None = None, **kwargs: Any
     ) -> Store:
@@ -341,6 +391,37 @@ class URLStoreResolver:
         if not segments:
             raise ValueError(f"Empty URL segments in: {url}")
 
+        # Delegate to helper method
+        return await self._resolve_store_from_segments(
+            url, segments, storage_options=storage_options, **kwargs
+        )
+
+    async def _resolve_store_from_segments(
+        self,
+        url: str,
+        segments: list[URLSegment],
+        storage_options: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Store:
+        """
+        Internal helper to resolve a store from parsed URL segments.
+
+        Parameters
+        ----------
+        url : str
+            Original URL (for error messages).
+        segments : list[URLSegment]
+            Parsed URL segments.
+        storage_options : dict, optional
+            Storage options to pass to store adapters.
+        **kwargs : Any
+            Additional keyword arguments to pass to store adapters.
+
+        Returns
+        -------
+        Store
+            The resolved store at the end of the chain.
+        """
         # Validate all adapters are registered BEFORE creating any stores
         # This prevents side effects (disk writes, network calls) before discovering missing adapters
 
@@ -537,6 +618,22 @@ class URLStoreResolver:
         if not segments:
             return ""
 
+        return self._extract_path_from_segments(segments)
+
+    def _extract_path_from_segments(self, segments: list[URLSegment]) -> str:
+        """
+        Internal helper to extract path from parsed URL segments.
+
+        Parameters
+        ----------
+        segments : list[URLSegment]
+            Parsed URL segments.
+
+        Returns
+        -------
+        str
+            The path component from the final segment, or empty string.
+        """
         # Look for path in segments, prioritizing zarr format segments
         zarr_path = ""
         adapter_path = ""
