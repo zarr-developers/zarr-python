@@ -58,9 +58,9 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
 
-
-ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
-PathLike = str
+    # TODO: this type could use some more thought
+    ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
+    PathLike = str
 
 __all__ = [
     "array",
