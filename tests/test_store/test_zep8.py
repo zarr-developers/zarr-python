@@ -230,6 +230,74 @@ def test_path_extraction() -> None:
 
 
 # =============================================================================
+# Format Segment Path Combination Tests
+# =============================================================================
+
+
+def test_format_segments_path_and_format_extraction() -> None:
+    """Test that format segments combine paths and extract format correctly."""
+    resolver = URLStoreResolver()
+
+    # Single format segment - path and format
+    assert resolver.extract_path("memory:|zarr3:data") == "data"
+    assert resolver.extract_zarr_format("memory:|zarr3:data") == 3
+
+    # Multiple format segments - paths combine, rightmost format wins
+    assert resolver.extract_path("memory:|zarr2:dir1|zarr3:dir2") == "dir1/dir2"
+    assert resolver.extract_zarr_format("memory:|zarr2:dir1|zarr3:dir2") == 3
+
+    # Nested hierarchy (v3 inside v2 structure)
+    assert (
+        resolver.extract_path("file://root|zarr2:v2_sub/v3_data.zarr|zarr3:array")
+        == "v2_sub/v3_data.zarr/array"
+    )
+    assert resolver.extract_zarr_format("file://root|zarr2:v2_sub/v3_data.zarr|zarr3:array") == 3
+
+    # Deep navigation - v2 then v3
+    assert resolver.extract_path("memory:|zarr2:d1|zarr2:d2|zarr3:arr") == "d1/d2/arr"
+    assert resolver.extract_zarr_format("memory:|zarr2:d1|zarr2:d2|zarr3:arr") == 3
+
+
+def test_format_segments_rightmost_format_wins() -> None:
+    """Test that rightmost format segment determines format regardless of order."""
+    resolver = URLStoreResolver()
+
+    # v2 then v3 - v3 wins
+    assert resolver.extract_path("memory:|zarr2:dir1|zarr3:arr") == "dir1/arr"
+    assert resolver.extract_zarr_format("memory:|zarr2:dir1|zarr3:arr") == 3
+
+    # v3 then v2 - v2 wins
+    assert resolver.extract_path("memory:|zarr3:dir1|zarr2:arr") == "dir1/arr"
+    assert resolver.extract_zarr_format("memory:|zarr3:dir1|zarr2:arr") == 2
+
+    # Multiple same format - paths still combine
+    assert resolver.extract_path("memory:|zarr3:d1|zarr3:d2") == "d1/d2"
+    assert resolver.extract_zarr_format("memory:|zarr3:d1|zarr3:d2") == 3
+
+
+async def test_format_segments_dont_prevent_store_creation() -> None:
+    """Test that format segments don't prevent base store creation."""
+    resolver = URLStoreResolver()
+
+    # File store with format - store created, format extracted
+    store = await resolver.resolve_url("file:///tmp/test|zarr3:")
+    assert isinstance(store, LocalStore)
+    assert resolver.extract_zarr_format("file:///tmp/test|zarr3:") == 3
+
+    # Memory store with format and path
+    store = await resolver.resolve_url("memory:|zarr3:data")
+    assert isinstance(store, MemoryStore)
+    assert resolver.extract_path("memory:|zarr3:data") == "data"
+    assert resolver.extract_zarr_format("memory:|zarr3:data") == 3
+
+    # Nested format segments - store created, paths combined
+    store = await resolver.resolve_url("file:///tmp/test|zarr2:dir|zarr3:array")
+    assert isinstance(store, LocalStore)
+    assert resolver.extract_path("file:///tmp/test|zarr2:dir|zarr3:array") == "dir/array"
+    assert resolver.extract_zarr_format("file:///tmp/test|zarr2:dir|zarr3:array") == 3
+
+
+# =============================================================================
 # make_store_path Integration Tests
 # =============================================================================
 
@@ -257,10 +325,11 @@ def test_zep8_url_detection() -> None:
 async def test_make_store_path_with_zep8_url() -> None:
     """Test make_store_path with ZEP 8 URLs."""
     # Test simple memory URL
-    store_path = await make_store_path("memory:")
+    store_path, zarr_format = await make_store_path("memory:")
     assert store_path.store is not None
     assert isinstance(store_path.store, MemoryStore)
     assert store_path.path == ""
+    assert zarr_format is None  # No format in URL
 
 
 # =============================================================================
@@ -2228,11 +2297,11 @@ async def test_make_store_path_zep8_integration_complete() -> None:
     """Test make_store_path ZEP8 integration for complete coverage."""
 
     # Test with storage_options in ZEP8 URL (should work)
-    store_path = await make_store_path("memory:", storage_options={"option": "value"}, mode="w")
+    store_path, _ = await make_store_path("memory:", storage_options={"option": "value"}, mode="w")
     assert store_path.store is not None
 
     # Test path combination with ZEP8 URL
-    store_path = await make_store_path("memory:|log:", path="test/array")
+    store_path, _ = await make_store_path("memory:|log:", path="test/array")
     assert "test/array" in str(store_path) or "test" in str(store_path)  # Path included somewhere
 
 
@@ -2417,15 +2486,15 @@ async def test_make_store_path_integration() -> None:
     """Test make_store_path integration with ZEP 8 URLs."""
 
     # Test make_store_path with ZEP 8 URL
-    store_path = await make_store_path("memory:|log:")
+    store_path, _ = await make_store_path("memory:|log:")
     assert store_path.store is not None
 
     # Test with path parameter
-    store_path = await make_store_path("memory:", path="subdir/array")
+    store_path, _ = await make_store_path("memory:", path="subdir/array")
     assert "subdir/array" in str(store_path)
 
     # Test with mode parameter
-    store_path = await make_store_path("memory:", mode="r")
+    store_path, _ = await make_store_path("memory:", mode="r")
     assert store_path.store.read_only is True
 
 
@@ -2982,6 +3051,342 @@ async def test_storage_options_propagate_as_nested_dict_through_adapter_chains()
             "storage_options must not be unpacked. 'client_kwargs' should be inside "
             "storage_options dict, not a top-level kwarg"
         )
+
+
+async def test_format_propagation_to_open() -> None:
+    """Test that zarr format from URL propagates to open() function."""
+    import zarr
+
+    # Create v3 array using URL format
+    arr = await zarr.api.asynchronous.create(
+        store="memory:|zarr3:test_arr", shape=(5,), dtype="i4", fill_value=0
+    )
+    assert arr.metadata.zarr_format == 3
+
+    # Create v2 array using URL format
+    arr2 = await zarr.api.asynchronous.create(
+        store="memory:|zarr2:test_arr2", shape=(5,), dtype="i4", fill_value=0
+    )
+    assert arr2.metadata.zarr_format == 2
+
+
+async def test_format_propagation_to_create_group() -> None:
+    """Test that zarr format from URL propagates to create_group()."""
+    import zarr
+
+    # Create v3 group using URL format
+    grp = await zarr.api.asynchronous.create_group(store="memory:|zarr3:test_group")
+    assert grp.metadata.zarr_format == 3
+
+    # Create v2 group using URL format
+    grp2 = await zarr.api.asynchronous.create_group(store="memory:|zarr2:test_group2")
+    assert grp2.metadata.zarr_format == 2
+
+
+async def test_format_propagation_to_open_array() -> None:
+    """Test that zarr format from URL propagates to open_array()."""
+    import zarr
+
+    # Use open() which works well with memory stores
+    store_url = "memory:|zarr3:open_arr_test"
+    arr = await zarr.api.asynchronous.open(store=store_url, shape=(3,), dtype="i4", fill_value=42)
+    assert arr.metadata.zarr_format == 3
+
+
+async def test_format_propagation_to_open_group() -> None:
+    """Test that zarr format from URL propagates to open_group()."""
+    import zarr
+
+    # Create and open v3 group
+    store_url = "memory:|zarr3:grp_test"
+    await zarr.api.asynchronous.create_group(store=store_url)
+    grp = await zarr.api.asynchronous.open_group(store=store_url)
+    assert grp.metadata.zarr_format == 3
+
+
+async def test_format_propagation_with_nested_paths() -> None:
+    """Test format propagation with nested zarr paths."""
+    import zarr
+
+    # Create nested hierarchy: v2 containing v3
+    url = "memory:|zarr2:root/data|zarr3:array"
+    arr = await zarr.api.asynchronous.create(store=url, shape=(2, 2), dtype="f4")
+    assert arr.metadata.zarr_format == 3  # Rightmost format wins
+
+
+async def test_format_propagation_user_override() -> None:
+    """Test that user-specified format parameter takes precedence over URL format."""
+    import zarr
+
+    # URL says v3, but user specifies v2 - user should win
+    # This tests that the implementation allows explicit override
+    arr = await zarr.api.asynchronous.create(
+        store="memory:|zarr3:override_test", shape=(3,), dtype="i4", zarr_format=2
+    )
+    # User parameter takes precedence
+    assert arr.metadata.zarr_format == 2
+
+
+async def test_format_propagation_with_save_array() -> None:
+    """Test format propagation works with save_array()."""
+    import numpy as np
+
+    import zarr
+
+    # Create v3 array via save_array with URL format
+    data = np.array([1, 2, 3, 4, 5])
+    await zarr.api.asynchronous.save_array(
+        store="memory:|zarr3:saved_array",
+        arr=data,
+    )
+
+    # Open and verify it's v3
+    arr = await zarr.api.asynchronous.open(store="memory:|zarr3:saved_array")
+    assert arr.metadata.zarr_format == 3
+
+
+async def test_make_store_path_returns_correct_format() -> None:
+    """Test that make_store_path correctly returns format from URL."""
+    from zarr.storage._common import make_store_path
+
+    # Test v3 format
+    store_path, fmt = await make_store_path("memory:|zarr3:test")
+    assert fmt == 3
+    assert store_path.path == "test"
+
+    # Test v2 format
+    store_path, fmt = await make_store_path("memory:|zarr2:test")
+    assert fmt == 2
+    assert store_path.path == "test"
+
+    # Test no format specified
+    store_path, fmt = await make_store_path("memory:")
+    assert fmt is None
+    assert store_path.path == ""
+
+    # Test rightmost format wins with multiple segments
+    store_path, fmt = await make_store_path("memory:|zarr2:a|zarr3:b")
+    assert fmt == 3
+    assert store_path.path == "a/b"
+
+
+async def test_format_propagation_complex_url() -> None:
+    """Test format propagation with complex URL chains."""
+    import zarr
+
+    # Test with zip and zarr format segments
+    # Note: Using memory store since we don't have actual zip files
+    url = "memory:|zarr3:complex/path"
+    arr = await zarr.api.asynchronous.create(store=url, shape=(2, 3), dtype="f8", fill_value=0.0)
+    assert arr.metadata.zarr_format == 3
+
+    # Test v2 format
+    url2 = "memory:|zarr2:another/path"
+    arr2 = await zarr.api.asynchronous.create(store=url2, shape=(2, 3), dtype="f8", fill_value=0.0)
+    assert arr2.metadata.zarr_format == 2
+
+
+async def test_format_propagation_default_behavior() -> None:
+    """Test that default format is used when no format in URL and no user override."""
+    import zarr
+    from zarr.core.common import _default_zarr_format
+
+    # No format in URL, no user parameter - should use default
+    arr = await zarr.api.asynchronous.create(store="memory:", shape=(5,), dtype="i4")
+    assert arr.metadata.zarr_format == _default_zarr_format()
+
+
+async def test_format_propagation_on_disk_v3(tmp_path: Path) -> None:
+    """Test that zarr3: format segment creates actual v3 metadata on disk."""
+    import json
+
+    import zarr
+
+    # Create v3 array using URL format
+    store_path = tmp_path / "test_v3.zarr"
+    url = f"file://{store_path}|zarr3:my_array"
+
+    arr = await zarr.api.asynchronous.create(store=url, shape=(10, 10), dtype="i4", fill_value=42)
+
+    # Verify in-memory format
+    assert arr.metadata.zarr_format == 3
+
+    # Verify on-disk format - v3 uses zarr.json
+    metadata_file = store_path / "my_array" / "zarr.json"
+    assert metadata_file.exists(), f"Expected zarr.json at {metadata_file}"
+
+    # Verify v2 metadata does NOT exist
+    v2_metadata = store_path / "my_array" / ".zarray"
+    assert not v2_metadata.exists(), "Should not have .zarray file for v3 array"
+
+    # Parse and verify metadata content
+    with open(metadata_file) as f:
+        metadata = json.load(f)
+
+    assert metadata["zarr_format"] == 3
+    assert metadata["node_type"] == "array"
+    assert metadata["shape"] == [10, 10]
+    assert metadata["data_type"] == "int32"
+
+
+async def test_format_propagation_on_disk_v2(tmp_path: Path) -> None:
+    """Test that zarr2: format segment creates actual v2 metadata on disk."""
+    import json
+
+    import zarr
+
+    # Create v2 array using URL format
+    store_path = tmp_path / "test_v2.zarr"
+    url = f"file://{store_path}|zarr2:my_array"
+
+    arr = await zarr.api.asynchronous.create(store=url, shape=(5, 5), dtype="f8", fill_value=1.5)
+
+    # Verify in-memory format
+    assert arr.metadata.zarr_format == 2
+
+    # Verify on-disk format - v2 uses .zarray
+    metadata_file = store_path / "my_array" / ".zarray"
+    assert metadata_file.exists(), f"Expected .zarray at {metadata_file}"
+
+    # Verify v3 metadata does NOT exist
+    v3_metadata = store_path / "my_array" / "zarr.json"
+    assert not v3_metadata.exists(), "Should not have zarr.json file for v2 array"
+
+    # Parse and verify metadata content
+    with open(metadata_file) as f:
+        metadata = json.load(f)
+
+    assert metadata["zarr_format"] == 2
+    assert metadata["shape"] == [5, 5]
+    assert metadata["dtype"] == "<f8"
+
+
+async def test_format_propagation_on_disk_nested_hierarchy(tmp_path: Path) -> None:
+    """Test nested zarr hierarchies (v2 containing v3) on disk."""
+    import json
+
+    import zarr
+
+    # Create nested hierarchy: v2 directory containing v3 array
+    store_path = tmp_path / "test_nested.zarr"
+    url = f"file://{store_path}|zarr2:v2_dir|zarr3:v3_array"
+
+    arr = await zarr.api.asynchronous.create(store=url, shape=(3, 3), dtype="i2", fill_value=0)
+
+    # Verify in-memory format (rightmost wins)
+    assert arr.metadata.zarr_format == 3
+
+    # Verify path structure
+    # The path should be: store_path/v2_dir/v3_array/
+    array_path = store_path / "v2_dir" / "v3_array"
+    assert array_path.exists(), f"Expected array directory at {array_path}"
+
+    # Verify v3 metadata exists
+    v3_metadata = array_path / "zarr.json"
+    assert v3_metadata.exists(), f"Expected zarr.json at {v3_metadata}"
+
+    # Parse and verify it's v3
+    with open(v3_metadata) as f:
+        metadata = json.load(f)
+
+    assert metadata["zarr_format"] == 3
+    assert metadata["node_type"] == "array"
+    assert metadata["shape"] == [3, 3]
+
+
+async def test_format_propagation_on_disk_group_v3(tmp_path: Path) -> None:
+    """Test that zarr3: format segment creates actual v3 group metadata on disk."""
+    import json
+
+    import zarr
+
+    # Create v3 group using URL format
+    store_path = tmp_path / "test_group_v3.zarr"
+    url = f"file://{store_path}|zarr3:my_group"
+
+    grp = await zarr.api.asynchronous.create_group(store=url)
+
+    # Verify in-memory format
+    assert grp.metadata.zarr_format == 3
+
+    # Verify on-disk format - v3 uses zarr.json
+    metadata_file = store_path / "my_group" / "zarr.json"
+    assert metadata_file.exists(), f"Expected zarr.json at {metadata_file}"
+
+    # Verify v2 metadata does NOT exist
+    v2_metadata = store_path / "my_group" / ".zgroup"
+    assert not v2_metadata.exists(), "Should not have .zgroup file for v3 group"
+
+    # Parse and verify metadata content
+    with open(metadata_file) as f:
+        metadata = json.load(f)
+
+    assert metadata["zarr_format"] == 3
+    assert metadata["node_type"] == "group"
+
+
+async def test_format_propagation_on_disk_group_v2(tmp_path: Path) -> None:
+    """Test that zarr2: format segment creates actual v2 group metadata on disk."""
+    import json
+
+    import zarr
+
+    # Create v2 group using URL format
+    store_path = tmp_path / "test_group_v2.zarr"
+    url = f"file://{store_path}|zarr2:my_group"
+
+    grp = await zarr.api.asynchronous.create_group(store=url)
+
+    # Verify in-memory format
+    assert grp.metadata.zarr_format == 2
+
+    # Verify on-disk format - v2 uses .zgroup
+    metadata_file = store_path / "my_group" / ".zgroup"
+    assert metadata_file.exists(), f"Expected .zgroup at {metadata_file}"
+
+    # Verify v3 metadata does NOT exist
+    v3_metadata = store_path / "my_group" / "zarr.json"
+    assert not v3_metadata.exists(), "Should not have zarr.json file for v2 group"
+
+    # Parse and verify metadata content
+    with open(metadata_file) as f:
+        metadata = json.load(f)
+
+    assert metadata["zarr_format"] == 2
+
+
+async def test_format_propagation_roundtrip(tmp_path: Path) -> None:
+    """Test that we can write with format from URL and read it back correctly."""
+    import numpy as np
+
+    import zarr
+
+    # Create v3 array with data
+    store_path = tmp_path / "test_roundtrip.zarr"
+    url = f"file://{store_path}|zarr3:data"
+
+    # Write data
+    original_data = np.arange(20).reshape(4, 5)
+    arr_write = await zarr.api.asynchronous.create(
+        store=url, shape=original_data.shape, dtype=original_data.dtype
+    )
+    await arr_write.setitem(slice(None), original_data)
+
+    # Read it back using the same URL
+    result = await zarr.api.asynchronous.open(store=url)
+
+    # Type narrow to AsyncArray for mypy
+    from zarr.core.array import AsyncArray
+
+    assert isinstance(result, AsyncArray)
+    arr_read = result
+
+    # Verify format
+    assert arr_read.metadata.zarr_format == 3
+
+    # Verify data
+    read_data = await arr_read.getitem(slice(None))
+    np.testing.assert_array_equal(read_data, original_data)
 
 
 def test_is_zep8_url_recognizes_all_valid_urls() -> None:

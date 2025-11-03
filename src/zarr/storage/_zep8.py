@@ -17,6 +17,7 @@ from zarr.registry import get_store_adapter
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
+    from zarr.core.common import ZarrFormat
 
 __all__ = [
     "URLParser",
@@ -304,12 +305,12 @@ class URLStoreResolver:
 
     async def resolve_url_with_path(
         self, url: str, storage_options: dict[str, Any] | None = None, **kwargs: Any
-    ) -> tuple[Store, str]:
+    ) -> tuple[Store, str, ZarrFormat | None]:
         """
-        Resolve a ZEP 8 URL to a store and extract the zarr path in one pass.
+        Resolve a ZEP 8 URL to a store and extract the zarr path and format in one pass.
 
-        This is more efficient than calling resolve_url() and extract_path() separately
-        since it only parses the URL once.
+        This is more efficient than calling resolve_url(), extract_path(), and
+        extract_zarr_format() separately since it only parses the URL once.
 
         Parameters
         ----------
@@ -322,8 +323,8 @@ class URLStoreResolver:
 
         Returns
         -------
-        tuple[Store, str]
-            The resolved store and the extracted zarr path.
+        tuple[Store, str, ZarrFormat | None]
+            The resolved store, the extracted zarr path, and the zarr format (2, 3, or None).
 
         Raises
         ------
@@ -342,15 +343,16 @@ class URLStoreResolver:
         if not segments:
             raise ValueError(f"Empty URL segments in: {url}")
 
-        # Extract path from segments
+        # Extract path and format from segments
         zarr_path = self._extract_path_from_segments(segments)
+        zarr_format = self._extract_format_from_segments(segments)
 
         # Resolve store from segments
         store = await self._resolve_store_from_segments(
             url, segments, storage_options=storage_options, **kwargs
         )
 
-        return store, zarr_path
+        return store, zarr_path, zarr_format
 
     async def resolve_url(
         self, url: str, storage_options: dict[str, Any] | None = None, **kwargs: Any
@@ -451,7 +453,13 @@ class URLStoreResolver:
             # Check if this is a path segment that should be consumed by the next adapter
             if i < len(segments) - 1:
                 next_segment = segments[i + 1]
-                if segment.scheme and not segment.adapter and next_segment.adapter:
+                # Format segments (zarr2, zarr3) don't consume paths, so skip them when checking
+                if (
+                    segment.scheme
+                    and not segment.adapter
+                    and next_segment.adapter
+                    and next_segment.adapter not in ("zarr2", "zarr3")
+                ):
                     # This segment provides a path for the next adapter, skip it as a store creator
                     # Example: in "file:data.zip|zip", "file:data.zip" is just a path for the zip adapter
                     continue
@@ -624,6 +632,8 @@ class URLStoreResolver:
         """
         Internal helper to extract path from parsed URL segments.
 
+        Combines all format segment paths, then falls back to adapter paths.
+
         Parameters
         ----------
         segments : list[URLSegment]
@@ -632,37 +642,57 @@ class URLStoreResolver:
         Returns
         -------
         str
-            The path component from the final segment, or empty string.
+            The combined path from format segments, or adapter path, or empty string.
         """
-        # Look for path in segments, prioritizing zarr format segments
-        zarr_path = ""
-        adapter_path = ""
+        # Collect all format segment paths and combine them
+        format_paths = [s.path for s in segments if s.adapter in ("zarr2", "zarr3") and s.path]
 
+        if format_paths:
+            # Combine all format segment paths
+            return "/".join(format_paths)
+
+        # Fallback: look for adapter path (for non-format segments)
         for segment in reversed(segments):
-            # Priority 1: zarr format segments (zarr2:, zarr3:) contain the zarr path
-            if segment.adapter in ("zarr2", "zarr3") and segment.path and not zarr_path:
-                zarr_path = segment.path
-                continue
-
-            # Priority 2: adapter segments may contain paths (but skip if we found one already)
-            if segment.adapter and segment.path and not adapter_path and not segment.scheme:
+            if segment.adapter and segment.path and not segment.scheme:
                 # Delegate to the adapter's extract_zarr_path() method if registered
-                # This allows adapters to customize path extraction (e.g., icechunk metadata handling)
                 from zarr.registry import get_store_adapter
 
                 try:
                     adapter_cls = get_store_adapter(segment.adapter)
                     extracted_path = adapter_cls.extract_zarr_path(segment)
                     if extracted_path:
-                        adapter_path = extracted_path
+                        return extracted_path
                 except KeyError:
-                    # Adapter not registered - use default behavior (path is zarr path)
-                    # Most standard adapters (zip, zarr3, etc.) follow this pattern
-                    # resolve_url() will error later if adapter is actually needed
-                    adapter_path = segment.path
+                    # Adapter not registered - use default behavior
+                    return segment.path
 
-        # Prefer zarr format path over adapter path
-        return zarr_path or adapter_path
+        return ""
+
+    def _extract_format_from_segments(self, segments: list[URLSegment]) -> ZarrFormat | None:
+        """
+        Internal helper to extract zarr format from parsed URL segments.
+
+        Uses the rightmost (last) format segment to determine format.
+
+        Parameters
+        ----------
+        segments : list[URLSegment]
+            Parsed URL segments.
+
+        Returns
+        -------
+        ZarrFormat or None
+            The zarr format version (2 or 3), or None if not specified.
+        """
+        # Find all format segments
+        format_segments = [s for s in segments if s.adapter in ("zarr2", "zarr3")]
+
+        if format_segments:
+            # Use the last (rightmost) format segment
+            last_segment = format_segments[-1]
+            return 2 if last_segment.adapter == "zarr2" else 3
+
+        return None
 
     def resolve_relative_url(self, base_url: str, relative_url: str) -> str:
         """

@@ -637,7 +637,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
 
         dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
-        store_path = await make_store_path(store)
+        store_path, _ = await make_store_path(store)
 
         shape = parse_shapelike(shape)
 
@@ -976,7 +976,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         >>>  async_arr = await AsyncArray.open(store) # doctest: +ELLIPSIS
         <AsyncArray memory://... shape=(100, 100) dtype=int32>
         """
-        store_path = await make_store_path(store)
+        store_path, _ = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         # TODO: remove this cast when we have better type hints
         _metadata_dict = cast("ArrayV3MetadataDict", metadata_dict)
@@ -4351,7 +4351,9 @@ async def from_array(
     """
     mode: Literal["a"] = "a"
     config_parsed = parse_array_config(config)
-    store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
+    store_path, _ = await make_store_path(
+        store, path=name, mode=mode, storage_options=storage_options
+    )
 
     (
         chunks,
@@ -4809,7 +4811,7 @@ async def create_array(
     else:
         mode: Literal["a"] = "a"
 
-        store_path = await make_store_path(
+        store_path, _ = await make_store_path(
             store, path=name, mode=mode, storage_options=storage_options
         )
         return await init_array(

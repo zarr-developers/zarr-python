@@ -269,7 +269,7 @@ async def make_store_path(
     path: str | None = "",
     mode: AccessModeLiteral | None = None,
     storage_options: dict[str, Any] | None = None,
-) -> StorePath:
+) -> tuple[StorePath, ZarrFormat | None]:
     """
     Convert a `StoreLike` object into a StorePath object.
 
@@ -309,8 +309,9 @@ async def make_store_path(
 
     Returns
     -------
-    StorePath
-        The converted StorePath object.
+    tuple[StorePath, ZarrFormat | None]
+        The converted StorePath object and the zarr format (2, 3, or None) extracted
+        from the URL if it was a ZEP 8 URL, otherwise None.
 
     Raises
     ------
@@ -325,6 +326,7 @@ async def make_store_path(
     _read_only = mode == "r"
 
     path_normalized = normalize_path(path)
+    zarr_format = None  # Default: no format specified
 
     # Check if store_like is a ZEP 8 URL
     if isinstance(store_like, str) and is_zep8_url(store_like):
@@ -335,11 +337,13 @@ async def make_store_path(
         if storage_options:
             store_kwargs["storage_options"] = storage_options
 
-        # Resolve URL and extract path in a single pass (more efficient than separate calls)
-        store, url_path = await resolver.resolve_url_with_path(store_like, **store_kwargs)
+        # Resolve URL and extract path and format in a single pass
+        store, url_path, zarr_format = await resolver.resolve_url_with_path(
+            store_like, **store_kwargs
+        )
         combined_path = _combine_paths(url_path, path_normalized)
 
-        return await StorePath.open(store, path=combined_path, mode=mode)
+        return await StorePath.open(store, path=combined_path, mode=mode), zarr_format
 
     if storage_options is not None:
         raise TypeError(
@@ -350,7 +354,7 @@ async def make_store_path(
 
     if isinstance(store_like, StorePath):
         # Already a StorePath
-        return store_like / path_normalized
+        return store_like / path_normalized, None
 
     elif isinstance(store_like, Store):
         # Already a Store
@@ -384,7 +388,7 @@ async def make_store_path(
     else:
         raise TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
 
-    return await StorePath.open(store, path=path_normalized, mode=mode)
+    return await StorePath.open(store, path=path_normalized, mode=mode), None
 
 
 def _combine_paths(url_path: str, additional_path: str) -> str:

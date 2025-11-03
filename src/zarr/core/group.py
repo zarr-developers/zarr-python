@@ -463,7 +463,7 @@ class AsyncGroup:
         overwrite: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
-        store_path = await make_store_path(store)
+        store_path, _ = await make_store_path(store)
 
         if overwrite:
             if store_path.store.supports_deletes:
@@ -511,7 +511,7 @@ class AsyncGroup:
             (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
             to load consolidated metadata from a non-default key.
         """
-        store_path = await make_store_path(store)
+        store_path, _ = await make_store_path(store)
         if not store_path.store.supports_consolidated_metadata:
             # Fail if consolidated metadata was requested but the Store doesn't support it
             if use_consolidated:
