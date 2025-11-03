@@ -31,10 +31,10 @@ compressors: dict[CompressorName, NamedConfig[Any, Any] | None] = {
 layouts: tuple[Layout, ...] = (
     # No shards, just 1000 chunks
     Layout(shape=(1_000_000,), chunks=(1000,), shards=None),
-    # 1:1 chunk:shard shape, should test overhead of sharding
+    # 1:1 chunk:shard shape, should neasure overhead of sharding
     Layout(shape=(1_000_000,), chunks=(1000,), shards=(1000,)),
-    # Sharding with 100 chunks per shard
-    Layout(shape=(1000 * 100_000,), chunks=(100_000,), shards=(100 * 100_000,)),
+    # One shard with all the chunks, should measure overhead of handling inner shard chunks
+    Layout(shape=(1_000_000,), chunks=(100,), shards=(10000 * 100,)),
 )
 
 
