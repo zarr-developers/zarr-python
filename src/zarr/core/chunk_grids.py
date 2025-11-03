@@ -15,6 +15,7 @@ import numpy as np
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
     JSON,
+    NamedConfig,
     ShapeLike,
     ceildiv,
     parse_named_configuration,
@@ -152,7 +153,7 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
     @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkGrid) -> ChunkGrid:
+    def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
         if isinstance(data, ChunkGrid):
             return data
 
@@ -180,7 +181,7 @@ class RegularChunkGrid(ChunkGrid):
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @classmethod
-    def _from_dict(cls, data: dict[str, JSON]) -> Self:
+    def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "regular")
 
         return cls(**configuration_parsed)  # type: ignore[arg-type]
