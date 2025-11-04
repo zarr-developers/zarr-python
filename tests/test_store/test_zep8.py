@@ -3428,3 +3428,431 @@ def test_is_zep8_url_recognizes_all_valid_urls() -> None:
     assert not is_zep8_url("not a url"), "Plain text is not ZEP 8"
     assert not is_zep8_url("/absolute/path"), "Absolute paths alone are not ZEP 8"
     assert not is_zep8_url("relative/path"), "Relative paths alone are not ZEP 8"
+
+
+@pytest.mark.asyncio
+async def test_nested_zip_adapters(tmp_path: Path) -> None:
+    """
+    Test nested ZIP adapter chains as specified in ZEP 8 spec.
+
+    From ZEP 8 line 405-412:
+    gs://bucket/path/to/outer.zip|zip:path/to/inner.zip|zip:path/to/zarr/hierarchy|zarr3:path/to/array
+
+    This tests the pattern: file:outer.zip|zip:inner.zip|zip:data.zarr
+    """
+    import zipfile
+
+    import numpy as np
+
+    # Create inner zarr array
+    inner_zarr_path = tmp_path / "inner.zarr"
+    inner_arr = await zarr.api.asynchronous.create(
+        store=str(inner_zarr_path), mode="w", shape=(5,), dtype="i4", fill_value=0
+    )
+    await inner_arr.setitem(slice(None), [1, 2, 3, 4, 5])
+
+    # Zip the inner array into inner.zip
+    inner_zip_path = tmp_path / "inner.zip"
+    with zipfile.ZipFile(inner_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in inner_zarr_path.rglob("*"):
+            if file.is_file():
+                arcname = file.relative_to(tmp_path)
+                zf.write(file, arcname)
+
+    # Zip inner.zip into outer.zip
+    outer_zip_path = tmp_path / "outer.zip"
+    with zipfile.ZipFile(outer_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(inner_zip_path, "inner.zip")
+
+    # Try to open using nested ZIP URL (as per ZEP 8 spec)
+    url = f"file:{outer_zip_path}|zip:inner.zip|zip:inner.zarr"
+
+    # Open the array using nested URL
+    arr = await zarr.api.asynchronous.open_array(store=url, mode="r")
+
+    # Verify the array was opened correctly
+    assert arr.shape == (5,)
+
+    # Read and verify the data
+    data = await arr.getitem(slice(None))
+    np.testing.assert_array_equal(data, [1, 2, 3, 4, 5])
+
+
+@pytest.mark.asyncio
+async def test_nested_adapters_with_mixed_types(tmp_path: Path) -> None:
+    """
+    Test nested adapters with different adapter types in the chain.
+
+    This verifies that the recursive resolution works for ANY adapter chain,
+    not just nested ZIPs.
+    """
+    import zipfile
+
+    import numpy as np
+
+    # Create inner zarr array
+    inner_zarr_path = tmp_path / "inner.zarr"
+    inner_arr = await zarr.api.asynchronous.create(
+        store=str(inner_zarr_path), mode="w", shape=(3,), dtype="i4", fill_value=0
+    )
+    await inner_arr.setitem(slice(None), [10, 20, 30])
+
+    # Zip it
+    inner_zip_path = tmp_path / "inner.zip"
+    with zipfile.ZipFile(inner_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in inner_zarr_path.rglob("*"):
+            if file.is_file():
+                arcname = file.relative_to(tmp_path)
+                zf.write(file, arcname)
+
+    # Create outer zip containing the inner zip
+    outer_zip_path = tmp_path / "outer.zip"
+    with zipfile.ZipFile(outer_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(inner_zip_path, "inner.zip")
+
+    # Test 1: Nested ZIPs with logging adapter at the end
+    # This tests: file -> zip -> zip -> log
+    url_with_log = f"file:{outer_zip_path}|zip:inner.zip|zip:inner.zarr|log:"
+    arr = await zarr.api.asynchronous.open_array(store=url_with_log, mode="r")
+    assert arr.shape == (3,)
+    data = await arr.getitem(slice(None))
+    np.testing.assert_array_equal(data, [10, 20, 30])
+
+    # Test 2: Verify LoggingStore is wrapping the inner store
+    from zarr.storage._logging import LoggingStore
+
+    # The store_path.store should be a LoggingStore
+    store_path = arr.store_path
+    assert isinstance(store_path.store, LoggingStore), "Expected LoggingStore wrapper"
+
+
+@pytest.mark.asyncio
+async def test_zep8_spec_nested_zip_example(tmp_path: Path) -> None:
+    """
+    Test nested ZIP example similar to ZEP 8 specification.
+
+    Based on ZEP 8 spec line 405-412:
+    gs://bucket/path/to/outer.zip|zip:path/to/inner.zip|zip:path/to/zarr/hierarchy|zarr3:path/to/array
+
+    This is a simplified version that demonstrates nested ZIP resolution works.
+    """
+    import zipfile
+
+    import numpy as np
+
+    # Create a simple zarr array
+    inner_zarr_path = tmp_path / "myarray.zarr"
+    arr = await zarr.api.asynchronous.create(
+        store=str(inner_zarr_path), mode="w", shape=(4,), dtype="i4", zarr_format=3, fill_value=0
+    )
+    await arr.setitem(slice(None), [100, 200, 300, 400])
+
+    # Zip the zarr array into inner.zip
+    inner_zip_path = tmp_path / "inner.zip"
+    with zipfile.ZipFile(inner_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in inner_zarr_path.rglob("*"):
+            if file.is_file():
+                arcname = file.relative_to(tmp_path)
+                zf.write(file, arcname)
+
+    # Zip inner.zip into outer.zip
+    outer_zip_path = tmp_path / "outer.zip"
+    with zipfile.ZipFile(outer_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(inner_zip_path, "inner.zip")
+
+    # Test nested URL: outer.zip -> inner.zip -> myarray.zarr
+    url = f"file:{outer_zip_path}|zip:inner.zip|zip:myarray.zarr|zarr3:"
+
+    # Open the array using the nested URL
+    arr_opened = await zarr.api.asynchronous.open_array(store=url, mode="r")
+
+    # Verify the array
+    assert arr_opened.shape == (4,)
+    assert arr_opened.metadata.zarr_format == 3  # zarr3: segment should set format
+
+    # Verify data
+    data = await arr_opened.getitem(slice(None))
+    np.testing.assert_array_equal(data, [100, 200, 300, 400])
+
+
+@pytest.mark.asyncio
+async def test_triple_nested_zips(tmp_path: Path) -> None:
+    """
+    Test triple-nested ZIPs to verify deep nesting works.
+
+    Structure: outer2.zip -> outer.zip -> inner.zip -> data.zarr
+    """
+    import zipfile
+
+    import numpy as np
+
+    # Create innermost zarr array
+    inner_zarr_path = tmp_path / "data.zarr"
+    arr = await zarr.api.asynchronous.create(
+        store=str(inner_zarr_path), mode="w", shape=(2,), dtype="i4", fill_value=0
+    )
+    await arr.setitem(slice(None), [7, 8])
+
+    # Create inner.zip containing data.zarr
+    inner_zip_path = tmp_path / "inner.zip"
+    with zipfile.ZipFile(inner_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in inner_zarr_path.rglob("*"):
+            if file.is_file():
+                arcname = file.relative_to(tmp_path)
+                zf.write(file, arcname)
+
+    # Create outer.zip containing inner.zip
+    outer_zip_path = tmp_path / "outer.zip"
+    with zipfile.ZipFile(outer_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(inner_zip_path, "inner.zip")
+
+    # Create outer2.zip containing outer.zip
+    outer2_zip_path = tmp_path / "outer2.zip"
+    with zipfile.ZipFile(outer2_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(outer_zip_path, "outer.zip")
+
+    # Test triple nesting: outer2.zip -> outer.zip -> inner.zip -> data.zarr
+    url = f"file:{outer2_zip_path}|zip:outer.zip|zip:inner.zip|zip:data.zarr"
+
+    arr_opened = await zarr.api.asynchronous.open_array(store=url, mode="r")
+    assert arr_opened.shape == (2,)
+
+    data = await arr_opened.getitem(slice(None))
+    np.testing.assert_array_equal(data, [7, 8])
+
+
+@pytest.mark.asyncio
+async def test_nested_zips_with_subdirectories(tmp_path: Path) -> None:
+    """
+    Test nested ZIPs where the zarr array is in a subdirectory within the ZIP.
+
+    This tests that path handling works correctly through nested adapters.
+    """
+    import zipfile
+
+    import numpy as np
+
+    # Create zarr array in a subdirectory
+    data_dir = tmp_path / "data_dir"
+    data_dir.mkdir()
+    zarr_path = data_dir / "subdir" / "myarray.zarr"
+    arr = await zarr.api.asynchronous.create(
+        store=str(zarr_path), mode="w", shape=(3,), dtype="i4", fill_value=0
+    )
+    await arr.setitem(slice(None), [11, 22, 33])
+
+    # Zip with directory structure preserved
+    inner_zip_path = tmp_path / "data.zip"
+    with zipfile.ZipFile(inner_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in data_dir.rglob("*"):
+            if file.is_file():
+                # Preserve directory structure relative to data_dir
+                arcname = file.relative_to(data_dir)
+                zf.write(file, arcname)
+
+    # Create outer zip
+    outer_zip_path = tmp_path / "container.zip"
+    with zipfile.ZipFile(outer_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(inner_zip_path, "archives/data.zip")
+
+    # Test nested access with subdirectory paths
+    url = f"file:{outer_zip_path}|zip:archives/data.zip|zip:subdir/myarray.zarr"
+
+    arr_opened = await zarr.api.asynchronous.open_array(store=url, mode="r")
+    data = await arr_opened.getitem(slice(None))
+    np.testing.assert_array_equal(data, [11, 22, 33])
+
+
+@pytest.mark.asyncio
+async def test_nested_zips_with_groups(tmp_path: Path) -> None:
+    """
+    Test nested ZIPs with zarr groups (not just arrays).
+
+    Verifies that both arrays and groups work through nested resolution.
+    """
+    import zipfile
+
+    import numpy as np
+
+    # Create a zarr group with nested arrays
+    group_path = tmp_path / "mygroup.zarr"
+    group = await zarr.api.asynchronous.open_group(store=str(group_path), mode="w")
+
+    # Create arrays within the group
+    arr1 = await group.create_array("array1", shape=(3,), dtype="i4", fill_value=0)
+    await arr1.setitem(slice(None), [10, 20, 30])
+
+    arr2 = await group.create_array("subgroup/array2", shape=(2,), dtype="i4", fill_value=0)
+    await arr2.setitem(slice(None), [40, 50])
+
+    # Zip the group into inner.zip
+    inner_zip_path = tmp_path / "inner.zip"
+    with zipfile.ZipFile(inner_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in group_path.rglob("*"):
+            if file.is_file():
+                arcname = file.relative_to(tmp_path)
+                zf.write(file, arcname)
+
+    # Zip inner.zip into outer.zip
+    outer_zip_path = tmp_path / "outer.zip"
+    with zipfile.ZipFile(outer_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(inner_zip_path, "inner.zip")
+
+    # Test 1: Open the group through nested ZIPs
+    url_group = f"file:{outer_zip_path}|zip:inner.zip|zip:mygroup.zarr"
+    group_opened = await zarr.api.asynchronous.open_group(store=url_group, mode="r")
+
+    # Verify group structure
+    members = [key async for key in group_opened.members()]
+    member_names = [name for name, _ in members]
+    assert "array1" in member_names
+    assert "subgroup" in member_names
+
+    # Test 2: Open array1 from the nested group
+    arr1_opened = await group_opened.getitem("array1")
+    from zarr.core.array import AsyncArray
+
+    assert isinstance(arr1_opened, AsyncArray)
+    data1 = await arr1_opened.getitem(slice(None))
+    np.testing.assert_array_equal(data1, [10, 20, 30])
+
+    # Test 3: Open array2 from nested subgroup
+    arr2_opened = await group_opened.getitem("subgroup/array2")
+    assert isinstance(arr2_opened, AsyncArray)
+    data2 = await arr2_opened.getitem(slice(None))
+    np.testing.assert_array_equal(data2, [40, 50])
+
+
+@pytest.mark.asyncio
+async def test_nested_zips_with_zip_in_path(tmp_path: Path) -> None:
+    """
+    Test nested ZIPs where 'zip' appears as a directory name in the path.
+
+    This is an edge case that could confuse URL parsing if not handled correctly.
+    Example: inner.zip|zip:path/to/zip/data.zarr
+
+    This tests that the word 'zip' in paths doesn't interfere with 'zip:' adapter syntax.
+    """
+    import zipfile
+
+    import numpy as np
+
+    # Create zarr array in a path that contains "zip" as a directory name
+    data_dir = tmp_path / "data_staging"
+    zip_subdir = data_dir / "path" / "to" / "zip" / "compressed"
+    zip_subdir.mkdir(parents=True)
+
+    array_path = zip_subdir / "myarray.zarr"
+    arr = await zarr.api.asynchronous.create(
+        store=str(array_path), mode="w", shape=(4,), dtype="i4", fill_value=0
+    )
+    await arr.setitem(slice(None), [100, 200, 300, 400])
+
+    # Zip with the "zip" directory in the path
+    inner_zip_path = tmp_path / "inner.zip"
+    with zipfile.ZipFile(inner_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in data_dir.rglob("*"):
+            if file.is_file():
+                # Path will be: path/to/zip/compressed/myarray.zarr/...
+                arcname = file.relative_to(data_dir)
+                zf.write(file, arcname)
+
+    # Create outer zip
+    outer_zip_path = tmp_path / "outer.zip"
+    with zipfile.ZipFile(outer_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(inner_zip_path, "inner.zip")
+
+    # Test URL with "zip" in the path: outer.zip|zip:inner.zip|zip:path/to/zip/compressed/myarray.zarr
+    # The third "zip" here is a directory name, not an adapter!
+    url = f"file:{outer_zip_path}|zip:inner.zip|zip:path/to/zip/compressed/myarray.zarr"
+
+    # Open the array
+    arr_opened = await zarr.api.asynchronous.open_array(store=url, mode="r")
+
+    # Verify
+    assert arr_opened.shape == (4,)
+    data = await arr_opened.getitem(slice(None))
+    np.testing.assert_array_equal(data, [100, 200, 300, 400])
+
+
+@pytest.mark.asyncio
+async def test_nested_zips_complex_hierarchy(tmp_path: Path) -> None:
+    """
+    Test nested ZIPs with a complex zarr hierarchy containing both groups and arrays.
+
+    Structure:
+    - outer.zip contains data.zip
+    - data.zip contains a zarr group hierarchy:
+        experiments/
+          ├── exp1/
+          │   ├── array1.zarr
+          │   └── array2.zarr
+          └── exp2/
+              └── results.zarr
+    """
+    import zipfile
+
+    import numpy as np
+
+    # Create complex hierarchy
+    root_path = tmp_path / "experiments"
+    root_group = await zarr.api.asynchronous.open_group(store=str(root_path), mode="w")
+
+    # exp1 subgroup with 2 arrays
+    exp1_group = await root_group.create_group("exp1")
+    arr1 = await exp1_group.create_array("array1", shape=(2,), dtype="i4", fill_value=0)
+    await arr1.setitem(slice(None), [1, 2])
+    arr2 = await exp1_group.create_array("array2", shape=(2,), dtype="i4", fill_value=0)
+    await arr2.setitem(slice(None), [3, 4])
+
+    # exp2 subgroup with 1 array
+    exp2_group = await root_group.create_group("exp2")
+    results = await exp2_group.create_array("results", shape=(3,), dtype="i4", fill_value=0)
+    await results.setitem(slice(None), [10, 20, 30])
+
+    # Zip the hierarchy into data.zip
+    data_zip_path = tmp_path / "data.zip"
+    with zipfile.ZipFile(data_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for file in root_path.rglob("*"):
+            if file.is_file():
+                arcname = file.relative_to(tmp_path)
+                zf.write(file, arcname)
+
+    # Zip data.zip into outer.zip
+    outer_zip_path = tmp_path / "outer.zip"
+    with zipfile.ZipFile(outer_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(data_zip_path, "data.zip")
+
+    # Test 1: Open root group through nested ZIPs
+    url_root = f"file:{outer_zip_path}|zip:data.zip|zip:experiments"
+    root_opened = await zarr.api.asynchronous.open_group(store=url_root, mode="r")
+    root_members = [key async for key in root_opened.members()]
+    root_names = [name for name, _ in root_members]
+    assert "exp1" in root_names
+    assert "exp2" in root_names
+
+    # Test 2: Open exp1 subgroup
+    exp1_result = await root_opened.getitem("exp1")
+    from zarr.core.group import AsyncGroup
+
+    assert isinstance(exp1_result, AsyncGroup)
+    exp1_opened = exp1_result
+    exp1_members = [key async for key in exp1_opened.members()]
+    exp1_names = [name for name, _ in exp1_members]
+    assert "array1" in exp1_names
+    assert "array2" in exp1_names
+
+    # Test 3: Read data from exp1/array1
+    arr1_result = await exp1_opened.getitem("array1")
+    from zarr.core.array import AsyncArray
+
+    assert isinstance(arr1_result, AsyncArray)
+    arr1_opened = arr1_result
+    data1 = await arr1_opened.getitem(slice(None))
+    np.testing.assert_array_equal(data1, [1, 2])
+
+    # Test 4: Read data from exp2/results using direct array URL
+    url_results = f"file:{outer_zip_path}|zip:data.zip|zip:experiments/exp2/results"
+    results_opened = await zarr.api.asynchronous.open_array(store=url_results, mode="r")
+    data_results = await results_opened.getitem(slice(None))
+    np.testing.assert_array_equal(data_results, [10, 20, 30])

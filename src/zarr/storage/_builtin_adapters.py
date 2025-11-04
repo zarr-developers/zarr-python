@@ -453,12 +453,18 @@ class ZipAdapter(StoreAdapter):
         - Local paths: /path/to/file.zip
         - File URLs: file:/path/to/file.zip
         - Remote URLs: s3://bucket/file.zip, https://example.com/file.zip, gs://bucket/file.zip
+        - Nested URLs: file:outer.zip|zip:inner.zip (recursively resolved)
         """
         # Determine read-only mode
         read_only = kwargs.get("storage_options", {}).get("read_only", True)
         if "mode" in kwargs:
             mode = kwargs["mode"]
             read_only = mode == "r"
+
+        # Check if preceding_url is itself a nested ZEP 8 URL
+        if "|" in preceding_url:
+            # Nested URL - need to recursively resolve it
+            return await cls._create_nested_zip_store(preceding_url, segment, read_only, kwargs)
 
         # Handle different URL types
         if cls._is_remote_url(preceding_url):
@@ -534,6 +540,68 @@ class ZipAdapter(StoreAdapter):
             path=remote_file_opener,  # Pass file opener instead of path
             mode="r",
             read_only=True,
+        )
+
+        # Open the store
+        await zip_store._open()
+
+        return zip_store
+
+    @classmethod
+    async def _create_nested_zip_store(
+        cls,
+        nested_url: str,
+        segment: URLSegment,
+        read_only: bool,
+        kwargs: dict[str, Any],
+    ) -> Store:
+        """Create a ZipStore from a nested ZEP 8 URL.
+
+        For nested URLs like "file:outer.zip|zip:inner.zip", this:
+        1. Recursively resolves the nested URL to get a store
+        2. Extracts the target file's bytes from that store
+        3. Creates a ZipStore from those bytes using BytesIO
+        """
+        from io import BytesIO
+
+        # Recursively resolve the nested URL to get the parent store and path
+        # For "file:outer.zip|zip:inner.zip", this returns:
+        # - parent_store: ZipStore for outer.zip
+        # - parent_path: "inner.zip" (the path within that store)
+        resolver = URLStoreResolver()
+        parent_store, parent_path, _ = await resolver.resolve_url_with_path(
+            nested_url, storage_options=kwargs.get("storage_options")
+        )
+
+        # The parent_path already has the correct file path we need to extract
+        full_key = parent_path
+
+        # Read the file bytes from the parent store
+        from zarr.core.buffer import default_buffer_prototype
+
+        try:
+            file_bytes = await parent_store.get(full_key, prototype=default_buffer_prototype())
+        except KeyError as e:
+            raise FileNotFoundError(
+                f"Could not find file '{full_key}' in nested store from URL: {nested_url}"
+            ) from e
+
+        # Create BytesIO from the file data
+        if file_bytes is None:
+            raise FileNotFoundError(
+                f"File '{full_key}' exists but returned None from nested store: {nested_url}"
+            )
+
+        # Convert Buffer to bytes
+        file_bytes_raw = file_bytes.to_bytes()
+
+        zip_fileobj = BytesIO(file_bytes_raw)
+
+        # Create ZipStore from the file object
+        zip_store = ZipStore(
+            path=zip_fileobj,
+            mode="r",
+            read_only=True,  # Nested ZIPs are always read-only
         )
 
         # Open the store
