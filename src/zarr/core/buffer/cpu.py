@@ -107,14 +107,13 @@ class Buffer(core.Buffer):
         """
         return np.asanyarray(self._data)
 
-    def __add__(self, other: core.Buffer) -> Self:
-        """Concatenate two buffers"""
-
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("B")
-        return self.__class__(
-            np.concatenate((np.asanyarray(self._data), np.asanyarray(other_array)))
-        )
+    def combine(self, others: Iterable[core.Buffer]) -> Self:
+        data = [np.asanyarray(self._data)]
+        for buf in others:
+            other_array = buf.as_array_like()
+            assert other_array.dtype == np.dtype("B")
+            data.append(np.asanyarray(other_array))
+        return self.__class__(np.concatenate(data))
 
 
 class NDBuffer(core.NDBuffer):

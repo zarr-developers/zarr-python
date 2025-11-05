@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -294,9 +295,13 @@ class Buffer(ABC):
         return self._data.size
 
     @abstractmethod
+    def combine(self, others: Iterable[Buffer]) -> Self:
+        """Concatenate many buffers"""
+        ...
+
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
-        ...
+        return self.combine([other])
 
     def __eq__(self, other: object) -> bool:
         # Another Buffer class can override this to choose a more efficient path
