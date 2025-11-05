@@ -54,6 +54,9 @@ The ABC module defines interfaces for extending Zarr:
 - **[Errors](errors.md)** - Exception classes and error handling
 - **[Testing](testing.md)** - Utilities for testing Zarr-based code
 
+## Types
+
+- **[Types](types.md)** - Useful types and classes for zarr function arguments.  Any classes listed here are not meant for instantiation.
 
 ## Migration and Compatibility
 
