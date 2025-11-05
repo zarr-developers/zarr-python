@@ -308,7 +308,7 @@ class BaseComplex[
 
         Returns
         -------
-        TScalar_co
+        Scalar
             The numpy float.
         """
         if zarr_format == 2:

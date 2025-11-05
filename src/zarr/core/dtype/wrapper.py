@@ -31,7 +31,6 @@ from typing import (
     Literal,
     Self,
     TypeGuard,
-    TypeVar,
     overload,
 )
 
@@ -47,12 +46,6 @@ type TBaseScalar = np.generic | str | bytes
 # This is the bound for the dtypes that we support. If we support non-numpy dtypes,
 # then this bound will need to be widened.
 type TBaseDType = np.dtype[np.generic]
-
-# These two type parameters are covariant because we want
-# x : ZDType[BaseDType, BaseScalar] = ZDType[SubDType, SubScalar]
-# to type check
-TScalar_co = TypeVar("TScalar_co", bound=TBaseScalar, covariant=True)
-TDType_co = TypeVar("TDType_co", bound=TBaseDType, covariant=True)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
