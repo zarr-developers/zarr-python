@@ -740,7 +740,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             The object codec ID for this data type.
         """
 
-        dtype_cls = np.dtypes.StringDType
+        dtype_cls = np.dtypes.StringDType  # type: ignore[assignment]
 
         def to_native_dtype(self) -> np.dtypes.StringDType:
             """

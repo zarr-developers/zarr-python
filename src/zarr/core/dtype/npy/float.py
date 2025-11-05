@@ -74,7 +74,7 @@ class BaseFloat[
             The NumPy data type.
         """
         byte_order = endianness_to_numpy_str(self.endianness)
-        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[return-value]
+        return self.dtype_cls().newbyteorder(byte_order)  # type: ignore[no-any-return,call-overload]
 
     @classmethod
     def _check_json_v2(cls, data: DTypeJSON) -> TypeGuard[DTypeConfig_V2[str, None]]:

@@ -70,7 +70,7 @@ class ZDType[DType: TBaseDType, Scalar: TBaseScalar](ABC):
     """
 
     # this class will create a native data type
-    dtype_cls: ClassVar[type[DType]]
+    dtype_cls: ClassVar[type[TBaseDType]]
     _zarr_v3_name: ClassVar[str]
 
     @classmethod
