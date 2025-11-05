@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, TypeGuard
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -37,10 +37,8 @@ __all__ = [
 type CodecInput = NDBuffer | Buffer
 type CodecOutput = NDBuffer | Buffer
 
-TName = TypeVar("TName", bound=str, covariant=True)
 
-
-class CodecJSON_V2(TypedDict, Generic[TName]):  # noqa: UP046
+class CodecJSON_V2[TName: str](TypedDict):
     """The JSON representation of a codec for Zarr V2"""
 
     id: ReadOnly[TName]
