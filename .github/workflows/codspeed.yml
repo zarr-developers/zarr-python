@@ -9,6 +9,9 @@ on:
   # performance analysis in order to generate initial data.
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   benchmarks:
     name: Run benchmarks
