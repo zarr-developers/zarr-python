@@ -9,7 +9,6 @@ from typing import (
     Self,
     TypedDict,
     TypeGuard,
-    TypeVar,
     cast,
     get_args,
     overload,
@@ -88,16 +87,6 @@ def check_json_time(data: JSON) -> TypeGuard[Literal["NaT"] | int]:
     or an integer.
     """
     return check_json_int(data) or data == "NaT"
-
-
-BaseTimeDType_co = TypeVar(
-    "BaseTimeDType_co",
-    bound=np.dtypes.TimeDelta64DType | np.dtypes.DateTime64DType,
-    covariant=True,
-)
-BaseTimeScalar_co = TypeVar(
-    "BaseTimeScalar_co", bound=np.timedelta64 | np.datetime64, covariant=True
-)
 
 
 class TimeConfig(TypedDict):

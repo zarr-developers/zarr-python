@@ -9,7 +9,6 @@ from typing import (
     SupportsIndex,
     SupportsInt,
     TypeGuard,
-    TypeVar,
     overload,
 )
 
@@ -48,8 +47,7 @@ _NumpyIntDType = (
 _NumpyIntScalar = (
     np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
 )
-TIntDType_co = TypeVar("TIntDType_co", bound=_NumpyIntDType, covariant=True)
-TIntScalar_co = TypeVar("TIntScalar_co", bound=_NumpyIntScalar, covariant=True)
+
 IntLike = SupportsInt | SupportsIndex | bytes | str
 
 
