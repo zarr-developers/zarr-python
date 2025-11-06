@@ -989,7 +989,9 @@ async def test_nbytes(
         pytest.param((256,), (2,), 256, (256,), id="max_bytes_equal_to_array_shape"),
         pytest.param((256,), (2,), 16, (16,), id="max_bytes_normal_val"),
         pytest.param((256,), (2,), 2, (2,), id="max_bytes_same_as_chunk"),
+        pytest.param((256,), (2,), 1, (2,), id="max_bytes_less_than_chunk"),
         pytest.param((256,), (2,), None, (4,), id="use_default_auto_setting"),
+        pytest.param((4,), (2,), None, (2,), id="small_array_shape_does_not_shard"),
     ],
 )
 def test_auto_partition_auto_shards(
