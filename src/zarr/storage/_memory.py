@@ -104,7 +104,8 @@ class MemoryStore(Store):
         async def _get(key: str, byte_range: ByteRequest | None) -> Buffer | None:
             return await self.get(key, prototype=prototype, byte_range=byte_range)
 
-        return await concurrent_map(key_ranges, _get, limit=None)
+        # In-memory operations are fast and don't benefit from concurrency limiting
+        return await concurrent_map(key_ranges, _get, use_global_semaphore=False)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
