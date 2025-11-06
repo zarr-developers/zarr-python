@@ -207,9 +207,9 @@ def _guess_num_chunks_per_axis_shard(
     chunk_shape: tuple[int, ...], item_size: int, max_bytes: int, array_shape: tuple[int, ...]
 ) -> int:
     bytes_per_chunk = np.prod(chunk_shape) * item_size
-    num_axes = len(chunk_shape)
     if max_bytes < bytes_per_chunk:
         return 1
+    num_axes = len(chunk_shape)
     chunks_per_shard = 1
     # First check for byte size, second check to make sure we don't go bigger than the array shape
     while (bytes_per_chunk * ((chunks_per_shard + 1) ** num_axes)) <= max_bytes and all(
