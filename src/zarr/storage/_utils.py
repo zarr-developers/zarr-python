@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 
@@ -155,10 +155,7 @@ def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:
     return tuple(path_map.keys())
 
 
-T = TypeVar("T")
-
-
-def _normalize_path_keys(data: Mapping[str, T]) -> dict[str, T]:
+def _normalize_path_keys[T](data: Mapping[str, T]) -> dict[str, T]:
     """
     Normalize the keys of the input dict according to the normalization scheme used for zarr node
     paths. If any two keys in the input normalize to the same value, raise a ValueError.
