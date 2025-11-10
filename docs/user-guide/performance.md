@@ -175,13 +175,18 @@ Coming soon.
 
 ## Parallel computing and synchronization
 
-Zarr is designed to support parallel computing and enables concurrent reads and writes to arrays. This section covers how to optimize Zarr's concurrency settings for different parallel computing scenarios.
+Zarr is designed to support parallel computing and enables concurrent reads and writes to arrays.
+This section covers how to optimize Zarr's concurrency settings for different parallel computing
+scenarios.
 
 ### Concurrent I/O operations
 
-Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks. The level of concurrency is controlled by the `async.concurrency` configuration setting, which determines the maximum number of concurrent I/O operations.
+Zarr uses asynchronous I/O internally to enable concurrent reads and writes across multiple chunks.
+The level of concurrency is controlled by the `async.concurrency` configuration setting, which
+determines the maximum number of concurrent I/O operations.
 
-The default value is 64, which provides good performance for most workloads. You can adjust this value based on your specific needs:
+The default value is 10, which is a conservative value. You may get improved performance by tuning
+the concurrency limit. You can adjust this value based on your specific needs:
 
 ```python
 import zarr
