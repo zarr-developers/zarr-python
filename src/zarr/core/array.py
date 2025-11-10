@@ -2041,11 +2041,11 @@ class Array:
 
     @property
     def async_array(self) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
-        """The underlying asynchronous array.  Useful for batching requests.
+        """An asynchronous version of the current array.  Useful for batching requests.
 
         Returns
         -------
-            The AsyncArray underlying this synchronous Array.
+            An asynchronous array whose metadata + store matches that of this synchronous array.
         """
         return self._async_array
 
