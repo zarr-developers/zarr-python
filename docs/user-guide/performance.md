@@ -265,7 +265,7 @@ If an array or group is backed by a persistent store such as the a `zarr.storage
 **are not** pickled. The only thing that is pickled is the necessary parameters to allow the store
 to re-open any underlying files or databases upon being unpickled.
 
-E.g., pickle/unpickle an local store array:
+E.g., pickle/unpickle a local store array:
 
 ```python exec="true" session="performance" source="above" result="ansi"
 import pickle
