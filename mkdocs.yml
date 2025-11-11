@@ -54,9 +54,6 @@ nav:
         - api/abc/codec.md
         - api/abc/metadata.md
         - api/abc/store.md
-      - deprecated:
-        - Convenience sub-module: api/deprecated/convenience.md
-        - Creation sub-module: api/deprecated/creation.md
   - release-notes.md
   - contributing.md
 watch:
