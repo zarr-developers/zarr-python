@@ -91,7 +91,7 @@ class MetadataValidationError(BaseZarrError):
 
 class UnknownCodecError(BaseZarrError):
     """
-    Raised when a unknown codec was used.
+    Raised when an unknown codec was used.
     """
 
 
