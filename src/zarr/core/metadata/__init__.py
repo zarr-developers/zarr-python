@@ -5,7 +5,7 @@ from .v3 import ArrayMetadataJSON_V3, ArrayV3Metadata
 
 ArrayMetadata: TypeAlias = ArrayV2Metadata | ArrayV3Metadata
 ArrayMetadataDict: TypeAlias = ArrayV2MetadataDict | ArrayMetadataJSON_V3
-T_ArrayMetadata = TypeVar("T_ArrayMetadata", ArrayV2Metadata, ArrayV3Metadata)
+T_ArrayMetadata = TypeVar("T_ArrayMetadata", ArrayV2Metadata, ArrayV3Metadata, covariant=True)
 
 __all__ = [
     "ArrayMetadata",
