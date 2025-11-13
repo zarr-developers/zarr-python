@@ -566,6 +566,26 @@ In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is
 This means that `10*10` chunks are stored in each shard, and there are `10*10` shards in total.
 Without the `shards` argument, there would be 10,000 chunks stored as individual files.
 
+## Accessing chunks and shards
+
+Arrays have useful properties for accessing data aligned to chunks and shards.
+This can be useful for getting slices that can be used to write to shards in parallel, or read from chunks in parallel.
+
+```python exec="true" session="arrays" source="above" result="ansi"
+a = zarr.create_array(store={}, shape=(100, 50), shards=(50, 40), chunks=(25, 20), dtype='uint8')
+
+print("All shard slices:")
+for shard_slice in a.shard_slices:
+    print(shard_slice)
+    # shard_data = a[shard_slice]
+
+print("All chunk slices:")
+for chunk_slice in a.chunk_slices:
+    print(chunk_slice)
+    # chunk_data = a[chunk_slice]
+```
+
+
 ## Missing features in 3.0
 
 The following features have not been ported to 3.0 yet.
