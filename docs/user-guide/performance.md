@@ -81,6 +81,8 @@ z6 = zarr.create_array(store={}, shape=(10000, 10000, 1000), shards=(1000, 1000,
 print(z6.info)
 ```
 
+`shards` can be `"auto"` as well, in which case the `array.max_bytes_per_shard_for_auto_sharding` setting can be used to control the size of shards; otherwise, a default is used.
+
 ### Chunk memory layout
 
 The order of bytes **within each chunk** of an array can be changed via the
