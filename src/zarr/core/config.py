@@ -97,7 +97,7 @@ config = Config(
                 "order": "C",
                 "write_empty_chunks": False,
             },
-            "async": {"concurrency": 64, "timeout": None},
+            "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
