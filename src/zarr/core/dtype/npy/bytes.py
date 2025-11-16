@@ -9,7 +9,6 @@ import numpy as np
 
 from zarr.core.common import JSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
@@ -20,6 +19,7 @@ from zarr.core.dtype.common import (
 )
 from zarr.core.dtype.npy.common import check_json_array_of_ints, check_json_str
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.errors import DataTypeValidationError
 
 BytesLike = np.bytes_ | str | bytes | int
 
@@ -1327,6 +1327,8 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
     Wraps the NumPy "object" data type. Scalars for this data type are instances of ``bytes``.
 
+    This data type inherits from `VariableLengthBytes` for backwards compatibility.
+
     Attributes
     ----------
     dtype_cls: ClassVar[type[np.dtypes.ObjectDType]] = np.dtypes.ObjectDType
@@ -1436,7 +1438,7 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
             True if the input is "bytes", False otherwise.
         """
 
-        return data in (cls._zarr_v3_name, "bytes")
+        return data in (cls._zarr_v3_name, "variable_length_bytes")
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:
@@ -1545,12 +1547,12 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
         return b""
 
-    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> tuple[int, ...]:
+    def to_json_scalar(self, data: object, *, zarr_format: ZarrFormat) -> str:
         """
         Convert a scalar to a JSON-serializable tuple of integers.
 
         This method encodes the given scalar as bytes and then
-        encodes the bytes as a tuple of ints.
+        encodes the bytes as a base64-encoded string.
 
         Parameters
         ----------
@@ -1561,14 +1563,14 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
 
         Returns
         -------
-        tuple[int, ...]
-            A tuple of ints, each representing a byte in the bytes scalar.
+        str
+            A base64-encoded string.
         """
-        return tuple(self.cast_scalar(data))
+        return base64_encode_bytes(self.cast_scalar(data))
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> bytes:
         """
-        Decode a base64-encoded JSON string to bytes.
+        Decode a base64-encoded JSON string or sequence of integers to bytes.
 
         Parameters
         ----------
@@ -1585,14 +1587,14 @@ class Bytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
         Raises
         ------
         TypeError
-            If the input data is not a base64-encoded string.
+            If the input data is not a base64-encoded string or a sequence of integers.
         """
         if check_json_str(data):
             return base64_decode_bytes(data)
         if check_json_array_of_ints(data):
             return bytes(data)
         raise TypeError(
-            f"Invalid type: {data}. Expected a sequence of integers."
+            f"Invalid type: {data}. Expected a sequence of integers or a base64-encoded string."
         )  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[bytes | str]:

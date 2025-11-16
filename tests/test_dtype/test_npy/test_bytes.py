@@ -2,6 +2,11 @@ import numpy as np
 import pytest
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
+from zarr.core.dtype import (
+    data_type_registry,
+    disable_legacy_bytes_dtype,
+    enable_legacy_bytes_dtype,
+)
 from zarr.core.dtype.npy.bytes import Bytes, NullTerminatedBytes, RawBytes, VariableLengthBytes
 from zarr.errors import UnstableSpecificationWarning
 
@@ -123,12 +128,12 @@ class TestBytes(BaseTestZDType):
     )
 
     scalar_v2_params = (
-        (Bytes(), ()),
-        (Bytes(), (1, 2)),
+        (Bytes(), ""),
+        (Bytes(), "YWI="),
     )
     scalar_v3_params = (
-        (Bytes(), ()),
-        (Bytes(), (1, 2)),
+        (Bytes(), ""),
+        (Bytes(), "YWI="),
     )
     cast_value_params = (
         (Bytes(), "", b""),
@@ -141,12 +146,19 @@ class TestBytes(BaseTestZDType):
 
 def test_bytes_string_fill_alias() -> None:
     """
-    Test that the bytes dtype reads the base64-string-encoded fill value
-    used by the variable_length_bytes dtype.
+    Test that the bytes dtype parses a sequence of ints as a valid JSON
+    encoding for a bytes scalar.
     """
-    data = "YWJjZA=="
+    data = (1, 2, 3)
     a = Bytes().from_json_scalar(data, zarr_format=3)
-    b = VariableLengthBytes().from_json_scalar(data, zarr_format=3)
+    b = bytes(data)
+    assert a == b
+
+
+def test_bytes_alias() -> None:
+    """Test that "variable_length_bytes" is an accepted alias for "bytes" in JSON metadata"""
+    a = Bytes.from_json("bytes", zarr_format=3)
+    b = Bytes.from_json("variable_length_bytes", zarr_format=3)
     assert a == b
 
 
@@ -219,3 +231,24 @@ def test_invalid_size(zdtype_cls: type[NullTerminatedBytes] | type[RawBytes]) ->
     msg = f"length must be >= 1, got {length}."
     with pytest.raises(ValueError, match=msg):
         zdtype_cls(length=length)
+
+
+def test_legacy_bytes_compatibility() -> None:
+    """
+    Test that the enable_legacy_bytes_dtype function unregisters the Bytes
+    dtype and inserts the VariableLengthBytes dtype in the registry. Also
+    test that this operation is reversed by the disable_legacy_bytes_dtype()
+    function.
+    """
+    assert "bytes" in data_type_registry.contents
+    assert "variable_length_bytes" not in data_type_registry.contents
+
+    enable_legacy_bytes_dtype()
+
+    assert "bytes" not in data_type_registry.contents
+    assert "variable_length_bytes" in data_type_registry.contents
+
+    disable_legacy_bytes_dtype()
+
+    assert "bytes" in data_type_registry.contents
+    assert "variable_length_bytes" not in data_type_registry.contents

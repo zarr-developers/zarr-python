@@ -6,10 +6,12 @@ __all__ = [
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
     "ContainsGroupError",
+    "DataTypeValidationError",
     "GroupNotFoundError",
     "MetadataValidationError",
     "NegativeStepError",
     "NodeTypeValidationError",
+    "ScalarTypeValidationError",
     "UnstableSpecificationWarning",
     "VindexInvalidSelectionError",
     "ZarrDeprecationWarning",
@@ -144,3 +146,13 @@ class BoundsCheckError(IndexError): ...
 
 
 class ArrayIndexError(IndexError): ...
+
+
+class DataTypeValidationError(ValueError): ...
+
+
+class ScalarTypeValidationError(ValueError): ...
+
+
+class DataTypeResolutionError(ValueError):
+    """Error raised when an input cannot be unambiguously resolved to a Zarr data type class."""

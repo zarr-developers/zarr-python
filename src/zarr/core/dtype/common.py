@@ -151,12 +151,6 @@ def unpack_dtype_json(data: DTypeSpec_V2 | DTypeSpec_V3) -> DTypeJSON:
     return data
 
 
-class DataTypeValidationError(ValueError): ...
-
-
-class ScalarTypeValidationError(ValueError): ...
-
-
 @dataclass(frozen=True, kw_only=True)
 class HasLength:
     """

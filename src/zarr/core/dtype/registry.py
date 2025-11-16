@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 
-from zarr.core.dtype.common import (
-    DataTypeValidationError,
-    DTypeJSON,
-)
+from zarr.errors import DataTypeResolutionError, DataTypeValidationError
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
 
     from zarr.core.common import ZarrFormat
+    from zarr.core.dtype.common import (
+        DTypeJSON,
+    )
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 
@@ -173,8 +173,8 @@ class DataTypeRegistry:
                 "entirely by providing a specific Zarr data type when creating your array."
                 "For more information, see https://github.com/zarr-developers/zarr-python/issues/3117"
             )
-            raise ValueError(msg)
-        raise ValueError(f"No Zarr data type found that matches dtype '{dtype!r}'")
+            raise DataTypeResolutionError(msg)
+        raise DataTypeResolutionError(f"No Zarr data type found that matches dtype '{dtype!r}'")
 
     def match_json(
         self, data: DTypeJSON, *, zarr_format: ZarrFormat
@@ -198,11 +198,27 @@ class DataTypeRegistry:
         ------
         ValueError
             If no matching Zarr data type is found for the given JSON data.
-        """
 
+        Notes
+        -----
+
+        If multiple matches are found, this function raises a ValueError. In this case
+        conflicting data types must be unregistered, or the Zarr data type should be explicitly
+        constructed.
+        """
+        matched: list[ZDType[TBaseDType, TBaseScalar]] = []
         for val in self.contents.values():
-            try:
-                return val.from_json(data, zarr_format=zarr_format)
-            except DataTypeValidationError:
-                pass
-        raise ValueError(f"No Zarr data type found that matches {data!r}")
+            with contextlib.suppress(DataTypeValidationError):
+                matched.append(val.from_json(data, zarr_format=zarr_format))
+        if len(matched) == 1:
+            return matched[0]
+        elif len(matched) > 1:
+            msg = (
+                f"Zarr data type resolution from {data} failed. "
+                f"Multiple data type wrappers found that match dtype '{data}': {matched}. "
+                "You should unregister one of these data types, or avoid Zarr data type inference "
+                "entirely by providing a specific Zarr data type when creating your array."
+                "For more information, see https://github.com/zarr-developers/zarr-python/issues/3117"
+            )
+            raise DataTypeResolutionError(msg)
+        raise DataTypeResolutionError(f"No Zarr data type found that matches {data!r}")

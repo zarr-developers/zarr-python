@@ -25,11 +25,11 @@ import zarr
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype import ZDType, data_type_registry
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     check_dtype_spec_v2,
 )
+from zarr.errors import DataTypeValidationError
 
 # This is the int2 array data type
 int2_dtype_cls = type(np.dtype("int2"))
