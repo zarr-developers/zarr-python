@@ -2041,7 +2041,7 @@ class Array(Generic[T_ArrayMetadata]):
     _async_array: AsyncArray[T_ArrayMetadata]
 
     @property
-    def async_array(self) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    def async_array(self) -> AsyncArray[T_ArrayMetadata]:
         """An asynchronous version of the current array.  Useful for batching requests.
 
         Returns
