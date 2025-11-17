@@ -125,7 +125,7 @@ class Buffer(ABC):
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
 
-    A Buffer is backed by a underlying array-like instance that represents
+    A Buffer is backed by an underlying array-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     array-like instance can be copied/converted to a regular Numpy array
@@ -315,7 +315,7 @@ class NDBuffer:
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by a underlying ndarray-like instance that represents
+    A NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
