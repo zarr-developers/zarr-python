@@ -1302,6 +1302,26 @@ class AsyncGroup:
 
         return self
 
+    async def refresh_attributes(self) -> AsyncGroup:
+        """Reload the attributes of this group from the store.
+
+        Returns
+        -------
+        self : AsyncGroup
+            The group updated with the newest attributes from storage.
+        """
+
+        reparsed_metadata = await _read_group_metadata(
+            store=self.store_path.store,
+            path=self.store_path.path,
+            zarr_format=self.metadata.zarr_format,
+        )
+
+        self.metadata.attributes.clear()
+        self.metadata.attributes.update(reparsed_metadata.attributes)
+
+        return self
+
     def __repr__(self) -> str:
         return f"<AsyncGroup {self.store_path}>"
 
@@ -1814,6 +1834,7 @@ class Group(SyncMixin):
     """
 
     _async_group: AsyncGroup
+    cache_attrs: bool | None = field(default=None)
 
     @classmethod
     def from_store(
@@ -1823,6 +1844,7 @@ class Group(SyncMixin):
         attributes: dict[str, Any] | None = None,
         zarr_format: ZarrFormat = 3,
         overwrite: bool = False,
+        cache_attrs: bool | None = None,
     ) -> Group:
         """Instantiate a group from an initialized store.
 
@@ -1838,6 +1860,10 @@ class Group(SyncMixin):
             Zarr storage format version.
         overwrite : bool, optional
             If True, do not raise an error if the group already exists.
+        cache_attrs : bool, optional
+            If True (default), user attributes will be cached for attribute read
+            operations. If False, user attributes are reloaded from the store prior
+            to all attribute read operations.
 
         Returns
         -------
@@ -1858,13 +1884,15 @@ class Group(SyncMixin):
             ),
         )
 
-        return cls(obj)
+        return cls(obj, cache_attrs=cache_attrs)
 
     @classmethod
     def open(
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
+        *,
+        cache_attrs: bool | None = None,
     ) -> Group:
         """Open a group from an initialized store.
 
@@ -1876,6 +1904,10 @@ class Group(SyncMixin):
             for a description of all valid StoreLike values.
         zarr_format : {2, 3, None}, optional
             Zarr storage format version.
+        cache_attrs : bool, optional
+            If True (default), user attributes will be cached for attribute read
+            operations. If False, user attributes are reloaded from the store prior
+            to all attribute read operations.
 
         Returns
         -------
@@ -1883,7 +1915,7 @@ class Group(SyncMixin):
             Group instantiated from the store.
         """
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
-        return cls(obj)
+        return cls(obj, cache_attrs=cache_attrs)
 
     def __getitem__(self, path: str) -> Array | Group:
         """Obtain a group member.
@@ -2075,6 +2107,8 @@ class Group(SyncMixin):
     @property
     def attrs(self) -> Attributes:
         """Attributes of this Group"""
+        if self.cache_attrs is False:
+            self.refresh_attributes()
         return Attributes(self)
 
     @property
@@ -2139,6 +2173,11 @@ class Group(SyncMixin):
         {'foo': 'bar'}
         """
         self._sync(self._async_group.update_attributes(new_attributes))
+        return self
+
+    def refresh_attributes(self) -> Group:
+        """Reload the attributes of this Group from the store."""
+        self._sync(self._async_group.refresh_attributes())
         return self
 
     def nmembers(self, max_depth: int | None = 0) -> int:
