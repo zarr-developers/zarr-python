@@ -966,7 +966,7 @@ async def test_nbytes(
 
 
 @pytest.mark.parametrize(
-    ("array_shape", "chunk_shape", "max_bytes_per_shard_for_auto_sharding", "expected_shards"),
+    ("array_shape", "chunk_shape", "target_shard_size_bytes", "expected_shards"),
     [
         pytest.param(
             (256, 256),
@@ -997,7 +997,7 @@ async def test_nbytes(
 def test_auto_partition_auto_shards(
     array_shape: tuple[int, ...],
     chunk_shape: tuple[int, ...],
-    max_bytes_per_shard_for_auto_sharding: int | None,
+    target_shard_size_bytes: int | None,
     expected_shards: tuple[int, ...],
 ) -> None:
     """
@@ -1009,9 +1009,7 @@ def test_auto_partition_auto_shards(
         ZarrUserWarning,
         match="Automatic shard shape inference is experimental and may change without notice.",
     ):
-        with zarr.config.set(
-            {"array.max_bytes_per_shard_for_auto_sharding": max_bytes_per_shard_for_auto_sharding}
-        ):
+        with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}):
             auto_shards, _ = _auto_partition(
                 array_shape=array_shape,
                 chunk_shape=chunk_shape,

@@ -206,6 +206,27 @@ class RegularChunkGrid(ChunkGrid):
 def _guess_num_chunks_per_axis_shard(
     chunk_shape: tuple[int, ...], item_size: int, max_bytes: int, array_shape: tuple[int, ...]
 ) -> int:
+    """Generate the number of chunks per axis to hit a target max byte size for a shard.
+
+    For example, for a (2,2,2) chunk size and item size 4, maximum bytes of 256 would return 2.
+    In other words the shard would be a (2,2,2) grid of (2,2,2) chunks
+    i.e., prod(chunk_shape) * (returned_val * len(chunk_shape)) * item_size = 256 bytes.
+
+    Parameters
+    ----------
+    chunk_shape
+        The shape of the (inner) chunks.
+    item_size
+        The item size of the data i.e., 2 for uint16.
+    max_bytes
+        The maximum number of bytes per shard to allow.
+    array_shape
+        The shape of the underlying array.
+
+    Returns
+    -------
+        The number of chunks per axis.
+    """
     bytes_per_chunk = np.prod(chunk_shape) * item_size
     if max_bytes < bytes_per_chunk:
         return 1
@@ -254,21 +275,19 @@ def _auto_partition(
                 stacklevel=2,
             )
             _shards_out = ()
-            max_bytes_per_shard_for_auto_sharding = zarr.config.get(
-                "array.max_bytes_per_shard_for_auto_sharding", None
-            )
+            target_shard_size_bytes = zarr.config.get("array.target_shard_size_bytes", None)
             num_chunks_per_shard_axis = (
                 _guess_num_chunks_per_axis_shard(
                     chunk_shape=_chunks_out,
                     item_size=item_size,
-                    max_bytes=max_bytes_per_shard_for_auto_sharding,
+                    max_bytes=target_shard_size_bytes,
                     array_shape=array_shape,
                 )
-                if (has_auto_shard := (max_bytes_per_shard_for_auto_sharding is not None))
+                if (has_auto_shard := (target_shard_size_bytes is not None))
                 else 2
             )
             for a_shape, c_shape in zip(array_shape, _chunks_out, strict=True):
-                # The previous heuristic was `a_shape // c_shape > 8` and now, with max_bytes_per_shard_for_auto_sharding, we only check that the shard size is less than the array size.
+                # The previous heuristic was `a_shape // c_shape > 8` and now, with target_shard_size_bytes, we only check that the shard size is less than the array size.
                 can_shard_axis = a_shape // c_shape > 8 if not has_auto_shard else True
                 if can_shard_axis:
                     _shards_out += (c_shape * num_chunks_per_shard_axis,)
