@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+    from zarr.types import AnyArray
 
 import contextlib
 from typing import Literal
@@ -242,7 +243,7 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
 def test_open_normalized_path(
     memory_store: MemoryStore, path: str, node_type: Literal["array", "group"]
 ) -> None:
-    node: Group | Array
+    node: Group | AnyArray
     if node_type == "group":
         node = group(store=memory_store, path=path)
     elif node_type == "array":
@@ -1519,7 +1520,7 @@ def test_no_overwrite_load(tmp_path: Path) -> None:
         zarr.zeros_like,
     ],
 )
-def test_auto_chunks(f: Callable[..., Array]) -> None:
+def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
     # Make sure chunks are set automatically across the public API
     # TODO: test shards with this test too
     shape = (1000, 1000)
