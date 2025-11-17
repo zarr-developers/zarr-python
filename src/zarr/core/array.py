@@ -2040,6 +2040,16 @@ class Array(Generic[T_ArrayMetadata]):
 
     _async_array: AsyncArray[T_ArrayMetadata]
 
+    @property
+    def async_array(self) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+        """An asynchronous version of the current array.  Useful for batching requests.
+
+        Returns
+        -------
+            An asynchronous array whose metadata + store matches that of this synchronous array.
+        """
+        return self._async_array
+
     @classmethod
     @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
     def create(
@@ -2297,7 +2307,7 @@ class Array(Generic[T_ArrayMetadata]):
 
     @property
     def store(self) -> Store:
-        return self._async_array.store
+        return self.async_array.store
 
     @property
     def ndim(self) -> int:
@@ -2308,7 +2318,7 @@ class Array(Generic[T_ArrayMetadata]):
         int
             The number of dimensions in the array.
         """
-        return self._async_array.ndim
+        return self.async_array.ndim
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -2319,7 +2329,7 @@ class Array(Generic[T_ArrayMetadata]):
         tuple[int, ...]
             The shape of the array.
         """
-        return self._async_array.shape
+        return self.async_array.shape
 
     @shape.setter
     def shape(self, value: tuple[int, ...]) -> None:
@@ -2339,7 +2349,7 @@ class Array(Generic[T_ArrayMetadata]):
         tuple
             A tuple of integers representing the length of each dimension of a chunk.
         """
-        return self._async_array.chunks
+        return self.async_array.chunks
 
     @property
     def shards(self) -> tuple[int, ...] | None:
@@ -2354,7 +2364,7 @@ class Array(Generic[T_ArrayMetadata]):
         tuple | None
             A tuple of integers representing the length of each dimension of a shard or None if sharding is not used.
         """
-        return self._async_array.shards
+        return self.async_array.shards
 
     @property
     def size(self) -> int:
@@ -2365,7 +2375,7 @@ class Array(Generic[T_ArrayMetadata]):
         int
             Total number of elements in the array.
         """
-        return self._async_array.size
+        return self.async_array.size
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -2376,7 +2386,7 @@ class Array(Generic[T_ArrayMetadata]):
         np.dtype
             The NumPy data type.
         """
-        return self._async_array.dtype
+        return self.async_array.dtype
 
     @property
     def attrs(self) -> Attributes:
@@ -2396,33 +2406,33 @@ class Array(Generic[T_ArrayMetadata]):
     @property
     def path(self) -> str:
         """Storage path."""
-        return self._async_array.path
+        return self.async_array.path
 
     @property
     def name(self) -> str:
         """Array name following h5py convention."""
-        return self._async_array.name
+        return self.async_array.name
 
     @property
     def basename(self) -> str:
         """Final component of name."""
-        return self._async_array.basename
+        return self.async_array.basename
 
     @property
     def metadata(self) -> ArrayMetadata:
-        return self._async_array.metadata
+        return self.async_array.metadata
 
     @property
     def store_path(self) -> StorePath:
-        return self._async_array.store_path
+        return self.async_array.store_path
 
     @property
     def order(self) -> MemoryOrder:
-        return self._async_array.order
+        return self.async_array.order
 
     @property
     def read_only(self) -> bool:
-        return self._async_array.read_only
+        return self.async_array.read_only
 
     @property
     def fill_value(self) -> Any:
@@ -2434,14 +2444,14 @@ class Array(Generic[T_ArrayMetadata]):
         Filters that are applied to each chunk of the array, in order, before serializing that
         chunk to bytes.
         """
-        return self._async_array.filters
+        return self.async_array.filters
 
     @property
     def serializer(self) -> None | ArrayBytesCodec:
         """
         Array-to-bytes codec to use for serializing the chunks into bytes.
         """
-        return self._async_array.serializer
+        return self.async_array.serializer
 
     @property
     @deprecated("Use Array.compressors instead.", category=ZarrDeprecationWarning)
@@ -2453,7 +2463,7 @@ class Array(Generic[T_ArrayMetadata]):
             `array.compressor` is deprecated since v3.0.0 and will be removed in a future release.
             Use [`array.compressors`][zarr.Array.compressors] instead.
         """
-        return self._async_array.compressor
+        return self.async_array.compressor
 
     @property
     def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...]:
@@ -2461,28 +2471,28 @@ class Array(Generic[T_ArrayMetadata]):
         Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
         """
-        return self._async_array.compressors
+        return self.async_array.compressors
 
     @property
     def cdata_shape(self) -> tuple[int, ...]:
         """
         The shape of the chunk grid for this array.
         """
-        return self._async_array._chunk_grid_shape
+        return self.async_array._chunk_grid_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:
         """
         The shape of the chunk grid for this array.
         """
-        return self._async_array._chunk_grid_shape
+        return self.async_array._chunk_grid_shape
 
     @property
     def _shard_grid_shape(self) -> tuple[int, ...]:
         """
         The shape of the shard grid for this array.
         """
-        return self._async_array._shard_grid_shape
+        return self.async_array._shard_grid_shape
 
     @property
     def nchunks(self) -> int:
@@ -2492,14 +2502,14 @@ class Array(Generic[T_ArrayMetadata]):
         Note that if a sharding codec is used, then the number of chunks may exceed the number of
         stored objects supporting this array.
         """
-        return self._async_array.nchunks
+        return self.async_array.nchunks
 
     @property
     def _nshards(self) -> int:
         """
         The number of shards in the stored representation of this array.
         """
-        return self._async_array._nshards
+        return self.async_array._nshards
 
     @property
     def nbytes(self) -> int:
@@ -2514,7 +2524,7 @@ class Array(Generic[T_ArrayMetadata]):
         dtypes. It is not possible to determine the size of an array with variable-length elements
         from the shape and dtype alone.
         """
-        return self._async_array.nbytes
+        return self.async_array.nbytes
 
     @property
     def nchunks_initialized(self) -> int:
@@ -2540,7 +2550,7 @@ class Array(Generic[T_ArrayMetadata]):
         >>> arr.nchunks_initialized
         6
         """
-        return sync(self._async_array.nchunks_initialized())
+        return sync(self.async_array.nchunks_initialized())
 
     @property
     def _nshards_initialized(self) -> int:
@@ -2562,7 +2572,7 @@ class Array(Generic[T_ArrayMetadata]):
         >>> arr._nshard_initialized
         3
         """
-        return sync(self._async_array._nshards_initialized())
+        return sync(self.async_array._nshards_initialized())
 
     def nbytes_stored(self) -> int:
         """
@@ -2572,7 +2582,7 @@ class Array(Generic[T_ArrayMetadata]):
         -------
         size : int
         """
-        return sync(self._async_array.nbytes_stored())
+        return sync(self.async_array.nbytes_stored())
 
     def _iter_shard_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2593,7 +2603,7 @@ class Array(Generic[T_ArrayMetadata]):
         str
             The storage key of each shard in the selection.
         """
-        return self._async_array._iter_shard_keys(origin=origin, selection_shape=selection_shape)
+        return self.async_array._iter_shard_keys(origin=origin, selection_shape=selection_shape)
 
     def _iter_chunk_coords(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2619,7 +2629,7 @@ class Array(Generic[T_ArrayMetadata]):
         tuple[int, ...]
             The coordinates of each chunk in the selection.
         """
-        return self._async_array._iter_chunk_coords(origin=origin, selection_shape=selection_shape)
+        return self.async_array._iter_chunk_coords(origin=origin, selection_shape=selection_shape)
 
     def _iter_shard_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2645,7 +2655,7 @@ class Array(Generic[T_ArrayMetadata]):
         tuple[int, ...]
             The coordinates of each shard in the selection.
         """
-        return self._async_array._iter_shard_coords(origin=origin, selection_shape=selection_shape)
+        return self.async_array._iter_shard_coords(origin=origin, selection_shape=selection_shape)
 
     def _iter_chunk_regions(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2665,7 +2675,7 @@ class Array(Generic[T_ArrayMetadata]):
         tuple[slice, ...]
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        return self._async_array._iter_chunk_regions(origin=origin, selection_shape=selection_shape)
+        return self.async_array._iter_chunk_regions(origin=origin, selection_shape=selection_shape)
 
     def _iter_shard_regions(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2685,7 +2695,7 @@ class Array(Generic[T_ArrayMetadata]):
         tuple[slice, ...]
             A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        return self._async_array._iter_shard_regions(origin=origin, selection_shape=selection_shape)
+        return self.async_array._iter_shard_regions(origin=origin, selection_shape=selection_shape)
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
@@ -3089,7 +3099,7 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         return sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
                 out=out,
                 fields=fields,
@@ -3198,7 +3208,7 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
-        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_orthogonal_selection(
         self,
@@ -3327,7 +3337,7 @@ class Array(Generic[T_ArrayMetadata]):
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
             )
         )
@@ -3446,7 +3456,7 @@ class Array(Generic[T_ArrayMetadata]):
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
-            self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+            self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
         )
 
     def get_mask_selection(
@@ -3534,7 +3544,7 @@ class Array(Generic[T_ArrayMetadata]):
             prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         return sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
             )
         )
@@ -3623,7 +3633,7 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
-        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_coordinate_selection(
         self,
@@ -3712,7 +3722,7 @@ class Array(Generic[T_ArrayMetadata]):
             prototype = default_buffer_prototype()
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
         out_array = sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
             )
         )
@@ -3825,7 +3835,7 @@ class Array(Generic[T_ArrayMetadata]):
                 f"elements with an array of {value.shape[0]} elements."
             )
 
-        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_block_selection(
         self,
@@ -3927,7 +3937,7 @@ class Array(Generic[T_ArrayMetadata]):
             prototype = default_buffer_prototype()
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
-            self._async_array._get_selection(
+            self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
             )
         )
@@ -4027,7 +4037,7 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
-        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     @property
     def vindex(self) -> VIndex:
@@ -4091,7 +4101,7 @@ class Array(Generic[T_ArrayMetadata]):
         #>(50, 50)
         ```
         """
-        sync(self._async_array.resize(new_shape))
+        sync(self.async_array.resize(new_shape))
 
     def append(self, data: npt.ArrayLike, axis: int = 0) -> tuple[int, ...]:
         """Append `data` to `axis`.
@@ -4127,7 +4137,7 @@ class Array(Generic[T_ArrayMetadata]):
         >>> z.shape
         (20000, 2000)
         """
-        return sync(self._async_array.append(data, axis=axis))
+        return sync(self.async_array.append(data, axis=axis))
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         """
@@ -4154,7 +4164,7 @@ class Array(Generic[T_ArrayMetadata]):
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        new_array = sync(self._async_array.update_attributes(new_attributes))
+        new_array = sync(self.async_array.update_attributes(new_attributes))
         return type(self)(new_array)
 
     def __repr__(self) -> str:
@@ -4189,7 +4199,7 @@ class Array(Generic[T_ArrayMetadata]):
         Codecs             : [BytesCodec(endian=<Endian.little: 'little'>)]
         No. bytes          : 40
         """
-        return self._async_array.info
+        return self.async_array.info
 
     def info_complete(self) -> Any:
         """
@@ -4209,7 +4219,7 @@ class Array(Generic[T_ArrayMetadata]):
         -------
         [zarr.Array.info][] - The statically known subset of metadata about an array.
         """
-        return sync(self._async_array.info_complete())
+        return sync(self.async_array.info_complete())
 
 
 async def _shards_initialized(
@@ -4521,7 +4531,7 @@ async def from_array(
             async def _copy_array_region(
                 chunk_coords: tuple[int, ...] | slice, _data: AnyArray
             ) -> None:
-                arr = await _data._async_array.getitem(chunk_coords)
+                arr = await _data.async_array.getitem(chunk_coords)
                 await result.setitem(chunk_coords, arr)
 
             # Stream data from the source array to the new array
