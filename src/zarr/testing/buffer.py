@@ -45,7 +45,7 @@ class NDBufferUsingTestNDArrayLike(cpu.NDBuffer):
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
-        """Overwrite `NDBuffer.create` to create an TestNDArrayLike instance"""
+        """Overwrite `NDBuffer.create` to create a TestNDArrayLike instance"""
         ret = cls(TestNDArrayLike(shape=shape, dtype=dtype, order=order))
         if fill_value is not None:
             ret.fill(fill_value)
