@@ -378,7 +378,7 @@ def orthogonal_indices(
     """
     Strategy that returns
     (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
-    (2) an tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    (2) a tuple of integer arrays that can be used for equivalent indexing of numpy arrays
     """
     zindexer = []
     npindexer = []
