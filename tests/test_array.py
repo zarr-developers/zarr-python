@@ -966,33 +966,56 @@ async def test_nbytes(
 
 
 @pytest.mark.parametrize(
-    ("array_shape", "chunk_shape"),
-    [((256,), (2,))],
+    ("array_shape", "chunk_shape", "target_shard_size_bytes", "expected_shards"),
+    [
+        pytest.param(
+            (256, 256),
+            (32, 32),
+            129 * 129,
+            (128, 128),
+            id="2d_chunking_max_byes_does_not_evenly_divide",
+        ),
+        pytest.param(
+            (256, 256), (32, 32), 64 * 64, (64, 64), id="2d_chunking_max_byes_evenly_divides"
+        ),
+        pytest.param(
+            (256, 256),
+            (64, 32),
+            128 * 128,
+            (128, 64),
+            id="2d_non_square_chunking_max_byes_evenly_divides",
+        ),
+        pytest.param((256,), (2,), 255, (254,), id="max_bytes_just_below_array_shape"),
+        pytest.param((256,), (2,), 256, (256,), id="max_bytes_equal_to_array_shape"),
+        pytest.param((256,), (2,), 16, (16,), id="max_bytes_normal_val"),
+        pytest.param((256,), (2,), 2, (2,), id="max_bytes_same_as_chunk"),
+        pytest.param((256,), (2,), 1, (2,), id="max_bytes_less_than_chunk"),
+        pytest.param((256,), (2,), None, (4,), id="use_default_auto_setting"),
+        pytest.param((4,), (2,), None, (2,), id="small_array_shape_does_not_shard"),
+    ],
 )
 def test_auto_partition_auto_shards(
-    array_shape: tuple[int, ...], chunk_shape: tuple[int, ...]
+    array_shape: tuple[int, ...],
+    chunk_shape: tuple[int, ...],
+    target_shard_size_bytes: int | None,
+    expected_shards: tuple[int, ...],
 ) -> None:
     """
     Test that automatically picking a shard size returns a tuple of 2 * the chunk shape for any axis
     where there are 8 or more chunks.
     """
     dtype = np.dtype("uint8")
-    expected_shards: tuple[int, ...] = ()
-    for cs, a_len in zip(chunk_shape, array_shape, strict=False):
-        if a_len // cs >= 8:
-            expected_shards += (2 * cs,)
-        else:
-            expected_shards += (cs,)
     with pytest.warns(
         ZarrUserWarning,
         match="Automatic shard shape inference is experimental and may change without notice.",
     ):
-        auto_shards, _ = _auto_partition(
-            array_shape=array_shape,
-            chunk_shape=chunk_shape,
-            shard_shape="auto",
-            item_size=dtype.itemsize,
-        )
+        with zarr.config.set({"array.target_shard_size_bytes": target_shard_size_bytes}):
+            auto_shards, _ = _auto_partition(
+                array_shape=array_shape,
+                chunk_shape=chunk_shape,
+                shard_shape="auto",
+                item_size=dtype.itemsize,
+            )
     assert auto_shards == expected_shards
 
 
