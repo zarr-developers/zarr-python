@@ -98,7 +98,7 @@ config = Config(
                 "write_empty_chunks": False,
                 "max_bytes_per_shard_for_auto_sharding": None,
             },
-            "async": {"concurrency": 64, "timeout": None},
+            "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
