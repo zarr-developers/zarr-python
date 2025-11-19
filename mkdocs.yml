@@ -35,25 +35,40 @@ nav:
       - api/zarr/group.md
       - api/zarr/create.md
       - api/zarr/dtype.md
-      - api/zarr/open.md
       - api/zarr/load.md
+      - api/zarr/open.md
       - api/zarr/save.md
-      - api/zarr/buffer.md
-      - api/zarr/convenience.md
-      - api/zarr/config.md
       - api/zarr/codecs.md
+      - api/zarr/codecs/numcodecs.md
+      - api/zarr/config.md
+      - api/zarr/convenience.md
       - api/zarr/errors.md
       - api/zarr/metadata.md
       - api/zarr/registry.md
       - api/zarr/storage.md
-      - api/zarr/testing.md
-      - Async API: api/zarr/api_async.md
-      - Sync API: api/zarr/api_sync.md
       - ABC:
+        - api/zarr/abc/index.md
         - api/zarr/abc/buffer.md
         - api/zarr/abc/codec.md
+        - api/zarr/abc/numcodec.md
         - api/zarr/abc/metadata.md
         - api/zarr/abc/store.md
+      - API:
+        - api/zarr/api/index.md
+        - api/zarr/api/asynchronous.md
+        - api/zarr/api/synchronous.md
+      - Buffer:
+        - api/zarr/buffer/index.md
+        - api/zarr/buffer/cpu.md
+        - api/zarr/buffer/gpu.md
+      - Testing:
+        - api/zarr/testing/index.md
+        - api/zarr/testing/buffer.md
+        - api/zarr/testing/conftest.md
+        - api/zarr/testing/stateful.md
+        - api/zarr/testing/store.md
+        - api/zarr/testing/strategies.md
+        - api/zarr/testing/utils.md
       - deprecated:
         - Convenience sub-module: api/zarr/deprecated/convenience.md
         - Creation sub-module: api/zarr/deprecated/creation.md
@@ -114,7 +129,7 @@ extra_css:
 plugins:
   - autorefs
   - search
-  - markdown-exec
+  # - markdown-exec
   - mkdocstrings:
       enable_inventory: true
       handlers:
@@ -197,8 +212,12 @@ plugins:
         'developers/contributing.html.md': 'contributing.md'
         'developers/index.html.md': 'contributing.md'
         'developers/roadmap.html.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
+        'api/zarr/creation.md': 'api/zarr/deprecated/creation.md'
+        'api/zarr/codecs/numcodecs.md': 'api/zarr/deprecated/creation.md'
+        'api.md': 'api/zarr/index.md'
+        'api/zarr/metadata/migrate_v3.md': 'api/zarr/metadata.md'
 
-# https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
+# Based on https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
 markdown_extensions:
   - admonition
   - attr_list

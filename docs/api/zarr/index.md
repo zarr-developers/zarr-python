@@ -38,8 +38,8 @@ Complete reference documentation for the Zarr-Python API.
 
 Zarr-Python provides both synchronous and asynchronous APIs:
 
-- **[Async API](api_async.md)** - Asynchronous operations for concurrent access
-- **[Sync API](api_sync.md)** - Synchronous operations for simple usage
+- **[Async API](./api/asynchronous.md)** - Asynchronous operations for concurrent access
+- **[Sync API](./api/synchronous.md)** - Synchronous operations for simple usage
 
 ## Abstract Base Classes
 
@@ -52,7 +52,7 @@ The ABC module defines interfaces for extending Zarr:
 ## Utilities
 
 - **[Errors](errors.md)** - Exception classes and error handling
-- **[Testing](testing.md)** - Utilities for testing Zarr-based code
+- **[Testing](testing/index.md)** - Utilities for testing Zarr-based code
 
 
 ## Migration and Compatibility
