@@ -64,7 +64,7 @@ These deprecated modules are maintained for backward compatibility but should be
 
 ## Getting Help
 
-- Check the [User Guide](../user-guide/index.md) for tutorials and examples
+- Check the [User Guide](../../user-guide/index.md) for tutorials and examples
 - Browse function signatures and docstrings in the API reference
 - Report issues on [GitHub](https://github.com/zarr-developers/zarr-python)
 - Join discussions on the [Zarr community forum](https://github.com/zarr-developers/community)
