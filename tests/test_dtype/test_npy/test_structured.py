@@ -27,8 +27,20 @@ class TestStructured(BaseTestZDType):
         np.dtype("|S10"),
     )
     valid_json_v2 = (
-        {"name": [["field1", ">i4"], ["field2", ">f8"]], "object_codec_id": None},
-        {"name": [["field1", ">i8"], ["field2", ">i4"]], "object_codec_id": None},
+        {
+            "name": [
+                ["field1", ">i4"], 
+                ["field2", ">f8"],
+            ], 
+            "object_codec_id": None,
+        },
+        {
+            "name": [
+                ["foo", "<f4"], 
+                ["bar", [["baz", "<f4"], ["qux", "<i8"]]],
+            ],
+            "object_codec_id": None,
+        },
     )
     valid_json_v3 = (
         {

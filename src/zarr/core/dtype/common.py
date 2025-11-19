@@ -85,7 +85,7 @@ def check_structured_dtype_v2_inner(data: object) -> TypeGuard[StructuredName_V2
     if isinstance(data[-1], str):
         return True
     elif isinstance(data[-1], Sequence):
-        return check_structured_dtype_v2_inner(data[-1])
+        return check_structured_dtype_name_v2(data[-1])
     return False
 
 
