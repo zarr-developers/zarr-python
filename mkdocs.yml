@@ -129,7 +129,7 @@ extra_css:
 plugins:
   - autorefs
   - search
-  # - markdown-exec
+  - markdown-exec
   - mkdocstrings:
       enable_inventory: true
       handlers:
