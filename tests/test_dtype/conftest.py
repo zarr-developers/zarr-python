@@ -7,6 +7,7 @@ import numpy as np
 from zarr.core.dtype import data_type_registry
 from zarr.core.dtype.common import HasLength
 from zarr.core.dtype.npy.structured import Structured
+from zarr.core.dtype.npy.subarray import Subarray
 from zarr.core.dtype.npy.time import DateTime64, TimeDelta64
 from zarr.core.dtype.wrapper import ZDType
 
@@ -18,7 +19,14 @@ for wrapper_cls in data_type_registry.contents.values():
             warnings.simplefilter("ignore")
             zdtype_examples += (
                 wrapper_cls.from_native_dtype(np.dtype([("a", np.float64), ("b", np.int8)])),
+                wrapper_cls.from_native_dtype(
+                    np.dtype([("x", np.bool), ("y", np.float32, (3, 4))])
+                ),
             )
+    elif wrapper_cls is Subarray:
+        # TODO: Subarray does not support V2, so we cannot create an example here
+        # It's intended to be used only as part of Structured dtypes
+        pass
     elif issubclass(wrapper_cls, HasLength):
         zdtype_examples += (wrapper_cls(length=1),)
     elif issubclass(wrapper_cls, DateTime64 | TimeDelta64):

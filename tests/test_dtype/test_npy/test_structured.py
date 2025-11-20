@@ -29,15 +29,29 @@ class TestStructured(BaseTestZDType):
     valid_json_v2 = (
         {
             "name": [
-                ["field1", ">i4"], 
+                ["field1", ">i4"],
                 ["field2", ">f8"],
-            ], 
+            ],
             "object_codec_id": None,
         },
         {
             "name": [
-                ["foo", "<f4"], 
+                ["foo", "<f4"],
                 ["bar", [["baz", "<f4"], ["qux", "<i8"]]],
+            ],
+            "object_codec_id": None,
+        },
+        {
+            "name": [
+                ["field1", ">i8"],
+                ["field2", ">i4", [2, 2, 7]],
+            ],
+            "object_codec_id": None,
+        },
+        {
+            "name": [
+                ["field1", ">i8"],
+                ["field2", [["sub1", "<f4"], ["sub2", "<f8"]], [2, 1]],
             ],
             "object_codec_id": None,
         },
@@ -66,6 +80,24 @@ class TestStructured(BaseTestZDType):
                     [
                         "field2",
                         {"name": "fixed_length_utf32", "configuration": {"length_bytes": 32}},
+                    ],
+                ]
+            },
+        },
+        {
+            "name": "structured",
+            "configuration": {
+                "fields": [
+                    ["field1", "int32"],
+                    [
+                        "field2",
+                        {
+                            "name": "subarray",
+                            "configuration": {
+                                "subdtype": "int16",
+                                "shape": [2, 2, 7],
+                            },
+                        },
                     ],
                 ]
             },

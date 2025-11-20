@@ -606,7 +606,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
         Bool
             True if the dtype is an instance of np.dtypes.VoidDType with no fields, False otherwise.
         """
-        return cls.dtype_cls is type(dtype) and dtype.fields is None
+        return cls.dtype_cls is type(dtype) and dtype.fields is None and dtype.subdtype is None
 
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
