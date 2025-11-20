@@ -2,33 +2,37 @@
 
 <!-- towncrier release notes start -->
 
-# zarr 3.1.4 (2025-10-22)
+# 3.14 (2025-11-20)
 
-## Features
+### Features
 
-- Add the `zarr.experimental` module for unstable user-facing features. ([#3490](https://github.com/zarr-developers/zarr-python/issues3490))
-- Add `zarr.experimental.cache_store.CacheStore`, a `Store` that implements caching by combining two other `Store` instances. See the [docs page](https://zarr.readthedocs.io/en/latest/user-guide/experimental#cachestore) for more information about this feature. ([#3366](https://github.com/zarr-developers/zarr-python/issues3366))
-- Increase the default value of `async.concurrency` from 10 to 64 to improve parallelism and throughput for concurrent I/O operations. This change enables better performance out-of-the-box for most workloads. Users with specific resource constraints or when using many Dask threads may want to lower this value via the `ZARR_ASYNC_CONCURRENCY` environment variable or by setting `zarr.config.set({'async.concurrency': N})`. ([#3526](https://github.com/zarr-developers/zarr-python/issues3526))
+- The `Array` class can now also be parametrized in the same manner as the `AsyncArray` class, allowing Zarr format v2 and v3 `Array`s to be distinguished.
+  New types have been added to `zarr.types` to help with this. ([#3304](https://github.com/zarr-developers/zarr-python/issues3304))
+- Adds `zarr.experimental.cache_store.CacheStore`, a `Store` that implements caching by combining two other `Store` instances. See the [docs page](https://zarr.readthedocs.io/en/latest/user-guide/experimental#cachestore) for more information about this feature. ([#3366](https://github.com/zarr-developers/zarr-python/issues3366))
+- Adds a `zarr.experimental` module for unstable user-facing features. ([#3490](https://github.com/zarr-developers/zarr-python/issues3490))
+- Add a `array.target_shard_size_bytes` to [`zarr.config`][] to allow users to set a maximum number of bytes per-shard when `shards="auto"` in, for example, [`zarr.create_array`][]. ([#3547](https://github.com/zarr-developers/zarr-python/issues3547))
+- Make `async_array` on the [`zarr.Array`][] class public (`_async_array` will remain untouched, but its stability is not guaranteed). ([#3556](https://github.com/zarr-developers/zarr-python/issues3556))
 
-## Bugfixes
+### Bugfixes
 
 - Fix a bug that prevented `PCodec` from being properly resolved when loading arrays using that compressor. ([#3483](https://github.com/zarr-developers/zarr-python/issues3483))
-- Fix a bug where the `"consolidated_metadata"` key was written to metadata documents even when
+- Fixed a bug that prevented Zarr Python from opening Zarr V3 array metadata documents that contained
+   extra keys with permissible values (dicts with a `"must_understand"` key set to `"false"`). ([#3530](https://github.com/zarr-developers/zarr-python/issues3530))
+- Fixed a bug where the `"consolidated_metadata"` key was written to metadata documents even when
   consolidated metadata was not used, resulting in invalid metadata documents. ([#3535](https://github.com/zarr-developers/zarr-python/issues3535))
-- Fix a bug that prevented Zarr Python from opening Zarr V3 array metadata documents that contained
-  extra keys with permissible values (dicts with a `"must_understand"` key set to `"false"`). ([#3530](https://github.com/zarr-developers/zarr-python/issues3530))
+- Improve write performance to large shards by up to 10x. ([#3560](https://github.com/zarr-developers/zarr-python/issues3560))
 
-## Improved Documentation
+### Improved Documentation
 
 - Use mkdocs-material for Zarr-Python documentation ([#3118](https://github.com/zarr-developers/zarr-python/issues3118))
 - Document different values of StoreLike with examples in the user guide. ([#3303](https://github.com/zarr-developers/zarr-python/issues3303))
 - Reorganize the top-level `examples` directory to give each example its own sub-directory. Adds content to the docs for each example. ([#3502](https://github.com/zarr-developers/zarr-python/issues3502))
-- Update 3.0 Migration Guide to include function signature change to zarr.Array.resize function. ([#3536](https://github.com/zarr-developers/zarr-python/issues3536))
+- Updated 3.0 Migration Guide to include function signature change to zarr.Array.resize function. ([#3536](https://github.com/zarr-developers/zarr-python/issues3536))
 
-## Misc
+### Misc
 
-- [#3515](https://github.com/zarr-developers/zarr-python/issues3515)
-- [#3532](https://github.com/zarr-developers/zarr-python/issues3532)
+- [#3515](https://github.com/zarr-developers/zarr-python/issues3515), [#3532](https://github.com/zarr-developers/zarr-python/issues3532), [#3533](https://github.com/zarr-developers/zarr-python/issues3533), [#3553](https://github.com/zarr-developers/zarr-python/issues3553)
+
 
 # zarr 3.1.3 (2025-09-18)
 
