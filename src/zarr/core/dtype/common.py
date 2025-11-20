@@ -93,7 +93,7 @@ def check_structured_dtype_name_v2(data: Sequence[object]) -> TypeGuard[Structur
 
 def check_dtype_name_v2(data: object) -> TypeGuard[DTypeName_V2]:
     """
-    Type guard for narrowing the type of a python object to an valid zarr v2 dtype name.
+    Type guard for narrowing the type of a python object to a valid zarr v2 dtype name.
     """
     if isinstance(data, str):
         return True

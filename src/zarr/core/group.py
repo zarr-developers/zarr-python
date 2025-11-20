@@ -79,6 +79,7 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
     from zarr.core.dtype import ZDTypeLike
+    from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
 logger = logging.getLogger("zarr.group")
 
@@ -111,7 +112,11 @@ def parse_attributes(data: Any) -> dict[str, Any]:
 
 
 @overload
-def _parse_async_node(node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]) -> Array: ...
+def _parse_async_node(node: AsyncArrayV3) -> ArrayV3: ...
+
+
+@overload
+def _parse_async_node(node: AsyncArrayV2) -> ArrayV2: ...
 
 
 @overload
@@ -119,8 +124,8 @@ def _parse_async_node(node: AsyncGroup) -> Group: ...
 
 
 def _parse_async_node(
-    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
-) -> Array | Group:
+    node: AnyAsyncArray | AsyncGroup,
+) -> AnyArray | Group:
     """Wrap an AsyncArray in an Array, or an AsyncGroup in a Group."""
     if isinstance(node, AsyncArray):
         return Array(node)
@@ -710,7 +715,7 @@ class AsyncGroup:
     async def getitem(
         self,
         key: str,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+    ) -> AnyAsyncArray | AsyncGroup:
         """
         Get a subarray or subgroup from the group.
 
@@ -738,7 +743,7 @@ class AsyncGroup:
 
     def _getitem_consolidated(
         self, store_path: StorePath, key: str, prefix: str
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+    ) -> AnyAsyncArray | AsyncGroup:
         # getitem, in the special case where we have consolidated metadata.
         # Note that this is a regular def (non async) function.
         # This shouldn't do any additional I/O.
@@ -801,7 +806,7 @@ class AsyncGroup:
 
     async def get[DefaultT](
         self, key: str, default: DefaultT | None = None
-    ) -> AsyncArray[Any] | AsyncGroup | DefaultT | None:
+    ) -> AnyAsyncArray | AsyncGroup | DefaultT | None:
         """Obtain a group member, returning default if not found.
 
         Parameters
@@ -981,9 +986,7 @@ class AsyncGroup:
             grp = await self.create_group(name, overwrite=True)
         else:
             try:
-                item: (
-                    AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]
-                ) = await self.getitem(name)
+                item: AsyncGroup | AnyAsyncArray = await self.getitem(name)
                 if not isinstance(item, AsyncGroup):
                     raise TypeError(
                         f"Incompatible object ({item.__class__.__name__}) already exists"
@@ -1032,7 +1035,7 @@ class AsyncGroup:
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Create an array within this group.
 
         This method lightly wraps [zarr.core.array.create_array][].
@@ -1158,9 +1161,7 @@ class AsyncGroup:
         )
 
     @deprecated("Use AsyncGroup.create_array instead.", category=ZarrDeprecationWarning)
-    async def create_dataset(
-        self, name: str, *, shape: ShapeLike, **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    async def create_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyAsyncArray:
         """Create an array.
 
         !!! warning "Deprecated"
@@ -1201,7 +1202,7 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Obtain an array, creating if it doesn't exist.
 
         !!! warning "Deprecated"
@@ -1239,7 +1240,7 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per [zarr.AsyncGroup.create_dataset][].
@@ -1349,7 +1350,7 @@ class AsyncGroup:
         *,
         use_consolidated_for_children: bool = True,
     ) -> AsyncGenerator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
+        tuple[str, AnyAsyncArray | AsyncGroup],
         None,
     ]:
         """
@@ -1388,7 +1389,7 @@ class AsyncGroup:
     def _members_consolidated(
         self, max_depth: int | None, prefix: str = ""
     ) -> Generator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
+        tuple[str, AnyAsyncArray | AsyncGroup],
         None,
     ]:
         consolidated_metadata = self.metadata.consolidated_metadata
@@ -1413,9 +1414,7 @@ class AsyncGroup:
 
     async def _members(
         self, max_depth: int | None, *, use_consolidated_for_children: bool = True
-    ) -> AsyncGenerator[
-        tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
-    ]:
+    ) -> AsyncGenerator[tuple[str, AnyAsyncArray | AsyncGroup], None]:
         skip_keys: tuple[str, ...]
         if self.metadata.zarr_format == 2:
             skip_keys = (".zattrs", ".zgroup", ".zarray", ".zmetadata")
@@ -1455,9 +1454,7 @@ class AsyncGroup:
         nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
         *,
         overwrite: bool = False,
-    ) -> AsyncIterator[
-        tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]
-    ]:
+    ) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
@@ -1571,9 +1568,7 @@ class AsyncGroup:
 
     async def arrays(
         self,
-    ) -> AsyncGenerator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]], None
-    ]:
+    ) -> AsyncGenerator[tuple[str, AnyAsyncArray], None]:
         """Iterate over arrays."""
         async for key, value in self.members():
             if isinstance(value, AsyncArray):
@@ -1586,7 +1581,7 @@ class AsyncGroup:
 
     async def array_values(
         self,
-    ) -> AsyncGenerator[AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], None]:
+    ) -> AsyncGenerator[AnyAsyncArray, None]:
         """Iterate over array values."""
         async for _, array in self.arrays():
             yield array
@@ -1616,9 +1611,7 @@ class AsyncGroup:
             raise NotImplementedError("'expand' is not yet implemented.")
         return await group_tree_async(self, max_depth=level)
 
-    async def empty(
-        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    async def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an empty array with the specified shape in this Group. The contents will
         be filled with the array's fill value or zeros if no fill value is provided.
 
@@ -1639,9 +1632,7 @@ class AsyncGroup:
         """
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def zeros(
-        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    async def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -1660,9 +1651,7 @@ class AsyncGroup:
         """
         return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def ones(
-        self, *, name: str, shape: tuple[int, ...], **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    async def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -1683,7 +1672,7 @@ class AsyncGroup:
 
     async def full(
         self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -1712,7 +1701,7 @@ class AsyncGroup:
 
     async def empty_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Create an empty sub-array like `data`. The contents will be filled with
         the array's fill value or zeros if no fill value is provided.
 
@@ -1734,7 +1723,7 @@ class AsyncGroup:
 
     async def zeros_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Create a sub-array of zeros like `data`.
 
         Parameters
@@ -1755,7 +1744,7 @@ class AsyncGroup:
 
     async def ones_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Create a sub-array of ones like `data`.
 
         Parameters
@@ -1776,7 +1765,7 @@ class AsyncGroup:
 
     async def full_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    ) -> AnyAsyncArray:
         """Create a sub-array like `data` filled with the `fill_value` of `data` .
 
         Parameters
@@ -1883,7 +1872,7 @@ class Group(SyncMixin):
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
-    def __getitem__(self, path: str) -> Array | Group:
+    def __getitem__(self, path: str) -> AnyArray | Group:
         """Obtain a group member.
 
         Parameters
@@ -2161,7 +2150,7 @@ class Group(SyncMixin):
 
     def members(
         self, max_depth: int | None = 0, *, use_consolidated_for_children: bool = True
-    ) -> tuple[tuple[str, Array | Group], ...]:
+    ) -> tuple[tuple[str, AnyArray | Group], ...]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
@@ -2197,7 +2186,7 @@ class Group(SyncMixin):
         nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
         *,
         overwrite: bool = False,
-    ) -> Iterator[tuple[str, Group | Array]]:
+    ) -> Iterator[tuple[str, Group | AnyArray]]:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
@@ -2336,7 +2325,7 @@ class Group(SyncMixin):
         for _, group in self.groups():
             yield group
 
-    def arrays(self) -> Generator[tuple[str, Array], None]:
+    def arrays(self) -> Generator[tuple[str, AnyArray], None]:
         """Return the sub-arrays of this group as a generator of (name, array) pairs
 
         Examples
@@ -2367,7 +2356,7 @@ class Group(SyncMixin):
         for name, _ in self.arrays():
             yield name
 
-    def array_values(self) -> Generator[Array, None]:
+    def array_values(self) -> Generator[AnyArray, None]:
         """Return an iterator over group members.
 
         Examples
@@ -2475,7 +2464,7 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
-    ) -> Array:
+    ) -> AnyArray:
         """Create an array within this group.
 
         This method lightly wraps [`zarr.core.array.create_array`][].
@@ -2619,7 +2608,7 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         write_data: bool = True,
-    ) -> Array:
+    ) -> AnyArray:
         """Create an array within this group.
 
         This method lightly wraps [zarr.core.array.create_array][].
@@ -2748,7 +2737,7 @@ class Group(SyncMixin):
         )
 
     @deprecated("Use Group.create_array instead.", category=ZarrDeprecationWarning)
-    def create_dataset(self, name: str, **kwargs: Any) -> Array:
+    def create_dataset(self, name: str, **kwargs: Any) -> AnyArray:
         """Create an array.
 
         !!! warning "Deprecated"
@@ -2773,7 +2762,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.", category=ZarrDeprecationWarning)
-    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
+    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
         """Obtain an array, creating if it doesn't exist.
 
         !!! warning "Deprecated"
@@ -2798,7 +2787,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
+    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> AnyArray:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per [zarr.Group.create_array][].
@@ -2816,7 +2805,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
+    def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an empty array with the specified shape in this Group. The contents will be filled with
         the array's fill value or zeros if no fill value is provided.
 
@@ -2837,7 +2826,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
-    def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
+    def zeros(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an array, with zero being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2856,7 +2845,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
-    def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> Array:
+    def ones(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyArray:
         """Create an array, with one being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2877,7 +2866,7 @@ class Group(SyncMixin):
 
     def full(
         self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
-    ) -> Array:
+    ) -> AnyArray:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
         Parameters
@@ -2902,7 +2891,7 @@ class Group(SyncMixin):
             )
         )
 
-    def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+    def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create an empty sub-array like `data`. The contents will be filled
         with the array's fill value or zeros if no fill value is provided.
 
@@ -2928,7 +2917,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
-    def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+    def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array of zeros like `data`.
 
         Parameters
@@ -2948,7 +2937,7 @@ class Group(SyncMixin):
 
         return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
-    def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+    def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array of ones like `data`.
 
         Parameters
@@ -2967,7 +2956,7 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
-    def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+    def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AnyArray:
         """Create a sub-array like `data` filled with the `fill_value` of `data` .
 
         Parameters
@@ -3017,7 +3006,7 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
         data: npt.ArrayLike | None = None,
-    ) -> Array:
+    ) -> AnyArray:
         """Create an array within this group.
 
         !!! warning "Deprecated"
@@ -3147,9 +3136,7 @@ async def create_hierarchy(
     store: Store,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
-) -> AsyncIterator[
-    tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]
-]:
+) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
     """
     Create a complete zarr hierarchy from a collection of metadata objects.
 
@@ -3313,9 +3300,7 @@ async def create_nodes(
     *,
     store: Store,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-) -> AsyncIterator[
-    tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]
-]:
+) -> AsyncIterator[tuple[str, AsyncGroup | AnyAsyncArray]]:
     """Create a collection of arrays and / or groups concurrently.
 
     Note: no attempt is made to validate that these arrays and / or groups collectively form a
@@ -3493,7 +3478,7 @@ def _ensure_consistent_zarr_format(
 
 async def _getitem_semaphore(
     node: AsyncGroup, key: str, semaphore: asyncio.Semaphore | None
-) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup:
+) -> AnyAsyncArray | AsyncGroup:
     """
     Wrap Group.getitem with an optional semaphore.
 
@@ -3513,9 +3498,7 @@ async def _iter_members(
     node: AsyncGroup,
     skip_keys: tuple[str, ...],
     semaphore: asyncio.Semaphore | None,
-) -> AsyncGenerator[
-    tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
-]:
+) -> AsyncGenerator[tuple[str, AnyAsyncArray | AsyncGroup], None]:
     """
     Iterate over the arrays and groups contained in a group.
 
@@ -3530,7 +3513,7 @@ async def _iter_members(
 
     Yields
     ------
-    tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup]
+    tuple[str, AnyAsyncArray | AsyncGroup]
     """
 
     # retrieve keys from storage
@@ -3569,9 +3552,7 @@ async def _iter_members_deep(
     skip_keys: tuple[str, ...],
     semaphore: asyncio.Semaphore | None = None,
     use_consolidated_for_children: bool = True,
-) -> AsyncGenerator[
-    tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
-]:
+) -> AsyncGenerator[tuple[str, AnyAsyncArray | AsyncGroup], None]:
     """
     Iterate over the arrays and groups contained in a group, and optionally the
     arrays and groups contained in those groups.
@@ -3594,7 +3575,7 @@ async def _iter_members_deep(
 
     Yields
     ------
-    tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup]
+    tuple[str, AnyAsyncArray | AsyncGroup]
     """
 
     to_recurse = {}
@@ -3609,7 +3590,7 @@ async def _iter_members_deep(
         if (
             is_group
             and not use_consolidated_for_children
-            and node.metadata.consolidated_metadata is not None  # type: ignore [union-attr]
+            and node.metadata.consolidated_metadata is not None
         ):
             node = cast("AsyncGroup", node)
             # We've decided not to trust consolidated metadata at this point, because we're
@@ -3738,15 +3719,11 @@ def _build_metadata_v2(
 
 
 @overload
-def _build_node(
-    *, store: Store, path: str, metadata: ArrayV2Metadata
-) -> AsyncArray[ArrayV2Metadata]: ...
+def _build_node(*, store: Store, path: str, metadata: ArrayV2Metadata) -> AsyncArrayV2: ...
 
 
 @overload
-def _build_node(
-    *, store: Store, path: str, metadata: ArrayV3Metadata
-) -> AsyncArray[ArrayV3Metadata]: ...
+def _build_node(*, store: Store, path: str, metadata: ArrayV3Metadata) -> AsyncArrayV3: ...
 
 
 @overload
@@ -3755,7 +3732,7 @@ def _build_node(*, store: Store, path: str, metadata: GroupMetadata) -> AsyncGro
 
 def _build_node(
     *, store: Store, path: str, metadata: ArrayV3Metadata | ArrayV2Metadata | GroupMetadata
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+) -> AnyAsyncArray | AsyncGroup:
     """
     Take a metadata object and return a node (AsyncArray or AsyncGroup).
     """
@@ -3769,7 +3746,7 @@ def _build_node(
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
-async def _get_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
+async def _get_node_v2(store: Store, path: str) -> AsyncArrayV2 | AsyncGroup:
     """
     Read a Zarr v2 AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3788,7 +3765,7 @@ async def _get_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] |
     return _build_node(store=store, path=path, metadata=metadata)
 
 
-async def _get_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] | AsyncGroup:
+async def _get_node_v3(store: Store, path: str) -> AsyncArrayV3 | AsyncGroup:
     """
     Read a Zarr v3 AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3807,9 +3784,7 @@ async def _get_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] |
     return _build_node(store=store, path=path, metadata=metadata)
 
 
-async def get_node(
-    store: Store, path: str, zarr_format: ZarrFormat
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+async def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> AnyAsyncArray | AsyncGroup:
     """
     Get an AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3887,7 +3862,7 @@ async def create_rooted_hierarchy(
     store: Store,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
-) -> AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> AsyncGroup | AnyAsyncArray:
     """
     Create an ``AsyncGroup`` or ``AsyncArray`` from a store and a dict of metadata documents.
     This function ensures that its input contains a specification of a root node,
