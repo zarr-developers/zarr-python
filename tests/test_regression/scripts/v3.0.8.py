@@ -2,6 +2,7 @@
 # requires-python = "==3.12"
 # dependencies = [
 #  "zarr==3.0.8"
+#  "numcodecs==0.16.3"
 # ]
 # ///
 
