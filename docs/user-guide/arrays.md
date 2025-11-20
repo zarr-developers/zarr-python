@@ -27,7 +27,7 @@ columns (and so there will be 100 chunks in total). The data is written to a
 and see [Data types](data_types.md) for an in-depth look at the data types supported
 by Zarr.
 
-See the [creation API documentation](../api/create.md) for more detailed information about
+See the [creation API documentation](../api/zarr/create.md) for more detailed information about
 creating arrays.
 
 ## Reading and writing data

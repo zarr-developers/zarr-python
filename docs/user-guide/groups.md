@@ -65,12 +65,12 @@ z = root.create_array(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 10
 print(z)
 ```
 
-For more information on groups see the [`zarr.Group` API docs](../api/group.md).
+For more information on groups see the [`zarr.Group` API docs](../api/zarr/group.md).
 
 ## Batch Group Creation
 
 You can also create multiple groups concurrently with a single function call. [`zarr.create_hierarchy`][] takes
-a [`zarr Storage instance`](../api/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
+a [`zarr Storage instance`](../api/zarr/storage.md) instance and a dict of `key : metadata` pairs, parses that dict, and
 writes metadata documents to storage:
 
 ```python exec="true" session="groups" source="above" result="ansi"
