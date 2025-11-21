@@ -120,12 +120,18 @@ class ZipStore(Store):
 
     def close(self) -> None:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
+            
         super().close()
         with self._lock:
             self._zf.close()
 
     async def clear(self) -> None:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
+
         with self._lock:
             self._check_writable()
             self._zf.close()
@@ -188,6 +194,8 @@ class ZipStore(Store):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
         out = []
         with self._lock:
             for key, byte_range in key_ranges:
@@ -222,6 +230,9 @@ class ZipStore(Store):
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()
+        if not self._is_open:
+            self._sync_open()
+
         with self._lock:
             members = self._zf.namelist()
             if key not in members:
@@ -245,6 +256,9 @@ class ZipStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
+
         with self._lock:
             try:
                 self._zf.getinfo(key)
@@ -255,6 +269,9 @@ class ZipStore(Store):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
+
         with self._lock:
             for key in self._zf.namelist():
                 yield key
