@@ -2,6 +2,13 @@
 
 <!-- towncrier release notes start -->
 
+# zarr 3.1.5 (2025-11-21)
+
+## Bugfixes
+
+- Fix formatting errors in the release notes section of the docs. ([#3594](https://github.com/zarr-developers/zarr-python/issues/3594))
+
+
 ## 3.1.4 (2025-11-20)
 
 ### Features
