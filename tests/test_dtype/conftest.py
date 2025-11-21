@@ -20,7 +20,7 @@ for wrapper_cls in data_type_registry.contents.values():
             zdtype_examples += (
                 wrapper_cls.from_native_dtype(np.dtype([("a", np.float64), ("b", np.int8)])),
                 wrapper_cls.from_native_dtype(
-                    np.dtype([("x", np.bool), ("y", np.float32, (3, 4))])
+                    np.dtype([("x", bool), ("y", np.float32, (3, 4))])
                 ),
             )
     elif wrapper_cls is Subarray:
