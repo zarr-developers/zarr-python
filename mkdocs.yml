@@ -69,9 +69,6 @@ nav:
         - api/zarr/testing/store.md
         - api/zarr/testing/strategies.md
         - api/zarr/testing/utils.md
-      - deprecated:
-        - Convenience sub-module: api/zarr/deprecated/convenience.md
-        - Creation sub-module: api/zarr/deprecated/creation.md
   - release-notes.md
   - contributing.md
 watch:
