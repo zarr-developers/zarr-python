@@ -2,7 +2,7 @@
 
 <!-- towncrier release notes start -->
 
-# 3.14 (2025-11-20)
+# 3.1.4 (2025-11-20)
 
 ### Features
 
