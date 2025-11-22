@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Propose a new major feature
+  - name: Propose a new Zarr specification feature
     url: https://github.com/zarr-developers/zarr-specs
-    about: A new major feature should be discussed in the Zarr specifications repository.
+    about: A new feature for the Zarr storage specification should be opened on the zarr-specs repository.
   - name: Discuss something on ZulipChat
     url: https://ossci.zulipchat.com/
     about: For questions like "How do I do X with Zarr?", consider posting your question to our developer chat.

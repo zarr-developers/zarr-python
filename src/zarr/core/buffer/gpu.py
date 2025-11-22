@@ -36,7 +36,7 @@ class Buffer(core.Buffer):
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
 
-    A Buffer is backed by a underlying array-like instance that represents
+    A Buffer is backed by an underlying array-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     array-like instance can be copied/converted to a regular Numpy array
@@ -90,7 +90,7 @@ class Buffer(core.Buffer):
 
     @classmethod
     def from_buffer(cls, buffer: core.Buffer) -> Self:
-        """Create an GPU Buffer given an arbitrary Buffer
+        """Create a GPU Buffer given an arbitrary Buffer
         This will try to be zero-copy if `buffer` is already on the
         GPU and will trigger a copy if not.
 
@@ -107,14 +107,15 @@ class Buffer(core.Buffer):
     def as_numpy_array(self) -> npt.NDArray[Any]:
         return cast("npt.NDArray[Any]", cp.asnumpy(self._data))
 
-    def __add__(self, other: core.Buffer) -> Self:
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("B")
-        gpu_other = Buffer(other_array)
-        gpu_other_array = gpu_other.as_array_like()
-        return self.__class__(
-            cp.concatenate((cp.asanyarray(self._data), cp.asanyarray(gpu_other_array)))
-        )
+    def combine(self, others: Iterable[core.Buffer]) -> Self:
+        data = [cp.asanyarray(self._data)]
+        for other in others:
+            other_array = other.as_array_like()
+            assert other_array.dtype == np.dtype("B")
+            gpu_other = Buffer(other_array)
+            gpu_other_array = gpu_other.as_array_like()
+            data.append(cp.asanyarray(gpu_other_array))
+        return self.__class__(cp.concatenate(data))
 
 
 class NDBuffer(core.NDBuffer):
@@ -122,7 +123,7 @@ class NDBuffer(core.NDBuffer):
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by a underlying ndarray-like instance that represents
+    A NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
