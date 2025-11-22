@@ -42,6 +42,7 @@ from zarr.core.buffer import (
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     ChunkGrid,
+    ChunksLike,
     RegularChunkGrid,
     _auto_partition,
     _normalize_chunks,
@@ -1856,7 +1857,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if delete_outside_chunks:
             # Remove all chunks outside of the new shape
             old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
-            new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
+            new_chunk_coords = set(new_metadata.chunk_grid.all_chunk_coords(new_shape))
 
             async def _delete_key(key: str) -> None:
                 await (self.store_path / key).delete()
@@ -4885,7 +4886,7 @@ async def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] = "auto",
+    chunks: ChunksLike = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -4919,7 +4920,7 @@ async def create_array(
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be ``None``.
-    chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"], default="auto"
+    chunks : ChunksLike, default="auto"
         Chunk shape of the array. Several formats are supported:
 
         - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``

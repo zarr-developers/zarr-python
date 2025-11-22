@@ -23,7 +23,7 @@ from typing import Any, Literal
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.chunk_grids import ChunkGrid, RectilinearChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -260,7 +260,7 @@ class ArrayV3Metadata(Metadata):
             else:
                 return None
         else:
-            # RectilinearChunkGrid and other chunk grids don't support sharding
+            # RectilinearChunkGrid and other chunk grids don't support sharding at this time
             return None
 
     @property
@@ -357,6 +357,21 @@ class ArrayV3Metadata(Metadata):
         return out_dict
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
+        """Evolve the shape of this array.
+
+        If the array uses the RectilinearChunkGrid, the chunk_grid will also be evolved.
+
+        Parameters
+        ----------
+        shape : tuple[int, ...]
+            The desired new shape of the array.
+
+        Returns
+        -------
+        metadata : ArrayV3Metadata
+        """
+        if isinstance(self.chunk_grid, RectilinearChunkGrid):
+            return replace(self, shape=shape, chunk_grid=self.chunk_grid.update_shape(shape))
         return replace(self, shape=shape)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:

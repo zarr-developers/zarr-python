@@ -15,8 +15,6 @@ from zarr.core.chunk_grids import (
 )
 from zarr.storage import MemoryStore
 
-# Run-length encoding tests
-
 
 def test_expand_run_length_encoding_simple_integers() -> None:
     """Test with simple integer values"""
@@ -25,18 +23,18 @@ def test_expand_run_length_encoding_simple_integers() -> None:
 
 def test_expand_run_length_encoding_single_run_length() -> None:
     """Test with single run-length encoded value"""
-    assert _expand_run_length_encoding([[2, 3]]) == (2, 2, 2)  # type: ignore[list-item]
+    assert _expand_run_length_encoding([[2, 3]]) == (2, 2, 2)
 
 
 def test_expand_run_length_encoding_mixed() -> None:
     """Test with mix of integers and run-length encoded values"""
-    assert _expand_run_length_encoding([1, [2, 1], 3]) == (1, 2, 3)  # type: ignore[list-item]
-    assert _expand_run_length_encoding([[1, 3], 3]) == (1, 1, 1, 3)  # type: ignore[list-item]
+    assert _expand_run_length_encoding([1, [2, 1], 3]) == (1, 2, 3)
+    assert _expand_run_length_encoding([[1, 3], 3]) == (1, 1, 1, 3)
 
 
 def test_expand_run_length_encoding_zero_count() -> None:
     """Test with zero count in run-length encoding"""
-    assert _expand_run_length_encoding([[2, 0], 3]) == (3,)  # type: ignore[list-item]
+    assert _expand_run_length_encoding([[2, 0], 3]) == (3,)
 
 
 def test_expand_run_length_encoding_empty() -> None:
@@ -59,10 +57,7 @@ def test_expand_run_length_encoding_invalid_item_type() -> None:
 def test_expand_run_length_encoding_negative_count() -> None:
     """Test error handling for negative count"""
     with pytest.raises(ValueError, match="must be non-negative"):
-        _expand_run_length_encoding([[2, -1]])  # type: ignore[list-item]
-
-
-# Parse chunk shapes tests
+        _expand_run_length_encoding([[2, -1]])
 
 
 def test_parse_chunk_shapes_simple_2d() -> None:
@@ -73,7 +68,7 @@ def test_parse_chunk_shapes_simple_2d() -> None:
 
 def test_parse_chunk_shapes_with_run_length_encoding() -> None:
     """Test parsing with run-length encoding"""
-    result = _parse_chunk_shapes([[[2, 3]], [[1, 6]]])  # type: ignore[list-item]
+    result = _parse_chunk_shapes([[[2, 3]], [[1, 6]]])
     assert result == ((2, 2, 2), (1, 1, 1, 1, 1, 1))
 
 
@@ -81,8 +76,8 @@ def test_parse_chunk_shapes_mixed_encoding() -> None:
     """Test parsing with mixed encoding styles"""
     result = _parse_chunk_shapes(
         [
-            [1, [2, 1], 3],  # type: ignore[list-item]
-            [[1, 3], 3],  # type: ignore[list-item]
+            [1, [2, 1], 3],
+            [[1, 3], 3],
         ]
     )
     assert result == ((1, 2, 3), (1, 1, 1, 3))
@@ -98,9 +93,6 @@ def test_parse_chunk_shapes_invalid_axis_type() -> None:
     """Test error handling for invalid axis type"""
     with pytest.raises(TypeError, match="chunk_shapes\\[0\\] must be a sequence"):
         _parse_chunk_shapes([123])  # type: ignore[list-item]
-
-
-# RectilinearChunkGrid class tests
 
 
 def test_rectilinear_init_simple() -> None:
@@ -246,9 +238,6 @@ def test_rectilinear_roundtrip() -> None:
     assert reconstructed.chunk_shapes == original.chunk_shapes
 
 
-# RLE compression tests
-
-
 @pytest.mark.parametrize(
     ("input_chunks", "expected_output"),
     [
@@ -338,7 +327,7 @@ def test_roundtrip_with_compression() -> None:
     metadata = grid1.to_dict()
 
     # Verify it's compressed
-    assert metadata["configuration"]["chunk_shapes"] == [[[10, 6]], [[5, 5]]]  # type: ignore[call-overload, index]
+    assert metadata["configuration"]["chunk_shapes"] == [[[10, 6]], [[5, 5]]]  # type: ignore[call-overload,index]
 
     # Deserialize from dict
     grid2 = RectilinearChunkGrid._from_dict(metadata)
@@ -385,9 +374,6 @@ def test_compression_saves_space() -> None:
     assert len(compressed_str) < len(uncompressed_str) / 10
 
 
-# RLE in top-level API tests
-
-
 async def test_api_create_array_with_rle_simple() -> None:
     """Test creating an array using simple RLE format."""
     store = MemoryStore()
@@ -396,7 +382,7 @@ async def test_api_create_array_with_rle_simple() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(60, 60),
-        chunks=[[[10, 6]], [[10, 6]]],  # type: ignore[list-item]
+        chunks=[[[10, 6]], [[10, 6]]],
         dtype="i4",
         zarr_format=3,
     )
@@ -423,7 +409,7 @@ async def test_api_create_array_with_mixed_rle_and_explicit() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(6, 6),
-        chunks=[[[2, 3]], [1, [2, 1], 3]],  # type: ignore[list-item]
+        chunks=[[[2, 3]], [1, [2, 1], 3]],
         dtype="f8",
         zarr_format=3,
     )
@@ -447,7 +433,7 @@ async def test_api_rle_chunk_grid_roundtrip_persistence() -> None:
         store=store,
         name="rle_array",
         shape=(100, 50),
-        chunks=[[[10, 10]], [[10, 5]]],  # type: ignore[list-item]
+        chunks=[[[10, 10]], [[10, 5]]],
         dtype="u2",
         zarr_format=3,
     )
@@ -479,10 +465,10 @@ async def test_api_rle_spec_example() -> None:
         store=store,
         shape=(6, 6, 6, 4, 6),
         chunks=[
-            [[2, 3]],  # type: ignore[list-item]
-            [[1, 6]],  # type: ignore[list-item]
-            [1, [2, 1], 3],  # type: ignore[list-item]
-            [[1, 3], 1],  # type: ignore[list-item]
+            [[2, 3]],
+            [[1, 6]],
+            [1, [2, 1], 3],
+            [[1, 3], 1],
             [6],
         ],
         dtype="i1",
@@ -512,7 +498,7 @@ def test_api_synchronous_api_with_rle_chunks() -> None:
     arr = zarr.create_array(
         store=store,
         shape=(30, 40),
-        chunks=[[[10, 3]], [[10, 4]]],  # type: ignore[list-item]
+        chunks=[[[10, 3]], [[10, 4]]],
         dtype="f4",
         zarr_format=3,
     )
@@ -533,7 +519,7 @@ async def test_api_rle_with_zero_count() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(10, 10),
-        chunks=[[[5, 0], 5, 5], [[5, 2]]],  # type: ignore[list-item]
+        chunks=[[[5, 0], 5, 5], [[5, 2]]],
         dtype="u1",
         zarr_format=3,
     )
@@ -556,7 +542,7 @@ def test_api_group_create_array_with_rle() -> None:
     arr = root.create_array(
         "rle_test",
         shape=(50, 50),
-        chunks=[[[10, 5]], [[10, 5]]],  # type: ignore[list-item]
+        chunks=[[[10, 5]], [[10, 5]]],
         dtype="i8",
     )
 
@@ -578,7 +564,7 @@ async def test_api_rle_with_large_repeat_count() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(1000, 1000),
-        chunks=[[[10, 100]], [[10, 100]]],  # type: ignore[list-item]
+        chunks=[[[10, 100]], [[10, 100]]],
         dtype="i2",
         zarr_format=3,
     )
@@ -603,7 +589,7 @@ async def test_api_rle_mixed_with_irregular_chunks() -> None:
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(100, 100),
-        chunks=[[[10, 5], 50], [25, 30, 20, 25]],  # type: ignore[list-item]
+        chunks=[[[10, 5], 50], [25, 30, 20, 25]],
         dtype="u4",
         zarr_format=3,
     )
@@ -630,7 +616,7 @@ async def test_api_v2_rejects_rle_chunks(zarr_format: Literal[2, 3]) -> None:
         await zarr.api.asynchronous.create_array(
             store=store,
             shape=(60, 60),
-            chunks=[[[10, 6]], [[10, 6]]],  # type: ignore[list-item]
+            chunks=[[[10, 6]], [[10, 6]]],
             dtype="i4",
             zarr_format=zarr_format,
         )
@@ -651,3 +637,622 @@ async def test_api_from_array_rejects_rle_chunks() -> None:
             chunks=[[[10, 3]], [[10, 3]]],  # type: ignore[arg-type]
             zarr_format=3,
         )
+
+
+# =============================================================================
+# Tests for Partial Edge Chunks
+# =============================================================================
+
+
+def test_partial_edge_chunk_validation() -> None:
+    """Test that chunk sums >= array shape is valid."""
+    # Chunk sum (15) > array shape (12) - should be valid
+    grid = RectilinearChunkGrid(chunk_shapes=[[5, 5, 5], [10, 10]])
+    # Should not raise - partial edge chunks are allowed
+    grid._validate_array_shape((12, 18))
+
+
+def test_partial_edge_chunk_exact_match() -> None:
+    """Test that chunk sums == array shape still works."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[5, 5, 5], [10, 10]])
+    # Exact match should work
+    grid._validate_array_shape((15, 20))
+
+
+def test_partial_edge_chunk_all_chunk_coords() -> None:
+    """Test that all_chunk_coords works with partial edge chunks."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 10, 10], [20, 20]])
+    # Array shape (25, 35) is less than chunk sum (30, 40)
+    coords = list(grid.all_chunk_coords((25, 35)))
+    # Should still have 3 x 2 = 6 chunks
+    assert len(coords) == 6
+    assert coords == [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
+
+
+def test_partial_edge_chunk_get_nchunks() -> None:
+    """Test get_nchunks with partial edge chunks."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 10, 10], [20, 20]])
+    # Array shape smaller than chunk sum
+    nchunks = grid.get_nchunks((25, 35))
+    assert nchunks == 6
+
+
+def test_partial_edge_chunk_get_chunk_shape() -> None:
+    """Test get_chunk_shape returns full chunk size even for partial chunks."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 10, 10], [20, 20]])
+    # The chunk shape is defined by the grid, not truncated to array shape
+    shape = grid.get_chunk_shape((25, 35), (2, 1))
+    assert shape == (10, 20)
+
+
+def test_partial_edge_chunk_get_chunk_start() -> None:
+    """Test get_chunk_start with partial edge chunks."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 10, 10], [20, 20]])
+    # Last chunk starts at (20, 20), even though array is only (25, 35)
+    start = grid.get_chunk_start((25, 35), (2, 1))
+    assert start == (20, 20)
+
+
+async def test_api_create_array_with_partial_edge_chunks() -> None:
+    """Test creating an array with partial edge chunks via API."""
+    store = MemoryStore()
+
+    # Array shape (55, 45) with chunks that sum to (60, 50)
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(55, 45),
+        chunks=[[10, 20, 30], [25, 25]],
+        dtype="f4",
+        zarr_format=3,
+    )
+
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGrid)
+    assert arr.metadata.chunk_grid.chunk_shapes == ((10, 20, 30), (25, 25))
+
+    # Write and read data
+    data = np.arange(55 * 45, dtype="f4").reshape(55, 45)
+    await arr.setitem(slice(None), data)
+    result = await arr.getitem(slice(None))
+    np.testing.assert_array_equal(result, data)
+
+
+async def test_api_partial_edge_chunks_slicing() -> None:
+    """Test that slicing works correctly with partial edge chunks."""
+    store = MemoryStore()
+
+    # Chunks sum to (30, 30), array is (28, 27)
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(28, 27),
+        chunks=[[10, 10, 10], [15, 15]],
+        dtype="i4",
+        zarr_format=3,
+    )
+
+    # Write full array
+    data = np.arange(28 * 27, dtype="i4").reshape(28, 27)
+    await arr.setitem(slice(None), data)
+
+    # Read slices that span the partial edge chunk
+    result = await arr.getitem((slice(25, 28), slice(20, 27)))
+    expected = data[25:28, 20:27]
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_sync_api_partial_edge_chunks() -> None:
+    """Test partial edge chunks with synchronous API."""
+    store = MemoryStore()
+
+    # 95x95 array with 100x100 worth of chunks
+    arr = zarr.create_array(
+        store=store,
+        shape=(95, 95),
+        chunks=[[50, 50], [50, 50]],
+        dtype="u2",
+        zarr_format=3,
+    )
+
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGrid)
+
+    # Write and read
+    data = np.arange(95 * 95, dtype="u2").reshape(95, 95)
+    arr[:] = data
+    np.testing.assert_array_equal(arr[:], data)
+
+
+async def test_api_partial_edge_single_chunk() -> None:
+    """Test array smaller than a single chunk."""
+    store = MemoryStore()
+
+    # Array is 50x50, but single chunk is 100x100
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(50, 50),
+        chunks=[[100], [100]],
+        dtype="f8",
+        zarr_format=3,
+    )
+
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGrid)
+    assert arr.metadata.chunk_grid.chunk_shapes == ((100,), (100,))
+
+    # Should work fine
+    data = np.random.random((50, 50))
+    await arr.setitem(slice(None), data)
+    result = await arr.getitem(slice(None))
+    np.testing.assert_array_almost_equal(result, data)  # type: ignore[arg-type]
+
+
+# =============================================================================
+# Tests for Resizing Variable Chunked Arrays
+# =============================================================================
+
+
+def test_update_shape_no_change() -> None:
+    """Test update_shape when shape doesn't change."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25]])
+    new_grid = grid.update_shape((60, 50))
+
+    assert new_grid.chunk_shapes == grid.chunk_shapes
+
+
+def test_update_shape_grow_single_dim() -> None:
+    """Test update_shape when growing a single dimension."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25]])
+    # Grow first dimension from 60 to 80
+    new_grid = grid.update_shape((80, 50))
+
+    # Should add a new chunk of size 20 (80 - 60 = 20)
+    assert new_grid.chunk_shapes[0] == (10, 20, 30, 20)
+    assert new_grid.chunk_shapes[1] == (25, 25)
+
+
+def test_update_shape_grow_multiple_dims() -> None:
+    """Test update_shape when growing multiple dimensions."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 10], [20, 20]])
+    # Grow from (20, 40) to (35, 55)
+    new_grid = grid.update_shape((35, 55))
+
+    # First dim: 20 + 15 = 35, adds chunk of size 15
+    # Second dim: 40 + 15 = 55, adds chunk of size 15
+    assert new_grid.chunk_shapes[0] == (10, 10, 15)
+    assert new_grid.chunk_shapes[1] == (20, 20, 15)
+
+
+def test_update_shape_shrink_single_dim() -> None:
+    """Test update_shape when shrinking a single dimension."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30, 40], [25, 25]])
+    # Shrink first dimension from 100 to 35 (keeps first two full chunks + partial)
+    new_grid = grid.update_shape((35, 50))
+
+    # Should keep chunks that contain data (10 + 20 = 30, need 35, so keep 10, 20, 30)
+    assert new_grid.chunk_shapes[0] == (10, 20, 30)
+    assert new_grid.chunk_shapes[1] == (25, 25)
+
+
+def test_update_shape_shrink_to_single_chunk() -> None:
+    """Test update_shape when shrinking to fit in first chunk."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25]])
+    # Shrink to fit in first chunk
+    new_grid = grid.update_shape((5, 50))
+
+    assert new_grid.chunk_shapes[0] == (10,)
+    assert new_grid.chunk_shapes[1] == (25, 25)
+
+
+def test_update_shape_shrink_multiple_dims() -> None:
+    """Test update_shape when shrinking multiple dimensions."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 10, 10, 10], [20, 20, 20]])
+    # Shrink from (40, 60) to (25, 35)
+    new_grid = grid.update_shape((25, 35))
+
+    # First dim: 25 falls within third chunk (10+10+10=30)
+    # Second dim: 35 falls within second chunk (20+20=40)
+    assert new_grid.chunk_shapes[0] == (10, 10, 10)
+    assert new_grid.chunk_shapes[1] == (20, 20)
+
+
+def test_update_shape_dimension_mismatch_error() -> None:
+    """Test that update_shape raises error on dimension mismatch."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20], [30, 40]])
+
+    with pytest.raises(ValueError, match="dimensions"):
+        grid.update_shape((30, 70, 100))
+
+
+async def test_api_resize_grow_array() -> None:
+    """Test resizing (growing) an array with variable chunks."""
+    store = MemoryStore()
+
+    # Create initial array
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(30, 40),
+        chunks=[[10, 20], [20, 20]],
+        dtype="i4",
+        zarr_format=3,
+    )
+
+    # Write initial data
+    data = np.arange(30 * 40, dtype="i4").reshape(30, 40)
+    await arr.setitem(slice(None), data)
+
+    # Resize to larger shape
+    await arr.resize((50, 60))
+
+    # Verify new shape
+    assert arr.shape == (50, 60)
+
+    # Verify chunk grid was updated
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGrid)
+    # Should have added chunks for the extra space
+    assert arr.metadata.chunk_grid.chunk_shapes[0] == (10, 20, 20)  # 30 + 20 = 50
+    assert arr.metadata.chunk_grid.chunk_shapes[1] == (20, 20, 20)  # 40 + 20 = 60
+
+    # Verify original data is preserved
+    result = await arr.getitem((slice(0, 30), slice(0, 40)))
+    np.testing.assert_array_equal(result, data)
+
+
+async def test_api_resize_shrink_array() -> None:
+    """Test resizing (shrinking) an array with variable chunks."""
+    store = MemoryStore()
+
+    # Create initial array
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(60, 50),
+        chunks=[[10, 20, 30], [25, 25]],
+        dtype="f4",
+        zarr_format=3,
+    )
+
+    # Write initial data
+    data = np.arange(60 * 50, dtype="f4").reshape(60, 50)
+    await arr.setitem(slice(None), data)
+
+    # Resize to smaller shape (within first two chunks of first dim)
+    await arr.resize((25, 30))
+
+    # Verify new shape
+    assert arr.shape == (25, 30)
+
+    # Verify chunk grid was updated - keeps chunks that cover the new shape
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGrid)
+    # First dim: 25 <= 10+20=30, so keeps (10, 20, 30) but only uses partial
+    # Actually the implementation keeps the minimal set of chunks
+    assert sum(arr.metadata.chunk_grid.chunk_shapes[0]) >= 25
+
+    # Verify preserved data
+    result = await arr.getitem(slice(None))
+    np.testing.assert_array_equal(result, data[:25, :30])
+
+
+def test_sync_api_resize_grow() -> None:
+    """Test resizing with synchronous API."""
+    store = MemoryStore()
+
+    arr = zarr.create_array(
+        store=store,
+        shape=(20, 30),
+        chunks=[[10, 10], [15, 15]],
+        dtype="u1",
+        zarr_format=3,
+    )
+
+    # Write data
+    data = np.arange(20 * 30, dtype="u1").reshape(20, 30)
+    arr[:] = data
+
+    # Resize
+    arr.resize((35, 45))
+
+    assert arr.shape == (35, 45)
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGrid)
+
+    # Verify original data preserved
+    np.testing.assert_array_equal(arr[:20, :30], data)
+
+
+def test_sync_api_resize_shrink() -> None:
+    """Test shrinking with synchronous API."""
+    store = MemoryStore()
+
+    arr = zarr.create_array(
+        store=store,
+        shape=(40, 50),
+        chunks=[[10, 10, 10, 10], [25, 25]],
+        dtype="i2",
+        zarr_format=3,
+    )
+
+    data = np.arange(40 * 50, dtype="i2").reshape(40, 50)
+    arr[:] = data
+
+    # Shrink
+    arr.resize((15, 30))
+
+    assert arr.shape == (15, 30)
+    np.testing.assert_array_equal(arr[:], data[:15, :30])
+
+
+# =============================================================================
+# Tests for Appending to Variable Chunked Arrays
+# =============================================================================
+
+
+async def test_api_append_to_first_axis() -> None:
+    """Test appending data along the first axis."""
+    store = MemoryStore()
+
+    # Create initial array
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(30, 20),
+        chunks=[[10, 20], [10, 10]],
+        dtype="i4",
+        zarr_format=3,
+    )
+
+    # Write initial data
+    initial_data = np.arange(30 * 20, dtype="i4").reshape(30, 20)
+    await arr.setitem(slice(None), initial_data)
+
+    # Append data along first axis
+    append_data = np.arange(30 * 20, 45 * 20, dtype="i4").reshape(15, 20)
+    await arr.append(append_data, axis=0)
+
+    # Verify new shape
+    assert arr.shape == (45, 20)
+
+    # Verify chunk grid was updated
+    assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGrid)
+    # Should have added a chunk for the appended data
+    assert sum(arr.metadata.chunk_grid.chunk_shapes[0]) >= 45
+
+    # Verify all data
+    result = await arr.getitem(slice(None))
+    expected = np.vstack([initial_data, append_data])
+    np.testing.assert_array_equal(result, expected)
+
+
+async def test_api_append_to_second_axis() -> None:
+    """Test appending data along the second axis."""
+    store = MemoryStore()
+
+    # Create initial array
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(20, 30),
+        chunks=[[10, 10], [10, 20]],
+        dtype="f4",
+        zarr_format=3,
+    )
+
+    # Write initial data
+    initial_data = np.arange(20 * 30, dtype="f4").reshape(20, 30)
+    await arr.setitem(slice(None), initial_data)
+
+    # Append data along second axis
+    append_data = np.arange(20 * 30, 20 * 45, dtype="f4").reshape(20, 15)
+    await arr.append(append_data, axis=1)
+
+    # Verify new shape
+    assert arr.shape == (20, 45)
+
+    # Verify all data
+    result = await arr.getitem(slice(None))
+    expected = np.hstack([initial_data, append_data])
+    np.testing.assert_array_equal(result, expected)
+
+
+def test_sync_api_append() -> None:
+    """Test appending with synchronous API."""
+    store = MemoryStore()
+
+    arr = zarr.create_array(
+        store=store,
+        shape=(20, 20),
+        chunks=[[10, 10], [10, 10]],
+        dtype="u2",
+        zarr_format=3,
+    )
+
+    # Write initial data
+    initial_data = np.arange(20 * 20, dtype="u2").reshape(20, 20)
+    arr[:] = initial_data
+
+    # Append
+    append_data = np.arange(20 * 20, 25 * 20, dtype="u2").reshape(5, 20)
+    arr.append(append_data, axis=0)
+
+    assert arr.shape == (25, 20)
+    np.testing.assert_array_equal(arr[:20, :], initial_data)
+    np.testing.assert_array_equal(arr[20:, :], append_data)
+
+
+async def test_api_multiple_appends() -> None:
+    """Test multiple successive appends."""
+    store = MemoryStore()
+
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(10, 10),
+        chunks=[[5, 5], [5, 5]],
+        dtype="i4",
+        zarr_format=3,
+    )
+
+    initial_data = np.arange(10 * 10, dtype="i4").reshape(10, 10)
+    await arr.setitem(slice(None), initial_data)
+
+    # Multiple appends
+    all_data = [initial_data]
+    for i in range(3):
+        append_data = np.full((5, 10), i + 100, dtype="i4")
+        await arr.append(append_data, axis=0)
+        all_data.append(append_data)
+
+    assert arr.shape == (25, 10)
+
+    result = await arr.getitem(slice(None))
+    expected = np.vstack(all_data)
+    np.testing.assert_array_equal(result, expected)
+
+
+async def test_api_append_with_partial_edge_chunks() -> None:
+    """Test appending to array that already has partial edge chunks."""
+    store = MemoryStore()
+
+    # Create array with partial edge chunk
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(25, 30),  # Less than chunk sum of (30, 30)
+        chunks=[[15, 15], [15, 15]],
+        dtype="f8",
+        zarr_format=3,
+    )
+
+    initial_data = np.random.random((25, 30))
+    await arr.setitem(slice(None), initial_data)
+
+    # Append to extend beyond original chunk boundary
+    append_data = np.random.random((10, 30))
+    await arr.append(append_data, axis=0)
+
+    assert arr.shape == (35, 30)
+
+    result = await arr.getitem(slice(None))
+    expected = np.vstack([initial_data, append_data])
+    np.testing.assert_array_almost_equal(result, expected)  # type: ignore[arg-type]
+
+
+# =============================================================================
+# Tests for Edge Cases in Resize and Append
+# =============================================================================
+
+
+def test_update_shape_boundary_cases() -> None:
+    """Test update_shape at exact chunk boundaries."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25]])
+
+    # Grow to exact chunk boundary
+    new_grid = grid.update_shape((60, 75))
+    assert new_grid.chunk_shapes[0] == (10, 20, 30)  # No change (60 == sum)
+    assert new_grid.chunk_shapes[1] == (25, 25, 25)  # Added chunk of 25
+
+    # Shrink to exact chunk boundary - keeps minimal chunks that cover the shape
+    grid2 = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25, 25]])
+    new_grid2 = grid2.update_shape((30, 50))
+    # First dim: 30 is covered by (10, 20) since 10+20=30
+    # Second dim: 50 is covered by (25, 25) since 25+25=50
+    assert new_grid2.chunk_shapes[0] == (10, 20)
+    assert new_grid2.chunk_shapes[1] == (25, 25)
+
+
+async def test_append_small_data() -> None:
+    """Test appending small amounts of data."""
+    store = MemoryStore()
+
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(20, 20),
+        chunks=[[10, 10], [10, 10]],
+        dtype="i4",
+        zarr_format=3,
+    )
+
+    data = np.arange(20 * 20, dtype="i4").reshape(20, 20)
+    await arr.setitem(slice(None), data)
+
+    # Append small array (less than one chunk)
+    small = np.full((3, 20), 999, dtype="i4")
+    await arr.append(small, axis=0)
+
+    assert arr.shape == (23, 20)
+    result = await arr.getitem((slice(20, 23), slice(None)))
+    np.testing.assert_array_equal(result, small)
+
+
+async def test_roundtrip_after_resize() -> None:
+    """Test that array can be reopened after resize."""
+    store = MemoryStore()
+
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        name="resizable",
+        shape=(30, 30),
+        chunks=[[10, 10, 10], [15, 15]],
+        dtype="f4",
+        zarr_format=3,
+    )
+
+    data = np.random.random((30, 30)).astype("f4")
+    await arr.setitem(slice(None), data)
+
+    # Resize
+    await arr.resize((45, 40))
+    new_data = np.random.random((45, 40)).astype("f4")
+    new_data[:30, :30] = data
+    await arr.setitem(slice(None), new_data)
+
+    # Reopen and verify
+    arr2 = await zarr.api.asynchronous.open_array(store=store, path="resizable")
+
+    assert arr2.shape == (45, 40)
+    assert isinstance(arr2.metadata.chunk_grid, RectilinearChunkGrid)
+
+    result = await arr2.getitem(slice(None))
+    np.testing.assert_array_almost_equal(result, new_data)  # type: ignore[arg-type]
+
+
+async def test_roundtrip_after_append() -> None:
+    """Test that array can be reopened after append."""
+    store = MemoryStore()
+
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        name="appendable",
+        shape=(20, 20),
+        chunks=[[10, 10], [10, 10]],
+        dtype="i2",
+        zarr_format=3,
+    )
+
+    data = np.arange(20 * 20, dtype="i2").reshape(20, 20)
+    await arr.setitem(slice(None), data)
+
+    # Append
+    append_data = np.arange(20 * 20, 25 * 20, dtype="i2").reshape(5, 20)
+    await arr.append(append_data, axis=0)
+
+    # Reopen and verify
+    arr2 = await zarr.api.asynchronous.open_array(store=store, path="appendable")
+
+    assert arr2.shape == (25, 20)
+    result = await arr2.getitem(slice(None))
+    expected = np.vstack([data, append_data])
+    np.testing.assert_array_equal(result, expected)
+
+
+async def test_resize_preserve_single_chunk() -> None:
+    """Test resizing preserves at least one chunk."""
+    store = MemoryStore()
+
+    arr = await zarr.api.asynchronous.create_array(
+        store=store,
+        shape=(100, 100),
+        chunks=[[25, 25, 25, 25], [50, 50]],
+        dtype="u1",
+        zarr_format=3,
+    )
+
+    data = np.arange(100 * 100, dtype="u1").reshape(100, 100)
+    await arr.setitem(slice(None), data)
+
+    # Shrink to fit in first chunk
+    await arr.resize((10, 30))
+
+    assert arr.shape == (10, 30)
+    result = await arr.getitem(slice(None))
+    np.testing.assert_array_equal(result, data[:10, :30])

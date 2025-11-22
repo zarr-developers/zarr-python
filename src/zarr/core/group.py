@@ -71,13 +71,12 @@ if TYPE_CHECKING:
         Iterable,
         Iterator,
         Mapping,
-        Sequence,
     )
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.chunk_grids import ChunksLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
     from zarr.core.dtype import ZDTypeLike
@@ -1018,7 +1017,7 @@ class AsyncGroup:
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] = "auto",
+        chunks: ChunksLike = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -1047,7 +1046,7 @@ class AsyncGroup:
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"], optional
+        chunks : ChunksLike, optional
             Chunk shape of the array. Several formats are supported:
 
             - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``
@@ -2495,7 +2494,7 @@ class Group(SyncMixin):
             Data type of the array. Must be ``None`` if ``data`` is provided.
         data : Array-like data to use for initializing the array. If this parameter is provided, the
             ``shape`` and ``dtype`` parameters must be ``None``.
-        chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"], optional
+        chunks : ChunksLike, optional
             Chunk shape of the array. Several formats are supported:
 
             - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``
@@ -2613,7 +2612,7 @@ class Group(SyncMixin):
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] = "auto",
+        chunks: ChunksLike = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -2644,7 +2643,7 @@ class Group(SyncMixin):
             Data type of the array. Must be ``None`` if ``data`` is provided.
         data : Array-like data to use for initializing the array. If this parameter is provided, the
             ``shape`` and ``dtype`` parameters must be ``None``.
-        chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"], optional
+        chunks : ChunksLike, optional
             Chunk shape of the array. Several formats are supported:
 
             - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``

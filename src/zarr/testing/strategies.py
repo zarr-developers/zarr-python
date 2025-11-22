@@ -600,8 +600,7 @@ def complex_chunk_grids(draw: st.DrawFn) -> RectilinearChunkGrid:
         ]
         # Expand RLE to explicit chunk shapes before passing to __init__
         chunk_shapes_expanded = [
-            _expand_run_length_encoding(dim_rle)  # type: ignore[arg-type]
-            for dim_rle in chunk_shapes_rle
+            _expand_run_length_encoding(dim_rle) for dim_rle in chunk_shapes_rle
         ]
         return RectilinearChunkGrid(chunk_shapes=chunk_shapes_expanded)
 
