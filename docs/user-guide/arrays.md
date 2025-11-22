@@ -573,6 +573,7 @@ In addition to regular chunking where all chunks have the same size, Zarr v3 sup
 sizes along each dimension. This is useful when your data has non-uniform structure or
 when you need to align chunks with existing data partitions.
 
+The specification for this chunking scheme can be found [here](https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-grids/rectilinear/).
 ### Basic usage
 
 To create an array with variable chunking, provide a nested sequence to the `chunks`
