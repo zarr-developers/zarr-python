@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
@@ -13,10 +13,8 @@ if TYPE_CHECKING:
 
 from zarr.abc.store import Store
 
-T_Store = TypeVar("T_Store", bound=Store)
 
-
-class WrapperStore(Store, Generic[T_Store]):
+class WrapperStore[T_Store: Store](Store):
     """
     Store that wraps an existing Store.
 
