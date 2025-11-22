@@ -8,9 +8,9 @@ import operator
 import warnings
 from abc import abstractmethod
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cached_property, reduce
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict, Union
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, TypedDict, Union, cast
 
 import numpy as np
 
@@ -32,15 +32,16 @@ if TYPE_CHECKING:
 
 
 # Type alias for chunk edge length specification
-# Can be either an integer or a run-length encoded tuple [value, count]
-ChunkEdgeLength = int | tuple[int, int]
+# Can be either an integer or a run-length encoded pair [value, count]
+# The pair can be a tuple or list (common in JSON/test code)
+ChunkEdgeLength = int | tuple[int, int] | list[int]
 
 # User-facing chunk specification types
 # Note: ChunkGrid is defined later in this file but can be used via string literal
 ChunksLike: TypeAlias = Union[
     tuple[int, ...],  # Regular chunks: (10, 10) → RegularChunkGrid
     int,  # Uniform chunks: 10 → RegularChunkGrid
-    Sequence[Sequence[int]],  # Variable chunks: [[10,20],[5,5]] → RectilinearChunkGrid
+    Sequence[Sequence[ChunkEdgeLength]],  # Variable chunks with optional RLE → RectilinearChunkGrid
     "ChunkGrid",  # Explicit ChunkGrid instance (forward reference)
     Literal["auto"],  # Auto-chunking → RegularChunkGrid
 ]
@@ -295,6 +296,7 @@ def _normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tup
         chunks = tuple(int(chunks) for _ in shape)
 
     # handle dask-style chunks (iterable of iterables)
+    # TODO
     if all(isinstance(c, (tuple | list)) for c in chunks):
         # Check for irregular chunks and warn user
         for dim_idx, c in enumerate(chunks):
@@ -338,12 +340,19 @@ class ChunkGrid(Metadata):
         if isinstance(data, ChunkGrid):
             return data
 
-        name_parsed, _ = parse_named_configuration(data)
+        # After isinstance check, data must be dict[str, JSON]
+        # Cast needed for older mypy versions that don't narrow types properly
+        data_dict = cast(dict[str, JSON], data)  # type: ignore[redundant-cast]
+        name_parsed, _ = parse_named_configuration(data_dict)
         if name_parsed == "regular":
-            return RegularChunkGrid._from_dict(data)
+            return RegularChunkGrid._from_dict(data_dict)
         elif name_parsed == "rectilinear":
-            return RectilinearChunkGrid._from_dict(data)
+            return RectilinearChunkGrid._from_dict(data_dict)
         raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
+
+    @abstractmethod
+    def update_shape(self, new_shape: tuple[int, ...]) -> Self:
+        pass
 
     @abstractmethod
     def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
@@ -465,6 +474,9 @@ class RegularChunkGrid(ChunkGrid):
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
+
+    def update_shape(self, new_shape: tuple[int, ...]) -> Self:
+        return self
 
     def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
         return itertools.product(
@@ -645,6 +657,46 @@ class RectilinearChunkGrid(ChunkGrid):
             },
         }
 
+    def update_shape(self, new_shape: tuple[int, ...]) -> Self:
+        """TODO - write docstring"""
+
+        if len(new_shape) != len(self.chunk_shapes):
+            raise ValueError(
+                f"new_shape has {len(new_shape)} dimensions but "
+                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
+            )
+
+        new_chunk_shapes: list[tuple[int, ...]] = []
+        for dim in range(len(new_shape)):
+            old_dim_length = sum(self.chunk_shapes[dim])
+            new_dim_chunks: tuple[int, ...]
+            if new_shape[dim] == old_dim_length:
+                new_dim_chunks = self.chunk_shapes[dim]  # no changes
+
+            elif new_shape[dim] > old_dim_length:
+                # we have a decision to make on chunk size...
+                # options:
+                # - repeat the last chunk size
+                # - use the size of the new data
+                # - use some other heuristic
+                # for now, we'll use the difference in size between the old and new dim length
+                new_dim_chunks = (*self.chunk_shapes[dim], new_shape[dim] - old_dim_length)
+            else:
+                # drop chunk sizes that are not inside the shape anymore
+                total = 0
+                i = 0
+                for c in self.chunk_shapes[dim]:
+                    i += 1
+                    total += c
+                    if total >= new_shape[dim]:
+                        break
+                # keep the last chunk (it may be too long)
+                new_dim_chunks = self.chunk_shapes[dim][:i]
+
+            new_chunk_shapes.append(new_dim_chunks)
+
+        return replace(self, chunk_shapes=tuple(new_chunk_shapes))
+
     def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
         """
         Generate all chunk coordinates for the given array shape.
@@ -664,22 +716,9 @@ class RectilinearChunkGrid(ChunkGrid):
         ValueError
             If array_shape doesn't match chunk_shapes
         """
-        if len(array_shape) != len(self.chunk_shapes):
-            raise ValueError(
-                f"array_shape has {len(array_shape)} dimensions but "
-                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
-            )
 
-        # Validate that chunk sizes sum to array shape
-        for axis, (arr_size, axis_chunks) in enumerate(
-            zip(array_shape, self.chunk_shapes, strict=False)
-        ):
-            chunk_sum = sum(axis_chunks)
-            if chunk_sum != arr_size:
-                raise ValueError(
-                    f"Sum of chunk sizes along axis {axis} is {chunk_sum} "
-                    f"but array shape is {arr_size}"
-                )
+        # check array_shape is compatible with chunk grid
+        self._validate_array_shape(array_shape)
 
         # Generate coordinates
         # For each axis, we have len(axis_chunks) chunks
@@ -705,22 +744,8 @@ class RectilinearChunkGrid(ChunkGrid):
         ValueError
             If array_shape doesn't match chunk_shapes
         """
-        if len(array_shape) != len(self.chunk_shapes):
-            raise ValueError(
-                f"array_shape has {len(array_shape)} dimensions but "
-                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
-            )
-
-        # Validate that chunk sizes sum to array shape
-        for axis, (arr_size, axis_chunks) in enumerate(
-            zip(array_shape, self.chunk_shapes, strict=False)
-        ):
-            chunk_sum = sum(axis_chunks)
-            if chunk_sum != arr_size:
-                raise ValueError(
-                    f"Sum of chunk sizes along axis {axis} is {chunk_sum} "
-                    f"but array shape is {arr_size}"
-                )
+        # check array_shape is compatible with chunk grid
+        self._validate_array_shape(array_shape)
 
         # Total chunks is the product of number of chunks per axis
         return reduce(operator.mul, (len(axis_chunks) for axis_chunks in self.chunk_shapes), 1)
@@ -749,10 +774,11 @@ class RectilinearChunkGrid(ChunkGrid):
             zip(array_shape, self.chunk_shapes, strict=False)
         ):
             chunk_sum = sum(axis_chunks)
-            if chunk_sum != arr_size:
+            if chunk_sum < arr_size:
                 raise ValueError(
                     f"Sum of chunk sizes along axis {axis} is {chunk_sum} "
-                    f"but array shape is {arr_size}"
+                    f"but array shape is {arr_size}. This is invalid for the "
+                    "RectilinearChunkGrid."
                 )
 
     @cached_property
@@ -816,12 +842,6 @@ class RectilinearChunkGrid(ChunkGrid):
         """
         self._validate_array_shape(array_shape)
 
-        if len(chunk_coord) != len(self.chunk_shapes):
-            raise IndexError(
-                f"chunk_coord has {len(chunk_coord)} dimensions but "
-                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
-            )
-
         # Validate chunk coordinates are in bounds
         for axis, (coord, axis_chunks) in enumerate(
             zip(chunk_coord, self.chunk_shapes, strict=False)
@@ -868,12 +888,6 @@ class RectilinearChunkGrid(ChunkGrid):
         (3, 4)
         """
         self._validate_array_shape(array_shape)
-
-        if len(chunk_coord) != len(self.chunk_shapes):
-            raise IndexError(
-                f"chunk_coord has {len(chunk_coord)} dimensions but "
-                f"chunk_shapes has {len(self.chunk_shapes)} dimensions"
-            )
 
         # Validate chunk coordinates are in bounds
         for axis, (coord, axis_chunks) in enumerate(
@@ -994,12 +1008,6 @@ class RectilinearChunkGrid(ChunkGrid):
         """
         self._validate_array_shape(array_shape)
 
-        if len(array_index) != len(array_shape):
-            raise IndexError(
-                f"array_index has {len(array_index)} dimensions but "
-                f"array_shape has {len(array_shape)} dimensions"
-            )
-
         # Validate array index is in bounds
         for axis, (idx, size) in enumerate(zip(array_index, array_shape, strict=False)):
             if not (0 <= idx < size):
@@ -1046,12 +1054,6 @@ class RectilinearChunkGrid(ChunkGrid):
         [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
         """
         self._validate_array_shape(array_shape)
-
-        if len(selection) != len(array_shape):
-            raise ValueError(
-                f"selection has {len(selection)} dimensions but "
-                f"array_shape has {len(array_shape)} dimensions"
-            )
 
         # Normalize slices and find chunk ranges for each axis
         chunk_ranges = []
@@ -1248,17 +1250,17 @@ def _normalize_rectilinear_chunks(
     # Validate that chunks sum to shape for each dimension
     for i, (dim_chunks, dim_size) in enumerate(zip(chunk_shapes, shape, strict=False)):
         chunk_sum = sum(dim_chunks)
-        if chunk_sum != dim_size:
+        if chunk_sum < dim_size:
             raise ValueError(
                 f"Variable chunks along dimension {i} sum to {chunk_sum} "
-                f"but array shape is {dim_size}. Chunks must sum exactly to shape."
+                f"but array shape is {dim_size}. Chunks must sum to be greater than or equal to the shape."
             )
 
     return chunk_shapes
 
 
 def parse_chunk_grid(
-    chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int,
+    chunks: ChunksLike,
     *,
     shape: ShapeLike,
     item_size: int = 1,
@@ -1277,7 +1279,7 @@ def parse_chunk_grid(
 
     Parameters
     ----------
-    chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int
+    chunks : ChunksLike
         The chunks parameter to parse. Can be:
         - A ChunkGrid instance
         - A nested sequence for variable-sized chunks (supports RLE format)
@@ -1523,7 +1525,7 @@ def _validate_data_compatibility(
 
 def resolve_chunk_spec(
     *,
-    chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int,
+    chunks: ChunksLike,
     shards: ShardsLike | None,
     shape: tuple[int, ...],
     dtype_itemsize: int,
@@ -1542,7 +1544,7 @@ def resolve_chunk_spec(
 
     Parameters
     ----------
-    chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] | int
+    chunks : ChunksLike
         The chunks specification from the user. Can be:
         - A ChunkGrid instance (Zarr v3 only)
         - A nested sequence for variable-sized chunks (Zarr v3 only)

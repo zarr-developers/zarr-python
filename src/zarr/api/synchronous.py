@@ -13,7 +13,7 @@ from zarr.core.sync_group import create_hierarchy
 from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable
 
     import numpy as np
     import numpy.typing as npt
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     )
     from zarr.core.array_spec import ArrayConfigLike
     from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar
-    from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.chunk_grids import ChunksLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,
@@ -822,7 +822,7 @@ def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"] = "auto",
+    chunks: ChunksLike = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -858,7 +858,7 @@ def create_array(
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be ``None``.
-    chunks : tuple[int, ...] | Sequence[Sequence[int]] | ChunkGrid | Literal["auto"], default="auto"
+    chunks : ChunksLike, default="auto"
         Chunk shape of the array. Several formats are supported:
 
         - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``

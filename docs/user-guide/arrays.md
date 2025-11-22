@@ -676,14 +676,6 @@ Variable chunking has some important limitations:
    property will raise a `NotImplementedError`. Use `.metadata.chunk_grid.chunk_shapes`
    instead.
 
-```python exec="true" session="arrays" source="above" result="ansi"
-# This will raise an error
-try:
-    _ = z.chunks
-except NotImplementedError as e:
-    print(f"Error: {e}")
-```
-
 ## Missing features in 3.0
 
 The following features have not been ported to 3.0 yet.
