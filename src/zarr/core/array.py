@@ -2030,7 +2030,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
 @dataclass(frozen=False)
-class Array(Generic[T_ArrayMetadata]):
+class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
     A Zarr array.
     """
