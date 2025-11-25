@@ -266,7 +266,7 @@ def _auto_partition(
     else:
         if chunk_shape == "auto":
             # aim for a 1MiB chunk
-            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1049000)
+            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1048576)
         else:
             _chunks_out = chunk_shape
 
