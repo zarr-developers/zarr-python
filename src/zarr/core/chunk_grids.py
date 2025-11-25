@@ -62,6 +62,8 @@ def _guess_chunks(
     tuple[int, ...]
 
     """
+    if min_bytes >= max_bytes:
+        raise ValueError(f"Cannot have more min_bytes {min_bytes} than max_bytes {max_bytes}")
     if isinstance(shape, int):
         shape = (shape,)
 
@@ -264,7 +266,7 @@ def _auto_partition(
     else:
         if chunk_shape == "auto":
             # aim for a 1MiB chunk
-            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1024)
+            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1049000)
         else:
             _chunks_out = chunk_shape
 
