@@ -3,7 +3,7 @@ import logging
 from typing import TYPE_CHECKING, Literal, cast
 
 import zarr
-from zarr import Array, Group
+from zarr import Group
 from zarr.abc.store import Store
 from zarr.core.array import v2_to_v3_codecs
 from zarr.core.buffer.core import default_buffer_prototype
@@ -22,6 +22,7 @@ from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import StorePath
+from zarr.types import AnyArray
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec
@@ -62,7 +63,7 @@ def migrate_v2_to_v3(
     migrate_to_v3(zarr_v2, output_path, dry_run=dry_run)
 
 
-def migrate_to_v3(zarr_v2: Array | Group, output_path: StorePath, dry_run: bool = False) -> None:
+def migrate_to_v3(zarr_v2: AnyArray | Group, output_path: StorePath, dry_run: bool = False) -> None:
     """Migrate all v2 metadata in a Zarr array/group to v3.
 
     Note - if a group is provided, then all arrays / groups within this group will also be converted.
@@ -162,7 +163,7 @@ def _convert_group(zarr_v2: Group, output_path: StorePath, dry_run: bool) -> Non
     sync(_save_v3_metadata(group_metadata_v3, output_path, dry_run=dry_run))
 
 
-def _convert_array(zarr_v2: Array, output_path: StorePath, dry_run: bool) -> None:
+def _convert_array(zarr_v2: AnyArray, output_path: StorePath, dry_run: bool) -> None:
     array_metadata_v3 = _convert_array_metadata(cast(ArrayV2Metadata, zarr_v2.metadata))
     sync(_save_v3_metadata(array_metadata_v3, output_path, dry_run=dry_run))
 

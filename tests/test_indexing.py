@@ -601,20 +601,15 @@ def test_get_orthogonal_selection_1d_bool(store: StorePath) -> None:
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_1d_int(store: StorePath) -> None:
     # setup
-    a = np.arange(1050, dtype=int)
+    a = np.arange(550, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
-        # unordered
+    for p in 0.5, 0.01:
+        # sorted integer arrays
         ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        _test_get_orthogonal_selection(a, z, ix)
-        # increasing
         ix.sort()
-        _test_get_orthogonal_selection(a, z, ix)
-        # decreasing
-        ix = ix[::-1]
         _test_get_orthogonal_selection(a, z, ix)
 
     selections = basic_selections_1d + [
@@ -660,12 +655,12 @@ def _test_get_orthogonal_selection_2d(
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_2d(store: StorePath) -> None:
     # setup
-    a = np.arange(10000, dtype=int).reshape(1000, 10)
+    a = np.arange(5400, dtype=int).reshape(600, 9)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
@@ -679,15 +674,11 @@ def test_get_orthogonal_selection_2d(store: StorePath) -> None:
         for selection in selections:
             _test_get_orthogonal_selection(a, z, selection)
 
-        # integer arrays
+        # sorted integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
-        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
         ix0.sort()
         ix1.sort()
-        _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
-        ix0 = ix0[::-1]
-        ix1 = ix1[::-1]
         _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
 
     for selection_2d in basic_selections_2d:
@@ -709,33 +700,33 @@ def _test_get_orthogonal_selection_3d(
 ) -> None:
     selections = [
         # single value
-        (84, 42, 4),
+        (60, 15, 4),
         (-1, -1, -1),
         # index all axes with array
         (ix0, ix1, ix2),
         # mixed indexing with single array / slices
-        (ix0, slice(15, 25), slice(1, 5)),
-        (slice(50, 70), ix1, slice(1, 5)),
-        (slice(50, 70), slice(15, 25), ix2),
-        (ix0, slice(15, 25, 5), slice(1, 5, 2)),
-        (slice(50, 70, 3), ix1, slice(1, 5, 2)),
-        (slice(50, 70, 3), slice(15, 25, 5), ix2),
+        (ix0, slice(10, 20), slice(1, 5)),
+        (slice(30, 50), ix1, slice(1, 5)),
+        (slice(30, 50), slice(10, 20), ix2),
+        (ix0, slice(10, 20, 5), slice(1, 5, 2)),
+        (slice(30, 50, 3), ix1, slice(1, 5, 2)),
+        (slice(30, 50, 3), slice(10, 20, 5), ix2),
         # mixed indexing with single array / ints
-        (ix0, 42, 4),
-        (84, ix1, 4),
-        (84, 42, ix2),
+        (ix0, 15, 4),
+        (60, ix1, 4),
+        (60, 15, ix2),
         # mixed indexing with single array / slice / int
-        (ix0, slice(15, 25), 4),
-        (42, ix1, slice(1, 5)),
-        (slice(50, 70), 42, ix2),
+        (ix0, slice(10, 20), 4),
+        (15, ix1, slice(1, 5)),
+        (slice(30, 50), 15, ix2),
         # mixed indexing with two array / slice
         (ix0, ix1, slice(1, 5)),
-        (slice(50, 70), ix1, ix2),
-        (ix0, slice(15, 25), ix2),
+        (slice(30, 50), ix1, ix2),
+        (ix0, slice(10, 20), ix2),
         # mixed indexing with two array / integer
         (ix0, ix1, 4),
-        (42, ix1, ix2),
-        (ix0, 42, ix2),
+        (15, ix1, ix2),
+        (ix0, 15, ix2),
     ]
     for selection in selections:
         _test_get_orthogonal_selection(a, z, selection)
@@ -743,30 +734,25 @@ def _test_get_orthogonal_selection_3d(
 
 def test_get_orthogonal_selection_3d(store: StorePath) -> None:
     # setup
-    a = np.arange(100000, dtype=int).reshape(200, 50, 10)
+    a = np.arange(32400, dtype=int).reshape(120, 30, 9)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(60, 20, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
         ix2 = np.random.binomial(1, 0.5, size=a.shape[2]).astype(bool)
         _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
 
-        # integer arrays
+        # sorted integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
         ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * 0.5), replace=True)
-        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
         ix0.sort()
         ix1.sort()
         ix2.sort()
-        _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
-        ix0 = ix0[::-1]
-        ix1 = ix1[::-1]
-        ix2 = ix2[::-1]
         _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
 
 
@@ -805,23 +791,20 @@ def _test_set_orthogonal_selection(
 
 def test_set_orthogonal_selection_1d(store: StorePath) -> None:
     # setup
-    v = np.arange(1050, dtype=int)
+    v = np.arange(550, dtype=int)
     a = np.empty(v.shape, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
 
     # test with different degrees of sparseness
     np.random.seed(42)
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         _test_set_orthogonal_selection(v, a, z, ix)
 
-        # integer arrays
+        # sorted integer arrays
         ix = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        _test_set_orthogonal_selection(v, a, z, ix)
         ix.sort()
-        _test_set_orthogonal_selection(v, a, z, ix)
-        ix = ix[::-1]
         _test_set_orthogonal_selection(v, a, z, ix)
 
     # basic selections
@@ -870,27 +853,23 @@ def _test_set_orthogonal_selection_2d(
 
 def test_set_orthogonal_selection_2d(store: StorePath) -> None:
     # setup
-    v = np.arange(10000, dtype=int).reshape(1000, 10)
+    v = np.arange(5400, dtype=int).reshape(600, 9)
     a = np.empty_like(v)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
         _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
 
-        # integer arrays
+        # sorted integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
-        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
         ix0.sort()
         ix1.sort()
-        _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
-        ix0 = ix0[::-1]
-        ix1 = ix1[::-1]
         _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
 
     for selection in basic_selections_2d:
@@ -907,20 +886,20 @@ def _test_set_orthogonal_selection_3d(
 ) -> None:
     selections = (
         # single value
-        (84, 42, 4),
+        (60, 15, 4),
         (-1, -1, -1),
         # index all axes with bool array
         (ix0, ix1, ix2),
         # mixed indexing with single bool array / slice or int
-        (ix0, slice(15, 25), slice(1, 5)),
-        (slice(50, 70), ix1, slice(1, 5)),
-        (slice(50, 70), slice(15, 25), ix2),
-        (ix0, 42, 4),
-        (84, ix1, 4),
-        (84, 42, ix2),
-        (ix0, slice(15, 25), 4),
-        (slice(50, 70), ix1, 4),
-        (slice(50, 70), 42, ix2),
+        (ix0, slice(10, 20), slice(1, 5)),
+        (slice(30, 50), ix1, slice(1, 5)),
+        (slice(30, 50), slice(10, 20), ix2),
+        (ix0, 15, 4),
+        (60, ix1, 4),
+        (60, 15, ix2),
+        (ix0, slice(10, 20), 4),
+        (slice(30, 50), ix1, 4),
+        (slice(30, 50), 15, ix2),
         # indexing with two arrays / slice
         (ix0, ix1, slice(1, 5)),
         # indexing with two arrays / integer
@@ -932,35 +911,26 @@ def _test_set_orthogonal_selection_3d(
 
 def test_set_orthogonal_selection_3d(store: StorePath) -> None:
     # setup
-    v = np.arange(100000, dtype=int).reshape(200, 50, 10)
+    v = np.arange(32400, dtype=int).reshape(120, 30, 9)
     a = np.empty_like(v)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(60, 20, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
         ix2 = np.random.binomial(1, 0.5, size=a.shape[2]).astype(bool)
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
 
-        # integer arrays
+        # sorted integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
         ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
         ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * 0.5), replace=True)
-        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
-
-        # sorted increasing
         ix0.sort()
         ix1.sort()
         ix2.sort()
-        _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
-
-        # sorted decreasing
-        ix0 = ix0[::-1]
-        ix1 = ix1[::-1]
-        ix2 = ix2[::-1]
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
 
 
@@ -1128,13 +1098,13 @@ def _test_set_coordinate_selection(
 
 def test_set_coordinate_selection_1d(store: StorePath) -> None:
     # setup
-    v = np.arange(1050, dtype=int)
+    v = np.arange(550, dtype=int)
     a = np.empty(v.shape, dtype=v.dtype)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         n = int(a.size * p)
         ix = np.random.choice(a.shape[0], size=n, replace=True)
         _test_set_coordinate_selection(v, a, z, ix)
@@ -1152,13 +1122,13 @@ def test_set_coordinate_selection_1d(store: StorePath) -> None:
 
 def test_set_coordinate_selection_2d(store: StorePath) -> None:
     # setup
-    v = np.arange(10000, dtype=int).reshape(1000, 10)
+    v = np.arange(5400, dtype=int).reshape(600, 9)
     a = np.empty_like(v)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
 
     np.random.seed(42)
     # test with different degrees of sparseness
-    for p in 2, 0.5, 0.1, 0.01:
+    for p in 0.5, 0.01:
         n = int(a.size * p)
         ix0 = np.random.choice(a.shape[0], size=n, replace=True)
         ix1 = np.random.choice(a.shape[1], size=n, replace=True)

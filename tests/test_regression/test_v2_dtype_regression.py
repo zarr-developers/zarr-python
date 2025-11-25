@@ -25,11 +25,11 @@ from zarr.abc.numcodec import Numcodec
 from zarr.codecs import blosc
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
-from zarr.core.array import Array
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
 from zarr.core.dtype.npy.string import VariableLengthUTF8
 from zarr.storage import LocalStore
+from zarr.types import ArrayV2, ArrayV3
 
 if TYPE_CHECKING:
     from zarr.core.dtype import ZDTypeLike
@@ -224,7 +224,7 @@ array_cases_v3_08 = (
 
 
 @pytest.fixture
-def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
+def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> ArrayV2:
     """
     Writes a zarr array to a temporary directory based on the provided ArrayParams. The array is
     returned.
@@ -262,7 +262,7 @@ def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
 
 
 @pytest.fixture
-def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
+def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> ArrayV3:
     """
     Writes a zarr array to a temporary directory based on the provided ArrayParams. The array is
     returned.
@@ -309,7 +309,7 @@ script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
     "source_array_v2", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
 )
 @pytest.mark.parametrize("script_path", script_paths)
-def test_roundtrip_v2(source_array_v2: Array, tmp_path: Path, script_path: Path) -> None:
+def test_roundtrip_v2(source_array_v2: ArrayV2, tmp_path: Path, script_path: Path) -> None:
     out_path = tmp_path / "out"
     copy_op = subprocess.run(
         [
@@ -334,7 +334,7 @@ def test_roundtrip_v2(source_array_v2: Array, tmp_path: Path, script_path: Path)
 @pytest.mark.parametrize(
     "source_array_v3", array_cases_v3_08, indirect=True, ids=tuple(map(str, array_cases_v3_08))
 )
-def test_roundtrip_v3(source_array_v3: Array, tmp_path: Path) -> None:
+def test_roundtrip_v3(source_array_v3: ArrayV3, tmp_path: Path) -> None:
     script_path = Path(__file__).resolve().parent / "scripts" / "v3.0.8.py"
     out_path = tmp_path / "out"
     copy_op = subprocess.run(

@@ -17,7 +17,6 @@ from zarr.codecs.numcodecs import LZMA
 from zarr.codecs.numcodecs.delta import Delta
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.array import Array
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
@@ -25,6 +24,7 @@ from zarr.core.dtype.npy.int import UInt8, UInt16
 from zarr.core.group import Group, GroupMetadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage._local import LocalStore
+from zarr.types import AnyArray
 
 typer_testing = pytest.importorskip(
     "typer.testing", reason="optional cli dependencies aren't installed"
@@ -115,7 +115,7 @@ def test_migrate_nested_groups_and_arrays_in_place(
     # Check converted zarr can be opened + metadata accessed at all levels
     zarr_array = zarr.open(local_store.root, zarr_format=3)
     for path in paths:
-        zarr_v3 = cast(Array | Group, zarr_array[path])
+        zarr_v3 = cast(AnyArray | Group, zarr_array[path])
         metadata = zarr_v3.metadata
         assert metadata.zarr_format == 3
         assert metadata.attributes == attributes

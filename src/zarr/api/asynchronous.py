@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypeAlias, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -37,7 +37,7 @@ from zarr.core.group import (
     GroupMetadata,
     create_hierarchy,
 )
-from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata
 from zarr.errors import (
     ArrayNotFoundError,
     GroupNotFoundError,
@@ -57,9 +57,10 @@ if TYPE_CHECKING:
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
+    from zarr.types import AnyArray, AnyAsyncArray
 
     # TODO: this type could use some more thought
-    ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
+    ArrayLike: TypeAlias = AnyAsyncArray | AnyArray | npt.NDArray[Any]
     PathLike = str
 
 __all__ = [
@@ -334,7 +335,7 @@ async def open(
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to open_array
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+) -> AnyAsyncArray | AsyncGroup:
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
@@ -600,9 +601,7 @@ async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = 
     return await grp.tree(expand=expand, level=level)
 
 
-async def array(
-    data: npt.ArrayLike | Array, **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyAsyncArray:
     """Create an array filled with `data`.
 
     Parameters
@@ -918,7 +917,7 @@ async def create(
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
     **kwargs: Any,
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> AnyAsyncArray:
     """Create an array.
 
     Parameters
@@ -1105,9 +1104,7 @@ async def create(
     )
 
 
-async def empty(
-    shape: tuple[int, ...], **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def empty(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     """Create an empty array with the specified shape. The contents will be filled with the
     specified fill value or zeros if no fill value is provided.
 
@@ -1127,9 +1124,7 @@ async def empty(
     return await create(shape=shape, **kwargs)
 
 
-async def empty_like(
-    a: ArrayLike, **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def empty_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     """Create an empty array like `a`. The contents will be filled with the
     array's fill value or zeros if no fill value is provided.
 
@@ -1158,9 +1153,7 @@ async def empty_like(
 
 
 # TODO: add type annotations for fill_value and kwargs
-async def full(
-    shape: tuple[int, ...], fill_value: Any, **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def full(shape: tuple[int, ...], fill_value: Any, **kwargs: Any) -> AnyAsyncArray:
     """Create an array, with `fill_value` being used as the default value for
     uninitialized portions of the array.
 
@@ -1182,9 +1175,7 @@ async def full(
 
 
 # TODO: add type annotations for kwargs
-async def full_like(
-    a: ArrayLike, **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def full_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     """Create a filled array like `a`.
 
     Parameters
@@ -1205,9 +1196,7 @@ async def full_like(
     return await full(**like_kwargs)  # type: ignore[arg-type]
 
 
-async def ones(
-    shape: tuple[int, ...], **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def ones(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     """Create an array, with one being used as the default value for
     uninitialized portions of the array.
 
@@ -1226,9 +1215,7 @@ async def ones(
     return await create(shape=shape, fill_value=1, **kwargs)
 
 
-async def ones_like(
-    a: ArrayLike, **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def ones_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     """Create an array of ones like `a`.
 
     Parameters
@@ -1255,7 +1242,7 @@ async def open_array(
     path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+) -> AnyAsyncArray:
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -1306,9 +1293,7 @@ async def open_array(
         raise ArrayNotFoundError(msg) from err
 
 
-async def open_like(
-    a: ArrayLike, path: str, **kwargs: Any
-) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AnyAsyncArray:
     """Open a persistent array like `a`.
 
     Parameters
@@ -1331,9 +1316,7 @@ async def open_like(
     return await open_array(path=path, **like_kwargs)  # type: ignore[arg-type]
 
 
-async def zeros(
-    shape: tuple[int, ...], **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def zeros(shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
     """Create an array, with zero being used as the default value for
     uninitialized portions of the array.
 
@@ -1352,9 +1335,7 @@ async def zeros(
     return await create(shape=shape, fill_value=0, **kwargs)
 
 
-async def zeros_like(
-    a: ArrayLike, **kwargs: Any
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+async def zeros_like(a: ArrayLike, **kwargs: Any) -> AnyAsyncArray:
     """Create an array of zeros like `a`.
 
     Parameters
