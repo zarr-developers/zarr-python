@@ -1910,7 +1910,7 @@ class Group(SyncMixin):
 
     def get[DefaultT](
         self, path: str, default: DefaultT | None = None
-    ) -> Array | Group | DefaultT | None:
+    ) -> AnyArray | Group | DefaultT | None:
         """Obtain a group member, returning default if not found.
 
         Parameters

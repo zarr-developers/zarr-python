@@ -1,7 +1,17 @@
 from __future__ import annotations
 
+import importlib
 import re
 from pathlib import Path
+
+if importlib.util.find_spec("upath"):
+    from upath.core import UPath
+else:
+
+    class UPath:  # type: ignore[no-redef]
+        pass
+
+
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
@@ -20,7 +30,8 @@ def normalize_path(path: str | bytes | Path | None) -> str:
         result = str(path, "ascii")
 
     # handle pathlib.Path
-    elif isinstance(path, Path):
+
+    elif isinstance(path, Path | UPath):
         result = str(path)
 
     elif isinstance(path, str):
