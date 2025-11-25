@@ -30,33 +30,48 @@ nav:
   - Examples:
       - user-guide/examples/custom_dtype.md
   - API Reference:
-      - api/index.md
-      - api/array.md
-      - api/group.md
-      - api/create.md
-      - api/dtype.md
-      - api/open.md
-      - api/load.md
-      - api/save.md
-      - api/buffer.md
-      - api/convenience.md
-      - api/config.md
-      - api/codecs.md
-      - api/errors.md
-      - api/metadata.md
-      - api/registry.md
-      - api/storage.md
-      - api/testing.md
-      - Async API: api/api_async.md
-      - Sync API: api/api_sync.md
+      - api/zarr/index.md
+      - api/zarr/array.md
+      - api/zarr/group.md
+      - api/zarr/create.md
+      - api/zarr/dtype.md
+      - api/zarr/load.md
+      - api/zarr/open.md
+      - api/zarr/save.md
+      - api/zarr/codecs.md
+      - api/zarr/codecs/numcodecs.md
+      - api/zarr/config.md
+      - api/zarr/convenience.md
+      - api/zarr/errors.md
+      - api/zarr/metadata.md
+      - api/zarr/registry.md
+      - api/zarr/storage.md
       - ABC:
-        - api/abc/buffer.md
-        - api/abc/codec.md
-        - api/abc/metadata.md
-        - api/abc/store.md
+        - api/zarr/abc/index.md
+        - api/zarr/abc/buffer.md
+        - api/zarr/abc/codec.md
+        - api/zarr/abc/numcodec.md
+        - api/zarr/abc/metadata.md
+        - api/zarr/abc/store.md
+      - API:
+        - api/zarr/api/index.md
+        - api/zarr/api/asynchronous.md
+        - api/zarr/api/synchronous.md
+      - Buffer:
+        - api/zarr/buffer/index.md
+        - api/zarr/buffer/cpu.md
+        - api/zarr/buffer/gpu.md
+      - Testing:
+        - api/zarr/testing/index.md
+        - api/zarr/testing/buffer.md
+        - api/zarr/testing/conftest.md
+        - api/zarr/testing/stateful.md
+        - api/zarr/testing/store.md
+        - api/zarr/testing/strategies.md
+        - api/zarr/testing/utils.md
       - deprecated:
-        - Convenience sub-module: api/deprecated/convenience.md
-        - Creation sub-module: api/deprecated/creation.md
+        - Convenience sub-module: api/zarr/deprecated/convenience.md
+        - Creation sub-module: api/zarr/deprecated/creation.md
   - release-notes.md
   - contributing.md
 watch:
@@ -197,39 +212,12 @@ plugins:
         'developers/contributing.html.md': 'contributing.md'
         'developers/index.html.md': 'contributing.md'
         'developers/roadmap.html.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
-        'api/zarr/index.html.md': 'api/index.md'
-        'api/zarr/abc/index.html.md': 'api/abc/buffer.md'
-        'api/zarr/abc/buffer/index.html.md': 'api/abc/buffer.md'
-        'api/zarr/abc/codec/index.html.md': 'api/abc/codec.md'
-        'api/zarr/abc/metadata/index.html.md': 'api/abc/metadata.md'
-        'api/zarr/abc/numcodec/index.html.md': 'api/abc/codec.md'
-        'api/zarr/abc/store/index.html.md': 'api/abc/store.md'
-        'api/zarr/api/index.html.md': 'api/index.md'
-        'api/zarr/api/asynchronous/index.html.md': 'api/api_async.md'
-        'api/zarr/api/synchronous/index.html.md': 'api/api_sync.md'
-        'api/zarr/buffer/index.html.md': 'api/buffer.md'
-        'api/zarr/buffer/cpu/index.html.md': 'api/buffer.md'
-        'api/zarr/buffer/gpu/index.html.md': 'api/buffer.md'
-        'api/zarr/codecs/index.html.md': 'api/codecs.md'
-        'api/zarr/codecs/numcodecs/index.html.md': 'api/codecs.md'
-        'api/zarr/convenience/index.html.md': 'api/convenience.md'
-        'api/zarr/creation/index.html.md': 'api/deprecated/creation.md'
-        'api/zarr/dtype/index.html.md': 'api/dtype.md'
-        'api/zarr/errors/index.html.md': 'api/errors.md'
-        'api/zarr/metadata/index.html.md': 'api/metadata.md'
-        'api/zarr/metadata/migrate_v3/index.html.md': 'api/metadata.md'
-        'api/zarr/registry/index.html.md': 'api/registry.md'
-        'api/zarr/storage/index.html.md': 'api/storage.md'
-        'api/zarr/testing/index.html.md': 'api/testing.md'
-        'api/zarr/testing/buffer/index.html.md': 'api/testing.md'
-        'api/zarr/testing/conftest/index.html.md': 'api/testing.md'
-        'api/zarr/testing/stateful/index.html.md': 'api/testing.md'
-        'api/zarr/testing/store/index.html.md': 'api/testing.md'
-        'api/zarr/testing/strategies/index.html.md': 'api/testing.md'
-        'api/zarr/testing/utils/index.html.md': 'api/testing.md'
+        'api/zarr/creation.md': 'api/zarr/deprecated/creation.md'
+        'api/zarr/codecs/numcodecs.md': 'api/zarr/deprecated/creation.md'
+        'api.md': 'api/zarr/index.md'
+        'api/zarr/metadata/migrate_v3.md': 'api/zarr/metadata.md'
 
-
-# https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
+# Based on https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
 markdown_extensions:
   - admonition
   - attr_list
