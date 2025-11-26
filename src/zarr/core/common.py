@@ -244,5 +244,5 @@ def _warn_order_kwarg() -> None:
 
 
 def _default_zarr_format() -> ZarrFormat:
-    """Return the default zarr_version"""
+    """Return the default zarr format"""
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
