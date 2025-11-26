@@ -52,7 +52,7 @@ conda install --channel conda-forge zarr
     A detailed guide for how to use Zarr-Python.
 
 
--   [:material-api:{ .lg .middle } __API Reference__](api/open.md)
+-   [:material-api:{ .lg .middle } __API Reference__](api/zarr/open.md)
 
     ---
 
