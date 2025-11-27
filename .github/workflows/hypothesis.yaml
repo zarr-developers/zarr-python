@@ -28,7 +28,7 @@ jobs:
         dependency-set: ["optional"]
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
     - name: Set HYPOTHESIS_PROFILE based on trigger
       run: |
         if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then

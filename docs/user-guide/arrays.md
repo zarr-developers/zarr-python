@@ -27,7 +27,7 @@ columns (and so there will be 100 chunks in total). The data is written to a
 and see [Data types](data_types.md) for an in-depth look at the data types supported
 by Zarr.
 
-See the [creation API documentation](../api/create.md) for more detailed information about
+See the [creation API documentation](../api/zarr/create.md) for more detailed information about
 creating arrays.
 
 ## Reading and writing data
@@ -213,7 +213,7 @@ built-in delta filter:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 import lzma
-from numcodecs.zarr3 import LZMA
+from zarr.codecs.numcodecs import LZMA
 
 lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
 compressors = LZMA(filters=lzma_filters)
@@ -251,7 +251,7 @@ mechanism for configuring filters outside of the primary compressor.
 Here is an example using a delta filter with the Blosc compressor:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-from numcodecs.zarr3 import Delta
+from zarr.codecs.numcodecs import Delta
 
 filters = [Delta(dtype='int32')]
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle=zarr.codecs.BloscShuffle.shuffle)
