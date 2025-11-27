@@ -11,7 +11,7 @@ import tomlkit
 from packaging.requirements import Requirement
 
 examples_dir = "examples"
-script_paths = tuple(Path(examples_dir).glob("*.py"))
+script_paths = tuple(Path(examples_dir).rglob("*.py"))
 
 PEP_723_REGEX: Final = r"(?m)^# /// (?P<type>[a-zA-Z0-9-]+)$\s(?P<content>(^#(| .*)$\s)+)^# ///$"
 
