@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
 
 import zarr
-from zarr.types import ArrayV3
 
 from .conftest import (
     blosc_cases,
@@ -15,6 +15,9 @@ from .conftest import (
     uv_run_cmd,
     vlen_string_cases,
 )
+
+if TYPE_CHECKING:
+    from zarr.types import ArrayV3
 
 array_cases = vlen_string_cases + blosc_cases + gzip_cases
 
