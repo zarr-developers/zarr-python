@@ -63,7 +63,7 @@ def _guess_chunks(
 
     """
     if min_bytes >= max_bytes:
-        raise ValueError(f"Cannot have more min_bytes {min_bytes} than max_bytes {max_bytes}")
+        raise ValueError(f"Cannot have more min_bytes ({min_bytes}) than max_bytes ({max_bytes})")
     if isinstance(shape, int):
         shape = (shape,)
 
