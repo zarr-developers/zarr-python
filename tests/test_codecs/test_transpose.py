@@ -1,14 +1,61 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 
 import zarr
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr import AsyncArray, config
-from zarr.abc.store import Store
 from zarr.codecs import TransposeCodec
-from zarr.core.common import MemoryOrder
+from zarr.codecs.transpose import check_json_v2, check_json_v3
 from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
+
+if TYPE_CHECKING:
+    from zarr.abc.store import Store
+    from zarr.codecs.transpose import TransposeJSON_V2, TransposeJSON_V3
+    from zarr.core.common import MemoryOrder
+
+
+class TestTransposeCodec(BaseTestCodec):
+    test_cls = TransposeCodec
+    valid_json_v2 = (
+        {
+            "id": "transpose",
+            "order": (2, 1, 0),
+        },
+    )
+    valid_json_v3 = (
+        {
+            "name": "transpose",
+            "configuration": {
+                "order": (2, 1, 0),
+            },
+        },
+    )
+
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        return check_json_v2(data)
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        return check_json_v3(data)
+
+
+@pytest.mark.parametrize("order", [(1, 2, 3), (2, 1, 0)])
+def test_transpose_to_json(order: tuple[int, ...]) -> None:
+    codec = TransposeCodec(order=order)
+    expected_v2: TransposeJSON_V2 = {"id": "transpose", "order": order}
+    expected_v3: TransposeJSON_V3 = {
+        "name": "transpose",
+        "configuration": {"order": order},
+    }
+    assert codec.to_json(zarr_format=2) == expected_v2
+    assert codec.to_json(zarr_format=3) == expected_v3
 
 
 @pytest.mark.parametrize("input_order", ["F", "C"])

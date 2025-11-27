@@ -1,4 +1,5 @@
 import json
+from typing import Any, Literal
 
 import numcodecs
 import numpy as np
@@ -6,12 +7,133 @@ import pytest
 from packaging.version import Version
 
 import zarr
-from zarr.codecs import BloscCodec
-from zarr.codecs.blosc import BloscShuffle, Shuffle
+import zarr.codecs.blosc as blosc
+import zarr.codecs.numcodecs
+from tests.test_codecs.conftest import BaseTestCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.common import ZarrFormat
 from zarr.core.dtype import UInt16
-from zarr.storage import MemoryStore, StorePath
+from zarr.core.dtype.npy.int import Int64
+from zarr.errors import ZarrDeprecationWarning
+from zarr.storage import StorePath
+from zarr.storage._memory import MemoryStore
+
+
+class TestBloscCodec(BaseTestCodec):
+    test_cls = blosc.BloscCodec
+    valid_json_v2 = (
+        {
+            "id": "blosc",
+            "cname": "lz4",
+            "clevel": 5,
+            "shuffle": 1,
+            "blocksize": 0,
+        },
+    )
+    valid_json_v3 = (
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "lz4",
+                "clevel": 5,
+                "shuffle": "shuffle",
+                "blocksize": 0,
+                "typesize": 1,
+            },
+        },
+        {
+            "name": "blosc",
+            "configuration": {
+                "cname": "lz4",
+                "clevel": 5,
+                "shuffle": 1,
+                "blocksize": 0,
+                "typesize": 1,
+            },
+        },
+    )
+
+    @staticmethod
+    def check_json_v2(data: object) -> bool:
+        return blosc.check_json_v2(data)
+
+    @staticmethod
+    def check_json_v3(data: object) -> bool:
+        return blosc.check_json_v3(data)
+
+
+@pytest.mark.parametrize("shuffle", blosc.SHUFFLE)
+@pytest.mark.parametrize("cname", blosc.CNAME)
+@pytest.mark.parametrize("clevel", [1, 2])
+@pytest.mark.parametrize("blocksize", [1, 2])
+@pytest.mark.parametrize("typesize", [1, 2])
+def test_to_json_v2(
+    cname: blosc.CName, shuffle: blosc.Shuffle, clevel: int, blocksize: int, typesize: int
+) -> None:
+    codec = blosc.BloscCodec(
+        shuffle=shuffle, cname=cname, clevel=clevel, blocksize=blocksize, typesize=typesize
+    )
+    expected_v2: blosc.BloscJSON_V2 = {
+        "id": "blosc",
+        "cname": cname,
+        "clevel": clevel,
+        "shuffle": blosc.SHUFFLE.index(shuffle),
+        "blocksize": blocksize,
+    }
+    expected_v3: blosc.BloscJSON_V3 = {
+        "name": "blosc",
+        "configuration": {
+            "cname": cname,
+            "clevel": clevel,
+            "shuffle": shuffle,
+            "blocksize": blocksize,
+            "typesize": typesize,
+        },
+    }
+    assert codec.to_json(zarr_format=2) == expected_v2
+    assert codec.to_json(zarr_format=3) == expected_v3
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize(
+    "codec_type",
+    [
+        "legacy_zarr3",
+        "numcodecs",
+    ],
+)
+def test_blosc_compression(
+    zarr_format: ZarrFormat, codec_type: Literal["legacy_zarr3", "numcodecs"]
+) -> None:
+    """
+    Test that any of the blosc-like codecs can be used for compression, and that
+    reading the array back uses the primary blosc codec class.
+    """
+    ref_codec = blosc.BloscCodec(cname="lz4", clevel=5, shuffle="shuffle", blocksize=0, typesize=8)
+    if codec_type == "legacy_zarr3":
+        with pytest.warns(ZarrDeprecationWarning):
+            codec: zarr.codecs.numcodecs.Blosc = zarr.codecs.numcodecs.Blosc(
+                cname="lz4", clevel=5, shuffle=1, blocksize=0
+            )
+    elif codec_type == "numcodecs":
+        codec = numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0, typesize=8)
+    else:
+        raise ValueError(f"Unknown codec_type: {codec_type}")
+    store: dict[str, Any] = {}
+    z_w = zarr.create_array(
+        store=store,
+        dtype=Int64(),
+        shape=(1,),
+        chunks=(10,),
+        zarr_format=zarr_format,
+        compressors=codec,
+    )
+    z_w[:] = 5
+
+    z_r = zarr.open_array(store=store, zarr_format=zarr_format)
+    assert np.all(z_r[:] == 5)
+    assert z_r.compressors == (ref_codec,)
 
 
 @pytest.mark.parametrize("dtype", ["uint8", "uint16"])
@@ -26,7 +148,7 @@ async def test_blosc_evolve(dtype: str) -> None:
         chunks=(16, 16),
         dtype=dtype,
         fill_value=0,
-        compressors=BloscCodec(),
+        compressors=blosc.BloscCodec(),
     )
     buf = await store.get(f"{path}/zarr.json", prototype=default_buffer_prototype())
     assert buf is not None
@@ -47,7 +169,7 @@ async def test_blosc_evolve(dtype: str) -> None:
         shards=(16, 16),
         dtype=dtype,
         fill_value=0,
-        compressors=BloscCodec(),
+        compressors=blosc.BloscCodec(),
     )
     buf = await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype())
     assert buf is not None
@@ -60,16 +182,18 @@ async def test_blosc_evolve(dtype: str) -> None:
         assert blosc_configuration_json["shuffle"] == "shuffle"
 
 
-@pytest.mark.parametrize("shuffle", [None, "bitshuffle", BloscShuffle.shuffle])
+@pytest.mark.parametrize("shuffle", [None, "bitshuffle", blosc.BloscShuffle.shuffle])
 @pytest.mark.parametrize("typesize", [None, 1, 2])
-def test_tunable_attrs_param(shuffle: None | Shuffle | BloscShuffle, typesize: None | int) -> None:
+def test_tunable_attrs_param(
+    shuffle: None | blosc.Shuffle | blosc.BloscShuffle, typesize: None | int
+) -> None:
     """
     Test that the tunable_attrs parameter is set as expected when creating a BloscCodec,
     """
-    codec = BloscCodec(typesize=typesize, shuffle=shuffle)
+    codec = blosc.BloscCodec(typesize=typesize, shuffle=shuffle)
 
     if shuffle is None:
-        assert codec.shuffle == BloscShuffle.bitshuffle  # default shuffle
+        assert codec.shuffle == blosc.BloscShuffle.bitshuffle  # default shuffle
         assert "shuffle" in codec._tunable_attrs
     if typesize is None:
         assert codec.typesize == 1  # default typesize
@@ -90,7 +214,7 @@ def test_tunable_attrs_param(shuffle: None | Shuffle | BloscShuffle, typesize: N
     else:
         assert evolved_codec.typesize == codec.typesize
     if shuffle is None:
-        assert evolved_codec.shuffle == BloscShuffle.shuffle
+        assert evolved_codec.shuffle == blosc.BloscShuffle.shuffle
     else:
         assert evolved_codec.shuffle == codec.shuffle
 
@@ -110,3 +234,16 @@ async def test_typesize() -> None:
     else:
         expected_size = 10216
     assert size == expected_size, msg
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.ZarrDeprecationWarning")
+def test_v3_json_alias() -> None:
+    from zarr.codecs import numcodecs as _numcodecs
+
+    """
+    Test that the default JSON output of the legacy numcodecs.zarr3.Blosc codec is readable, even if it's
+    underspecified.
+    """
+    assert _numcodecs.Blosc.from_json(
+        {"name": "numcodecs.blosc", "configuration": {}}
+    ) == _numcodecs.Blosc(cname="lz4", clevel=5, shuffle=1, blocksize=0)

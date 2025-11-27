@@ -35,13 +35,12 @@ from zarr.core.common import (
     ZARR_JSON,
     DimensionNames,
     NamedConfig,
-    parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
-from zarr.registry import get_codec_class
+from zarr.registry import get_codec
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -70,10 +69,8 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
         ):  # Can't use Codec here because of mypy limitation
             out += (c,)
         else:
-            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-
             try:
-                out += (get_codec_class(name_parsed).from_dict(c),)
+                out += (get_codec(c),)
             except KeyError as e:
                 raise UnknownCodecError(f"Unknown codec: {e.args[0]!r}") from e
 
@@ -93,9 +90,14 @@ def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
 
 def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseScalar]) -> None:
     """Check that the codecs are valid for the given dtype"""
+    # avoid circular import
     from zarr.codecs.sharding import ShardingCodec
+    from zarr.core.codec_pipeline import codecs_from_list
 
-    abc = validate_array_bytes_codec(codecs)
+    array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
+    _codecs: tuple[Codec, ...] = (*array_array_codecs, array_bytes_codec, *bytes_bytes_codecs)
+
+    abc = validate_array_bytes_codec(_codecs)
 
     # Recursively resolve array-bytes codecs within sharding codecs
     while isinstance(abc, ShardingCodec):
@@ -350,7 +352,7 @@ class ArrayV3Metadata(Metadata):
         d = self.to_dict()
         return {
             ZARR_JSON: prototype.buffer.from_bytes(
-                json.dumps(d, allow_nan=True, indent=json_indent).encode()
+                json.dumps(d, allow_nan=False, indent=json_indent).encode()
             )
         }
 

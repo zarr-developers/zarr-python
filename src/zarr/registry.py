@@ -5,6 +5,7 @@ from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from zarr.core.common import CodecJSON_V2, CodecJSON_V3, check_codecjson_v2
 from zarr.core.config import BadConfigError, config
 from zarr.core.dtype import data_type_registry
 from zarr.errors import ZarrUserWarning
@@ -13,17 +14,12 @@ if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
 
     from zarr.abc.codec import (
-        ArrayArrayCodec,
-        ArrayBytesCodec,
-        BytesBytesCodec,
         Codec,
-        CodecJSON_V2,
         CodecPipeline,
     )
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-    from zarr.core.common import JSON
 
 __all__ = [
     "Registry",
@@ -160,15 +156,18 @@ def register_chunk_key_encoding(key: str, cls: type) -> None:
     __chunk_key_encoding_registry.register(cls, key)
 
 
-def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
+def _get_codec_class(
+    key: str, registry: dict[str, Registry[Codec]], *, reload_config: bool = False
+) -> type[Codec]:
     if reload_config:
         _reload_config()
 
-    if key in __codec_registries:
+    if key in registry:
         # logger.debug("Auto loading codec '%s' from entrypoint", codec_id)
-        __codec_registries[key].lazy_load()
+        registry[key].lazy_load()
 
-    codec_classes = __codec_registries[key]
+    codec_classes = registry[key]
+
     if not codec_classes:
         raise KeyError(key)
     config_entry = config.get("codecs", {}).get(key)
@@ -188,72 +187,36 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     raise KeyError(key)
 
 
-def _resolve_codec(data: dict[str, JSON]) -> Codec:
+def get_codec(request: CodecJSON_V2 | CodecJSON_V3) -> Codec:
     """
-    Get a codec instance from a dict representation of that codec.
+    Get an instance of a codec from either a Zarr V2 or V3 JSON codec declaration.
     """
-    # TODO: narrow the type of the input to only those dicts that map on to codec class instances.
-    return get_codec_class(data["name"]).from_dict(data)  # type: ignore[arg-type]
+    if check_codecjson_v2(request):
+        return _get_codec_v2(request)
+    return _get_codec_v3(request)
 
 
-def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
+def _get_codec_v2(request: CodecJSON_V2) -> Codec:
     """
-    Normalize the input to a ``BytesBytesCodec`` instance.
-    If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``BytesBytesCodec`` instance via the ``_resolve_codec`` function.
+    Get a codec class from a Zarr V2 JSON codec declaration.
     """
-    from zarr.abc.codec import BytesBytesCodec
-
-    if isinstance(data, dict):
-        result = _resolve_codec(data)
-        if not isinstance(result, BytesBytesCodec):
-            msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
-    else:
-        if not isinstance(data, BytesBytesCodec):
-            raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")
-        result = data
-    return result
+    codec_cls = get_codec_class(request["id"])
+    return codec_cls.from_json(request)
 
 
-def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
+def _get_codec_v3(request: CodecJSON_V3) -> Codec:
     """
-    Normalize the input to a ``ArrayBytesCodec`` instance.
-    If the input is already a ``ArrayBytesCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``ArrayBytesCodec`` instance via the ``_resolve_codec`` function.
+    Get a codec class from a Zarr V3 JSON codec declaration.
     """
-    from zarr.abc.codec import ArrayBytesCodec
-
-    if isinstance(data, dict):
-        result = _resolve_codec(data)
-        if not isinstance(result, ArrayBytesCodec):
-            msg = f"Expected a dict representation of an ArrayBytesCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
-    else:
-        if not isinstance(data, ArrayBytesCodec):
-            raise TypeError(f"Expected an ArrayBytesCodec. Got {type(data)} instead.")
-        result = data
-    return result
+    if isinstance(request, str):
+        codec_cls = get_codec_class(request)
+        return codec_cls.from_json(request)
+    codec_cls = get_codec_class(request["name"])
+    return codec_cls.from_json(request)
 
 
-def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
-    """
-    Normalize the input to a ``ArrayArrayCodec`` instance.
-    If the input is already a ``ArrayArrayCodec``, it is returned as is. If the input is a dict, it
-    is converted to a ``ArrayArrayCodec`` instance via the ``_resolve_codec`` function.
-    """
-    from zarr.abc.codec import ArrayArrayCodec
-
-    if isinstance(data, dict):
-        result = _resolve_codec(data)
-        if not isinstance(result, ArrayArrayCodec):
-            msg = f"Expected a dict representation of an ArrayArrayCodec; got a dict representation of a {type(result)} instead."
-            raise TypeError(msg)
-    else:
-        if not isinstance(data, ArrayArrayCodec):
-            raise TypeError(f"Expected an ArrayArrayCodec. Got {type(data)} instead.")
-        result = data
-    return result
+def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
+    return _get_codec_class(key, __codec_registries, reload_config=reload_config)
 
 
 def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
@@ -308,7 +271,7 @@ def get_chunk_key_encoding_class(key: str) -> type[ChunkKeyEncoding]:
 _collect_entrypoints()
 
 
-def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
+def get_numcodec(data: CodecJSON_V2) -> Numcodec:
     """
     Resolve a numcodec codec from the numcodecs registry.
 
