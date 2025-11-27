@@ -75,7 +75,7 @@ test = [
     "coverage>=7.10",
     # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
     "pytest<8.4",
-    "pytest-asyncio",
+    "pytest-asyncio<1.2.0",
     "pytest-cov",
     "pytest-accept",
     "rich",
