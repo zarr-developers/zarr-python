@@ -231,3 +231,10 @@ If an existing Zarr format version changes, or a new version of the Zarr format 
 
 Open an issue on GitHub announcing the release using the release checklist template:
 [https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md>). The release checklist includes all steps necessary for the release.
+
+## Benchmarks
+
+Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
+performance benchmarks as part of our test suite. The benchmarks can be are found in `tests/benchmarks`.
+By default pytest is configured to run these benchmarks as plain tests (i.e., no benchmarking). To run
+a benchmark with timing measurements, use the `--benchmark-enable` when invoking `pytest`.
