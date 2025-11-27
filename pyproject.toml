@@ -75,7 +75,7 @@ test = [
     "coverage>=7.10",
     # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
     "pytest<8.4",
-    "pytest-asyncio",
+    "pytest-asyncio<=1.2.0",
     "pytest-cov",
     "pytest-accept",
     "rich",
@@ -240,7 +240,7 @@ dependencies = [
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.0.22',
-    'typing_extensions==4.10.*',
+    'typing_extensions==4.9.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
     # test deps
