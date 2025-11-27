@@ -13,12 +13,12 @@ from zarr.codecs.numcodecs import (
     Adler32,
     AsType,
     BitRound,
-    FixedScaleOffset,
     Fletcher32,
     JenkinsLookup3,
     PackBits,
     PCodec,
     Quantize,
+    ScaleOffset,
     Shuffle,
     Zlib,
 )
@@ -89,12 +89,17 @@ register_codec("delta", Delta, qualname="zarr.codecs.numcodecs.Delta")
 
 register_codec(
     "numcodecs.fixedscaleoffset",
-    FixedScaleOffset,
+    ScaleOffset,
     qualname="zarr.codecs.numcodecs.FixedScaleOffset",
 )
 register_codec(
     "fixedscaleoffset",
-    FixedScaleOffset,
+    ScaleOffset,
+    qualname="zarr.codecs.numcodecs.FixedScaleOffset",
+)
+register_codec(
+    "scale_offset",
+    ScaleOffset,
     qualname="zarr.codecs.numcodecs.FixedScaleOffset",
 )
 

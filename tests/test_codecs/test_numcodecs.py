@@ -151,8 +151,8 @@ def test_generic_compressor(codec_class: type[_numcodecs._NumcodecsBytesBytesCod
     ("codec_class", "codec_config"),
     [
         (zarr.codecs.numcodecs.delta.Delta, {"dtype": "float32"}),
-        (_numcodecs.FixedScaleOffset, {"offset": 0, "scale": 25.5, "dtype": "float32"}),
-        (_numcodecs.FixedScaleOffset, {"offset": 0, "scale": 51, "dtype": "float32"}),
+        (_numcodecs.ScaleOffset, {"offset": 0, "scale": 25.5, "dtype": "float32"}),
+        (_numcodecs.ScaleOffset, {"offset": 0, "scale": 51, "dtype": "float32"}),
         (_numcodecs.AsType, {"encode_dtype": "float32", "decode_dtype": "float32"}),
     ],
     ids=[

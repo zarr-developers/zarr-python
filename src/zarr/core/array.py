@@ -5297,7 +5297,6 @@ def _parse_chunk_encoding_v3(
     """
     Generate chunk encoding classes for v3 arrays with optional defaults.
     """
-
     if filters is None:
         out_array_array: tuple[ArrayArrayCodec, ...] = ()
     elif filters == "auto":

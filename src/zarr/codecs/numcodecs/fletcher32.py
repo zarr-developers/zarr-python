@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Literal, Self, TypedDict, TypeGuard, overload
 
 from typing_extensions import ReadOnly
@@ -13,7 +12,7 @@ from zarr.core.common import (
     CodecJSON,
     CodecJSON_V2,
     CodecJSON_V3,
-    NamedRequiredConfig,
+    NamedConfig,
     ZarrFormat,
     check_codecjson_v2,
     check_named_config,
@@ -30,8 +29,15 @@ class Fletcher32JSON_V2(Fletcher32Config):
     id: ReadOnly[Literal["fletcher32"]]
 
 
-class Fletcher32JSON_V3(NamedRequiredConfig[Literal["fletcher32"], Fletcher32Config]):
-    """JSON representation of Fletcher32 codec for Zarr V3."""
+Fletcher32JSON_V3 = Literal["fletcher32"]
+"""JSON representation of Fletcher32 codec for Zarr V3."""
+
+Fletcher32JSON_V3_Read = (
+    NamedConfig[Literal["fletcher32"], Fletcher32Config]
+    | Literal["fletcher32"]
+    | NamedConfig[Literal["numcodecs.fletcher32"], Fletcher32Config]
+)
+"""JSON representations of Fletcher32 codec allowed for reading Zarr V3"""
 
 
 def check_json_v2(data: object) -> TypeGuard[Fletcher32JSON_V2]:
@@ -41,27 +47,17 @@ def check_json_v2(data: object) -> TypeGuard[Fletcher32JSON_V2]:
     return check_codecjson_v2(data) and data["id"] == "fletcher32"
 
 
-def check_json_v3(data: object) -> TypeGuard[Fletcher32JSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[Fletcher32JSON_V3_Read]:
     """
-    A type guard for the Zarr V3 form of the Fletcher32 codec JSON
+    A type guard for the readable Zarr V3 form of the Fletcher32 codec JSON
     """
+    if data == "fletcher32":
+        return True
     return (
         check_named_config(data)
-        and data["name"] == "fletcher32"
+        and data["name"] in ("fletcher32", "numcodecs.fletcher32")
         and ("configuration" not in data or data["configuration"] == {})
     )
-
-
-def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
-    """
-    Handle underspecified JSON representation of the codec produced by legacy code
-    """
-    if isinstance(data, Mapping):
-        data_copy = dict(data)
-        if data.get("name") == "numcodecs.fletcher32":
-            data_copy = data_copy | {"name": "fletcher32"}
-        return data_copy  # type: ignore[return-value]
-    return data
 
 
 class Fletcher32(_NumcodecsChecksumCodec):
@@ -89,10 +85,9 @@ class Fletcher32(_NumcodecsChecksumCodec):
 
     @classmethod
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
-        data = _handle_json_alias_v3(data)
         if check_json_v3(data):
-            config = data["configuration"]
-            return cls(**config)
+            # This codec takes no configuration
+            return cls()
         raise TypeError(f"Invalid JSON: {data}")
 
     @classmethod

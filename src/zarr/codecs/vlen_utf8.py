@@ -65,7 +65,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
         if zarr_format == 2:
             return {"id": "vlen-utf8"}
         else:
-            return {"name": "vlen-utf8"}
+            return {"name": "vlen-utf8", "configuration": {}}
 
     @classmethod
     def _check_json_v2(cls, data: object) -> TypeGuard[VLenUTF8JSON_V2]:

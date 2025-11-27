@@ -15,10 +15,9 @@ from zarr.core.common import (
     CodecJSON,
     CodecJSON_V2,
     CodecJSON_V3,
-    NamedRequiredConfig,
+    NamedConfig,
     ZarrFormat,
     check_codecjson_v2,
-    check_named_config,
     product,
 )
 from zarr.core.dtype.npy.bool import Bool
@@ -38,8 +37,11 @@ class PackBitsJSON_V2(PackBitsConfig):
     id: ReadOnly[Literal["packbits"]]
 
 
-class PackBitsJSON_V3(NamedRequiredConfig[Literal["packbits"], PackBitsConfig]):
-    """JSON representation of PackBits codec for Zarr V3."""
+PackBitsJSON_V3 = Literal["packbits"]
+"""Serialized JSON representation of PackBits codec for Zarr V3."""
+
+PackBitsJSON_V3_Read = NamedConfig[Literal["packbits"], PackBitsConfig] | Literal["packbits"]
+"""Readable JSON representation of PackBits codec for Zarr V3."""
 
 
 def check_json_v2(data: object) -> TypeGuard[PackBitsJSON_V2]:
@@ -49,15 +51,11 @@ def check_json_v2(data: object) -> TypeGuard[PackBitsJSON_V2]:
     return check_codecjson_v2(data) and data["id"] == "packbits"
 
 
-def check_json_v3(data: object) -> TypeGuard[PackBitsJSON_V3]:
+def check_json_v3(data: object) -> TypeGuard[PackBitsJSON_V3_Read]:
     """
-    A type guard for the Zarr V3 form of the PackBits codec JSON
+    A type guard for the readable Zarr V3 form of the PackBits codec JSON
     """
-    return (
-        check_named_config(data)
-        and data["name"] == "packbits"
-        and ("configuration" not in data or data["configuration"] == {})
-    )
+    return data in ("packbits", {"name": "packbits"}, {"name": "packbits", "configuration": {}})
 
 
 def _handle_json_alias_v3(data: CodecJSON_V3) -> CodecJSON_V3:
@@ -112,8 +110,7 @@ class PackBits(_NumcodecsArrayArrayCodec):
     def _from_json_v3(cls, data: CodecJSON_V3) -> Self:
         data = _handle_json_alias_v3(data)
         if check_json_v3(data):
-            config = data["configuration"]
-            return cls(**config)
+            return cls()
         raise TypeError(f"Invalid JSON: {data}")
 
     @classmethod

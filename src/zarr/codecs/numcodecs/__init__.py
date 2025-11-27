@@ -16,7 +16,7 @@ from zarr.codecs.numcodecs.bz2 import BZ2
 from zarr.codecs.numcodecs.crc32 import CRC32
 from zarr.codecs.numcodecs.crc32c import CRC32C
 from zarr.codecs.numcodecs.delta import Delta
-from zarr.codecs.numcodecs.fixed_scale_offset import FixedScaleOffset
+from zarr.codecs.numcodecs.fixed_scale_offset import ScaleOffset
 from zarr.codecs.numcodecs.fletcher32 import Fletcher32
 from zarr.codecs.numcodecs.gzip import GZip
 from zarr.codecs.numcodecs.jenkins_lookup3 import JenkinsLookup3
@@ -43,7 +43,7 @@ NUMCODECS_WRAPPERS: Final[dict[str, type[_NumcodecsCodec]]] = {
     "bitround": BitRound,
     "blosc": Blosc,
     "delta": Delta,
-    "fixedscaleoffset": FixedScaleOffset,
+    "fixedscaleoffset": ScaleOffset,
     "fletcher32": Fletcher32,
     "gzip": GZip,
     "jenkins_lookup3": JenkinsLookup3,
@@ -67,13 +67,13 @@ __all__ = [
     "BitRound",
     "Blosc",
     "Delta",
-    "FixedScaleOffset",
     "Fletcher32",
     "GZip",
     "JenkinsLookup3",
     "PCodec",
     "PackBits",
     "Quantize",
+    "ScaleOffset",
     "Shuffle",
     "Zlib",
     "Zstd",

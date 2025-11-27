@@ -37,7 +37,6 @@ def _parse_codec(data: object, *, dtype: ZDType[Any, Any]) -> Codec | NumcodecWr
         # If the input is a NumcodecsCodec, then it's wrapping a numcodecs codec, and in many cases
         # there is a better codec available from the registry.
         return get_codec(data.codec_config)  # type: ignore[arg-type]
-
     if isinstance(data, (Codec, NumcodecWrapper)):
         # TERRIBLE HACK
         # This is necessary because the Blosc codec defaults create a broken state.
