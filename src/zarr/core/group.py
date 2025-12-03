@@ -1928,6 +1928,21 @@ class Group(SyncMixin):
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
+    def copy_store(
+        self,
+        store: StoreLike,
+        *,
+        overwrite: bool = False,
+        use_consolidated: bool | None = None,
+    ) -> Group:
+        return Group(
+            sync(
+                self._async_group.copy_store(
+                    store=store, overwrite=overwrite, use_consolidated=use_consolidated
+                )
+            )
+        )
+
     def __getitem__(self, path: str) -> AnyArray | Group:
         """Obtain a group member.
 

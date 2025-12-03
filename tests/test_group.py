@@ -252,31 +252,30 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
 
 async def test_copy_store():
     src_store = MemoryStore()
-    src = await AsyncGroup.from_store(src_store, attributes={"root": True})
+    src = Group.from_store(src_store, attributes={"root": True})
 
-    await src.create_group("subgroup")
+    src.create_group("subgroup")
 
     arr_data = np.arange(100)
-    await src.create_array(
+    src.create_array(
         "dataset",
         shape=(100,),
         chunks=(10,),
         shards=(50,),
         dtype=arr_data.dtype,
     )
-    dataset = await src.getitem("dataset")
-    await dataset.setitem(selection=slice(None), value=arr_data)
+    src["dataset"] = arr_data
 
     dst_store = MemoryStore()
-    dst = await src.copy_store(dst_store, overwrite=True)
+    dst = src.copy_store(dst_store, overwrite=True)
 
     assert dst.attrs.get("root") is True
 
-    subgroup = await dst.getitem("subgroup")
-    assert isinstance(subgroup, AsyncGroup)
+    subgroup = dst["subgroup"]
+    assert isinstance(subgroup, Group)
 
-    copied_arr = await dst.getitem("dataset")
-    copied_data = await copied_arr.getitem(selection=slice(None))
+    copied_arr = dst["dataset"]
+    copied_data = copied_arr[:]
     assert np.array_equal(copied_data, arr_data)
 
 
