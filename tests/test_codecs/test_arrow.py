@@ -1,4 +1,5 @@
 import io
+from typing import Any
 
 import numpy as np
 import pytest
@@ -28,7 +29,9 @@ numpy_array_fixtures = [
 
 
 @pytest.mark.parametrize("numpy_array_and_zdtype", numpy_array_fixtures)
-async def test_arrow_codec_round_trip(numpy_array_and_zdtype) -> None:
+async def test_arrow_codec_round_trip(
+    numpy_array_and_zdtype: tuple[np.ndarray[Any, Any], zarr.dtype.ZDType[Any, Any] | None],
+) -> None:
     numpy_array, zdtype = numpy_array_and_zdtype
     if zdtype is None:
         spec_dtype = parse_dtype(numpy_array.dtype, zarr_format=3)
@@ -88,8 +91,8 @@ def test_string_array() -> None:
 
     a = zarr.create_array(
         shape=4,
-        chunks=2,
-        dtype=zarr.dtype.VariableLengthUTF8(),
+        chunks=(2,),
+        dtype=zarr.dtype.VariableLengthUTF8(),  # type: ignore[arg-type]
         serializer=ArrowIPCCodec(),
         store=zarr.storage.MemoryStore(),
     )

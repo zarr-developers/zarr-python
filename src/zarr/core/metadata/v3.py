@@ -105,10 +105,10 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     # TODO: use codec ID instead of class name
     codec_class_name = abc.__class__.__name__
     # TODO: Fix typing here
-    if isinstance(dtype, VariableLengthUTF8) and codec_class_name not in (
+    if isinstance(dtype, VariableLengthUTF8) and codec_class_name not in (  # type: ignore[unreachable]
         "VLenUTF8Codec",
         "ArrowIPCCodec",
-    ):  # type: ignore[unreachable]
+    ):
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
