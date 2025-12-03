@@ -697,6 +697,60 @@ class AsyncGroup:
             store_path=store_path,
         )
 
+    async def copy_store(
+        self,
+        store: StoreLike,
+        *,
+        overwrite: bool = False,
+        use_consolidated: bool | None = None,
+    ) -> AsyncGroup:
+        target_zarr_format = self.metadata.zarr_format
+
+        new_group = await AsyncGroup.from_store(
+            store,
+            overwrite=overwrite,
+            attributes=self.metadata.attributes,
+            zarr_format=target_zarr_format,
+        )
+
+        async for _, member in self.members(max_depth=None):
+            child_path = member.store_path.path
+            target_path = StorePath(store=new_group.store, path=child_path)
+            if isinstance(member, AsyncGroup):
+                await async_api.group(
+                    store=target_path,
+                    overwrite=overwrite,
+                    attributes=member.metadata.attributes,
+                    zarr_format=target_zarr_format,
+                )
+            else:
+                # Serializer done this way in case of having zarr_format 2.
+                new_array = await new_group.create_array(
+                    name=child_path,
+                    shape=member.shape,
+                    dtype=member.dtype,
+                    chunks=member.chunks,
+                    shards=member.shards,
+                    filters=member.filters,
+                    compressors=member.compressors,
+                    serializer=member.serializer if member.serializer is not None else "auto",
+                    fill_value=member.metadata.fill_value,
+                    attributes=member.attrs,
+                    chunk_key_encoding=member.metadata.chunk_key_encoding,
+                    dimension_names=member.metadata.dimension_names,
+                    overwrite=overwrite,
+                    config={"order": member.order},
+                )
+
+                for region in member._iter_shard_regions():
+                    data = await member.getitem(selection=region)
+                    await new_array.setitem(selection=region, value=data)
+
+        if use_consolidated:
+            await async_api.consolidate_metadata(new_group.store)
+
+        return new_group
+
     async def setitem(self, key: str, value: Any) -> None:
         """
         Fastpath for creating a new array
