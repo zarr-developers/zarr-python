@@ -702,7 +702,7 @@ class AsyncGroup:
         store: StoreLike,
         *,
         overwrite: bool = False,
-        use_consolidated: bool | None = None,
+        consolidate_metadata: bool | None = None,
     ) -> AsyncGroup:
         target_zarr_format = self.metadata.zarr_format
 
@@ -724,7 +724,16 @@ class AsyncGroup:
                     zarr_format=target_zarr_format,
                 )
             else:
-                # Serializer done this way in case of having zarr_format 2, otherwise mypy complains.
+                kwargs = {}
+                if target_zarr_format == 3:
+                    kwargs["chunk_key_encoding"] = member.metadata.chunk_key_encoding
+                    kwargs["dimension_names"] = member.metadata.dimension_names
+                else:
+                    kwargs["chunk_key_encoding"] = {
+                        "name": "v2",
+                        "separator": member.metadata.dimension_separator,
+                    }
+                    # Serializer done this way in case of having zarr_format 2, otherwise mypy complains.
                 new_array = await new_group.create_array(
                     name=child_path,
                     shape=member.shape,
@@ -736,17 +745,21 @@ class AsyncGroup:
                     serializer=member.serializer if member.serializer is not None else "auto",
                     fill_value=member.metadata.fill_value,
                     attributes=member.attrs,
-                    chunk_key_encoding=member.metadata.chunk_key_encoding,
-                    dimension_names=member.metadata.dimension_names,
                     overwrite=overwrite,
                     config={"order": member.order},
+                    **kwargs,
                 )
 
-                for region in member._iter_shard_regions():
-                    data = await member.getitem(selection=region)
-                    await new_array.setitem(selection=region, value=data)
+                if target_zarr_format == 3:
+                    for region in member._iter_shard_regions():
+                        data = await member.getitem(selection=region)
+                        await new_array.setitem(selection=region, value=data)
+                else:
+                    for region in member._iter_chunk_regions():
+                        data = await member.getitem(selection=region)
+                        await new_array.setitem(selection=region, value=data)
 
-        if use_consolidated:
+        if consolidate_metadata:
             await async_api.consolidate_metadata(new_group.store)
 
         return new_group
@@ -1933,12 +1946,12 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         overwrite: bool = False,
-        use_consolidated: bool | None = None,
+        consolidate_metadata: bool | None = None,
     ) -> Group:
         return Group(
             sync(
                 self._async_group.copy_store(
-                    store=store, overwrite=overwrite, use_consolidated=use_consolidated
+                    store=store, overwrite=overwrite, consolidate_metadata=consolidate_metadata
                 )
             )
         )

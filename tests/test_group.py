@@ -250,9 +250,18 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
         members_observed = group.members(max_depth=-1)
 
 
-def test_copy_store():
+@pytest.mark.parametrize(
+    ("zarr_format", "shards", "consolidate_metadata"),
+    [
+        (2, None, False),
+        (2, None, True),
+        (3, (50,), False),
+        (3, (50,), True),
+    ],
+)
+def test_copy_store(zarr_format: int, shards: tuple[int, ...], consolidate_metadata: bool) -> None:
     src_store = MemoryStore()
-    src = Group.from_store(src_store, attributes={"root": True})
+    src = Group.from_store(src_store, attributes={"root": True}, zarr_format=zarr_format)
 
     src.create_group("subgroup")
 
@@ -261,13 +270,22 @@ def test_copy_store():
         "dataset",
         shape=(100,),
         chunks=(10,),
-        shards=(50,),
+        shards=shards,
         dtype=arr_data.dtype,
     )
     src["dataset"] = arr_data
 
     dst_store = MemoryStore()
-    dst = src.copy_store(dst_store, overwrite=True)
+    if zarr_format == 3 and consolidate_metadata:
+        with pytest.warns(
+            ZarrUserWarning,
+            match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+        ):
+            dst = src.copy_store(
+                dst_store, overwrite=True, consolidate_metadata=consolidate_metadata
+            )
+    else:
+        dst = src.copy_store(dst_store, overwrite=True, consolidate_metadata=consolidate_metadata)
 
     assert dst.attrs.get("root") is True
 
@@ -277,6 +295,11 @@ def test_copy_store():
     copied_arr = dst["dataset"]
     copied_data = copied_arr[:]
     assert np.array_equal(copied_data, arr_data)
+
+    if consolidate_metadata:
+        assert zarr.open_group(dst_store).metadata.consolidated_metadata
+    else:
+        assert not zarr.open_group(dst_store).metadata.consolidated_metadata
 
 
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:
