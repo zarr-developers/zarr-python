@@ -750,14 +750,9 @@ class AsyncGroup:
                     **kwargs,
                 )
 
-                if target_zarr_format == 3:
-                    for region in member._iter_shard_regions():
-                        data = await member.getitem(selection=region)
-                        await new_array.setitem(selection=region, value=data)
-                else:
-                    for region in member._iter_chunk_regions():
-                        data = await member.getitem(selection=region)
-                        await new_array.setitem(selection=region, value=data)
+                for region in member._iter_shard_regions():
+                    data = await member.getitem(selection=region)
+                    await new_array.setitem(selection=region, value=data)
 
         if consolidate_metadata:
             await async_api.consolidate_metadata(new_group.store)
