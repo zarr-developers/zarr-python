@@ -697,7 +697,7 @@ class AsyncGroup:
             store_path=store_path,
         )
 
-    async def copy_store(
+    async def copy_to(
         self,
         store: StoreLike,
         *,
@@ -1936,7 +1936,7 @@ class Group(SyncMixin):
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
-    def copy_store(
+    def copy_to(
         self,
         store: StoreLike,
         *,
@@ -1945,7 +1945,7 @@ class Group(SyncMixin):
     ) -> Group:
         return Group(
             sync(
-                self._async_group.copy_store(
+                self._async_group.copy_to(
                     store=store, overwrite=overwrite, consolidate_metadata=consolidate_metadata
                 )
             )

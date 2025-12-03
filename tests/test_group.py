@@ -259,7 +259,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
         (3, (50,), True),
     ],
 )
-def test_copy_store(zarr_format: int, shards: tuple[int, ...], consolidate_metadata: bool) -> None:
+def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata: bool) -> None:
     src_store = MemoryStore()
     src = Group.from_store(src_store, attributes={"root": True}, zarr_format=zarr_format)
 
@@ -281,11 +281,9 @@ def test_copy_store(zarr_format: int, shards: tuple[int, ...], consolidate_metad
             ZarrUserWarning,
             match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
         ):
-            dst = src.copy_store(
-                dst_store, overwrite=True, consolidate_metadata=consolidate_metadata
-            )
+            dst = src.copy_to(dst_store, overwrite=True, consolidate_metadata=consolidate_metadata)
     else:
-        dst = src.copy_store(dst_store, overwrite=True, consolidate_metadata=consolidate_metadata)
+        dst = src.copy_to(dst_store, overwrite=True, consolidate_metadata=consolidate_metadata)
 
     assert dst.attrs.get("root") is True
 
