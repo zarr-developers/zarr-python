@@ -276,14 +276,7 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
     src["dataset"] = arr_data
 
     dst_store = MemoryStore()
-    if zarr_format == 3 and consolidate_metadata:
-        with pytest.warns(
-            ZarrUserWarning,
-            match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
-        ):
-            dst = src.copy_to(dst_store, overwrite=True, consolidate_metadata=consolidate_metadata)
-    else:
-        dst = src.copy_to(dst_store, overwrite=True, consolidate_metadata=consolidate_metadata)
+    dst = src.copy_to(dst_store, overwrite=True)
 
     assert dst.attrs.get("root") is True
 
@@ -294,10 +287,10 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
     copied_data = copied_arr[:]
     assert np.array_equal(copied_data, arr_data)
 
-    if consolidate_metadata:
-        assert zarr.open_group(dst_store).metadata.consolidated_metadata
-    else:
-        assert not zarr.open_group(dst_store).metadata.consolidated_metadata
+    # if consolidate_metadata:
+    #     assert zarr.open_group(dst_store).metadata.consolidated_metadata
+    # else:
+    #     assert not zarr.open_group(dst_store).metadata.consolidated_metadata
 
 
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:

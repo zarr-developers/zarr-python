@@ -702,7 +702,6 @@ class AsyncGroup:
         store: StoreLike,
         *,
         overwrite: bool = False,
-        consolidate_metadata: bool | None = None,
     ) -> AsyncGroup:
         target_zarr_format = self.metadata.zarr_format
 
@@ -716,6 +715,7 @@ class AsyncGroup:
         async for _, member in self.members(max_depth=None):
             child_path = member.store_path.path
             target_path = StorePath(store=new_group.store, path=child_path)
+
             if isinstance(member, AsyncGroup):
                 await async_api.group(
                     store=target_path,
@@ -753,9 +753,6 @@ class AsyncGroup:
                 for region in member._iter_shard_regions():
                     data = await member.getitem(selection=region)
                     await new_array.setitem(selection=region, value=data)
-
-        if consolidate_metadata:
-            await async_api.consolidate_metadata(new_group.store)
 
         return new_group
 
@@ -1941,15 +1938,8 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         overwrite: bool = False,
-        consolidate_metadata: bool | None = None,
     ) -> Group:
-        return Group(
-            sync(
-                self._async_group.copy_to(
-                    store=store, overwrite=overwrite, consolidate_metadata=consolidate_metadata
-                )
-            )
-        )
+        return Group(sync(self._async_group.copy_to(store=store, overwrite=overwrite)))
 
     def __getitem__(self, path: str) -> AnyArray | Group:
         """Obtain a group member.
