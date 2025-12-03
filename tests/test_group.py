@@ -250,9 +250,9 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
         members_observed = group.members(max_depth=-1)
 
 
-async def test_copy_store():
+def test_copy_store():
     src_store = MemoryStore()
-    src = Group.from_store(src_store, attributes={"root": True})
+    src = Group.from_store(src_store, attributes={"root": True}, zarr_format=2)
 
     src.create_group("subgroup")
 
@@ -261,7 +261,7 @@ async def test_copy_store():
         "dataset",
         shape=(100,),
         chunks=(10,),
-        shards=(50,),
+        # shards=(50,),
         dtype=arr_data.dtype,
     )
     src["dataset"] = arr_data

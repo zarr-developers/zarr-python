@@ -724,7 +724,7 @@ class AsyncGroup:
                     zarr_format=target_zarr_format,
                 )
             else:
-                # Serializer done this way in case of having zarr_format 2.
+                # Serializer done this way in case of having zarr_format 2, otherwise mypy complains.
                 new_array = await new_group.create_array(
                     name=child_path,
                     shape=member.shape,
