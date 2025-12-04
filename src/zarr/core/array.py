@@ -1445,6 +1445,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         Iterate over the regions spanned by each shard.
 
+        If no shards are present, then it will fall back on chunks.
+
         Parameters
         ----------
         origin : Sequence[int] | None, default=None
@@ -2563,6 +2565,9 @@ class Array(Generic[T_ArrayMetadata]):
         ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
         per python indexing conventions.
 
+        If no shard grid space is available, e.g., like in zarr version 2, the method will fall back
+        to chunk grid space.
+
         Parameters
         ----------
         origin : Sequence[int] | None, default=None
@@ -2582,6 +2587,8 @@ class Array(Generic[T_ArrayMetadata]):
     ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each shard.
+
+        If no shard is present, then it will fall back on chunks.
 
         Parameters
         ----------
@@ -5308,7 +5315,8 @@ def _iter_shard_regions(
     """
     Iterate over the regions spanned by each shard.
 
-    These are the smallest regions of the array that are safe to write concurrently.
+    These are the smallest regions of the array that are safe to write concurrently. If no shards
+    are present it will fall back on chunks.
 
     Parameters
     ----------
