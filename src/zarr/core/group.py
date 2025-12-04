@@ -754,6 +754,10 @@ class AsyncGroup:
                     data = await member.getitem(selection=region)
                     await new_array.setitem(selection=region, value=data)
 
+        group = await self.open(self.store, zarr_format=target_zarr_format)
+        if group.metadata.consolidated_metadata:
+            await async_api.consolidate_metadata(new_group.store)
+
         return new_group
 
     async def setitem(self, key: str, value: Any) -> None:
