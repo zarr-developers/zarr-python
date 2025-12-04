@@ -32,6 +32,8 @@ from zarr.core.array import (
     AsyncArray,
     CompressorsLike,
     FiltersLike,
+    _iter_chunk_coords,
+    _iter_chunk_regions,
     _iter_shard_coords,
     _iter_shard_keys,
     _iter_shard_regions,
@@ -2030,10 +2032,10 @@ def test_iter_chunk_coords(
         zarr_format=zarr_format,
     )
     expected = tuple(_iter_grid(arr._shard_grid_shape))
-    observed = tuple(_iter_shard_coords(arr))
+    observed = tuple(_iter_chunk_coords(arr))
     assert observed == expected
-    assert observed == tuple(arr._iter_shard_coords())
-    assert observed == tuple(arr.async_array._iter_shard_coords())
+    assert observed == tuple(arr._iter_chunk_coords())
+    assert observed == tuple(arr.async_array._iter_chunk_coords())
 
 
 @pytest.mark.parametrize(
@@ -2163,10 +2165,10 @@ def test_iter_chunk_regions(
     )
 
     expected = tuple(_iter_regions(arr.shape, chunk_shape))
-    observed = tuple(_iter_shard_regions(arr))
+    observed = tuple(_iter_chunk_regions(arr))
     assert observed == expected
-    assert observed == tuple(arr._iter_shard_regions())
-    assert observed == tuple(arr.async_array._iter_shard_regions())
+    assert observed == tuple(arr._iter_chunk_regions())
+    assert observed == tuple(arr.async_array._iter_chunk_regions())
 
 
 @pytest.mark.parametrize("num_shards", [1, 3])

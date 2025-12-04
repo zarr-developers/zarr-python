@@ -1962,7 +1962,7 @@ def test_iter_chunk_regions():
     chunks = (2, 3)
     a = zarr.create((10, 10), chunks=chunks)
     a[:] = 1
-    for region in a._iter_shard_regions():
+    for region in a._iter_chunk_regions():
         assert_array_equal(a[region], np.ones_like(a[region]))
         a[region] = 0
         assert_array_equal(a[region], np.zeros_like(a[region]))
