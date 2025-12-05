@@ -1,0 +1,255 @@
+# Based on https://github.com/developmentseed/obspec/blob/main/mkdocs.yml
+site_name: zarr-python
+repo_name: zarr-developers/zarr-python
+repo_url: https://github.com/zarr-developers/zarr-python
+site_description: An implementation of chunked, compressed, N-dimensional arrays for Python.
+site_author: Alistair Miles
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, 'https://zarr.readthedocs.io/']
+docs_dir: docs
+use_directory_urls: true
+
+nav:
+  - "index.md"
+  - "quick-start.md"
+  - User Guide:
+      - user-guide/index.md
+      - user-guide/installation.md
+      - user-guide/arrays.md
+      - user-guide/groups.md
+      - user-guide/attributes.md
+      - user-guide/storage.md
+      - user-guide/config.md
+      - user-guide/cli.md
+      - user-guide/v3_migration.md
+      - user-guide/data_types.md
+      - user-guide/performance.md
+      - user-guide/extending.md
+      - user-guide/gpu.md
+      - user-guide/consolidated_metadata.md
+      - user-guide/experimental.md
+  - Examples:
+      - user-guide/examples/custom_dtype.md
+  - API Reference:
+      - api/zarr/index.md
+      - api/zarr/array.md
+      - api/zarr/group.md
+      - api/zarr/create.md
+      - api/zarr/dtype.md
+      - api/zarr/load.md
+      - api/zarr/open.md
+      - api/zarr/save.md
+      - api/zarr/codecs.md
+      - api/zarr/codecs/numcodecs.md
+      - api/zarr/config.md
+      - api/zarr/convenience.md
+      - api/zarr/errors.md
+      - api/zarr/metadata.md
+      - api/zarr/registry.md
+      - api/zarr/storage.md
+      - ABC:
+        - api/zarr/abc/index.md
+        - api/zarr/abc/buffer.md
+        - api/zarr/abc/codec.md
+        - api/zarr/abc/numcodec.md
+        - api/zarr/abc/metadata.md
+        - api/zarr/abc/store.md
+      - API:
+        - api/zarr/api/index.md
+        - api/zarr/api/asynchronous.md
+        - api/zarr/api/synchronous.md
+      - Buffer:
+        - api/zarr/buffer/index.md
+        - api/zarr/buffer/cpu.md
+        - api/zarr/buffer/gpu.md
+      - Testing:
+        - api/zarr/testing/index.md
+        - api/zarr/testing/buffer.md
+        - api/zarr/testing/conftest.md
+        - api/zarr/testing/stateful.md
+        - api/zarr/testing/store.md
+        - api/zarr/testing/strategies.md
+        - api/zarr/testing/utils.md
+      - deprecated:
+        - Convenience sub-module: api/zarr/deprecated/convenience.md
+        - Creation sub-module: api/zarr/deprecated/creation.md
+  - release-notes.md
+  - contributing.md
+watch:
+  - src/zarr
+  - docs
+
+theme:
+  language: en
+  name: material
+  custom_dir: docs/overrides
+  logo: _static/logo_bw.png
+
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+  features:
+    - content.code.annotate
+    - content.code.copy
+    - navigation.indexes
+    - navigation.instant
+    - navigation.tracking
+    - search.suggest
+    - search.share
+
+extra:
+  social:
+    - icon: fontawesome/brands/mastodon
+      link: https://fosstodon.org/@zarr
+    - icon: fontawesome/brands/bluesky
+      link: https://bsky.app/profile/zarr.dev
+
+extra_css:
+  - overrides/stylesheets/extra.css
+
+plugins:
+  - autorefs
+  - search
+  - markdown-exec
+  - mkdocstrings:
+      enable_inventory: true
+      handlers:
+        python:
+          paths: [src/zarr]
+          options:
+            allow_inspection: true
+            docstring_section_style: list
+            docstring_style: numpy
+            inherited_members: true
+            line_length: 60
+            separate_signature: true
+            show_root_heading: true
+            show_signature_annotations: true
+            show_source: true
+            show_symbol_type_toc: true
+            signature_crossrefs: true
+            show_if_no_docstring: true
+            extensions:
+            - griffe_inherited_docstrings
+
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://docs.xarray.dev/en/stable/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
+            - https://numcodecs.readthedocs.io/en/stable/objects.inv
+            - https://developmentseed.org/obstore/latest/objects.inv
+            - https://filesystem-spec.readthedocs.io/en/latest/objects.inv
+            - https://requests.readthedocs.io/en/latest/objects.inv
+            - https://docs.aiohttp.org/en/stable/objects.inv
+            - https://s3fs.readthedocs.io/en/latest/objects.inv
+            - https://docs.h5py.org/en/stable/objects.inv
+            - https://icechunk.io/en/stable/objects.inv
+            - https://lithops-cloud.github.io/docs/objects.inv
+            - https://docs.dask.org/en/stable/objects.inv
+  - redirects:
+      redirect_maps:
+        'spec/index.md': 'https://zarr-specs.readthedocs.io'
+        'spec/v1.md': 'https://zarr-specs.readthedocs.io/en/latest/v1/v1.0.html'
+        'spec/v2.md': 'https://zarr-specs.readthedocs.io/en/latest/v2/v2.0.html'
+        'spec/v3.md': 'https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html'
+        'license.md': 'https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt'
+        'genindex.html.md': 'index.md'
+        'py-modindex.html.md': 'index.md'
+        'search.html.md': 'index.md'
+        'tutorial.md': 'user-guide/installation.md'
+        'getting-started.md': 'quick-start.md'
+        'roadmap.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
+        'installation.md': 'user-guide/installation.md'
+        'release.md': 'release-notes.md'
+        'about.html.md': 'index.md'
+        'arrays.html.md': 'user-guide/arrays.md'
+        'attributes.html.md': 'user-guide/attributes.md'
+        'cli.html.md': 'user-guide/cli.md'
+        'config.html.md': 'user-guide/config.md'
+        'consolidated_metadata.html.md': 'user-guide/consolidated_metadata.md'
+        'data_types.html.md': 'user-guide/data_types.md'
+        'extending.html.md': 'user-guide/extending.md'
+        'gpu.html.md': 'user-guide/gpu.md'
+        'groups.html.md': 'user-guide/groups.md'
+        'installation.html.md': 'user-guide/installation.md'
+        'performance.html.md': 'user-guide/performance.md'
+        'quickstart.html.md': 'quick-start.md'
+        'release-notes.html.md': 'release-notes.md'
+        'storage.html.md': 'user-guide/storage.md'
+        'v3_migration.html.md': 'user-guide/v3_migration.md'
+        'user-guide/arrays.html.md': 'user-guide/arrays.md'
+        'user-guide/attributes.html.md': 'user-guide/attributes.md'
+        'user-guide/cli.html.md': 'user-guide/cli.md'
+        'user-guide/config.html.md': 'user-guide/config.md'
+        'user-guide/consolidated_metadata.html.md': 'user-guide/consolidated_metadata.md'
+        'user-guide/data_types.html.md': 'user-guide/data_types.md'
+        'user-guide/extending.html.md': 'user-guide/extending.md'
+        'user-guide/gpu.html.md': 'user-guide/gpu.md'
+        'user-guide/groups.html.md': 'user-guide/groups.md'
+        'user-guide/installation.html.md': 'user-guide/installation.md'
+        'user-guide/performance.html.md': 'user-guide/performance.md'
+        'user-guide/storage.html.md': 'user-guide/storage.md'
+        'user-guide/v3_migration.html.md': 'user-guide/v3_migration.md'
+        'developers/contributing.html.md': 'contributing.md'
+        'developers/index.html.md': 'contributing.md'
+        'developers/roadmap.html.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
+        'api/zarr/creation.md': 'api/zarr/deprecated/creation.md'
+        'api/zarr/codecs/numcodecs.md': 'api/zarr/deprecated/creation.md'
+        'api.md': 'api/zarr/index.md'
+        'api/zarr/metadata/migrate_v3.md': 'api/zarr/metadata.md'
+
+# Based on https://github.com/developmentseed/titiler/blob/50934c929cca2fa8d3c408d239015f8da429c6a8/docs/mkdocs.yml#L115-L140
+markdown_extensions:
+  - admonition
+  - attr_list
+  - codehilite:
+      guess_lang: false
+  - def_list
+  - footnotes
+  - md_in_html
+  - pymdownx.arithmatex
+  - pymdownx.betterem
+  - pymdownx.caret:
+      insert: false
+  - pymdownx.details
+  - pymdownx.escapeall:
+      hardbreak: true
+      nbsp: true
+  - pymdownx.magiclink:
+      hide_protocol: true
+      repo_url_shortener: true
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets

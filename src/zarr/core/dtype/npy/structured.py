@@ -41,19 +41,19 @@ class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
     References
     ----------
     The structure of the ``name`` field is defined in the Zarr V2
-    `specification document <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    [specification document](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": [
-                ["f0", "<m8[10s]"],
-                ["f1", "<m8[10s]"],
-            ],
-            "object_codec_id": None
-        }
+    ```python
+    {
+        "name": [
+            ["f0", "<m8[10s]"],
+            ["f1", "<m8[10s]"],
+        ],
+        "object_codec_id": None
+    }
+    ```
     """
 
 
@@ -69,17 +69,17 @@ class StructuredJSON_V3(
 
     Examples
     --------
-    .. code-block:: python
-
-        {
-            "name": "structured",
-            "configuration": {
-                "fields": [
-                    ["f0", "int32],
-                    ["f1", "float64"],
-                ]
-            }
+    ```python
+    {
+        "name": "structured",
+        "configuration": {
+            "fields": [
+                ["f0", "int32"],
+                ["f1", "float64"],
+            ]
         }
+    }
+    ```
     """
 
 
@@ -100,7 +100,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
     ----------
     This data type does not have a Zarr V3 specification.
 
-    The Zarr V2 data type specification can be found `here <https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding>`__.
+    The Zarr V2 data type specification can be found [here](https://github.com/zarr-developers/zarr-specs/blob/main/docs/v2/v2.0.rst#data-type-encoding).
     """
 
     _zarr_v3_name: ClassVar[Literal["structured"]] = "structured"

@@ -4,7 +4,6 @@ from itertools import product
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-import numcodecs
 import numpy as np
 import pytest
 from numcodecs import LZ4, LZMA, Blosc, GZip, VLenBytes, VLenUTF8, Zstd
@@ -13,11 +12,12 @@ import zarr
 import zarr.abc
 import zarr.abc.codec
 import zarr.codecs as zarrcodecs
-from zarr.core.array import Array
+from zarr.abc.numcodec import Numcodec
 from zarr.core.chunk_key_encodings import V2ChunkKeyEncoding
 from zarr.core.dtype.npy.bytes import VariableLengthBytes
 from zarr.core.dtype.npy.string import VariableLengthUTF8
 from zarr.storage import LocalStore
+from zarr.types import ArrayV2, ArrayV3
 
 if TYPE_CHECKING:
     from zarr.core.dtype import ZDTypeLike
@@ -40,12 +40,12 @@ def runner_installed() -> bool:
 class ArrayParams:
     values: np.ndarray[tuple[int], np.dtype[np.generic]]
     fill_value: np.generic | str | int | bytes
-    filters: tuple[numcodecs.abc.Codec, ...] = ()
+    filters: tuple[Numcodec, ...] = ()
     serializer: str | None = None
-    compressor: numcodecs.abc.Codec
+    compressor: Numcodec
 
 
-basic_codecs = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
+basic_codecs: tuple[Numcodec, ...] = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
 basic_dtypes = "|b", ">i2", ">i4", ">f4", ">f8", "<f4", "<f8", ">c8", "<c8", ">c16", "<c16"
 datetime_dtypes = "<M8[10ns]", ">M8[10us]", "<m8[2ms]", ">m8[4ps]"
 string_dtypes = "<U1", ">U4"
@@ -106,7 +106,7 @@ array_cases_v3_08 = vlen_string_cases
 
 
 @pytest.fixture
-def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
+def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> ArrayV2:
     """
     Writes a zarr array to a temporary directory based on the provided ArrayParams. The array is
     returned.
@@ -144,7 +144,7 @@ def source_array_v2(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
 
 
 @pytest.fixture
-def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> Array:
+def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> ArrayV3:
     """
     Writes a zarr array to a temporary directory based on the provided ArrayParams. The array is
     returned.
@@ -198,7 +198,7 @@ script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
     "source_array_v2", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
 )
 @pytest.mark.parametrize("script_path", script_paths)
-def test_roundtrip_v2(source_array_v2: Array, tmp_path: Path, script_path: Path) -> None:
+def test_roundtrip_v2(source_array_v2: ArrayV2, tmp_path: Path, script_path: Path) -> None:
     out_path = tmp_path / "out"
     copy_op = subprocess.run(
         [
@@ -222,7 +222,7 @@ def test_roundtrip_v2(source_array_v2: Array, tmp_path: Path, script_path: Path)
 @pytest.mark.parametrize(
     "source_array_v3", array_cases_v3_08, indirect=True, ids=tuple(map(str, array_cases_v3_08))
 )
-def test_roundtrip_v3(source_array_v3: Array, tmp_path: Path) -> None:
+def test_roundtrip_v3(source_array_v3: ArrayV3, tmp_path: Path) -> None:
     script_path = Path(__file__).resolve().parent / "scripts" / "v3.0.8.py"
     out_path = tmp_path / "out"
     copy_op = subprocess.run(

@@ -29,7 +29,9 @@ jobs:
         dependency-set: ["minimal"]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
+      with:
+        fetch-depth: 0  # grab all branches and tags
     # - name: cuda-toolkit
     #   uses: Jimver/cuda-toolkit@v0.2.16
     #   id: cuda-toolkit
@@ -49,7 +51,7 @@ jobs:
         echo $LD_LIBRARY_PATH
         nvcc -V
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'

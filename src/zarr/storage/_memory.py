@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, gpu
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_byte_range_index
 
@@ -32,13 +33,11 @@ class MemoryStore(Store):
     ----------
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
     """
 
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = True
     supports_listing: bool = True
 
     _store_dict: MutableMapping[str, Buffer]
@@ -81,10 +80,12 @@ class MemoryStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferPrototype | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
+        if prototype is None:
+            prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
@@ -143,12 +144,6 @@ class MemoryStore(Store):
         except KeyError:
             logger.debug("Key %s does not exist.", key)
 
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview[int]]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
-
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         for key in self._store_dict:
@@ -196,7 +191,7 @@ class GpuMemoryStore(MemoryStore):
     Parameters
     ----------
     store_dict : MutableMapping, optional
-        A mutable mapping with string keys and :class:`zarr.core.buffer.gpu.Buffer`
+        A mutable mapping with string keys and [zarr.core.buffer.gpu.Buffer][]
         values.
     read_only : bool
         Whether to open the store in read-only mode.
@@ -230,7 +225,7 @@ class GpuMemoryStore(MemoryStore):
         ----------
         store_dict : mapping
             A mapping of strings keys to arbitrary Buffers. The buffer data
-            will be moved into a :class:`gpu.Buffer`.
+            will be moved into a [`gpu.Buffer`][zarr.core.buffer.gpu.Buffer].
 
         Returns
         -------

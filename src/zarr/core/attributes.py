@@ -8,12 +8,12 @@ from zarr.core.common import JSON
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr.core.array import Array
     from zarr.core.group import Group
+    from zarr.types import AnyArray
 
 
 class Attributes(MutableMapping[str, JSON]):
-    def __init__(self, obj: Array | Group) -> None:
+    def __init__(self, obj: AnyArray | Group) -> None:
         # key=".zattrs", read_only=False, cache=True, synchronizer=None
         self._obj = obj
 
@@ -42,13 +42,13 @@ class Attributes(MutableMapping[str, JSON]):
 
         Equivalent to the following pseudo-code, but performed atomically.
 
-        .. code-block:: python
-
-           >>> attrs = {"a": 1, "b": 2}
-           >>> attrs.clear()
-           >>> attrs.update({"a": 3", "c": 4})
-           >>> attrs
-           {'a': 3, 'c': 4}
+        ```python
+        attrs = {"a": 1, "b": 2}
+        attrs.clear()
+        attrs.update({"a": "3", "c": 4})
+        print(attrs)
+        #> {'a': '3', 'c': 4}
+        ```
         """
         self._obj.metadata.attributes.clear()
         self._obj = self._obj.update_attributes(d)

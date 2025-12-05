@@ -8,21 +8,21 @@ Example:
     to be ``your.module.NewBytesCodec``. Donfig can be configured programmatically, by environment variables, or from
     YAML files in standard locations.
 
-    .. code-block:: python
+    ```python
+    from your.module import NewBytesCodec
+    from zarr.core.config import register_codec, config
 
-        from your.module import NewBytesCodec
-        from zarr.core.config import register_codec, config
-
-        register_codec("bytes", NewBytesCodec)
-        config.set({"codecs.bytes": "your.module.NewBytesCodec"})
+    register_codec("bytes", NewBytesCodec)
+    config.set({"codecs.bytes": "your.module.NewBytesCodec"})
+    ```
 
     Instead of setting the value programmatically with ``config.set``, you can also set the value with an environment
     variable. The environment variable ``ZARR_CODECS__BYTES`` can be set to ``your.module.NewBytesCodec``. The double
     underscore ``__`` is used to indicate nested access.
 
-    .. code-block:: bash
-
-        export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
+    ```bash
+    export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
+    ```
 
 For more information, see the Donfig documentation at https://github.com/pytroll/donfig.
 """
@@ -36,19 +36,9 @@ from donfig import Config as DConfig
 if TYPE_CHECKING:
     from donfig.config_obj import ConfigSet
 
-    from zarr.core.dtype.wrapper import ZDType
-
 
 class BadConfigError(ValueError):
     _msg = "bad Config: %r"
-
-
-# These values are used for rough categorization of data types
-# we use this for choosing a default encoding scheme based on the data type. Specifically,
-# these categories are keys in a configuration dictionary.
-# it is not a part of the ZDType class because these categories are more of an implementation detail
-# of our config system rather than a useful attribute of any particular data type.
-DTypeCategory = Literal["variable-length-string", "default"]
 
 
 class Config(DConfig):  # type: ignore[misc]
@@ -106,6 +96,7 @@ config = Config(
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
+                "target_shard_size_bytes": None,
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
@@ -131,6 +122,27 @@ config = Config(
                 "transpose": "zarr.codecs.transpose.TransposeCodec",
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                 "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
+                "numcodecs.bz2": "zarr.codecs.numcodecs.BZ2",
+                "numcodecs.crc32": "zarr.codecs.numcodecs.CRC32",
+                "numcodecs.crc32c": "zarr.codecs.numcodecs.CRC32C",
+                "numcodecs.lz4": "zarr.codecs.numcodecs.LZ4",
+                "numcodecs.lzma": "zarr.codecs.numcodecs.LZMA",
+                "numcodecs.zfpy": "zarr.codecs.numcodecs.ZFPY",
+                "numcodecs.adler32": "zarr.codecs.numcodecs.Adler32",
+                "numcodecs.astype": "zarr.codecs.numcodecs.AsType",
+                "numcodecs.bitround": "zarr.codecs.numcodecs.BitRound",
+                "numcodecs.blosc": "zarr.codecs.numcodecs.Blosc",
+                "numcodecs.delta": "zarr.codecs.numcodecs.Delta",
+                "numcodecs.fixedscaleoffset": "zarr.codecs.numcodecs.FixedScaleOffset",
+                "numcodecs.fletcher32": "zarr.codecs.numcodecs.Fletcher32",
+                "numcodecs.gzip": "zarr.codecs.numcodecs.GZip",
+                "numcodecs.jenkins_lookup3": "zarr.codecs.numcodecs.JenkinsLookup3",
+                "numcodecs.pcodec": "zarr.codecs.numcodecs.PCodec",
+                "numcodecs.packbits": "zarr.codecs.numcodecs.PackBits",
+                "numcodecs.shuffle": "zarr.codecs.numcodecs.Shuffle",
+                "numcodecs.quantize": "zarr.codecs.numcodecs.Quantize",
+                "numcodecs.zlib": "zarr.codecs.numcodecs.Zlib",
+                "numcodecs.zstd": "zarr.codecs.numcodecs.Zstd",
             },
             "buffer": "zarr.buffer.cpu.Buffer",
             "ndbuffer": "zarr.buffer.cpu.NDBuffer",
@@ -145,17 +157,3 @@ def parse_indexing_order(data: Any) -> Literal["C", "F"]:
         return cast("Literal['C', 'F']", data)
     msg = f"Expected one of ('C', 'F'), got {data} instead."
     raise ValueError(msg)
-
-
-def categorize_data_type(dtype: ZDType[Any, Any]) -> DTypeCategory:
-    """
-    Classify a ZDType. The return value is a string which belongs to the type ``DTypeCategory``.
-
-    This is used by the config system to determine how to encode arrays with the associated data type
-    when the user has not specified a particular serialization scheme.
-    """
-    from zarr.core.dtype import VariableLengthUTF8
-
-    if isinstance(dtype, VariableLengthUTF8):
-        return "variable-length-string"
-    return "default"

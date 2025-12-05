@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.codecs.bytes import Endian
-    from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.common import BytesLike
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
 __all__: list[str] = []
@@ -59,7 +60,7 @@ class NDArrayLike(Protocol):
     def size(self) -> int: ...
 
     @property
-    def shape(self) -> ChunkCoords: ...
+    def shape(self) -> tuple[int, ...]: ...
 
     def __len__(self) -> int: ...
 
@@ -70,7 +71,7 @@ class NDArrayLike(Protocol):
     def __array__(self) -> npt.NDArray[Any]: ...
 
     def reshape(
-        self, shape: ChunkCoords | Literal[-1], *, order: Literal["A", "C", "F"] = ...
+        self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = ...
     ) -> Self: ...
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
@@ -124,7 +125,7 @@ class Buffer(ABC):
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
 
-    A Buffer is backed by a underlying array-like instance that represents
+    A Buffer is backed by an underlying array-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     array-like instance can be copied/converted to a regular Numpy array
@@ -218,7 +219,7 @@ class Buffer(ABC):
         Parameters
         ----------
         bytes_like
-           bytes-like object
+            bytes-like object
 
         Returns
         -------
@@ -294,9 +295,13 @@ class Buffer(ABC):
         return self._data.size
 
     @abstractmethod
+    def combine(self, others: Iterable[Buffer]) -> Self:
+        """Concatenate many buffers"""
+        ...
+
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
-        ...
+        return self.combine([other])
 
     def __eq__(self, other: object) -> bool:
         # Another Buffer class can override this to choose a more efficient path
@@ -310,7 +315,7 @@ class NDBuffer:
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by a underlying ndarray-like instance that represents
+    A NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
@@ -376,7 +381,7 @@ class NDBuffer:
 
     @classmethod
     def empty(
-        cls, shape: ChunkCoords, dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
         """
         Create an empty buffer with the given shape, dtype, and order.
@@ -496,7 +501,7 @@ class NDBuffer:
         else:
             return Endian(sys.byteorder)
 
-    def reshape(self, newshape: ChunkCoords | Literal[-1]) -> Self:
+    def reshape(self, newshape: tuple[int, ...] | Literal[-1]) -> Self:
         return self.__class__(self._data.reshape(newshape))
 
     def squeeze(self, axis: tuple[int, ...]) -> Self:

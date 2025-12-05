@@ -26,7 +26,6 @@ if TYPE_CHECKING:
     from fsspec.mapping import FSMap
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import BytesLike
 
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -90,7 +89,6 @@ class FsspecStore(Store):
     allowed_exceptions
     supports_writes
     supports_deletes
-    supports_partial_writes
     supports_listing
 
     Raises
@@ -114,7 +112,6 @@ class FsspecStore(Store):
     # based on FSSpec
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = False
     supports_listing: bool = True
 
     fs: AsyncFileSystem
@@ -141,10 +138,6 @@ class FsspecStore(Store):
                 category=ZarrUserWarning,
                 stacklevel=2,
             )
-        if "://" in path and not path.startswith("http"):
-            # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
-            scheme, _ = path.split("://", maxsplit=1)
-            raise ValueError(f"path argument to FsspecStore must not include scheme ({scheme}://)")
 
     @classmethod
     def from_upath(
@@ -248,12 +241,6 @@ class FsspecStore(Store):
         fs, path = url_to_fs(url, **opts)
         if not fs.async_impl:
             fs = _make_async(fs)
-
-        # fsspec is not consistent about removing the scheme from the path, so check and strip it here
-        # https://github.com/fsspec/filesystem_spec/issues/1722
-        if "://" in path and not path.startswith("http"):
-            # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
-            path = fs._strip_protocol(path)
 
         return cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
 
@@ -417,12 +404,6 @@ class FsspecStore(Store):
                 raise r
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
-
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
-        # docstring inherited
-        raise NotImplementedError
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
