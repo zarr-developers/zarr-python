@@ -707,7 +707,27 @@ class AsyncGroup:
         store: StoreLike,
         *,
         overwrite: bool = False,
+        use_consolidated_for_children: bool = True,
     ) -> AsyncGroup:
+        """
+        Copy this group and all its contents to a new store.
+
+        Parameters
+        ----------
+        store : StoreLike
+            The store to copy to.
+        overwrite : bool, optional
+            If True, overwrite any existing data in the target store. Default is False.
+        use_consolidated_for_children : bool, default True
+            Whether to use the consolidated metadata of child groups when iterating over the store contents.
+            Note that this only affects groups loaded from the store. If the current Group already has
+            consolidated metadata, it will always be used.
+
+        Returns
+        -------
+        AsyncGroup
+            The new group in the target store.
+        """
         target_zarr_format = self.metadata.zarr_format
         group = await self.open(self.store, zarr_format=target_zarr_format)
         consolidated_metadata = group.metadata.consolidated_metadata
@@ -720,7 +740,9 @@ class AsyncGroup:
             zarr_format=target_zarr_format,
         )
 
-        async for _, member in self.members(max_depth=None):
+        async for _, member in self.members(
+            max_depth=None, use_consolidated_for_children=use_consolidated_for_children
+        ):
             child_path = member.store_path.path
             target_path = StorePath(store=new_group.store, path=child_path)
 
@@ -1950,8 +1972,36 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         overwrite: bool = False,
+        use_consolidated_for_children: bool = True,
     ) -> Group:
-        return Group(sync(self._async_group.copy_to(store=store, overwrite=overwrite)))
+        """
+        Copy this group and all its contents to a new store.
+
+        Parameters
+        ----------
+        store : StoreLike
+            The store to copy to.
+        overwrite : bool, optional
+            If True, overwrite any existing data in the target store. Default is False.
+        use_consolidated_for_children : bool, default True
+            Whether to use the consolidated metadata of child groups when iterating over the store contents.
+            Note that this only affects groups loaded from the store. If the current Group already has
+            consolidated metadata, it will always be used.
+
+        Returns
+        -------
+        AsyncGroup
+            The new group in the target store.
+        """
+        return Group(
+            sync(
+                self._async_group.copy_to(
+                    store=store,
+                    overwrite=overwrite,
+                    use_consolidated_for_children=use_consolidated_for_children,
+                )
+            )
+        )
 
     def __getitem__(self, path: str) -> AnyArray | Group:
         """Obtain a group member.
