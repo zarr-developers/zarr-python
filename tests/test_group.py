@@ -263,7 +263,17 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
     src_store = MemoryStore()
     src = Group.from_store(src_store, attributes={"root": True}, zarr_format=zarr_format)
 
-    src.create_group("subgroup")
+    subgroup = src.create_group("subgroup", attributes={"subgroup": True})
+
+    subgroup_arr_data = np.arange(50)
+    subgroup.create_array(
+        "subgroup_dataset",
+        shape=(50,),
+        chunks=(10,),
+        shards=shards,
+        dtype=subgroup_arr_data.dtype,
+    )
+    subgroup["subgroup_dataset"] = subgroup_arr_data
 
     arr_data = np.arange(100)
     src.create_array(
@@ -274,12 +284,16 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
         dtype=arr_data.dtype,
     )
     src["dataset"] = arr_data
+
     if consolidate_metadata:
         if zarr_format == 3:
             with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
                 zarr.consolidate_metadata(src_store)
+            with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
+                zarr.consolidate_metadata(src_store, path="subgroup")
         else:
             zarr.consolidate_metadata(src_store)
+            zarr.consolidate_metadata(src_store, path="subgroup")
 
     dst_store = MemoryStore()
 
@@ -289,15 +303,23 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
 
     subgroup = dst["subgroup"]
     assert isinstance(subgroup, Group)
+    assert subgroup.attrs.get("subgroup") is True
 
     copied_arr = dst["dataset"]
     copied_data = copied_arr[:]
     assert np.array_equal(copied_data, arr_data)
 
+    copied_subgroup_arr = subgroup["subgroup_dataset"]
+    copied_subgroup_data = copied_subgroup_arr[:]
+    assert np.array_equal(copied_subgroup_data, subgroup_arr_data)
+
     if consolidate_metadata:
         assert zarr.open_group(dst_store).metadata.consolidated_metadata
+        if zarr_format == 3:
+            assert zarr.open_group(dst_store, path="subgroup").metadata.consolidated_metadata
     else:
         assert not zarr.open_group(dst_store).metadata.consolidated_metadata
+        assert not zarr.open_group(dst_store, path="subgroup").metadata.consolidated_metadata
 
 
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:

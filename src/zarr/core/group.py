@@ -747,11 +747,12 @@ class AsyncGroup:
             target_path = StorePath(store=new_group.store, path=child_path)
 
             if isinstance(member, AsyncGroup):
-                await async_api.group(
+                await AsyncGroup.from_store(
                     store=target_path,
+                    zarr_format=target_zarr_format,
                     overwrite=overwrite,
                     attributes=member.metadata.attributes,
-                    zarr_format=target_zarr_format,
+                    consolidated_metadata=member.metadata.consolidated_metadata,
                 )
             else:
                 kwargs = {}
