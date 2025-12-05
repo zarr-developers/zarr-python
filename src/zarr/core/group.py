@@ -1916,6 +1916,8 @@ class Group(SyncMixin):
             for a description of all valid StoreLike values.
         attributes : dict, optional
             A dictionary of JSON-serializable values with user-defined attributes.
+        consolidated_metadata : ConsolidatedMetadata, optional
+            Consolidated Metadata for this Group. This should contain metadata of child nodes below this group.
         zarr_format : {2, 3}, optional
             Zarr storage format version.
         overwrite : bool, optional
