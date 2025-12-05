@@ -1,3 +1,0 @@
-Optimizes reading more than one, but not all, chunks from a shard. Chunks are now read in parallel
-and reads of nearby chunks within the same shard are combined to reduce the number of calls to the store.
-See :ref:`user-guide-config` for more details.
