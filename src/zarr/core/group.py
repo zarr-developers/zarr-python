@@ -472,6 +472,7 @@ class AsyncGroup:
         store: StoreLike,
         *,
         attributes: dict[str, Any] | None = None,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
         overwrite: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
@@ -486,7 +487,11 @@ class AsyncGroup:
             await ensure_no_existing_node(store_path, zarr_format=zarr_format)
         attributes = attributes or {}
         group = cls(
-            metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
+            metadata=GroupMetadata(
+                attributes=attributes,
+                consolidated_metadata=consolidated_metadata,
+                zarr_format=zarr_format,
+            ),
             store_path=store_path,
         )
         await group._save_metadata(ensure_parents=True)
@@ -704,11 +709,14 @@ class AsyncGroup:
         overwrite: bool = False,
     ) -> AsyncGroup:
         target_zarr_format = self.metadata.zarr_format
+        group = await self.open(self.store, zarr_format=target_zarr_format)
+        consolidated_metadata = group.metadata.consolidated_metadata
 
         new_group = await AsyncGroup.from_store(
             store,
             overwrite=overwrite,
             attributes=self.metadata.attributes,
+            consolidated_metadata=consolidated_metadata,
             zarr_format=target_zarr_format,
         )
 
@@ -753,10 +761,6 @@ class AsyncGroup:
                 for region in member._iter_shard_regions():
                     data = await member.getitem(selection=region)
                     await new_array.setitem(selection=region, value=data)
-
-        group = await self.open(self.store, zarr_format=target_zarr_format)
-        if group.metadata.consolidated_metadata:
-            await async_api.consolidate_metadata(new_group.store)
 
         return new_group
 
@@ -1008,6 +1012,7 @@ class AsyncGroup:
         *,
         overwrite: bool = False,
         attributes: dict[str, Any] | None = None,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
     ) -> AsyncGroup:
         """Create a sub-group.
 
@@ -1028,6 +1033,7 @@ class AsyncGroup:
         return await type(self).from_store(
             self.store_path / name,
             attributes=attributes,
+            consolidated_metadata=consolidated_metadata,
             overwrite=overwrite,
             zarr_format=self.metadata.zarr_format,
         )
@@ -1873,6 +1879,7 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         attributes: dict[str, Any] | None = None,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
         zarr_format: ZarrFormat = 3,
         overwrite: bool = False,
     ) -> Group:
@@ -1905,6 +1912,7 @@ class Group(SyncMixin):
             AsyncGroup.from_store(
                 store,
                 attributes=attributes,
+                consolidated_metadata=consolidated_metadata,
                 overwrite=overwrite,
                 zarr_format=zarr_format,
             ),

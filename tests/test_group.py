@@ -282,11 +282,8 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
             zarr.consolidate_metadata(src_store)
 
     dst_store = MemoryStore()
-    if zarr_format == 3 and consolidate_metadata:
-        with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
-            dst = src.copy_to(dst_store, overwrite=True)
-    else:
-        dst = src.copy_to(dst_store, overwrite=True)
+
+    dst = src.copy_to(dst_store, overwrite=True)
 
     assert dst.attrs.get("root") is True
 
