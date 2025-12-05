@@ -135,3 +135,10 @@ print(root.tree())
 
 !!! note
     [`zarr.Group.tree`][] requires the optional [rich](https://rich.readthedocs.io/en/stable/) dependency. It can be installed with the `[tree]` extra.
+
+You can copy a Group including consolidated metadata to a new destination using the `copy_to` method:
+
+```python exec="true" session="groups" source="above" result="ansi"
+destination_store = zarr.storage.MemoryStore()
+new_group = root.copy_to(destination_store, overwrite=True)
+```
