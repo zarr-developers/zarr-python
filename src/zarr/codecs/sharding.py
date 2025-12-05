@@ -5,7 +5,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from functools import lru_cache
 from operator import itemgetter
-from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -220,10 +220,11 @@ class _ShardReader(ShardMapping):
         return c_order_iter(self.index.offsets_and_lengths.shape[:-1])
 
 
-class _ChunkCoordsByteSlice(NamedTuple):
-    """Holds a chunk's coordinates and its byte range in a serialized shard."""
+@dataclass(frozen=True)
+class _ChunkCoordsByteSlice:
+    """Holds a core.indexing.ChunkProjection.chunk_coords and its byte range in a serialized shard."""
 
-    coords: tuple[int, ...]
+    chunk_coords: tuple[int, ...]
     byte_slice: slice
 
 
@@ -800,7 +801,7 @@ class ShardingCodec(
                 chunk.byte_slice.start - group_start,
                 chunk.byte_slice.stop - group_start,
             )
-            shard_dict[chunk.coords] = group_bytes[chunk_slice]
+            shard_dict[chunk.chunk_coords] = group_bytes[chunk_slice]
 
         return shard_dict
 
