@@ -1,3 +1,4 @@
+import warnings
 from collections.abc import MutableMapping
 from itertools import islice
 
@@ -73,6 +74,10 @@ class Group(MutableMapping):
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
+        [DEPRECATED since version 2.18.4] This argument is deprecated and will be
+        removed in version 3.0. See
+        `GH2495 <https://github.com/zarr-developers/zarr-python/issues/2495>`_
+        for more information.
     cache_attrs : bool, optional
         If True (default), user attributes will be cached for attribute read
         operations. If False, user attributes are reloaded from the store prior
@@ -156,6 +161,12 @@ class Group(MutableMapping):
             assert_zarr_v3_api_available()
 
         if chunk_store is not None:
+            warnings.warn(
+                "chunk_store is deprecated and will be removed in a Zarr-Python version 3, see "
+                "https://github.com/zarr-developers/zarr-python/issues/2495 for more information.",
+                FutureWarning,
+                stacklevel=2,
+            )
             chunk_store: BaseStore = _normalize_store_arg(chunk_store, zarr_version=zarr_version)
         self._store = store
         self._chunk_store = chunk_store
