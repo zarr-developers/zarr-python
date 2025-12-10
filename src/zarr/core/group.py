@@ -732,7 +732,7 @@ class AsyncGroup:
         group = await self.open(self.store, zarr_format=target_zarr_format)
         consolidated_metadata = group.metadata.consolidated_metadata
 
-        new_group = await AsyncGroup.from_store(
+        new_group = await self.from_store(
             store,
             overwrite=overwrite,
             attributes=self.metadata.attributes,
@@ -747,7 +747,7 @@ class AsyncGroup:
             target_path = StorePath(store=new_group.store, path=child_path)
 
             if isinstance(member, AsyncGroup):
-                await AsyncGroup.from_store(
+                await self.from_store(
                     store=target_path,
                     zarr_format=target_zarr_format,
                     overwrite=overwrite,
