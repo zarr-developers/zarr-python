@@ -288,11 +288,11 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
     if consolidate_metadata:
         if zarr_format == 3:
             with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
-                zarr.consolidate_metadata(src_store)
+                src = zarr.consolidate_metadata(src_store)
             with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
                 zarr.consolidate_metadata(src_store, path="subgroup")
         else:
-            zarr.consolidate_metadata(src_store)
+            src = zarr.consolidate_metadata(src_store)
             zarr.consolidate_metadata(src_store, path="subgroup")
 
     dst_store = MemoryStore()

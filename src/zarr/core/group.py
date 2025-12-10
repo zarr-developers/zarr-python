@@ -729,14 +729,12 @@ class AsyncGroup:
             The new group in the target store.
         """
         target_zarr_format = self.metadata.zarr_format
-        group = await self.open(self.store, zarr_format=target_zarr_format)
-        consolidated_metadata = group.metadata.consolidated_metadata
 
         new_group = await self.from_store(
             store,
             overwrite=overwrite,
             attributes=self.metadata.attributes,
-            consolidated_metadata=consolidated_metadata,
+            consolidated_metadata=self.metadata.consolidated_metadata,
             zarr_format=target_zarr_format,
         )
 
