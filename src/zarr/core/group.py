@@ -1045,6 +1045,9 @@ class AsyncGroup:
             If True, do not raise an error if the group already exists.
         attributes : dict, optional
             Group attributes.
+        consolidated_metadata : ConsolidatedMetadata, optional
+            Consolidated Zarr metadata mapping that represents the entire hierarchy's
+            group and array metadata collected into a single dictionary.
 
         Returns
         -------
@@ -2522,13 +2525,26 @@ class Group(SyncMixin):
         """
         return self._sync(self._async_group.tree(expand=expand, level=level))
 
-    def create_group(self, name: str, **kwargs: Any) -> Group:
+    def create_group(
+        self,
+        name: str,
+        overwrite: bool = False,
+        attributes: dict[str, Any] | None = None,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
+    ) -> Group:
         """Create a sub-group.
 
         Parameters
         ----------
         name : str
             Name of the new subgroup.
+        overwrite : bool, optional
+            If True, do not raise an error if the group already exists.
+        attributes : dict, optional
+            Group attributes.
+        consolidated_metadata : ConsolidatedMetadata, optional
+            Consolidated Zarr metadata mapping that represents the entire hierarchy's
+            group and array metadata collected into a single dictionary.
 
         Returns
         -------
@@ -2542,7 +2558,16 @@ class Group(SyncMixin):
         >>> subgroup
         <Group memory://132270269438272/subgroup>
         """
-        return Group(self._sync(self._async_group.create_group(name, **kwargs)))
+        return Group(
+            self._sync(
+                self._async_group.create_group(
+                    name,
+                    overwrite=overwrite,
+                    attributes=attributes,
+                    consolidated_metadata=consolidated_metadata,
+                )
+            )
+        )
 
     def require_group(self, name: str, **kwargs: Any) -> Group:
         """Obtain a sub-group, creating one if it doesn't exist.

@@ -63,6 +63,89 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 
+def is_deprecated(method):
+    """Check if a method is marked as deprecated."""
+    # Check for @deprecated decorator
+    return hasattr(method, "__deprecated__") or (
+        hasattr(method, "__wrapped__") and hasattr(method.__wrapped__, "__deprecated__")
+    )
+
+
+def get_method_names(cls):
+    """Extract public method names from a class, excluding deprecated methods."""
+    return [
+        name
+        for name, method in inspect.getmembers(cls, predicate=inspect.isfunction)
+        if not name.startswith("_") and not is_deprecated(method)
+    ]
+
+
+def get_method_signature(cls, method_name: str):
+    """Get the signature of a method from a class."""
+    method = getattr(cls, method_name)
+    sig = inspect.signature(method)
+    return {name: param for name, param in sig.parameters.items() if name != "self"}
+
+
+# TODO Go one by one through the methods in skipped and fix the mismatches.
+@pytest.mark.parametrize(
+    ("sync_class", "async_class", "skip_methods"),
+    [
+        (
+            Group,
+            AsyncGroup,
+            ["create", "update_attributes_async", "get", "require_array", "require_group"],
+        )
+    ],
+)
+def test_class_method_parameters_match(sync_class, async_class, skip_methods) -> None:
+    """
+    Test that methods for classes and their async counterparts match.
+
+    Tests that the parameters for sync and async methods match. This test,
+    tests parameter names, types, and default values.
+    """
+
+    method_names = get_method_names(sync_class)
+    for method in skip_methods:
+        method_names.remove(method)
+
+    for method_name in method_names:
+        assert hasattr(async_class, method_name), (
+            f"Async class {async_class.__name__} missing method '{method_name}'"
+        )
+
+        sync_params = get_method_signature(sync_class, method_name)
+        async_params = get_method_signature(async_class, method_name)
+
+        sync_param_names = set(sync_params.keys())
+        async_param_names = set(async_params.keys())
+
+        assert sync_param_names == async_param_names, (
+            f"Parameter names don't match for '{method_name}'. "
+            f"Sync: {sync_param_names}, Async: {async_param_names}"
+        )
+
+        mismatches = []
+        for param_name in sync_params:
+            sync_param = sync_params[param_name]
+            async_param = async_params[param_name]
+
+            if sync_param.annotation != async_param.annotation:
+                mismatches.append(
+                    f"{param_name}: annotation mismatch "
+                    f"(sync: {sync_param.annotation}, async: {async_param.annotation})"
+                )
+
+            if sync_param.default != async_param.default:
+                mismatches.append(
+                    f"{param_name}: default mismatch "
+                    f"(sync: {sync_param.default}, async: {async_param.default})"
+                )
+
+        assert mismatches == [], f"Parameter mismatches in '{method_name}': {mismatches}"
+
+
 @pytest.fixture(params=["local", "memory", "zip"])
 async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     result = await parse_store(request.param, str(tmpdir))
