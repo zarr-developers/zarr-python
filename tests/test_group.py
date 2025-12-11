@@ -333,16 +333,13 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
         members_observed = group.members(max_depth=-1)
 
 
-@pytest.mark.parametrize(
-    ("zarr_format", "shards", "consolidate_metadata"),
-    [
-        (2, None, False),
-        (2, None, True),
-        (3, (50,), False),
-        (3, (50,), True),
-    ],
-)
-def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata: bool) -> None:
+@pytest.fixture
+def copy_to_test_data(
+    request,
+) -> tuple[Group, np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]], int, bool]:
+    """Fixture that creates test data for copy_to tests."""
+    zarr_format, shards, consolidate_metadata = request.param
+
     src_store = MemoryStore()
     src = Group.from_store(src_store, attributes={"root": True}, zarr_format=zarr_format)
 
@@ -368,6 +365,12 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
     )
     src["dataset"] = arr_data
 
+    src = consolidate(src_store, src, consolidate_metadata, zarr_format)
+
+    return src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata
+
+
+def consolidate(src_store, src, consolidate_metadata, zarr_format):
     if consolidate_metadata:
         if zarr_format == 3:
             with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
@@ -377,6 +380,32 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
         else:
             src = zarr.consolidate_metadata(src_store)
             zarr.consolidate_metadata(src_store, path="subgroup")
+    return src
+
+
+def check_consolidated_metadata(dst_store_root, consolidate_metadata, zarr_format, path=None):
+    sub_path = "subgroup" if path is None else f"{path}/subgroup"
+    if consolidate_metadata:
+        assert zarr.open_group(dst_store_root, path=path).metadata.consolidated_metadata
+        if zarr_format == 3:
+            assert zarr.open_group(dst_store_root, path=sub_path).metadata.consolidated_metadata
+    else:
+        assert not zarr.open_group(dst_store_root).metadata.consolidated_metadata
+        assert not zarr.open_group(dst_store_root, path=sub_path).metadata.consolidated_metadata
+
+
+@pytest.mark.parametrize(
+    "copy_to_test_data",
+    [
+        (2, None, False),
+        (2, None, True),
+        (3, (50,), False),
+        (3, (50,), True),
+    ],
+    indirect=True,
+)
+def test_copy_to(copy_to_test_data) -> None:
+    src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata = copy_to_test_data
 
     dst_store = MemoryStore()
 
@@ -396,13 +425,41 @@ def test_copy_to(zarr_format: int, shards: tuple[int, ...], consolidate_metadata
     copied_subgroup_data = copied_subgroup_arr[:]
     assert np.array_equal(copied_subgroup_data, subgroup_arr_data)
 
-    if consolidate_metadata:
-        assert zarr.open_group(dst_store).metadata.consolidated_metadata
-        if zarr_format == 3:
-            assert zarr.open_group(dst_store, path="subgroup").metadata.consolidated_metadata
-    else:
-        assert not zarr.open_group(dst_store).metadata.consolidated_metadata
-        assert not zarr.open_group(dst_store, path="subgroup").metadata.consolidated_metadata
+    check_consolidated_metadata(dst_store, consolidate_metadata, zarr_format)
+
+
+@pytest.mark.parametrize(
+    "copy_to_test_data",
+    [
+        (2, None, False),
+        (2, None, True),
+        (3, (50,), False),
+        (3, (50,), True),
+    ],
+    indirect=True,
+)
+def test_copy_to_with_path(copy_to_test_data) -> None:
+    src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata = copy_to_test_data
+
+    dst_store = MemoryStore()
+    dst = src.copy_to(dst_store, path="sub/snapshot", overwrite=True)
+
+    assert dst.attrs.get("root") is True
+    assert dst.store_path.path == "sub/snapshot"
+
+    subgroup = dst["subgroup"]
+    assert isinstance(subgroup, Group)
+    assert subgroup.attrs.get("subgroup") is True
+
+    copied_arr = dst["dataset"]
+    copied_data = copied_arr[:]
+    assert np.array_equal(copied_data, arr_data)
+
+    copied_subgroup_arr = subgroup["subgroup_dataset"]
+    copied_subgroup_data = copied_subgroup_arr[:]
+    assert np.array_equal(copied_subgroup_data, subgroup_arr_data)
+
+    check_consolidated_metadata(dst_store, consolidate_metadata, zarr_format, path="sub/snapshot")
 
 
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:

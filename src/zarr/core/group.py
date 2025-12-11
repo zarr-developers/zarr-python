@@ -706,6 +706,7 @@ class AsyncGroup:
         self,
         store: StoreLike,
         *,
+        path: str | None = None,
         overwrite: bool = False,
         use_consolidated_for_children: bool = True,
     ) -> AsyncGroup:
@@ -716,6 +717,8 @@ class AsyncGroup:
         ----------
         store : StoreLike
             The store to copy to.
+        path : str, optional
+            Group path within the destination store.
         overwrite : bool, optional
             If True, overwrite any existing data in the target store. Default is False.
         use_consolidated_for_children : bool, default True
@@ -728,33 +731,40 @@ class AsyncGroup:
         AsyncGroup
             The new group in the target store.
         """
-        target_zarr_format = self.metadata.zarr_format
+        if path is not None:
+            target_store = await make_store_path(store, path=path)
+        else:
+            target_store = await make_store_path(store)
 
         new_group = await self.from_store(
-            store,
+            target_store,
             overwrite=overwrite,
             attributes=self.metadata.attributes,
             consolidated_metadata=self.metadata.consolidated_metadata,
-            zarr_format=target_zarr_format,
+            zarr_format=self.metadata.zarr_format,
         )
 
         async for _, member in self.members(
             max_depth=None, use_consolidated_for_children=use_consolidated_for_children
         ):
             child_path = member.store_path.path
-            target_path = StorePath(store=new_group.store, path=child_path)
+            if new_group.store_path.path:
+                full_child_path = f"{new_group.store_path.path}/{child_path}"
+            else:
+                full_child_path = child_path
+            target_path = StorePath(store=new_group.store, path=full_child_path)
 
             if isinstance(member, AsyncGroup):
                 await self.from_store(
                     store=target_path,
-                    zarr_format=target_zarr_format,
+                    zarr_format=self.metadata.zarr_format,
                     overwrite=overwrite,
                     attributes=member.metadata.attributes,
                     consolidated_metadata=member.metadata.consolidated_metadata,
                 )
             else:
                 kwargs = {}
-                if target_zarr_format == 3:
+                if self.metadata.zarr_format == 3:
                     kwargs["chunk_key_encoding"] = member.metadata.chunk_key_encoding
                     kwargs["dimension_names"] = member.metadata.dimension_names
                 else:
@@ -1975,6 +1985,7 @@ class Group(SyncMixin):
         self,
         store: StoreLike,
         *,
+        path: str | None = None,
         overwrite: bool = False,
         use_consolidated_for_children: bool = True,
     ) -> Group:
@@ -1985,6 +1996,8 @@ class Group(SyncMixin):
         ----------
         store : StoreLike
             The store to copy to.
+        path : str, optional
+            Group path within the destination store.
         overwrite : bool, optional
             If True, overwrite any existing data in the target store. Default is False.
         use_consolidated_for_children : bool, default True
@@ -2001,6 +2014,7 @@ class Group(SyncMixin):
             sync(
                 self._async_group.copy_to(
                     store=store,
+                    path=path,
                     overwrite=overwrite,
                     use_consolidated_for_children=use_consolidated_for_children,
                 )
