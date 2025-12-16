@@ -1,7 +1,7 @@
 import math
 import sys
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -24,6 +24,8 @@ from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
 from zarr.storage._utils import normalize_path
 from zarr.types import AnyArray
+
+TrueOrFalse = Literal[True, False]
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
@@ -348,8 +350,8 @@ def basic_indices(
     shape: tuple[int, ...],
     min_dims: int = 0,
     max_dims: int | None = None,
-    allow_newaxis: bool = False,
-    allow_ellipsis: bool = True,
+    allow_newaxis: TrueOrFalse = False,
+    allow_ellipsis: TrueOrFalse = True,
 ) -> Any:
     """Basic indices without unsupported negative slices."""
     strategy = npst.basic_indices(
@@ -362,7 +364,7 @@ def basic_indices(
         lambda idxr: (
             not (
                 is_negative_slice(idxr)
-                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))  # type: ignore[redundant-expr]
+                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
             )
         )
     )
