@@ -1020,6 +1020,24 @@ def test_auto_partition_auto_shards(
     assert auto_shards == expected_shards
 
 
+def test_auto_partition_auto_shards_with_auto_chunks_should_be_close_to_1MiB() -> None:
+    """
+    Test that automatically picking a shard size and a chunk size gives roughly 1MiB chunks.
+    """
+    with pytest.warns(
+        ZarrUserWarning,
+        match="Automatic shard shape inference is experimental and may change without notice.",
+    ):
+        with zarr.config.set({"array.target_shard_size_bytes": 10_000_000}):
+            _, chunk_shape = _auto_partition(
+                array_shape=(10_000_000,),
+                chunk_shape="auto",
+                shard_shape="auto",
+                item_size=1,
+            )
+    assert chunk_shape == (625000,)
+
+
 def test_chunks_and_shards() -> None:
     store = StorePath(MemoryStore())
     shape = (100, 100)
