@@ -74,7 +74,7 @@ cli = ["typer"]
 test = [
     "coverage>=7.10",
     "pytest",
-    "pytest-asyncio<1.2.0",
+    "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
     "rich",
