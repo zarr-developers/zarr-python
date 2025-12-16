@@ -1,7 +1,7 @@
 import math
 import sys
 from collections.abc import Callable, Mapping
-from typing import Any, Literal
+from typing import Any
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -131,7 +131,7 @@ def array_metadata(
     draw: st.DrawFn,
     *,
     array_shapes: Callable[..., st.SearchStrategy[tuple[int, ...]]] = npst.array_shapes,
-    zarr_formats: st.SearchStrategy[Literal[2, 3]] = zarr_formats,
+    zarr_formats: st.SearchStrategy[ZarrFormat] = zarr_formats,
     attributes: SearchStrategy[Mapping[str, JSON] | None] = attrs,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
     zarr_format = draw(zarr_formats)
