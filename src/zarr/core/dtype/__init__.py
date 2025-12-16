@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Final, TypeAlias
 from zarr.core.dtype.common import (
     DataTypeValidationError,
     DTypeJSON,
+    DTypeName_V2,
+    DTypeSpec_V2,
 )
 from zarr.core.dtype.npy.bool import Bool
 from zarr.core.dtype.npy.bytes import (
@@ -150,7 +152,14 @@ ANY_DTYPE: Final = (
 VLEN_UTF8_ALIAS: Final = ("str", str, "string")
 
 # This type models inputs that can be coerced to a ZDType
-ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
+ZDTypeLike: TypeAlias = (
+    npt.DTypeLike
+    | ZDType[TBaseDType, TBaseScalar]
+    | Mapping[str, JSON]
+    | Mapping[str, object]
+    | DTypeSpec_V2
+    | DTypeName_V2
+)
 
 for dtype in ANY_DTYPE:
     # mypy does not know that all the elements of ANY_DTYPE are subclasses of ZDType

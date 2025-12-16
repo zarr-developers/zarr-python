@@ -59,12 +59,6 @@ def order_from_dim(order: MemoryOrder, ndim: int) -> tuple[int, ...]:
         return tuple(range(ndim))
 
 
-def test_sharding_pickle() -> None:
-    """
-    Test that sharding codecs can be pickled
-    """
-
-
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("store_order", ["F", "C"])

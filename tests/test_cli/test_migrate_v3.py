@@ -13,7 +13,8 @@ from zarr.abc.codec import Codec
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
-from zarr.codecs.numcodecs import LZMA, Delta
+from zarr.codecs.numcodecs import LZMA
+from zarr.codecs.numcodecs.delta import Delta
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.chunk_grids import RegularChunkGrid
@@ -32,7 +33,9 @@ cli = pytest.importorskip("zarr._cli.cli", reason="optional cli dependencies are
 
 runner = typer_testing.CliRunner()
 
-NUMCODECS_USER_WARNING = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
+UNSTABLE_SPEC_WARNING = (
+    "Data saved with this codec may not be supported by other Zarr implementations. "
+)
 
 
 def test_migrate_array(local_store: LocalStore) -> None:
@@ -316,8 +319,8 @@ def test_migrate_compressor(
     assert np.all(zarr_array[:] == 1)
 
 
-@pytest.mark.filterwarnings(f"ignore:{NUMCODECS_USER_WARNING}:UserWarning")
-def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
+@pytest.mark.filterwarnings(f"ignore:.*{UNSTABLE_SPEC_WARNING}.*")
+def test_migrate_lzma_compressor(local_store: LocalStore) -> None:
     """Test migration of a numcodecs compressor without a zarr.codecs equivalent."""
 
     lzma_settings = {
@@ -360,7 +363,7 @@ def test_migrate_numcodecs_compressor(local_store: LocalStore) -> None:
     assert np.all(zarr_array[:] == 1)
 
 
-@pytest.mark.filterwarnings(f"ignore:{NUMCODECS_USER_WARNING}:UserWarning")
+@pytest.mark.filterwarnings(f"ignore:.*{UNSTABLE_SPEC_WARNING}.*")
 def test_migrate_filter(local_store: LocalStore) -> None:
     filter_v2 = numcodecs.Delta(dtype="<u2", astype="<u2")
     filter_v3 = Delta(dtype="<u2", astype="<u2")
@@ -504,11 +507,8 @@ def test_migrate_unknown_codec(local_store: LocalStore) -> None:
 
     result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
     assert result.exit_code == 1
-    assert isinstance(result.exception, ValueError)
-    assert (
-        str(result.exception)
-        == "Couldn't find corresponding zarr.codecs.numcodecs codec for categorize"
-    )
+    assert isinstance(result.exception, KeyError)
+    assert str(result.exception) == "'categorize'"
 
 
 def test_migrate_incorrect_filter(local_store: LocalStore) -> None:
@@ -524,39 +524,29 @@ def test_migrate_incorrect_filter(local_store: LocalStore) -> None:
         fill_value=0,
     )
 
-    with pytest.warns(UserWarning, match=NUMCODECS_USER_WARNING):
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+
+    assert result.exit_code == 0
+
+
+def test_migrate_delta_compressor(local_store: LocalStore) -> None:
+    """Attempting to convert a numcodecs compressor should succeed"""
+
+    with pytest.warns(UserWarning, match=UNSTABLE_SPEC_WARNING):
+        zarr.create_array(
+            store=local_store,
+            shape=(10, 10),
+            chunks=(10, 10),
+            dtype="uint16",
+            compressors=numcodecs.Delta(dtype="<u2", astype="<u2"),
+            zarr_format=2,
+            fill_value=0,
+        )
+
+    with pytest.warns(UserWarning, match=UNSTABLE_SPEC_WARNING):
         result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
 
-    assert result.exit_code == 1
-    assert isinstance(result.exception, TypeError)
-    assert (
-        str(result.exception)
-        == "Filter <class 'zarr.codecs.numcodecs._codecs.Zstd'> is not an ArrayArrayCodec"
-    )
-
-
-def test_migrate_incorrect_compressor(local_store: LocalStore) -> None:
-    """Attempting to convert a compressor (which is the wrong type of codec) should always fail"""
-
-    zarr.create_array(
-        store=local_store,
-        shape=(10, 10),
-        chunks=(10, 10),
-        dtype="uint16",
-        compressors=numcodecs.Delta(dtype="<u2", astype="<u2"),
-        zarr_format=2,
-        fill_value=0,
-    )
-
-    with pytest.warns(UserWarning, match=NUMCODECS_USER_WARNING):
-        result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
-
-    assert result.exit_code == 1
-    assert isinstance(result.exception, TypeError)
-    assert (
-        str(result.exception)
-        == "Compressor <class 'zarr.codecs.numcodecs._codecs.Delta'> is not a BytesBytesCodec"
-    )
+    assert result.exit_code == 0
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])

@@ -1,23 +1,69 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal, NotRequired, Self, TypedDict, TypeGuard, cast, overload
 
 import numcodecs
 from numcodecs.zstd import Zstd
 from packaging.version import Version
+from typing_extensions import ReadOnly
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import (
+    JSON,
+    CodecJSON,
+    NamedRequiredConfig,
+    ZarrFormat,
+    check_named_required_config,
+)
+from zarr.errors import CodecValidationError
 
 if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
+
+
+class ZstdConfig_V2(TypedDict):
+    level: int
+    checksum: NotRequired[Literal[True]]
+
+
+class ZstdConfig_V3(TypedDict):
+    level: int
+    checksum: bool
+
+
+class ZstdJSON_V2(ZstdConfig_V2):
+    """
+    The JSON form of the ZStandard codec in Zarr v2.
+    """
+
+    id: ReadOnly[Literal["zstd"]]
+
+
+class ZstdJSON_V3(NamedRequiredConfig[Literal["zstd"], ZstdConfig_V3]):
+    """
+    The JSON form of the ZStandard codec in Zarr v3.
+    """
+
+
+def check_json_v2(data: object) -> TypeGuard[ZstdJSON_V2]:
+    return isinstance(data, Mapping) and set(data.keys()).issuperset({"id", "level"})
+
+
+def check_json_v3(data: object) -> TypeGuard[ZstdJSON_V3]:
+    return (
+        check_named_required_config(data)
+        and set(data.keys()) == {"name", "configuration"}
+        and data["name"] == "zstd"
+        and set(data["configuration"].keys()) == {"level", "checksum"}
+    )
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -36,7 +82,12 @@ def parse_checksum(data: JSON) -> bool:
 
 @dataclass(frozen=True)
 class ZstdCodec(BytesBytesCodec):
-    """zstd codec"""
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://github.com/zarr-developers/zarr-extensions/tree/main/codecs/zstd
+    """
 
     is_fixed_size = True
 
@@ -60,11 +111,55 @@ class ZstdCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "zstd")
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
+        return cls.from_json(data)  # type: ignore[arg-type]
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        if check_json_v2(data):
+            if "checksum" in data:
+                return cls(level=data["level"], checksum=data["checksum"])
+            else:
+                return cls(level=data["level"])
+
+        msg = (
+            "Invalid Zarr V2 JSON representation of the zstd codec. "
+            f"Got {data!r}, expected a Mapping with keys ('id', 'level')"
+        )
+        raise CodecValidationError(msg)
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        if check_json_v3(data):
+            return cls(
+                level=data["configuration"]["level"], checksum=data["configuration"]["checksum"]
+            )
+        msg = (
+            "Invalid Zarr V3 JSON representation of the zstd codec. "
+            f"Got {data!r}, expected a Mapping with keys ('name', 'configuration') "
+            "where the 'configuration' key is a Mapping with keys ('level', 'checksum')"
+        )
+        raise CodecValidationError(msg)
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
+        return cast(dict[str, JSON], self.to_json(zarr_format=3))
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> ZstdJSON_V2: ...
+
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> ZstdJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> ZstdJSON_V2 | ZstdJSON_V3:
+        if zarr_format == 2:
+            if self.checksum is True:
+                return {"id": "zstd", "level": self.level, "checksum": self.checksum}
+            else:
+                return {"id": "zstd", "level": self.level}
+        else:
+            return {
+                "name": "zstd",
+                "configuration": {"level": self.level, "checksum": self.checksum},
+            }
 
     @cached_property
     def _zstd_codec(self) -> Zstd:

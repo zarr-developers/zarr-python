@@ -56,7 +56,6 @@ if TYPE_CHECKING:
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-    from zarr.core.metadata.v2 import CompressorLikev2
     from zarr.storage import StoreLike
     from zarr.types import AnyArray, AnyAsyncArray
 
@@ -131,8 +130,8 @@ class _LikeArgs(TypedDict):
     chunks: NotRequired[tuple[int, ...]]
     dtype: NotRequired[np.dtype[np.generic]]
     order: NotRequired[Literal["C", "F"]]
-    filters: NotRequired[tuple[Numcodec, ...] | None]
-    compressor: NotRequired[CompressorLikev2]
+    filters: NotRequired[tuple[Codec, ...] | None]
+    compressor: NotRequired[Codec | None]
     codecs: NotRequired[tuple[Codec, ...]]
 
 

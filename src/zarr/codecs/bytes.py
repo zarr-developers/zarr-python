@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final, Literal, NotRequired, TypedDict, TypeGuard, cast, overload
 
 import numpy as np
+from typing_extensions import ReadOnly
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
-from zarr.core.common import JSON, parse_enum, parse_named_configuration
+from zarr.core.common import JSON, CodecJSON, NamedConfig, ZarrFormat
 from zarr.core.dtype.common import HasEndianness
 
 if TYPE_CHECKING:
@@ -27,35 +29,120 @@ class Endian(Enum):
     little = "little"
 
 
-default_system_endian = Endian(sys.byteorder)
+# TODO: unify with the endianness defined in core.dtype.common
+EndiannessStr = Literal["little", "big"]
+ENDIANNESS_STR: Final = "little", "big"
+
+default_system_endian = sys.byteorder
+
+
+class BytesConfig(TypedDict):
+    endian: NotRequired[EndiannessStr]
+
+
+class BytesJSON_V2(BytesConfig):
+    """
+    JSON representation of the bytes codec for zarr v2.
+    """
+
+    id: ReadOnly[Literal["bytes"]]
+
+
+BytesJSON_V3 = NamedConfig[Literal["bytes"], BytesConfig] | Literal["bytes"]
+
+
+def parse_endianness(data: object) -> Endian:
+    if data in ENDIANNESS_STR:
+        return Endian[data]  # type: ignore [misc]
+    if isinstance(data, Endian):
+        return data
+    raise ValueError(f"Invalid endianness: {data!r}. Expected one of {ENDIANNESS_STR}")
+
+
+def check_json_v2(data: object) -> TypeGuard[BytesJSON_V2]:
+    return (
+        isinstance(data, Mapping)
+        and set(data.keys()) in ({"id", "endian"}, {"id"})
+        and data["id"] == "bytes"
+    )
+
+
+def check_json_v3(data: object) -> TypeGuard[BytesJSON_V3]:
+    return data == "bytes" or (
+        (
+            isinstance(data, Mapping)
+            and set(data.keys()) in ({"name"}, {"name", "configuration"})
+            and data["name"] == "bytes"
+        )
+        and isinstance(data.get("configuration", {}), Mapping)
+        and set(data.get("configuration", {}).keys()) in ({"endian"}, set())
+    )
 
 
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
-    """bytes codec"""
+    """
+    References
+    ----------
+    This specification document for this codec can be found at
+    https://zarr-specs.readthedocs.io/en/latest/v3/codecs/bytes/index.html
+    """
 
     is_fixed_size = True
 
     endian: Endian | None
 
-    def __init__(self, *, endian: Endian | str | None = default_system_endian) -> None:
-        endian_parsed = None if endian is None else parse_enum(endian, Endian)
+    def __init__(self, *, endian: EndiannessStr | Endian | None = default_system_endian) -> None:
+        endian_parsed = None if endian is None else parse_endianness(endian)
 
         object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
-        _, configuration_parsed = parse_named_configuration(
-            data, "bytes", require_configuration=False
-        )
-        configuration_parsed = configuration_parsed or {}
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
+        return cls.from_json(data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        if self.endian is None:
+        return cast(dict[str, JSON], self.to_json(zarr_format=3))
+
+    @classmethod
+    def _from_json_v2(cls, data: CodecJSON) -> Self:
+        if check_json_v2(data):
+            return cls(endian=data.get("endian", None))
+        raise ValueError(f"Invalid JSON: {data}")
+
+    @classmethod
+    def _from_json_v3(cls, data: CodecJSON) -> Self:
+        if check_json_v3(data):
+            # Three different representations of the exact same codec...
+            if data in ("bytes", {"name": "bytes"}, {"name": "bytes", "configuration": {}}):
+                return cls()
+            else:
+                return cls(endian=data["configuration"].get("endian", None))  # type: ignore[union-attr, index]
+        raise ValueError(f"Invalid JSON: {data}")
+
+    @overload
+    def to_json(self, zarr_format: Literal[2]) -> BytesJSON_V2: ...
+    @overload
+    def to_json(self, zarr_format: Literal[3]) -> BytesJSON_V3: ...
+
+    def to_json(self, zarr_format: ZarrFormat) -> BytesJSON_V2 | BytesJSON_V3:
+        if zarr_format == 2:
+            if self.endian is not None:
+                return {
+                    "id": "bytes",
+                    "endian": self.endian.value,
+                }
+            return {"id": "bytes"}
+        elif zarr_format == 3:
+            if self.endian is not None:
+                return {
+                    "name": "bytes",
+                    "configuration": {"endian": self.endian.value},
+                }
             return {"name": "bytes"}
-        else:
-            return {"name": "bytes", "configuration": {"endian": self.endian.value}}
+        raise ValueError(
+            f"Unsupported Zarr format {zarr_format}. Expected 2 or 3."
+        )  # pragma: no cover
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if not isinstance(array_spec.dtype, HasEndianness):
@@ -74,9 +161,9 @@ class BytesCodec(ArrayBytesCodec):
     ) -> NDBuffer:
         assert isinstance(chunk_bytes, Buffer)
         # TODO: remove endianness enum in favor of literal union
-        endian_str = self.endian.value if self.endian is not None else None
-        if isinstance(chunk_spec.dtype, HasEndianness):
-            dtype = replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()  # type: ignore[call-arg]
+        endian = self.endian.value if self.endian is not None else None
+        if isinstance(chunk_spec.dtype, HasEndianness) and endian is not None:
+            dtype = replace(chunk_spec.dtype, endianness=endian).to_native_dtype()  # type: ignore[call-arg]
         else:
             dtype = chunk_spec.dtype.to_native_dtype()
         as_array_like = chunk_bytes.as_array_like()
@@ -104,11 +191,11 @@ class BytesCodec(ArrayBytesCodec):
         if (
             chunk_array.dtype.itemsize > 1
             and self.endian is not None
-            and self.endian != chunk_array.byteorder
+            and self.endian.value != chunk_array.byteorder.value
         ):
             # type-ignore is a numpy bug
             # see https://github.com/numpy/numpy/issues/26473
-            new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
+            new_dtype = chunk_array.dtype.newbyteorder(self.endian.value)
             chunk_array = chunk_array.astype(new_dtype)
 
         nd_array = chunk_array.as_ndarray_like()

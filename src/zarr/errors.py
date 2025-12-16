@@ -134,6 +134,9 @@ class ZarrRuntimeWarning(RuntimeWarning):
     """
 
 
+class CodecValidationError(ValueError): ...
+
+
 class VindexInvalidSelectionError(IndexError): ...
 
 

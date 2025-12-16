@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
@@ -24,9 +24,10 @@ from typing_extensions import deprecated
 
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
-from zarr.abc.numcodec import Numcodec, _is_numcodec
-from zarr.codecs._v2 import V2Codec
+from zarr.abc.numcodec import Numcodec
+from zarr.codecs._v2 import NumcodecWrapper
 from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
@@ -61,6 +62,7 @@ from zarr.core.common import (
     _warn_order_kwarg,
     ceildiv,
     concurrent_map,
+    is_scalar,
     parse_shapelike,
     product,
 )
@@ -97,7 +99,6 @@ from zarr.core.indexing import (
     check_no_multi_fields,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
-    is_scalar,
     pop_fields,
 )
 from zarr.core.metadata import (
@@ -109,9 +110,10 @@ from zarr.core.metadata import (
     ArrayV3Metadata,
     T_ArrayMetadata,
 )
+from zarr.core.metadata.common import _parse_codec
 from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import (
-    CompressorLikev2,
+    CompressorLike_V2,
     get_object_codec_id,
     parse_compressor,
     parse_filters,
@@ -125,16 +127,13 @@ from zarr.errors import (
     ZarrUserWarning,
 )
 from zarr.registry import (
-    _parse_array_array_codec,
-    _parse_array_bytes_codec,
-    _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator
     from typing import Self
 
     import numpy.typing as npt
@@ -197,6 +196,44 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     raise TypeError  # pragma: no cover
 
 
+def v2_to_v3_codecs(metadata: ArrayV2Metadata) -> tuple[Codec | NumcodecWrapper, ...]:
+    """
+    Convert the filters and compressor from Zarr v2 to a Zarr-V3-compatible sequence of codecs.
+    """
+    codecs: tuple[Codec | NumcodecWrapper, ...] = ()
+    if metadata.filters is not None:
+        codecs += metadata.filters
+    if metadata.compressor is not None:
+        codecs += (metadata.compressor,)
+    if not any(isinstance(codec, ArrayBytesCodec) for codec in codecs) and not isinstance(
+        metadata.dtype, HasObjectCodec
+    ):
+        # The role filled by the ArrayBytesCodec was implicit in zarr v2. So a valid zarr v2-style
+        # chain of filters + compressor might not contain a codec identifiable as an array-bytes codec.
+        # In such a case, we will insert a bytes codec that applies no endian transformation.
+        # We skip this insertion if the data type is an instance of HasObjectCodec, because
+        # in zarr v2 these data types required a special codec that functioned like an array bytes codec.
+
+        # find the last array-array codec, if any
+        abc_idx = 0
+        for idx, codec in enumerate(codecs):
+            if isinstance(codec, ArrayArrayCodec):
+                abc_idx = idx + 1
+        if isinstance(metadata.dtype, HasEndianness):
+            out_endianness = metadata.dtype.endianness
+        else:
+            out_endianness = None
+        codecs = codecs[:abc_idx] + (BytesCodec(endian=out_endianness),) + codecs[abc_idx:]
+    if metadata.order == "F":
+        # Zarr V2 supports declaring the order of an array in metadata. Using the zarr v3 codec
+        # framework, we express C or F ordered arrays by adding a transpose codec to the front
+        # of the list of codecs.
+        codecs = (TransposeCodec(order=tuple(reversed(range(metadata.ndim)))),) + codecs
+        # We ignore this type check failure because we don't want to change the type signature
+        # of the from_codecs method yet.
+    return codecs
+
+
 def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None) -> CodecPipeline:
     if store is not None:
         try:
@@ -208,10 +245,64 @@ def create_codec_pipeline(metadata: ArrayMetadata, *, store: Store | None = None
 
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
-    elif isinstance(metadata, ArrayV2Metadata):
-        v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
-        return get_pipeline_class().from_codecs([v2_codec])
+    else:
+        _codecs = v2_to_v3_codecs(metadata)
+        return get_pipeline_class().from_codecs(_codecs)  # type: ignore[arg-type]
     raise TypeError  # pragma: no cover
+
+
+def _parse_bytes_bytes_codec(
+    data: Mapping[str, JSON] | Codec | Numcodec, *, dtype: ZDType[Any, Any]
+) -> BytesBytesCodec:
+    """
+    Normalize the input to a ``BytesBytesCodec`` instance.
+    If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
+    is converted to a ``BytesBytesCodec`` instance via the ``_resolve_codec`` function.
+    """
+
+    _codec_or_numcodec_wrapper = _parse_codec(data, dtype=dtype)
+    if isinstance(_codec_or_numcodec_wrapper, NumcodecWrapper):
+        return _codec_or_numcodec_wrapper.to_bytes_bytes()
+    elif isinstance(_codec_or_numcodec_wrapper, BytesBytesCodec):
+        return _codec_or_numcodec_wrapper
+    msg = f"Expected a NumcodecWrapper or BytesBytesCodec or a dict representation thereof; got {data} instead."
+    raise ValueError(msg)
+
+
+def _parse_array_bytes_codec(
+    data: Mapping[str, JSON] | Codec | Numcodec, *, dtype: ZDType[Any, Any]
+) -> ArrayBytesCodec:
+    """
+    Normalize the input to a ``ArrayBytesCodec`` instance.
+    If the input is already a ``ArrayBytesCodec``, it is returned as is. If the input is a dict, it
+    is converted to a ``ArrayBytesCodec`` instance via the ``_resolve_codec`` function.
+    """
+
+    _codec_or_numcodec_wrapper = _parse_codec(data, dtype=dtype)
+    if isinstance(_codec_or_numcodec_wrapper, NumcodecWrapper):
+        return _codec_or_numcodec_wrapper.to_array_bytes()
+    elif isinstance(_codec_or_numcodec_wrapper, ArrayBytesCodec):
+        return _codec_or_numcodec_wrapper
+    msg = f"Expected a NumcodecWrapper or ArrayBytesCodec or a dict representation thereof; got {data} instead."
+    raise ValueError(msg)
+
+
+def _parse_array_array_codec(
+    data: Mapping[str, JSON] | Codec | Numcodec, *, dtype: ZDType[Any, Any]
+) -> ArrayArrayCodec:
+    """
+    Normalize the input to a ``ArrayArrayCodec`` instance.
+    If the input is already a ``ArrayArrayCodec``, it is returned as is. If the input is a dict, it
+    is converted to a ``ArrayArrayCodec`` instance via the ``_resolve_codec`` function.
+    """
+
+    _codec_or_numcodec_wrapper = _parse_codec(data, dtype=dtype)
+    if isinstance(_codec_or_numcodec_wrapper, NumcodecWrapper):
+        return _codec_or_numcodec_wrapper.to_array_array()
+    elif isinstance(_codec_or_numcodec_wrapper, ArrayArrayCodec):
+        return _codec_or_numcodec_wrapper
+    msg = f"Expected a NumcodecWrapper or ArrayArrayCodec or a dict representation thereof; got {data} instead."
+    raise ValueError(msg)
 
 
 async def get_array_metadata(
@@ -360,14 +451,13 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
-        compressor: CompressorLikev2 | Literal["auto"] = "auto",
+        compressor: CompressorLike = "auto",
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
         config: ArrayConfigLike | None = None,
     ) -> AsyncArrayV2: ...
 
-    # this overload defines the function signature when zarr_format is 3
     @overload
     @classmethod
     async def create(
@@ -845,8 +935,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         order: MemoryOrder,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
-        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
-        compressor: CompressorLikev2 = None,
+        filters: Iterable[CompressorLike_V2] | None = None,
+        compressor: CompressorLike_V2 | None = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV2Metadata:
         if dimension_separator is None:
@@ -883,8 +973,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
-        filters: Iterable[dict[str, JSON] | Numcodec] | None = None,
-        compressor: CompressorLike = "auto",
+        filters: Iterable[CompressorLike_V2] | None = None,
+        compressor: CompressorLike_V2 | None | Literal["auto"] = "auto",
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV2:
@@ -896,14 +986,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             await ensure_no_existing_node(store_path, zarr_format=2)
 
-        compressor_parsed: CompressorLikev2
+        compressor_parsed: CompressorLike_V2 | None
         if compressor == "auto":
             compressor_parsed = default_compressor_v2(dtype)
-        elif isinstance(compressor, BytesBytesCodec):
-            raise ValueError(
-                "Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. "
-                "Use a numcodecs codec directly instead."
-            )
         else:
             compressor_parsed = compressor
 
@@ -1085,7 +1170,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             filters = self.metadata.filters
             if filters is None:
                 return ()
-            return filters
+            return filters  # type: ignore[return-value]
 
         return tuple(
             codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayArrayCodec)
@@ -1114,7 +1199,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Use [`Array.compressors`][zarr.AsyncArray.compressors] instead.
         """
         if self.metadata.zarr_format == 2:
-            return self.metadata.compressor
+            return self.metadata.compressor  # type: ignore[return-value]
         raise TypeError("`compressor` is not available for Zarr format 3 arrays.")
 
     @property
@@ -1125,7 +1210,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         if self.metadata.zarr_format == 2:
             if self.metadata.compressor is not None:
-                return (self.metadata.compressor,)
+                # The type: ignore here is necessary because there is no requirement that
+                # Zarr V2 compressors be Bytes-to-bytes compressors.
+                return (self.metadata.compressor,)  # type: ignore[return-value]
             return ()
 
         return tuple(
@@ -1706,7 +1793,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             if isinstance(array_like, np._typing._SupportsArrayFunc):
                 # TODO: need to handle array types that don't support __array_function__
                 # like PyTorch and JAX
-                array_like_ = cast("np._typing._SupportsArrayFunc", array_like)
+                array_like_ = cast(np._typing._SupportsArrayFunc, array_like)
             value = np.asanyarray(value, dtype=self.dtype, like=array_like_)
         else:
             if not hasattr(value, "shape"):
@@ -1720,8 +1807,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     value = value.astype(dtype=self.dtype, order="A")
                 else:
                     value = np.array(value, dtype=self.dtype, order="A")
-        value = cast("NDArrayLike", value)
-
+        value = cast(NDArrayLike, value)
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
@@ -5117,7 +5203,7 @@ def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
     return serializer
 
 
-def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[Numcodec] | None:
+def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[Codec] | None:
     """
     Given a data type, return the default filters for that data type.
 
@@ -5126,28 +5212,22 @@ def default_filters_v2(dtype: ZDType[Any, Any]) -> tuple[Numcodec] | None:
     """
     if isinstance(dtype, HasObjectCodec):
         if dtype.object_codec_id == "vlen-bytes":
-            from numcodecs import VLenBytes
-
-            return (VLenBytes(),)
+            return (VLenBytesCodec(),)
         elif dtype.object_codec_id == "vlen-utf8":
-            from numcodecs import VLenUTF8
-
-            return (VLenUTF8(),)
+            return (VLenUTF8Codec(),)
         else:
             msg = f"Data type {dtype} requires an unknown object codec: {dtype.object_codec_id!r}."
             raise ValueError(msg)
     return None
 
 
-def default_compressor_v2(dtype: ZDType[Any, Any]) -> Numcodec:
+def default_compressor_v2(dtype: ZDType[Any, Any]) -> BytesBytesCodec:
     """
     Given a data type, return the default compressors for that data type.
 
-    This is just the numcodecs ``Zstd`` codec.
+    This is just the ``Zstd`` codec.
     """
-    from numcodecs import Zstd
-
-    return Zstd(level=0, checksum=False)  # type: ignore[no-any-return]
+    return ZstdCodec(level=0, checksum=False)
 
 
 def _parse_chunk_encoding_v2(
@@ -5155,51 +5235,40 @@ def _parse_chunk_encoding_v2(
     compressor: CompressorsLike,
     filters: FiltersLike,
     dtype: ZDType[TBaseDType, TBaseScalar],
-) -> tuple[tuple[Numcodec, ...] | None, Numcodec | None]:
+) -> tuple[tuple[Codec | NumcodecWrapper, ...] | None, Codec | NumcodecWrapper | None]:
     """
     Generate chunk encoding classes for Zarr format 2 arrays with optional defaults.
     """
-    _filters: tuple[Numcodec, ...] | None
-    _compressor: Numcodec | None
+    _filters: tuple[Codec | NumcodecWrapper, ...] | None
+    _compressor: Codec | NumcodecWrapper | None
 
     if compressor is None or compressor == ():
         _compressor = None
     elif compressor == "auto":
         _compressor = default_compressor_v2(dtype)
-    elif isinstance(compressor, tuple | list) and len(compressor) == 1:
-        _compressor = parse_compressor(compressor[0])
+    elif isinstance(compressor, Sequence) and len(compressor) == 1:
+        _compressor = parse_compressor(compressor[0], dtype)
     else:
-        if isinstance(compressor, Iterable) and not isinstance(compressor, dict):
-            msg = f"For Zarr format 2 arrays, the `compressor` must be a single codec. Got an iterable with type {type(compressor)} instead."
-            raise TypeError(msg)
-        _compressor = parse_compressor(compressor)
+        _compressor = parse_compressor(compressor, dtype)
 
     if filters is None:
         _filters = None
     elif filters == "auto":
         _filters = default_filters_v2(dtype)
     else:
-        if isinstance(filters, Iterable):
-            for idx, f in enumerate(filters):
-                if not _is_numcodec(f):
-                    msg = (
-                        "For Zarr format 2 arrays, all elements of `filters` must be numcodecs codecs. "
-                        f"Element at index {idx} has type {type(f)}, which is not a numcodecs codec."
-                    )
-                    raise TypeError(msg)
-        _filters = parse_filters(filters)
+        _filters = parse_filters(filters, dtype)
     if isinstance(dtype, HasObjectCodec):
         # check the filters and the compressor for the object codec required for this data type
         if _filters is None:
             if _compressor is None:
                 object_codec_id = None
             else:
-                object_codec_id = get_object_codec_id((_compressor.get_config(),))
+                object_codec_id = get_object_codec_id((_compressor.to_json(zarr_format=2),))
         else:
             object_codec_id = get_object_codec_id(
                 (
-                    *[f.get_config() for f in _filters],
-                    _compressor.get_config() if _compressor is not None else None,
+                    *[f.to_json(zarr_format=2) for f in _filters],
+                    _compressor.to_json(zarr_format=2) if _compressor is not None else None,
                 )
             )
         if object_codec_id is None:
@@ -5228,7 +5297,6 @@ def _parse_chunk_encoding_v3(
     """
     Generate chunk encoding classes for v3 arrays with optional defaults.
     """
-
     if filters is None:
         out_array_array: tuple[ArrayArrayCodec, ...] = ()
     elif filters == "auto":
@@ -5239,7 +5307,7 @@ def _parse_chunk_encoding_v3(
             maybe_array_array = (filters,)
         else:
             maybe_array_array = cast("Iterable[Codec | dict[str, JSON]]", filters)
-        out_array_array = tuple(_parse_array_array_codec(c) for c in maybe_array_array)
+        out_array_array = tuple(_parse_array_array_codec(c, dtype=dtype) for c in maybe_array_array)
 
     if serializer == "auto":
         out_array_bytes = default_serializer_v3(dtype)
@@ -5247,26 +5315,27 @@ def _parse_chunk_encoding_v3(
         # TODO: ensure that the serializer is compatible with the ndarray produced by the
         # array-array codecs. For example, if a sequence of array-array codecs produces an
         # array with a single-byte data type, then the serializer should not specify endiannesss.
-        out_array_bytes = _parse_array_bytes_codec(serializer)
+        out_array_bytes = _parse_array_bytes_codec(serializer, dtype=dtype)
 
     if compressors is None:
         out_bytes_bytes: tuple[BytesBytesCodec, ...] = ()
     elif compressors == "auto":
         out_bytes_bytes = default_compressors_v3(dtype)
     else:
-        maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
-        if isinstance(compressors, dict | Codec):
+        maybe_bytes_bytes: Iterable[Codec | dict[str, JSON] | Numcodec]
+        if isinstance(compressors, (dict | Codec | Numcodec)):
             maybe_bytes_bytes = (compressors,)
         else:
-            maybe_bytes_bytes = cast("Iterable[Codec | dict[str, JSON]]", compressors)
+            maybe_bytes_bytes = compressors  # type: ignore[assignment]
 
-        out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
+        out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c, dtype=dtype) for c in maybe_bytes_bytes)
 
     # TODO: ensure that the serializer is compatible with the ndarray produced by the
     # array-array codecs. For example, if a sequence of array-array codecs produces an
     # array with a single-byte data type, then the serializer should not specify endiannesss.
-
-    # TODO: add checks to ensure that the right serializer is used for vlen data types
+    if isinstance(out_array_bytes, BytesCodec) and not isinstance(dtype, HasEndianness):
+        # The default endianness in the bytescodec might not be None, so we need to replace it
+        out_array_bytes = replace(out_array_bytes, endian=None)
     return out_array_array, out_array_bytes, out_bytes_bytes
 
 
@@ -5287,8 +5356,6 @@ def _parse_deprecated_compressor(
             compressors = ()
         else:
             compressors = (compressor,)
-    elif zarr_format == 2 and compressor == compressors == "auto":
-        compressors = ({"id": "blosc"},)
     return compressors
 
 
