@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Literal, cast
+from typing import cast
 
 import numcodecs.abc
 
@@ -140,7 +140,7 @@ async def remove_metadata(
             continue
 
         if force or await _metadata_exists(
-            cast(Literal[2, 3], alternative_metadata), store_path / parent_path
+            cast(ZarrFormat, alternative_metadata), store_path / parent_path
         ):
             _logger.info("Deleting metadata at %s", store_path / file_path)
             if not dry_run:
