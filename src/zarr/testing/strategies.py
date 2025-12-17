@@ -354,7 +354,7 @@ def basic_indices(
     allow_ellipsis: TrueOrFalse = True,
 ) -> Any:
     """Basic indices without unsupported negative slices."""
-    strategy = npst.basic_indices(  # type: ignore[call-overload]
+    strategy = npst.basic_indices(
         shape=shape,
         min_dims=min_dims,
         max_dims=max_dims,
@@ -364,7 +364,7 @@ def basic_indices(
         lambda idxr: (
             not (
                 is_negative_slice(idxr)
-                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
+                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))  # type: ignore [redundant-expr]
             )
         )
     )
