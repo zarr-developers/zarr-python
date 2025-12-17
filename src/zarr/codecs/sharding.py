@@ -16,6 +16,8 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialEncodeMixin,
     Codec,
     CodecPipeline,
+    ReadBatchInfo,
+    WriteBatchInfo,
 )
 from zarr.abc.store import (
     ByteGetter,
@@ -358,12 +360,12 @@ class ShardingCodec(
         # decoding chunks and writing them into the output buffer
         await self.codec_pipeline.read(
             [
-                (
-                    _ShardingByteGetter(shard_dict, chunk_coords),
-                    chunk_spec,
-                    chunk_selection,
-                    out_selection,
-                    is_complete_shard,
+                ReadBatchInfo(
+                    byte_operator=_ShardingByteGetter(shard_dict, chunk_coords),
+                    array_spec=chunk_spec,
+                    chunk_selection=chunk_selection,
+                    out_selection=out_selection,
+                    is_complete_chunk=is_complete_shard,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
@@ -430,12 +432,12 @@ class ShardingCodec(
         # decoding chunks and writing them into the output buffer
         await self.codec_pipeline.read(
             [
-                (
-                    _ShardingByteGetter(shard_dict, chunk_coords),
-                    chunk_spec,
-                    chunk_selection,
-                    out_selection,
-                    is_complete_shard,
+                ReadBatchInfo(
+                    byte_operator=_ShardingByteGetter(shard_dict, chunk_coords),
+                    array_spec=chunk_spec,
+                    chunk_selection=chunk_selection,
+                    out_selection=out_selection,
+                    is_complete_chunk=is_complete_shard,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
@@ -469,12 +471,12 @@ class ShardingCodec(
 
         await self.codec_pipeline.write(
             [
-                (
-                    _ShardingByteSetter(shard_builder, chunk_coords),
-                    chunk_spec,
-                    chunk_selection,
-                    out_selection,
-                    is_complete_shard,
+                WriteBatchInfo(
+                    byte_operator=_ShardingByteSetter(shard_builder, chunk_coords),
+                    array_spec=chunk_spec,
+                    chunk_selection=chunk_selection,
+                    out_selection=out_selection,
+                    is_complete_chunk=is_complete_shard,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
@@ -515,12 +517,12 @@ class ShardingCodec(
 
         await self.codec_pipeline.write(
             [
-                (
-                    _ShardingByteSetter(shard_dict, chunk_coords),
-                    chunk_spec,
-                    chunk_selection,
-                    out_selection,
-                    is_complete_shard,
+                WriteBatchInfo(
+                    byte_operator=_ShardingByteSetter(shard_dict, chunk_coords),
+                    array_spec=chunk_spec,
+                    chunk_selection=chunk_selection,
+                    out_selection=out_selection,
+                    is_complete_chunk=is_complete_shard,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
