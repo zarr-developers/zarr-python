@@ -354,8 +354,8 @@ def basic_indices(
     allow_ellipsis: TrueOrFalse = True,
 ) -> Any:
     """Basic indices without unsupported negative slices."""
-    # We can ignore here as it is just to numpy type hints being Literal[False | True] for overload variants
-    strategy = npst.basic_indices(  # type: ignore[call-overload]
+
+    strategy = npst.basic_indices(
         shape=shape,
         min_dims=min_dims,
         max_dims=max_dims,
