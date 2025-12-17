@@ -8,6 +8,7 @@ import pickle
 import re
 import time
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import numpy as np
@@ -63,7 +64,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
 
 
-def is_deprecated(method):
+def is_deprecated(method: Callable[..., Any]) -> bool:
     """Check if a method is marked as deprecated."""
     # Check for @deprecated decorator
     return hasattr(method, "__deprecated__") or (
@@ -71,7 +72,7 @@ def is_deprecated(method):
     )
 
 
-def get_method_names(cls):
+def get_method_names(cls: type) -> list[str]:
     """Extract public method names from a class, excluding deprecated methods."""
     return [
         name
@@ -80,7 +81,7 @@ def get_method_names(cls):
     ]
 
 
-def get_method_signature(cls, method_name: str):
+def get_method_signature(cls: type, method_name: str) -> dict[str, Any]:
     """Get the signature of a method from a class."""
     method = getattr(cls, method_name)
     sig = inspect.signature(method)
@@ -98,7 +99,9 @@ def get_method_signature(cls, method_name: str):
         )
     ],
 )
-def test_class_method_parameters_match(sync_class, async_class, skip_methods) -> None:
+def test_class_method_parameters_match(
+    sync_class: type, async_class: type, skip_methods: list[str]
+) -> None:
     """
     Test that methods for classes and their async counterparts match.
 
@@ -370,7 +373,9 @@ def copy_to_test_data(
     return src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata
 
 
-def consolidate(src_store, src, consolidate_metadata, zarr_format):
+def consolidate(
+    src_store: MemoryStore, src: Group, consolidate_metadata: bool, zarr_format: int
+) -> Group:
     if consolidate_metadata:
         if zarr_format == 3:
             with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
@@ -383,7 +388,12 @@ def consolidate(src_store, src, consolidate_metadata, zarr_format):
     return src
 
 
-def check_consolidated_metadata(dst_store_root, consolidate_metadata, zarr_format, path=None):
+def check_consolidated_metadata(
+    dst_store_root: MemoryStore,
+    consolidate_metadata: bool,
+    zarr_format: int,
+    path: str | None = None,
+) -> None:
     sub_path = "subgroup" if path is None else f"{path}/subgroup"
     if consolidate_metadata:
         assert zarr.open_group(dst_store_root, path=path).metadata.consolidated_metadata
@@ -404,7 +414,11 @@ def check_consolidated_metadata(dst_store_root, consolidate_metadata, zarr_forma
     ],
     indirect=True,
 )
-def test_copy_to(copy_to_test_data) -> None:
+def test_copy_to(
+    copy_to_test_data: tuple[
+        Group, np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]], int, bool
+    ],
+) -> None:
     src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata = copy_to_test_data
 
     dst_store = MemoryStore()
@@ -438,7 +452,11 @@ def test_copy_to(copy_to_test_data) -> None:
     ],
     indirect=True,
 )
-def test_copy_to_with_path(copy_to_test_data) -> None:
+def test_copy_to_with_path(
+    copy_to_test_data: tuple[
+        Group, np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]], int, bool
+    ],
+) -> None:
     src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata = copy_to_test_data
 
     dst_store = MemoryStore()
