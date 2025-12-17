@@ -364,7 +364,7 @@ def basic_indices(
         lambda idxr: (
             not (
                 is_negative_slice(idxr)
-                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))  # type: ignore [redundant-expr]
+                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
             )
         )
     )
