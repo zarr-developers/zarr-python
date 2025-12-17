@@ -85,7 +85,7 @@ class TestDataType(Bool):
     _zarr_v3_name: ClassVar[Literal["test"]] = "test"  # type: ignore[assignment]
 
     @classmethod
-    def from_json(cls, data: DTypeJSON, *, zarr_format: Literal[2, 3]) -> Self:
+    def from_json(cls, data: DTypeJSON, *, zarr_format: ZarrFormat) -> Self:
         if zarr_format == 2 and data == {"name": cls._zarr_v3_name, "object_codec_id": None}:
             return cls()
         if zarr_format == 3 and data == cls._zarr_v3_name:
