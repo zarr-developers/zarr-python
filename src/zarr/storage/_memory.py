@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, gpu
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_byte_range_index
 
@@ -79,10 +80,12 @@ class MemoryStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferPrototype | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
+        if prototype is None:
+            prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
