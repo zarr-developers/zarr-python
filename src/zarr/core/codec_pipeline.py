@@ -413,6 +413,12 @@ class BatchedCodecPipeline(CodecPipeline):
                 if chunk_array is None:
                     chunk_array_batch.append(None)  # type: ignore[unreachable]
                 else:
+                    # The operation array_equal operation below effectively will force the array
+                    # into memory.
+                    # if the result is useful, we want to avoid reading it twice
+                    # from a potentially lazy operation. So we cache it here.
+                    # If the result is not useful, we leave it for the garbage collector.
+                    chunk_array._data = chunk_array.as_numpy_array()
                     if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
                         fill_value_or_default(chunk_spec)
                     ):
