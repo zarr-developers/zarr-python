@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from abc import abstractmethod
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
@@ -8,7 +9,7 @@ from typing_extensions import ReadOnly, TypedDict
 
 from zarr.abc.metadata import Metadata
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import NamedConfig, concurrent_map
+from zarr.core.common import NamedConfig
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
@@ -224,10 +225,8 @@ class ArrayBytesCodecPartialDecodeMixin:
         -------
         Iterable[NDBuffer | None]
         """
-        return await concurrent_map(
-            list(batch_info),
-            self._decode_partial_single,
-        )
+        # Store handles concurrency limiting internally
+        return await asyncio.gather(*[self._decode_partial_single(*info) for info in batch_info])
 
 
 class ArrayBytesCodecPartialEncodeMixin:
@@ -260,10 +259,8 @@ class ArrayBytesCodecPartialEncodeMixin:
             The ByteSetter is used to write the necessary bytes and fetch bytes for existing chunk data.
             The chunk spec contains information about the chunk.
         """
-        await concurrent_map(
-            list(batch_info),
-            self._encode_partial_single,
-        )
+        # Store handles concurrency limiting internally
+        await asyncio.gather(*[self._encode_partial_single(*info) for info in batch_info])
 
 
 class CodecPipeline:
@@ -461,10 +458,8 @@ async def _batching_helper(
     func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
     batch_info: Iterable[tuple[CodecInput | None, ArraySpec]],
 ) -> list[CodecOutput | None]:
-    return await concurrent_map(
-        list(batch_info),
-        _noop_for_none(func),
-    )
+    # Store handles concurrency limiting internally
+    return await asyncio.gather(*[_noop_for_none(func)(chunk, spec) for chunk, spec in batch_info])
 
 
 def _noop_for_none(

@@ -13,7 +13,8 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.common import concurrent_map, get_global_semaphore
+from zarr.core.common import get_global_semaphore
+from zarr.storage._utils import with_concurrency_limit
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
@@ -46,6 +47,9 @@ class ObjectStore(Store, Generic[T_Store]):
         An obstore store instance that is set up with the proper credentials.
     read_only : bool
         Whether to open the store in read-only mode.
+    concurrency_limit : int, optional
+        Maximum number of concurrent I/O operations. Default is 50.
+        Set to None for unlimited concurrency.
 
     Warnings
     --------
@@ -55,6 +59,7 @@ class ObjectStore(Store, Generic[T_Store]):
 
     store: T_Store
     """The underlying obstore instance."""
+    _semaphore: asyncio.Semaphore | None
 
     def __eq__(self, value: object) -> bool:
         if not isinstance(value, ObjectStore):
@@ -65,17 +70,28 @@ class ObjectStore(Store, Generic[T_Store]):
 
         return self.store == value.store  # type: ignore[no-any-return]
 
-    def __init__(self, store: T_Store, *, read_only: bool = False) -> None:
+    def __init__(
+        self,
+        store: T_Store,
+        *,
+        read_only: bool = False,
+        concurrency_limit: int | None = 50,
+    ) -> None:
         if not store.__class__.__module__.startswith("obstore"):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
         super().__init__(read_only=read_only)
         self.store = store
+        self._semaphore = (
+            asyncio.Semaphore(concurrency_limit) if concurrency_limit is not None else None
+        )
 
     def with_read_only(self, read_only: bool = False) -> Self:
         # docstring inherited
+        concurrency_limit = self._semaphore._value if self._semaphore else None
         return type(self)(
             store=self.store,
             read_only=read_only,
+            concurrency_limit=concurrency_limit,
         )
 
     def __str__(self) -> str:
@@ -93,6 +109,7 @@ class ObjectStore(Store, Generic[T_Store]):
         state["store"] = pickle.loads(state["store"])
         self.__dict__.update(state)
 
+    @with_concurrency_limit()
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
@@ -100,41 +117,7 @@ class ObjectStore(Store, Generic[T_Store]):
         import obstore as obs
 
         try:
-            if byte_range is None:
-                resp = await obs.get_async(self.store, key)
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
-            elif isinstance(byte_range, RangeByteRequest):
-                bytes = await obs.get_range_async(
-                    self.store, key, start=byte_range.start, end=byte_range.end
-                )
-                return prototype.buffer.from_bytes(bytes)  # type: ignore[arg-type]
-            elif isinstance(byte_range, OffsetByteRequest):
-                resp = await obs.get_async(
-                    self.store, key, options={"range": {"offset": byte_range.offset}}
-                )
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
-            elif isinstance(byte_range, SuffixByteRequest):
-                # some object stores (Azure) don't support suffix requests. In this
-                # case, our workaround is to first get the length of the object and then
-                # manually request the byte range at the end.
-                try:
-                    resp = await obs.get_async(
-                        self.store, key, options={"range": {"suffix": byte_range.suffix}}
-                    )
-                    return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
-                except obs.exceptions.NotSupportedError:
-                    head_resp = await obs.head_async(self.store, key)
-                    file_size = head_resp["size"]
-                    suffix_len = byte_range.suffix
-                    buffer = await obs.get_range_async(
-                        self.store,
-                        key,
-                        start=file_size - suffix_len,
-                        length=suffix_len,
-                    )
-                    return prototype.buffer.from_bytes(buffer)  # type: ignore[arg-type]
-            else:
-                raise ValueError(f"Unexpected byte_range, got {byte_range}")
+            return await self._get_impl(key, prototype, byte_range, obs)
         except _ALLOWED_EXCEPTIONS:
             return None
 
@@ -144,7 +127,60 @@ class ObjectStore(Store, Generic[T_Store]):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        return await _get_partial_values(self.store, prototype=prototype, key_ranges=key_ranges)
+        # Note: We directly call obs operations here, wrapped with semaphore
+        # to avoid deadlock from calling the decorated get() method
+        import obstore as obs
+
+        async def _get_with_limit(key: str, byte_range: ByteRequest | None) -> Buffer | None:
+            try:
+                if self._semaphore:
+                    async with self._semaphore:
+                        return await self._get_impl(key, prototype, byte_range, obs)
+                else:
+                    return await self._get_impl(key, prototype, byte_range, obs)
+            except _ALLOWED_EXCEPTIONS:
+                return None
+
+        return await asyncio.gather(
+            *[_get_with_limit(key, byte_range) for key, byte_range in key_ranges]
+        )
+
+    async def _get_impl(
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None, obs: Any
+    ) -> Buffer:
+        """Implementation of get without semaphore decoration."""
+        if byte_range is None:
+            resp = await obs.get_async(self.store, key)
+            return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+        elif isinstance(byte_range, RangeByteRequest):
+            bytes = await obs.get_range_async(
+                self.store, key, start=byte_range.start, end=byte_range.end
+            )
+            return prototype.buffer.from_bytes(bytes)  # type: ignore[arg-type]
+        elif isinstance(byte_range, OffsetByteRequest):
+            resp = await obs.get_async(
+                self.store, key, options={"range": {"offset": byte_range.offset}}
+            )
+            return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+        elif isinstance(byte_range, SuffixByteRequest):
+            try:
+                resp = await obs.get_async(
+                    self.store, key, options={"range": {"suffix": byte_range.suffix}}
+                )
+                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+            except obs.exceptions.NotSupportedError:
+                head_resp = await obs.head_async(self.store, key)
+                file_size = head_resp["size"]
+                suffix_len = byte_range.suffix
+                buffer = await obs.get_range_async(
+                    self.store,
+                    key,
+                    start=file_size - suffix_len,
+                    length=suffix_len,
+                )
+                return prototype.buffer.from_bytes(buffer)  # type: ignore[arg-type]
+        else:
+            raise ValueError(f"Unexpected byte_range, got {byte_range}")
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
@@ -162,6 +198,7 @@ class ObjectStore(Store, Generic[T_Store]):
         # docstring inherited
         return True
 
+    @with_concurrency_limit()
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
         import obstore as obs
@@ -171,20 +208,43 @@ class ObjectStore(Store, Generic[T_Store]):
         buf = value.as_buffer_like()
         await obs.put_async(self.store, key, buf)
 
+    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+        # Override to avoid deadlock from calling decorated set() method
+        import obstore as obs
+
+        self._check_writable()
+
+        async def _set_with_limit(key: str, value: Buffer) -> None:
+            buf = value.as_buffer_like()
+            if self._semaphore:
+                async with self._semaphore:
+                    await obs.put_async(self.store, key, buf)
+            else:
+                await obs.put_async(self.store, key, buf)
+
+        await asyncio.gather(*[_set_with_limit(key, value) for key, value in values])
+
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
+        # Note: Not decorated to avoid deadlock when called in batch via gather()
         import obstore as obs
 
         self._check_writable()
         buf = value.as_buffer_like()
-        with contextlib.suppress(obs.exceptions.AlreadyExistsError):
-            await obs.put_async(self.store, key, buf, mode="create")
+        if self._semaphore:
+            async with self._semaphore:
+                with contextlib.suppress(obs.exceptions.AlreadyExistsError):
+                    await obs.put_async(self.store, key, buf, mode="create")
+        else:
+            with contextlib.suppress(obs.exceptions.AlreadyExistsError):
+                await obs.put_async(self.store, key, buf, mode="create")
 
     @property
     def supports_deletes(self) -> bool:
         # docstring inherited
         return True
 
+    @with_concurrency_limit()
     async def delete(self, key: str) -> None:
         # docstring inherited
         import obstore as obs
@@ -207,8 +267,18 @@ class ObjectStore(Store, Generic[T_Store]):
             prefix += "/"
 
         metas = await obs.list(self.store, prefix).collect_async()
-        keys = [(m["path"],) for m in metas]
-        await concurrent_map(keys, self.delete)
+
+        # Delete with semaphore limiting to avoid deadlock
+        async def _delete_with_limit(path: str) -> None:
+            if self._semaphore:
+                async with self._semaphore:
+                    with contextlib.suppress(FileNotFoundError):
+                        await obs.delete_async(self.store, path)
+            else:
+                with contextlib.suppress(FileNotFoundError):
+                    await obs.delete_async(self.store, path)
+
+        await asyncio.gather(*[_delete_with_limit(m["path"]) for m in metas])
 
     @property
     def supports_listing(self) -> bool:

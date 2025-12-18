@@ -1,16 +1,80 @@
 from __future__ import annotations
 
+import functools
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    import asyncio
+    from collections.abc import Callable, Coroutine, Iterable, Mapping
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
+
+P = ParamSpec("P")
+T_co = TypeVar("T_co", covariant=True)
+
+
+def with_concurrency_limit(
+    semaphore_attr: str = "_semaphore",
+) -> Callable[[Callable[P, Coroutine[Any, Any, T_co]]], Callable[P, Coroutine[Any, Any, T_co]]]:
+    """
+    Decorator that applies a semaphore-based concurrency limit to an async method.
+
+    This decorator is designed for Store methods that need to limit concurrent operations.
+    The store instance should have a `_semaphore` attribute (or custom attribute name)
+    that is either an asyncio.Semaphore or None (for unlimited concurrency).
+
+    Parameters
+    ----------
+    semaphore_attr : str, optional
+        Name of the semaphore attribute on the class instance. Default is "_semaphore".
+
+    Returns
+    -------
+    Callable
+        The decorated async function with concurrency limiting applied.
+
+    Examples
+    --------
+    ```python
+    class MyStore(Store):
+        def __init__(self, concurrency_limit: int = 100):
+            self._semaphore = asyncio.Semaphore(concurrency_limit) if concurrency_limit else None
+
+        @with_concurrency_limit()
+        async def get(self, key: str) -> Buffer | None:
+            # This will only run when semaphore permits
+            return await expensive_io_operation(key)
+    ```
+    """
+
+    def decorator(
+        func: Callable[P, Coroutine[Any, Any, T_co]],
+    ) -> Callable[P, Coroutine[Any, Any, T_co]]:
+        @functools.wraps(func)
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T_co:
+            # First arg should be 'self'
+            if not args:
+                raise TypeError(f"{func.__name__} requires at least one argument (self)")
+
+            self = args[0]
+            semaphore: asyncio.Semaphore | None = getattr(self, semaphore_attr, None)
+
+            if semaphore is None:
+                # No concurrency limit - run directly
+                return await func(*args, **kwargs)
+            else:
+                # Apply concurrency limit
+                async with semaphore:
+                    return await func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def normalize_path(path: str | bytes | Path | None) -> str:

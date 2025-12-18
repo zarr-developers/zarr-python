@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import warnings
 from asyncio import gather
@@ -59,7 +60,6 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     ceildiv,
-    concurrent_map,
     parse_shapelike,
     product,
 )
@@ -1847,12 +1847,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             async def _delete_key(key: str) -> None:
                 await (self.store_path / key).delete()
 
-            await concurrent_map(
-                [
-                    (self.metadata.encode_chunk_key(chunk_coords),)
+            # Store handles concurrency limiting internally
+            await asyncio.gather(
+                *[
+                    _delete_key(self.metadata.encode_chunk_key(chunk_coords))
                     for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
-                ],
-                _delete_key,
+                ]
             )
 
         # Write new metadata
@@ -4533,9 +4533,9 @@ async def from_array(
                 await result.setitem(chunk_coords, arr)
 
             # Stream data from the source array to the new array
-            await concurrent_map(
-                [(region, data) for region in result._iter_shard_regions()],
-                _copy_array_region,
+            # Store handles concurrency limiting internally
+            await asyncio.gather(
+                *[_copy_array_region(region, data) for region in result._iter_shard_regions()]
             )
         else:
 
@@ -4543,9 +4543,9 @@ async def from_array(
                 await result.setitem(chunk_coords, _data[chunk_coords])
 
             # Stream data from the source array to the new array
-            await concurrent_map(
-                [(region, data) for region in result._iter_shard_regions()],
-                _copy_arraylike_region,
+            # Store handles concurrency limiting internally
+            await asyncio.gather(
+                *[_copy_arraylike_region(region, data) for region in result._iter_shard_regions()]
             )
     return result
 
