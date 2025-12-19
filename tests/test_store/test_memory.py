@@ -12,6 +12,7 @@ from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.errors import ZarrUserWarning
 from zarr.storage import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
+from zarr.testing.store_concurrency import StoreConcurrencyTests
 from zarr.testing.utils import gpu_test
 
 if TYPE_CHECKING:
@@ -130,3 +131,15 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
             result = GpuMemoryStore.from_dict(d)
         for v in result._store_dict.values():
             assert type(v) is gpu.Buffer
+
+
+class TestMemoryStoreConcurrency(StoreConcurrencyTests[MemoryStore, cpu.Buffer]):
+    """Test MemoryStore concurrency limiting behavior."""
+
+    store_cls = MemoryStore
+    buffer_cls = cpu.Buffer
+    expected_concurrency_limit = None  # MemoryStore has no limit (fast in-memory ops)
+
+    @pytest.fixture
+    def store_kwargs(self) -> dict[str, Any]:
+        return {"store_dict": None}

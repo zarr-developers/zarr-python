@@ -55,6 +55,13 @@ def with_concurrency_limit(
     def decorator(
         func: Callable[P, Coroutine[Any, Any, T_co]],
     ) -> Callable[P, Coroutine[Any, Any, T_co]]:
+        """
+        This decorator wraps the invocation of `func` in an `async with semaphore` context manager.
+        The semaphore object is resolved by getting the `semaphor_attr` attribute from the first
+        argument to func. When this decorator is used on a method of a class, that first argument
+        is a reference to the class instance (`self`).
+        """
+
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T_co:
             # First arg should be 'self'
@@ -62,15 +69,12 @@ def with_concurrency_limit(
                 raise TypeError(f"{func.__name__} requires at least one argument (self)")
 
             self = args[0]
-            semaphore: asyncio.Semaphore | None = getattr(self, semaphore_attr, None)
 
-            if semaphore is None:
-                # No concurrency limit - run directly
+            semaphore: asyncio.Semaphore = getattr(self, semaphore_attr)
+
+            # Apply concurrency limit
+            async with semaphore:
                 return await func(*args, **kwargs)
-            else:
-                # Apply concurrency limit
-                async with semaphore:
-                    return await func(*args, **kwargs)
 
         return wrapper
 
