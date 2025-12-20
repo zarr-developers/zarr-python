@@ -217,7 +217,7 @@ data_type_registry.register(Int2._zarr_v3_name, Int2)
 
 # this parametrized function will create arrays in zarr v2 and v3 using our new data type
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_custom_dtype(tmp_path: Path, zarr_format: Literal[2, 3]) -> None:
+def test_custom_dtype(tmp_path: Path, zarr_format: ZarrFormat) -> None:
     # create array and write values
     z_w = zarr.create_array(
         store=tmp_path, shape=(4,), dtype="int2", zarr_format=zarr_format, compressors=None

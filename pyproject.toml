@@ -36,7 +36,7 @@ dependencies = [
     'numpy>=1.26',
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
-    'typing_extensions>=4.9',
+    'typing_extensions>=4.12',
     'donfig>=0.8',
 ]
 
@@ -73,8 +73,7 @@ cli = ["typer"]
 # Development extras
 test = [
     "coverage>=7.10",
-    # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
-    "pytest<8.4",
+    "pytest",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
@@ -240,7 +239,7 @@ dependencies = [
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.0.22',
-    'typing_extensions==4.9.*',
+    'typing_extensions==4.12.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
     # test deps

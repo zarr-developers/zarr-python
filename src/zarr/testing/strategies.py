@@ -30,6 +30,8 @@ from zarr.storage._common import _dereference_path
 from zarr.storage._utils import normalize_path
 from zarr.types import AnyArray
 
+TrueOrFalse = Literal[True, False]
+
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
 _attr_values = st.recursive(
@@ -136,7 +138,7 @@ def array_metadata(
     draw: st.DrawFn,
     *,
     array_shapes: Callable[..., st.SearchStrategy[tuple[int, ...]]] = npst.array_shapes,
-    zarr_formats: st.SearchStrategy[Literal[2, 3]] = zarr_formats,
+    zarr_formats: st.SearchStrategy[ZarrFormat] = zarr_formats,
     attributes: SearchStrategy[Mapping[str, JSON] | None] = attrs,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
     zarr_format = draw(zarr_formats)
@@ -472,8 +474,8 @@ def basic_indices(
     shape: tuple[int, ...],
     min_dims: int = 0,
     max_dims: int | None = None,
-    allow_newaxis: bool = False,
-    allow_ellipsis: bool = True,
+    allow_newaxis: TrueOrFalse = False,
+    allow_ellipsis: TrueOrFalse = True,
 ) -> Any:
     """Basic indices without unsupported negative slices."""
     strategy = npst.basic_indices(
@@ -486,7 +488,7 @@ def basic_indices(
         lambda idxr: (
             not (
                 is_negative_slice(idxr)
-                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))  # type: ignore[redundant-expr]
+                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
             )
         )
     )
