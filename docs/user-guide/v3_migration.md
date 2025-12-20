@@ -99,6 +99,10 @@ The following sections provide details on breaking changes in Zarr-Python 3.
    Zarr specification. To continue using version 2, set `zarr_format=2` when creating arrays
    or set `default_zarr_version=2` in Zarr's runtime configuration.
 
+3. Function signature change to [`zarr.Array.resize`][] - the `resize` function now takes a
+   `zarr.core.common.ShapeLike` input rather than separate arguments for each dimension.
+   Use `resize((10,10))` in place of `resize(10,10)`.
+
 ### The Group class
 
 1. Disallow direct construction - use [`zarr.open_group`][] or [`zarr.create_group`][]
@@ -113,51 +117,48 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 
 ### The Store class
 
-The Store API has changed significant in Zarr-Python 3. The most notable changes to the
-Store API are:
+The Store API has changed significant in Zarr-Python 3.
 
-#### Store Import Paths
+#### The base store class
 
-Several store implementations have moved from the top-level module to `zarr.storage`:
+The `MutableMapping` base class has been replaced in favor of a custom abstract base class ([`zarr.abc.store.Store`][]).
+An asynchronous interface is used for all store methods that use I/O.
+This change ensures that these store methods are non-blocking and are as performant as possible.
+
+#### Store implementations
+
+Store implementations have moved from the top-level module to `zarr.storage`:
 
 ```diff title="Store import changes from v2 to v3"
 # Before (v2)
-- from zarr import MemoryStore, DirectoryStore
-+ from zarr.storage import MemoryStore, LocalStore  # LocalStore replaces DirectoryStore
+- from zarr import MemoryStore
++ from zarr.storage import MemoryStore
 ```
 
-Common replacements:
+The following stores have been renamed or changed:
 
-| v2 Import               | v3 Import                          |
-|-------------------------|------------------------------------|
-| `zarr.MemoryStore`      | [`zarr.storage.MemoryStore`][]         |
-| `zarr.DirectoryStore`   | [`zarr.storage.LocalStore`][]         |
-| `zarr.TempStore`        | Use [`tempfile.TemporaryDirectory`][] with [`LocalStore`][zarr.storage.LocalStore]  |
+| v2                     | v3                                 |
+|------------------------|------------------------------------|
+| `DirectoryStore`   | [`zarr.storage.LocalStore`][]          |
+| `FSStore`          | [`zarr.storage.FsspecStore`][]         |
+| `TempStore`        | Use [`tempfile.TemporaryDirectory`][] with [`LocalStore`][zarr.storage.LocalStore]  |
+| `zarr.
 
-1. Replaced the `MutableMapping` base class in favor of a custom abstract base class
-   ([`zarr.abc.store.Store`][]).
-2. Switched to an asynchronous interface for all store methods that result in IO. This
-   change ensures that all store methods are non-blocking and are as performant as
-   possible.
 
-Beyond the changes store interface, a number of deprecated stores were also removed in
-Zarr-Python 3. See issue #1274 for more details on the removal of these stores.
+A number of deprecated stores were also removed.
+See issue #1274 for more details on the removal of these stores.
 
 - `N5Store` - see https://github.com/zarr-developers/n5py for an alternative interface to
   N5 formatted data.
 - `ABSStore` - use the [`zarr.storage.FsspecStore`][] instead along with fsspec's
   [adlfs backend](https://github.com/fsspec/adlfs).
-
-The following stores have been removed altogether. Users who need these stores will have to
-implement their own version in zarr-python v3.
-
 - `DBMStore`
 - `LMDBStore`
 - `SQLiteStore`
 - `MongoDBStore`
 - `RedisStore`
 
-At present, the latter five stores in this list do not have an equivalent in Zarr-Python 3.
+The latter five stores in this list do not have an equivalent in Zarr-Python 3.
 If you are interested in developing a custom store that targets these backends, see
 [developing custom stores](storage.md/#developing-custom-stores) or open an
 [issue](https://github.com/zarr-developers/zarr-python/issues) to discuss your use case.

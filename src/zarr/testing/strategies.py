@@ -28,6 +28,7 @@ from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
 from zarr.storage._utils import normalize_path
+from zarr.types import AnyArray
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
@@ -323,7 +324,7 @@ def arrays(
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
     zarr_formats: st.SearchStrategy = zarr_formats,
-) -> Array:
+) -> AnyArray:
     store = draw(stores, label="store")
     path = draw(paths, label="array parent")
     name = draw(array_names, label="array name")
@@ -501,7 +502,7 @@ def orthogonal_indices(
     """
     Strategy that returns
     (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
-    (2) an tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    (2) a tuple of integer arrays that can be used for equivalent indexing of numpy arrays
     """
     zindexer = []
     npindexer = []

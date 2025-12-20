@@ -7,28 +7,36 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import pytest
 
+from zarr import consolidate_metadata, create_group
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
-from zarr.core.dtype import get_data_type_from_native_dtype
+from zarr.core.dtype import UInt8, get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.dtype.npy.time import DateTime64
 from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
+    ArrayMetadataJSON_V3,
     ArrayV3Metadata,
     parse_codecs,
     parse_dimension_names,
     parse_zarr_format,
 )
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
+from zarr.errors import (
+    MetadataValidationError,
+    NodeTypeValidationError,
+    UnknownCodecError,
+    ZarrUserWarning,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
     from typing import Any
 
+    from zarr.core.types import JSON
+
     from zarr.abc.codec import Codec
-    from zarr.core.common import JSON
 
 
 from zarr.core.metadata.v3 import (
@@ -338,3 +346,118 @@ def test_parse_codecs_unknown_codec_raises(monkeypatch: pytest.MonkeyPatch) -> N
     codecs = [{"name": "unknown"}]
     with pytest.raises(UnknownCodecError):
         parse_codecs(codecs)
+
+
+@pytest.mark.parametrize(
+    "extra_value",
+    [
+        {"must_understand": False, "param": 10},
+        {"must_understand": True},
+        10,
+    ],
+)
+def test_from_dict_extra_fields(extra_value: dict[str, object] | int) -> None:
+    """
+    Test that from_dict accepts extra fields if they have are a JSON object with
+    "must_understand": false, and raises an exception otherwise.
+    """
+    metadata_dict: ArrayMetadataJSON_V3 = {  # type: ignore[typeddict-unknown-key]
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": "uint8",
+        "chunk_key_encoding": {"name": "default", "configuration": {"separator": "."}},
+        "codecs": ({"name": "bytes"},),
+        "fill_value": 0,
+        "storage_transformers": (),
+        "attributes": {},
+        "foo": extra_value,
+    }
+
+    if isinstance(extra_value, dict) and extra_value.get("must_understand") is False:
+        # should be accepted
+        metadata = ArrayV3Metadata.from_dict(metadata_dict)  # type: ignore[arg-type]
+        assert isinstance(metadata, ArrayV3Metadata)
+        assert metadata.to_dict() == metadata_dict
+    else:
+        # should raise an exception
+        with pytest.raises(MetadataValidationError, match="Got a Zarr V3 metadata document"):
+            metadata = ArrayV3Metadata.from_dict(metadata_dict)  # type: ignore[arg-type]
+
+
+def test_init_invalid_extra_fields() -> None:
+    """
+    Test that initializing ArrayV3Metadata with extra fields fails when those fields
+    shadow the array metadata fields.
+    """
+    extra_fields: dict[str, object] = {"shape": (10,), "data_type": "uint8"}
+    conflict_keys = set(extra_fields.keys())
+    msg = (
+        "Invalid extra fields. "
+        "The following keys: "
+        f"{sorted(conflict_keys)} "
+        "are invalid because they collide with keys reserved for use by the "
+        "array metadata document."
+    )
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        ArrayV3Metadata(
+            shape=(10,),
+            data_type=UInt8(),
+            chunk_grid={"name": "regular", "configuration": {"chunk_shape": (10,)}},
+            chunk_key_encoding={"name": "default", "configuration": {"separator": "/"}},
+            fill_value=0,
+            codecs=({"name": "bytes", "configuration": {"endian": "little"}},),
+            attributes={},
+            dimension_names=None,
+            extra_fields=extra_fields,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("use_consolidated", [True, False])
+@pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
+def test_group_to_dict(use_consolidated: bool, attributes: None | dict[str, Any]) -> None:
+    """
+    Test that the output of GroupMetadata.to_dict() is what we expect
+    """
+    store: dict[str, object] = {}
+    if attributes is None:
+        expect_attributes = {}
+    else:
+        expect_attributes = attributes
+
+    group = create_group(store, attributes=attributes, zarr_format=3)
+    group.create_group("foo")
+    if use_consolidated:
+        with pytest.warns(
+            ZarrUserWarning,
+            match="Consolidated metadata is currently not part in the Zarr format 3 specification.",
+        ):
+            group = consolidate_metadata(store)
+        meta = group.metadata
+        expect = {
+            "node_type": "group",
+            "zarr_format": 3,
+            "consolidated_metadata": {
+                "kind": "inline",
+                "must_understand": False,
+                "metadata": {
+                    "foo": {
+                        "attributes": {},
+                        "zarr_format": 3,
+                        "node_type": "group",
+                        "consolidated_metadata": {
+                            "kind": "inline",
+                            "metadata": {},
+                            "must_understand": False,
+                        },
+                    }
+                },
+            },
+            "attributes": expect_attributes,
+        }
+    else:
+        meta = group.metadata
+        expect = {"node_type": "group", "zarr_format": 3, "attributes": expect_attributes}
+
+    assert meta.to_dict() == expect
