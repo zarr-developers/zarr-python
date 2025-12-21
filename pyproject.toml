@@ -408,7 +408,7 @@ doctest_optionflags = [
 ]
 addopts = [
     "--benchmark-columns", "min,mean,stddev,outliers,rounds,iterations",
-    "--benchmark-disable", # run benchmark routines but don't do benchmarking
+    "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
     "--durations", "10",
     "-ra", "--strict-config", "--strict-markers",
 ]
