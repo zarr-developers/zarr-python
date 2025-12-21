@@ -238,3 +238,5 @@ Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/)
 performance benchmarks as part of our test suite. The benchmarks can be are found in `tests/benchmarks`.
 By default pytest is configured to run these benchmarks as plain tests (i.e., no benchmarking). To run
 a benchmark with timing measurements, use the `--benchmark-enable` when invoking `pytest`.
+
+The benchmarks are run as part of the continuous integration suite through [codspeed](https://codspeed.io/zarr-developers/zarr-python).
