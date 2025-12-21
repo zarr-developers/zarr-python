@@ -177,7 +177,7 @@ matrix.deps.dependencies = [
 run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
 run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
-run = "run-coverage --no-cov"
+run = "run-coverage --no-cov --ignore tests/benchmarks"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
@@ -199,7 +199,7 @@ numpy = ["1.26", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
