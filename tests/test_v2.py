@@ -2,11 +2,10 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
+import numcodecs.blosc
 import numpy as np
 import pytest
-from numcodecs import Delta, Zlib
-from numcodecs.blosc import Blosc
-from numcodecs.zstd import Zstd
+from numcodecs import Blosc, Delta, Zlib, Zstd
 
 import zarr
 import zarr.core.buffer
@@ -19,7 +18,6 @@ from zarr.core.dtype.npy.bytes import NullTerminatedBytes
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import Group
 from zarr.core.sync import sync
-from zarr.errors import ZarrDeprecationWarning
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -143,13 +141,15 @@ def test_create_array_defaults(store: Store) -> None:
     g = zarr.open(store, mode="w", zarr_format=2)
     assert isinstance(g, Group)
     arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
-    assert arr.async_array.compressor is None
+    assert arr._async_array.compressors == ()
     assert not (arr.filters)
     arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
-    assert arr.async_array.compressor is not None
+    assert arr._async_array.compressors == (
+        Blosc(cname="lz4", clevel=5, shuffle=numcodecs.blosc.SHUFFLE, blocksize=0),
+    )
     assert not (arr.filters)
     arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
-    assert arr.async_array.compressor is not None
+    assert arr._async_array.compressors == (Zstd(level=0),)
     assert not (arr.filters)
     with pytest.raises(ValueError):
         g.create_array(
@@ -222,11 +222,6 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
         assert (sub_arr).flags.f_contiguous
     else:
         assert (sub_arr).flags.c_contiguous
-
-
-def test_default_compressor_deprecation_warning() -> None:
-    with pytest.warns(ZarrDeprecationWarning, match="default_compressor is deprecated"):
-        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
