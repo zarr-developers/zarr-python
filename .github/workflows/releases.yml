@@ -27,7 +27,7 @@ jobs:
           pip install hatch
       - name: Build wheel and sdist
         run: hatch build
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v6
         with:
           name: releases
           path: dist
@@ -36,7 +36,7 @@ jobs:
     needs: [build_artifacts]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           name: releases
           path: dist
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
     steps:
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@v7
         with:
           name: releases
           path: dist
