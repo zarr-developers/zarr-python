@@ -9,8 +9,8 @@ import pytest
 
 import zarr
 from zarr import zeros
-from zarr.abc.codec import CodecPipeline
-from zarr.abc.store import ByteSetter, Store
+from zarr.abc.codec import CodecPipeline, WriteBatchInfo
+from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,
     BytesCodec,
@@ -22,7 +22,6 @@ from zarr.core.buffer import NDBuffer
 from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
-from zarr.core.indexing import SelectorTuple
 from zarr.errors import ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
@@ -140,7 +139,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     class MockCodecPipeline(BatchedCodecPipeline):
         async def write(
             self,
-            batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+            batch_info: Iterable[WriteBatchInfo],
             value: NDBuffer,
             drop_axes: tuple[int, ...] = (),
         ) -> None:
