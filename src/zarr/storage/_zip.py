@@ -103,6 +103,10 @@ class ZipStore(Store):
 
         self._is_open = True
 
+    def _sync_ensure_open(self):
+        if not self._is_open:
+            self._sync_open()
+
     async def _open(self) -> None:
         self._sync_open()
 
@@ -120,17 +124,15 @@ class ZipStore(Store):
 
     def close(self) -> None:
         # docstring inherited
-        if not self._is_open:
-            self._sync_open()
-            
+        self._sync_ensure_open()
+
         super().close()
         with self._lock:
             self._zf.close()
 
     async def clear(self) -> None:
         # docstring inherited
-        if not self._is_open:
-            self._sync_open()
+        self._sync_ensure_open()
 
         with self._lock:
             self._check_writable()
@@ -155,8 +157,7 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
-        if not self._is_open:
-            self._sync_open()
+        self._sync_ensure_open()
         # docstring inherited
         try:
             with self._zf.open(key) as f:  # will raise KeyError
@@ -194,8 +195,7 @@ class ZipStore(Store):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        if not self._is_open:
-            self._sync_open()
+        self._sync_ensure_open()
         out = []
         with self._lock:
             for key, byte_range in key_ranges:
@@ -203,8 +203,7 @@ class ZipStore(Store):
         return out
 
     def _set(self, key: str, value: Buffer) -> None:
-        if not self._is_open:
-            self._sync_open()
+        self._sync_ensure_open()
         # generally, this should be called inside a lock
         keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
         keyinfo.compress_type = self.compression
@@ -218,8 +217,7 @@ class ZipStore(Store):
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
-        if not self._is_open:
-            self._sync_open()
+        self._sync_ensure_open()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(
@@ -230,8 +228,7 @@ class ZipStore(Store):
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()
-        if not self._is_open:
-            self._sync_open()
+        self._sync_ensure_open()
 
         with self._lock:
             members = self._zf.namelist()
@@ -256,8 +253,7 @@ class ZipStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        if not self._is_open:
-            self._sync_open()
+        self._sync_ensure_open()
 
         with self._lock:
             try:
@@ -269,8 +265,7 @@ class ZipStore(Store):
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
-        if not self._is_open:
-            self._sync_open()
+        self._sync_ensure_open()
 
         with self._lock:
             for key in self._zf.namelist():
