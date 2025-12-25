@@ -103,7 +103,7 @@ class ZipStore(Store):
 
         self._is_open = True
 
-    def _sync_ensure_open(self):
+    def _sync_ensure_open(self) -> None:
         if not self._is_open:
             self._sync_open()
 
