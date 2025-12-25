@@ -152,3 +152,17 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+    async def test_lock_present(self, store: ZipStore) -> None:
+        buf = cpu.Buffer.from_bytes(b"bar")
+        await store.set("foo", buf)
+        await store.set_if_not_exists("foo", buf)
+        await store.exists("foo")
+        await store.get("foo", default_buffer_prototype())
+
+        async for _ in store.list():
+            pass
+
+        await store.clear()
+
+        store.close()
