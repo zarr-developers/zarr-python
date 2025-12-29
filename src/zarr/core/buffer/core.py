@@ -542,7 +542,7 @@ class NDBuffer:
         # every single time we have to write data?
         _data, other = np.broadcast_arrays(self._data, other)
         return np.array_equal(
-            self._data,
+            _data,
             other,
             equal_nan=equal_nan
             if self._data.dtype.kind not in ("U", "S", "T", "O", "V")
