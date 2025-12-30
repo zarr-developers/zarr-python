@@ -225,12 +225,17 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[
 
     For each dimension, generate a list of chunk sizes that sum to the dimension size.
     Sometimes uses uniform chunks, sometimes uses variable-sized chunks.
+
+    Note: We limit the number of chunks to max 20 per dimension to avoid performance issues
+    in property tests. With higher dimensions, the total chunk count grows multiplicatively.
     """
     chunk_shapes: list[list[int]] = []
     for size in shape:
         assert size > 0
         if size > 1:
-            nchunks = draw(st.integers(min_value=1, max_value=size - 1))
+            # Limit max chunks to 20 to avoid performance issues with large chunk grids
+            max_chunks = min(size - 1, 20)
+            nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
             dividers = sorted(
                 draw(
                     st.lists(
@@ -486,10 +491,8 @@ def basic_indices(
         allow_ellipsis=allow_ellipsis,
     ).filter(
         lambda idxr: (
-            not (
-                is_negative_slice(idxr)
-                or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
-            )
+            not is_negative_slice(idxr)
+            and not (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))  # type: ignore[redundant-expr]
         )
     )
     if math.prod(shape) >= 3:
@@ -575,11 +578,11 @@ def chunk_paths(draw: st.DrawFn, ndim: int, numblocks: tuple[int, ...], subset: 
 @st.composite
 def complex_chunk_grids(draw: st.DrawFn) -> RectilinearChunkGrid:
     ndim = draw(st.integers(min_value=1, max_value=3))
-    nchunks = draw(st.integers(min_value=10, max_value=100))
-    # Don't require unique chunk sizes - rectilinear grids can have repeated sizes
-    dim_chunks = st.lists(
-        st.integers(min_value=1, max_value=10), min_size=nchunks, max_size=nchunks
-    )
+    # Limit to 5-10 chunks per dimension with small sizes to keep array size reasonable
+    # Max array size: 10 chunks * 5 size = 50 elements per dim, 50^3 = 125k elements max
+    nchunks = draw(st.integers(min_value=5, max_value=10))
+    # Keep chunk sizes small (1-5) to avoid creating huge arrays
+    dim_chunks = st.lists(st.integers(min_value=1, max_value=5), min_size=nchunks, max_size=nchunks)
     if draw(st.booleans()):
         event("using RectilinearChunkGrid")
         chunk_shapes = draw(st.lists(dim_chunks, min_size=ndim, max_size=ndim))
@@ -587,15 +590,14 @@ def complex_chunk_grids(draw: st.DrawFn) -> RectilinearChunkGrid:
 
     else:
         event("using RectilinearChunkGrid (run length encoded)")
-        # For RLE, we need to carefully control the total expanded chunks
-        # to avoid creating arrays that are too large
-        # Use a small number of RLE entries with small repeat counts
-        num_rle_entries = draw(st.integers(min_value=5, max_value=20))
+        # For RLE, keep total expanded chunks small: 3-5 entries * 2-3 repeats = 6-15 chunks
+        # With chunk sizes 1-5, max array size: 15 * 5 = 75 per dim, 75^3 = 421k elements max
+        num_rle_entries = draw(st.integers(min_value=3, max_value=5))
         chunk_shapes_rle = [
             [
                 [
-                    draw(st.integers(min_value=1, max_value=10)),  # chunk size
-                    draw(st.integers(min_value=1, max_value=3)),  # repeat count
+                    draw(st.integers(min_value=1, max_value=5)),  # chunk size
+                    draw(st.integers(min_value=2, max_value=3)),  # repeat count
                 ]
                 for _ in range(num_rle_entries)
             ]
@@ -613,7 +615,7 @@ def complex_chunked_arrays(
     draw: st.DrawFn,
     *,
     stores: st.SearchStrategy[StoreLike] = stores,
-) -> Array:
+) -> AnyArray:
     store = draw(stores, label="store")
     chunks = draw(complex_chunk_grids(), label="chunk grid")
     assert isinstance(chunks, RectilinearChunkGrid)

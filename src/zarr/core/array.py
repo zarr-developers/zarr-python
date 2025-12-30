@@ -1262,12 +1262,24 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         The shape of the chunk grid for this array.
 
+        For arrays with sharding, this returns the grid of inner chunks, not shards.
+        For arrays with RectilinearChunkGrid, this returns the grid shape.
+
         Returns
         -------
         tuple[int, ...]
             The shape of the chunk grid for this array.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
+        chunks = self.chunks
+        # Handle 0-dimensional arrays
+        if len(chunks) == 0:
+            return ()
+        # For RegularChunkGrid (or sharded with RegularChunkGrid), chunks is tuple[int, ...]
+        if isinstance(chunks[0], int):
+            return tuple(starmap(ceildiv, zip(self.shape, chunks, strict=True)))
+        # For RectilinearChunkGrid, chunks is tuple[tuple[int, ...], ...]
+        # Use the chunk_grid method
+        return self.metadata.chunk_grid.get_chunk_grid_shape(self.shape)
 
     @property
     def _shard_grid_shape(self) -> tuple[int, ...]:
@@ -5612,7 +5624,7 @@ def _iter_shard_regions(
         If the array uses RectilinearChunkGrid (variable-sized chunks).
     """
     chunks = array.chunks
-    if not isinstance(chunks[0], int):
+    if chunks and not isinstance(chunks[0], int):
         raise NotImplementedError(
             "_iter_shard_regions is not supported for arrays with variable-sized chunks "
             "(RectilinearChunkGrid). Use the chunk_grid API directly for variable chunk access."
@@ -5661,7 +5673,7 @@ def _iter_chunk_regions(
         If the array uses RectilinearChunkGrid (variable-sized chunks).
     """
     chunks = array.chunks
-    if not isinstance(chunks[0], int):
+    if chunks and not isinstance(chunks[0], int):
         raise NotImplementedError(
             "_iter_chunk_regions is not supported for arrays with variable-sized chunks "
             "(RectilinearChunkGrid). Use the chunk_grid API directly for variable chunk access."

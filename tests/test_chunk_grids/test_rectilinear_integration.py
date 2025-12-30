@@ -137,12 +137,12 @@ async def test_nested_chunks_with_different_sizes() -> None:
     np.testing.assert_array_equal(result, data)
 
 
-async def test_rectilinear_chunk_grid_nchunks_not_supported() -> None:
+async def test_rectilinear_chunk_grid_nchunks_supported() -> None:
     """
-    Test that nchunks property raises NotImplementedError for RectilinearChunkGrid.
+    Test that nchunks property works for RectilinearChunkGrid.
 
-    Note: The chunks property (and thus nchunks) is only defined for RegularChunkGrid.
-    For RectilinearChunkGrid, use chunk_grid.get_nchunks() instead.
+    The chunks property returns tuple of tuples for RectilinearChunkGrid,
+    and nchunks correctly calculates the total number of chunks.
     """
     store = MemoryStore()
     arr = await zarr.api.asynchronous.create_array(
@@ -153,11 +153,8 @@ async def test_rectilinear_chunk_grid_nchunks_not_supported() -> None:
         zarr_format=3,
     )
 
-    # The chunks property is not defined for RectilinearChunkGrid
-    with pytest.raises(
-        NotImplementedError, match="only defined for arrays using.*RegularChunkGrid"
-    ):
-        _ = arr.nchunks
+    # The nchunks property now works for RectilinearChunkGrid
+    assert arr.nchunks == 12  # 3 chunks in dim 0, 4 chunks in dim 1
 
-    # But we can get nchunks from the chunk_grid directly
+    # Can also get nchunks from the chunk_grid directly
     assert arr.metadata.chunk_grid.get_nchunks((60, 100)) == 12

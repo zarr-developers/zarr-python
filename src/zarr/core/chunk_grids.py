@@ -300,7 +300,8 @@ def _normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tup
         chunks = tuple(int(chunks) for _ in shape)
 
     # handle dask-style chunks (iterable of iterables)
-    # TODO
+    # Note: Only regular chunks are supported here. Irregular chunks will trigger a warning
+    # and use only the first chunk size per dimension. For true variable chunks, use RectilinearChunkGrid.
     if all(isinstance(c, (tuple | list)) for c in chunks):
         # Check for irregular chunks and warn user
         for dim_idx, c in enumerate(chunks):
@@ -346,7 +347,7 @@ class ChunkGrid(Metadata):
 
         # After isinstance check, data must be dict[str, JSON]
         # Cast needed for older mypy versions that don't narrow types properly
-        data_dict = cast(dict[str, JSON], data)  # type: ignore[redundant-cast]
+        data_dict = cast(dict[str, JSON], data)
         name_parsed, _ = parse_named_configuration(data_dict)
         if name_parsed == "regular":
             return RegularChunkGrid._from_dict(data_dict)
@@ -662,7 +663,46 @@ class RectilinearChunkGrid(ChunkGrid):
         }
 
     def update_shape(self, new_shape: tuple[int, ...]) -> Self:
-        """TODO - write docstring"""
+        """
+        Update the RectilinearChunkGrid to accommodate a new array shape.
+
+        When resizing an array, this method adjusts the chunk grid to match the new shape.
+        For dimensions that grow, a new chunk is added with size equal to the size difference.
+        For dimensions that shrink, chunks are truncated or removed to fit the new shape.
+
+        Parameters
+        ----------
+        new_shape : tuple[int, ...]
+            The new shape of the array. Must have the same number of dimensions as the chunk grid.
+
+        Returns
+        -------
+        Self
+            A new RectilinearChunkGrid instance with updated chunk shapes
+
+        Raises
+        ------
+        ValueError
+            If the number of dimensions in new_shape doesn't match the number of dimensions
+            in the chunk grid
+
+        Examples
+        --------
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[10, 20], [15, 15]])
+        >>> grid.update_shape((50, 40))  # Grow both dimensions
+        RectilinearChunkGrid(chunk_shapes=((10, 20, 20), (15, 15, 10)))
+
+        >>> grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25]])
+        >>> grid.update_shape((25, 30))  # Shrink first dimension
+        RectilinearChunkGrid(chunk_shapes=((10, 20), (25, 25)))
+
+        Notes
+        -----
+        This method is automatically called when an array is resized. The chunk size
+        strategy for growing dimensions adds a single new chunk with size equal to
+        the growth amount. This may not be optimal for all use cases, and users may
+        want to manually adjust chunk shapes after resizing.
+        """
 
         if len(new_shape) != len(self.chunk_shapes):
             raise ValueError(

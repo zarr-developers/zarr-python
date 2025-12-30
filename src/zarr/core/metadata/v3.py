@@ -104,8 +104,8 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
     codec_class_name = abc.__class__.__name__
-    # TODO: Fix typing here
-    if isinstance(dtype, VariableLengthUTF8) and not codec_class_name == "VLenUTF8Codec":
+    # TODO: Fix typing here - mypy cannot express the relationship between ZDType and VariableLengthUTF8
+    if isinstance(dtype, VariableLengthUTF8) and not codec_class_name == "VLenUTF8Codec":  # type: ignore[unreachable]
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )

@@ -1376,3 +1376,403 @@ async def test_metadata_chunks_property_matches_array() -> None:
     # Both should return the same value
     assert arr.chunks == arr.metadata.chunks
     assert arr.chunks == ((10, 20, 30), (25, 25))
+
+
+# ===================================================================
+# Tests for array_index_to_chunk_coord() method
+# ===================================================================
+
+
+def test_array_index_to_chunk_coord_basic() -> None:
+    """Test array_index_to_chunk_coord with basic cases."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 3, 1], [4, 2]])
+    array_shape = (6, 6)
+
+    # First element
+    assert grid.array_index_to_chunk_coord(array_shape, (0, 0)) == (0, 0)
+
+    # Last element
+    assert grid.array_index_to_chunk_coord(array_shape, (5, 5)) == (2, 1)
+
+    # Middle elements
+    assert grid.array_index_to_chunk_coord(array_shape, (2, 0)) == (1, 0)
+    assert grid.array_index_to_chunk_coord(array_shape, (0, 4)) == (0, 1)
+
+
+def test_array_index_to_chunk_coord_boundaries() -> None:
+    """Test array_index_to_chunk_coord at chunk boundaries."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25]])
+    array_shape = (60, 50)
+
+    # Boundaries between chunks
+    assert grid.array_index_to_chunk_coord(array_shape, (9, 24)) == (0, 0)  # Last of first chunk
+    assert grid.array_index_to_chunk_coord(array_shape, (10, 25)) == (1, 1)  # First of second chunk
+    assert grid.array_index_to_chunk_coord(array_shape, (29, 49)) == (1, 1)
+    assert grid.array_index_to_chunk_coord(array_shape, (30, 0)) == (2, 0)
+
+
+def test_array_index_to_chunk_coord_all_dims() -> None:
+    """Test array_index_to_chunk_coord with all dimensions."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    array_shape = (6, 6)
+
+    # Test all combinations
+    test_cases = [
+        ((0, 0), (0, 0)),
+        ((1, 1), (0, 0)),
+        ((2, 3), (1, 1)),
+        ((3, 4), (1, 1)),
+        ((4, 0), (2, 0)),
+        ((5, 5), (2, 1)),
+    ]
+
+    for array_idx, expected_chunk in test_cases:
+        assert grid.array_index_to_chunk_coord(array_shape, array_idx) == expected_chunk
+
+
+def test_array_index_to_chunk_coord_irregular() -> None:
+    """Test array_index_to_chunk_coord with highly irregular chunks."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[1, 5, 2, 12], [3, 1, 6]])
+    array_shape = (20, 10)
+
+    # Test various positions
+    assert grid.array_index_to_chunk_coord(array_shape, (0, 0)) == (0, 0)  # Chunk (0,0): size 1x3
+    assert grid.array_index_to_chunk_coord(array_shape, (1, 3)) == (1, 1)  # Chunk (1,1): size 5x1
+    assert grid.array_index_to_chunk_coord(array_shape, (6, 4)) == (2, 2)  # Chunk (2,2): size 2x6
+    assert grid.array_index_to_chunk_coord(array_shape, (8, 9)) == (3, 2)  # Chunk (3,2): size 12x6
+    assert grid.array_index_to_chunk_coord(array_shape, (19, 9)) == (3, 2)  # Last element
+
+
+def test_array_index_to_chunk_coord_1d() -> None:
+    """Test array_index_to_chunk_coord with 1D array."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[5, 10, 15]])
+    array_shape = (30,)
+
+    assert grid.array_index_to_chunk_coord(array_shape, (0,)) == (0,)
+    assert grid.array_index_to_chunk_coord(array_shape, (4,)) == (0,)
+    assert grid.array_index_to_chunk_coord(array_shape, (5,)) == (1,)
+    assert grid.array_index_to_chunk_coord(array_shape, (14,)) == (1,)
+    assert grid.array_index_to_chunk_coord(array_shape, (15,)) == (2,)
+    assert grid.array_index_to_chunk_coord(array_shape, (29,)) == (2,)
+
+
+def test_array_index_to_chunk_coord_out_of_bounds() -> None:
+    """Test that array_index_to_chunk_coord raises IndexError for out of bounds."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 3, 1], [4, 2]])
+    array_shape = (6, 6)
+
+    with pytest.raises(IndexError, match="array_index\\[0\\] = 6 is out of bounds"):
+        grid.array_index_to_chunk_coord(array_shape, (6, 0))
+
+    with pytest.raises(IndexError, match="array_index\\[1\\] = 6 is out of bounds"):
+        grid.array_index_to_chunk_coord(array_shape, (0, 6))
+
+    with pytest.raises(IndexError, match="array_index\\[0\\] = -1 is out of bounds"):
+        grid.array_index_to_chunk_coord(array_shape, (-1, 0))
+
+
+# ===================================================================
+# Tests for chunks_in_selection() method
+# ===================================================================
+
+
+def test_chunks_in_selection_full_array() -> None:
+    """Test chunks_in_selection with full array selection."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    array_shape = (6, 6)
+    selection = (slice(0, 6), slice(0, 6))
+
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    # Should get all 6 chunks (3 x 2)
+    expected = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
+    assert chunks == expected
+
+
+def test_chunks_in_selection_single_chunk() -> None:
+    """Test chunks_in_selection with selection contained in single chunk."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20], [15, 15]])
+    array_shape = (30, 30)
+
+    # Selection entirely within first chunk
+    selection = (slice(0, 5), slice(0, 10))
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    assert chunks == [(0, 0)]
+
+    # Selection entirely within last chunk
+    selection = (slice(15, 25), slice(20, 28))
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    assert chunks == [(1, 1)]
+
+
+def test_chunks_in_selection_multi_chunk() -> None:
+    """Test chunks_in_selection spanning multiple chunks."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    array_shape = (6, 6)
+
+    # Selection spanning chunks (1, 5) x (2, 5)
+    selection = (slice(1, 5), slice(2, 5))
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    # Should touch chunks at (0,0), (0,1), (1,0), (1,1), (2,0), (2,1)
+    expected = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
+    assert chunks == expected
+
+
+def test_chunks_in_selection_boundaries() -> None:
+    """Test chunks_in_selection at chunk boundaries."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25]])
+    array_shape = (60, 50)
+
+    # Selection exactly at chunk boundaries
+    selection = (slice(10, 30), slice(0, 25))
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    # Should touch chunks (1,0) and (1,1) but also (2,0) since stop=30 touches it
+    expected = [(1, 0)]
+    assert chunks == expected
+
+    # Selection crossing multiple boundaries
+    selection = (slice(5, 35), slice(20, 30))
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    expected = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
+    assert chunks == expected
+
+
+def test_chunks_in_selection_partial() -> None:
+    """Test chunks_in_selection with partial chunk overlap."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[5, 10, 15], [8, 12]])
+    array_shape = (30, 20)
+
+    # Selection partially overlapping chunks
+    selection = (slice(3, 18), slice(5, 15))
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    # Touches (0,0), (0,1), (1,0), (1,1), (2,0), (2,1)
+    expected = [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
+    assert chunks == expected
+
+
+def test_chunks_in_selection_empty() -> None:
+    """Test chunks_in_selection with empty selection."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    array_shape = (6, 6)
+
+    # Empty selection (start >= stop)
+    selection = (slice(3, 3), slice(0, 6))
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    assert chunks == []
+
+    selection = (slice(5, 2), slice(0, 6))  # start > stop
+    chunks = list(grid.chunks_in_selection(array_shape, selection))
+    assert chunks == []
+
+
+def test_chunks_in_selection_with_step_raises() -> None:
+    """Test that chunks_in_selection raises ValueError for step != 1."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    array_shape = (6, 6)
+
+    with pytest.raises(ValueError, match="step=2, only step=1 is supported"):
+        list(grid.chunks_in_selection(array_shape, (slice(0, 6, 2), slice(0, 6))))
+
+    with pytest.raises(ValueError, match="step=3, only step=1 is supported"):
+        list(grid.chunks_in_selection(array_shape, (slice(0, 6), slice(0, 6, 3))))
+
+
+# ===================================================================
+# Tests for get_chunk_slice() method
+# ===================================================================
+
+
+def test_get_chunk_slice_basic() -> None:
+    """Test get_chunk_slice with basic cases."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    array_shape = (6, 6)
+
+    # First chunk
+    assert grid.get_chunk_slice(array_shape, (0, 0)) == (slice(0, 2), slice(0, 3))
+
+    # Middle chunk
+    assert grid.get_chunk_slice(array_shape, (1, 1)) == (slice(2, 4), slice(3, 6))
+
+    # Last chunk
+    assert grid.get_chunk_slice(array_shape, (2, 1)) == (slice(4, 6), slice(3, 6))
+
+
+def test_get_chunk_slice_partial_edge() -> None:
+    """Test get_chunk_slice with partial edge chunks."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 25], [15, 20]])
+    array_shape = (55, 35)
+
+    # Full chunks
+    assert grid.get_chunk_slice(array_shape, (0, 0)) == (slice(0, 10), slice(0, 15))
+    assert grid.get_chunk_slice(array_shape, (1, 1)) == (slice(10, 30), slice(15, 35))
+
+    # Edge chunks (all chunk sizes are exact)
+    assert grid.get_chunk_slice(array_shape, (2, 0)) == (slice(30, 55), slice(0, 15))
+    assert grid.get_chunk_slice(array_shape, (0, 1)) == (slice(0, 10), slice(15, 35))
+
+
+def test_get_chunk_slice_irregular() -> None:
+    """Test get_chunk_slice with highly irregular chunk sizes."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[1, 5, 2, 12], [3, 1, 6]])
+    array_shape = (20, 10)
+
+    assert grid.get_chunk_slice(array_shape, (0, 0)) == (slice(0, 1), slice(0, 3))
+    assert grid.get_chunk_slice(array_shape, (1, 1)) == (slice(1, 6), slice(3, 4))
+    assert grid.get_chunk_slice(array_shape, (2, 2)) == (slice(6, 8), slice(4, 10))
+    assert grid.get_chunk_slice(array_shape, (3, 0)) == (slice(8, 20), slice(0, 3))
+
+
+# ===================================================================
+# Tests for chunks_per_dim() and get_chunk_grid_shape() methods
+# ===================================================================
+
+
+def test_chunks_per_dim_2d() -> None:
+    """Test chunks_per_dim with 2D array."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20], [5, 5, 5]])
+    array_shape = (30, 15)
+
+    assert grid.chunks_per_dim(array_shape, 0) == 2  # 2 chunks along axis 0
+    assert grid.chunks_per_dim(array_shape, 1) == 3  # 3 chunks along axis 1
+
+
+def test_chunks_per_dim_3d() -> None:
+    """Test chunks_per_dim with 3D array."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[5, 5], [10, 10, 10], [8, 12]])
+    array_shape = (10, 30, 20)
+
+    assert grid.chunks_per_dim(array_shape, 0) == 2
+    assert grid.chunks_per_dim(array_shape, 1) == 3
+    assert grid.chunks_per_dim(array_shape, 2) == 2
+
+
+def test_get_chunk_grid_shape_various() -> None:
+    """Test get_chunk_grid_shape with various shapes."""
+    # 2D
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    assert grid.get_chunk_grid_shape((6, 6)) == (3, 2)
+
+    # 3D
+    grid = RectilinearChunkGrid(chunk_shapes=[[5, 5], [10, 10, 10], [8, 12]])
+    assert grid.get_chunk_grid_shape((10, 30, 20)) == (2, 3, 2)
+
+    # 1D
+    grid = RectilinearChunkGrid(chunk_shapes=[[1, 2, 3, 4]])
+    assert grid.get_chunk_grid_shape((10,)) == (4,)
+
+    # Irregular
+    grid = RectilinearChunkGrid(chunk_shapes=[[10, 20, 30], [25, 25]])
+    assert grid.get_chunk_grid_shape((60, 50)) == (3, 2)
+
+
+# ===================================================================
+# Edge case and integration tests
+# ===================================================================
+
+
+def test_rectilinear_1d_array() -> None:
+    """Test RectilinearChunkGrid with 1D arrays."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[5, 10, 15]])
+    array_shape = (30,)
+
+    # Test basic properties
+    assert grid.get_nchunks(array_shape) == 3
+    assert grid.get_chunk_grid_shape(array_shape) == (3,)
+
+    # Test chunk operations
+    assert grid.get_chunk_start(array_shape, (0,)) == (0,)
+    assert grid.get_chunk_start(array_shape, (1,)) == (5,)
+    assert grid.get_chunk_start(array_shape, (2,)) == (15,)
+
+    assert grid.get_chunk_shape(array_shape, (0,)) == (5,)
+    assert grid.get_chunk_shape(array_shape, (1,)) == (10,)
+    assert grid.get_chunk_shape(array_shape, (2,)) == (15,)
+
+    # Test all coords
+    coords = list(grid.all_chunk_coords(array_shape))
+    assert coords == [(0,), (1,), (2,)]
+
+
+def test_rectilinear_3d_array() -> None:
+    """Test RectilinearChunkGrid with 3D arrays."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[5, 5], [10, 10], [4, 6]])
+    array_shape = (10, 20, 10)
+
+    # Test basic properties
+    assert grid.get_nchunks(array_shape) == 8  # 2 x 2 x 2
+    assert grid.get_chunk_grid_shape(array_shape) == (2, 2, 2)
+
+    # Test some chunk operations
+    assert grid.get_chunk_start(array_shape, (0, 0, 0)) == (0, 0, 0)
+    assert grid.get_chunk_start(array_shape, (1, 1, 1)) == (5, 10, 4)
+
+    assert grid.get_chunk_shape(array_shape, (0, 0, 0)) == (5, 10, 4)
+    assert grid.get_chunk_shape(array_shape, (1, 1, 1)) == (5, 10, 6)
+
+    # Test index to coord
+    assert grid.array_index_to_chunk_coord(array_shape, (0, 0, 0)) == (0, 0, 0)
+    assert grid.array_index_to_chunk_coord(array_shape, (7, 15, 8)) == (1, 1, 1)
+
+
+def test_rectilinear_4d_array() -> None:
+    """Test RectilinearChunkGrid with 4D arrays."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[3, 3], [4, 4], [5], [2, 3]])
+    array_shape = (6, 8, 5, 5)
+
+    assert grid.get_nchunks(array_shape) == 8  # 2 x 2 x 1 x 2
+    assert grid.get_chunk_grid_shape(array_shape) == (2, 2, 1, 2)
+
+    # Test index to coord in 4D
+    assert grid.array_index_to_chunk_coord(array_shape, (0, 0, 0, 0)) == (0, 0, 0, 0)
+    assert grid.array_index_to_chunk_coord(array_shape, (5, 7, 4, 4)) == (1, 1, 0, 1)
+
+
+def test_out_of_bounds_chunk_coords() -> None:
+    """Test that out-of-bounds chunk coordinates raise IndexError."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    array_shape = (6, 6)
+
+    # Out of bounds chunk coordinates
+    with pytest.raises(IndexError, match="chunk_coord\\[0\\] = 3 is out of bounds"):
+        grid.get_chunk_start(array_shape, (3, 0))
+
+    with pytest.raises(IndexError, match="chunk_coord\\[1\\] = 2 is out of bounds"):
+        grid.get_chunk_shape(array_shape, (0, 2))
+
+    with pytest.raises(IndexError, match="chunk_coord\\[0\\] = -1 is out of bounds"):
+        grid.get_chunk_slice(array_shape, (-1, 0))
+
+
+def test_dimension_mismatch_raises() -> None:
+    """Test that dimension mismatches raise ValueError."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+
+    # 1D shape with 2D chunks
+    with pytest.raises(ValueError, match="array_shape has 1 dimensions"):
+        grid.all_chunk_coords((6,))
+
+    # 3D shape with 2D chunks
+    with pytest.raises(ValueError, match="array_shape has 3 dimensions"):
+        grid.get_nchunks((6, 6, 6))
+
+    # Wrong shape sum
+    with pytest.raises(
+        ValueError, match="Sum of chunk sizes along axis 0 is 6 but array shape is 10"
+    ):
+        grid.get_chunk_start((10, 6), (0, 0))
+
+
+def test_invalid_chunk_coordinates_raise() -> None:
+    """Test that invalid chunk coordinates raise appropriate errors."""
+    grid = RectilinearChunkGrid(chunk_shapes=[[2, 2, 2], [3, 3]])
+    array_shape = (6, 6)
+
+    # Negative chunk coordinates
+    with pytest.raises(IndexError):
+        grid.get_chunk_start(array_shape, (-1, 0))
+
+    # Chunk coordinates beyond grid
+    with pytest.raises(IndexError):
+        grid.get_chunk_start(array_shape, (3, 0))  # Only 3 chunks in dim 0 (0,1,2)
+
+    with pytest.raises(IndexError):
+        grid.get_chunk_start(array_shape, (0, 2))  # Only 2 chunks in dim 1 (0,1)
