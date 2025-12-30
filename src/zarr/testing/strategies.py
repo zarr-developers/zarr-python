@@ -492,7 +492,7 @@ def basic_indices(
     ).filter(
         lambda idxr: (
             not is_negative_slice(idxr)
-            and not (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))  # type: ignore[redundant-expr]
+            and not (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
         )
     )
     if math.prod(shape) >= 3:
