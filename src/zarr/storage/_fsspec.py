@@ -147,7 +147,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from an upath object.
+        Create an FsspecStore from an upath object.
 
         Parameters
         ----------
@@ -178,7 +178,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from a FSMap object.
+        Create an FsspecStore from an FSMap object.
 
         Parameters
         ----------
@@ -211,7 +211,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from a URL. The type of store is determined from the URL scheme.
+        Create an FsspecStore from a URL. The type of store is determined from the URL scheme.
 
         Parameters
         ----------

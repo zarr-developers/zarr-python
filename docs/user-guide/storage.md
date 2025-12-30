@@ -154,7 +154,7 @@ print(store)
 
 ### Memory Store
 
-The [`zarr.storage.MemoryStore`][] a in-memory store that allows for serialization of
+The [`zarr.storage.MemoryStore`][] an in-memory store that allows for serialization of
 Zarr data (metadata and chunks) to a dictionary:
 
 ```python exec="true" session="storage" source="above" result="ansi"
