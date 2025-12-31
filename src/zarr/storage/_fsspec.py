@@ -147,7 +147,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create an FsspecStore from an upath object.
+        Create an FsspecStore from a upath object.
 
         Parameters
         ----------
