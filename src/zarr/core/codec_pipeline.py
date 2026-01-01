@@ -5,6 +5,8 @@ from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
 
+import numpy as np
+
 from zarr.abc.codec import (
     ArrayArrayCodec,
     ArrayBytesCodec,
@@ -19,6 +21,7 @@ from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
 from zarr.errors import ZarrUserWarning
 from zarr.registry import register_pipeline
+from zarr.core.buffer import NDBuffer
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -26,7 +29,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+    from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
@@ -413,18 +416,21 @@ class BatchedCodecPipeline(CodecPipeline):
                 if chunk_array is None:
                     chunk_array_batch.append(None)  # type: ignore[unreachable]
                 else:
-                    # The operation array_equal operation below effectively will force the array
-                    # into memory.
-                    # if the result is useful, we want to avoid reading it twice
-                    # from a potentially lazy operation. So we cache it here.
-                    # If the result is not useful, we leave it for the garbage collector.
-                    chunk_array._data = chunk_array.as_numpy_array()
-                    if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-                        fill_value_or_default(chunk_spec)
-                    ):
-                        chunk_array_batch.append(None)
-                    else:
-                        chunk_array_batch.append(chunk_array)
+                    if not chunk_spec.config.write_empty_chunks:
+                        # The operation array_equal operation below effectively will force the array
+                        # into memory.
+                        # if the result is useful, we want to avoid reading it twice
+                        # from a potentially lazy operation. So we cache it here.
+                        # If the result is not useful, we leave it for the garbage collector.
+                        # We optimize this operation for the case that the GPU
+                        if not hasattr(chunk_array._data, '__cuda_array_interface__'):
+                            chunk_array = NDBuffer(np.asarray(chunk_array._data))
+
+                        if chunk_array.all_equal(
+                            fill_value_or_default(chunk_spec)
+                        ):
+                            chunk_array = None
+                    chunk_array_batch.append(chunk_array)
 
             chunk_bytes_batch = await self.encode_batch(
                 [
