@@ -416,7 +416,9 @@ class BatchedCodecPipeline(CodecPipeline):
                 if chunk_array is None:
                     chunk_array_batch.append(None)  # type: ignore[unreachable]
                 else:
-                    if not chunk_spec.config.write_empty_chunks:
+                    if chunk_spec.config.write_empty_chunks:
+                        chunk_array_batch.append(chunk_array)
+                    else:
                         # The operation array_equal operation below effectively will force the array
                         # into memory.
                         # if the result is useful, we want to avoid reading it twice
@@ -429,8 +431,9 @@ class BatchedCodecPipeline(CodecPipeline):
                         if chunk_array.all_equal(
                             fill_value_or_default(chunk_spec)
                         ):
-                            chunk_array = None
-                    chunk_array_batch.append(chunk_array)
+                            chunk_array_batch.append(None)
+                        else:
+                            chunk_array_batch.append(chunk_array)
 
             chunk_bytes_batch = await self.encode_batch(
                 [
