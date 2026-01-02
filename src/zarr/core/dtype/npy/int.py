@@ -264,7 +264,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an Int8 from a np.dtype('int8') instance.
+        Create an Int8 from an np.dtype('int8') instance.
 
         Parameters
         ----------
@@ -289,7 +289,7 @@ class Int8(BaseInt[np.dtypes.Int8DType, np.int8]):
 
     def to_native_dtype(self: Self) -> np.dtypes.Int8DType:
         """
-        Convert the Int8 instance to a np.dtype('int8') instance.
+        Convert the Int8 instance to an np.dtype('int8') instance.
 
         Returns
         -------
@@ -420,7 +420,7 @@ class UInt8(BaseInt[np.dtypes.UInt8DType, np.uint8]):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create a UInt8 from a np.dtype('uint8') instance.
+        Create a UInt8 from an np.dtype('uint8') instance.
         """
         if cls._check_native_dtype(dtype):
             return cls()
@@ -567,7 +567,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an instance of this data type from a np.dtype('int16') instance.
+        Create an instance of this data type from an np.dtype('int16') instance.
 
         Parameters
         ----------
@@ -592,7 +592,7 @@ class Int16(BaseInt[np.dtypes.Int16DType, np.int16], HasEndianness):
 
     def to_native_dtype(self) -> np.dtypes.Int16DType:
         """
-        Convert the data type to a np.dtype('int16') instance.
+        Convert the data type to an np.dtype('int16') instance.
 
         Returns
         -------
@@ -729,7 +729,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an instance of this data type from a np.dtype('uint16') instance.
+        Create an instance of this data type from an np.dtype('uint16') instance.
 
         Parameters
         ----------
@@ -754,7 +754,7 @@ class UInt16(BaseInt[np.dtypes.UInt16DType, np.uint16], HasEndianness):
 
     def to_native_dtype(self) -> np.dtypes.UInt16DType:
         """
-        Convert the data type to a np.dtype('uint16') instance.
+        Convert the data type to an np.dtype('uint16') instance.
 
         Returns
         -------
@@ -912,7 +912,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
     @classmethod
     def from_native_dtype(cls: type[Self], dtype: TBaseDType) -> Self:
         """
-        Create an Int32 from a np.dtype('int32') instance.
+        Create an Int32 from an np.dtype('int32') instance.
 
         Parameters
         ----------
@@ -937,7 +937,7 @@ class Int32(BaseInt[np.dtypes.Int32DType, np.int32], HasEndianness):
 
     def to_native_dtype(self: Self) -> np.dtypes.Int32DType:
         """
-        Convert the Int32 instance to a np.dtype('int32') instance.
+        Convert the Int32 instance to an np.dtype('int32') instance.
 
         Returns
         -------
@@ -1074,7 +1074,7 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create a UInt32 from a np.dtype('uint32') instance.
+        Create a UInt32 from an np.dtype('uint32') instance.
 
         Parameters
         ----------
@@ -1232,7 +1232,7 @@ class Int64(BaseInt[np.dtypes.Int64DType, np.int64], HasEndianness):
     @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
-        Create an Int64 from a np.dtype('int64') instance.
+        Create an Int64 from an np.dtype('int64') instance.
 
         Parameters
         ----------

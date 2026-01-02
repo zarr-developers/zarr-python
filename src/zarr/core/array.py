@@ -1720,7 +1720,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         value = cast("NDArrayLike", value)
 
         # We accept any ndarray like object from the user and convert it
-        # to a NDBuffer (or subclass). From this point onwards, we only pass
+        # to an NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
         value_buffer = prototype.nd_buffer.from_ndarray_like(value)
 

@@ -311,7 +311,7 @@ async def make_store(
     ):
         raise TypeError(
             "'storage_options' was provided but unused. "
-            "'storage_options' is only used when the store is passed as a FSSpec URI string.",
+            "'storage_options' is only used when the store is passed as an FSSpec URI string.",
         )
 
     assert mode in (None, "r", "r+", "a", "w", "w-")
@@ -341,7 +341,7 @@ async def make_store(
         return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str):
-        # Either a FSSpec URI or a local filesystem path
+        # Either an FSSpec URI or a local filesystem path
         if _is_fsspec_uri(store_like):
             return FsspecStore.from_url(
                 store_like, storage_options=storage_options, read_only=_read_only
@@ -409,7 +409,7 @@ async def make_store_path(
         if storage_options:
             raise TypeError(
                 "'storage_options' was provided but unused. "
-                "'storage_options' is only used when the store is passed as a FSSpec URI string.",
+                "'storage_options' is only used when the store is passed as an FSSpec URI string.",
             )
         return store_like / path_normalized
 
