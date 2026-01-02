@@ -14,7 +14,7 @@ If you find a bug, please raise a [GitHub issue](https://github.com/zarr-develop
 
 ```python
 import zarr
-g = zarr.group()
+g = zarr.open_group()
 # etc.
 ```
 
