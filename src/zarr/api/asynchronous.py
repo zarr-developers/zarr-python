@@ -654,6 +654,7 @@ async def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyAsyncArray:
     return z
 
 
+@deprecated("Use open_group() or create_group() instead")
 async def group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,

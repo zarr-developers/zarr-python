@@ -77,7 +77,7 @@ Zarr allows you to create hierarchical groups, similar to directories:
 ```python exec="true" session="quickstart" source="above" result="ansi"
 
 # Create nested groups and add arrays
-root = zarr.group("data/example-3.zarr")
+root = zarr.create_group("data/example-3.zarr")
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
@@ -102,7 +102,7 @@ Suppose we want to copy existing groups and arrays into a new storage backend:
 ```python exec="true" session="quickstart" source="above" result="html"
 
 # Create nested groups and add arrays
-root = zarr.group("data/example-4.zarr", attributes={'name': 'root'})
+root = zarr.create_group("data/example-4.zarr", attributes={'name': 'root'})
 foo = root.create_group(name="foo")
 bar = root.create_array(
     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
