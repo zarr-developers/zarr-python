@@ -7,4 +7,3 @@ title: convenience
 ::: zarr.copy_all
 ::: zarr.copy_store
 ::: zarr.print_debug_info
-::: zarr.tree
