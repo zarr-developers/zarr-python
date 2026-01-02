@@ -9,7 +9,6 @@ from typing import (
     SupportsIndex,
     SupportsInt,
     TypeGuard,
-    TypeVar,
     overload,
 )
 
@@ -48,13 +47,15 @@ _NumpyIntDType = (
 _NumpyIntScalar = (
     np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
 )
-TIntDType_co = TypeVar("TIntDType_co", bound=_NumpyIntDType, covariant=True)
-TIntScalar_co = TypeVar("TIntScalar_co", bound=_NumpyIntScalar, covariant=True)
+
 IntLike = SupportsInt | SupportsIndex | bytes | str
 
 
 @dataclass(frozen=True)
-class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
+class BaseInt[
+    DType: _NumpyIntDType,
+    Scalar: np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64,
+](ZDType[DType, Scalar], HasItemSize):
     """
     A base class for integer data types in Zarr.
 
@@ -129,7 +130,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         return isinstance(data, IntLike)
 
-    def _cast_scalar_unchecked(self, data: IntLike) -> TIntScalar_co:
+    def _cast_scalar_unchecked(self, data: IntLike) -> Scalar:
         """
         Casts a given scalar value to the native integer scalar type without type checking.
 
@@ -140,13 +141,13 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         Returns
         -------
-        TIntScalar_co
+        Scalar
             The casted integer scalar of the native dtype.
         """
 
         return self.to_native_dtype().type(data)  # type: ignore[return-value]
 
-    def cast_scalar(self, data: object) -> TIntScalar_co:
+    def cast_scalar(self, data: object) -> Scalar:
         """
         Attempt to cast a given object to a NumPy integer scalar.
 
@@ -157,7 +158,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         Returns
         -------
-        TIntScalar_co
+        Scalar
             The data cast as a NumPy integer scalar.
 
         Raises
@@ -174,18 +175,18 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
         )
         raise TypeError(msg)
 
-    def default_scalar(self) -> TIntScalar_co:
+    def default_scalar(self) -> Scalar:
         """
         Get the default value, which is 0 cast to this dtype.
 
         Returns
         -------
-        TIntScalar_co
+        Scalar
             The default value.
         """
         return self._cast_scalar_unchecked(0)
 
-    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> TIntScalar_co:
+    def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> Scalar:
         """
         Read a JSON-serializable value as a NumPy int scalar.
 
@@ -198,7 +199,7 @@ class BaseInt(ZDType[TIntDType_co, TIntScalar_co], HasItemSize):
 
         Returns
         -------
-        TIntScalar_co
+        Scalar
             The NumPy int scalar.
 
         Raises
