@@ -426,7 +426,11 @@ class BatchedCodecPipeline(CodecPipeline):
                         # If the result is not useful, we leave it for the garbage collector.
                         # We optimize this operation for the case that the GPU
                         if not hasattr(chunk_array._data, '__cuda_array_interface__'):
-                            chunk_array = NDBuffer(np.asarray(chunk_array._data))
+                            # I'm not sure why this implementation doesn't work
+                            # it seems like something is getting missed by me
+                            # chunk_array = NDBuffer(np.asarray(chunk_array._data))
+                            # This line here just feels more dirty
+                            chunk_array._data = np.asarray(chunk_array._data)
 
                         if chunk_array.all_equal(
                             fill_value_or_default(chunk_spec)
