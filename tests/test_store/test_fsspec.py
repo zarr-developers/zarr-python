@@ -379,7 +379,7 @@ def test_open_s3map_raises() -> None:
         zarr.open(store=mapper, path="bar", mode="w", shape=(3, 3))
     with pytest.raises(
         TypeError,
-        match="'storage_options' is only used when the store is passed as a FSSpec URI string.",
+        match="'storage_options' is only used when the store is passed as an FSSpec URI string.",
     ):
         zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
 
