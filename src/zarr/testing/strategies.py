@@ -490,9 +490,10 @@ def basic_indices(
         allow_newaxis=allow_newaxis,
         allow_ellipsis=allow_ellipsis,
     ).filter(
-        lambda idxr: (
-            not is_negative_slice(idxr)
-            and not (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
+        # Note: mypy behavior varies by version - some versions see redundant-expr here
+        lambda idxr: not (
+            is_negative_slice(idxr)
+            or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))  # type: ignore[redundant-expr]
         )
     )
     if math.prod(shape) >= 3:

@@ -1280,7 +1280,7 @@ async def test_array_chunks_property_rectilinear() -> None:
     assert chunks == ((10, 20, 30), (25, 25))
     assert isinstance(chunks, tuple)
     assert all(isinstance(dim_chunks, tuple) for dim_chunks in chunks)
-    assert all(isinstance(size, int) for dim_chunks in chunks for size in dim_chunks)  # type: ignore[union-attr]
+    assert all(isinstance(size, int) for dim_chunks in chunks for size in dim_chunks)
 
 
 async def test_array_chunks_property_rle_expanded() -> None:
@@ -1300,8 +1300,8 @@ async def test_array_chunks_property_rle_expanded() -> None:
     chunks = arr.chunks
     assert chunks == ((10, 10, 10, 10, 10, 10), (10, 10, 10, 10, 10, 10))
     # Verify it's not RLE - each element is an int, not a list
-    assert len(chunks[0]) == 6  # type: ignore[arg-type]
-    assert len(chunks[1]) == 6  # type: ignore[arg-type]
+    assert len(chunks[0]) == 6
+    assert len(chunks[1]) == 6
 
 
 def test_sync_array_chunks_property_rectilinear() -> None:
