@@ -535,6 +535,8 @@ class StoreTests(Generic[S, B]):
         key = "zarr.json"
         await self.set(store, key, self.buffer_cls.from_bytes(data))
         assert await store.get_bytes_async(key, prototype=default_buffer_prototype()) == data
+        with pytest.raises(FileNotFoundError):
+            await store.get_bytes_async("nonexistent_key", prototype=default_buffer_prototype())
 
     def test_get_bytes_sync(self, store: S) -> None:
         """
