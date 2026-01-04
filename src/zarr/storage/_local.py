@@ -8,7 +8,7 @@ import shutil
 import sys
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, Literal, Self
+from typing import TYPE_CHECKING, Any, BinaryIO, Literal, Self
 
 from zarr.abc.store import (
     ByteRequest,
@@ -305,6 +305,236 @@ class LocalStore(Store):
                 yield key.relative_to(base).as_posix()
         except (FileNotFoundError, NotADirectoryError):
             pass
+
+    async def get_bytes_async(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> bytes:
+        """
+        Retrieve raw bytes from the local store asynchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_bytes_async``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+
+        Returns
+        -------
+        bytes
+            The raw bytes stored at the given key.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+
+        See Also
+        --------
+        Store.get_bytes_async : Base implementation with full documentation.
+        get_bytes : Synchronous version of this method.
+
+        Examples
+        --------
+        >>> store = await LocalStore.open("data")
+        >>> await store.set("data", Buffer.from_bytes(b"hello"))
+        >>> # No need to specify prototype for LocalStore
+        >>> data = await store.get_bytes_async("data")
+        >>> print(data)
+        b'hello'
+        """
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return await super().get_bytes_async(key, prototype=prototype, byte_range=byte_range)
+
+    def get_bytes(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> bytes:
+        """
+        Retrieve raw bytes from the local store synchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_bytes``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+
+        Returns
+        -------
+        bytes
+            The raw bytes stored at the given key.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+
+        Warnings
+        --------
+        Do not call this method from async functions. Use ``get_bytes_async()`` instead.
+
+        See Also
+        --------
+        Store.get_bytes : Base implementation with full documentation.
+        get_bytes_async : Asynchronous version of this method.
+
+        Examples
+        --------
+        >>> store = LocalStore("data")
+        >>> store.set("data", Buffer.from_bytes(b"hello"))
+        >>> # No need to specify prototype for LocalStore
+        >>> data = store.get_bytes("data")
+        >>> print(data)
+        b'hello'
+        """
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return super().get_bytes(key, prototype=prototype, byte_range=byte_range)
+
+    async def get_json_async(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Any:
+        """
+        Retrieve and parse JSON data from the local store asynchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_json_async``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the JSON data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+            Note: Using byte ranges with JSON may result in invalid JSON.
+
+        Returns
+        -------
+        Any
+            The parsed JSON data. This follows the behavior of ``json.loads()`` and
+            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+        json.JSONDecodeError
+            If the stored data is not valid JSON.
+
+        See Also
+        --------
+        Store.get_json_async : Base implementation with full documentation.
+        get_json : Synchronous version of this method.
+        get_bytes_async : Method for retrieving raw bytes without parsing.
+
+        Examples
+        --------
+        >>> store = await LocalStore.open("data")
+        >>> import json
+        >>> metadata = {"zarr_format": 3, "node_type": "array"}
+        >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> # No need to specify prototype for LocalStore
+        >>> data = await store.get_json_async("zarr.json")
+        >>> print(data)
+        {'zarr_format': 3, 'node_type': 'array'}
+        """
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return await super().get_json_async(key, prototype=prototype, byte_range=byte_range)
+
+    def get_json(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Any:
+        """
+        Retrieve and parse JSON data from the local store synchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_json``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the JSON data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+            Note: Using byte ranges with JSON may result in invalid JSON.
+
+        Returns
+        -------
+        Any
+            The parsed JSON data. This follows the behavior of ``json.loads()`` and
+            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+        json.JSONDecodeError
+            If the stored data is not valid JSON.
+
+        Warnings
+        --------
+        Do not call this method from async functions. Use ``get_json_async()`` instead.
+
+        See Also
+        --------
+        Store.get_json : Base implementation with full documentation.
+        get_json_async : Asynchronous version of this method.
+        get_bytes : Method for retrieving raw bytes without parsing.
+
+        Examples
+        --------
+        >>> store = LocalStore("data")
+        >>> import json
+        >>> metadata = {"zarr_format": 3, "node_type": "array"}
+        >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> # No need to specify prototype for LocalStore
+        >>> data = store.get_json("zarr.json")
+        >>> print(data)
+        {'zarr_format': 3, 'node_type': 'array'}
+        """
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return super().get_json(key, prototype=prototype, byte_range=byte_range)
 
     async def move(self, dest_root: Path | str) -> None:
         """

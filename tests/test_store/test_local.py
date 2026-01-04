@@ -150,3 +150,85 @@ def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
             f.write(b"abc")
     assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+async def test_get_bytes_with_prototype_none(tmp_path: pathlib.Path) -> None:
+    """Test that get_bytes_async works with prototype=None."""
+    from zarr.core.buffer import cpu
+    from zarr.core.buffer.core import default_buffer_prototype
+
+    store = await LocalStore.open(root=tmp_path)
+    data = b"hello world"
+    key = "test_key"
+    await store.set(key, cpu.Buffer.from_bytes(data))
+
+    # Test with None (default)
+    result_none = await store.get_bytes_async(key)
+    assert result_none == data
+
+    # Test with explicit prototype
+    result_proto = await store.get_bytes_async(key, prototype=default_buffer_prototype())
+    assert result_proto == data
+
+
+def test_get_bytes_sync_with_prototype_none(tmp_path: pathlib.Path) -> None:
+    """Test that get_bytes works with prototype=None."""
+    from zarr.core.buffer import cpu
+    from zarr.core.buffer.core import default_buffer_prototype
+    from zarr.core.sync import sync
+
+    store = sync(LocalStore.open(root=tmp_path))
+    data = b"hello world"
+    key = "test_key"
+    sync(store.set(key, cpu.Buffer.from_bytes(data)))
+
+    # Test with None (default)
+    result_none = store.get_bytes(key)
+    assert result_none == data
+
+    # Test with explicit prototype
+    result_proto = store.get_bytes(key, prototype=default_buffer_prototype())
+    assert result_proto == data
+
+
+async def test_get_json_with_prototype_none(tmp_path: pathlib.Path) -> None:
+    """Test that get_json_async works with prototype=None."""
+    import json
+
+    from zarr.core.buffer import cpu
+    from zarr.core.buffer.core import default_buffer_prototype
+
+    store = await LocalStore.open(root=tmp_path)
+    data = {"foo": "bar", "number": 42}
+    key = "test.json"
+    await store.set(key, cpu.Buffer.from_bytes(json.dumps(data).encode()))
+
+    # Test with None (default)
+    result_none = await store.get_json_async(key)
+    assert result_none == data
+
+    # Test with explicit prototype
+    result_proto = await store.get_json_async(key, prototype=default_buffer_prototype())
+    assert result_proto == data
+
+
+def test_get_json_sync_with_prototype_none(tmp_path: pathlib.Path) -> None:
+    """Test that get_json works with prototype=None."""
+    import json
+
+    from zarr.core.buffer import cpu
+    from zarr.core.buffer.core import default_buffer_prototype
+    from zarr.core.sync import sync
+
+    store = sync(LocalStore.open(root=tmp_path))
+    data = {"foo": "bar", "number": 42}
+    key = "test.json"
+    sync(store.set(key, cpu.Buffer.from_bytes(json.dumps(data).encode())))
+
+    # Test with None (default)
+    result_none = store.get_json(key)
+    assert result_none == data
+
+    # Test with explicit prototype
+    result_proto = store.get_json(key, prototype=default_buffer_prototype())
+    assert result_proto == data

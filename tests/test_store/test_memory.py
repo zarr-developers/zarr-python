@@ -76,6 +76,76 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         np.testing.assert_array_equal(a[:3], 1)
         np.testing.assert_array_equal(a[3:], 0)
 
+    async def test_get_bytes_with_prototype_none(self, store: MemoryStore) -> None:
+        """Test that get_bytes_async works with prototype=None."""
+        from zarr.core.buffer.core import default_buffer_prototype
+
+        data = b"hello world"
+        key = "test_key"
+        await self.set(store, key, self.buffer_cls.from_bytes(data))
+
+        # Test with None (default)
+        result_none = await store.get_bytes_async(key)
+        assert result_none == data
+
+        # Test with explicit prototype
+        result_proto = await store.get_bytes_async(key, prototype=default_buffer_prototype())
+        assert result_proto == data
+
+    def test_get_bytes_sync_with_prototype_none(self, store: MemoryStore) -> None:
+        """Test that get_bytes works with prototype=None."""
+        from zarr.core.buffer.core import default_buffer_prototype
+        from zarr.core.sync import sync
+
+        data = b"hello world"
+        key = "test_key"
+        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
+
+        # Test with None (default)
+        result_none = store.get_bytes(key)
+        assert result_none == data
+
+        # Test with explicit prototype
+        result_proto = store.get_bytes(key, prototype=default_buffer_prototype())
+        assert result_proto == data
+
+    async def test_get_json_with_prototype_none(self, store: MemoryStore) -> None:
+        """Test that get_json_async works with prototype=None."""
+        import json
+
+        from zarr.core.buffer.core import default_buffer_prototype
+
+        data = {"foo": "bar", "number": 42}
+        key = "test.json"
+        await self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode()))
+
+        # Test with None (default)
+        result_none = await store.get_json_async(key)
+        assert result_none == data
+
+        # Test with explicit prototype
+        result_proto = await store.get_json_async(key, prototype=default_buffer_prototype())
+        assert result_proto == data
+
+    def test_get_json_sync_with_prototype_none(self, store: MemoryStore) -> None:
+        """Test that get_json works with prototype=None."""
+        import json
+
+        from zarr.core.buffer.core import default_buffer_prototype
+        from zarr.core.sync import sync
+
+        data = {"foo": "bar", "number": 42}
+        key = "test.json"
+        sync(self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode())))
+
+        # Test with None (default)
+        result_none = store.get_json(key)
+        assert result_none == data
+
+        # Test with explicit prototype
+        result_proto = store.get_json(key, prototype=default_buffer_prototype())
+        assert result_proto == data
+
 
 # TODO: fix this warning
 @pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")

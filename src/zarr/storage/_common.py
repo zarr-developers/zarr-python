@@ -228,6 +228,113 @@ class StorePath:
         """
         return await self.store.is_empty(self.path)
 
+    async def get_bytes_async(
+        self,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> bytes:
+        """
+        Retrieve raw bytes from the store path asynchronously.
+
+        This is a convenience method that wraps ``get()`` and converts the result
+        to bytes. The ``prototype`` parameter is optional and defaults to the
+        standard buffer prototype.
+
+        Parameters
+        ----------
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+            Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
+
+        Returns
+        -------
+        bytes
+            The raw bytes stored at this path.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the path does not exist in the store.
+
+        See Also
+        --------
+        get : Lower-level method that returns a Buffer object.
+        get_json_async : Asynchronous method for retrieving and parsing JSON data.
+
+        Examples
+        --------
+        >>> store = await MemoryStore.open()
+        >>> path = StorePath(store, "data")
+        >>> await path.set(Buffer.from_bytes(b"hello world"))
+        >>> data = await path.get_bytes_async()
+        >>> print(data)
+        b'hello world'
+        """
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return await self.store.get_bytes_async(
+            self.path, prototype=prototype, byte_range=byte_range
+        )
+
+    async def get_json_async(
+        self,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Any:
+        """
+        Retrieve and parse JSON data from the store path asynchronously.
+
+        This is a convenience method that retrieves bytes from the store and
+        parses them as JSON. The ``prototype`` parameter is optional and defaults
+        to the standard buffer prototype.
+
+        Parameters
+        ----------
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+            Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
+            Note: Using byte ranges with JSON may result in invalid JSON.
+
+        Returns
+        -------
+        Any
+            The parsed JSON data. This follows the behavior of ``json.loads()`` and
+            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the path does not exist in the store.
+        json.JSONDecodeError
+            If the stored data is not valid JSON.
+
+        See Also
+        --------
+        get_bytes_async : Method for retrieving raw bytes without parsing.
+        get : Lower-level method that returns a Buffer object.
+
+        Examples
+        --------
+        >>> store = await MemoryStore.open()
+        >>> path = StorePath(store, "zarr.json")
+        >>> metadata = {"zarr_format": 3, "node_type": "array"}
+        >>> await path.set(Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> data = await path.get_json_async()
+        >>> print(data)
+        {'zarr_format': 3, 'node_type': 'array'}
+        """
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return await self.store.get_json_async(
+            self.path, prototype=prototype, byte_range=byte_range
+        )
+
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))

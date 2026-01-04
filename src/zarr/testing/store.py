@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
@@ -23,7 +24,7 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.sync import _collect_aiterator
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage._utils import _normalize_byte_range_index
 from zarr.testing.utils import assert_bytes_equal
 
@@ -525,6 +526,44 @@ class StoreTests(Generic[S, B]):
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
+
+    async def test_get_bytes_async(self, store: S) -> None:
+        """
+        Test that the get_bytes_async method reads bytes.
+        """
+        data = b"hello world"
+        key = "zarr.json"
+        await self.set(store, key, self.buffer_cls.from_bytes(data))
+        assert await store.get_bytes_async(key, prototype=default_buffer_prototype()) == data
+
+    def test_get_bytes_sync(self, store: S) -> None:
+        """
+        Test that the get_bytes method reads bytes.
+        """
+        data = b"hello world"
+        key = "zarr.json"
+        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
+        assert store.get_bytes(key, prototype=default_buffer_prototype()) == data
+
+    async def test_get_json_async(self, store: S) -> None:
+        """
+        Test that the get_bytes_async method reads json.
+        """
+        data = {"foo": "bar"}
+        data_bytes = json.dumps(data).encode("utf-8")
+        key = "zarr.json"
+        await self.set(store, key, self.buffer_cls.from_bytes(data_bytes))
+        assert await store.get_json_async(key, prototype=default_buffer_prototype()) == data
+
+    def test_get_json_sync(self, store: S) -> None:
+        """
+        Test that the get_json method reads json.
+        """
+        data = {"foo": "bar"}
+        data_bytes = json.dumps(data).encode("utf-8")
+        key = "zarr.json"
+        sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
+        assert store.get_json(key, prototype=default_buffer_prototype()) == data
 
 
 class LatencyStore(WrapperStore[Store]):
