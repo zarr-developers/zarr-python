@@ -22,7 +22,7 @@ class StoreKwargs(TypedDict):
 
 
 class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
-    # store_cls is needed to do an isintsance check, so can't be a subscripted generic
+    # store_cls is needed to do an isinstance check, so can't be a subscripted generic
     store_cls = LoggingStore  # type: ignore[assignment]
     buffer_cls = cpu.Buffer
 

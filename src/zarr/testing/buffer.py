@@ -22,7 +22,7 @@ __all__ = [
 
 
 class TestNDArrayLike(np.ndarray):
-    """An example of a ndarray-like class"""
+    """An example of an ndarray-like class"""
 
     __test__ = False
 
