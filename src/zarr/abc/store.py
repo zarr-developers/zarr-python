@@ -248,7 +248,7 @@ class Store(ABC):
         --------
         >>> store = await MemoryStore.open()
         >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = await store.get_bytes_async("data", prototype=default_buffer_prototype())
+        >>> data = await store.get_bytes("data", prototype=default_buffer_prototype())
         >>> print(data)
         b'hello world'
         """
@@ -263,8 +263,8 @@ class Store(ABC):
         """
         Retrieve raw bytes from the store synchronously.
 
-        This is a synchronous wrapper around ``get_bytes_async()``. It should only
-        be called from non-async code. For async contexts, use ``get_bytes_async()``
+        This is a synchronous wrapper around ``get_bytes()``. It should only
+        be called from non-async code. For async contexts, use ``get_bytes()``
         instead.
 
         Parameters
@@ -294,8 +294,8 @@ class Store(ABC):
 
         See Also
         --------
-        get_bytes_async : Asynchronous version of this method.
-        get_json : Synchronous method for retrieving and parsing JSON data.
+        get_bytes : Asynchronous version of this method.
+        get_json_sync : Synchronous method for retrieving and parsing JSON data.
 
         Examples
         --------

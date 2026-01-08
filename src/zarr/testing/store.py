@@ -527,9 +527,9 @@ class StoreTests(Generic[S, B]):
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
 
-    async def test_get_bytes_async(self, store: S) -> None:
+    async def test_get_bytes(self, store: S) -> None:
         """
-        Test that the get_bytes_async method reads bytes.
+        Test that the get_bytes method reads bytes.
         """
         data = b"hello world"
         key = "zarr.json"
@@ -540,7 +540,7 @@ class StoreTests(Generic[S, B]):
 
     def test_get_bytes_sync(self, store: S) -> None:
         """
-        Test that the get_bytes method reads bytes.
+        Test that the get_bytes_sync method reads bytes.
         """
         data = b"hello world"
         key = "zarr.json"
@@ -549,7 +549,7 @@ class StoreTests(Generic[S, B]):
 
     async def test_get_json(self, store: S) -> None:
         """
-        Test that the get_bytes_async method reads json.
+        Test that the get_json method reads json.
         """
         data = {"foo": "bar"}
         data_bytes = json.dumps(data).encode("utf-8")

@@ -317,7 +317,7 @@ class LocalStore(Store):
         Retrieve raw bytes from the local store asynchronously.
 
         This is a convenience override that makes the ``prototype`` parameter optional
-        by defaulting to the standard buffer prototype. See the base ``Store.get_bytes_async``
+        by defaulting to the standard buffer prototype. See the base ``Store.get_bytes``
         for full documentation.
 
         Parameters
@@ -342,15 +342,15 @@ class LocalStore(Store):
 
         See Also
         --------
-        Store.get_bytes_async : Base implementation with full documentation.
-        get_bytes : Synchronous version of this method.
+        Store.get_bytes : Base implementation with full documentation.
+        get_bytes_sync : Synchronous version of this method.
 
         Examples
         --------
         >>> store = await LocalStore.open("data")
         >>> await store.set("data", Buffer.from_bytes(b"hello"))
         >>> # No need to specify prototype for LocalStore
-        >>> data = await store.get_bytes_async("data")
+        >>> data = await store.get_bytes("data")
         >>> print(data)
         b'hello'
         """
@@ -394,12 +394,12 @@ class LocalStore(Store):
 
         Warnings
         --------
-        Do not call this method from async functions. Use ``get_bytes_async()`` instead.
+        Do not call this method from async functions. Use ``get_bytes()`` instead.
 
         See Also
         --------
-        Store.get_bytes : Base implementation with full documentation.
-        get_bytes_async : Asynchronous version of this method.
+        Store.get_bytes_sync : Base implementation with full documentation.
+        get_bytes : Asynchronous version of this method.
 
         Examples
         --------
@@ -455,8 +455,8 @@ class LocalStore(Store):
         See Also
         --------
         Store.get_json : Base implementation with full documentation.
-        get_json : Synchronous version of this method.
-        get_bytes_async : Method for retrieving raw bytes without parsing.
+        get_json_sync : Synchronous version of this method.
+        get_bytes : Method for retrieving raw bytes without parsing.
 
         Examples
         --------
@@ -517,9 +517,9 @@ class LocalStore(Store):
 
         See Also
         --------
-        Store.get_json : Base implementation with full documentation.
+        Store.get_json_sync : Base implementation with full documentation.
         get_json : Asynchronous version of this method.
-        get_bytes : Method for retrieving raw bytes without parsing.
+        get_bytes_sync : Method for retrieving raw bytes without parsing.
 
         Examples
         --------
