@@ -3,10 +3,10 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
+from typing import Any, Literal, Self, TypeAlias
 
-from zarr.abc.store import ByteRequest, Store
-from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.abc.store import BufferLike, ByteRequest, Store
+from zarr.core.buffer import Buffer
 from zarr.core.common import (
     ANY_ACCESS_MODE,
     ZARR_JSON,
@@ -25,9 +25,6 @@ if _has_fsspec:
     from fsspec.mapping import FSMap
 else:
     FSMap = None
-
-if TYPE_CHECKING:
-    from zarr.core.buffer import BufferPrototype
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -145,7 +142,7 @@ class StorePath:
 
     async def get(
         self,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """
@@ -153,8 +150,12 @@ class StorePath:
 
         Parameters
         ----------
-        prototype : BufferPrototype, optional
-            The buffer prototype to use when reading the bytes.
+        prototype : BufferLike | None, optional
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer class for this store will be retrieved via the
+            store's ``_get_default_buffer_class`` method.
         byte_range : ByteRequest, optional
             The range of bytes to read.
 
@@ -164,7 +165,7 @@ class StorePath:
             The read bytes, or None if the key does not exist.
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = self.store._get_default_buffer_class()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
     async def set(self, value: Buffer) -> None:

@@ -3,16 +3,14 @@ from __future__ import annotations
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Self
 
-from zarr.abc.store import ByteRequest, Store
-from zarr.core.buffer import Buffer, gpu
+from zarr.abc.store import BufferLike, ByteRequest, Store
+from zarr.core.buffer import Buffer, BufferPrototype, gpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
-
-    from zarr.core.buffer import BufferPrototype
 
 
 logger = getLogger(__name__)
@@ -60,6 +58,10 @@ class MemoryStore(Store):
             read_only=read_only,
         )
 
+    def _get_default_buffer_class(self) -> type[Buffer]:
+        # docstring inherited
+        return default_buffer_prototype().buffer
+
     async def clear(self) -> None:
         # docstring inherited
         self._store_dict.clear()
@@ -80,25 +82,30 @@ class MemoryStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = self._get_default_buffer_class()
+        # Extract buffer class from BufferLike
+        if isinstance(prototype, BufferPrototype):
+            buffer_cls = prototype.buffer
+        else:
+            buffer_cls = prototype
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
             start, stop = _normalize_byte_range_index(value, byte_range)
-            return prototype.buffer.from_buffer(value[start:stop])
+            return buffer_cls.from_buffer(value[start:stop])
         except KeyError:
             return None
 
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
@@ -179,7 +186,7 @@ class MemoryStore(Store):
         self,
         key: str = "",
         *,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
@@ -224,14 +231,14 @@ class MemoryStore(Store):
         b'hello'
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = self._get_default_buffer_class()
         return await super().get_bytes(key, prototype=prototype, byte_range=byte_range)
 
     def get_bytes_sync(
         self,
         key: str = "",
         *,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
@@ -280,14 +287,14 @@ class MemoryStore(Store):
         b'hello'
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = self._get_default_buffer_class()
         return super().get_bytes_sync(key, prototype=prototype, byte_range=byte_range)
 
     async def get_json(
         self,
         key: str = "",
         *,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Any:
         """
@@ -339,14 +346,14 @@ class MemoryStore(Store):
         {'zarr_format': 3, 'node_type': 'array'}
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = self._get_default_buffer_class()
         return await super().get_json(key, prototype=prototype, byte_range=byte_range)
 
     def get_json_sync(
         self,
         key: str = "",
         *,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Any:
         """
@@ -402,7 +409,7 @@ class MemoryStore(Store):
         {'zarr_format': 3, 'node_type': 'array'}
         """
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = self._get_default_buffer_class()
         return super().get_json_sync(key, prototype=prototype, byte_range=byte_range)
 
 

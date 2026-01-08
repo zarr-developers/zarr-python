@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import (
+    BufferLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
@@ -16,6 +17,7 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.core.buffer.core import default_buffer_prototype
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -143,22 +145,31 @@ class ZipStore(Store):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.path == other.path
 
+    def _get_default_buffer_class(self) -> type[Buffer]:
+        # docstring inherited
+        return default_buffer_prototype().buffer
+
     def _get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferLike,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         if not self._is_open:
             self._sync_open()
+        # Extract buffer class from BufferLike
+        if isinstance(prototype, BufferPrototype):
+            buffer_cls = prototype.buffer
+        else:
+            buffer_cls = prototype
         # docstring inherited
         try:
             with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
-                    return prototype.buffer.from_bytes(f.read())
+                    return buffer_cls.from_bytes(f.read())
                 elif isinstance(byte_range, RangeByteRequest):
                     f.seek(byte_range.start)
-                    return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
+                    return buffer_cls.from_bytes(f.read(byte_range.end - f.tell()))
                 size = f.seek(0, os.SEEK_END)
                 if isinstance(byte_range, OffsetByteRequest):
                     f.seek(byte_range.offset)
@@ -166,17 +177,19 @@ class ZipStore(Store):
                     f.seek(max(0, size - byte_range.suffix))
                 else:
                     raise TypeError(f"Unexpected byte_range, got {byte_range}.")
-                return prototype.buffer.from_bytes(f.read())
+                return buffer_cls.from_bytes(f.read())
         except KeyError:
             return None
 
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
         assert isinstance(key, str)
 
         with self._lock:
@@ -184,10 +197,12 @@ class ZipStore(Store):
 
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
         out = []
         with self._lock:
             for key, byte_range in key_ranges:

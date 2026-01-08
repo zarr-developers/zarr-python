@@ -9,9 +9,8 @@ if TYPE_CHECKING:
 
     from zarr.abc.buffer import Buffer
     from zarr.abc.store import ByteRequest
-    from zarr.core.buffer import BufferPrototype
 
-from zarr.abc.store import Store
+from zarr.abc.store import BufferLike, Store
 
 T_Store = TypeVar("T_Store", bound=Store)
 
@@ -84,14 +83,18 @@ class WrapperStore(Store, Generic[T_Store]):
     def __repr__(self) -> str:
         return f"WrapperStore({self._store.__class__.__name__}, '{self._store}')"
 
+    def _get_default_buffer_class(self) -> type[Buffer]:
+        # docstring inherited
+        return self._store._get_default_buffer_class()
+
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self, key: str, prototype: BufferLike | None = None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         return await self._store.get(key, prototype, byte_range)
 
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         return await self._store.get_partial_values(prototype, key_ranges)
@@ -139,7 +142,7 @@ class WrapperStore(Store, Generic[T_Store]):
         self._store.close()
 
     async def _get_many(
-        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
+        self, requests: Iterable[tuple[str, BufferLike | None, ByteRequest | None]]
     ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
         async for req in self._store._get_many(requests):
             yield req

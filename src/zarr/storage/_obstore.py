@@ -7,12 +7,15 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Generic, Self, TypedDict, TypeVar
 
 from zarr.abc.store import (
+    BufferLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
     Store,
     SuffixByteRequest,
 )
+from zarr.core.buffer import BufferPrototype
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
 
@@ -23,7 +26,7 @@ if TYPE_CHECKING:
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.buffer import Buffer
 
 __all__ = ["ObjectStore"]
 
@@ -94,26 +97,40 @@ class ObjectStore(Store, Generic[T_Store]):
         state["store"] = pickle.loads(state["store"])
         self.__dict__.update(state)
 
+    def _get_default_buffer_class(self) -> type[Buffer]:
+        # docstring inherited
+        from zarr.core.buffer.core import default_buffer_prototype
+
+        return default_buffer_prototype().buffer
+
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self, key: str, prototype: BufferLike | None = None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         # docstring inherited
         import obstore as obs
 
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        # Extract buffer class from BufferLike
+        if isinstance(prototype, BufferPrototype):
+            buffer_cls = prototype.buffer
+        else:
+            buffer_cls = prototype
+
         try:
             if byte_range is None:
                 resp = await obs.get_async(self.store, key)
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+                return buffer_cls.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
             elif isinstance(byte_range, RangeByteRequest):
                 bytes = await obs.get_range_async(
                     self.store, key, start=byte_range.start, end=byte_range.end
                 )
-                return prototype.buffer.from_bytes(bytes)  # type: ignore[arg-type]
+                return buffer_cls.from_bytes(bytes)  # type: ignore[arg-type]
             elif isinstance(byte_range, OffsetByteRequest):
                 resp = await obs.get_async(
                     self.store, key, options={"range": {"offset": byte_range.offset}}
                 )
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+                return buffer_cls.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
             elif isinstance(byte_range, SuffixByteRequest):
                 # some object stores (Azure) don't support suffix requests. In this
                 # case, our workaround is to first get the length of the object and then
@@ -122,7 +139,7 @@ class ObjectStore(Store, Generic[T_Store]):
                     resp = await obs.get_async(
                         self.store, key, options={"range": {"suffix": byte_range.suffix}}
                     )
-                    return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+                    return buffer_cls.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
                 except obs.exceptions.NotSupportedError:
                     head_resp = await obs.head_async(self.store, key)
                     file_size = head_resp["size"]
@@ -133,7 +150,7 @@ class ObjectStore(Store, Generic[T_Store]):
                         start=file_size - suffix_len,
                         length=suffix_len,
                     )
-                    return prototype.buffer.from_bytes(buffer)  # type: ignore[arg-type]
+                    return buffer_cls.from_bytes(buffer)  # type: ignore[arg-type]
             else:
                 raise ValueError(f"Unexpected byte_range, got {byte_range}")
         except _ALLOWED_EXCEPTIONS:
@@ -141,10 +158,16 @@ class ObjectStore(Store, Generic[T_Store]):
 
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        # Extract buffer class from BufferLike - _get_partial_values expects BufferPrototype
+        if not isinstance(prototype, BufferPrototype):
+            # Convert raw buffer class to BufferPrototype
+            prototype = default_buffer_prototype()
         return await _get_partial_values(self.store, prototype=prototype, key_ranges=key_ranges)
 
     async def exists(self, key: str) -> bool:

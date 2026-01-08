@@ -12,11 +12,11 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.store import ByteRequest
-    from zarr.core.buffer.core import BufferPrototype
 
 import pytest
 
 from zarr.abc.store import (
+    BufferLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
@@ -244,6 +244,32 @@ class StoreTests(Generic[S, B]):
         with pytest.raises((ValueError, TypeError), match=r"Unexpected byte_range, got.*"):
             await store.get("c/0", prototype=default_buffer_prototype(), byte_range=(0, 2))  # type: ignore[arg-type]
 
+    @pytest.mark.parametrize(
+        "prototype",
+        [
+            None,  # Should use store's default buffer class
+            default_buffer_prototype(),  # BufferPrototype instance
+            default_buffer_prototype().buffer,  # Raw Buffer class (cpu.Buffer)
+        ],
+        ids=["prototype=None", "prototype=BufferPrototype", "prototype=Buffer"],
+    )
+    async def test_get_with_buffer_like(self, store: S, prototype: BufferLike | None) -> None:
+        """
+        Test that store.get() works with all BufferLike variants:
+        - None (uses store's default)
+        - BufferPrototype instance
+        - Raw Buffer class
+        """
+        data = b"\x01\x02\x03\x04"
+        key = "test_buffer_like"
+        data_buf = self.buffer_cls.from_bytes(data)
+        await self.set(store, key, data_buf)
+
+        # Get with the parametrized prototype
+        observed = await store.get(key, prototype=prototype)
+        assert observed is not None
+        assert_bytes_equal(observed, data_buf)
+
     async def test_get_many(self, store: S) -> None:
         """
         Ensure that multiple keys can be retrieved at once with the _get_many method.
@@ -369,6 +395,54 @@ class StoreTests(Generic[S, B]):
             result = await store.get(
                 key, prototype=default_buffer_prototype(), byte_range=byte_range
             )
+            assert result is not None
+            expected.append(result)
+
+        assert all(
+            obs.to_bytes() == exp.to_bytes() for obs, exp in zip(observed, expected, strict=True)
+        )
+
+    @pytest.mark.parametrize(
+        "prototype",
+        [
+            None,  # Should use store's default buffer class
+            default_buffer_prototype(),  # BufferPrototype instance
+            default_buffer_prototype().buffer,  # Raw Buffer class (cpu.Buffer)
+        ],
+        ids=["prototype=None", "prototype=BufferPrototype", "prototype=Buffer"],
+    )
+    async def test_get_partial_values_with_buffer_like(
+        self, store: S, prototype: BufferLike | None
+    ) -> None:
+        """
+        Test that store.get_partial_values() works with all BufferLike variants:
+        - None (uses store's default)
+        - BufferPrototype instance
+        - Raw Buffer class
+        """
+        key_ranges: list[tuple[str, ByteRequest | None]] = [
+            ("c/0", RangeByteRequest(0, 2)),
+            ("c/1", None),
+            ("c/2", SuffixByteRequest(2)),
+        ]
+
+        # put all of the data
+        for key, _ in key_ranges:
+            await self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
+
+        # read back with the parametrized prototype
+        observed_maybe = await store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
+
+        observed: list[Buffer] = []
+        expected: list[Buffer] = []
+
+        for obs in observed_maybe:
+            assert obs is not None
+            observed.append(obs)
+
+        for idx in range(len(observed)):
+            key, byte_range = key_ranges[idx]
+            result = await store.get(key, prototype=prototype, byte_range=byte_range)
             assert result is not None
             expected.append(result)
 
@@ -604,7 +678,7 @@ class LatencyStore(WrapperStore[Store]):
         await self._store.set(key, value)
 
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self, key: str, prototype: BufferLike | None = None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         """
         Add latency to the ``get`` method.
@@ -615,8 +689,12 @@ class LatencyStore(WrapperStore[Store]):
         ----------
         key : str
             The key to get
-        prototype : BufferPrototype
-            The BufferPrototype to use.
+        prototype : BufferLike | None, optional
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer class for this store will be retrieved via the
+            ``_get_default_buffer_class`` method.
         byte_range : ByteRequest, optional
             An optional byte range.
 

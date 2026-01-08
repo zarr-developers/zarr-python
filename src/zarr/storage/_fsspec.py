@@ -8,13 +8,15 @@ from typing import TYPE_CHECKING, Any
 from packaging.version import parse as parse_version
 
 from zarr.abc.store import (
+    BufferLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer import Buffer
+from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.errors import ZarrUserWarning
 from zarr.storage._common import _dereference_path
 
@@ -24,8 +26,6 @@ if TYPE_CHECKING:
     from fsspec import AbstractFileSystem
     from fsspec.asyn import AsyncFileSystem
     from fsspec.mapping import FSMap
-
-    from zarr.core.buffer import BufferPrototype
 
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -273,22 +273,34 @@ class FsspecStore(Store):
             and self.fs == other.fs
         )
 
+    def _get_default_buffer_class(self) -> type[Buffer]:
+        # docstring inherited
+        return default_buffer_prototype().buffer
+
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
             await self._open()
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        # Extract buffer class from BufferLike
+        if isinstance(prototype, BufferPrototype):
+            buffer_cls = prototype.buffer
+        else:
+            buffer_cls = prototype
+
         path = _dereference_path(self.path, key)
 
         try:
             if byte_range is None:
-                value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
+                value = buffer_cls.from_bytes(await self.fs._cat_file(path))
             elif isinstance(byte_range, RangeByteRequest):
-                value = prototype.buffer.from_bytes(
+                value = buffer_cls.from_bytes(
                     await self.fs._cat_file(
                         path,
                         start=byte_range.start,
@@ -296,11 +308,11 @@ class FsspecStore(Store):
                     )
                 )
             elif isinstance(byte_range, OffsetByteRequest):
-                value = prototype.buffer.from_bytes(
+                value = buffer_cls.from_bytes(
                     await self.fs._cat_file(path, start=byte_range.offset, end=None)
                 )
             elif isinstance(byte_range, SuffixByteRequest):
-                value = prototype.buffer.from_bytes(
+                value = buffer_cls.from_bytes(
                     await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
                 )
             else:
@@ -310,7 +322,7 @@ class FsspecStore(Store):
         except OSError as e:
             if "not satisfiable" in str(e):
                 # this is an s3-specific condition we probably don't want to leak
-                return prototype.buffer.from_bytes(b"")
+                return buffer_cls.from_bytes(b"")
             raise
         else:
             return value
@@ -367,10 +379,18 @@ class FsspecStore(Store):
 
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        # Extract buffer class from BufferLike
+        if isinstance(prototype, BufferPrototype):
+            buffer_cls = prototype.buffer
+        else:
+            buffer_cls = prototype
+
         if key_ranges:
             # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRequest.
             key_ranges = list(key_ranges)
@@ -403,7 +423,7 @@ class FsspecStore(Store):
             if isinstance(r, Exception) and not isinstance(r, self.allowed_exceptions):
                 raise r
 
-        return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
+        return [None if isinstance(r, Exception) else buffer_cls.from_bytes(r) for r in res]
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
