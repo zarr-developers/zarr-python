@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeGuard, TypeVar
 
 from typing_extensions import ReadOnly, TypedDict
 
 from zarr.abc.metadata import Metadata
+from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import NamedConfig, concurrent_map
 from zarr.core.config import config
@@ -15,7 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
     from typing import Self
 
-    from zarr.abc.store import ByteGetter, ByteSetter, Store
+    from zarr.abc.store import Store
     from zarr.core.array_spec import ArraySpec
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -28,10 +30,13 @@ __all__ = [
     "ArrayBytesCodecPartialDecodeMixin",
     "ArrayBytesCodecPartialEncodeMixin",
     "BaseCodec",
+    "BatchInfo",
     "BytesBytesCodec",
     "CodecInput",
     "CodecOutput",
     "CodecPipeline",
+    "ReadBatchInfo",
+    "WriteBatchInfo",
 ]
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
@@ -57,6 +62,58 @@ CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
 # This covers v2 and v3
 CodecJSON = str | Mapping[str, object]
 """The widest type of JSON-like input that could specify a codec."""
+
+
+TByteOperator = TypeVar("TByteOperator", bound="ByteGetter")
+
+
+@dataclass(frozen=True)
+class BatchInfo(Generic[TByteOperator]):
+    """Information about a chunk to be read/written from/to the store.
+
+    This class is generic over the byte operator type:
+    - BatchInfo[ByteGetter] (aliased as ReadBatchInfo) for read operations
+    - BatchInfo[ByteSetter] (aliased as WriteBatchInfo) for write operations
+
+    Attributes
+    ----------
+    byte_operator : TByteOperator
+        Used to fetch/write the chunk bytes from/to the store.
+        For reads, this is a ByteGetter. For writes, this is a ByteSetter.
+    array_spec : ArraySpec
+        Specification of the chunk array (shape, dtype, fill value, etc.).
+    chunk_selection : SelectorTuple
+        Slice selection determining which parts of the chunk to read/encode.
+    out_selection : SelectorTuple
+        Slice selection determining where in the output/value array the chunk data will be written/is located.
+    is_complete_chunk : bool
+        Whether this represents a complete chunk (vs. a partial chunk at array boundaries).
+    """
+
+    byte_operator: TByteOperator
+    array_spec: ArraySpec
+    chunk_selection: SelectorTuple
+    out_selection: SelectorTuple
+    is_complete_chunk: bool
+
+    def __iter__(self) -> Iterator[Any]:
+        """Iterate over fields for backwards compatibility with tuple unpacking."""
+        yield self.byte_operator
+        yield self.array_spec
+        yield self.chunk_selection
+        yield self.out_selection
+        yield self.is_complete_chunk
+
+    def __getitem__(self, index: int) -> Any:
+        """Index access for backwards compatibility with tuple indexing."""
+        return list(self)[index]
+
+
+ReadBatchInfo: TypeAlias = BatchInfo[ByteGetter]
+"""Information about a chunk to be read from the store and decoded."""
+
+WriteBatchInfo: TypeAlias = BatchInfo[ByteSetter]
+"""Information about a chunk to be encoded and written to the store."""
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
@@ -412,7 +469,7 @@ class CodecPipeline:
     @abstractmethod
     async def read(
         self,
-        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        batch_info: Iterable[ReadBatchInfo],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
@@ -421,25 +478,24 @@ class CodecPipeline:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]]
+        batch_info : Iterable[ReadBatchInfo]
             Ordered set of information about the chunks.
-            The first slice selection determines which parts of the chunk will be fetched.
-            The second slice selection determines where in the output array the chunk data will be written.
-            The ByteGetter is used to fetch the necessary bytes.
-            The chunk spec contains information about the construction of an array from the bytes.
+            See ReadBatchInfo for details on the fields.
 
             If the Store returns ``None`` for a chunk, then the chunk was not
             written and the implementation must set the values of that chunk (or
             ``out``) to the fill value for the array.
 
         out : NDBuffer
+        drop_axes : tuple[int, ...]
+            Axes to drop from the chunk data when reading from the value array.
         """
         ...
 
     @abstractmethod
     async def write(
         self,
-        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        batch_info: Iterable[WriteBatchInfo],
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
@@ -449,13 +505,13 @@ class CodecPipeline:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]]
+        batch_info : Iterable[WriteBatchInfo]
             Ordered set of information about the chunks.
-            The first slice selection determines which parts of the chunk will be encoded.
-            The second slice selection determines where in the value array the chunk data is located.
-            The ByteSetter is used to fetch and write the necessary bytes.
-            The chunk spec contains information about the chunk.
+            See WriteBatchInfo for details on the fields.
         value : NDBuffer
+            The data to write.
+        drop_axes : tuple[int, ...]
+            Axes to drop from the chunk data when writing to the output array.
         """
         ...
 
