@@ -4,6 +4,10 @@ ci:
   autofix_commit_msg: "style: pre-commit fixes"
   autofix_prs: false
 default_stages: [pre-commit, pre-push]
+
+default_language_version:
+  python: python3.11
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.3
