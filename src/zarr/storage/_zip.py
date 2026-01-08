@@ -17,7 +17,6 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, BufferPrototype
-from zarr.core.buffer.core import default_buffer_prototype
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -144,10 +143,6 @@ class ZipStore(Store):
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.path == other.path
-
-    def _get_default_buffer_class(self) -> type[Buffer]:
-        # docstring inherited
-        return default_buffer_prototype().buffer
 
     def _get(
         self,

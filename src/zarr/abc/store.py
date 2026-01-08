@@ -8,6 +8,7 @@ from itertools import starmap
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.sync import sync
 
 if TYPE_CHECKING:
@@ -184,12 +185,11 @@ class Store(ABC):
         """Equality comparison."""
         ...
 
-    @abstractmethod
     def _get_default_buffer_class(self) -> type[Buffer]:
         """
-        Get the default buffer class for this store.
+        Get the default buffer class.
         """
-        ...
+        return default_buffer_prototype().buffer
 
     @abstractmethod
     async def get(

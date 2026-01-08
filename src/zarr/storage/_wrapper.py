@@ -83,10 +83,6 @@ class WrapperStore(Store, Generic[T_Store]):
     def __repr__(self) -> str:
         return f"WrapperStore({self._store.__class__.__name__}, '{self._store}')"
 
-    def _get_default_buffer_class(self) -> type[Buffer]:
-        # docstring inherited
-        return self._store._get_default_buffer_class()
-
     async def get(
         self, key: str, prototype: BufferLike | None = None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:

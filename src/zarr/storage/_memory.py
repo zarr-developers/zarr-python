@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import BufferLike, ByteRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype, gpu
-from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_byte_range_index
 
@@ -57,10 +56,6 @@ class MemoryStore(Store):
             store_dict=self._store_dict,
             read_only=read_only,
         )
-
-    def _get_default_buffer_class(self) -> type[Buffer]:
-        # docstring inherited
-        return default_buffer_prototype().buffer
 
     async def clear(self) -> None:
         # docstring inherited

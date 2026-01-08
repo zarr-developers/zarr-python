@@ -16,7 +16,6 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, BufferPrototype
-from zarr.core.buffer.core import default_buffer_prototype
 from zarr.errors import ZarrUserWarning
 from zarr.storage._common import _dereference_path
 
@@ -272,10 +271,6 @@ class FsspecStore(Store):
             and self.read_only == other.read_only
             and self.fs == other.fs
         )
-
-    def _get_default_buffer_class(self) -> type[Buffer]:
-        # docstring inherited
-        return default_buffer_prototype().buffer
 
     async def get(
         self,

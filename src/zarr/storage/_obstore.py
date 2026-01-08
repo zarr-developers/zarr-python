@@ -97,12 +97,6 @@ class ObjectStore(Store, Generic[T_Store]):
         state["store"] = pickle.loads(state["store"])
         self.__dict__.update(state)
 
-    def _get_default_buffer_class(self) -> type[Buffer]:
-        # docstring inherited
-        from zarr.core.buffer.core import default_buffer_prototype
-
-        return default_buffer_prototype().buffer
-
     async def get(
         self, key: str, prototype: BufferLike | None = None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
