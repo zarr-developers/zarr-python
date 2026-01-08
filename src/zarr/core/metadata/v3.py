@@ -117,7 +117,7 @@ def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
     elif isinstance(data, Iterable) and all(isinstance(x, type(None) | str) for x in data):
         return tuple(data)
     else:
-        msg = f"Expected either None or a iterable of str, got {type(data)}"
+        msg = f"Expected either None or an iterable of str, got {type(data)}"
         raise TypeError(msg)
 
 

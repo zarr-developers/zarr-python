@@ -940,7 +940,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         """
-        Read a JSON-serializable value as a np.void.
+        Read a JSON-serializable value as an np.void.
 
         Parameters
         ----------
