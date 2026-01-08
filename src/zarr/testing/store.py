@@ -23,7 +23,7 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage._utils import _normalize_byte_range_index
 from zarr.testing.utils import assert_bytes_equal
@@ -202,6 +202,15 @@ class StoreTests(Generic[S, B]):
         ):
             await reader.delete("foo")
 
+    @pytest.mark.parametrize(
+        "prototype",
+        [
+            None,  # Should use store's default buffer class
+            default_buffer_prototype(),  # BufferPrototype instance
+            default_buffer_prototype().buffer,  # Raw Buffer class (cpu.Buffer)
+        ],
+        ids=["prototype=None", "prototype=BufferPrototype", "prototype=Buffer"],
+    )
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize(
         ("data", "byte_range"),
@@ -213,13 +222,15 @@ class StoreTests(Generic[S, B]):
             (b"", None),
         ],
     )
-    async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRequest) -> None:
+    async def test_get(
+        self, store: S, key: str, data: bytes, byte_range: ByteRequest, prototype: BufferLike | None
+    ) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
         """
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
-        observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
+        observed = await store.get(key, prototype=prototype, byte_range=byte_range)
         start, stop = _normalize_byte_range_index(data_buf, byte_range=byte_range)
         expected = data_buf[start:stop]
         assert_bytes_equal(observed, expected)
@@ -243,32 +254,6 @@ class StoreTests(Generic[S, B]):
         await self.set(store, "c/0", data_buf)
         with pytest.raises((ValueError, TypeError), match=r"Unexpected byte_range, got.*"):
             await store.get("c/0", prototype=default_buffer_prototype(), byte_range=(0, 2))  # type: ignore[arg-type]
-
-    @pytest.mark.parametrize(
-        "prototype",
-        [
-            None,  # Should use store's default buffer class
-            default_buffer_prototype(),  # BufferPrototype instance
-            default_buffer_prototype().buffer,  # Raw Buffer class (cpu.Buffer)
-        ],
-        ids=["prototype=None", "prototype=BufferPrototype", "prototype=Buffer"],
-    )
-    async def test_get_with_buffer_like(self, store: S, prototype: BufferLike | None) -> None:
-        """
-        Test that store.get() works with all BufferLike variants:
-        - None (uses store's default)
-        - BufferPrototype instance
-        - Raw Buffer class
-        """
-        data = b"\x01\x02\x03\x04"
-        key = "test_buffer_like"
-        data_buf = self.buffer_cls.from_bytes(data)
-        await self.set(store, key, data_buf)
-
-        # Get with the parametrized prototype
-        observed = await store.get(key, prototype=prototype)
-        assert observed is not None
-        assert_bytes_equal(observed, data_buf)
 
     async def test_get_many(self, store: S) -> None:
         """
@@ -359,6 +344,15 @@ class StoreTests(Generic[S, B]):
             assert (await self.get(store, k)).to_bytes() == v.to_bytes()
 
     @pytest.mark.parametrize(
+        "prototype",
+        [
+            None,  # Should use store's default buffer class
+            default_buffer_prototype(),  # BufferPrototype instance
+            default_buffer_prototype().buffer,  # Raw Buffer class (cpu.Buffer)
+        ],
+        ids=["prototype=None", "prototype=BufferPrototype", "prototype=Buffer"],
+    )
+    @pytest.mark.parametrize(
         "key_ranges",
         [
             [],
@@ -372,65 +366,13 @@ class StoreTests(Generic[S, B]):
         ],
     )
     async def test_get_partial_values(
-        self, store: S, key_ranges: list[tuple[str, ByteRequest]]
+        self, store: S, key_ranges: list[tuple[str, ByteRequest]], prototype: BufferLike | None
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:
             await self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
 
         # read back just part of it
-        observed_maybe = await store.get_partial_values(
-            prototype=default_buffer_prototype(), key_ranges=key_ranges
-        )
-
-        observed: list[Buffer] = []
-        expected: list[Buffer] = []
-
-        for obs in observed_maybe:
-            assert obs is not None
-            observed.append(obs)
-
-        for idx in range(len(observed)):
-            key, byte_range = key_ranges[idx]
-            result = await store.get(
-                key, prototype=default_buffer_prototype(), byte_range=byte_range
-            )
-            assert result is not None
-            expected.append(result)
-
-        assert all(
-            obs.to_bytes() == exp.to_bytes() for obs, exp in zip(observed, expected, strict=True)
-        )
-
-    @pytest.mark.parametrize(
-        "prototype",
-        [
-            None,  # Should use store's default buffer class
-            default_buffer_prototype(),  # BufferPrototype instance
-            default_buffer_prototype().buffer,  # Raw Buffer class (cpu.Buffer)
-        ],
-        ids=["prototype=None", "prototype=BufferPrototype", "prototype=Buffer"],
-    )
-    async def test_get_partial_values_with_buffer_like(
-        self, store: S, prototype: BufferLike | None
-    ) -> None:
-        """
-        Test that store.get_partial_values() works with all BufferLike variants:
-        - None (uses store's default)
-        - BufferPrototype instance
-        - Raw Buffer class
-        """
-        key_ranges: list[tuple[str, ByteRequest | None]] = [
-            ("c/0", RangeByteRequest(0, 2)),
-            ("c/1", None),
-            ("c/2", SuffixByteRequest(2)),
-        ]
-
-        # put all of the data
-        for key, _ in key_ranges:
-            await self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
-
-        # read back with the parametrized prototype
         observed_maybe = await store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
 
         observed: list[Buffer] = []
@@ -442,7 +384,7 @@ class StoreTests(Generic[S, B]):
 
         for idx in range(len(observed)):
             key, byte_range = key_ranges[idx]
-            result = await store.get(key, prototype=prototype, byte_range=byte_range)
+            result = await store.get(key, prototype=cpu.Buffer, byte_range=byte_range)
             assert result is not None
             expected.append(result)
 
