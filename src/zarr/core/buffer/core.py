@@ -315,7 +315,7 @@ class NDBuffer:
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by an underlying ndarray-like instance that represents
+    An NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
@@ -368,7 +368,7 @@ class NDBuffer:
 
         Notes
         -----
-        A subclass can overwrite this method to create a ndarray-like object
+        A subclass can overwrite this method to create an ndarray-like object
         other then the default Numpy array.
         """
         if cls is NDBuffer:
@@ -416,7 +416,7 @@ class NDBuffer:
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
-        """Create a new buffer of a ndarray-like object
+        """Create a new buffer of an ndarray-like object
 
         Parameters
         ----------
