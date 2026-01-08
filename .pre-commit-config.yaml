@@ -10,7 +10,7 @@ default_language_version:
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.3
+    rev: v0.14.10
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
@@ -27,7 +27,7 @@ repos:
         exclude: mkdocs.yml
       - id: trailing-whitespace
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.2
+    rev: v1.19.1
     hooks:
       - id: mypy
         files: src|tests
@@ -46,7 +46,7 @@ repos:
           - hypothesis
           - s3fs
   - repo: https://github.com/scientific-python/cookie
-    rev: 2025.10.20
+    rev: 2025.11.21
     hooks:
       - id: sp-repo-review
   - repo: https://github.com/pre-commit/pygrep-hooks
@@ -55,7 +55,7 @@ repos:
       - id: rst-directive-colons
       - id: rst-inline-touching-normal
   - repo: https://github.com/numpy/numpydoc
-    rev: v1.9.0
+    rev: v1.10.0
     hooks:
       - id: numpydoc-validation
   - repo: https://github.com/twisted/towncrier
