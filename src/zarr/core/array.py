@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
@@ -40,7 +40,16 @@ from zarr.core.buffer import (
     default_buffer_prototype,
 )
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
-from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
+from zarr.core.chunk_grids import (
+    ChunkGrid,
+    ChunksLike,
+    ChunksType,
+    RegularChunkGrid,
+    RegularChunks,
+    _auto_partition,
+    _normalize_chunks,
+    resolve_chunk_spec,
+)
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -657,9 +666,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if isinstance(dtype_parsed, HasItemSize):
             item_size = dtype_parsed.item_size
         if chunks:
-            _chunks = normalize_chunks(chunks, shape, item_size)
+            _chunks = _normalize_chunks(chunks, shape, item_size)
         else:
-            _chunks = normalize_chunks(chunk_shape, shape, item_size)
+            _chunks = _normalize_chunks(chunk_shape, shape, item_size)
         config_parsed = parse_array_config(config)
 
         result: AnyAsyncArray
@@ -738,7 +747,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _create_metadata_v3(
         shape: ShapeLike,
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_shape: tuple[int, ...],
+        chunk_grid: ChunkGrid,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
@@ -747,6 +756,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> ArrayV3Metadata:
         """
         Create an instance of ArrayV3Metadata.
+
+        Parameters
+        ----------
+        chunk_grid : ChunkGrid
+            Chunk grid to use for the array. Must be either RegularChunkGrid
+            or RectilinearChunkGrid.
         """
         filters: tuple[ArrayArrayCodec, ...]
         compressors: tuple[BytesBytesCodec, ...]
@@ -774,11 +789,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             fill_value_parsed = fill_value
 
-        chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape)
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=chunk_grid_parsed,
+            chunk_grid=chunk_grid,
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value_parsed,
             codecs=codecs_parsed,  # type: ignore[arg-type]
@@ -822,10 +836,13 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
             )
 
+        # Create chunk_grid from chunk_shape
+        chunk_grid = RegularChunkGrid(chunk_shape=chunk_shape)
+
         metadata = cls._create_metadata_v3(
             shape=shape,
             dtype=dtype,
-            chunk_shape=chunk_shape,
+            chunk_grid=chunk_grid,
             fill_value=fill_value,
             chunk_key_encoding=chunk_key_encoding,
             codecs=codecs,
@@ -1035,17 +1052,33 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.metadata.shape
 
     @property
-    def chunks(self) -> tuple[int, ...]:
-        """Returns the chunk shape of the Array.
-        If sharding is used the inner chunk shape is returned.
+    def chunks(self) -> ChunksType:
+        """Returns the chunk specification of the Array.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Returns either RegularChunks (for uniform chunk sizes) or RectilinearChunks
+        (for variable chunk sizes per dimension). Both types behave like tuples but
+        provide richer semantics including named access when dimension_names are available.
+
+        For arrays using RegularChunkGrid: returns RegularChunks with uniform chunk sizes.
+        If sharding is used, the inner chunk shape is returned.
+
+        For arrays using RectilinearChunkGrid: returns RectilinearChunks where each
+        element is a tuple containing the chunk sizes along that dimension (not RLE encoded).
 
         Returns
         -------
-        tuple[int, ...]:
-            The chunk shape of the Array.
+        ChunksType
+            RegularChunks for regular chunks or RectilinearChunks for variable chunks
+
+        Examples
+        --------
+        >>> arr = zarr.create_array(shape=(100, 200), chunks=(10, 20))
+        >>> arr.chunks
+        RegularChunks((10, 20))
+        >>> isinstance(arr.chunks, RegularChunks)
+        True
+        >>> tuple(arr.chunks)
+        (10, 20)
         """
         return self.metadata.chunks
 
@@ -1244,12 +1277,23 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         The shape of the chunk grid for this array.
 
+        For arrays with sharding, this returns the grid of inner chunks, not shards.
+        For arrays with RectilinearChunkGrid, this returns the grid shape.
+
         Returns
         -------
         tuple[int, ...]
             The shape of the chunk grid for this array.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
+        chunks = self.chunks
+        # Handle 0-dimensional arrays
+        if len(chunks) == 0:
+            return ()
+        # For RegularChunkGrid (or sharded), use RegularChunks type check
+        if isinstance(chunks, RegularChunks):
+            return tuple(starmap(ceildiv, zip(self.shape, chunks, strict=True)))
+        # For RectilinearChunkGrid, use the chunk_grid method
+        return self.metadata.chunk_grid.get_chunk_grid_shape(self.shape)
 
     @property
     def _shard_grid_shape(self) -> tuple[int, ...]:
@@ -1264,7 +1308,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The shape of the shard grid for this array.
         """
         if self.shards is None:
-            shard_shape = self.chunks
+            shard_shape: tuple[int, ...] | ChunksType = self.chunks
         else:
             shard_shape = self.shards
         return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
@@ -1340,8 +1384,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if self.shards is None:
             chunks_per_shard = 1
         else:
+            # Sharding only applies to RegularChunkGrid, so chunks is tuple[int, ...]
+            chunks = cast(tuple[int, ...], self.chunks)
             chunks_per_shard = product(
-                tuple(a // b for a, b in zip(self.shards, self.chunks, strict=True))
+                tuple(a // b for a, b in zip(self.shards, chunks, strict=True))
             )
         return (await self._nshards_initialized()) * chunks_per_shard
 
@@ -1856,7 +1902,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if delete_outside_chunks:
             # Remove all chunks outside of the new shape
             old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
-            new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
+            new_chunk_coords = set(new_metadata.chunk_grid.all_chunk_coords(new_shape))
 
             async def _delete_key(key: str) -> None:
                 await (self.store_path / key).delete()
@@ -2350,17 +2396,20 @@ class Array(Generic[T_ArrayMetadata]):
         self.resize(value)
 
     @property
-    def chunks(self) -> tuple[int, ...]:
-        """Returns a tuple of integers describing the length of each dimension of a chunk of the array.
-        If sharding is used the inner chunk shape is returned.
+    def chunks(self) -> tuple[int, ...] | tuple[tuple[int, ...], ...]:
+        """Returns the chunk specification of the Array.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        For arrays using RegularChunkGrid: returns a tuple of ints representing
+        the uniform chunk shape. If sharding is used, the inner chunk shape is returned.
+
+        For arrays using RectilinearChunkGrid: returns a tuple of tuples, where
+        each inner tuple contains the chunk sizes along that dimension (not RLE encoded).
 
         Returns
         -------
-        tuple
-            A tuple of integers representing the length of each dimension of a chunk.
+        tuple[int, ...] | tuple[tuple[int, ...], ...]
+            For regular chunks: (chunk_size_dim0, chunk_size_dim1, ...)
+            For rectilinear chunks: ((sizes_dim0), (sizes_dim1), ...)
         """
         return self.async_array.chunks
 
@@ -4311,6 +4360,7 @@ async def from_array(
     write_data: bool = True,
     name: str | None = None,
     chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
+    chunk_grid: ChunkGrid | None = None,
     shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
@@ -4351,6 +4401,10 @@ async def from_array(
         - tuple[int, ...]: A tuple of integers representing the chunk shape.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
+
+        .. note::
+            Variable chunking (RectilinearChunkGrid) is not supported when creating arrays from
+            existing data. Use regular chunking (uniform chunk sizes) instead.
     shards : tuple[int, ...], optional
         Shard shape of the array.
         Following values are supported:
@@ -4499,38 +4553,89 @@ async def from_array(
     config_parsed = parse_array_config(config)
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
 
-    (
-        chunks,
-        shards,
-        filters,
-        compressors,
-        serializer,
-        fill_value,
-        order,
-        zarr_format,
-        chunk_key_encoding,
-        dimension_names,
-    ) = _parse_keep_array_attr(
-        data=data,
-        chunks=chunks,
-        shards=shards,
-        filters=filters,
-        compressors=compressors,
-        serializer=serializer,
-        fill_value=fill_value,
-        order=order,
-        zarr_format=zarr_format,
-        chunk_key_encoding=chunk_key_encoding,
-        dimension_names=dimension_names,
-    )
-    if not hasattr(data, "dtype") or not hasattr(data, "shape"):
-        data = np.array(data)
+    # If chunk_grid is provided (internal call from create_array), use it directly
+    # Otherwise, resolve chunks to chunk_grid
+    if chunk_grid is None:
+        (
+            chunks,
+            shards,
+            filters,
+            compressors,
+            serializer,
+            fill_value,
+            order,
+            zarr_format,
+            chunk_key_encoding,
+            dimension_names,
+        ) = _parse_keep_array_attr(  # type: ignore[assignment]
+            data=data,
+            chunks=chunks,
+            shards=shards,
+            filters=filters,
+            compressors=compressors,
+            serializer=serializer,
+            fill_value=fill_value,
+            order=order,
+            zarr_format=zarr_format,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+        )
+
+        if not hasattr(data, "dtype") or not hasattr(data, "shape"):
+            data = np.array(data)
+
+        # Resolve chunks to chunk_grid
+        # zarr_format is guaranteed to be non-None after _parse_keep_array_attr
+        zdtype = parse_dtype(data.dtype, zarr_format=zarr_format)
+        item_size = 1
+        if isinstance(zdtype, HasItemSize):
+            item_size = zdtype.item_size
+
+        resolved = resolve_chunk_spec(
+            chunks=cast(ChunksLike, chunks),
+            shards=shards,
+            shape=data.shape,
+            dtype_itemsize=item_size,
+            zarr_format=zarr_format,
+            has_data=True,
+        )
+        chunk_grid = resolved.chunk_grid
+        shards = resolved.shards
+    else:
+        # chunk_grid provided - just parse other attributes
+        (
+            _,  # ignore chunks from _parse_keep_array_attr
+            shards,
+            filters,
+            compressors,
+            serializer,
+            fill_value,
+            order,
+            zarr_format,
+            chunk_key_encoding,
+            dimension_names,
+        ) = _parse_keep_array_attr(
+            data=data,
+            chunks="auto",  # dummy value, will be ignored
+            shards=shards,
+            filters=filters,
+            compressors=compressors,
+            serializer=serializer,
+            fill_value=fill_value,
+            order=order,
+            zarr_format=zarr_format,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+        )
+
+        if not hasattr(data, "dtype") or not hasattr(data, "shape"):
+            data = np.array(data)
 
     result = await init_array(
         store_path=store_path,
         shape=data.shape,
         dtype=data.dtype,
-        chunks=chunks,
+        chunk_grid=chunk_grid,
         shards=shards,
         filters=filters,
         compressors=compressors,
@@ -4579,7 +4684,7 @@ async def init_array(
     store_path: StorePath,
     shape: ShapeLike,
     dtype: ZDTypeLike,
-    chunks: tuple[int, ...] | Literal["auto"] = "auto",
+    chunk_grid: ChunkGrid,
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -4603,11 +4708,15 @@ async def init_array(
         Shape of the array.
     dtype : ZDTypeLike
         Data type of the array.
-    chunks : tuple[int, ...], optional
-        Chunk shape of the array.
-        If not specified, default are guessed based on the shape and dtype.
-    shards : tuple[int, ...], optional
+    chunk_grid : ChunkGrid
+        The chunk grid to use for the array. This is a resolved ChunkGrid instance
+        (RegularChunkGrid or RectilinearChunkGrid) that defines how the array is chunked.
+        This parameter is typically provided by create_array() after resolving the user's
+        chunks specification via resolve_chunk_spec().
+    shards : ShardsLike | None, optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
+        When sharding is enabled, the chunk_grid represents the inner chunk layout within
+        each shard, and shards defines the outer shard size.
     filters : Iterable[Codec] | Literal["auto"], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -4699,13 +4808,36 @@ async def init_array(
     if isinstance(zdtype, HasItemSize):
         item_size = zdtype.item_size
 
-    shard_shape_parsed, chunk_shape_parsed = _auto_partition(
-        array_shape=shape_parsed,
-        shard_shape=shards,
-        chunk_shape=chunks,
-        item_size=item_size,
-    )
-    chunks_out: tuple[int, ...]
+    # Extract chunk shape from chunk_grid
+    # For RegularChunkGrid, this is straightforward
+    # For RectilinearChunkGrid, we can't use it directly (should have been caught earlier)
+    if isinstance(chunk_grid, RegularChunkGrid):
+        chunk_shape_from_grid = chunk_grid.chunk_shape
+    else:
+        # RectilinearChunkGrid - this should only happen for v3 without sharding
+        # We'll handle this in the v3 branch
+        chunk_shape_from_grid = None
+
+    # Handle sharding
+    shard_shape_parsed: tuple[int, ...] | None
+    if shards is not None:
+        # Normalize shards
+        if isinstance(shards, tuple):
+            shard_shape_parsed = shards
+        elif isinstance(shards, dict):
+            # ShardsConfigParam - extract the shape
+            shard_shape_parsed = shards.get("shape")
+        else:  # shards == "auto"
+            # Auto-compute shard shape using _auto_partition logic
+            shard_shape_parsed, _ = _auto_partition(
+                array_shape=shape_parsed,
+                shard_shape="auto",
+                chunk_shape=chunk_shape_from_grid or "auto",
+                item_size=item_size,
+            )
+    else:
+        shard_shape_parsed = None
+
     meta: ArrayV2Metadata | ArrayV3Metadata
     if zarr_format == 2:
         if shard_shape_parsed is not None:
@@ -4717,6 +4849,11 @@ async def init_array(
             raise ValueError(msg)
         if serializer != "auto":
             raise ValueError("Zarr format 2 arrays do not support `serializer`.")
+        if not isinstance(chunk_grid, RegularChunkGrid):
+            raise ValueError(
+                "Zarr format 2 only supports RegularChunkGrid. "
+                f"Got {type(chunk_grid).__name__} instead."
+            )
 
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
             compressor=compressors, filters=filters, dtype=zdtype
@@ -4732,7 +4869,7 @@ async def init_array(
         meta = AsyncArray._create_metadata_v2(
             shape=shape_parsed,
             dtype=zdtype,
-            chunks=chunk_shape_parsed,
+            chunks=chunk_grid.chunk_shape,  # Extract from RegularChunkGrid
             dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
             order=order_parsed,
@@ -4749,25 +4886,41 @@ async def init_array(
         )
         sub_codecs = cast("tuple[Codec, ...]", (*array_array, array_bytes, *bytes_bytes))
         codecs_out: tuple[Codec, ...]
+        chunk_grid_for_metadata: ChunkGrid
+
         if shard_shape_parsed is not None:
+            # Sharding enabled: chunk_grid represents inner chunks, create outer grid for shards
+            if not isinstance(chunk_grid, RegularChunkGrid):
+                raise ValueError(
+                    "Sharding requires RegularChunkGrid for inner chunks. "
+                    f"Got {type(chunk_grid).__name__} instead."
+                )
+
             index_location = None
             if isinstance(shards, dict):
                 index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
             if index_location is None:
                 index_location = ShardingCodecIndexLocation.end
+
+            # Create sharding codec with inner chunk shape
             sharding_codec = ShardingCodec(
-                chunk_shape=chunk_shape_parsed, codecs=sub_codecs, index_location=index_location
+                chunk_shape=chunk_grid.chunk_shape,  # Inner chunks
+                codecs=sub_codecs,
+                index_location=index_location,
             )
             sharding_codec.validate(
-                shape=chunk_shape_parsed,
+                shape=chunk_grid.chunk_shape,  # Inner chunk shape
                 dtype=zdtype,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),  # Outer shard grid
             )
             codecs_out = (sharding_codec,)
-            chunks_out = shard_shape_parsed
+
+            # Metadata uses the outer chunk grid (shards)
+            chunk_grid_for_metadata = RegularChunkGrid(chunk_shape=shard_shape_parsed)
         else:
-            chunks_out = chunk_shape_parsed
+            # No sharding: use chunk_grid as-is
             codecs_out = sub_codecs
+            chunk_grid_for_metadata = chunk_grid
 
         if order is not None:
             _warn_order_kwarg()
@@ -4776,11 +4929,11 @@ async def init_array(
             shape=shape_parsed,
             dtype=zdtype,
             fill_value=fill_value,
-            chunk_shape=chunks_out,
             chunk_key_encoding=chunk_key_encoding_parsed,
             codecs=codecs_out,
             dimension_names=dimension_names,
             attributes=attributes,
+            chunk_grid=chunk_grid_for_metadata,
         )
 
     arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
@@ -4795,7 +4948,7 @@ async def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Literal["auto"] = "auto",
+    chunks: ChunksLike = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -4829,9 +4982,14 @@ async def create_array(
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be ``None``.
-    chunks : tuple[int, ...] | Literal["auto"], default="auto"
-        Chunk shape of the array.
-        If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+    chunks : ChunksLike, default="auto"
+        Chunk shape of the array. Several formats are supported:
+
+        - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``
+        - nested sequence: Creates a RectilinearChunkGrid with variable-sized chunks (Zarr format 3 only),
+          e.g., ``[[10, 20, 30], [5, 5]]`` creates variable chunks along each dimension
+        - ChunkGrid instance: Uses the provided chunk grid directly (Zarr format 3 only)
+        - "auto": Automatically determines chunk shape based on array shape and dtype
     shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional
@@ -4928,17 +5086,38 @@ async def create_array(
     >>>     fill_value=0)
     <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
     """
-    data_parsed, shape_parsed, dtype_parsed = _parse_data_params(
-        data=data, shape=shape, dtype=dtype
+    data_parsed, shape_param, dtype_parsed = _parse_data_params(data=data, shape=shape, dtype=dtype)
+
+    # Parse shape to tuple for resolve_chunk_spec
+    shape_parsed = parse_shapelike(shape_param)
+
+    # Parse dtype to get item_size for chunk grid parsing
+    # Ensure zarr_format is not None for resolve_chunk_spec
+    zarr_format_resolved: ZarrFormat = zarr_format or _default_zarr_format()
+    zdtype = parse_dtype(dtype_parsed, zarr_format=zarr_format_resolved)
+    item_size = 1
+    if isinstance(zdtype, HasItemSize):
+        item_size = zdtype.item_size
+
+    # Resolve chunk specification
+    # This handles all validation and returns resolved chunks, shards, and chunk_grid
+    resolved = resolve_chunk_spec(
+        chunks=chunks,
+        shards=shards,
+        shape=shape_parsed,
+        dtype_itemsize=item_size,
+        zarr_format=zarr_format_resolved,
+        has_data=data_parsed is not None,
     )
+
     if data_parsed is not None:
         return await from_array(
             store,
             data=data_parsed,
             write_data=write_data,
             name=name,
-            chunks=chunks,
-            shards=shards,
+            chunk_grid=resolved.chunk_grid,
+            shards=resolved.shards,
             filters=filters,
             compressors=compressors,
             serializer=serializer,
@@ -4962,8 +5141,8 @@ async def create_array(
             store_path=store_path,
             shape=shape_parsed,
             dtype=dtype_parsed,
-            chunks=chunks,
-            shards=shards,
+            chunk_grid=resolved.chunk_grid,
+            shards=resolved.shards,
             filters=filters,
             compressors=compressors,
             serializer=serializer,
@@ -4991,7 +5170,7 @@ def _parse_keep_array_attr(
     chunk_key_encoding: ChunkKeyEncodingLike | None,
     dimension_names: DimensionNames,
 ) -> tuple[
-    tuple[int, ...] | Literal["auto"],
+    tuple[int, ...] | tuple[tuple[int, ...], ...] | Literal["auto"],
     ShardsLike | None,
     FiltersLike,
     CompressorsLike,
@@ -5004,7 +5183,7 @@ def _parse_keep_array_attr(
 ]:
     if isinstance(data, Array):
         if chunks == "keep":
-            chunks = data.chunks
+            chunks = data.chunks  # type: ignore[assignment]
         if shards == "keep":
             shards = data.shards
         if zarr_format is None:
@@ -5058,7 +5237,7 @@ def _parse_keep_array_attr(
             compressors = "auto"
         if serializer == "keep":
             serializer = "auto"
-    return (
+    return (  # type: ignore[return-value]
         chunks,
         shards,
         filters,
@@ -5477,10 +5656,23 @@ def _iter_shard_regions(
     ------
     region: tuple[slice, ...]
         A tuple of slice objects representing the region spanned by each shard in the selection or chunk
+
+    Raises
+    ------
+    NotImplementedError
+        If the array uses RectilinearChunkGrid (variable-sized chunks).
         when no shards are present.
     """
+    chunks = array.chunks
+    if not isinstance(chunks, RegularChunks):
+        raise NotImplementedError(
+            "_iter_shard_regions is not supported for arrays with variable-sized chunks "
+            "(RectilinearChunkGrid). Use the chunk_grid API directly for variable chunk access."
+        )
+
+    # Type narrowing: chunks is now RegularChunks (subclass of tuple[int, ...])
     if array.shards is None:
-        shard_shape = array.chunks
+        shard_shape: Sequence[int] = chunks
     else:
         shard_shape = array.shards
 
@@ -5496,7 +5688,7 @@ def _iter_chunk_regions(
     selection_shape: Sequence[int] | None = None,
 ) -> Iterator[tuple[slice, ...]]:
     """
-    Iterate over the regions spanned by each shard.
+    Iterate over the regions spanned by each chunk.
 
     These are the smallest regions of the array that are efficient to read concurrently.
 
@@ -5512,9 +5704,25 @@ def _iter_chunk_regions(
     Returns
     -------
     region: tuple[slice, ...]
-        A tuple of slice objects representing the region spanned by each shard in the selection.
-    """
+        A tuple of slice objects representing the region spanned by each chunk in the selection.
 
+    Raises
+    ------
+    NotImplementedError
+        If the array uses RectilinearChunkGrid (variable-sized chunks).
+    """
+    chunks = array.chunks
+    if not isinstance(chunks, RegularChunks):
+        raise NotImplementedError(
+            "_iter_chunk_regions is not supported for arrays with variable-sized chunks "
+            "(RectilinearChunkGrid). Use the chunk_grid API directly for variable chunk access."
+        )
+
+    # Type narrowing: chunks is now RegularChunks (subclass of tuple[int, ...])
     return _iter_regions(
-        array.shape, array.chunks, origin=origin, selection_shape=selection_shape, trim_excess=True
+        array.shape,
+        chunks,
+        origin=origin,
+        selection_shape=selection_shape,
+        trim_excess=True,
     )
