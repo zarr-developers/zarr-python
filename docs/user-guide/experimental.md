@@ -4,7 +4,7 @@ This section contains documentation for experimental Zarr Python features. The f
 
 ## `CacheStore`
 
-Zarr Python 3.1.4 adds `zarr.experimental.cache_store.CacheStore` provides a dual-store caching implementation
+Zarr Python 3.1.4 adds [`zarr.experimental.cache_store.CacheStore`][] provides a dual-store caching implementation
 that can be wrapped around any Zarr store to improve performance for repeated data access.
 This is particularly useful when working with remote stores (e.g., S3, HTTP) where network
 latency can significantly impact data access speed.
@@ -24,7 +24,7 @@ Because the `CacheStore` uses an ordinary Zarr `Store` object as the caching lay
 Creating a CacheStore requires both a source store and a cache store. The cache store
 can be any Store implementation, providing flexibility in cache persistence:
 
-```python exec="true" session="experimental" source="above" result="ansi"
+```python exec="true" session="experimental" source="above"
 import zarr
 from zarr.storage import LocalStore
 import numpy as np
@@ -73,6 +73,7 @@ elapsed_nocache = time.time() - start
 
 # Cache provides speedup for repeated access
 speedup = elapsed_nocache / elapsed_cache
+print(f"Speedup is {speedup}")
 ```
 
 Cache effectiveness is particularly pronounced with repeated access to the same data chunks.
@@ -84,7 +85,7 @@ The CacheStore can be configured with several parameters:
 
 **max_size**: Controls the maximum size of cached data in bytes
 
-```python exec="true" session="experimental" source="above" result="ansi"
+```python exec="true" session="experimental" source="above"
 # 256MB cache with size limit
 cache = CacheStore(
     store=source_store,
@@ -102,7 +103,7 @@ cache = CacheStore(
 
 **max_age_seconds**: Controls time-based cache expiration
 
-```python exec="true" session="experimental" source="above" result="ansi"
+```python exec="true" session="experimental" source="above"
 # Cache expires after 1 hour
 cache = CacheStore(
     store=source_store,
@@ -162,7 +163,7 @@ The `cache_info()` method returns a dictionary with detailed information about t
 
 The CacheStore provides methods for manual cache management:
 
-```python exec="true" session="experimental" source="above" result="ansi"
+```python exec="true" session="experimental" source="above"
 # Clear all cached data and tracking information
 import asyncio
 asyncio.run(cached_store.clear_cache())
@@ -192,7 +193,7 @@ and use any store type for the cache backend:
 
 ### Local Store with Memory Cache
 
-```python exec="true" session="experimental-memory-cache" source="above" result="ansi"
+```python exec="true" session="experimental-memory-cache" source="above"
 from zarr.storage import LocalStore, MemoryStore
 from zarr.experimental.cache_store import CacheStore
 from tempfile import mkdtemp
@@ -209,7 +210,7 @@ cached_store = CacheStore(
 
 ### Memory Store with Persistent Cache
 
-```python exec="true" session="experimental-local-cache" source="above" result="ansi"
+```python exec="true" session="experimental-local-cache" source="above"
 from tempfile import mkdtemp
 from zarr.storage import MemoryStore, LocalStore
 from zarr.experimental.cache_store import CacheStore
@@ -255,10 +256,12 @@ zarr_array[:] = np.random.random((100, 100))
 start = time.time()
 data = zarr_array[20:30, 20:30]  # First access (cache miss)
 first_access = time.time() - start
+print(f"First access took {first_access}")
 
 start = time.time()
 data = zarr_array[20:30, 20:30]  # Second access (cache hit)
 second_access = time.time() - start
+print(f"Second access took {second_access}")
 
 # Check cache statistics
 info = cached_store.cache_info()
