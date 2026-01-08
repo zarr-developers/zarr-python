@@ -209,7 +209,7 @@ class Store(ABC):
         """
         ...
 
-    async def get_bytes_async(
+    async def get_bytes(
         self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> bytes:
         """
@@ -242,7 +242,7 @@ class Store(ABC):
         --------
         get : Lower-level method that returns a Buffer object.
         get_bytes : Synchronous version of this method.
-        get_json_async : Asynchronous method for retrieving and parsing JSON data.
+        get_json : Asynchronous method for retrieving and parsing JSON data.
 
         Examples
         --------
@@ -257,7 +257,7 @@ class Store(ABC):
             raise FileNotFoundError(key)
         return buffer.to_bytes()
 
-    def get_bytes(
+    def get_bytes_sync(
         self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> bytes:
         """
@@ -289,7 +289,7 @@ class Store(ABC):
 
         Warnings
         --------
-        Do not call this method from async functions. Use ``get_bytes_async()`` instead
+        Do not call this method from async functions. Use ``get_bytes()`` instead
         to avoid blocking the event loop.
 
         See Also
@@ -300,23 +300,22 @@ class Store(ABC):
         Examples
         --------
         >>> store = MemoryStore()
-        >>> store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = store.get_bytes("data", prototype=default_buffer_prototype())
+        >>> await store.set("data", Buffer.from_bytes(b"hello world"))
+        >>> data = store.get_bytes_sync("data", prototype=default_buffer_prototype())
         >>> print(data)
         b'hello world'
         """
 
-        return sync(self.get_bytes_async(key, prototype=prototype, byte_range=byte_range))
+        return sync(self.get_bytes(key, prototype=prototype, byte_range=byte_range))
 
-    async def get_json_async(
+    async def get_json(
         self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Any:
         """
         Retrieve and parse JSON data from the store asynchronously.
 
         This is a convenience method that retrieves bytes from the store and
-        parses them as JSON. Commonly used for reading Zarr metadata files
-        like ``zarr.json``.
+        parses them as JSON.
 
         Parameters
         ----------
@@ -344,31 +343,29 @@ class Store(ABC):
 
         See Also
         --------
-        get_bytes_async : Method for retrieving raw bytes without parsing.
-        get_json : Synchronous version of this method.
+        get_bytes : Method for retrieving raw bytes.
+        get_json_sync : Synchronous version of this method.
 
         Examples
         --------
         >>> store = await MemoryStore.open()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = await store.get_json_async("zarr.json", prototype=default_buffer_prototype())
+        >>> data = await store.get_json("zarr.json", prototype=default_buffer_prototype())
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
 
-        return json.loads(
-            await self.get_bytes_async(key, prototype=prototype, byte_range=byte_range)
-        )
+        return json.loads(await self.get_bytes(key, prototype=prototype, byte_range=byte_range))
 
-    def get_json(
+    def get_json_sync(
         self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Any:
         """
         Retrieve and parse JSON data from the store synchronously.
 
-        This is a synchronous wrapper around ``get_json_async()``. It should only
-        be called from non-async code. For async contexts, use ``get_json_async()``
+        This is a synchronous wrapper around ``get_json()``. It should only
+        be called from non-async code. For async contexts, use ``get_json()``
         instead.
 
         Parameters
@@ -397,25 +394,25 @@ class Store(ABC):
 
         Warnings
         --------
-        Do not call this method from async functions. Use ``get_json_async()`` instead
+        Do not call this method from async functions. Use ``get_json()`` instead
         to avoid blocking the event loop.
 
         See Also
         --------
-        get_json_async : Asynchronous version of this method.
-        get_bytes : Synchronous method for retrieving raw bytes without parsing.
+        get_json : Asynchronous version of this method.
+        get_bytes_sync : Synchronous method for retrieving raw bytes without parsing.
 
         Examples
         --------
         >>> store = MemoryStore()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = store.get_json("zarr.json", prototype=default_buffer_prototype())
+        >>> data = store.get_json_sync("zarr.json", prototype=default_buffer_prototype())
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
 
-        return sync(self.get_json_async(key, prototype=prototype, byte_range=byte_range))
+        return sync(self.get_json(key, prototype=prototype, byte_range=byte_range))
 
     @abstractmethod
     async def get_partial_values(

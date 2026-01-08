@@ -85,11 +85,11 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         await self.set(store, key, self.buffer_cls.from_bytes(data))
 
         # Test with None (default)
-        result_none = await store.get_bytes_async(key)
+        result_none = await store.get_bytes(key)
         assert result_none == data
 
         # Test with explicit prototype
-        result_proto = await store.get_bytes_async(key, prototype=default_buffer_prototype())
+        result_proto = await store.get_bytes(key, prototype=default_buffer_prototype())
         assert result_proto == data
 
     def test_get_bytes_sync_with_prototype_none(self, store: MemoryStore) -> None:
@@ -102,15 +102,15 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
 
         # Test with None (default)
-        result_none = store.get_bytes(key)
+        result_none = store.get_bytes_sync(key)
         assert result_none == data
 
         # Test with explicit prototype
-        result_proto = store.get_bytes(key, prototype=default_buffer_prototype())
+        result_proto = store.get_bytes_sync(key, prototype=default_buffer_prototype())
         assert result_proto == data
 
     async def test_get_json_with_prototype_none(self, store: MemoryStore) -> None:
-        """Test that get_json_async works with prototype=None."""
+        """Test that get_json works with prototype=None."""
         import json
 
         from zarr.core.buffer.core import default_buffer_prototype
@@ -120,11 +120,11 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         await self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode()))
 
         # Test with None (default)
-        result_none = await store.get_json_async(key)
+        result_none = await store.get_json(key)
         assert result_none == data
 
         # Test with explicit prototype
-        result_proto = await store.get_json_async(key, prototype=default_buffer_prototype())
+        result_proto = await store.get_json(key, prototype=default_buffer_prototype())
         assert result_proto == data
 
     def test_get_json_sync_with_prototype_none(self, store: MemoryStore) -> None:
@@ -139,11 +139,11 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         sync(self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode())))
 
         # Test with None (default)
-        result_none = store.get_json(key)
+        result_none = store.get_json_sync(key)
         assert result_none == data
 
         # Test with explicit prototype
-        result_proto = store.get_json(key, prototype=default_buffer_prototype())
+        result_proto = store.get_json_sync(key, prototype=default_buffer_prototype())
         assert result_proto == data
 
 

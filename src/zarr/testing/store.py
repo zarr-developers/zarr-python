@@ -534,9 +534,9 @@ class StoreTests(Generic[S, B]):
         data = b"hello world"
         key = "zarr.json"
         await self.set(store, key, self.buffer_cls.from_bytes(data))
-        assert await store.get_bytes_async(key, prototype=default_buffer_prototype()) == data
+        assert await store.get_bytes(key, prototype=default_buffer_prototype()) == data
         with pytest.raises(FileNotFoundError):
-            await store.get_bytes_async("nonexistent_key", prototype=default_buffer_prototype())
+            await store.get_bytes("nonexistent_key", prototype=default_buffer_prototype())
 
     def test_get_bytes_sync(self, store: S) -> None:
         """
@@ -545,9 +545,9 @@ class StoreTests(Generic[S, B]):
         data = b"hello world"
         key = "zarr.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
-        assert store.get_bytes(key, prototype=default_buffer_prototype()) == data
+        assert store.get_bytes_sync(key, prototype=default_buffer_prototype()) == data
 
-    async def test_get_json_async(self, store: S) -> None:
+    async def test_get_json(self, store: S) -> None:
         """
         Test that the get_bytes_async method reads json.
         """
@@ -555,7 +555,7 @@ class StoreTests(Generic[S, B]):
         data_bytes = json.dumps(data).encode("utf-8")
         key = "zarr.json"
         await self.set(store, key, self.buffer_cls.from_bytes(data_bytes))
-        assert await store.get_json_async(key, prototype=default_buffer_prototype()) == data
+        assert await store.get_json(key, prototype=default_buffer_prototype()) == data
 
     def test_get_json_sync(self, store: S) -> None:
         """
@@ -565,7 +565,7 @@ class StoreTests(Generic[S, B]):
         data_bytes = json.dumps(data).encode("utf-8")
         key = "zarr.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
-        assert store.get_json(key, prototype=default_buffer_prototype()) == data
+        assert store.get_json_sync(key, prototype=default_buffer_prototype()) == data
 
 
 class LatencyStore(WrapperStore[Store]):
