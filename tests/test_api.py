@@ -245,7 +245,7 @@ def test_open_normalized_path(
 ) -> None:
     node: Group | AnyArray
     if node_type == "group":
-        node = group(store=memory_store, path=path)
+        node = create_group(store=memory_store, path=path)
     elif node_type == "array":
         node = create(store=memory_store, path=path, shape=(2,))
 
@@ -600,7 +600,7 @@ def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> N
 
 def test_tree() -> None:
     pytest.importorskip("rich")
-    g1 = zarr.group()
+    g1 = zarr.create_group(store={})
     g1.create_group("foo")
     g3 = g1.create_group("bar")
     g3.create_group("baz")
@@ -1465,6 +1465,7 @@ def test_no_overwrite_array(tmp_path: Path, create_function: Callable, overwrite
         assert existing_fpath.exists()
 
 
+@pytest.mark.filterwarnings(r"ignore:Use open_group\(\) or create_group\(\) instead")
 @pytest.mark.parametrize("create_function", [create_group, group])
 @pytest.mark.parametrize("overwrite", [True, False])
 def test_no_overwrite_group(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type:ignore[type-arg]

@@ -1971,7 +1971,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> g1 = zarr.group()
+        >>> g1 = zarr.create_group(store={})
         >>> g2 = g1.create_group('foo')
         >>> g3 = g1.create_group('bar')
         >>> d1 = g1.create_array('baz', shape=(10,), chunks=(10,))
@@ -2005,7 +2005,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> group["foo"] = zarr.zeros((10,))
         >>> group["foo"]
         <Array memory://132270269438272/foo shape=(10,) dtype=float64>
@@ -2021,7 +2021,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> await group.update_attributes_async({"foo": "bar"})
         >>> group.attrs.asdict()
         {'foo': 'bar'}
@@ -2122,7 +2122,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> group.update_attributes({"foo": "bar"})
         >>> group.attrs.asdict()
         {'foo': 'bar'}
@@ -2247,7 +2247,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> g1 = zarr.group()
+        >>> g1 = zarr.create_group(store={})
         >>> g2 = g1.create_group('foo')
         >>> g3 = g1.create_group('bar')
         >>> d1 = g1.create_array('baz', shape=(10,), chunks=(10,))
@@ -2267,7 +2267,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> g1 = zarr.group()
+        >>> g1 = zarr.create_group(store={})
         >>> g2 = g1.create_group('foo')
         >>> d1 = g1.create_array('bar', shape=(10,), chunks=(10,))
         >>> 'foo' in g1
@@ -2286,7 +2286,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> group.create_group("subgroup")
         >>> for name, subgroup in group.groups():
         ...     print(name, subgroup)
@@ -2301,7 +2301,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> group.create_group("subgroup")
         >>> for name in group.group_keys():
         ...     print(name)
@@ -2316,7 +2316,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> group.create_group("subgroup")
         >>> for subgroup in group.group_values():
         ...     print(subgroup)
@@ -2331,7 +2331,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> group.create_array("subarray", shape=(10,), chunks=(10,))
         >>> for name, subarray in group.arrays():
         ...     print(name, subarray)
@@ -2346,7 +2346,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> group.create_array("subarray", shape=(10,), chunks=(10,))
         >>> for name in group.array_keys():
         ...     print(name)
@@ -2362,7 +2362,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> group.create_array("subarray", shape=(10,), chunks=(10,))
         >>> for subarray in group.array_values():
         ...     print(subarray)
@@ -2407,7 +2407,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = zarr.group()
+        >>> group = zarr.create_group(store={})
         >>> subgroup = group.create_group("subgroup")
         >>> subgroup
         <Group memory://132270269438272/subgroup>

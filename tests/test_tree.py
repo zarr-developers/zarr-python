@@ -13,7 +13,7 @@ pytest.importorskip("rich")
 def test_tree(root_name: Any) -> None:
     os.environ["OVERRIDE_COLOR_SYSTEM"] = "truecolor"
 
-    g = zarr.group(path=root_name)
+    g = zarr.create_group(store={}, path=root_name)
     A = g.create_group("A")
     B = g.create_group("B")
     C = B.create_group("C")
@@ -57,6 +57,6 @@ def test_tree(root_name: Any) -> None:
 
 
 def test_expand_not_implemented() -> None:
-    g = zarr.group()
+    g = zarr.create_group(store={})
     with pytest.raises(NotImplementedError):
         g.tree(expand=True)

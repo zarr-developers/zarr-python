@@ -15,7 +15,7 @@ from zarr._storage.store import BaseStore
 def copy_group(
     *, node: zarr.hierarchy.Group, store: zarr.storage.BaseStore, path: str, overwrite: bool
 ) -> zarr.hierarchy.Group:
-    result = zarr.group(store=store, path=path, overwrite=overwrite)
+    result = zarr.create_group(store=store, path=path, overwrite=overwrite)
     result.attrs.put(node.attrs.asdict())
     for key, child in node.items():
         child_path = f"{path}/{key}"
