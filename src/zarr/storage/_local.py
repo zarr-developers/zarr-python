@@ -8,40 +8,44 @@ import shutil
 import sys
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, Literal, Self
+from typing import TYPE_CHECKING, Any, BinaryIO, Literal, Self
 
 from zarr.abc.store import (
+    BufferLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer import Buffer
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.buffer import Buffer, BufferPrototype
 from zarr.core.common import AccessModeLiteral, concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, Iterator
 
-    from zarr.core.buffer import BufferPrototype
 
+def _get(path: Path, prototype: BufferLike, byte_range: ByteRequest | None) -> Buffer:
+    # Extract buffer class from BufferLike
+    if isinstance(prototype, BufferPrototype):
+        buffer_cls = prototype.buffer
+    else:
+        buffer_cls = prototype
 
-def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None) -> Buffer:
     if byte_range is None:
-        return prototype.buffer.from_bytes(path.read_bytes())
+        return buffer_cls.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
         if isinstance(byte_range, RangeByteRequest):
             f.seek(byte_range.start)
-            return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
+            return buffer_cls.from_bytes(f.read(byte_range.end - f.tell()))
         elif isinstance(byte_range, OffsetByteRequest):
             f.seek(byte_range.offset)
         elif isinstance(byte_range, SuffixByteRequest):
             f.seek(max(0, size - byte_range.suffix))
         else:
             raise TypeError(f"Unexpected byte_range, got {byte_range}.")
-        return prototype.buffer.from_bytes(f.read())
+        return buffer_cls.from_bytes(f.read())
 
 
 if sys.platform == "win32":
@@ -190,12 +194,12 @@ class LocalStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = self._get_default_buffer_class()
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
@@ -208,10 +212,12 @@ class LocalStore(Store):
 
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
@@ -305,6 +311,236 @@ class LocalStore(Store):
                 yield key.relative_to(base).as_posix()
         except (FileNotFoundError, NotADirectoryError):
             pass
+
+    async def get_bytes(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferLike | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> bytes:
+        """
+        Retrieve raw bytes from the local store asynchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_bytes``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+
+        Returns
+        -------
+        bytes
+            The raw bytes stored at the given key.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+
+        See Also
+        --------
+        Store.get_bytes : Base implementation with full documentation.
+        get_bytes_sync : Synchronous version of this method.
+
+        Examples
+        --------
+        >>> store = await LocalStore.open("data")
+        >>> await store.set("data", Buffer.from_bytes(b"hello"))
+        >>> # No need to specify prototype for LocalStore
+        >>> data = await store.get_bytes("data")
+        >>> print(data)
+        b'hello'
+        """
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        return await super().get_bytes(key, prototype=prototype, byte_range=byte_range)
+
+    def get_bytes_sync(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferLike | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> bytes:
+        """
+        Retrieve raw bytes from the local store synchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_bytes``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+
+        Returns
+        -------
+        bytes
+            The raw bytes stored at the given key.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+
+        Warnings
+        --------
+        Do not call this method from async functions. Use ``get_bytes()`` instead.
+
+        See Also
+        --------
+        Store.get_bytes_sync : Base implementation with full documentation.
+        get_bytes : Asynchronous version of this method.
+
+        Examples
+        --------
+        >>> store = LocalStore("data")
+        >>> store.set("data", Buffer.from_bytes(b"hello"))
+        >>> # No need to specify prototype for LocalStore
+        >>> data = store.get_bytes("data")
+        >>> print(data)
+        b'hello'
+        """
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        return super().get_bytes_sync(key, prototype=prototype, byte_range=byte_range)
+
+    async def get_json(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferLike | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Any:
+        """
+        Retrieve and parse JSON data from the local store asynchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_json``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the JSON data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+            Note: Using byte ranges with JSON may result in invalid JSON.
+
+        Returns
+        -------
+        Any
+            The parsed JSON data. This follows the behavior of ``json.loads()`` and
+            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+        json.JSONDecodeError
+            If the stored data is not valid JSON.
+
+        See Also
+        --------
+        Store.get_json : Base implementation with full documentation.
+        get_json_sync : Synchronous version of this method.
+        get_bytes : Method for retrieving raw bytes without parsing.
+
+        Examples
+        --------
+        >>> store = await LocalStore.open("data")
+        >>> import json
+        >>> metadata = {"zarr_format": 3, "node_type": "array"}
+        >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> # No need to specify prototype for LocalStore
+        >>> data = await store.get_json("zarr.json")
+        >>> print(data)
+        {'zarr_format': 3, 'node_type': 'array'}
+        """
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        return await super().get_json(key, prototype=prototype, byte_range=byte_range)
+
+    def get_json_sync(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferLike | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Any:
+        """
+        Retrieve and parse JSON data from the local store synchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_json``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the JSON data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+            Note: Using byte ranges with JSON may result in invalid JSON.
+
+        Returns
+        -------
+        Any
+            The parsed JSON data. This follows the behavior of ``json.loads()`` and
+            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+        json.JSONDecodeError
+            If the stored data is not valid JSON.
+
+        Warnings
+        --------
+        Do not call this method from async functions. Use ``get_json()`` instead.
+
+        See Also
+        --------
+        Store.get_json_sync : Base implementation with full documentation.
+        get_json : Asynchronous version of this method.
+        get_bytes_sync : Method for retrieving raw bytes without parsing.
+
+        Examples
+        --------
+        >>> store = LocalStore("data")
+        >>> import json
+        >>> metadata = {"zarr_format": 3, "node_type": "array"}
+        >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> # No need to specify prototype for LocalStore
+        >>> data = store.get_json("zarr.json")
+        >>> print(data)
+        {'zarr_format': 3, 'node_type': 'array'}
+        """
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        return super().get_json_sync(key, prototype=prototype, byte_range=byte_range)
 
     async def move(self, dest_root: Path | str) -> None:
         """
