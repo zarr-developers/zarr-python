@@ -35,7 +35,7 @@ class CLIZarrFormatV3(str, Enum):
     v3 = "v3"
 
 
-@app.command()  # type: ignore[misc]
+@app.command()  # type: ignore[untyped-decorator]
 def migrate(
     zarr_format: Annotated[
         CLIZarrFormatV3,
@@ -120,7 +120,7 @@ def migrate(
         sync(migrate_metadata.remove_metadata(write_store, 2, force=False, dry_run=dry_run))
 
 
-@app.command()  # type: ignore[misc]
+@app.command()  # type: ignore[untyped-decorator]
 def remove_metadata(
     zarr_format: Annotated[
         CLIZarrFormat,
@@ -168,7 +168,7 @@ def remove_metadata(
     )
 
 
-@app.callback()  # type: ignore[misc]
+@app.callback()  # type: ignore[untyped-decorator]
 def main(
     verbose: Annotated[
         bool,

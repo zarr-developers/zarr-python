@@ -395,6 +395,7 @@ ignore_errors = true
 minversion = "7"
 testpaths = ["tests", "docs/user-guide"]
 log_cli_level = "INFO"
+log_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

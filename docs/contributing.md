@@ -173,6 +173,40 @@ Hatch can also be used to serve continuously updating version of the documentati
 hatch --env docs run serve
 ```
 
+#### Adding executable code blocks in the documentation
+
+Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="on"` to a code block header for it to be executed when the docs are built. For example:
+
+````md
+```python exec="on"
+print("Hello world")
+```
+````
+
+Below are other useful options that can be added to the code block. See [Markdown Exec's documentation](https://pawamoy.github.io/markdown-exec/usage/#options-summary) for a full list:
+
+  - `source="above"` makes sure the code within the code block is also rendered in the documentation (rather than just the output).
+  - `session="<name-of-docs-page>"` executes code blocks in a named session reusing previously defined variables.
+  - `result="ansi"` or `result="html"` to render the output. If the code does not produce output, you should leave off the `result` option to prevent an empty cell from rendering in the docs.
+
+For example:
+
+````md
+```python exec="true" session="contributing" source="above" result="ansi"
+print("Hello world")
+```
+````
+
+renders as:
+
+```python exec="true" session="contributing" source="above" result="ansi"
+print("Hello world")
+```
+
+#### Building documentation without executing code blocks
+
+Sometimes, you may want the documentation to build quicker. You can disable code block execution by commenting out the [markdown-exec](https://github.com/zarr-developers/zarr-python/blob/884a8c91afcc3efe28b3da952be3b85125c453cb/mkdocs.yml#L132 plugin in the mkdocs configuration file). This will make code blocks and cross references render incorrectly (i.e., expect build warnings), but also reduces build time by ~3x. Be sure to undo the commenting out before opening your pull request.
+
 ### Changelog
 
 zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `towncrier create` with your development environment, which will prompt you for the issue number, change type, and the news text:
