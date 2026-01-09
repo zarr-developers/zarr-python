@@ -46,6 +46,7 @@ nav:
       - api/zarr/metadata.md
       - api/zarr/registry.md
       - api/zarr/storage.md
+      - api/zarr/experimental.md
       - ABC:
         - api/zarr/abc/index.md
         - api/zarr/abc/buffer.md
