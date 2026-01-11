@@ -1,0 +1,43 @@
+from typing import Any
+
+import numpy as np
+import pytest
+
+from zarr.codecs.bytes import BytesCodec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
+from zarr.core.buffer import numpy_buffer_prototype
+from zarr.dtype import parse_dtype
+
+CPU_BUFFER_PROTOTYPE = numpy_buffer_prototype()
+
+
+numpy_array_fixtures = [
+    np.array([[1, 2, 3], [4, 5, 6]], dtype="int64"),
+    np.array([[1.5, 2.5], [3.5, 4.5]], dtype="float32"),
+    np.array([[True, False, True], [False, True, False]], dtype="bool"),
+]
+
+
+@pytest.mark.parametrize("numpy_array", numpy_array_fixtures)
+async def test_bytes_codec_round_trip(numpy_array: np.ndarray[Any, Any]) -> None:
+    # Test default initialization
+    codec = BytesCodec()
+
+    # numpy_array = np.array([[1, 2, 3], [4, 5, 6]], dtype='int64')
+    array_config = ArrayConfig(order="C", write_empty_chunks=True)
+    array_spec = ArraySpec(
+        shape=numpy_array.shape,
+        dtype=parse_dtype(numpy_array.dtype, zarr_format=3),
+        fill_value=0,
+        config=array_config,
+        prototype=CPU_BUFFER_PROTOTYPE,
+    )
+
+    ndbuffer = CPU_BUFFER_PROTOTYPE.nd_buffer.from_numpy_array(numpy_array)
+    encoded = await codec._encode_single(ndbuffer, array_spec)
+    assert encoded is not None
+    decoded = await codec._decode_single(encoded, array_spec)
+
+    # Test that the decoded array matches the original
+    numpy_array_decoded = decoded.as_ndarray_like()
+    np.testing.assert_array_equal(numpy_array_decoded, numpy_array)
