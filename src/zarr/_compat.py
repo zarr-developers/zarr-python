@@ -2,16 +2,14 @@ import warnings
 from collections.abc import Callable
 from functools import wraps
 from inspect import Parameter, signature
-from typing import Any, TypeVar
+from typing import Any
 
 from zarr.errors import ZarrFutureWarning
-
-T = TypeVar("T")
 
 # Based off https://github.com/scikit-learn/scikit-learn/blob/e87b32a81c70abed8f2e97483758eb64df8255e9/sklearn/utils/validation.py#L63
 
 
-def _deprecate_positional_args(
+def _deprecate_positional_args[T](
     func: Callable[..., T] | None = None, *, version: str = "3.1.0"
 ) -> Callable[..., T]:
     """Decorator for methods that issues warnings for positional arguments.
