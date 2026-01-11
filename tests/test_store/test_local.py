@@ -12,6 +12,7 @@ from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
 from zarr.storage._local import _atomic_write
 from zarr.testing.store import StoreTests
+from zarr.testing.store_concurrency import StoreConcurrencyTests
 from zarr.testing.utils import assert_bytes_equal
 
 
@@ -150,3 +151,15 @@ def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
             f.write(b"abc")
     assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
+
+
+class TestLocalStoreConcurrency(StoreConcurrencyTests[LocalStore, cpu.Buffer]):
+    """Test LocalStore concurrency limiting behavior."""
+
+    store_cls = LocalStore
+    buffer_cls = cpu.Buffer
+    expected_concurrency_limit = 100  # LocalStore default
+
+    @pytest.fixture
+    def store_kwargs(self, tmpdir: str) -> dict[str, str]:
+        return {"root": str(tmpdir)}
