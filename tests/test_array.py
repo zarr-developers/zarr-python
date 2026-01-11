@@ -2194,3 +2194,24 @@ def test_create_array_with_data_num_gets(
     # one get for the metadata and one per shard.
     # Note: we don't actually need one get per shard, but this is the current behavior
     assert store.counter["get"] == 1 + num_shards
+
+
+@pytest.mark.parametrize("shards", [None, (4, 6)])
+def test_chunk_slices(shards: None | tuple[int, ...]) -> None:
+    arr = zarr.create_array(store={}, shape=(4, 8), dtype="uint8", chunks=(2, 3), shards=shards)
+    assert list(arr.chunk_slices) == [
+        (slice(0, 2, 1), slice(0, 3, 1)),
+        (slice(0, 2, 1), slice(3, 6, 1)),
+        (slice(0, 2, 1), slice(6, 8, 1)),
+        (slice(2, 4, 1), slice(0, 3, 1)),
+        (slice(2, 4, 1), slice(3, 6, 1)),
+        (slice(2, 4, 1), slice(6, 8, 1)),
+    ]
+
+
+def test_shard_slices() -> None:
+    arr = zarr.create_array(store={}, shape=(4, 8), dtype="uint8", chunks=(2, 3), shards=(4, 6))
+    assert list(arr.shard_slices) == [
+        (slice(0, 4, 1), slice(0, 6, 1)),
+        (slice(0, 4, 1), slice(6, 8, 1)),
+    ]
