@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from numcodecs.vlen import VLenBytes, VLenUTF8
 
+from zarr._compat import _reshape_view
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
@@ -50,7 +51,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
         raw_bytes = chunk_bytes.as_array_like()
         decoded = _vlen_utf8_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
-        decoded = decoded.reshape(chunk_spec.shape, copy=False)
+        decoded = _reshape_view(decoded, chunk_spec.shape)
         as_string_dtype = decoded.astype(chunk_spec.dtype.to_native_dtype(), copy=False)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(as_string_dtype)
 
@@ -95,7 +96,7 @@ class VLenBytesCodec(ArrayBytesCodec):
         raw_bytes = chunk_bytes.as_array_like()
         decoded = _vlen_bytes_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
-        decoded = decoded.reshape(chunk_spec.shape, copy=False)
+        decoded = _reshape_view(decoded, chunk_spec.shape)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(decoded)
 
     async def _encode_single(
