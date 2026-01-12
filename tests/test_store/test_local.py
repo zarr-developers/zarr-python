@@ -51,7 +51,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert not target.exists()
 
         store = self.store_cls(root=target)
-        zarr.group(store=store)
+        zarr.create_group(store=store)
 
     def test_invalid_root_raises(self) -> None:
         """

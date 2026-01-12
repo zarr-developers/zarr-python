@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -119,8 +120,14 @@ async def test_open_group_new_path(tmp_path: Path) -> None:
     """
     # tmp_path exists, but tmp_path / "test.zarr" will not, which is important for this test
     path = tmp_path / "test.zarr"
-    grp = await group(store=path, attributes={"a": 1})
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("Use open_group() or create_group() instead")
+    ):
+        grp = await group(store=path, attributes={"a": 1})
     assert isinstance(grp, AsyncGroup)
     # Calling group on an existing store should just open that store
-    grp = await group(store=path)
+    with pytest.warns(
+        DeprecationWarning, match=re.escape("Use open_group() or create_group() instead")
+    ):
+        grp = await group(store=path)
     assert grp.attrs == {"a": 1}

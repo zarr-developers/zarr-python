@@ -88,7 +88,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         self.store = store
 
         self.model = MemoryStore()
-        zarr.group(store=self.model)
+        zarr.create_group(store=self.model)
 
         # Track state of the hierarchy, these should contain fully qualified paths
         self.all_groups: set[str] = set()
@@ -98,7 +98,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     def init_store(self) -> None:
         # This lets us reuse the fixture provided store.
         self._sync(self.store.clear())
-        zarr.group(store=self.store)
+        zarr.create_group(store=self.store)
 
     def can_add(self, path: str) -> bool:
         return path not in self.all_groups and path not in self.all_arrays
@@ -117,8 +117,8 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         assume(self.can_add(path))
         note(f"Adding group: path='{path}'")
         self.all_groups.add(path)
-        zarr.group(store=self.store, path=path)
-        zarr.group(store=self.model, path=path)
+        zarr.create_group(store=self.store, path=path)
+        zarr.create_group(store=self.model, path=path)
 
     @rule(data=st.data(), name=node_names, array_and_chunks=np_array_and_chunks())
     def add_array(
@@ -172,8 +172,8 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         self.all_groups.clear()
         self.all_arrays.clear()
 
-        zarr.group(store=self.store)
-        zarr.group(store=self.model)
+        zarr.create_group(store=self.store)
+        zarr.create_group(store=self.model)
 
         # TODO: MemoryStore is broken?
         # assert not self._sync(self.store.is_empty("/"))

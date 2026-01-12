@@ -407,6 +407,7 @@ def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyArray:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
+@deprecated("Use open_group() or create_group() instead")
 def group(
     store: StoreLike | None = None,
     *,
