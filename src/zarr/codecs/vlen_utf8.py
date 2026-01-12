@@ -50,7 +50,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
         raw_bytes = chunk_bytes.as_array_like()
         decoded = _vlen_utf8_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
-        decoded.shape = chunk_spec.shape
+        decoded = decoded.reshape(chunk_spec.shape)
         as_string_dtype = decoded.astype(chunk_spec.dtype.to_native_dtype(), copy=False)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(as_string_dtype)
 
@@ -95,7 +95,7 @@ class VLenBytesCodec(ArrayBytesCodec):
         raw_bytes = chunk_bytes.as_array_like()
         decoded = _vlen_bytes_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
-        decoded.shape = chunk_spec.shape
+        decoded = decoded.reshape(chunk_spec.shape)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(decoded)
 
     async def _encode_single(
