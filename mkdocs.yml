@@ -70,9 +70,6 @@ nav:
         - api/zarr/testing/store.md
         - api/zarr/testing/strategies.md
         - api/zarr/testing/utils.md
-      - deprecated:
-        - Convenience sub-module: api/zarr/deprecated/convenience.md
-        - Creation sub-module: api/zarr/deprecated/creation.md
   - release-notes.md
   - contributing.md
 watch:
@@ -213,8 +210,6 @@ plugins:
         'developers/contributing.html.md': 'contributing.md'
         'developers/index.html.md': 'contributing.md'
         'developers/roadmap.html.md': 'https://zarr.readthedocs.io/en/v3.0.8/developers/roadmap.html'
-        'api/zarr/creation.md': 'api/zarr/deprecated/creation.md'
-        'api/zarr/codecs/numcodecs.md': 'api/zarr/deprecated/creation.md'
         'api.md': 'api/zarr/index.md'
         'api/zarr/metadata/migrate_v3.md': 'api/zarr/metadata.md'
 

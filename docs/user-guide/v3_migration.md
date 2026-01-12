@@ -97,7 +97,7 @@ The following sections provide details on breaking changes in Zarr-Python 3.
 
 2. Defaulting to `zarr_format=3` - newly created arrays will use the version 3 of the
    Zarr specification. To continue using version 2, set `zarr_format=2` when creating arrays
-   or set `default_zarr_version=2` in Zarr's runtime configuration.
+   or set `default_zarr_format=2` in Zarr's runtime configuration.
 
 3. Function signature change to [`zarr.Array.resize`][] - the `resize` function now takes a
    `zarr.core.common.ShapeLike` input rather than separate arguments for each dimension.
