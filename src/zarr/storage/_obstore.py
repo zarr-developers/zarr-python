@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
-from typing import TYPE_CHECKING, Generic, Self, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Self, TypedDict
 
 from zarr.abc.store import (
     ByteRequest,
@@ -34,10 +34,7 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
-T_Store = TypeVar("T_Store", bound="_UpstreamObjectStore")
-
-
-class ObjectStore(Store, Generic[T_Store]):
+class ObjectStore[T_Store: "_UpstreamObjectStore"](Store):
     """
     Store that uses obstore for fast read/write from AWS, GCP, Azure.
 
