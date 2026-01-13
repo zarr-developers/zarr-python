@@ -1253,6 +1253,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         The shape of the shard grid for this array.
 
+        When no shards are present this will automatically fall back to the chunk grid.
+
         Returns
         -------
         tuple[int, ...]
@@ -1284,10 +1286,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         The number of shards in this array.
 
+        If no shards are present this will fall back to giving the number of chunks
+
         Returns
         -------
         int
-            The total number of shards in the array.
+            The total number of shards or if absent, chunks in the array.
         """
         return product(self._shard_grid_shape)
 
@@ -1415,6 +1419,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         Create an iterator over the coordinates of shards in shard grid space.
 
+        This will fall back to chunk grid space in case no shards are present.
+
         Note that
 
         If the `origin` keyword is used, iteration will start at the shard index specified by `origin`.
@@ -1433,7 +1439,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Yields
         ------
         chunk_coords: tuple[int, ...]
-            The coordinates of each shard in the selection.
+            The coordinates of each shard in the selection or chunk in case of no shard being present.
         """
         return _iter_shard_coords(
             array=self,
@@ -1447,6 +1453,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         Iterate over the keys of the stored objects supporting this array.
 
+        Although only stored objects, e.g. shards should have keys, in case no
+        shards are present this automatically falls back to chunks.
+
         Parameters
         ----------
         origin : Sequence[int] | None, default=None
@@ -1457,7 +1466,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Yields
         ------
         key: str
-            The storage key of each chunk in the selection.
+            The storage key of each shard in the selection or in case of no shard
+            present of each chunk although the latter case as technically incorrect.
         """
         # Iterate over the coordinates of chunks in chunk grid space.
         return _iter_shard_keys(
@@ -1496,6 +1506,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         """
         Iterate over the regions spanned by each shard.
 
+        This will automatically fall back to chunks if no shards are present.
+
         Parameters
         ----------
         origin : Sequence[int] | None, default=None
@@ -1506,7 +1518,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Yields
         ------
         region: tuple[slice, ...]
-            A tuple of slice objects representing the region spanned by each shard in the selection.
+            A tuple of slice objects representing the region spanned by each shard in the selection or chunk in the
+            absence of shards.
         """
         return _iter_shard_regions(array=self, origin=origin, selection_shape=selection_shape)
 
@@ -2588,6 +2601,9 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Iterate over the storage keys of each shard, relative to an optional origin, and optionally
         limited to a contiguous region in chunk grid coordinates.
 
+        If no shards are present this falls back to chunks, though in this case these are then actually
+        not storage keys.
+
         Parameters
         ----------
         origin : Sequence[int] | None, default=None
@@ -2598,7 +2614,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Yields
         ------
         str
-            The storage key of each shard in the selection.
+            The storage key of each shard in the selection or chunk though chunks technically do not have
+            storage keys.
         """
         return self.async_array._iter_shard_keys(origin=origin, selection_shape=selection_shape)
 
@@ -2678,7 +2695,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[tuple[slice, ...]]:
         """
-        Iterate over the regions spanned by each shard.
+        Iterate over the regions spanned by each shard or chunk if no shard is present.
 
         Parameters
         ----------
@@ -2690,7 +2707,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Yields
         ------
         tuple[slice, ...]
-            A tuple of slice objects representing the region spanned by each chunk in the selection.
+            A tuple of slice objects representing the region spanned by each shard or if no shard is present,
+            chunk in the selection.
         """
         return self.async_array._iter_shard_regions(origin=origin, selection_shape=selection_shape)
 
@@ -4223,7 +4241,9 @@ async def _shards_initialized(
     array: AnyAsyncArray,
 ) -> tuple[str, ...]:
     """
-    Return the keys of the chunks that have been persisted to the storage backend.
+    Return the keys of the shards that have been persisted to the storage backend.
+
+    This will fall back to chunks in case no shards are present.
 
     Parameters
     ----------
@@ -4233,7 +4253,7 @@ async def _shards_initialized(
     Returns
     -------
     chunks_initialized : tuple[str, ...]
-        The keys of the chunks that have been initialized.
+        The keys of the shards or if these are not present, chunks that have been initialized.
 
     Related
     -------
@@ -5378,6 +5398,8 @@ def _iter_shard_coords(
     If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
     ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
     per python indexing conventions.
+    If no shards are present this will iterate over the coordinates of chunks in chunk grid space
+    instead.
 
     Parameters
     ----------
@@ -5391,7 +5413,7 @@ def _iter_shard_coords(
     Yields
     ------
     chunk_coords: tuple[int, ...]
-        The coordinates of each shard in the selection.
+        The coordinates of each shard in the selection or chunks if no shards are present.
     """
     return _iter_grid(array._shard_grid_shape, origin=origin, selection_shape=selection_shape)
 
@@ -5406,6 +5428,8 @@ def _iter_shard_keys(
     Iterate over the storage keys of each shard, relative to an optional origin, and optionally
     limited to a contiguous region in shard grid coordinates.
 
+    This automatically falls back to chunks when no shards are present.
+
     Parameters
     ----------
     array : Array | AsyncArray
@@ -5418,7 +5442,7 @@ def _iter_shard_keys(
     Yields
     ------
     key: str
-        The storage key of each chunk in the selection.
+        The storage key of each shard in the selection or chunk when no shards are present.
     """
     # Iterate over the coordinates of chunks in chunk grid space.
     _iter = _iter_grid(array._shard_grid_shape, origin=origin, selection_shape=selection_shape)
@@ -5434,7 +5458,8 @@ def _iter_shard_regions(
     """
     Iterate over the regions spanned by each shard.
 
-    These are the smallest regions of the array that are safe to write concurrently.
+    These are the smallest regions of the array that are safe to write concurrently. When
+    no shards are present this will fall back to chunks.
 
     Parameters
     ----------
@@ -5448,7 +5473,8 @@ def _iter_shard_regions(
     Yields
     ------
     region: tuple[slice, ...]
-        A tuple of slice objects representing the region spanned by each shard in the selection.
+        A tuple of slice objects representing the region spanned by each shard in the selection or chunk
+        when no shards are present.
     """
     if array.shards is None:
         shard_shape = array.chunks
