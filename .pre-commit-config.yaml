@@ -6,7 +6,7 @@ ci:
 default_stages: [pre-commit, pre-push]
 
 default_language_version:
-  python: python3.11
+  python: python3.14
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit

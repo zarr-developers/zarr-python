@@ -2,7 +2,7 @@ import warnings
 from collections.abc import Callable
 from functools import wraps
 from inspect import Parameter, signature
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from packaging.version import Version
