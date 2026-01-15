@@ -70,15 +70,13 @@ gpu = [
     "cupy-cuda12x",
 ]
 cli = ["typer"]
-# Development extras
+# Testing extras
 test = [
     "coverage>=7.10",
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
-    "rich",
-    "mypy",
     'numpydoc',
     "hypothesis",
     "pytest-xdist",
@@ -86,7 +84,6 @@ test = [
     "pytest-codspeed",
     "packaging",
     "tomlkit",
-    "uv",
 ]
 remote_tests = [
     'zarr[remote]',
@@ -115,6 +112,13 @@ docs = [
     's3fs>=2023.10.0',
     'astroid<4',
     'pytest'
+]
+# All development extras
+dev = [
+    "zarr[test]",
+    "zarr[remote_tests]",
+    "zarr[docs]",
+    "mypy",
 ]
 
 [project.scripts]
