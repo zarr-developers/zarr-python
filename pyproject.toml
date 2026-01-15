@@ -82,6 +82,8 @@ test = [
     'numpydoc',
     "hypothesis",
     "pytest-xdist",
+    "pytest-benchmark",
+    "pytest-codspeed",
     "packaging",
     "tomlkit",
     "uv",
@@ -175,11 +177,12 @@ matrix.deps.dependencies = [
 run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
 run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
-run = "run-coverage --no-cov"
+run = "run-coverage --no-cov --ignore tests/benchmarks"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+run-benchmark = "pytest --benchmark-enable tests/benchmarks"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
@@ -196,7 +199,7 @@ numpy = ["2.0", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
@@ -405,7 +408,10 @@ doctest_optionflags = [
     "IGNORE_EXCEPTION_DETAIL",
 ]
 addopts = [
-    "--durations=10", "-ra", "--strict-config", "--strict-markers",
+    "--benchmark-columns", "min,mean,stddev,outliers,rounds,iterations",
+    "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
+    "--durations", "10",
+    "-ra", "--strict-config", "--strict-markers",
 ]
 filterwarnings = [
     "error",
