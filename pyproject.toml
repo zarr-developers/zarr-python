@@ -115,6 +115,7 @@ docs = [
 ]
 # All development extras
 dev = [
+    "zarr[optional]",
     "zarr[test]",
     "zarr[remote_tests]",
     "zarr[docs]",
