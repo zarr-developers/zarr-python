@@ -32,4 +32,4 @@ jobs:
       uses: CodSpeedHQ/action@v4
       with:
           mode: walltime
-          run: hatch run test.py3.11-2.0-minimal:pytest tests/benchmarks --codspeed
+          run: hatch run test.py3.11-minimal:pytest tests/benchmarks --codspeed
