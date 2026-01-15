@@ -19,13 +19,12 @@ concurrency:
 
 jobs:
   test:
-    name: py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
+    name: py=${{ matrix.python-version }}, deps=${{ matrix.dependency-set }}
 
     runs-on: gpu-runner
     strategy:
       matrix:
         python-version: ['3.11']
-        numpy-version: ['2.2']
         dependency-set: ["minimal"]
 
     steps:
@@ -61,11 +60,11 @@ jobs:
         pip install hatch
     - name: Set Up Hatch Env
       run: |
-        hatch env create gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
-        hatch env run -e gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create gputest.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
+        hatch env run -e gputest.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
       run: |
-        hatch env run --env gputest.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage-gpu
+        hatch env run --env gputest.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-coverage-gpu
 
     - name: Upload coverage
       uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
