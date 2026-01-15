@@ -152,9 +152,6 @@ version.source = "vcs"
 hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
-dependencies = [
-    "numpy~={matrix:numpy}",
-]
 features = ["test"]
 
 [tool.hatch.envs.test.env-vars]
@@ -165,7 +162,6 @@ COV_CORE_DATAFILE = ".coverage.eager"
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["2.0", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -188,14 +184,12 @@ list-env = "pip list"
 [tool.hatch.envs.gputest]
 template = "test"
 dependencies = [
-    "numpy~={matrix:numpy}",
     "universal_pathlib",
 ]
 features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["2.0", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
