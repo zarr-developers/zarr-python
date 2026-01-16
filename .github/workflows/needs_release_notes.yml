@@ -5,7 +5,7 @@ on:
 
 jobs:
   labeler:
-    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }} && ${{ github.event.pull_request.user.login != 'pre-commit-ci[bot]' }}
     permissions:
       contents: read
       pull-requests: write
