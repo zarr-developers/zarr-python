@@ -22,6 +22,7 @@ from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
 from zarr.core.dtype.npy.structured import Structured, StructuredJSON_V2, StructuredJSON_V3
+from zarr.core.dtype.npy.subarray import Subarray, SubarrayJSON_V3
 from zarr.core.dtype.npy.time import (
     DateTime64,
     DateTime64JSON_V2,
@@ -78,6 +79,8 @@ __all__ = [
     "Structured",
     "StructuredJSON_V2",
     "StructuredJSON_V3",
+    "Subarray",
+    "SubarrayJSON_V3",
     "TBaseDType",
     "TBaseScalar",
     "TimeDelta64",
@@ -126,6 +129,7 @@ AnyDType = (
     | StringDType
     | BytesDType
     | Structured
+    | Subarray
     | TimeDType
     | VariableLengthBytes
 )
@@ -139,6 +143,7 @@ ANY_DTYPE: Final = (
     *STRING_DTYPE,
     *BYTES_DTYPE,
     Structured,
+    Subarray,
     *TIME_DTYPE,
     VariableLengthBytes,
 )

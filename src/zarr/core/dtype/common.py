@@ -48,7 +48,7 @@ DTypeJSON = str | int | float | Sequence["DTypeJSON"] | None | Mapping[str, obje
 # classes can perform a very specific type check.
 
 # This is the JSON representation of a structured dtype in zarr v2
-StructuredName_V2 = Sequence["str | StructuredName_V2"]
+StructuredName_V2 = Sequence[Sequence["str | StructuredName_V2 | Sequence[int]"]]
 
 # This models the type of the name a dtype might have in zarr v2 array metadata
 DTypeName_V2 = StructuredName_V2 | str
@@ -70,23 +70,39 @@ def check_structured_dtype_v2_inner(data: object) -> TypeGuard[StructuredName_V2
     A type guard for the inner elements of a structured dtype. This is a recursive check because
     the type is itself recursive.
 
-    This check ensures that all the elements are 2-element sequences beginning with a string
-    and ending with either another string or another 2-element sequence beginning with a string and
-    ending with another instance of that type.
+    This check ensures that all the elements are either 2-element or 3-element sequences that:
+        1. Begin with a string (name)
+        2. Have as their second element either a string (dtype) or another sequence (structured dtype)
+        3. If they have a third element, it is a sequence representing the shape of the field.
     """
     if isinstance(data, (str, Mapping)):
         return False
     if not isinstance(data, Sequence):
         return False
-    if len(data) != 2:
+    if len(data) != 2 and len(data) != 3:
         return False
-    if not (isinstance(data[0], str)):
+
+    name, dtype = data[0], data[1]
+
+    # check name element
+    if not (isinstance(name, str)):
         return False
-    if isinstance(data[-1], str):
+
+    # check shape element
+    if len(data) == 3:
+        shape = data[2]
+        if not isinstance(shape, Sequence):
+            return False
+        if not all(isinstance(dim, int) for dim in shape):
+            return False
+
+    # (recursively) check dtype element
+    if isinstance(dtype, str):
         return True
-    elif isinstance(data[-1], Sequence):
-        return check_structured_dtype_v2_inner(data[-1])
-    return False
+    elif isinstance(dtype, Sequence):
+        return check_structured_dtype_name_v2(dtype)
+    else:
+        return False
 
 
 def check_structured_dtype_name_v2(data: Sequence[object]) -> TypeGuard[StructuredName_V2]:
