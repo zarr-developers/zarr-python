@@ -75,6 +75,9 @@ Maintenance
   the Delta filter (see https://github.com/zarr-developers/numcodecs/issues/653 for more information).
   By :user:`David Stansby <dstansby>` (:issue:`2544`).
 
+* Deprecate ``chunk_store`` argument to ``Array`` and ``Group`` constructors. 
+  By :user:`Joe Hamman <jhamman>` :issue:`2495`.
+
 .. _release_2.18.3:
 
 2.18.3

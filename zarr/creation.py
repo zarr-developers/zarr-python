@@ -519,6 +519,10 @@ def open_array(
         A codec to encode object arrays, only needed if dtype=object.
     chunk_store : MutableMapping or string, optional
         Store or path to directory in file system or name of zip file.
+        [DEPRECATED since version 2.18.4] This argument is deprecated and will be
+        removed in version 3.0. See
+        `GH2495 <https://github.com/zarr-developers/zarr-python/issues/2495>`_
+        for more information.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
