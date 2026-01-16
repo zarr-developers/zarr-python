@@ -1,18 +1,15 @@
 from __future__ import annotations
 
 from logging import getLogger
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, Any, Self
 
-from zarr.abc.store import ByteRequest, Store
-from zarr.core.buffer import Buffer, gpu
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.abc.store import BufferLike, ByteRequest, Store
+from zarr.core.buffer import Buffer, BufferPrototype, gpu
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
-
-    from zarr.core.buffer import BufferPrototype
 
 
 logger = getLogger(__name__)
@@ -80,25 +77,30 @@ class MemoryStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if prototype is None:
-            prototype = default_buffer_prototype()
+            prototype = self._get_default_buffer_class()
+        # Extract buffer class from BufferLike
+        if isinstance(prototype, BufferPrototype):
+            buffer_cls = prototype.buffer
+        else:
+            buffer_cls = prototype
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
             start, stop = _normalize_byte_range_index(value, byte_range)
-            return prototype.buffer.from_buffer(value[start:stop])
+            return buffer_cls.from_buffer(value[start:stop])
         except KeyError:
             return None
 
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
@@ -174,6 +176,236 @@ class MemoryStore(Store):
 
         for key in keys_unique:
             yield key
+
+    async def get_bytes(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferLike | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> bytes:
+        """
+        Retrieve raw bytes from the memory store asynchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_bytes``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+
+        Returns
+        -------
+        bytes
+            The raw bytes stored at the given key.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+
+        See Also
+        --------
+        Store.get_bytes : Base implementation with full documentation.
+        get_bytes_sync : Synchronous version of this method.
+
+        Examples
+        --------
+        >>> store = await MemoryStore.open()
+        >>> await store.set("data", Buffer.from_bytes(b"hello"))
+        >>> # No need to specify prototype for MemoryStore
+        >>> data = await store.get_bytes("data")
+        >>> print(data)
+        b'hello'
+        """
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        return await super().get_bytes(key, prototype=prototype, byte_range=byte_range)
+
+    def get_bytes_sync(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferLike | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> bytes:
+        """
+        Retrieve raw bytes from the memory store synchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_bytes``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+
+        Returns
+        -------
+        bytes
+            The raw bytes stored at the given key.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+
+        Warnings
+        --------
+        Do not call this method from async functions. Use ``get_bytes()`` instead.
+
+        See Also
+        --------
+        Store.get_bytes_sync : Base implementation with full documentation.
+        get_bytes : Asynchronous version of this method.
+
+        Examples
+        --------
+        >>> store = MemoryStore()
+        >>> store.set("data", Buffer.from_bytes(b"hello"))
+        >>> # No need to specify prototype for MemoryStore
+        >>> data = store.get_bytes("data")
+        >>> print(data)
+        b'hello'
+        """
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        return super().get_bytes_sync(key, prototype=prototype, byte_range=byte_range)
+
+    async def get_json(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferLike | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Any:
+        """
+        Retrieve and parse JSON data from the memory store asynchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_json``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the JSON data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+            Note: Using byte ranges with JSON may result in invalid JSON.
+
+        Returns
+        -------
+        Any
+            The parsed JSON data. This follows the behavior of ``json.loads()`` and
+            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+        json.JSONDecodeError
+            If the stored data is not valid JSON.
+
+        See Also
+        --------
+        Store.get_json : Base implementation with full documentation.
+        get_json_sync : Synchronous version of this method.
+        get_bytes : Method for retrieving raw bytes without parsing.
+
+        Examples
+        --------
+        >>> store = await MemoryStore.open()
+        >>> import json
+        >>> metadata = {"zarr_format": 3, "node_type": "array"}
+        >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> # No need to specify prototype for MemoryStore
+        >>> data = await store.get_json("zarr.json")
+        >>> print(data)
+        {'zarr_format': 3, 'node_type': 'array'}
+        """
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        return await super().get_json(key, prototype=prototype, byte_range=byte_range)
+
+    def get_json_sync(
+        self,
+        key: str = "",
+        *,
+        prototype: BufferLike | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Any:
+        """
+        Retrieve and parse JSON data from the memory store synchronously.
+
+        This is a convenience override that makes the ``prototype`` parameter optional
+        by defaulting to the standard buffer prototype. See the base ``Store.get_json``
+        for full documentation.
+
+        Parameters
+        ----------
+        key : str, optional
+            The key identifying the JSON data to retrieve. Defaults to an empty string.
+        prototype : BufferPrototype, optional
+            The buffer prototype to use for reading the data. If None, uses
+            ``default_buffer_prototype()``.
+        byte_range : ByteRequest, optional
+            If specified, only retrieve a portion of the stored data.
+            Note: Using byte ranges with JSON may result in invalid JSON.
+
+        Returns
+        -------
+        Any
+            The parsed JSON data. This follows the behavior of ``json.loads()`` and
+            can be any JSON-serializable type: dict, list, str, int, float, bool, or None.
+
+        Raises
+        ------
+        FileNotFoundError
+            If the key does not exist in the store.
+        json.JSONDecodeError
+            If the stored data is not valid JSON.
+
+        Warnings
+        --------
+        Do not call this method from async functions. Use ``get_json()`` instead.
+
+        See Also
+        --------
+        Store.get_json_sync : Base implementation with full documentation.
+        get_json : Asynchronous version of this method.
+        get_bytes_sync : Method for retrieving raw bytes without parsing.
+
+        Examples
+        --------
+        >>> store = MemoryStore()
+        >>> import json
+        >>> metadata = {"zarr_format": 3, "node_type": "array"}
+        >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
+        >>> # No need to specify prototype for MemoryStore
+        >>> data = store.get_json("zarr.json")
+        >>> print(data)
+        {'zarr_format': 3, 'node_type': 'array'}
+        """
+        if prototype is None:
+            prototype = self._get_default_buffer_class()
+        return super().get_json_sync(key, prototype=prototype, byte_range=byte_range)
 
 
 class GpuMemoryStore(MemoryStore):
