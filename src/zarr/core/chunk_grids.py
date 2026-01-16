@@ -195,6 +195,10 @@ class RectilinearChunks(ChunksType):
     """
     Chunk specification for arrays with variable chunk sizes per dimension.
 
+    .. warning::
+        This is an experimental feature and may change in future releases.
+        Expected to stabilize in Zarr version 3.3.
+
     Behaves like a tuple of tuples, where each inner tuple contains the
     chunk sizes along that dimension. Provides named access and additional
     methods for introspection when dimension_names are available.
@@ -865,6 +869,10 @@ class RegularChunkGrid(ChunkGrid):
 class RectilinearChunkGrid(ChunkGrid):
     """
     A rectilinear chunk grid where chunk sizes vary along each axis.
+
+    .. warning::
+        This is an experimental feature and may change in future releases.
+        Expected to stabilize in Zarr version 3.3.
 
     Attributes
     ----------

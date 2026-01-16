@@ -568,6 +568,10 @@ Without the `shards` argument, there would be 10,000 chunks stored as individual
 
 ## Variable Chunking (Zarr v3)
 
+!!! warning "Experimental Feature"
+    Variable chunking with `RectilinearChunkGrid` is an experimental feature and may change
+    in future releases. This feature is expected to stabilize in Zarr version 3.3.
+
 In addition to regular chunking where all chunks have the same size, Zarr v3 supports
 **variable chunking** (also called rectilinear chunking), where chunks can have different
 sizes along each dimension. This is useful when your data has non-uniform structure or

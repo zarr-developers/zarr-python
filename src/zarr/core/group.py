@@ -1056,7 +1056,8 @@ class AsyncGroup:
             Chunk shape of the array. Several formats are supported:
 
             - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``
-            - nested sequence: Creates a RectilinearChunkGrid with variable-sized chunks (Zarr format 3 only),
+            - nested sequence: Creates a RectilinearChunkGrid with variable-sized chunks
+              (Zarr format 3 only, experimental until 3.3),
               e.g., ``[[10, 20, 30], [5, 5]]`` creates variable chunks along each dimension
             - ChunkGrid instance: Uses the provided chunk grid directly (Zarr format 3 only)
             - "auto": Automatically determines chunk shape based on array shape and dtype
@@ -2490,7 +2491,8 @@ class Group(SyncMixin):
             Chunk shape of the array. Several formats are supported:
 
             - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``
-            - nested sequence: Creates a RectilinearChunkGrid with variable-sized chunks (Zarr format 3 only),
+            - nested sequence: Creates a RectilinearChunkGrid with variable-sized chunks
+              (Zarr format 3 only, experimental until 3.3),
               e.g., ``[[10, 20, 30], [5, 5]]`` creates variable chunks along each dimension
             - ChunkGrid instance: Uses the provided chunk grid directly (Zarr format 3 only)
             - "auto": Automatically determines chunk shape based on array shape and dtype
@@ -2639,7 +2641,8 @@ class Group(SyncMixin):
             Chunk shape of the array. Several formats are supported:
 
             - tuple of ints: Creates a RegularChunkGrid with uniform chunks, e.g., ``(10, 10)``
-            - nested sequence: Creates a RectilinearChunkGrid with variable-sized chunks (Zarr format 3 only),
+            - nested sequence: Creates a RectilinearChunkGrid with variable-sized chunks
+              (Zarr format 3 only, experimental until 3.3),
               e.g., ``[[10, 20, 30], [5, 5]]`` creates variable chunks along each dimension
             - ChunkGrid instance: Uses the provided chunk grid directly (Zarr format 3 only)
             - "auto": Automatically determines chunk shape based on array shape and dtype
