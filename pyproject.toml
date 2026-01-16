@@ -84,6 +84,7 @@ test = [
     "pytest-codspeed",
     "packaging",
     "tomlkit",
+    "uv",
 ]
 remote_tests = [
     'zarr[remote]',
