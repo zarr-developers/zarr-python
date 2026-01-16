@@ -492,24 +492,36 @@ class StoreTests(Generic[S, B]):
         assert observed_prefix_sorted == expected_prefix_sorted
 
     async def test_list_dir(self, store: S) -> None:
-        root = "foo"
-        store_dict = {
-            root + "/zarr.json": self.buffer_cls.from_bytes(b"bar"),
-            root + "/c/1": self.buffer_cls.from_bytes(b"\x01"),
-        }
+        roots_and_keys: list[tuple[str, dict[str, Buffer]]] = [
+            (
+                "foo",
+                {
+                    "foo/zarr.json": self.buffer_cls.from_bytes(b"bar"),
+                    "foo/c/1": self.buffer_cls.from_bytes(b"\x01"),
+                },
+            ),
+            (
+                "foo/bar",
+                {
+                    "foo/bar/foobar_first_child": self.buffer_cls.from_bytes(b"1"),
+                    "foo/bar/foobar_second_child/zarr.json": self.buffer_cls.from_bytes(b"2"),
+                },
+            ),
+        ]
 
         assert await _collect_aiterator(store.list_dir("")) == ()
-        assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        await store._set_many(store_dict.items())
+        for root, store_dict in roots_and_keys:
+            assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        keys_observed = await _collect_aiterator(store.list_dir(root))
-        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
+            await store._set_many(store_dict.items())
 
-        assert sorted(keys_observed) == sorted(keys_expected)
+            keys_observed = await _collect_aiterator(store.list_dir(root))
+            keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
+            assert sorted(keys_observed) == sorted(keys_expected)
 
-        keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
-        assert sorted(keys_expected) == sorted(keys_observed)
+            keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
+            assert sorted(keys_expected) == sorted(keys_observed)
 
     async def test_set_if_not_exists(self, store: S) -> None:
         key = "k"
