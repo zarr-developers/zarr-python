@@ -725,7 +725,7 @@ class ShardingCodec(
         """
         shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
         if shard_index is None:
-            return None
+            return None  # shard index read failure, the ByteGetter returned None
 
         chunks = [
             _ChunkCoordsByteSlice(chunk_coords, slice(*chunk_byte_slice))
@@ -745,9 +745,9 @@ class ShardingCodec(
 
         shard_dict: ShardMutableMapping = {}
         for d in shard_dicts:
-            if d is None:
-                return None
-            shard_dict.update(d)
+            # can be None if the ByteGetter returned None when reading chunk data
+            if d is not None:
+                shard_dict.update(d)
 
         return shard_dict
 
