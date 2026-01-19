@@ -143,7 +143,7 @@ Zarr strives to maintain 100% test coverage under the latest Python stable relea
 hatch env run --env test.py3.12-2.2-optional run-coverage
 ```
 
-will automatically run the test suite with coverage and produce a XML coverage report. This should be 100% before code can be accepted into the main code base.
+will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
 
 You can also generate an HTML coverage report by running:
 

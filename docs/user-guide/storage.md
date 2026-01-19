@@ -138,7 +138,7 @@ print(group)
 ```
 
 The type of filesystem (e.g. S3, https, etc..) is inferred from the scheme of the url (e.g. s3 for "**s3**://noaa-nwm-retro-v2-zarr-pds").
-In case a specific filesystem is needed, one can explicitly create it. For example to create a S3 filesystem:
+In case a specific filesystem is needed, one can explicitly create it. For example to create an S3 filesystem:
 
 ```python exec="true" session="storage" source="above" result="ansi"
 # Note: requires s3fs to be installed
