@@ -143,7 +143,7 @@ Zarr strives to maintain 100% test coverage under the latest Python stable relea
 hatch env run --env test.py3.12-2.2-optional run-coverage
 ```
 
-will automatically run the test suite with coverage and produce a XML coverage report. This should be 100% before code can be accepted into the main code base.
+will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
 
 You can also generate an HTML coverage report by running:
 
@@ -172,6 +172,40 @@ Hatch can also be used to serve continuously updating version of the documentati
 ```bash
 hatch --env docs run serve
 ```
+
+#### Adding executable code blocks in the documentation
+
+Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="on"` to a code block header for it to be executed when the docs are built. For example:
+
+````md
+```python exec="on"
+print("Hello world")
+```
+````
+
+Below are other useful options that can be added to the code block. See [Markdown Exec's documentation](https://pawamoy.github.io/markdown-exec/usage/#options-summary) for a full list:
+
+  - `source="above"` makes sure the code within the code block is also rendered in the documentation (rather than just the output).
+  - `session="<name-of-docs-page>"` executes code blocks in a named session reusing previously defined variables.
+  - `result="ansi"` or `result="html"` to render the output. If the code does not produce output, you should leave off the `result` option to prevent an empty cell from rendering in the docs.
+
+For example:
+
+````md
+```python exec="true" session="contributing" source="above" result="ansi"
+print("Hello world")
+```
+````
+
+renders as:
+
+```python exec="true" session="contributing" source="above" result="ansi"
+print("Hello world")
+```
+
+#### Building documentation without executing code blocks
+
+Sometimes, you may want the documentation to build quicker. You can disable code block execution by commenting out the [markdown-exec](https://github.com/zarr-developers/zarr-python/blob/884a8c91afcc3efe28b3da952be3b85125c453cb/mkdocs.yml#L132 plugin in the mkdocs configuration file). This will make code blocks and cross references render incorrectly (i.e., expect build warnings), but also reduces build time by ~3x. Be sure to undo the commenting out before opening your pull request.
 
 ### Changelog
 
@@ -231,3 +265,12 @@ If an existing Zarr format version changes, or a new version of the Zarr format 
 
 Open an issue on GitHub announcing the release using the release checklist template:
 [https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md>). The release checklist includes all steps necessary for the release.
+
+## Benchmarks
+
+Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
+performance benchmarks as part of our test suite. The benchmarks can be are found in `tests/benchmarks`.
+By default pytest is configured to run these benchmarks as plain tests (i.e., no benchmarking). To run
+a benchmark with timing measurements, use the `--benchmark-enable` when invoking `pytest`.
+
+The benchmarks are run as part of the continuous integration suite through [codspeed](https://codspeed.io/zarr-developers/zarr-python).

@@ -33,10 +33,10 @@ requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'packaging>=22.0',
-    'numpy>=1.26',
+    'numpy>=2.0',
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
-    'typing_extensions>=4.9',
+    'typing_extensions>=4.12',
     'donfig>=0.8',
 ]
 
@@ -70,19 +70,18 @@ gpu = [
     "cupy-cuda12x",
 ]
 cli = ["typer"]
-# Development extras
+# Testing extras
 test = [
     "coverage>=7.10",
-    # Pin possibly due to https://github.com/pytest-dev/pytest-cov/issues/693
-    "pytest<8.4",
-    "pytest-asyncio<1.2.0",
+    "pytest",
+    "pytest-asyncio",
     "pytest-cov",
     "pytest-accept",
-    "rich",
-    "mypy",
     'numpydoc',
     "hypothesis",
     "pytest-xdist",
+    "pytest-benchmark",
+    "pytest-codspeed",
     "packaging",
     "tomlkit",
     "uv",
@@ -114,6 +113,14 @@ docs = [
     's3fs>=2023.10.0',
     'astroid<4',
     'pytest'
+]
+# All development extras
+dev = [
+    "zarr[optional]",
+    "zarr[test]",
+    "zarr[remote_tests]",
+    "zarr[docs]",
+    "mypy",
 ]
 
 [project.scripts]
@@ -151,9 +158,6 @@ version.source = "vcs"
 hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
-dependencies = [
-    "numpy~={matrix:numpy}",
-]
 features = ["test"]
 
 [tool.hatch.envs.test.env-vars]
@@ -164,7 +168,6 @@ COV_CORE_DATAFILE = ".coverage.eager"
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.26", "2.2"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -176,28 +179,27 @@ matrix.deps.dependencies = [
 run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
 run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
-run = "run-coverage --no-cov"
+run = "run-coverage --no-cov --ignore tests/benchmarks"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
+run-benchmark = "pytest --benchmark-enable tests/benchmarks"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
 template = "test"
 dependencies = [
-    "numpy~={matrix:numpy}",
     "universal_pathlib",
 ]
 features = ["test", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.26", "2.2"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
@@ -235,12 +237,12 @@ python = "3.11"
 dependencies = [
     'zarr[remote]',
     'packaging==22.*',
-    'numpy==1.26.*',
+    'numpy==2.0.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
     'universal_pathlib==0.0.22',
-    'typing_extensions==4.9.*',
+    'typing_extensions==4.12.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
     # test deps
@@ -396,6 +398,7 @@ ignore_errors = true
 minversion = "7"
 testpaths = ["tests", "docs/user-guide"]
 log_cli_level = "INFO"
+log_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
@@ -405,7 +408,10 @@ doctest_optionflags = [
     "IGNORE_EXCEPTION_DETAIL",
 ]
 addopts = [
-    "--durations=10", "-ra", "--strict-config", "--strict-markers",
+    "--benchmark-columns", "min,mean,stddev,outliers,rounds,iterations",
+    "--benchmark-disable", # benchmark routines run as tests without benchmarking instrumentation
+    "--durations", "10",
+    "-ra", "--strict-config", "--strict-markers",
 ]
 filterwarnings = [
     "error",
