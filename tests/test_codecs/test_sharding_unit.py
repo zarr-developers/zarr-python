@@ -17,7 +17,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer
 
 if TYPE_CHECKING:
-    from zarr.abc.store import RangeByteRequest
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import BufferPrototype
 
 
@@ -349,16 +349,18 @@ class MockByteGetter:
     return_none: bool = False
 
     async def get(
-        self, prototype: BufferPrototype, byte_range: RangeByteRequest | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         if self.return_none:
             return None
         if byte_range is None:
             return Buffer.from_bytes(self.data)
-        return Buffer.from_bytes(self.data[byte_range.start : byte_range.end])
+        # For RangeByteRequest, extract start and end
+        start = getattr(byte_range, "start", 0)
+        end = getattr(byte_range, "end", len(self.data))
+        return Buffer.from_bytes(self.data[start:end])
 
 
-@pytest.mark.asyncio
 async def test_get_group_bytes_single_chunk() -> None:
     """Test _get_group_bytes extracts single chunk correctly."""
     codec = ShardingCodec(chunk_shape=(8,))
@@ -372,10 +374,11 @@ async def test_get_group_bytes_single_chunk() -> None:
 
     assert result is not None
     assert (0,) in result
-    assert result[(0,)].as_numpy_array().tobytes() == data[10:30]
+    chunk_buf = result[(0,)]
+    assert chunk_buf is not None
+    assert chunk_buf.as_numpy_array().tobytes() == data[10:30]
 
 
-@pytest.mark.asyncio
 async def test_get_group_bytes_multiple_chunks() -> None:
     """Test _get_group_bytes extracts multiple chunks with correct offsets."""
     codec = ShardingCodec(chunk_shape=(8,))
@@ -391,11 +394,14 @@ async def test_get_group_bytes_multiple_chunks() -> None:
 
     assert result is not None
     assert len(result) == 2
-    assert result[(0,)].as_numpy_array().tobytes() == data[10:30]
-    assert result[(1,)].as_numpy_array().tobytes() == data[30:50]
+    chunk0_buf = result[(0,)]
+    chunk1_buf = result[(1,)]
+    assert chunk0_buf is not None
+    assert chunk1_buf is not None
+    assert chunk0_buf.as_numpy_array().tobytes() == data[10:30]
+    assert chunk1_buf.as_numpy_array().tobytes() == data[30:50]
 
 
-@pytest.mark.asyncio
 async def test_get_group_bytes_with_gap() -> None:
     """Test _get_group_bytes handles chunks with gaps correctly."""
     codec = ShardingCodec(chunk_shape=(8,))
@@ -412,11 +418,14 @@ async def test_get_group_bytes_with_gap() -> None:
     assert result is not None
     assert len(result) == 2
     # The byte_getter.get is called with range [10, 60), then sliced
-    assert result[(0,)].as_numpy_array().tobytes() == data[10:20]
-    assert result[(1,)].as_numpy_array().tobytes() == data[40:60]
+    chunk0_buf = result[(0,)]
+    chunk1_buf = result[(1,)]
+    assert chunk0_buf is not None
+    assert chunk1_buf is not None
+    assert chunk0_buf.as_numpy_array().tobytes() == data[10:20]
+    assert chunk1_buf.as_numpy_array().tobytes() == data[40:60]
 
 
-@pytest.mark.asyncio
 async def test_get_group_bytes_returns_none_on_failed_read() -> None:
     """Test _get_group_bytes returns None when ByteGetter.get returns None."""
     codec = ShardingCodec(chunk_shape=(8,))
@@ -444,7 +453,7 @@ class MockByteGetterWithIndex:
     call_count: int = 0
 
     async def get(
-        self, prototype: BufferPrototype, byte_range: RangeByteRequest | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         self.call_count += 1
         # First call is typically for the index
@@ -457,17 +466,19 @@ class MockByteGetterWithIndex:
             return None
         if byte_range is None:
             return Buffer.from_bytes(self.chunk_data)
-        return Buffer.from_bytes(self.chunk_data[byte_range.start : byte_range.end])
+        # For RangeByteRequest, extract start and end
+        start = getattr(byte_range, "start", 0)
+        end = getattr(byte_range, "end", len(self.chunk_data))
+        return Buffer.from_bytes(self.chunk_data[start:end])
 
 
-@pytest.mark.asyncio
 async def test_load_partial_shard_maybe_index_load_fails() -> None:
     """Test _load_partial_shard_maybe returns None when index load fails."""
     codec = ShardingCodec(chunk_shape=(8,))
     byte_getter = MockByteGetterWithIndex(index_data=None, chunk_data=None)
 
     chunks_per_shard = (2,)
-    all_chunk_coords = {(0,)}
+    all_chunk_coords: set[tuple[int, ...]] = {(0,)}
 
     result = await codec._load_partial_shard_maybe(
         byte_getter=byte_getter,
@@ -482,7 +493,6 @@ async def test_load_partial_shard_maybe_index_load_fails() -> None:
     assert result is None
 
 
-@pytest.mark.asyncio
 async def test_load_partial_shard_maybe_with_empty_chunks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -510,7 +520,7 @@ async def test_load_partial_shard_maybe_with_empty_chunks(
     byte_getter = MockByteGetter(data=chunk_data)
 
     # Request chunks including the empty one
-    all_chunk_coords = {(0,), (1,), (2,)}
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,)}
 
     result = await codec._load_partial_shard_maybe(
         byte_getter=byte_getter,
@@ -529,7 +539,6 @@ async def test_load_partial_shard_maybe_with_empty_chunks(
     assert (2,) in result
 
 
-@pytest.mark.asyncio
 async def test_load_partial_shard_maybe_all_chunks_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -551,7 +560,7 @@ async def test_load_partial_shard_maybe_all_chunks_empty(
     byte_getter = MockByteGetter(data=b"")
 
     # Request some chunks - all will be empty
-    all_chunk_coords = {(0,), (1,), (2,)}
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,)}
 
     result = await codec._load_partial_shard_maybe(
         byte_getter=byte_getter,
@@ -619,7 +628,7 @@ def test_is_total_shard_full() -> None:
     """Test _is_total_shard returns True when all chunk coords are present."""
     codec = ShardingCodec(chunk_shape=(8,))
     chunks_per_shard = (2, 2)
-    all_chunk_coords = {(0, 0), (0, 1), (1, 0), (1, 1)}
+    all_chunk_coords: set[tuple[int, ...]] = {(0, 0), (0, 1), (1, 0), (1, 1)}
 
     assert codec._is_total_shard(all_chunk_coords, chunks_per_shard) is True
 
@@ -628,7 +637,7 @@ def test_is_total_shard_partial() -> None:
     """Test _is_total_shard returns False for partial chunk coords."""
     codec = ShardingCodec(chunk_shape=(8,))
     chunks_per_shard = (2, 2)
-    all_chunk_coords = {(0, 0), (1, 1)}  # Missing (0, 1) and (1, 0)
+    all_chunk_coords: set[tuple[int, ...]] = {(0, 0), (1, 1)}  # Missing (0, 1) and (1, 0)
 
     assert codec._is_total_shard(all_chunk_coords, chunks_per_shard) is False
 
@@ -646,10 +655,10 @@ def test_is_total_shard_1d() -> None:
     """Test _is_total_shard works with 1D shards."""
     codec = ShardingCodec(chunk_shape=(8,))
     chunks_per_shard = (4,)
-    all_chunk_coords = {(0,), (1,), (2,), (3,)}
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,), (3,)}
 
     assert codec._is_total_shard(all_chunk_coords, chunks_per_shard) is True
 
     # Partial
-    partial_coords = {(0,), (2,)}
+    partial_coords: set[tuple[int, ...]] = {(0,), (2,)}
     assert codec._is_total_shard(partial_coords, chunks_per_shard) is False
