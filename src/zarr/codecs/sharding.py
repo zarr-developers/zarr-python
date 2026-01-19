@@ -418,8 +418,18 @@ class ShardingCodec(
             )
         else:
             # read some chunks within the shard
+            max_gap_bytes = config.get("sharding.read.coalesce_max_gap_bytes")
+            coalesce_max_bytes = config.get("sharding.read.coalesce_max_bytes")
+            async_concurrency = config.get("async.concurrency")
+
             shard_dict_maybe = await self._load_partial_shard_maybe(
-                byte_getter, chunk_spec.prototype, chunks_per_shard, all_chunk_coords
+                byte_getter,
+                chunk_spec.prototype,
+                chunks_per_shard,
+                all_chunk_coords,
+                max_gap_bytes,
+                coalesce_max_bytes,
+                async_concurrency,
             )
 
         if shard_dict_maybe is None:
@@ -702,10 +712,16 @@ class ShardingCodec(
         prototype: BufferPrototype,
         chunks_per_shard: tuple[int, ...],
         all_chunk_coords: set[tuple[int, ...]],
+        max_gap_bytes: int,
+        coalesce_max_bytes: int,
+        async_concurrency: int,
     ) -> ShardMapping | None:
         """
         Read chunks from `byte_getter` for the case where the read is less than a full shard.
         Returns a mapping of chunk coordinates to bytes or None.
+
+        Reads are coalesced if there are fewer than `max_gap_bytes` bytes between chunks
+        and the total size of the coalesced read is no more than `coalesce_max_bytes`.
         """
         shard_index = await self._load_shard_index_maybe(byte_getter, chunks_per_shard)
         if shard_index is None:
@@ -719,12 +735,12 @@ class ShardingCodec(
             if (chunk_byte_slice := shard_index.get_chunk_slice(chunk_coords))
         ]
 
-        groups = self._coalesce_chunks(chunks)
+        groups = self._coalesce_chunks(chunks, max_gap_bytes, coalesce_max_bytes)
 
         shard_dicts = await concurrent_map(
             [(group, byte_getter, prototype) for group in groups],
             self._get_group_bytes,
-            config.get("async.concurrency"),
+            async_concurrency,
         )
 
         shard_dict: ShardMutableMapping = {}
@@ -738,19 +754,13 @@ class ShardingCodec(
     def _coalesce_chunks(
         self,
         chunks: list[_ChunkCoordsByteSlice],
+        max_gap_bytes: int,
+        coalesce_max_bytes: int,
     ) -> list[list[_ChunkCoordsByteSlice]]:
         """
         Combine chunks from a single shard into groups that should be read together
         in a single request to the store.
-
-        Respects the following configuration options:
-        - `sharding.read.coalesce_max_gap_bytes`: The maximum gap between
-          chunks to coalesce into a single group.
-        - `sharding.read.coalesce_max_bytes`: The maximum number of bytes in a group.
         """
-        max_gap_bytes = config.get("sharding.read.coalesce_max_gap_bytes")
-        coalesce_max_bytes = config.get("sharding.read.coalesce_max_bytes")
-
         sorted_chunks = sorted(chunks, key=lambda c: c.byte_slice.start)
 
         if len(sorted_chunks) == 0:
