@@ -123,7 +123,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         key = "test_key"
         await self.set(store, key, self.buffer_cls.from_bytes(data))
 
-        result = await store.get_bytes(key, prototype=buffer_cls)
+        result = await store._get_bytes(key, prototype=buffer_cls)
         assert result == data
 
     @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
@@ -135,7 +135,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         key = "test_key"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
 
-        result = store.get_bytes_sync(key, prototype=buffer_cls)
+        result = store._get_bytes_sync(key, prototype=buffer_cls)
         assert result == data
 
     @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
@@ -147,7 +147,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         key = "test.json"
         await self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode()))
 
-        result = await store.get_json(key, prototype=buffer_cls)
+        result = await store._get_json(key, prototype=buffer_cls)
         assert result == data
 
     @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
@@ -159,7 +159,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         key = "test.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode())))
 
-        result = store.get_json_sync(key, prototype=buffer_cls)
+        result = store._get_json_sync(key, prototype=buffer_cls)
         assert result == data
 
 

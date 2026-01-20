@@ -175,7 +175,7 @@ class MemoryStore(Store):
         for key in keys_unique:
             yield key
 
-    async def get_bytes(
+    async def _get_bytes(
         self,
         key: str = "",
         *,
@@ -225,9 +225,9 @@ class MemoryStore(Store):
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        return await super().get_bytes(key, prototype=prototype, byte_range=byte_range)
+        return await super()._get_bytes(key, prototype=prototype, byte_range=byte_range)
 
-    def get_bytes_sync(
+    def _get_bytes_sync(
         self,
         key: str = "",
         *,
@@ -281,9 +281,9 @@ class MemoryStore(Store):
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        return super().get_bytes_sync(key, prototype=prototype, byte_range=byte_range)
+        return super()._get_bytes_sync(key, prototype=prototype, byte_range=byte_range)
 
-    async def get_json(
+    async def _get_json(
         self,
         key: str = "",
         *,
@@ -340,9 +340,9 @@ class MemoryStore(Store):
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        return await super().get_json(key, prototype=prototype, byte_range=byte_range)
+        return await super()._get_json(key, prototype=prototype, byte_range=byte_range)
 
-    def get_json_sync(
+    def _get_json_sync(
         self,
         key: str = "",
         *,
@@ -403,7 +403,7 @@ class MemoryStore(Store):
         """
         if prototype is None:
             prototype = default_buffer_prototype()
-        return super().get_json_sync(key, prototype=prototype, byte_range=byte_range)
+        return super()._get_json_sync(key, prototype=prototype, byte_range=byte_range)
 
 
 class GpuMemoryStore(MemoryStore):

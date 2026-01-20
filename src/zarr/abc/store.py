@@ -209,7 +209,7 @@ class Store(ABC):
         """
         ...
 
-    async def get_bytes(
+    async def _get_bytes(
         self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> bytes:
         """
@@ -257,7 +257,7 @@ class Store(ABC):
             raise FileNotFoundError(key)
         return buffer.to_bytes()
 
-    def get_bytes_sync(
+    def _get_bytes_sync(
         self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> bytes:
         """
@@ -306,9 +306,9 @@ class Store(ABC):
         b'hello world'
         """
 
-        return sync(self.get_bytes(key, prototype=prototype, byte_range=byte_range))
+        return sync(self._get_bytes(key, prototype=prototype, byte_range=byte_range))
 
-    async def get_json(
+    async def _get_json(
         self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Any:
         """
@@ -356,9 +356,9 @@ class Store(ABC):
         {'zarr_format': 3, 'node_type': 'array'}
         """
 
-        return json.loads(await self.get_bytes(key, prototype=prototype, byte_range=byte_range))
+        return json.loads(await self._get_bytes(key, prototype=prototype, byte_range=byte_range))
 
-    def get_json_sync(
+    def _get_json_sync(
         self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Any:
         """
@@ -412,7 +412,7 @@ class Store(ABC):
         {'zarr_format': 3, 'node_type': 'array'}
         """
 
-        return sync(self.get_json(key, prototype=prototype, byte_range=byte_range))
+        return sync(self._get_json(key, prototype=prototype, byte_range=byte_range))
 
     @abstractmethod
     async def get_partial_values(
