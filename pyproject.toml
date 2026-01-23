@@ -30,7 +30,7 @@ maintainers = [
     { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.11"
-# If you add a new dependency here, please also add it to .pre-commit-config.yml
+# If you add a new dependency here, please also add it to .pre-commit-config.yaml
 dependencies = [
     'packaging>=22.0',
     'numpy>=2.0',
@@ -428,6 +428,7 @@ markers = [
 ignore = [
 	"PC111",  # fix Python code in documentation - enable later
 	"PC180",  # for JavaScript - not interested
+	"PC902",  # pre-commit.ci custom autofix message - not using autofix
 ]
 
 [tool.numpydoc_validation]
