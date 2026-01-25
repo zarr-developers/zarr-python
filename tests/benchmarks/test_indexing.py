@@ -28,7 +28,7 @@ shards = (
 )
 
 
-@pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
+@pytest.mark.parametrize("store", ["memory", "memory_get_latency"], indirect=["store"])
 @pytest.mark.parametrize("indexer", indexers, ids=str)
 @pytest.mark.parametrize("shards", shards, ids=str)
 def test_slice_indexing(
