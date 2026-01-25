@@ -1013,6 +1013,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.store_path.store
 
     @property
+    @deprecated("Use AsyncArray.config instead.", category=ZarrDeprecationWarning)
+    def _config(self) -> ArrayConfig:
+        return self.config
+
+    @property
     def ndim(self) -> int:
         """Returns the number of dimensions in the Array.
 
@@ -2580,7 +2585,8 @@ class Array(Generic[T_ArrayMetadata]):
         ----------
 
         config : ArrayConfigLike
-            The runtime config for the new Array.
+            The runtime config for the new Array. Any keys not specified will be inherited
+            from the current array's config.
 
         Returns
         -------
