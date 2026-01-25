@@ -1,17 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
-
-from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.store import ByteRequest
-    from zarr.core.buffer.core import BufferPrototype
 
 import pytest
 
@@ -525,63 +521,3 @@ class StoreTests(Generic[S, B]):
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
-
-
-class LatencyStore(WrapperStore[Store]):
-    """
-    A wrapper class that takes any store class in its constructor and
-    adds latency to the `set` and `get` methods. This can be used for
-    performance testing.
-    """
-
-    get_latency: float
-    set_latency: float
-
-    def __init__(self, cls: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
-        self.get_latency = float(get_latency)
-        self.set_latency = float(set_latency)
-        self._store = cls
-
-    async def set(self, key: str, value: Buffer) -> None:
-        """
-        Add latency to the ``set`` method.
-
-        Calls ``asyncio.sleep(self.set_latency)`` before invoking the wrapped ``set`` method.
-
-        Parameters
-        ----------
-        key : str
-            The key to set
-        value : Buffer
-            The value to set
-
-        Returns
-        -------
-        None
-        """
-        await asyncio.sleep(self.set_latency)
-        await self._store.set(key, value)
-
-    async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-    ) -> Buffer | None:
-        """
-        Add latency to the ``get`` method.
-
-        Calls ``asyncio.sleep(self.get_latency)`` before invoking the wrapped ``get`` method.
-
-        Parameters
-        ----------
-        key : str
-            The key to get
-        prototype : BufferPrototype
-            The BufferPrototype to use.
-        byte_range : ByteRequest, optional
-            An optional byte range.
-
-        Returns
-        -------
-        buffer : Buffer or None
-        """
-        await asyncio.sleep(self.get_latency)
-        return await self._store.get(key, prototype=prototype, byte_range=byte_range)
