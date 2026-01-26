@@ -109,26 +109,50 @@ All tests are automatically run via GitHub Actions for every pull request and mu
 
 > **Note:** Previous versions of Zarr-Python made extensive use of doctests. These tests were not maintained during the 3.0 refactor but may be brought back in the future. See issue #2614 for more details.
 
-### Code standards - using pre-commit
+### Code standards - using prek
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
 
-`Zarr` uses a set of `pre-commit` hooks and the `pre-commit` bot to format, type-check, and prettify the codebase. `pre-commit` can be installed locally by running:
+`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager that is fully compatible with `.pre-commit-config.yaml` files. `prek` can be installed locally by running:
 
 ```bash
-python -m pip install pre-commit
+uv tool install prek
+```
+
+or:
+
+```bash
+pip install prek
 ```
 
 The hooks can be installed locally by running:
 
 ```bash
-pre-commit install
+prek install
 ```
 
-This would run the checks every time a commit is created locally. These checks will also run on every commit pushed to an open PR, resulting in some automatic styling fixes by the `pre-commit` bot. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
+This would run the checks every time a commit is created locally. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
 
 ```bash
-pre-commit run --all-files
+prek run --all-files
+```
+
+You can also run hooks only for files in a specific directory:
+
+```bash
+prek run --directory src/zarr
+```
+
+Or run hooks for files changed in the last commit:
+
+```bash
+prek run --last-commit
+```
+
+To list all available hooks:
+
+```bash
+prek list
 ```
 
 If you would like to skip the failing checks and push the code for further discussion, use the `--no-verify` option with `git commit`.
@@ -143,7 +167,7 @@ Zarr strives to maintain 100% test coverage under the latest Python stable relea
 hatch env run --env test.py3.12-2.2-optional run-coverage
 ```
 
-will automatically run the test suite with coverage and produce a XML coverage report. This should be 100% before code can be accepted into the main code base.
+will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
 
 You can also generate an HTML coverage report by running:
 

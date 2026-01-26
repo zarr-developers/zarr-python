@@ -177,7 +177,7 @@ class MemoryStore(Store):
         for key in keys_unique:
             yield key
 
-    async def get_bytes(
+    async def _get_bytes(
         self,
         key: str = "",
         *,
@@ -221,15 +221,15 @@ class MemoryStore(Store):
         >>> store = await MemoryStore.open()
         >>> await store.set("data", Buffer.from_bytes(b"hello"))
         >>> # No need to specify prototype for MemoryStore
-        >>> data = await store.get_bytes("data")
+        >>> data = await store._get_bytes("data")
         >>> print(data)
         b'hello'
         """
         if prototype is None:
             prototype = self._get_default_buffer_class()
-        return await super().get_bytes(key, prototype=prototype, byte_range=byte_range)
+        return await super()._get_bytes(key, prototype=prototype, byte_range=byte_range)
 
-    def get_bytes_sync(
+    def _get_bytes_sync(
         self,
         key: str = "",
         *,
@@ -277,15 +277,15 @@ class MemoryStore(Store):
         >>> store = MemoryStore()
         >>> store.set("data", Buffer.from_bytes(b"hello"))
         >>> # No need to specify prototype for MemoryStore
-        >>> data = store.get_bytes("data")
+        >>> data = store._get_bytes_sync("data")
         >>> print(data)
         b'hello'
         """
         if prototype is None:
             prototype = self._get_default_buffer_class()
-        return super().get_bytes_sync(key, prototype=prototype, byte_range=byte_range)
+        return super()._get_bytes_sync(key, prototype=prototype, byte_range=byte_range)
 
-    async def get_json(
+    async def _get_json(
         self,
         key: str = "",
         *,
@@ -336,15 +336,15 @@ class MemoryStore(Store):
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
         >>> # No need to specify prototype for MemoryStore
-        >>> data = await store.get_json("zarr.json")
+        >>> data = await store._get_json("zarr.json")
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
         if prototype is None:
             prototype = self._get_default_buffer_class()
-        return await super().get_json(key, prototype=prototype, byte_range=byte_range)
+        return await super()._get_json(key, prototype=prototype, byte_range=byte_range)
 
-    def get_json_sync(
+    def _get_json_sync(
         self,
         key: str = "",
         *,
@@ -399,13 +399,13 @@ class MemoryStore(Store):
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
         >>> # No need to specify prototype for MemoryStore
-        >>> data = store.get_json("zarr.json")
+        >>> data = store._get_json_sync("zarr.json")
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
         if prototype is None:
             prototype = self._get_default_buffer_class()
-        return super().get_json_sync(key, prototype=prototype, byte_range=byte_range)
+        return super()._get_json_sync(key, prototype=prototype, byte_range=byte_range)
 
 
 class GpuMemoryStore(MemoryStore):

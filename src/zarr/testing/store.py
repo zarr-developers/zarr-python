@@ -545,43 +545,43 @@ class StoreTests(Generic[S, B]):
 
     async def test_get_bytes(self, store: S) -> None:
         """
-        Test that the get_bytes method reads bytes.
+        Test that the _get_bytes method reads bytes.
         """
         data = b"hello world"
         key = "zarr.json"
         await self.set(store, key, self.buffer_cls.from_bytes(data))
-        assert await store.get_bytes(key, prototype=default_buffer_prototype()) == data
+        assert await store._get_bytes(key, prototype=default_buffer_prototype()) == data
         with pytest.raises(FileNotFoundError):
-            await store.get_bytes("nonexistent_key", prototype=default_buffer_prototype())
+            await store._get_bytes("nonexistent_key", prototype=default_buffer_prototype())
 
     def test_get_bytes_sync(self, store: S) -> None:
         """
-        Test that the get_bytes_sync method reads bytes.
+        Test that the _get_bytes_sync method reads bytes.
         """
         data = b"hello world"
         key = "zarr.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
-        assert store.get_bytes_sync(key, prototype=default_buffer_prototype()) == data
+        assert store._get_bytes_sync(key, prototype=default_buffer_prototype()) == data
 
     async def test_get_json(self, store: S) -> None:
         """
-        Test that the get_json method reads json.
+        Test that the _get_json method reads json.
         """
         data = {"foo": "bar"}
         data_bytes = json.dumps(data).encode("utf-8")
         key = "zarr.json"
         await self.set(store, key, self.buffer_cls.from_bytes(data_bytes))
-        assert await store.get_json(key, prototype=default_buffer_prototype()) == data
+        assert await store._get_json(key, prototype=default_buffer_prototype()) == data
 
     def test_get_json_sync(self, store: S) -> None:
         """
-        Test that the get_json method reads json.
+        Test that the _get_json_sync method reads json.
         """
         data = {"foo": "bar"}
         data_bytes = json.dumps(data).encode("utf-8")
         key = "zarr.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
-        assert store.get_json_sync(key, prototype=default_buffer_prototype()) == data
+        assert store._get_json_sync(key, prototype=default_buffer_prototype()) == data
 
 
 class LatencyStore(WrapperStore[Store]):

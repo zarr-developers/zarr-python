@@ -123,43 +123,43 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         key = "test_key"
         await self.set(store, key, self.buffer_cls.from_bytes(data))
 
-        result = await store.get_bytes(key, prototype=buffer_cls)
+        result = await store._get_bytes(key, prototype=buffer_cls)
         assert result == data
 
     @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
     def test_get_bytes_sync_with_prototype_none(
         self, store: LocalStore, buffer_cls: None | BufferPrototype
     ) -> None:
-        """Test that get_bytes_sync works with prototype=None."""
+        """Test that _get_bytes_sync works with prototype=None."""
         data = b"hello world"
         key = "test_key"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
 
-        result = store.get_bytes_sync(key, prototype=buffer_cls)
+        result = store._get_bytes_sync(key, prototype=buffer_cls)
         assert result == data
 
     @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
     async def test_get_json_with_prototype_none(
         self, store: LocalStore, buffer_cls: None | BufferPrototype
     ) -> None:
-        """Test that get_json works with prototype=None."""
+        """Test that _get_json works with prototype=None."""
         data = {"foo": "bar", "number": 42}
         key = "test.json"
         await self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode()))
 
-        result = await store.get_json(key, prototype=buffer_cls)
+        result = await store._get_json(key, prototype=buffer_cls)
         assert result == data
 
     @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
     def test_get_json_sync_with_prototype_none(
         self, store: LocalStore, buffer_cls: None | BufferPrototype
     ) -> None:
-        """Test that get_json_sync works with prototype=None."""
+        """Test that _get_json_sync works with prototype=None."""
         data = {"foo": "bar", "number": 42}
         key = "test.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode())))
 
-        result = store.get_json_sync(key, prototype=buffer_cls)
+        result = store._get_json_sync(key, prototype=buffer_cls)
         assert result == data
 
 

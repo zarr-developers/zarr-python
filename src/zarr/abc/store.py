@@ -221,7 +221,7 @@ class Store(ABC):
         """
         ...
 
-    async def get_bytes(
+    async def _get_bytes(
         self,
         key: str,
         *,
@@ -268,7 +268,7 @@ class Store(ABC):
         --------
         >>> store = await MemoryStore.open()
         >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = await store.get_bytes("data", prototype=default_buffer_prototype())
+        >>> data = await store._get_bytes("data", prototype=default_buffer_prototype())
         >>> print(data)
         b'hello world'
         """
@@ -277,7 +277,7 @@ class Store(ABC):
             raise FileNotFoundError(key)
         return buffer.to_bytes()
 
-    def get_bytes_sync(
+    def _get_bytes_sync(
         self,
         key: str = "",
         *,
@@ -329,14 +329,14 @@ class Store(ABC):
         --------
         >>> store = MemoryStore()
         >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = store.get_bytes_sync("data", prototype=default_buffer_prototype())
+        >>> data = store._get_bytes_sync("data", prototype=default_buffer_prototype())
         >>> print(data)
         b'hello world'
         """
 
-        return sync(self.get_bytes(key, prototype=prototype, byte_range=byte_range))
+        return sync(self._get_bytes(key, prototype=prototype, byte_range=byte_range))
 
-    async def get_json(
+    async def _get_json(
         self,
         key: str,
         *,
@@ -387,14 +387,14 @@ class Store(ABC):
         >>> store = await MemoryStore.open()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = await store.get_json("zarr.json", prototype=default_buffer_prototype())
+        >>> data = await store._get_json("zarr.json", prototype=default_buffer_prototype())
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
 
-        return json.loads(await self.get_bytes(key, prototype=prototype, byte_range=byte_range))
+        return json.loads(await self._get_bytes(key, prototype=prototype, byte_range=byte_range))
 
-    def get_json_sync(
+    def _get_json_sync(
         self,
         key: str = "",
         *,
@@ -451,12 +451,12 @@ class Store(ABC):
         >>> store = MemoryStore()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = store.get_json_sync("zarr.json", prototype=default_buffer_prototype())
+        >>> data = store._get_json_sync("zarr.json", prototype=default_buffer_prototype())
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
 
-        return sync(self.get_json(key, prototype=prototype, byte_range=byte_range))
+        return sync(self._get_json(key, prototype=prototype, byte_range=byte_range))
 
     @abstractmethod
     async def get_partial_values(
