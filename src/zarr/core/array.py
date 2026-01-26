@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable, Mapping
+from collections.abc import Generator, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
@@ -1386,6 +1386,32 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     async def nbytes_stored(self) -> int:
         return await self.store_path.store.getsize_prefix(self.store_path.path)
 
+    @property
+    def chunk_slices(self) -> Generator[tuple[slice, ...]]:
+        """
+        Iterator over all chunks.
+
+        Yields
+        ------
+        chunk_slice :
+            Slice for each chunk in this array.
+        """
+        yield from self._iter_chunk_regions()
+
+    @property
+    def shard_slices(self) -> Generator[tuple[slice, ...]]:
+        """
+        Iterator over all shards.
+
+        This can be used to loop through and index every shard of an array.
+
+        Yields
+        ------
+        shard_slice :
+            Slice for each shard in this array.
+        """
+        yield from self._iter_shard_regions()
+
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[tuple[int, ...]]:
@@ -2378,6 +2404,34 @@ class Array(Generic[T_ArrayMetadata]):
             A tuple of integers representing the length of each dimension of a shard or None if sharding is not used.
         """
         return self.async_array.shards
+
+    @property
+    def chunk_slices(self) -> Generator[tuple[slice, ...]]:
+        """
+        Iterator over all chunks.
+
+        This can be used to loop through and index every chunk of an array.
+
+        Yields
+        ------
+        chunk_slice :
+            Slice for each chunk in this array.
+        """
+        yield from self._async_array.chunk_slices
+
+    @property
+    def shard_slices(self) -> Generator[tuple[slice, ...]]:
+        """
+        Iterator over all shards.
+
+        This can be used to loop through and index every shard of an array.
+
+        Yields
+        ------
+        shard_slice :
+            Slice for each shard in this array.
+        """
+        yield from self._async_array.shard_slices
 
     @property
     def size(self) -> int:
