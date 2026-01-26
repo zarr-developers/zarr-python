@@ -125,7 +125,7 @@ def check_dtype_spec_v2(data: object) -> TypeGuard[DTypeSpec_V2]:
 DTypeSpec_V3 = str | NamedConfig[str, Mapping[str, object]]
 
 
-def check_dtype_spec_v3(data: object) -> TypeGuard[DTypeSpec_V3]:
+def check_dtype_spec_v3(data: object) -> TypeGuard[DTypeSpec_V3]:  # type: ignore[valid-type]
     """
     Type guard for narrowing the type of a python object to an instance of
     DTypeSpec_V3, i.e either a string or a dict with a "name" field that's a string and a
@@ -141,7 +141,7 @@ def check_dtype_spec_v3(data: object) -> TypeGuard[DTypeSpec_V3]:
     return False
 
 
-def unpack_dtype_json(data: DTypeSpec_V2 | DTypeSpec_V3) -> DTypeJSON:
+def unpack_dtype_json(data: DTypeSpec_V2 | DTypeSpec_V3) -> DTypeJSON:  # type: ignore[valid-type]
     """
     Return the array metadata form of the dtype JSON representation. For the Zarr V3 form of dtype
     metadata, this is a no-op. For the Zarr V2 form of dtype metadata, this unpacks the dtype name.
