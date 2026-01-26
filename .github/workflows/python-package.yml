@@ -48,7 +48,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v3.2.0
+      uses: conda-incubator/setup-miniconda@v3.3.0
       with:
           channels: conda-forge
           python-version: ${{ matrix.python-version }}
