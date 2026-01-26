@@ -4,11 +4,13 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Final, TypeAlias
 
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeJSON,
 )
 from zarr.core.dtype.npy.bool import Bool
 from zarr.core.dtype.npy.bytes import (
+    Bytes,
+    BytesJSON_V2,
+    BytesJSON_V3,
     NullTerminatedBytes,
     NullterminatedBytesJSON_V2,
     NullTerminatedBytesJSON_V3,
@@ -30,6 +32,7 @@ from zarr.core.dtype.npy.time import (
     TimeDelta64JSON_V2,
     TimeDelta64JSON_V3,
 )
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
@@ -52,8 +55,12 @@ from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 __all__ = [
     "Bool",
+    "Bytes",
+    "BytesJSON_V2",
+    "BytesJSON_V3",
     "Complex64",
     "Complex128",
+    "DTypeJSON",
     "DataTypeRegistry",
     "DataTypeValidationError",
     "DateTime64",
@@ -94,6 +101,8 @@ __all__ = [
     "VariableLengthUTF8JSON_V2",
     "ZDType",
     "data_type_registry",
+    "disable_legacy_bytes_dtype",
+    "enable_legacy_bytes_dtype",
     "parse_data_type",
     "parse_dtype",
 ]
@@ -115,8 +124,8 @@ STRING_DTYPE: Final = FixedLengthUTF32, VariableLengthUTF8
 TimeDType = DateTime64 | TimeDelta64
 TIME_DTYPE: Final = DateTime64, TimeDelta64
 
-BytesDType = RawBytes | NullTerminatedBytes | VariableLengthBytes
-BYTES_DTYPE: Final = RawBytes, NullTerminatedBytes, VariableLengthBytes
+BytesDType = RawBytes | NullTerminatedBytes | Bytes
+BYTES_DTYPE: Final = RawBytes, NullTerminatedBytes, Bytes
 
 AnyDType = (
     Bool
@@ -127,7 +136,6 @@ AnyDType = (
     | BytesDType
     | Structured
     | TimeDType
-    | VariableLengthBytes
 )
 # mypy has trouble inferring the type of variablelengthstring dtype, because its class definition
 # depends on the installed numpy version. That's why the type: ignore statement is needed here.
@@ -140,7 +148,6 @@ ANY_DTYPE: Final = (
     *BYTES_DTYPE,
     Structured,
     *TIME_DTYPE,
-    VariableLengthBytes,
 )
 
 # These are aliases for variable-length UTF-8 strings
@@ -277,6 +284,36 @@ def parse_dtype(
         # If the dtype request is one of the aliases for variable-length UTF-8 strings,
         # return that dtype.
         return VariableLengthUTF8()  # type: ignore[return-value]
+    if dtype_spec is bytes:
+        # Treat the bytes type as a request for the Bytes dtype
+        return Bytes()
+
     # otherwise, we have either a numpy dtype string, or a zarr v3 dtype string, and in either case
     # we can create a native dtype from it, and do the dtype inference from that
     return get_data_type_from_native_dtype(dtype_spec)  # type: ignore[arg-type]
+
+
+def enable_legacy_bytes_dtype() -> None:
+    """
+    Unregister the new Bytes data type from the registry, and replace it with the
+    VariableLengthBytes dtype instead. Used for backwards compatibility.
+    """
+    if (
+        "bytes" in data_type_registry.contents
+        and "variable_length_bytes" not in data_type_registry.contents
+    ):
+        data_type_registry.unregister("bytes")
+        data_type_registry.register("variable_length_bytes", VariableLengthBytes)
+
+
+def disable_legacy_bytes_dtype() -> None:
+    """
+    Unregister the old VariableLengthBytes dtype from the registry, and replace it with
+    the new Bytes dtype. Used to reverse the effect of enable_legacy_bytes_dtype
+    """
+    if (
+        "variable_length_bytes" in data_type_registry.contents
+        and "bytes" not in data_type_registry.contents
+    ):
+        data_type_registry.unregister("variable_length_bytes")
+        data_type_registry.register("bytes", Bytes)
