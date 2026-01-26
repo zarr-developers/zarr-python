@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 
 import pytest
 
-from zarr.abc.store import BufferLike, ByteRequest, Store
+from zarr.abc.store import BufferClassLike, ByteRequest, Store
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.core.buffer.cpu import buffer_prototype
@@ -111,7 +111,7 @@ async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> 
         async def get(
             self,
             key: str,
-            prototype: BufferLike | None = None,
+            prototype: BufferClassLike | None = None,
             byte_range: ByteRequest | None = None,
         ) -> Buffer | None:
             print(f"getting {key}")

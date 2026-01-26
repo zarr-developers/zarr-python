@@ -17,7 +17,7 @@ from zarr.api.asynchronous import (
     open,
     open_consolidated,
 )
-from zarr.core.buffer import cpu, default_buffer_prototype
+from zarr.core.buffer import cpu
 from zarr.core.dtype import parse_dtype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
@@ -192,9 +192,7 @@ class TestConsolidated:
         group4 = await open_consolidated(store=memory_store_with_hierarchy)
         assert group4.metadata == expected
 
-        buf = await memory_store_with_hierarchy.get(
-            "zarr.json", prototype=default_buffer_prototype()
-        )
+        buf = await memory_store_with_hierarchy.get("zarr.json")
         assert buf is not None
 
         result_raw = json.loads(buf.to_bytes())["consolidated_metadata"]
@@ -724,7 +722,7 @@ async def test_consolidated_metadata_encodes_special_chars(
         await zarr.api.asynchronous.consolidate_metadata(memory_store)
 
     root = await group(store=memory_store, zarr_format=zarr_format)
-    root_buffer = root.metadata.to_buffer_dict(default_buffer_prototype())
+    root_buffer = root.metadata.to_buffer_dict(cpu.Buffer)
 
     if zarr_format == 2:
         root_metadata = json.loads(root_buffer[".zmetadata"].to_bytes().decode("utf-8"))["metadata"]

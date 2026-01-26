@@ -6,7 +6,7 @@ import time
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import BufferLike, ByteRequest, Store
+from zarr.abc.store import BufferClassLike, ByteRequest, Store
 from zarr.storage._wrapper import WrapperStore
 
 logger = logging.getLogger(__name__)
@@ -218,7 +218,7 @@ class CacheStore(WrapperStore[Store]):
         self._key_sizes.pop(key, None)
 
     async def _get_try_cache(
-        self, key: str, prototype: BufferLike | None, byte_range: ByteRequest | None = None
+        self, key: str, prototype: BufferClassLike | None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         """Try to get data from cache first, falling back to source store."""
         maybe_cached_result = await self._cache.get(key, prototype, byte_range)
@@ -246,7 +246,10 @@ class CacheStore(WrapperStore[Store]):
             return maybe_fresh_result
 
     async def _get_no_cache(
-        self, key: str, prototype: BufferLike | None, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferClassLike | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """Get data directly from source store and update cache."""
         self._misses += 1
@@ -265,7 +268,7 @@ class CacheStore(WrapperStore[Store]):
     async def get(
         self,
         key: str,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """

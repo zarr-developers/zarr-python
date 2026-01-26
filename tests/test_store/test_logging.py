@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, TypedDict
 import pytest
 
 import zarr
-from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
+from zarr.buffer import cpu
 from zarr.storage import LocalStore, LoggingStore
 from zarr.testing.store import StoreTests
 
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from zarr.abc.store import Store
+    from zarr.core.buffer.core import Buffer
 
 
 class StoreKwargs(TypedDict):
@@ -68,7 +69,7 @@ class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
             logging.getLogger().removeHandler(h)
         # Test logs are sent to stdout
         wrapped = LoggingStore(store=local_store)
-        buffer = default_buffer_prototype().buffer
+        buffer = cpu.Buffer
         res = await wrapped.set("foo/bar/c/0", buffer.from_bytes(b"\x01\x02\x03\x04"))  # type: ignore[func-returns-value]
         assert res is None
         captured = capsys.readouterr()
@@ -90,7 +91,7 @@ class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 async def test_logging_store(store: Store, caplog: pytest.LogCaptureFixture) -> None:
     wrapped = LoggingStore(store=store, log_level="DEBUG")
-    buffer = default_buffer_prototype().buffer
+    buffer = cpu.Buffer
 
     caplog.clear()
     res = await wrapped.set("foo/bar/c/0", buffer.from_bytes(b"\x01\x02\x03\x04"))  # type: ignore[func-returns-value]

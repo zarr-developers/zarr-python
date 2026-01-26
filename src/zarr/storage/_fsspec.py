@@ -8,14 +8,15 @@ from typing import TYPE_CHECKING, Any
 from packaging.version import parse as parse_version
 
 from zarr.abc.store import (
-    BufferLike,
+    BufferClassLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
     Store,
     SuffixByteRequest,
 )
-from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.core.buffer import Buffer
+from zarr.core.common import parse_bufferclasslike
 from zarr.errors import ZarrUserWarning
 from zarr.storage._common import _dereference_path
 
@@ -275,19 +276,16 @@ class FsspecStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
             await self._open()
         if prototype is None:
-            prototype = self._get_default_buffer_class()
-        # Extract buffer class from BufferLike
-        if isinstance(prototype, BufferPrototype):
-            buffer_cls = prototype.buffer
+            buffer_cls = self._get_default_buffer_class()
         else:
-            buffer_cls = prototype
+            buffer_cls = parse_bufferclasslike(prototype)
 
         path = _dereference_path(self.path, key)
 
@@ -374,17 +372,14 @@ class FsspecStore(Store):
 
     async def get_partial_values(
         self,
-        prototype: BufferLike | None,
+        prototype: BufferClassLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         if prototype is None:
-            prototype = self._get_default_buffer_class()
-        # Extract buffer class from BufferLike
-        if isinstance(prototype, BufferPrototype):
-            buffer_cls = prototype.buffer
+            buffer_cls = self._get_default_buffer_class()
         else:
-            buffer_cls = prototype
+            buffer_cls = parse_bufferclasslike(prototype)
 
         if key_ranges:
             # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRequest.

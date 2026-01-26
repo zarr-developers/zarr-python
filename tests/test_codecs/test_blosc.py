@@ -28,7 +28,7 @@ async def test_blosc_evolve(dtype: str) -> None:
         fill_value=0,
         compressors=BloscCodec(),
     )
-    buf = await store.get(f"{path}/zarr.json", prototype=default_buffer_prototype())
+    buf = await store.get(f"{path}/zarr.json")
     assert buf is not None
     zarr_json = json.loads(buf.to_bytes())
     blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
@@ -49,7 +49,7 @@ async def test_blosc_evolve(dtype: str) -> None:
         fill_value=0,
         compressors=BloscCodec(),
     )
-    buf = await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype())
+    buf = await store.get(f"{path2}/zarr.json")
     assert buf is not None
     zarr_json = json.loads(buf.to_bytes())
     blosc_configuration_json = zarr_json["codecs"][0]["configuration"]["codecs"][1]["configuration"]
@@ -99,7 +99,7 @@ async def test_typesize() -> None:
     a = np.arange(1000000, dtype=np.uint64)
     codecs = [zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()]
     z = zarr.array(a, chunks=(10000), codecs=codecs)
-    data = await z.store.get("c/0", prototype=default_buffer_prototype())
+    data = await z.store.get("c/0")
     assert data is not None
     bytes = data.to_bytes()
     size = len(bytes)

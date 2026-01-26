@@ -3,7 +3,7 @@ from __future__ import annotations
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Self
 
-from zarr.abc.store import BufferLike, ByteRequest, Store
+from zarr.abc.store import BufferClassLike, ByteRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype, gpu
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_byte_range_index
@@ -77,7 +77,7 @@ class MemoryStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
@@ -100,7 +100,7 @@ class MemoryStore(Store):
 
     async def get_partial_values(
         self,
-        prototype: BufferLike | None,
+        prototype: BufferClassLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
@@ -181,7 +181,7 @@ class MemoryStore(Store):
         self,
         key: str = "",
         *,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
@@ -195,8 +195,8 @@ class MemoryStore(Store):
         ----------
         key : str, optional
             The key identifying the data to retrieve. Defaults to an empty string.
-        prototype : BufferPrototype, optional
-            The buffer prototype to use for reading the data. If None, uses
+        prototype : BufferClassLike, optional
+            A specification of the buffer class to use for reading the data. If None, uses
             ``default_buffer_prototype()``.
         byte_range : ByteRequest, optional
             If specified, only retrieve a portion of the stored data.
@@ -233,7 +233,7 @@ class MemoryStore(Store):
         self,
         key: str = "",
         *,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
@@ -247,8 +247,8 @@ class MemoryStore(Store):
         ----------
         key : str, optional
             The key identifying the data to retrieve. Defaults to an empty string.
-        prototype : BufferPrototype, optional
-            The buffer prototype to use for reading the data. If None, uses
+        prototype : BufferClassLike, optional
+            A specification of the buffer class to use for reading the data. If None, uses
             ``default_buffer_prototype()``.
         byte_range : ByteRequest, optional
             If specified, only retrieve a portion of the stored data.
@@ -289,7 +289,7 @@ class MemoryStore(Store):
         self,
         key: str = "",
         *,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Any:
         """
@@ -303,8 +303,8 @@ class MemoryStore(Store):
         ----------
         key : str, optional
             The key identifying the JSON data to retrieve. Defaults to an empty string.
-        prototype : BufferPrototype, optional
-            The buffer prototype to use for reading the data. If None, uses
+        prototype : BufferClassLike, optional
+            A specification of the buffer class to use for reading the data. If None, uses
             ``default_buffer_prototype()``.
         byte_range : ByteRequest, optional
             If specified, only retrieve a portion of the stored data.
@@ -348,7 +348,7 @@ class MemoryStore(Store):
         self,
         key: str = "",
         *,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Any:
         """
@@ -362,8 +362,8 @@ class MemoryStore(Store):
         ----------
         key : str, optional
             The key identifying the JSON data to retrieve. Defaults to an empty string.
-        prototype : BufferPrototype, optional
-            The buffer prototype to use for reading the data. If None, uses
+        prototype : BufferClassLike, optional
+            A specification of the buffer class to use for reading the data. If None, uses
             ``default_buffer_prototype()``.
         byte_range : ByteRequest, optional
             If specified, only retrieve a portion of the stored data.

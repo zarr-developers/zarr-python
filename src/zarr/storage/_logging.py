@@ -8,7 +8,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Self, TypeVar
 
-from zarr.abc.store import BufferLike, Store
+from zarr.abc.store import BufferClassLike, Store
 from zarr.storage._wrapper import WrapperStore
 
 if TYPE_CHECKING:
@@ -165,7 +165,7 @@ class LoggingStore(WrapperStore[T_Store]):
     async def get(
         self,
         key: str,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
@@ -174,7 +174,7 @@ class LoggingStore(WrapperStore[T_Store]):
 
     async def get_partial_values(
         self,
-        prototype: BufferLike | None,
+        prototype: BufferClassLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited

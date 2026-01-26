@@ -8,17 +8,18 @@ from itertools import starmap
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from zarr.core.buffer import Buffer, BufferPrototype
-from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.sync import sync
+from zarr.registry import get_buffer_class
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
     from types import TracebackType
     from typing import Any, Self, TypeAlias
 
-__all__ = ["BufferLike", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = ["BufferClassLike", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
-BufferLike = type[Buffer] | BufferPrototype
+BufferClassLike = type[Buffer] | BufferPrototype
+"""An object that is or contains a Buffer class"""
 
 
 @dataclass
@@ -189,13 +190,13 @@ class Store(ABC):
         """
         Get the default buffer class.
         """
-        return default_buffer_prototype().buffer
+        return get_buffer_class()
 
     @abstractmethod
     async def get(
         self,
         key: str,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
@@ -225,7 +226,7 @@ class Store(ABC):
         self,
         key: str,
         *,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
@@ -268,7 +269,7 @@ class Store(ABC):
         --------
         >>> store = await MemoryStore.open()
         >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = await store._get_bytes("data", prototype=default_buffer_prototype())
+        >>> data = await store._get_bytes("data")
         >>> print(data)
         b'hello world'
         """
@@ -281,7 +282,7 @@ class Store(ABC):
         self,
         key: str = "",
         *,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
@@ -329,7 +330,7 @@ class Store(ABC):
         --------
         >>> store = MemoryStore()
         >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = store._get_bytes_sync("data", prototype=default_buffer_prototype())
+        >>> data = store._get_bytes_sync("data")
         >>> print(data)
         b'hello world'
         """
@@ -340,7 +341,7 @@ class Store(ABC):
         self,
         key: str,
         *,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Any:
         """
@@ -387,7 +388,7 @@ class Store(ABC):
         >>> store = await MemoryStore.open()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = await store._get_json("zarr.json", prototype=default_buffer_prototype())
+        >>> data = await store._get_json("zarr.json")
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
@@ -398,7 +399,7 @@ class Store(ABC):
         self,
         key: str = "",
         *,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Any:
         """
@@ -451,7 +452,7 @@ class Store(ABC):
         >>> store = MemoryStore()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = store._get_json_sync("zarr.json", prototype=default_buffer_prototype())
+        >>> data = store._get_json_sync("zarr.json")
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
@@ -461,7 +462,7 @@ class Store(ABC):
     @abstractmethod
     async def get_partial_values(
         self,
-        prototype: BufferLike | None,
+        prototype: BufferClassLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
@@ -645,7 +646,7 @@ class Store(ABC):
         self._is_open = False
 
     async def _get_many(
-        self, requests: Iterable[tuple[str, BufferLike | None, ByteRequest | None]]
+        self, requests: Iterable[tuple[str, BufferClassLike | None, ByteRequest | None]]
     ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
         """
         Retrieve a collection of objects from storage. In general this method does not guarantee
@@ -676,10 +677,8 @@ class Store(ABC):
         # Note to implementers: this default implementation is very inefficient since
         # it requires reading the entire object. Many systems will have ways to get the
         # size of an object without reading it.
-        # avoid circular import
-        from zarr.core.buffer.core import default_buffer_prototype
 
-        value = await self.get(key, prototype=default_buffer_prototype())
+        value = await self.get(key)
         if value is None:
             raise FileNotFoundError(key)
         return len(value)

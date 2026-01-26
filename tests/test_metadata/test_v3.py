@@ -9,7 +9,6 @@ import pytest
 
 from zarr import consolidate_metadata, create_group
 from zarr.codecs.bytes import BytesCodec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.config import config
 from zarr.core.dtype import UInt8, get_data_type_from_native_dtype
@@ -261,7 +260,7 @@ def test_metadata_to_dict(
 def test_json_indent(indent: int) -> None:
     with config.set({"json_indent": indent}):
         m = GroupMetadata()
-        d = m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes()
+        d = m.to_buffer_dict()["zarr.json"].to_bytes()
         assert d == json.dumps(json.loads(d), indent=indent).encode()
 
 
@@ -283,7 +282,7 @@ async def test_datetime_metadata(fill_value: int, precision: Literal["ns", "D"])
     }
     metadata = ArrayV3Metadata.from_dict(metadata_dict)
     # ensure there isn't a TypeError here.
-    d = metadata.to_buffer_dict(default_buffer_prototype())
+    d = metadata.to_buffer_dict()
 
     result = json.loads(d["zarr.json"].to_bytes())
     assert result["fill_value"] == fill_value
@@ -321,7 +320,7 @@ async def test_special_float_fill_values(fill_value: str) -> None:
         "fill_value": fill_value,  # this is not a valid fill value for uint8
     }
     m = ArrayV3Metadata.from_dict(metadata_dict)
-    d = json.loads(m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes())
+    d = json.loads(m.to_buffer_dict()["zarr.json"].to_bytes())
     assert m.fill_value is not None
     if fill_value == "NaN":
         assert np.isnan(m.fill_value)

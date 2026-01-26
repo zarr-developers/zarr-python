@@ -7,7 +7,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Generic, Self, TypedDict, TypeVar
 
 from zarr.abc.store import (
-    BufferLike,
+    BufferClassLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
@@ -98,7 +98,10 @@ class ObjectStore(Store, Generic[T_Store]):
         self.__dict__.update(state)
 
     async def get(
-        self, key: str, prototype: BufferLike | None = None, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferClassLike | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         import obstore as obs
@@ -152,7 +155,7 @@ class ObjectStore(Store, Generic[T_Store]):
 
     async def get_partial_values(
         self,
-        prototype: BufferLike | None,
+        prototype: BufferClassLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited

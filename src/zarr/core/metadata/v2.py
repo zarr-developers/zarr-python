@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
+    from zarr.abc.store import BufferClassLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.dtype.wrapper import (
         TBaseDType,
@@ -39,6 +40,7 @@ from zarr.core.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     MemoryOrder,
+    parse_bufferclasslike,
     parse_shapelike,
 )
 from zarr.core.config import config, parse_indexing_order
@@ -125,15 +127,16 @@ class ArrayV2Metadata(Metadata):
     def shards(self) -> tuple[int, ...] | None:
         return None
 
-    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferClassLike | None = None) -> dict[str, Buffer]:
+        buffer_cls = parse_bufferclasslike(prototype)
         zarray_dict = self.to_dict()
         zattrs_dict = zarray_dict.pop("attributes", {})
         json_indent = config.get("json_indent")
         return {
-            ZARRAY_JSON: prototype.buffer.from_bytes(
+            ZARRAY_JSON: buffer_cls.from_bytes(
                 json.dumps(zarray_dict, indent=json_indent, allow_nan=True).encode()
             ),
-            ZATTRS_JSON: prototype.buffer.from_bytes(
+            ZATTRS_JSON: buffer_cls.from_bytes(
                 json.dumps(zattrs_dict, indent=json_indent, allow_nan=True).encode()
             ),
         }

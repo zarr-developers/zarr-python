@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import (
-    BufferLike,
+    BufferClassLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
@@ -147,7 +147,7 @@ class ZipStore(Store):
     def _get(
         self,
         key: str,
-        prototype: BufferLike,
+        prototype: BufferClassLike,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         if not self._is_open:
@@ -179,7 +179,7 @@ class ZipStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
@@ -192,7 +192,7 @@ class ZipStore(Store):
 
     async def get_partial_values(
         self,
-        prototype: BufferLike | None,
+        prototype: BufferClassLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited

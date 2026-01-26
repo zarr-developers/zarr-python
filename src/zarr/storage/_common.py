@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any, Literal, Self, TypeAlias
 
-from zarr.abc.store import BufferLike, ByteRequest, Store
+from zarr.abc.store import BufferClassLike, ByteRequest, Store
 from zarr.core.buffer import Buffer
 from zarr.core.common import (
     ANY_ACCESS_MODE,
@@ -142,7 +142,7 @@ class StorePath:
 
     async def get(
         self,
-        prototype: BufferLike | None = None,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """

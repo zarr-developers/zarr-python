@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 import pytest
 
 from zarr.abc.store import (
-    BufferLike,
+    BufferClassLike,
     ByteRequest,
     OffsetByteRequest,
     RangeByteRequest,
@@ -108,7 +108,7 @@ class StoreTests(Generic[S, B]):
         data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
         key = "foo"
         await store.set(key, data_buf)
-        observed = await store.get(key, prototype=default_buffer_prototype())
+        observed = await store.get(key)
         assert_bytes_equal(observed, data_buf)
 
     def test_store_read_only(self, store: S) -> None:
@@ -223,7 +223,12 @@ class StoreTests(Generic[S, B]):
         ],
     )
     async def test_get(
-        self, store: S, key: str, data: bytes, byte_range: ByteRequest, prototype: BufferLike | None
+        self,
+        store: S,
+        key: str,
+        data: bytes,
+        byte_range: ByteRequest,
+        prototype: BufferClassLike | None,
     ) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
@@ -243,7 +248,7 @@ class StoreTests(Generic[S, B]):
         data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
         key = "c/0"
         await self.set(store_not_open, key, data_buf)
-        observed = await store_not_open.get(key, prototype=default_buffer_prototype())
+        observed = await store_not_open.get(key)
         assert_bytes_equal(observed, data_buf)
 
     async def test_get_raises(self, store: S) -> None:
@@ -267,7 +272,7 @@ class StoreTests(Generic[S, B]):
             store._get_many(
                 zip(
                     keys,
-                    (default_buffer_prototype(),) * len(keys),
+                    (None,) * len(keys),
                     (None,) * len(keys),
                     strict=False,
                 )
@@ -366,7 +371,7 @@ class StoreTests(Generic[S, B]):
         ],
     )
     async def test_get_partial_values(
-        self, store: S, key_ranges: list[tuple[str, ByteRequest]], prototype: BufferLike | None
+        self, store: S, key_ranges: list[tuple[str, ByteRequest]], prototype: BufferClassLike | None
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:
@@ -535,12 +540,12 @@ class StoreTests(Generic[S, B]):
         new = self.buffer_cls.from_bytes(b"1111")
         await store.set_if_not_exists("k", new)  # no error
 
-        result = await store.get(key, default_buffer_prototype())
+        result = await store.get(key)
         assert result == data_buf
 
         await store.set_if_not_exists("k2", new)  # no error
 
-        result = await store.get("k2", default_buffer_prototype())
+        result = await store.get("k2")
         assert result == new
 
     async def test_get_bytes(self, store: S) -> None:
@@ -550,9 +555,9 @@ class StoreTests(Generic[S, B]):
         data = b"hello world"
         key = "zarr.json"
         await self.set(store, key, self.buffer_cls.from_bytes(data))
-        assert await store._get_bytes(key, prototype=default_buffer_prototype()) == data
+        assert await store._get_bytes(key) == data
         with pytest.raises(FileNotFoundError):
-            await store._get_bytes("nonexistent_key", prototype=default_buffer_prototype())
+            await store._get_bytes("nonexistent_key")
 
     def test_get_bytes_sync(self, store: S) -> None:
         """
@@ -561,7 +566,7 @@ class StoreTests(Generic[S, B]):
         data = b"hello world"
         key = "zarr.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
-        assert store._get_bytes_sync(key, prototype=default_buffer_prototype()) == data
+        assert store._get_bytes_sync(key) == data
 
     async def test_get_json(self, store: S) -> None:
         """
@@ -571,7 +576,7 @@ class StoreTests(Generic[S, B]):
         data_bytes = json.dumps(data).encode("utf-8")
         key = "zarr.json"
         await self.set(store, key, self.buffer_cls.from_bytes(data_bytes))
-        assert await store._get_json(key, prototype=default_buffer_prototype()) == data
+        assert await store._get_json(key) == data
 
     def test_get_json_sync(self, store: S) -> None:
         """
@@ -581,7 +586,7 @@ class StoreTests(Generic[S, B]):
         data_bytes = json.dumps(data).encode("utf-8")
         key = "zarr.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
-        assert store._get_json_sync(key, prototype=default_buffer_prototype()) == data
+        assert store._get_json_sync(key) == data
 
 
 class LatencyStore(WrapperStore[Store]):
@@ -620,7 +625,10 @@ class LatencyStore(WrapperStore[Store]):
         await self._store.set(key, value)
 
     async def get(
-        self, key: str, prototype: BufferLike | None = None, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferClassLike | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """
         Add latency to the ``get`` method.
