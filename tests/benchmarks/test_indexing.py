@@ -22,18 +22,27 @@ indexers = (
     (slice(None), slice(0, 3, 2), slice(0, 10)),
 )
 
+shards = (
+    None,
+    (50,) * 3,
+)
 
-@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+
+@pytest.mark.parametrize("store", ["memory", "memory_get_latency"], indirect=["store"])
 @pytest.mark.parametrize("indexer", indexers, ids=str)
+@pytest.mark.parametrize("shards", shards, ids=str)
 def test_slice_indexing(
-    store: Store, indexer: tuple[int | slice], benchmark: BenchmarkFixture
+    store: Store,
+    indexer: tuple[int | slice],
+    shards: tuple[int, ...] | None,
+    benchmark: BenchmarkFixture,
 ) -> None:
     data = create_array(
         store=store,
         shape=(105,) * 3,
         dtype="uint8",
         chunks=(10,) * 3,
-        shards=None,
+        shards=shards,
         compressors=None,
         filters=None,
         fill_value=0,
