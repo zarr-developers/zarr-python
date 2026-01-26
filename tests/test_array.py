@@ -941,7 +941,7 @@ def test_write_empty_chunks_negative_zero(
 async def test_special_complex_fill_values_roundtrip(fill_value: Any, expected: list[Any]) -> None:
     store = MemoryStore()
     zarr.create_array(store=store, shape=(1,), dtype=np.complex64, fill_value=fill_value)
-    content = await store.get("zarr.json", prototype=default_buffer_prototype())
+    content = await store.get("zarr.json")
     assert content is not None
     actual = json.loads(content.to_bytes())
     assert actual["fill_value"] == expected

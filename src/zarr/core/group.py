@@ -17,7 +17,7 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import Store, set_or_delete
+from zarr.abc.store import BufferClassLike, Store, set_or_delete
 from zarr.core._info import GroupInfo
 from zarr.core.array import (
     DEFAULT_FILL_VALUE,
@@ -32,7 +32,6 @@ from zarr.core.array import (
     create_array,
 )
 from zarr.core.attributes import Attributes
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -44,6 +43,7 @@ from zarr.core.common import (
     NodeType,
     ShapeLike,
     ZarrFormat,
+    parse_bufferclasslike,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -75,7 +75,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfigLike
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.buffer import Buffer
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
     from zarr.core.dtype import ZDTypeLike
@@ -356,20 +356,25 @@ class GroupMetadata(Metadata):
     consolidated_metadata: ConsolidatedMetadata | None = None
     node_type: Literal["group"] = field(default="group", init=False)
 
-    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferClassLike | None = None) -> dict[str, Buffer]:
+        """
+        Convert the metadata document to a dict with string keys and `Buffer` values.
+        """
+        buffer_cls = parse_bufferclasslike(prototype)
+
         json_indent = config.get("json_indent")
         if self.zarr_format == 3:
             return {
-                ZARR_JSON: prototype.buffer.from_bytes(
+                ZARR_JSON: buffer_cls.from_bytes(
                     json.dumps(self.to_dict(), indent=json_indent, allow_nan=True).encode()
                 )
             }
         else:
             items = {
-                ZGROUP_JSON: prototype.buffer.from_bytes(
+                ZGROUP_JSON: buffer_cls.from_bytes(
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
-                ZATTRS_JSON: prototype.buffer.from_bytes(
+                ZATTRS_JSON: buffer_cls.from_bytes(
                     json.dumps(self.attributes, indent=json_indent, allow_nan=True).encode()
                 ),
             }
@@ -396,7 +401,7 @@ class GroupMetadata(Metadata):
                             },
                         }
 
-                items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
+                items[ZMETADATA_V2_JSON] = buffer_cls.from_bytes(
                     json.dumps(
                         {"metadata": d, "zarr_consolidated_format": 1}, allow_nan=True
                     ).encode()
@@ -2029,7 +2034,7 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
+        to_save = new_metadata.to_buffer_dict()
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
@@ -3615,9 +3620,7 @@ async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupM
     document stored at store_path.path / zarr.json. If no such document is found, raise a
     FileNotFoundError.
     """
-    zarr_json_bytes = await store.get(
-        _join_paths([path, ZARR_JSON]), prototype=default_buffer_prototype()
-    )
+    zarr_json_bytes = await store.get(_join_paths([path, ZARR_JSON]))
     if zarr_json_bytes is None:
         raise FileNotFoundError(path)
     else:
@@ -3634,9 +3637,9 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
     # TODO: consider first fetching array metadata, and only fetching group metadata when we don't
     # find an array
     zarray_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
-        store.get(_join_paths([path, ZARRAY_JSON]), prototype=default_buffer_prototype()),
-        store.get(_join_paths([path, ZGROUP_JSON]), prototype=default_buffer_prototype()),
-        store.get(_join_paths([path, ZATTRS_JSON]), prototype=default_buffer_prototype()),
+        store.get(_join_paths([path, ZARRAY_JSON])),
+        store.get(_join_paths([path, ZGROUP_JSON])),
+        store.get(_join_paths([path, ZATTRS_JSON])),
     )
 
     if zattrs_bytes is None:
@@ -3850,7 +3853,7 @@ def _persist_metadata(
     Prepare to save a metadata document to storage, returning a tuple of coroutines that must be awaited.
     """
 
-    to_save = metadata.to_buffer_dict(default_buffer_prototype())
+    to_save = metadata.to_buffer_dict()
     return tuple(
         _set_return_key(store=store, key=_join_paths([path, key]), value=value, semaphore=semaphore)
         for key, value in to_save.items()

@@ -317,7 +317,7 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
             fields = [
-                [f_name, f_dtype.to_json(zarr_format=zarr_format)]  # type: ignore[list-item]
+                [f_name, f_dtype.to_json(zarr_format=zarr_format)]
                 for f_name, f_dtype in self.fields
             ]
             base_dict = {

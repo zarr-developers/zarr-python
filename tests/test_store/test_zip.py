@@ -11,7 +11,7 @@ import pytest
 
 import zarr
 from zarr import create_array
-from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu
 from zarr.core.group import Group
 from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
@@ -42,7 +42,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         return {"path": temp_path, "mode": "w", "read_only": False}
 
     async def get(self, store: ZipStore, key: str) -> Buffer:
-        buf = store._get(key, prototype=default_buffer_prototype())
+        buf = store._get(key, prototype=cpu.Buffer)
         assert buf is not None
         return buf
 
