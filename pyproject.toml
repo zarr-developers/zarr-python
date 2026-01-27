@@ -30,7 +30,7 @@ maintainers = [
     { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.12"
-# If you add a new dependency here, please also add it to .pre-commit-config.yml
+# If you add a new dependency here, please also add it to .pre-commit-config.yaml
 dependencies = [
     'packaging>=22.0',
     'numpy>=2',
