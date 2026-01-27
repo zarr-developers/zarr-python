@@ -24,7 +24,6 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.12']
-        numpy-version: ['2.2']
         dependency-set: ["optional"]
 
     steps:
@@ -47,8 +46,8 @@ jobs:
         pip install hatch
     - name: Set Up Hatch Env
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
+        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
     # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
     - name: Restore cached hypothesis directory
       id: restore-hypothesis-cache
@@ -64,7 +63,7 @@ jobs:
       id: status
       run: |
         echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-hypothesis
+        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.
     - name: Save cached hypothesis directory

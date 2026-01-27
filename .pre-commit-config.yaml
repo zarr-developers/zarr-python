@@ -1,8 +1,9 @@
 ci:
   autoupdate_commit_msg: "chore: update pre-commit hooks"
   autoupdate_schedule: "monthly"
-  autofix_commit_msg: "style: pre-commit fixes"
   autofix_prs: false
+  skip: []  # pre-commit.ci only checks for updates, prek runs hooks locally
+
 default_stages: [pre-commit, pre-push]
 
 default_language_version:
