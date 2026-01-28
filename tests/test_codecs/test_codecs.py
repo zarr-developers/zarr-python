@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import pytest
@@ -145,7 +145,7 @@ def test_order_implicit(
 
     with config.set({"array.order": runtime_read_order}):
         a = Array.open(spath)
-    read_data = a[:, :]
+    read_data = cast(np.ndarray, a[:, :])
     assert np.array_equal(data, read_data)
 
     assert isinstance(read_data, np.ndarray)

@@ -71,7 +71,12 @@ class NDArrayLike(Protocol):
     def __array__(self) -> npt.NDArray[Any]: ...
 
     def reshape(
-        self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = ...
+        self,
+        shape: Sequence[SupportsIndex] | SupportsIndex,
+        /,
+        *,
+        order: Literal["A", "C", "F"] | None = ...,
+        copy: bool | None = ...,
     ) -> Self: ...
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
@@ -90,9 +95,16 @@ class NDArrayLike(Protocol):
 
     def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self: ...
 
-    def ravel(self, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
+    def ravel(self, order: Literal["K", "A", "C", "F"] | None = ...) -> Self: ...
 
-    def all(self) -> bool: ...
+    def all(
+        self,
+        axis: int | tuple[int, ...] | None = ...,
+        out: NDArrayLike | None = ...,
+        keepdims: Literal[False, 0] = ...,
+        *,
+        where: bool = ...,
+    ) -> bool: ...
 
     def __eq__(self, other: object) -> Self:  # type: ignore[override]
         """Element-wise equal
