@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, TypeGuard
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -34,13 +34,11 @@ __all__ = [
     "CodecPipeline",
 ]
 
-CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
-CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
-
-TName = TypeVar("TName", bound=str, covariant=True)
+type CodecInput = NDBuffer | Buffer
+type CodecOutput = NDBuffer | Buffer
 
 
-class CodecJSON_V2(TypedDict, Generic[TName]):
+class CodecJSON_V2[TName: str](TypedDict):
     """The JSON representation of a codec for Zarr V2"""
 
     id: ReadOnly[TName]
@@ -59,7 +57,7 @@ CodecJSON = str | Mapping[str, object]
 """The widest type of JSON-like input that could specify a codec."""
 
 
-class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
+class BaseCodec[CI: CodecInput, CO: CodecOutput](Metadata):
     """Generic base class for codecs.
 
     Codecs can be registered via zarr.codecs.registry.
@@ -137,13 +135,13 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
             The array chunk grid
         """
 
-    async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
+    async def _decode_single(self, chunk_data: CO, chunk_spec: ArraySpec) -> CI:
         raise NotImplementedError  # pragma: no cover
 
     async def decode(
         self,
-        chunks_and_specs: Iterable[tuple[CodecOutput | None, ArraySpec]],
-    ) -> Iterable[CodecInput | None]:
+        chunks_and_specs: Iterable[tuple[CO | None, ArraySpec]],
+    ) -> Iterable[CI | None]:
         """Decodes a batch of chunks.
         Chunks can be None in which case they are ignored by the codec.
 
@@ -154,25 +152,23 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 
         Returns
         -------
-        Iterable[CodecInput | None]
+        Iterable[CI | None]
         """
         return await _batching_helper(self._decode_single, chunks_and_specs)
 
-    async def _encode_single(
-        self, chunk_data: CodecInput, chunk_spec: ArraySpec
-    ) -> CodecOutput | None:
+    async def _encode_single(self, chunk_data: CI, chunk_spec: ArraySpec) -> CO | None:
         raise NotImplementedError  # pragma: no cover
 
     async def encode(
         self,
-        chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]],
-    ) -> Iterable[CodecOutput | None]:
+        chunks_and_specs: Iterable[tuple[CI | None, ArraySpec]],
+    ) -> Iterable[CO | None]:
         """Encodes a batch of chunks.
         Chunks can be None in which case they are ignored by the codec.
 
         Parameters
         ----------
-        chunks_and_specs : Iterable[tuple[CodecInput | None, ArraySpec]]
+        chunks_and_specs : Iterable[tuple[CI | None, ArraySpec]]
             Ordered set of to-be-encoded chunks with their accompanying chunk spec.
 
         Returns
@@ -460,10 +456,10 @@ class CodecPipeline:
         ...
 
 
-async def _batching_helper(
-    func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
-    batch_info: Iterable[tuple[CodecInput | None, ArraySpec]],
-) -> list[CodecOutput | None]:
+async def _batching_helper[CI: CodecInput, CO: CodecOutput](
+    func: Callable[[CI, ArraySpec], Awaitable[CO | None]],
+    batch_info: Iterable[tuple[CI | None, ArraySpec]],
+) -> list[CO | None]:
     return await concurrent_map(
         list(batch_info),
         _noop_for_none(func),
@@ -471,10 +467,10 @@ async def _batching_helper(
     )
 
 
-def _noop_for_none(
-    func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
-) -> Callable[[CodecInput | None, ArraySpec], Awaitable[CodecOutput | None]]:
-    async def wrap(chunk: CodecInput | None, chunk_spec: ArraySpec) -> CodecOutput | None:
+def _noop_for_none[CI: CodecInput, CO: CodecOutput](
+    func: Callable[[CI, ArraySpec], Awaitable[CO | None]],
+) -> Callable[[CI | None, ArraySpec], Awaitable[CO | None]]:
+    async def wrap(chunk: CI | None, chunk_spec: ArraySpec) -> CO | None:
         if chunk is None:
             return None
         return await func(chunk, chunk_spec)

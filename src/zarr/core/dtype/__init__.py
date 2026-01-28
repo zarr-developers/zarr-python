@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Final, TypeAlias
+from typing import TYPE_CHECKING, Final
 
 from zarr.core.dtype.common import (
     DataTypeValidationError,
@@ -150,7 +150,7 @@ ANY_DTYPE: Final = (
 VLEN_UTF8_ALIAS: Final = ("str", str, "string")
 
 # This type models inputs that can be coerced to a ZDType
-ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
+type ZDTypeLike = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mapping[str, JSON] | str
 
 for dtype in ANY_DTYPE:
     # mypy does not know that all the elements of ANY_DTYPE are subclasses of ZDType

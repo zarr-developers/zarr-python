@@ -12,11 +12,9 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Final,
-    Generic,
     Literal,
     NotRequired,
     TypedDict,
-    TypeVar,
     cast,
     overload,
 )
@@ -48,11 +46,8 @@ AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNames = Iterable[str | None] | None
 
-TName = TypeVar("TName", bound=str)
-TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 
-
-class NamedConfig(TypedDict, Generic[TName, TConfig]):
+class NamedConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
     is an optional mapping of string keys to values, e.g. another typed dictionary or a JSON object.
@@ -68,7 +63,7 @@ class NamedConfig(TypedDict, Generic[TName, TConfig]):
     """The configuration of the object. Not required."""
 
 
-class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
+class NamedRequiredConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
     is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
@@ -94,11 +89,7 @@ def ceildiv(a: float, b: float) -> int:
     return math.ceil(a / b)
 
 
-T = TypeVar("T", bound=tuple[Any, ...])
-V = TypeVar("V")
-
-
-async def concurrent_map(
+async def concurrent_map[T: tuple[Any, ...], V](
     items: Iterable[T],
     func: Callable[..., Awaitable[V]],
     limit: int | None = None,
@@ -116,15 +107,12 @@ async def concurrent_map(
         return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
-E = TypeVar("E", bound=Enum)
-
-
-def enum_names(enum: type[E]) -> Iterator[str]:
+def enum_names[E: Enum](enum: type[E]) -> Iterator[str]:
     for item in enum:
         yield item.name
 
 
-def parse_enum(data: object, cls: type[E]) -> E:
+def parse_enum[E: Enum](data: object, cls: type[E]) -> E:
     if isinstance(data, cls):
         return data
     if not isinstance(data, str):
