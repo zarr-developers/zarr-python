@@ -45,6 +45,7 @@ from zarr.api.synchronous import (
 from zarr.core.buffer import NDArrayLike
 from zarr.errors import (
     ArrayNotFoundError,
+    GroupNotFoundError,
     MetadataValidationError,
     ZarrDeprecationWarning,
     ZarrUserWarning,
@@ -1547,3 +1548,33 @@ def test_unimplemented_kwarg_warnings(kwarg_name: str) -> None:
     kwargs = {kwarg_name: 1}
     with pytest.warns(RuntimeWarning, match=".* is not yet implemented"):
         zarr.create(shape=(1,), **kwargs)  # type: ignore[arg-type]
+
+
+def test_specific_fmt_error_message_group() -> None:
+    store = zarr.storage.MemoryStore()
+    # Create a group
+    zarr.create_group(store=store, path="my_group", zarr_format=3)
+    # Check that the new group exists
+    zarr.open_group(store=store, path="my_group", mode="r", zarr_format=3)
+    # Check error message when opening with wrong Zarr format
+    with pytest.raises(GroupNotFoundError, match="No Zarr 2 group found"):
+        zarr.open_group(store=store, path="my_group", mode="r", zarr_format=2)
+
+
+def test_specific_fmt_error_message_array() -> None:
+    store = zarr.storage.MemoryStore()
+    # Create an array
+    zarr.create_array(
+        store=store,
+        zarr_format=3,
+        data=np.array(
+            [
+                1,
+            ]
+        ),
+    )
+    # Check that the new array exists
+    zarr.open_array(store=store, mode="r", zarr_format=3)
+    # Check error message when opening with wrong Zarr format
+    with pytest.raises(ArrayNotFoundError, match="No Zarr 2 array found"):
+        zarr.open_array(store=store, mode="r", zarr_format=2)
