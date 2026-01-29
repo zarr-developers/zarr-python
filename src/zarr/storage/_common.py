@@ -18,7 +18,7 @@ from zarr.core.common import (
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import ManagedMemoryStore, MemoryStore
-from zarr.storage._utils import normalize_path
+from zarr.storage._utils import _dereference_path, normalize_path
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -28,18 +28,6 @@ else:
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
-
-
-def _dereference_path(root: str, path: str) -> str:
-    if not isinstance(root, str):
-        msg = f"{root=} is not a string ({type(root)=})"  # type: ignore[unreachable]
-        raise TypeError(msg)
-    if not isinstance(path, str):
-        msg = f"{path=} is not a string ({type(path)=})"  # type: ignore[unreachable]
-        raise TypeError(msg)
-    root = root.rstrip("/")
-    path = f"{root}/{path}" if root else path
-    return path.rstrip("/")
 
 
 class StorePath:
@@ -422,20 +410,11 @@ async def make_store_path(
         )
 
     elif isinstance(store_like, str) and store_like.startswith("memory://"):
-        # Handle memory:// URLs specially - extract path from URL
+        # Handle memory:// URLs specially
+        # The store itself now handles the path from the URL
         _read_only = mode == "r"
         memory_store = ManagedMemoryStore.from_url(store_like, read_only=_read_only)
-        # Extract path from URL: "memory://123456/path/to/node" -> "path/to/node"
-        url_without_scheme = store_like[len("memory://") :]
-        parts = url_without_scheme.split("/", 1)
-        url_path = parts[1] if len(parts) > 1 else ""
-        # Combine URL path with any additional path argument
-        combined_path = normalize_path(url_path)
-        if path_normalized:
-            combined_path = (
-                f"{combined_path}/{path_normalized}" if combined_path else path_normalized
-            )
-        return await StorePath.open(memory_store, path=combined_path, mode=mode)
+        return await StorePath.open(memory_store, path=path_normalized, mode=mode)
 
     else:
         store = await make_store(store_like, mode=mode, storage_options=storage_options)

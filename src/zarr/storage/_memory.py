@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import weakref
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Self
@@ -8,7 +9,7 @@ from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
-from zarr.storage._utils import _normalize_byte_range_index
+from zarr.storage._utils import _dereference_path, _normalize_byte_range_index, normalize_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
@@ -503,49 +504,100 @@ class _ManagedStoreDictRegistry:
     Registry for managed store dicts.
 
     This registry is the source of truth for managed store dicts. It creates
-    new dicts, tracks them via weak references, and looks them up by URL.
+    new dicts, tracks them via weak references, and looks them up by name.
     """
 
     def __init__(self) -> None:
-        self._registry: weakref.WeakValueDictionary[int, _ManagedStoreDict] = (
+        self._registry: weakref.WeakValueDictionary[str, _ManagedStoreDict] = (
             weakref.WeakValueDictionary()
         )
+        self._counter = 0
 
-    def create(self) -> _ManagedStoreDict:
-        """Create a new managed dict and register it."""
-        store_dict = _ManagedStoreDict()
-        self._registry[id(store_dict)] = store_dict
-        return store_dict
+    def _generate_name(self) -> str:
+        """Generate a unique name for a store."""
+        name = str(self._counter)
+        self._counter += 1
+        return name
 
-    def get_from_url(self, url: str) -> _ManagedStoreDict | None:
+    def get_or_create(self, name: str | None = None) -> tuple[_ManagedStoreDict, str]:
         """
-        Look up a managed store dict by its URL.
+        Get an existing managed dict by name, or create a new one.
 
         Parameters
         ----------
-        url : str
-            A URL like "memory://123456" or "memory://123456/path/to/node"
+        name : str | None
+            The name for the store. If None, a unique name is auto-generated.
+            If a store with this name already exists, returns the existing store.
+            Names cannot contain '/' characters.
+
+        Returns
+        -------
+        tuple[_ManagedStoreDict, str]
+            The store dict and its name.
+
+        Raises
+        ------
+        ValueError
+            If the name contains '/' characters.
+        """
+        if name is None:
+            name = self._generate_name()
+        elif "/" in name:
+            raise ValueError(
+                f"Store name cannot contain '/': {name!r}. "
+                "Use the 'path' parameter to specify a path within the store."
+            )
+
+        existing = self._registry.get(name)
+        if existing is not None:
+            return existing, name
+
+        store_dict = _ManagedStoreDict()
+        self._registry[name] = store_dict
+        return store_dict, name
+
+    def get(self, name: str) -> _ManagedStoreDict | None:
+        """
+        Look up a managed store dict by name.
+
+        Parameters
+        ----------
+        name : str
+            The name of the store.
 
         Returns
         -------
         _ManagedStoreDict | None
             The store dict if found, None otherwise.
         """
+        return self._registry.get(name)
+
+    def get_from_url(self, url: str) -> tuple[_ManagedStoreDict | None, str, str]:
+        """
+        Look up a managed store dict by its URL.
+
+        Parameters
+        ----------
+        url : str
+            A URL like "memory://mystore" or "memory://mystore/path/to/node"
+
+        Returns
+        -------
+        tuple[_ManagedStoreDict | None, str, str]
+            The store dict (if found), the extracted name, and the path.
+        """
         if not url.startswith("memory://"):
-            return None
+            return None, "", ""
 
-        # Parse the store ID from the URL (handle optional path)
-        # "memory://123456" -> "123456"
-        # "memory://123456/path" -> "123456"
+        # Parse the store name and path from the URL
+        # "memory://mystore" -> name="mystore", path=""
+        # "memory://mystore/path/to/data" -> name="mystore", path="path/to/data"
         url_without_scheme = url[len("memory://") :]
-        store_id_str = url_without_scheme.split("/")[0]
+        parts = url_without_scheme.split("/", 1)
+        name = parts[0]
+        path = parts[1] if len(parts) > 1 else ""
 
-        try:
-            store_id = int(store_id_str)
-        except ValueError:
-            return None
-
-        return self._registry.get(store_id)
+        return self._registry.get(name), name, path
 
 
 _managed_store_dict_registry = _ManagedStoreDictRegistry()
@@ -562,8 +614,21 @@ class ManagedMemoryStore(MemoryStore):
 
     Parameters
     ----------
+    name : str | None
+        The name for this store, used in the ``memory://`` URL. If None, a unique
+        name is auto-generated. If a store with this name already exists, the
+        new store will share the same backing dict.
+    path : str
+        The root path for this store. All keys will be prefixed with this path.
     read_only : bool
         Whether the store is read-only.
+
+    Attributes
+    ----------
+    name : str
+        The name of this store.
+    path : str
+        The root path of this store.
 
     Notes
     -----
@@ -577,47 +642,88 @@ class ManagedMemoryStore(MemoryStore):
 
     Examples
     --------
-    >>> store = ManagedMemoryStore()
-    >>> url = str(store)  # e.g., "memory://123456789"
+    >>> store = ManagedMemoryStore(name="my-data")
+    >>> str(store)
+    'memory://my-data'
     >>> # Later, resolve the URL back to the store's dict
-    >>> store2 = ManagedMemoryStore.from_url(url)
+    >>> store2 = ManagedMemoryStore.from_url("memory://my-data")
     >>> store2._store_dict is store._store_dict
     True
+    >>> # Create a store with a path prefix
+    >>> store3 = ManagedMemoryStore.from_url("memory://my-data/subdir")
+    >>> store3.path
+    'subdir'
     """
 
     _store_dict: _ManagedStoreDict
+    _name: str
+    path: str
+    _created_pid: int
 
-    def __init__(self, *, read_only: bool = False) -> None:
+    def __init__(self, name: str | None = None, *, path: str = "", read_only: bool = False) -> None:
         # Skip MemoryStore.__init__ and call Store.__init__ directly
         # because we need to set up _store_dict differently
         Store.__init__(self, read_only=read_only)
 
-        # Get a managed dict from the registry
-        self._store_dict = _managed_store_dict_registry.create()
+        # Get or create a managed dict from the registry
+        self._store_dict, self._name = _managed_store_dict_registry.get_or_create(name)
+        self.path = normalize_path(path)
+        self._created_pid = os.getpid()
 
     def __str__(self) -> str:
-        return self._to_url()
+        return _dereference_path(f"memory://{self._name}", self.path)
 
     def __repr__(self) -> str:
         return f"ManagedMemoryStore('{self}')"
 
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, type(self))
+            and self._store_dict is other._store_dict
+            and self.path == other.path
+            and self.read_only == other.read_only
+        )
+
+    @property
+    def name(self) -> str:
+        """The name of this store, used in the memory:// URL."""
+        return self._name
+
+    def _check_same_process(self) -> None:
+        """Raise an error if this store is being used in a different process."""
+        current_pid = os.getpid()
+        if self._created_pid != current_pid:
+            raise RuntimeError(
+                f"ManagedMemoryStore '{self._name}' was created in process {self._created_pid} "
+                f"but is being used in process {current_pid}. "
+                "ManagedMemoryStore instances cannot be shared across processes because "
+                "their backing dict is not serialized. Use a persistent store (e.g., "
+                "LocalStore, ZipStore) for cross-process data sharing."
+            )
+
     @classmethod
     def _from_managed_dict(
-        cls, managed_dict: _ManagedStoreDict, *, read_only: bool = False
+        cls,
+        managed_dict: _ManagedStoreDict,
+        name: str,
+        *,
+        path: str = "",
+        read_only: bool = False,
     ) -> ManagedMemoryStore:
         """Internal: create a store from an existing managed dict."""
         store = object.__new__(cls)
         Store.__init__(store, read_only=read_only)
         store._store_dict = managed_dict
+        store._name = name
+        store.path = normalize_path(path)
+        store._created_pid = os.getpid()
         return store
 
     def with_read_only(self, read_only: bool = False) -> ManagedMemoryStore:
         # docstring inherited
-        return type(self)._from_managed_dict(self._store_dict, read_only=read_only)
-
-    def _to_url(self) -> str:
-        """Return a URL representation of this store."""
-        return f"memory://{id(self._store_dict)}"
+        return type(self)._from_managed_dict(
+            self._store_dict, self._name, path=self.path, read_only=read_only
+        )
 
     @classmethod
     def from_url(cls, url: str, *, read_only: bool = False) -> ManagedMemoryStore:
@@ -630,7 +736,8 @@ class ManagedMemoryStore(MemoryStore):
         Parameters
         ----------
         url : str
-            A URL like "memory://123456" identifying the store.
+            A URL like "memory://my-store" or "memory://my-store/path/to/data"
+            identifying the store and optional path prefix.
         read_only : bool
             Whether the new store should be read-only.
 
@@ -645,10 +752,118 @@ class ManagedMemoryStore(MemoryStore):
             If the URL is not a valid memory:// URL or the store has been
             garbage collected.
         """
-        managed_dict = _managed_store_dict_registry.get_from_url(url)
+        managed_dict, name, path = _managed_store_dict_registry.get_from_url(url)
         if managed_dict is None:
             raise ValueError(
                 f"Memory store not found for URL '{url}'. "
                 "The store may have been garbage collected or the URL is invalid."
             )
-        return cls._from_managed_dict(managed_dict, read_only=read_only)
+        return cls._from_managed_dict(managed_dict, name, path=path, read_only=read_only)
+
+    # Override MemoryStore methods to use path prefix and check process
+
+    async def get(
+        self,
+        key: str,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        # docstring inherited
+        self._check_same_process()
+        return await super().get(
+            _dereference_path(self.path, key), prototype=prototype, byte_range=byte_range
+        )
+
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
+    ) -> list[Buffer | None]:
+        # docstring inherited
+        self._check_same_process()
+        key_ranges = [
+            (_dereference_path(self.path, key), byte_range) for key, byte_range in key_ranges
+        ]
+        return await super().get_partial_values(prototype, key_ranges)
+
+    async def exists(self, key: str) -> bool:
+        # docstring inherited
+        self._check_same_process()
+        return await super().exists(_dereference_path(self.path, key))
+
+    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        # docstring inherited
+        self._check_same_process()
+        return await super().set(_dereference_path(self.path, key), value, byte_range=byte_range)
+
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        # docstring inherited
+        self._check_same_process()
+        return await super().set_if_not_exists(_dereference_path(self.path, key), value)
+
+    async def delete(self, key: str) -> None:
+        # docstring inherited
+        self._check_same_process()
+        return await super().delete(_dereference_path(self.path, key))
+
+    async def list(self) -> AsyncIterator[str]:
+        # docstring inherited
+        self._check_same_process()
+        prefix = self.path + "/" if self.path else ""
+        async for key in super().list():
+            if key.startswith(prefix):
+                yield key.removeprefix(prefix)
+
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
+        # docstring inherited
+        self._check_same_process()
+        # Don't use _dereference_path here because it strips trailing slashes,
+        # which would break prefix matching (e.g., "fo/" vs "foo/")
+        full_prefix = f"{self.path}/{prefix}" if self.path else prefix
+        path_prefix = self.path + "/" if self.path else ""
+        async for key in super().list_prefix(full_prefix):
+            yield key.removeprefix(path_prefix)
+
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
+        # docstring inherited
+        self._check_same_process()
+        full_prefix = _dereference_path(self.path, prefix)
+        async for key in super().list_dir(full_prefix):
+            yield key
+
+    def __reduce__(
+        self,
+    ) -> tuple[type[ManagedMemoryStore], tuple[str | None], dict[str, Any]]:
+        """
+        Support pickling of ManagedMemoryStore.
+
+        On unpickle, the store will reconnect to an existing store with the same
+        name if one exists in the registry, or create a new empty store otherwise.
+
+        Note that the backing dict data is NOT serialized - only the store's
+        identity (name, path, read_only) is preserved. If the original store has
+        been garbage collected, the unpickled store will have an empty dict.
+
+        The original process ID is preserved so that cross-process usage can be
+        detected and will raise an error.
+        """
+        return (
+            self.__class__,
+            (self._name,),
+            {
+                "path": self.path,
+                "read_only": self.read_only,
+                "created_pid": self._created_pid,
+            },
+        )
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore state after unpickling."""
+        # The __reduce__ method returns (cls, (name,), state)
+        # Python calls cls(name) then __setstate__(state)
+        # But __init__ already set up _store_dict and _name from the registry
+        # We just need to restore path, read_only, and the original process ID
+        self.path = normalize_path(state.get("path", ""))
+        self._read_only = state.get("read_only", False)
+        # Preserve the original process ID to detect cross-process usage
+        self._created_pid = state.get("created_pid", os.getpid())
