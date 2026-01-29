@@ -17,7 +17,7 @@ from zarr.core.common import (
 )
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
-from zarr.storage._memory import MemoryStore, _get_memory_store_from_url
+from zarr.storage._memory import ManagedMemoryStore, MemoryStore
 from zarr.storage._utils import normalize_path
 
 _has_fsspec = importlib.util.find_spec("fsspec")
@@ -343,16 +343,7 @@ async def make_store(
     elif isinstance(store_like, str):
         # Check for memory:// URLs first (in-process registry lookup)
         if store_like.startswith("memory://"):
-            memory_store = _get_memory_store_from_url(store_like)
-            if memory_store is not None:
-                if _read_only and not memory_store.read_only:
-                    return memory_store.with_read_only(read_only=True)
-                return memory_store
-            # Memory store not found in registry - it may have been garbage collected
-            raise ValueError(
-                f"Memory store not found for URL '{store_like}'. "
-                "The store may have been garbage collected."
-            )
+            return ManagedMemoryStore.from_url(store_like, read_only=_read_only)
         # Either an FSSpec URI or a local filesystem path
         elif _is_fsspec_uri(store_like):
             return FsspecStore.from_url(
@@ -432,12 +423,8 @@ async def make_store_path(
 
     elif isinstance(store_like, str) and store_like.startswith("memory://"):
         # Handle memory:// URLs specially - extract path from URL
-        memory_store = _get_memory_store_from_url(store_like)
-        if memory_store is None:
-            raise ValueError(
-                f"Memory store not found for URL '{store_like}'. "
-                "The store may have been garbage collected."
-            )
+        _read_only = mode == "r"
+        memory_store = ManagedMemoryStore.from_url(store_like, read_only=_read_only)
         # Extract path from URL: "memory://123456/path/to/node" -> "path/to/node"
         url_without_scheme = store_like[len("memory://") :]
         parts = url_without_scheme.split("/", 1)
@@ -445,7 +432,9 @@ async def make_store_path(
         # Combine URL path with any additional path argument
         combined_path = normalize_path(url_path)
         if path_normalized:
-            combined_path = f"{combined_path}/{path_normalized}" if combined_path else path_normalized
+            combined_path = (
+                f"{combined_path}/{path_normalized}" if combined_path else path_normalized
+            )
         return await StorePath.open(memory_store, path=combined_path, mode=mode)
 
     else:

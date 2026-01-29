@@ -19,53 +19,6 @@ if TYPE_CHECKING:
 logger = getLogger(__name__)
 
 
-# -----------------------------------------------------------------------------
-# Memory store registry
-# -----------------------------------------------------------------------------
-# This registry allows memory stores to be looked up by their URL within the
-# same process. This enables specs containing memory:// URLs to be re-opened.
-# We use weakrefs so that stores can be garbage collected when no longer in use.
-
-_memory_store_registry: weakref.WeakValueDictionary[int, MemoryStore] = weakref.WeakValueDictionary()
-
-
-def _register_memory_store(store: MemoryStore) -> None:
-    """Register a memory store in the registry."""
-    store_id = id(store._store_dict)
-    _memory_store_registry[store_id] = store
-
-
-def _get_memory_store_from_url(url: str) -> MemoryStore | None:
-    """
-    Look up a memory store by its URL.
-
-    Parameters
-    ----------
-    url : str
-        A URL like "memory://123456" or "memory://123456/path/to/node"
-
-    Returns
-    -------
-    MemoryStore | None
-        The store if found in the registry, None otherwise.
-    """
-    if not url.startswith("memory://"):
-        return None
-
-    # Parse the store ID from the URL (handle optional path)
-    # "memory://123456" -> "123456"
-    # "memory://123456/path" -> "123456"
-    url_without_scheme = url[len("memory://") :]
-    store_id_str = url_without_scheme.split("/")[0]
-
-    try:
-        store_id = int(store_id_str)
-    except ValueError:
-        return None
-
-    return _memory_store_registry.get(store_id)
-
-
 class MemoryStore(Store):
     """
     Store for local memory.
@@ -100,8 +53,6 @@ class MemoryStore(Store):
         if store_dict is None:
             store_dict = {}
         self._store_dict = store_dict
-        # Register this store so it can be looked up by URL
-        _register_memory_store(self)
 
     def with_read_only(self, read_only: bool = False) -> MemoryStore:
         # docstring inherited
@@ -525,3 +476,179 @@ class GpuMemoryStore(MemoryStore):
         # Convert to gpu.Buffer
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)
+
+
+# -----------------------------------------------------------------------------
+# ManagedMemoryStore and its registry
+# -----------------------------------------------------------------------------
+# ManagedMemoryStore owns the lifecycle of its backing dict, enabling proper
+# weakref-based tracking. This allows memory:// URLs to be resolved back to
+# the store's dict within the same process.
+
+
+class _ManagedStoreDict(dict[str, Buffer]):
+    """
+    A dict subclass that supports weak references.
+
+    Regular dicts don't support weakrefs, but we need to track managed store dicts
+    in a WeakValueDictionary so they can be garbage collected when no longer
+    referenced. This subclass adds the necessary __weakref__ slot.
+    """
+
+    __slots__ = ("__weakref__",)
+
+
+class _ManagedStoreDictRegistry:
+    """
+    Registry for managed store dicts.
+
+    This registry is the source of truth for managed store dicts. It creates
+    new dicts, tracks them via weak references, and looks them up by URL.
+    """
+
+    def __init__(self) -> None:
+        self._registry: weakref.WeakValueDictionary[int, _ManagedStoreDict] = (
+            weakref.WeakValueDictionary()
+        )
+
+    def create(self) -> _ManagedStoreDict:
+        """Create a new managed dict and register it."""
+        store_dict = _ManagedStoreDict()
+        self._registry[id(store_dict)] = store_dict
+        return store_dict
+
+    def get_from_url(self, url: str) -> _ManagedStoreDict | None:
+        """
+        Look up a managed store dict by its URL.
+
+        Parameters
+        ----------
+        url : str
+            A URL like "memory://123456" or "memory://123456/path/to/node"
+
+        Returns
+        -------
+        _ManagedStoreDict | None
+            The store dict if found, None otherwise.
+        """
+        if not url.startswith("memory://"):
+            return None
+
+        # Parse the store ID from the URL (handle optional path)
+        # "memory://123456" -> "123456"
+        # "memory://123456/path" -> "123456"
+        url_without_scheme = url[len("memory://") :]
+        store_id_str = url_without_scheme.split("/")[0]
+
+        try:
+            store_id = int(store_id_str)
+        except ValueError:
+            return None
+
+        return self._registry.get(store_id)
+
+
+_managed_store_dict_registry = _ManagedStoreDictRegistry()
+
+
+class ManagedMemoryStore(MemoryStore):
+    """
+    A memory store that owns and manages the lifecycle of its backing dict.
+
+    Unlike ``MemoryStore`` which accepts any ``MutableMapping``, this store
+    creates and owns its backing dict internally. This enables proper lifecycle
+    management and allows the store to be looked up by its ``memory://`` URL
+    within the same process.
+
+    Parameters
+    ----------
+    read_only : bool
+        Whether the store is read-only.
+
+    Notes
+    -----
+    The backing dict is tracked via weak references and will be garbage collected
+    when no ``ManagedMemoryStore`` instances reference it. URLs pointing to a
+    garbage-collected store will fail to resolve.
+
+    See Also
+    --------
+    MemoryStore : A memory store that accepts any MutableMapping.
+
+    Examples
+    --------
+    >>> store = ManagedMemoryStore()
+    >>> url = str(store)  # e.g., "memory://123456789"
+    >>> # Later, resolve the URL back to the store's dict
+    >>> store2 = ManagedMemoryStore.from_url(url)
+    >>> store2._store_dict is store._store_dict
+    True
+    """
+
+    _store_dict: _ManagedStoreDict
+
+    def __init__(self, *, read_only: bool = False) -> None:
+        # Skip MemoryStore.__init__ and call Store.__init__ directly
+        # because we need to set up _store_dict differently
+        Store.__init__(self, read_only=read_only)
+
+        # Get a managed dict from the registry
+        self._store_dict = _managed_store_dict_registry.create()
+
+    def __str__(self) -> str:
+        return self._to_url()
+
+    def __repr__(self) -> str:
+        return f"ManagedMemoryStore('{self}')"
+
+    @classmethod
+    def _from_managed_dict(
+        cls, managed_dict: _ManagedStoreDict, *, read_only: bool = False
+    ) -> ManagedMemoryStore:
+        """Internal: create a store from an existing managed dict."""
+        store = object.__new__(cls)
+        Store.__init__(store, read_only=read_only)
+        store._store_dict = managed_dict
+        return store
+
+    def with_read_only(self, read_only: bool = False) -> ManagedMemoryStore:
+        # docstring inherited
+        return type(self)._from_managed_dict(self._store_dict, read_only=read_only)
+
+    def _to_url(self) -> str:
+        """Return a URL representation of this store."""
+        return f"memory://{id(self._store_dict)}"
+
+    @classmethod
+    def from_url(cls, url: str, *, read_only: bool = False) -> ManagedMemoryStore:
+        """
+        Create a ManagedMemoryStore from a memory:// URL.
+
+        This looks up the backing dict in the process-wide registry and creates
+        a new store instance that shares the same dict.
+
+        Parameters
+        ----------
+        url : str
+            A URL like "memory://123456" identifying the store.
+        read_only : bool
+            Whether the new store should be read-only.
+
+        Returns
+        -------
+        ManagedMemoryStore
+            A store sharing the same backing dict as the original.
+
+        Raises
+        ------
+        ValueError
+            If the URL is not a valid memory:// URL or the store has been
+            garbage collected.
+        """
+        managed_dict = _managed_store_dict_registry.get_from_url(url)
+        if managed_dict is None:
+            raise ValueError(
+                f"Memory store not found for URL '{url}'. "
+                "The store may have been garbage collected or the URL is invalid."
+            )
+        return cls._from_managed_dict(managed_dict, read_only=read_only)

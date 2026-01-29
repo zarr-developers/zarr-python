@@ -12,7 +12,7 @@ import zarr
 from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.core.sync import sync
 from zarr.errors import ZarrUserWarning
-from zarr.storage import GpuMemoryStore, MemoryStore
+from zarr.storage import GpuMemoryStore, ManagedMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
 
@@ -181,3 +181,150 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
             result = GpuMemoryStore.from_dict(d)
         for v in result._store_dict.values():
             assert type(v) is gpu.Buffer
+
+
+class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
+    store_cls = ManagedMemoryStore
+    buffer_cls = cpu.Buffer
+
+    async def set(self, store: ManagedMemoryStore, key: str, value: Buffer) -> None:
+        store._store_dict[key] = value
+
+    async def get(self, store: ManagedMemoryStore, key: str) -> Buffer:
+        return store._store_dict[key]
+
+    @pytest.fixture
+    def store_kwargs(self) -> dict[str, Any]:
+        return {}
+
+    @pytest.fixture
+    async def store(self, open_kwargs: dict[str, Any]) -> ManagedMemoryStore:
+        return self.store_cls(**open_kwargs)
+
+    def test_store_repr(self, store: ManagedMemoryStore) -> None:
+        assert str(store) == f"memory://{id(store._store_dict)}"
+
+    def test_store_supports_writes(self, store: ManagedMemoryStore) -> None:
+        assert store.supports_writes
+
+    def test_store_supports_listing(self, store: ManagedMemoryStore) -> None:
+        assert store.supports_listing
+
+    async def test_list_prefix(self, store: MemoryStore) -> None:
+        assert True
+
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "int64"])
+    @pytest.mark.parametrize("zarr_format", [2, 3])
+    async def test_deterministic_size(
+        self, store: MemoryStore, dtype: npt.DTypeLike, zarr_format: ZarrFormat
+    ) -> None:
+        a = zarr.empty(
+            store=store,
+            shape=(3,),
+            chunks=(1000,),
+            dtype=dtype,
+            zarr_format=zarr_format,
+            overwrite=True,
+        )
+        a[...] = 1
+        a.resize((1000,))
+
+        np.testing.assert_array_equal(a[:3], 1)
+        np.testing.assert_array_equal(a[3:], 0)
+
+    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
+    async def test_get_bytes_with_prototype_none(
+        self, store: ManagedMemoryStore, buffer_cls: None | BufferPrototype
+    ) -> None:
+        """Test that get_bytes works with prototype=None."""
+        data = b"hello world"
+        key = "test_key"
+        await self.set(store, key, self.buffer_cls.from_bytes(data))
+
+        result = await store._get_bytes(key, prototype=buffer_cls)
+        assert result == data
+
+    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
+    def test_get_bytes_sync_with_prototype_none(
+        self, store: ManagedMemoryStore, buffer_cls: None | BufferPrototype
+    ) -> None:
+        """Test that get_bytes_sync works with prototype=None."""
+        data = b"hello world"
+        key = "test_key"
+        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
+
+        result = store._get_bytes_sync(key, prototype=buffer_cls)
+        assert result == data
+
+    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
+    async def test_get_json_with_prototype_none(
+        self, store: ManagedMemoryStore, buffer_cls: None | BufferPrototype
+    ) -> None:
+        """Test that get_json works with prototype=None."""
+        data = {"foo": "bar", "number": 42}
+        key = "test.json"
+        await self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode()))
+
+        result = await store._get_json(key, prototype=buffer_cls)
+        assert result == data
+
+    @pytest.mark.parametrize("buffer_cls", [None, cpu.buffer_prototype])
+    def test_get_json_sync_with_prototype_none(
+        self, store: ManagedMemoryStore, buffer_cls: None | BufferPrototype
+    ) -> None:
+        """Test that get_json_sync works with prototype=None."""
+        data = {"foo": "bar", "number": 42}
+        key = "test.json"
+        sync(self.set(store, key, self.buffer_cls.from_bytes(json.dumps(data).encode())))
+
+        result = store._get_json_sync(key, prototype=buffer_cls)
+        assert result == data
+
+    def test_from_url(self, store: ManagedMemoryStore) -> None:
+        """Test that from_url creates a store sharing the same dict."""
+        url = str(store)
+        store2 = ManagedMemoryStore.from_url(url)
+        assert store2._store_dict is store._store_dict
+
+    def test_from_url_with_path(self, store: ManagedMemoryStore) -> None:
+        """Test that from_url ignores path component in URL."""
+        url = str(store) + "/some/path"
+        store2 = ManagedMemoryStore.from_url(url)
+        assert store2._store_dict is store._store_dict
+
+    def test_from_url_invalid(self) -> None:
+        """Test that from_url raises ValueError for invalid URLs."""
+        with pytest.raises(ValueError, match="Memory store not found"):
+            ManagedMemoryStore.from_url("memory://999999999999")
+
+    def test_from_url_not_memory_scheme(self) -> None:
+        """Test that from_url raises ValueError for non-memory URLs."""
+        with pytest.raises(ValueError, match="Memory store not found"):
+            ManagedMemoryStore.from_url("file:///tmp/test")
+
+    def test_with_read_only_shares_dict(self, store: ManagedMemoryStore) -> None:
+        """Test that with_read_only creates a store sharing the same dict."""
+        store2 = store.with_read_only(True)
+        assert store2._store_dict is store._store_dict
+        assert store2.read_only is True
+        assert store.read_only is False
+
+    def test_garbage_collection(self) -> None:
+        """Test that the dict is garbage collected when no stores reference it."""
+        import gc
+
+        store = ManagedMemoryStore()
+        url = str(store)
+
+        # URL should resolve while store exists
+        store2 = ManagedMemoryStore.from_url(url)
+        assert store2._store_dict is store._store_dict
+
+        # Delete both stores
+        del store
+        del store2
+        gc.collect()
+
+        # URL should no longer resolve
+        with pytest.raises(ValueError, match="garbage collected"):
+            ManagedMemoryStore.from_url(url)
