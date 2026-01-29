@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import weakref
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Self
 
@@ -16,6 +17,53 @@ if TYPE_CHECKING:
 
 
 logger = getLogger(__name__)
+
+
+# -----------------------------------------------------------------------------
+# Memory store registry
+# -----------------------------------------------------------------------------
+# This registry allows memory stores to be looked up by their URL within the
+# same process. This enables specs containing memory:// URLs to be re-opened.
+# We use weakrefs so that stores can be garbage collected when no longer in use.
+
+_memory_store_registry: weakref.WeakValueDictionary[int, MemoryStore] = weakref.WeakValueDictionary()
+
+
+def _register_memory_store(store: MemoryStore) -> None:
+    """Register a memory store in the registry."""
+    store_id = id(store._store_dict)
+    _memory_store_registry[store_id] = store
+
+
+def _get_memory_store_from_url(url: str) -> MemoryStore | None:
+    """
+    Look up a memory store by its URL.
+
+    Parameters
+    ----------
+    url : str
+        A URL like "memory://123456" or "memory://123456/path/to/node"
+
+    Returns
+    -------
+    MemoryStore | None
+        The store if found in the registry, None otherwise.
+    """
+    if not url.startswith("memory://"):
+        return None
+
+    # Parse the store ID from the URL (handle optional path)
+    # "memory://123456" -> "123456"
+    # "memory://123456/path" -> "123456"
+    url_without_scheme = url[len("memory://") :]
+    store_id_str = url_without_scheme.split("/")[0]
+
+    try:
+        store_id = int(store_id_str)
+    except ValueError:
+        return None
+
+    return _memory_store_registry.get(store_id)
 
 
 class MemoryStore(Store):
@@ -52,6 +100,8 @@ class MemoryStore(Store):
         if store_dict is None:
             store_dict = {}
         self._store_dict = store_dict
+        # Register this store so it can be looked up by URL
+        _register_memory_store(self)
 
     def with_read_only(self, read_only: bool = False) -> MemoryStore:
         # docstring inherited

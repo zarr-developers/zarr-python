@@ -17,7 +17,7 @@ from zarr.core.common import (
 )
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
-from zarr.storage._memory import MemoryStore
+from zarr.storage._memory import MemoryStore, _get_memory_store_from_url
 from zarr.storage._utils import normalize_path
 
 _has_fsspec = importlib.util.find_spec("fsspec")
@@ -341,8 +341,20 @@ async def make_store(
         return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str):
+        # Check for memory:// URLs first (in-process registry lookup)
+        if store_like.startswith("memory://"):
+            memory_store = _get_memory_store_from_url(store_like)
+            if memory_store is not None:
+                if _read_only and not memory_store.read_only:
+                    return memory_store.with_read_only(read_only=True)
+                return memory_store
+            # Memory store not found in registry - it may have been garbage collected
+            raise ValueError(
+                f"Memory store not found for URL '{store_like}'. "
+                "The store may have been garbage collected."
+            )
         # Either an FSSpec URI or a local filesystem path
-        if _is_fsspec_uri(store_like):
+        elif _is_fsspec_uri(store_like):
             return FsspecStore.from_url(
                 store_like, storage_options=storage_options, read_only=_read_only
             )
@@ -417,6 +429,24 @@ async def make_store_path(
         raise ValueError(
             "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
         )
+
+    elif isinstance(store_like, str) and store_like.startswith("memory://"):
+        # Handle memory:// URLs specially - extract path from URL
+        memory_store = _get_memory_store_from_url(store_like)
+        if memory_store is None:
+            raise ValueError(
+                f"Memory store not found for URL '{store_like}'. "
+                "The store may have been garbage collected."
+            )
+        # Extract path from URL: "memory://123456/path/to/node" -> "path/to/node"
+        url_without_scheme = store_like[len("memory://") :]
+        parts = url_without_scheme.split("/", 1)
+        url_path = parts[1] if len(parts) > 1 else ""
+        # Combine URL path with any additional path argument
+        combined_path = normalize_path(url_path)
+        if path_normalized:
+            combined_path = f"{combined_path}/{path_normalized}" if combined_path else path_normalized
+        return await StorePath.open(memory_store, path=combined_path, mode=mode)
 
     else:
         store = await make_store(store_like, mode=mode, storage_options=storage_options)
