@@ -329,9 +329,15 @@ async def make_store(
         return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str):
-        # Check for memory:// URLs first (in-process registry lookup)
+        # Check for memory:// URLs first
         if store_like.startswith("memory://"):
-            return ManagedMemoryStore.from_url(store_like, read_only=_read_only)
+            # Parse the URL to extract name and path
+            url_without_scheme = store_like[len("memory://") :]
+            parts = url_without_scheme.split("/", 1)
+            name = parts[0] if parts[0] else None
+            path = parts[1] if len(parts) > 1 else ""
+            # Create or get the store - ManagedMemoryStore handles both cases
+            return ManagedMemoryStore(name=name, path=path, read_only=_read_only)
         # Either an FSSpec URI or a local filesystem path
         elif _is_fsspec_uri(store_like):
             return FsspecStore.from_url(
@@ -411,9 +417,14 @@ async def make_store_path(
 
     elif isinstance(store_like, str) and store_like.startswith("memory://"):
         # Handle memory:// URLs specially
-        # The store itself now handles the path from the URL
+        # Parse the URL to extract name and path
         _read_only = mode == "r"
-        memory_store = ManagedMemoryStore.from_url(store_like, read_only=_read_only)
+        url_without_scheme = store_like[len("memory://") :]
+        parts = url_without_scheme.split("/", 1)
+        name = parts[0] if parts[0] else None
+        url_path = parts[1] if len(parts) > 1 else ""
+        # Create or get the store - ManagedMemoryStore handles both cases
+        memory_store = ManagedMemoryStore(name=name, path=url_path, read_only=_read_only)
         return await StorePath.open(memory_store, path=path_normalized, mode=mode)
 
     else:

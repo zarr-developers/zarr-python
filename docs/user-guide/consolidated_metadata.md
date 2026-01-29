@@ -27,8 +27,7 @@ import zarr
 import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
-store = zarr.storage.MemoryStore()
-group = zarr.create_group(store=store)
+group = zarr.create_group(store="memory://consolidated-metadata-demo")
 print(group)
 array = group.create_array(shape=(1,), name='a', dtype='float64')
 print(array)
@@ -45,7 +44,7 @@ print(array)
 ```
 
 ```python exec="true" session="consolidated_metadata" source="above" result="ansi"
-result = zarr.consolidate_metadata(store)
+result = zarr.consolidate_metadata("memory://consolidated-metadata-demo")
 print(result)
 ```
 
@@ -56,7 +55,7 @@ that can be used.:
 from pprint import pprint
 import io
 
-consolidated = zarr.open_group(store=store)
+consolidated = zarr.open_group(store="memory://consolidated-metadata-demo")
 consolidated_metadata = consolidated.metadata.consolidated_metadata.metadata
 
 # Note: pprint can be users without capturing the output regularly
@@ -76,7 +75,7 @@ With nested groups, the consolidated metadata is available on the children, recu
 ```python exec="true" session="consolidated_metadata" source="above" result="ansi"
 child = group.create_group('child', attributes={'kind': 'child'})
 grandchild = child.create_group('child', attributes={'kind': 'grandchild'})
-consolidated = zarr.consolidate_metadata(store)
+consolidated = zarr.consolidate_metadata("memory://consolidated-metadata-demo")
 
 output = io.StringIO()
 pprint(consolidated['child'].metadata.consolidated_metadata, stream=output, width=60)
