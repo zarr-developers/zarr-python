@@ -617,13 +617,13 @@ print(f"Slice [10:30, 50:75]: {z[10:30, 50:75].shape}")
 ### Accessing chunk information
 
 With variable chunking, the standard `.chunks` property is not available since chunks
-have different sizes. Instead, access chunk information through the chunk grid:
+have different sizes. Instead, access chunk information through the `.chunk_grid` property:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 from zarr.core.chunk_grids import RectilinearChunkGrid
 
 # Access the chunk grid
-chunk_grid = z.metadata.chunk_grid
+chunk_grid = z.chunk_grid
 print(f"Chunk grid type: {type(chunk_grid).__name__}")
 
 # Get chunk shapes for each dimension
@@ -659,8 +659,8 @@ z_timeseries = zarr.create_array(
     zarr_format=3
 )
 print(f"Created array with shape {z_timeseries.shape}")
-print(f"Chunk shapes: {z_timeseries.metadata.chunk_grid.chunk_shapes}")
-print(f"Number of chunks: {len(z_timeseries.metadata.chunk_grid.chunk_shapes[0])} months")
+print(f"Chunk shapes: {z_timeseries.chunk_grid.chunk_shapes}")
+print(f"Number of chunks: {len(z_timeseries.chunk_grid.chunk_shapes[0])} months")
 ```
 
 ### Limitations
@@ -678,8 +678,7 @@ Variable chunking has some important limitations:
    to partition the input data, which requires regular chunk sizes.
 
 4. **No `.chunks` property**: For arrays with variable chunking, accessing the `.chunks`
-   property will raise a `NotImplementedError`. Use `.metadata.chunk_grid.chunk_shapes`
-   instead.
+   property will raise a `NotImplementedError`. Use `.chunk_grid.chunk_shapes` instead.
 
 ## Missing features in 3.0
 

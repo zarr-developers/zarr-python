@@ -43,9 +43,8 @@ from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import (
     ChunkGrid,
     ChunksLike,
-    ChunksType,
+    RectilinearChunkGrid,
     RegularChunkGrid,
-    RegularChunks,
     _auto_partition,
     _normalize_chunks,
     resolve_chunk_spec,
@@ -1052,34 +1051,52 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.metadata.shape
 
     @property
-    def chunks(self) -> ChunksType:
-        """Returns the chunk specification of the Array.
-
-        Returns either RegularChunks (for uniform chunk sizes) or RectilinearChunks
-        (for variable chunk sizes per dimension). Both types behave like tuples but
-        provide richer semantics including named access when dimension_names are available.
-
-        For arrays using RegularChunkGrid: returns RegularChunks with uniform chunk sizes.
-        If sharding is used, the inner chunk shape is returned.
-
-        For arrays using RectilinearChunkGrid: returns RectilinearChunks where each
-        element is a tuple containing the chunk sizes along that dimension (not RLE encoded).
+    def chunk_grid(self) -> ChunkGrid:
+        """Returns the chunk grid of the Array.
 
         Returns
         -------
-        ChunksType
-            RegularChunks for regular chunks or RectilinearChunks for variable chunks
-
-        Examples
-        --------
-        >>> arr = zarr.create_array(shape=(100, 200), chunks=(10, 20))
-        >>> arr.chunks
-        RegularChunks((10, 20))
-        >>> isinstance(arr.chunks, RegularChunks)
-        True
-        >>> tuple(arr.chunks)
-        (10, 20)
+        ChunkGrid
+            The chunk grid (RegularChunkGrid or RectilinearChunkGrid)
         """
+        return self.metadata.chunk_grid
+
+    @property
+    def chunks(self) -> tuple[int, ...]:
+        """Returns the chunk shape of the Array.
+
+        .. deprecated::
+            The `chunks` property is deprecated and will be removed in a future version.
+            Use `chunk_grid` instead to access chunk information.
+
+        For arrays using RegularChunkGrid: returns a tuple of ints with uniform chunk sizes.
+        If sharding is used, the inner chunk shape is returned.
+
+        For arrays using RectilinearChunkGrid: raises NotImplementedError as variable chunks
+        cannot be represented as a simple tuple.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The chunk shape for regular chunk grids
+
+        Raises
+        ------
+        NotImplementedError
+            If the array uses RectilinearChunkGrid (variable chunks)
+        """
+        if isinstance(self.metadata.chunk_grid, RectilinearChunkGrid):
+            msg = (
+                "The `chunks` property is not supported for arrays with variable chunk sizes "
+                "(RectilinearChunkGrid). Use `chunk_grid` instead to access chunk information."
+            )
+            raise NotImplementedError(msg)
+        warnings.warn(
+            "Array.chunks is deprecated and will be removed in a future version. "
+            "Use Array.chunk_grid.chunk_shape instead.",
+            FutureWarning,
+            stacklevel=2,
+        )
         return self.metadata.chunks
 
     @property
@@ -1285,15 +1302,16 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         tuple[int, ...]
             The shape of the chunk grid for this array.
         """
-        chunks = self.chunks
-        # Handle 0-dimensional arrays
-        if len(chunks) == 0:
-            return ()
-        # For RegularChunkGrid (or sharded), use RegularChunks type check
-        if isinstance(chunks, RegularChunks):
-            return tuple(starmap(ceildiv, zip(self.shape, chunks, strict=True)))
         # For RectilinearChunkGrid, use the chunk_grid method
-        return self.metadata.chunk_grid.get_chunk_grid_shape(self.shape)
+        if isinstance(self.metadata.chunk_grid, RectilinearChunkGrid):
+            return self.metadata.chunk_grid.get_chunk_grid_shape(self.shape)
+        # For RegularChunkGrid (including sharded), use metadata.chunks which
+        # correctly returns the inner chunk shape for sharded arrays
+        chunk_shape = self.metadata.chunks
+        # Handle 0-dimensional arrays
+        if len(chunk_shape) == 0:
+            return ()
+        return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
 
     @property
     def _shard_grid_shape(self) -> tuple[int, ...]:
@@ -1308,7 +1326,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The shape of the shard grid for this array.
         """
         if self.shards is None:
-            shard_shape: tuple[int, ...] | ChunksType = self.chunks
+            shard_shape = self.metadata.chunk_grid.chunk_shape
         else:
             shard_shape = self.shards
         return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
@@ -2396,20 +2414,39 @@ class Array(Generic[T_ArrayMetadata]):
         self.resize(value)
 
     @property
-    def chunks(self) -> tuple[int, ...] | tuple[tuple[int, ...], ...]:
-        """Returns the chunk specification of the Array.
-
-        For arrays using RegularChunkGrid: returns a tuple of ints representing
-        the uniform chunk shape. If sharding is used, the inner chunk shape is returned.
-
-        For arrays using RectilinearChunkGrid: returns a tuple of tuples, where
-        each inner tuple contains the chunk sizes along that dimension (not RLE encoded).
+    def chunk_grid(self) -> ChunkGrid:
+        """Returns the chunk grid of the Array.
 
         Returns
         -------
-        tuple[int, ...] | tuple[tuple[int, ...], ...]
-            For regular chunks: (chunk_size_dim0, chunk_size_dim1, ...)
-            For rectilinear chunks: ((sizes_dim0), (sizes_dim1), ...)
+        ChunkGrid
+            The chunk grid (RegularChunkGrid or RectilinearChunkGrid)
+        """
+        return self.async_array.chunk_grid
+
+    @property
+    def chunks(self) -> tuple[int, ...]:
+        """Returns the chunk shape of the Array.
+
+        .. deprecated::
+            The `chunks` property is deprecated and will be removed in a future version.
+            Use `chunk_grid` instead to access chunk information.
+
+        For arrays using RegularChunkGrid: returns a tuple of ints with uniform chunk sizes.
+        If sharding is used, the inner chunk shape is returned.
+
+        For arrays using RectilinearChunkGrid: raises NotImplementedError as variable chunks
+        cannot be represented as a simple tuple.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The chunk shape for regular chunk grids
+
+        Raises
+        ------
+        NotImplementedError
+            If the array uses RectilinearChunkGrid (variable chunks)
         """
         return self.async_array.chunks
 
@@ -5664,16 +5701,14 @@ def _iter_shard_regions(
         If the array uses RectilinearChunkGrid (variable-sized chunks).
         when no shards are present.
     """
-    chunks = array.chunks
-    if not isinstance(chunks, RegularChunks):
+    if isinstance(array.metadata.chunk_grid, RectilinearChunkGrid):
         raise NotImplementedError(
             "_iter_shard_regions is not supported for arrays with variable-sized chunks "
             "(RectilinearChunkGrid). Use the chunk_grid API directly for variable chunk access."
         )
 
-    # Type narrowing: chunks is now RegularChunks (subclass of tuple[int, ...])
     if array.shards is None:
-        shard_shape: Sequence[int] = chunks
+        shard_shape: Sequence[int] = array.metadata.chunk_grid.chunk_shape
     else:
         shard_shape = array.shards
 
@@ -5712,17 +5747,15 @@ def _iter_chunk_regions(
     NotImplementedError
         If the array uses RectilinearChunkGrid (variable-sized chunks).
     """
-    chunks = array.chunks
-    if not isinstance(chunks, RegularChunks):
+    if isinstance(array.metadata.chunk_grid, RectilinearChunkGrid):
         raise NotImplementedError(
             "_iter_chunk_regions is not supported for arrays with variable-sized chunks "
             "(RectilinearChunkGrid). Use the chunk_grid API directly for variable chunk access."
         )
 
-    # Type narrowing: chunks is now RegularChunks (subclass of tuple[int, ...])
     return _iter_regions(
         array.shape,
-        chunks,
+        array.metadata.chunk_grid.chunk_shape,
         origin=origin,
         selection_shape=selection_shape,
         trim_excess=True,

@@ -26,11 +26,8 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Co
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import (
     ChunkGrid,
-    ChunksType,
     RectilinearChunkGrid,
-    RectilinearChunks,
     RegularChunkGrid,
-    RegularChunks,
 )
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -293,39 +290,41 @@ class ArrayV3Metadata(Metadata):
         return self.data_type
 
     @property
-    def chunks(self) -> ChunksType:
+    def chunks(self) -> tuple[int, ...]:
         """Return the chunk specification for this array.
 
-        Returns either RegularChunks (for uniform chunk sizes) or RectilinearChunks
-        (for variable chunk sizes per dimension). Both types behave like tuples but
-        provide richer semantics including named access when dimension_names are available.
+        For RegularChunkGrid: returns a tuple of ints with uniform chunk sizes.
+        If sharding is used, the inner chunk shape is returned.
 
-        For RegularChunkGrid: returns RegularChunks with uniform chunk sizes.
-        For RectilinearChunkGrid: returns RectilinearChunks with variable chunk sizes.
-
-        If sharding is used with RegularChunkGrid, the inner chunk shape is returned.
+        For RectilinearChunkGrid: raises NotImplementedError as variable chunks
+        cannot be represented as a simple tuple.
 
         Returns
         -------
-        ChunksType
-            RegularChunks for regular chunks or RectilinearChunks for variable chunks
-        """
-        dimension_names = self.dimension_names
+        tuple[int, ...]
+            The chunk shape for regular chunk grids
 
+        Raises
+        ------
+        NotImplementedError
+            If the array uses RectilinearChunkGrid (variable chunks)
+        """
         if isinstance(self.chunk_grid, RegularChunkGrid):
             from zarr.codecs.sharding import ShardingCodec
 
             if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
                 sharding_codec = self.codecs[0]
                 assert isinstance(sharding_codec, ShardingCodec)  # for mypy
-                chunk_shape = sharding_codec.chunk_shape
+                return sharding_codec.chunk_shape
             else:
-                chunk_shape = self.chunk_grid.chunk_shape
-
-            return RegularChunks(chunk_shape, dimension_names=dimension_names)
+                return self.chunk_grid.chunk_shape
 
         if isinstance(self.chunk_grid, RectilinearChunkGrid):
-            return RectilinearChunks(self.chunk_grid.chunk_shapes, dimension_names=dimension_names)
+            msg = (
+                "The `chunks` property is not supported for arrays with variable chunk sizes "
+                "(RectilinearChunkGrid). Use `chunk_grid` instead to access chunk information."
+            )
+            raise NotImplementedError(msg)
 
         msg = (
             f"The `chunks` attribute is not defined for chunk grid type "

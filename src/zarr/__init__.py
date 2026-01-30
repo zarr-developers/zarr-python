@@ -35,7 +35,6 @@ from zarr.api.synchronous import (
     zeros_like,
 )
 from zarr.core.array import Array, AsyncArray
-from zarr.core.chunk_grids import ChunksType, RectilinearChunks, RegularChunks
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, Group
 
@@ -148,10 +147,7 @@ __all__ = [
     "Array",
     "AsyncArray",
     "AsyncGroup",
-    "ChunksType",
     "Group",
-    "RectilinearChunks",
-    "RegularChunks",
     "__version__",
     "array",
     "config",

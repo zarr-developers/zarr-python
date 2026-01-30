@@ -1263,8 +1263,8 @@ async def test_resize_preserve_single_chunk() -> None:
 # =============================================================================
 
 
-async def test_array_chunks_property_rectilinear() -> None:
-    """Test that Array.chunks returns tuple of tuples for RectilinearChunkGrid."""
+async def test_array_chunks_property_rectilinear_raises() -> None:
+    """Test that Array.chunks raises NotImplementedError for RectilinearChunkGrid."""
     store = MemoryStore()
 
     arr = await zarr.api.asynchronous.create_array(
@@ -1275,19 +1275,18 @@ async def test_array_chunks_property_rectilinear() -> None:
         zarr_format=3,
     )
 
-    # chunks should return the expanded tuple of tuples (not RLE)
-    chunks = arr.chunks
-    assert chunks == ((10, 20, 30), (25, 25))
-    assert isinstance(chunks, tuple)
-    assert all(isinstance(dim_chunks, tuple) for dim_chunks in chunks)
-    assert all(isinstance(size, int) for dim_chunks in chunks for size in dim_chunks)
+    # chunks should raise NotImplementedError for rectilinear grids
+    with pytest.raises(NotImplementedError, match="RectilinearChunkGrid"):
+        _ = arr.chunks
+
+    # Use chunk_grid instead
+    assert arr.chunk_grid.chunk_shapes == ((10, 20, 30), (25, 25))
 
 
-async def test_array_chunks_property_rle_expanded() -> None:
-    """Test that Array.chunks returns expanded (not RLE) chunks."""
+async def test_array_chunk_grid_property_rectilinear() -> None:
+    """Test that Array.chunk_grid returns the RectilinearChunkGrid."""
     store = MemoryStore()
 
-    # Create with RLE format
     arr = await zarr.api.asynchronous.create_array(
         store=store,
         shape=(60, 60),
@@ -1296,16 +1295,14 @@ async def test_array_chunks_property_rle_expanded() -> None:
         zarr_format=3,
     )
 
-    # chunks property should return expanded format
-    chunks = arr.chunks
-    assert chunks == ((10, 10, 10, 10, 10, 10), (10, 10, 10, 10, 10, 10))
-    # Verify it's not RLE - each element is an int, not a list
-    assert len(chunks[0]) == 6
-    assert len(chunks[1]) == 6
+    # chunk_grid should return expanded format
+    chunk_grid = arr.chunk_grid
+    assert isinstance(chunk_grid, RectilinearChunkGrid)
+    assert chunk_grid.chunk_shapes == ((10, 10, 10, 10, 10, 10), (10, 10, 10, 10, 10, 10))
 
 
-def test_sync_array_chunks_property_rectilinear() -> None:
-    """Test that sync Array.chunks returns tuple of tuples for RectilinearChunkGrid."""
+def test_sync_array_chunks_property_rectilinear_raises() -> None:
+    """Test that sync Array.chunks raises NotImplementedError for RectilinearChunkGrid."""
     store = MemoryStore()
 
     arr = zarr.create_array(
@@ -1316,12 +1313,18 @@ def test_sync_array_chunks_property_rectilinear() -> None:
         zarr_format=3,
     )
 
-    chunks = arr.chunks
-    assert chunks == ((10, 20, 30, 40), (25, 25, 50))
+    # chunks should raise NotImplementedError for rectilinear grids
+    with pytest.raises(NotImplementedError, match="RectilinearChunkGrid"):
+        _ = arr.chunks
+
+    # Use chunk_grid instead
+    assert arr.chunk_grid.chunk_shapes == ((10, 20, 30, 40), (25, 25, 50))
 
 
-async def test_array_chunks_property_regular() -> None:
-    """Test that Array.chunks still returns tuple[int, ...] for RegularChunkGrid."""
+async def test_array_chunks_property_regular_with_warning() -> None:
+    """Test that Array.chunks emits FutureWarning for RegularChunkGrid."""
+    import warnings
+
     store = MemoryStore()
 
     arr = await zarr.api.asynchronous.create_array(
@@ -1332,15 +1335,25 @@ async def test_array_chunks_property_regular() -> None:
         zarr_format=3,
     )
 
-    chunks = arr.chunks
+    # chunks should emit FutureWarning for regular grids
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        chunks = arr.chunks
+        assert len(w) == 1
+        assert issubclass(w[0].category, FutureWarning)
+        assert "deprecated" in str(w[0].message)
+
     # For regular chunks, it's tuple[int, ...]
     assert chunks == (10, 20)
     assert isinstance(chunks[0], int)
     assert isinstance(chunks[1], int)
 
+    # chunk_grid.chunk_shape works without warning
+    assert arr.chunk_grid.chunk_shape == (10, 20)
 
-async def test_array_chunks_property_after_resize() -> None:
-    """Test that Array.chunks reflects updated chunks after resize."""
+
+async def test_array_chunk_grid_after_resize() -> None:
+    """Test that Array.chunk_grid reflects updated chunks after resize."""
     store = MemoryStore()
 
     arr = await zarr.api.asynchronous.create_array(
@@ -1351,18 +1364,17 @@ async def test_array_chunks_property_after_resize() -> None:
         zarr_format=3,
     )
 
-    assert arr.chunks == ((10, 20), (15, 15))
+    assert arr.chunk_grid.chunk_shapes == ((10, 20), (15, 15))
 
     # Resize to grow
     await arr.resize((50, 45))
 
-    # Chunks should be updated
-    chunks = arr.chunks
-    assert chunks == ((10, 20, 20), (15, 15, 15))  # New chunk added
+    # Chunk grid should be updated
+    assert arr.chunk_grid.chunk_shapes == ((10, 20, 20), (15, 15, 15))
 
 
-async def test_metadata_chunks_property_matches_array() -> None:
-    """Test that metadata.chunks matches arr.chunks."""
+async def test_metadata_chunks_property_raises_for_rectilinear() -> None:
+    """Test that metadata.chunks raises NotImplementedError for RectilinearChunkGrid."""
     store = MemoryStore()
 
     arr = await zarr.api.asynchronous.create_array(
@@ -1373,9 +1385,12 @@ async def test_metadata_chunks_property_matches_array() -> None:
         zarr_format=3,
     )
 
-    # Both should return the same value
-    assert arr.chunks == arr.metadata.chunks
-    assert arr.chunks == ((10, 20, 30), (25, 25))
+    # metadata.chunks should raise NotImplementedError for rectilinear grids
+    with pytest.raises(NotImplementedError, match="RectilinearChunkGrid"):
+        _ = arr.metadata.chunks
+
+    # Use chunk_grid instead
+    assert arr.metadata.chunk_grid.chunk_shapes == ((10, 20, 30), (25, 25))
 
 
 # ===================================================================

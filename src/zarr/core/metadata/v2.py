@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
-from zarr.core.chunk_grids import RegularChunkGrid, RegularChunks
+from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
 from zarr.errors import ZarrUserWarning
@@ -72,10 +72,9 @@ class ArrayV2Metadata(Metadata):
     zarr_format: Literal[2] = field(init=False, default=2)
 
     @cached_property
-    def chunks(self) -> RegularChunks:
+    def chunks(self) -> tuple[int, ...]:
         """Return the chunk specification."""
-        # V2 doesn't have dimension_names, so we pass None
-        return RegularChunks(self._chunks_tuple, dimension_names=None)
+        return self._chunks_tuple
 
     def __init__(
         self,
