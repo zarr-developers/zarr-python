@@ -9,7 +9,7 @@ import pytest
 
 from zarr import create_array
 from zarr.api.asynchronous import _get_shape_chunks, _like_args, group, open
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.buffer import cpu
 from zarr.core.group import AsyncGroup
 
 if TYPE_CHECKING:
@@ -101,7 +101,7 @@ async def test_open_no_array() -> None:
     This behavior makes no sense but we should still test it.
     """
     store = {
-        "zarr.json": default_buffer_prototype().buffer.from_bytes(
+        "zarr.json": cpu.Buffer.from_bytes(
             json.dumps({"zarr_format": 3, "node_type": "group"}).encode("utf-8")
         )
     }

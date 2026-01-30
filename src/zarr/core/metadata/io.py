@@ -4,7 +4,6 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import set_or_delete
-from zarr.core.buffer.core import default_buffer_prototype
 from zarr.errors import ContainsArrayError
 from zarr.storage._common import StorePath, ensure_no_existing_node
 
@@ -51,7 +50,7 @@ async def save_metadata(
     ------
     ValueError
     """
-    to_save = metadata.to_buffer_dict(default_buffer_prototype())
+    to_save = metadata.to_buffer_dict()
     set_awaitables = [set_or_delete(store_path / key, value) for key, value in to_save.items()]
 
     if ensure_parents:
@@ -71,9 +70,7 @@ async def save_metadata(
             set_awaitables.extend(
                 [
                     (parent_store_path / key).set_if_not_exists(value)
-                    for key, value in parent_metadata.to_buffer_dict(
-                        default_buffer_prototype()
-                    ).items()
+                    for key, value in parent_metadata.to_buffer_dict().items()
                 ]
             )
 

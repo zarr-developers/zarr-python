@@ -69,7 +69,7 @@ def byte_info(size: int) -> str:
 
 
 @dataclasses.dataclass(kw_only=True, frozen=True, slots=True)
-class ArrayInfo:
+class ArrayInfo:  # type: ignore[misc]
     """
     Visual summary for an Array.
 

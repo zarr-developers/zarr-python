@@ -12,7 +12,7 @@ from packaging.version import parse as parse_version
 import zarr.api.asynchronous
 from zarr import Array
 from zarr.abc.store import OffsetByteRequest
-from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ZarrUserWarning
 from zarr.storage import FsspecStore
@@ -119,11 +119,11 @@ async def test_basic() -> None:
     data = b"hello"
     await store.set("foo", cpu.Buffer.from_bytes(data))
     assert await store.exists("foo")
-    buf = await store.get("foo", prototype=default_buffer_prototype())
+    buf = await store.get("foo")
     assert buf is not None
     assert buf.to_bytes() == data
     out = await store.get_partial_values(
-        prototype=default_buffer_prototype(), key_ranges=[("foo", OffsetByteRequest(1))]
+        key_ranges=[("foo", OffsetByteRequest(1))], prototype=cpu.Buffer
     )
     assert out[0] is not None
     assert out[0].to_bytes() == data[1:]

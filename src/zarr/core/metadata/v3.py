@@ -11,6 +11,7 @@ from zarr.core.dtype.common import check_dtype_spec_v3
 if TYPE_CHECKING:
     from typing import Self
 
+    from zarr.abc.store import BufferClassLike
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON
@@ -35,6 +36,7 @@ from zarr.core.common import (
     ZARR_JSON,
     DimensionNames,
     NamedConfig,
+    parse_bufferclasslike,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -345,11 +347,12 @@ class ArrayV3Metadata(Metadata):
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
-    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferClassLike | None = None) -> dict[str, Buffer]:
+        buffer_cls = parse_bufferclasslike(prototype)
         json_indent = config.get("json_indent")
         d = self.to_dict()
         return {
-            ZARR_JSON: prototype.buffer.from_bytes(
+            ZARR_JSON: buffer_cls.from_bytes(
                 json.dumps(d, allow_nan=True, indent=json_indent).encode()
             )
         }
