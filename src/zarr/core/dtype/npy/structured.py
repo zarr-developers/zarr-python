@@ -22,6 +22,7 @@ from zarr.core.dtype.npy.common import (
     bytes_to_json,
     check_json_str,
 )
+from zarr.core.dtype.npy.subarray import Subarray
 from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
 if TYPE_CHECKING:
@@ -34,9 +35,11 @@ class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
     """
     A wrapper around the JSON representation of the ``Structured`` data type in Zarr V2.
 
-    The ``name`` field is a sequence of sequences, where each inner sequence has two values:
-    the field name and the data type name for that field (which could be another sequence).
-    The data type names are strings, and the object codec ID is always None.
+    The ``name`` field is a sequence of sequences, where each inner sequence has 2 or 3 values:
+        - First value: field name
+        - Second value: data type name (which could be another sequence for nested structured dtypes)
+        - Third value (optional): shape of the field (for subarray dtypes)
+    The object codec ID is always None.
 
     References
     ----------
@@ -49,7 +52,7 @@ class StructuredJSON_V2(DTypeConfig_V2[StructuredName_V2, None]):
     {
         "name": [
             ["f0", "<m8[10s]"],
-            ["f1", "<m8[10s]"],
+            ["f1", "int32", [2, 2]],
         ],
         "object_codec_id": None
     }
@@ -252,17 +255,33 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             # structured dtypes are constructed directly from a list of lists
             # note that we do not handle the object codec here! this will prevent structured
             # dtypes from containing object dtypes.
-            return cls(
-                fields=tuple(  # type: ignore[misc]
-                    (  # type: ignore[misc]
-                        f_name,
-                        get_data_type_from_json(
-                            {"name": f_dtype, "object_codec_id": None}, zarr_format=2
-                        ),
-                    )
-                    for f_name, f_dtype in data["name"]
+            fields = []
+            name = data["name"]
+            for tpl in name:
+                f_name = tpl[0]
+                if not isinstance(f_name, str):
+                    msg = f"Invalid field name. Got {f_name!r}, expected a string."
+                    raise DataTypeValidationError(msg)
+
+                f_dtype = tpl[1]
+                subdtype = get_data_type_from_json(
+                    {"name": f_dtype, "object_codec_id": None}, zarr_format=2
                 )
-            )
+
+                if len(tpl) == 3:
+                    f_shape = cast("tuple[int]", tuple(tpl[2]))
+                    if not all(isinstance(dim, int) for dim in f_shape):
+                        msg = f"Invalid shape for field {f_name!r}. Got {f_shape!r}, expected a sequence of integers."
+                        raise DataTypeValidationError(msg)
+                    subdtype = Subarray(
+                        subdtype=subdtype,
+                        shape=f_shape,
+                    )
+
+                fields.append((f_name, subdtype))
+
+            return cls(fields=tuple(fields))
+
         msg = f"Invalid JSON representation of {cls.__name__}. Got {data!r}, expected a JSON array of arrays"
         raise DataTypeValidationError(msg)
 
@@ -309,11 +328,23 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             If the zarr_format is not 2 or 3.
         """
         if zarr_format == 2:
-            fields = [
-                [f_name, f_dtype.to_json(zarr_format=zarr_format)["name"]]
-                for f_name, f_dtype in self.fields
-            ]
-            return {"name": fields, "object_codec_id": None}
+            fields = []
+            for f_name, f_dtype in self.fields:
+                if isinstance(f_dtype, Subarray):
+                    fields.append(
+                        [
+                            f_name,
+                            f_dtype.subdtype.to_json(zarr_format=zarr_format)["name"],
+                            list(f_dtype.shape),
+                        ]
+                    )
+                else:
+                    fields.append([f_name, f_dtype.to_json(zarr_format=zarr_format)["name"]])
+            dct = {
+                "name": fields,
+                "object_codec_id": None,
+            }
+            return cast("StructuredJSON_V2", dct)
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
             fields = [
@@ -415,7 +446,6 @@ class Structured(ZDType[np.dtypes.VoidDType[int], np.void], HasItemSize):
             The default scalar value, which is the scalar representation of 0
             cast to this structured data type.
         """
-
         return self._cast_scalar_unchecked(0)
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
