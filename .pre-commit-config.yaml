@@ -7,7 +7,7 @@ ci:
 default_stages: [pre-commit, pre-push]
 
 default_language_version:
-  python: python3.11
+  python: python3.14
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
@@ -38,7 +38,7 @@ repos:
           - donfig
           - numcodecs
           - google-crc32c>=1.5
-          - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
+          - numpy
           - typing_extensions
           - universal-pathlib
           - obstore>=0.5.1

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import zarr.codecs
 import zarr.storage
@@ -558,7 +558,7 @@ def test_load_array(sync_store: Store) -> None:
 
     # can also load arrays directly into a numpy array
     for array_name in ["foo", "bar"]:
-        array = load(store, path=array_name)
+        array = cast(np.ndarray, load(store, path=array_name))
         assert isinstance(array, np.ndarray)
         if array_name == "foo":
             assert_array_equal(foo, array)
@@ -575,11 +575,11 @@ def test_load_zip(tmp_path: Path, path: str | None, load_read_only: bool | None)
     with ZipStore(file, mode="w", read_only=False) as zs:
         save(zs, data, path=path)
     with ZipStore(file, mode="r", read_only=load_read_only) as zs:
-        result = zarr.load(store=zs, path=path)
+        result = cast(np.ndarray, zarr.load(store=zs, path=path))
         assert isinstance(result, np.ndarray)
         assert np.array_equal(result, data)
     with ZipStore(file, read_only=load_read_only) as zs:
-        result = zarr.load(store=zs, path=path)
+        result = cast(np.ndarray, zarr.load(store=zs, path=path))
         assert isinstance(result, np.ndarray)
         assert np.array_equal(result, data)
 
@@ -593,7 +593,7 @@ def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> N
     with LocalStore(file, read_only=False) as zs:
         save(zs, data, path=path)
     with LocalStore(file, read_only=load_read_only) as zs:
-        result = zarr.load(store=zs, path=path)
+        result = cast(np.ndarray, zarr.load(store=zs, path=path))
         assert isinstance(result, np.ndarray)
         assert np.array_equal(result, data)
 
