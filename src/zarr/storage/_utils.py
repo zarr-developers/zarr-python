@@ -70,6 +70,33 @@ def _normalize_byte_range_index(data: Buffer, byte_range: ByteRequest | None) ->
     return (start, stop)
 
 
+def _dereference_path(root: str, path: str) -> str:
+    """
+    Combine a root path with a relative path.
+
+    Parameters
+    ----------
+    root : str
+        The root path.
+    path : str
+        The path relative to root.
+
+    Returns
+    -------
+    str
+        The combined path with trailing slashes removed.
+    """
+    if not isinstance(root, str):
+        msg = f"{root=} is not a string ({type(root)=})"  # type: ignore[unreachable]
+        raise TypeError(msg)
+    if not isinstance(path, str):
+        msg = f"{path=} is not a string ({type(path)=})"  # type: ignore[unreachable]
+        raise TypeError(msg)
+    root = root.rstrip("/")
+    path = f"{root}/{path}" if root else path
+    return path.rstrip("/")
+
+
 def _join_paths(paths: Iterable[str]) -> str:
     """
     Filter out instances of '' and join the remaining strings with '/'.

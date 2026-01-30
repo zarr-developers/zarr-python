@@ -17,8 +17,8 @@ from zarr.core.common import (
 )
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
-from zarr.storage._memory import MemoryStore
-from zarr.storage._utils import normalize_path
+from zarr.storage._memory import ManagedMemoryStore, MemoryStore
+from zarr.storage._utils import _dereference_path, normalize_path
 
 _has_fsspec = importlib.util.find_spec("fsspec")
 if _has_fsspec:
@@ -28,18 +28,6 @@ else:
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
-
-
-def _dereference_path(root: str, path: str) -> str:
-    if not isinstance(root, str):
-        msg = f"{root=} is not a string ({type(root)=})"  # type: ignore[unreachable]
-        raise TypeError(msg)
-    if not isinstance(path, str):
-        msg = f"{path=} is not a string ({type(path)=})"  # type: ignore[unreachable]
-        raise TypeError(msg)
-    root = root.rstrip("/")
-    path = f"{root}/{path}" if root else path
-    return path.rstrip("/")
 
 
 class StorePath:
@@ -341,8 +329,17 @@ async def make_store(
         return await LocalStore.open(root=store_like, mode=mode, read_only=_read_only)
 
     elif isinstance(store_like, str):
+        # Check for memory:// URLs first
+        if store_like.startswith("memory://"):
+            # Parse the URL to extract name and path
+            url_without_scheme = store_like[len("memory://") :]
+            parts = url_without_scheme.split("/", 1)
+            name = parts[0] if parts[0] else None
+            path = parts[1] if len(parts) > 1 else ""
+            # Create or get the store - ManagedMemoryStore handles both cases
+            return ManagedMemoryStore(name=name, path=path, read_only=_read_only)
         # Either an FSSpec URI or a local filesystem path
-        if _is_fsspec_uri(store_like):
+        elif _is_fsspec_uri(store_like):
             return FsspecStore.from_url(
                 store_like, storage_options=storage_options, read_only=_read_only
             )
@@ -417,6 +414,18 @@ async def make_store_path(
         raise ValueError(
             "'path' was provided but is not used for FSMap store_like objects. Specify the path when creating the FSMap instance instead."
         )
+
+    elif isinstance(store_like, str) and store_like.startswith("memory://"):
+        # Handle memory:// URLs specially
+        # Parse the URL to extract name and path
+        _read_only = mode == "r"
+        url_without_scheme = store_like[len("memory://") :]
+        parts = url_without_scheme.split("/", 1)
+        name = parts[0] if parts[0] else None
+        url_path = parts[1] if len(parts) > 1 else ""
+        # Create or get the store - ManagedMemoryStore handles both cases
+        memory_store = ManagedMemoryStore(name=name, path=url_path, read_only=_read_only)
+        return await StorePath.open(memory_store, path=path_normalized, mode=mode)
 
     else:
         store = await make_store(store_like, mode=mode, storage_options=storage_options)
