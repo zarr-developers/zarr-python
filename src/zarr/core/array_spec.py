@@ -69,6 +69,12 @@ class ArrayConfig:
                 kwargs_out[field_name] = data[field_name]
         return cls(**kwargs_out)
 
+    def to_dict(self) -> ArrayConfigParams:
+        """
+        Serialize an instance of this class to a dict.
+        """
+        return {"order": self.order, "write_empty_chunks": self.write_empty_chunks}
+
 
 ArrayConfigLike = ArrayConfig | ArrayConfigParams
 
