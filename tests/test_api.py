@@ -154,7 +154,7 @@ async def test_array_like_creation(
         kwargs["chunks"] = out_chunks
         expect_chunks = out_chunks
     else:
-        expect_chunks = ref_arr.chunks
+        expect_chunks = ref_arr.chunks  # type: ignore[assignment]
     if out_dtype != "keep":
         kwargs["dtype"] = out_dtype
         expect_dtype = out_dtype
@@ -522,6 +522,8 @@ def test_array_order(
 
 
 async def test_init_order_warns() -> None:
+    from zarr.core.chunk_grids import RegularChunkGrid
+
     with pytest.warns(
         RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
     ):
@@ -529,6 +531,7 @@ async def test_init_order_warns() -> None:
             store_path=StorePath(store=MemoryStore()),
             shape=(1,),
             dtype="uint8",
+            chunk_grid=RegularChunkGrid(chunk_shape=(1,)),
             zarr_format=3,
             order="F",
         )
