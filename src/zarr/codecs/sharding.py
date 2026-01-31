@@ -99,6 +99,11 @@ def _is_full_shard_selection(selection: SelectorTuple, shard_shape: tuple[int, .
     bool
         True if selection covers the entire shard, False otherwise
     """
+    # SelectorTuple can be a tuple, ndarray, or slice
+    # Only tuple selections can potentially cover a full shard
+    if not isinstance(selection, tuple):
+        return False
+
     if len(selection) != len(shard_shape):
         return False
 
