@@ -161,6 +161,9 @@ def xp(request: pytest.FixtureRequest) -> Any:
 @pytest.fixture(autouse=True)
 def reset_config() -> Generator[None, None, None]:
     config.reset()
+    # Disable partial shard write warning during tests since tests
+    # do sequential partial writes which are safe
+    config.set({"sharding.warn_on_partial_write": False})
     yield
     config.reset()
 
