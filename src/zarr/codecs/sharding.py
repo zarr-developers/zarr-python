@@ -52,7 +52,6 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
-from zarr.core.config import config
 from zarr.core.metadata.v3 import parse_codecs
 from zarr.errors import ZarrUserWarning
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
@@ -557,12 +556,9 @@ class ShardingCodec(
         chunk_spec = self._get_chunk_spec(shard_spec)
 
         # Check if we need to track this write for concurrent access detection
-        # Only track partial writes when warning is enabled
-        # Check full shard first (cheap) before config lookup
+        # Only track partial writes (full shard writes don't have race conditions)
         shard_key: tuple[int, str] | None = None
-        if not _is_full_shard_selection(selection, shard_shape) and config.get(
-            "sharding.warn_on_partial_write", True
-        ):
+        if not _is_full_shard_selection(selection, shard_shape):
             shard_key = _get_shard_key(byte_setter)
             with _active_partial_writes_lock:
                 current_count = _active_partial_writes.get(shard_key, 0)
@@ -574,8 +570,7 @@ class ShardingCodec(
                         "Writing to different regions of the same shard concurrently "
                         "may result in data corruption due to read-modify-write race conditions. "
                         "Consider aligning your write chunks with shard boundaries, "
-                        "or use a lock to coordinate writes. "
-                        "To disable this warning, set `zarr.config.set({'sharding.warn_on_partial_write': False})`.",
+                        "or use a lock to coordinate writes.",
                         ZarrUserWarning,
                         stacklevel=6,
                     )

@@ -98,9 +98,6 @@ config = Config(
                 "write_empty_chunks": False,
                 "target_shard_size_bytes": None,
             },
-            "sharding": {
-                "warn_on_partial_write": True,
-            },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
