@@ -145,11 +145,7 @@ async def test_store_path_invalid_mode_raises(
     Test that ValueErrors are raise for invalid mode.
     """
     with pytest.raises(ValueError):
-        await StorePath.open(
-            LocalStore(str(tmp_path), read_only=modes[0]),
-            path="",
-            mode=modes[1],  # type:ignore[arg-type]
-        )
+        await StorePath.open(LocalStore(str(tmp_path), read_only=modes[0]), path="", mode=modes[1])  # type: ignore[arg-type]
 
 
 async def test_make_store_path_invalid() -> None:
@@ -195,7 +191,7 @@ def test_normalize_path_valid(path: str | bytes | Path) -> None:
 
 def test_normalize_path_upath() -> None:
     upath = pytest.importorskip("upath")
-    assert normalize_path(upath.UPath("foo/bar")) == "foo/bar"
+    assert normalize_path(upath.UPath("foo/bar", protocol="memory")) == "memory:/foo/bar"
 
 
 def test_normalize_path_none() -> None:
