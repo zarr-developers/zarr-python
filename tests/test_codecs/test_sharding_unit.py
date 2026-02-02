@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -15,6 +15,7 @@ from zarr.codecs.sharding import (
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer
+from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
     from zarr.abc.store import ByteRequest
@@ -347,10 +348,12 @@ class MockByteGetter:
 
     data: bytes
     return_none: bool = False
+    call_count: int = 0
 
     async def get(
         self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
+        self.call_count += 1
         if self.return_none:
             return None
         if byte_range is None:
@@ -437,6 +440,186 @@ async def test_get_group_bytes_returns_none_on_failed_read() -> None:
     result = await codec._get_group_bytes(group, byte_getter, default_buffer_prototype())
 
     assert result is None
+
+
+# ============================================================================
+# Coalescing and concurrent_map optimization tests
+# ============================================================================
+
+
+async def test_coalescing_reduces_byte_getter_calls_adjacent_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that adjacent chunks result in a single byte getter call due to coalescing."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((1,), slice(100, 200))  # Adjacent, will coalesce
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    chunk_data = b"A" * 100 + b"B" * 100
+    byte_getter = MockByteGetter(data=chunk_data)
+
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,)}
+
+    await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=1000,
+        coalesce_max_bytes=10000,
+        async_concurrency=10,
+    )
+
+    # Adjacent chunks should result in only 1 call (coalesced)
+    assert byte_getter.call_count == 1
+
+
+async def test_coalescing_no_reduction_distant_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that distant chunks result in multiple byte getter calls (not coalesced)."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((2,), slice(1000, 1100))  # Large gap, separate group
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    chunk_data = b"C" * 100 + b"\x00" * 900 + b"D" * 100
+    byte_getter = MockByteGetter(data=chunk_data)
+
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (2,)}
+
+    await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=100,  # Too small to bridge the 900-byte gap
+        coalesce_max_bytes=10000,
+        async_concurrency=10,
+    )
+
+    # Distant chunks should result in 2 calls (not coalesced)
+    assert byte_getter.call_count == 2
+
+
+async def test_concurrent_map_not_called_single_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that concurrent_map is NOT called when there's only one group."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((1,), slice(100, 200))  # Adjacent, will coalesce
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # Track if concurrent_map was called
+    concurrent_map_called = False
+    original_concurrent_map = concurrent_map
+
+    async def tracked_concurrent_map(*args: Any, **kwargs: Any) -> Any:
+        nonlocal concurrent_map_called
+        concurrent_map_called = True
+        return await original_concurrent_map(*args, **kwargs)
+
+    monkeypatch.setattr("zarr.codecs.sharding.concurrent_map", tracked_concurrent_map)
+
+    chunk_data = b"A" * 100 + b"B" * 100
+    byte_getter = MockByteGetter(data=chunk_data)
+
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,)}
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=1000,
+        coalesce_max_bytes=10000,
+        async_concurrency=10,
+    )
+
+    assert result is not None
+    assert len(result) == 2
+    # Single group after coalescing should not call concurrent_map
+    assert not concurrent_map_called
+
+
+async def test_concurrent_map_called_multiple_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that concurrent_map IS called when there are multiple groups."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((2,), slice(1000, 1100))  # Large gap, separate group
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    # Track if concurrent_map was called
+    concurrent_map_called = False
+    original_concurrent_map = concurrent_map
+
+    async def tracked_concurrent_map(*args: Any, **kwargs: Any) -> Any:
+        nonlocal concurrent_map_called
+        concurrent_map_called = True
+        return await original_concurrent_map(*args, **kwargs)
+
+    monkeypatch.setattr("zarr.codecs.sharding.concurrent_map", tracked_concurrent_map)
+
+    chunk_data = b"C" * 100 + b"\x00" * 900 + b"D" * 100
+    byte_getter = MockByteGetter(data=chunk_data)
+
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (2,)}
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=100,  # Too small to bridge the 900-byte gap
+        coalesce_max_bytes=10000,
+        async_concurrency=10,
+    )
+
+    # Verify result is correct
+    assert result is not None
+    assert len(result) == 2
+    # Multiple groups after coalescing should call concurrent_map
+    assert concurrent_map_called
 
 
 # ============================================================================
@@ -573,7 +756,253 @@ async def test_load_partial_shard_maybe_all_chunks_empty(
     )
 
     assert result is not None
-    assert len(result) == 0  # All chunks were empty, so result is empty dict
+    assert result == {}  # All chunks were empty, so result is empty dict
+
+
+async def test_load_partial_shard_single_group_coalesced_chunks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that single group with coalesced adjacent chunks works correctly."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((1,), slice(100, 200))  # Adjacent, will coalesce
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    chunk_data = b"A" * 100 + b"B" * 100
+    byte_getter = MockByteGetter(data=chunk_data)
+
+    # Request chunks that will form a single group
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,)}
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=1000,
+        coalesce_max_bytes=10000,
+        async_concurrency=10,
+    )
+
+    assert result is not None
+    assert (0,) in result
+    assert (1,) in result
+    assert len(result) == 2
+
+    chunk0 = result[(0,)]
+    assert chunk0 is not None
+    assert chunk0.as_numpy_array().tobytes() == b"A" * 100
+
+    chunk1 = result[(1,)]
+    assert chunk1 is not None
+    assert chunk1.as_numpy_array().tobytes() == b"B" * 100
+
+
+async def test_load_partial_shard_multiple_groups_large_gap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that multiple groups are handled correctly when chunks have large gaps."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((2,), slice(1000, 1100))  # Large gap, separate group
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    chunk_data = b"C" * 100 + b"\x00" * 900 + b"D" * 100
+    byte_getter = MockByteGetter(data=chunk_data)
+
+    # Request chunks that will form multiple groups due to large gap
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (2,)}
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=100,  # Too small to bridge the 900-byte gap
+        coalesce_max_bytes=10000,
+        async_concurrency=10,
+    )
+
+    assert result is not None
+    assert (0,) in result
+    assert (2,) in result
+    assert len(result) == 2
+
+    chunk0 = result[(0,)]
+    assert chunk0 is not None
+    assert chunk0.as_numpy_array().tobytes() == b"C" * 100
+
+    chunk2 = result[(2,)]
+    assert chunk2 is not None
+    assert chunk2.as_numpy_array().tobytes() == b"D" * 100
+
+
+async def test_load_partial_shard_single_chunk_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test single chunk read (most common case for single element access)."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    # Create an index with just one chunk
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((1,), slice(100, 200))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    chunk_data = b"\x00" * 100 + b"E" * 100
+    byte_getter = MockByteGetter(data=chunk_data)
+
+    all_chunk_coords: set[tuple[int, ...]] = {(1,)}
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=100,
+        coalesce_max_bytes=1000,
+        async_concurrency=10,
+    )
+
+    assert result is not None
+    assert (1,) in result
+    assert len(result) == 1
+
+    chunk1 = result[(1,)]
+    assert chunk1 is not None
+    assert chunk1.as_numpy_array().tobytes() == b"E" * 100
+
+
+async def test_load_partial_shard_three_groups_mixed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test handling of three separate groups with mixed coalescing."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (8,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+    index.set_chunk_slice((1,), slice(100, 200))
+    index.set_chunk_slice((4,), slice(1000, 1100))
+    index.set_chunk_slice((6,), slice(2000, 2100))
+    index.set_chunk_slice((7,), slice(2100, 2200))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    chunk_data = (
+        b"F" * 100  # chunk 0: [0:100]
+        + b"G" * 100  # chunk 1: [100:200]
+        + b"\x00" * 800  # gap
+        + b"H" * 100  # chunk 4: [1000:1100]
+        + b"\x00" * 900  # gap
+        + b"I" * 100  # chunk 6: [2000:2100]
+        + b"J" * 100  # chunk 7: [2100:2200]
+    )
+    byte_getter = MockByteGetter(data=chunk_data)
+
+    all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (4,), (6,), (7,)}
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=100,  # Small enough to prevent cross-group coalescing
+        coalesce_max_bytes=10000,
+        async_concurrency=10,
+    )
+
+    assert result is not None
+    assert len(result) == 5
+    assert (0,) in result
+    assert (1,) in result
+    assert (4,) in result
+    assert (6,) in result
+    assert (7,) in result
+
+    chunk0 = result[(0,)]
+    assert chunk0 is not None
+    assert chunk0.as_numpy_array().tobytes() == b"F" * 100
+
+    chunk1 = result[(1,)]
+    assert chunk1 is not None
+    assert chunk1.as_numpy_array().tobytes() == b"G" * 100
+
+    chunk4 = result[(4,)]
+    assert chunk4 is not None
+    assert chunk4.as_numpy_array().tobytes() == b"H" * 100
+
+    chunk6 = result[(6,)]
+    assert chunk6 is not None
+    assert chunk6.as_numpy_array().tobytes() == b"I" * 100
+
+    chunk7 = result[(7,)]
+    assert chunk7 is not None
+    assert chunk7.as_numpy_array().tobytes() == b"J" * 100
+
+
+async def test_load_partial_shard_single_group_getter_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test single group path handles None return from byte_getter.get."""
+    codec = ShardingCodec(chunk_shape=(8,))
+    chunks_per_shard = (4,)
+
+    index = _ShardIndex.create_empty(chunks_per_shard)
+    index.set_chunk_slice((0,), slice(0, 100))
+
+    async def mock_load_index(
+        self: ShardingCodec, byte_getter: MockByteGetter, cps: tuple[int, ...]
+    ) -> _ShardIndex:
+        return index
+
+    monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
+
+    byte_getter = MockByteGetter(data=b"", return_none=True)
+
+    all_chunk_coords: set[tuple[int, ...]] = {(0,)}
+
+    result = await codec._load_partial_shard_maybe(
+        byte_getter=byte_getter,
+        prototype=default_buffer_prototype(),
+        chunks_per_shard=chunks_per_shard,
+        all_chunk_coords=all_chunk_coords,
+        max_gap_bytes=100,
+        coalesce_max_bytes=1000,
+        async_concurrency=10,
+    )
+
+    assert result is not None
+    assert len(result) == 0
 
 
 # ============================================================================

@@ -737,17 +737,23 @@ class ShardingCodec(
 
         groups = self._coalesce_chunks(chunks, max_gap_bytes, coalesce_max_bytes)
 
-        shard_dicts = await concurrent_map(
-            [(group, byte_getter, prototype) for group in groups],
-            self._get_group_bytes,
-            async_concurrency,
-        )
-
         shard_dict: ShardMutableMapping = {}
-        for d in shard_dicts:
+        if len(groups) == 1:
+            # Avoid thread start overhead when there's only one group
+            shard_dict_result = await self._get_group_bytes(groups[0], byte_getter, prototype)
             # can be None if the ByteGetter returned None when reading chunk data
-            if d is not None:
-                shard_dict.update(d)
+            if shard_dict_result is not None:
+                shard_dict.update(shard_dict_result)
+        else:
+            shard_dicts = await concurrent_map(
+                [(group, byte_getter, prototype) for group in groups],
+                self._get_group_bytes,
+                async_concurrency,
+            )
+
+            for shard_dict_result in shard_dicts:
+                if shard_dict_result is not None:
+                    shard_dict.update(shard_dict_result)
 
         return shard_dict
 
