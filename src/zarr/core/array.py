@@ -144,7 +144,7 @@ if TYPE_CHECKING:
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
-    from zarr.types import AnyArray, AnyAsyncArray, AsyncArrayV2, AsyncArrayV3
+    from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -300,14 +300,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The path to the Zarr store.
     codec_pipeline : CodecPipeline
         The codec pipeline used for encoding and decoding chunks.
-    _config : ArrayConfig
+    config : ArrayConfig
         The runtime configuration of the array.
     """
 
     metadata: T_ArrayMetadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
-    _config: ArrayConfig
+    config: ArrayConfig
 
     @overload
     def __init__(
@@ -336,7 +336,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
-        object.__setattr__(self, "_config", config_parsed)
+        object.__setattr__(self, "config", config_parsed)
         object.__setattr__(
             self,
             "codec_pipeline",
@@ -1013,6 +1013,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.store_path.store
 
     @property
+    @deprecated("Use AsyncArray.config instead.", category=ZarrDeprecationWarning)
+    def _config(self) -> ArrayConfig:
+        return self.config
+
+    @property
     def ndim(self) -> int:
         """Returns the number of dimensions in the Array.
 
@@ -1165,7 +1170,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if self.metadata.zarr_format == 2:
             return self.metadata.order
         else:
-            return self._config.order
+            return self.config.order
 
     @property
     def attrs(self) -> dict[str, JSON]:
@@ -1297,6 +1302,35 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The total number of shards or if absent, chunks in the array.
         """
         return product(self._shard_grid_shape)
+
+    @overload
+    def with_config(self: AsyncArrayV2, config: ArrayConfigLike) -> AsyncArrayV2: ...
+
+    @overload
+    def with_config(self: AsyncArrayV3, config: ArrayConfigLike) -> AsyncArrayV3: ...
+
+    def with_config(self, config: ArrayConfigLike) -> Self:
+        """
+        Return a copy of this Array with a new runtime configuration.
+
+        Parameters
+        ----------
+
+        config : ArrayConfigLike
+            The runtime config for the new Array. Any keys not specified will be inherited
+            from the current array's config.
+
+        Returns
+        -------
+        A new Array
+        """
+        if isinstance(config, ArrayConfig):
+            new_config = config
+        else:
+            # Merge new config with existing config, so missing keys are inherited
+            # from the current array rather than from global defaults
+            new_config = ArrayConfig(**{**self.config.to_dict(), **config})  # type: ignore[arg-type]
+        return type(self)(metadata=self.metadata, store_path=self.store_path, config=new_config)
 
     async def nchunks_initialized(self) -> int:
         """
@@ -1926,6 +1960,19 @@ class Array(Generic[T_ArrayMetadata]):
         """
         return self._async_array
 
+    @property
+    def config(self) -> ArrayConfig:
+        """
+        The runtime configuration for this array. This is a read-only property. To modify the
+        runtime configuration, use `Array.with_config` to create a new `Array` with the modified
+        configuration.
+
+        Returns
+        -------
+        An `ArrayConfig` object that defines the runtime configuration for the array.
+        """
+        return self.async_array.config
+
     @classmethod
     @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
     def create(
@@ -2386,6 +2433,29 @@ class Array(Generic[T_ArrayMetadata]):
         The number of shards in the stored representation of this array.
         """
         return self.async_array._nshards
+
+    @overload
+    def with_config(self: ArrayV2, config: ArrayConfigLike) -> ArrayV2: ...
+
+    @overload
+    def with_config(self: ArrayV3, config: ArrayConfigLike) -> ArrayV3: ...
+
+    def with_config(self, config: ArrayConfigLike) -> Self:
+        """
+        Return a copy of this Array with a new runtime configuration.
+
+        Parameters
+        ----------
+
+        config : ArrayConfigLike
+            The runtime config for the new Array. Any keys not specified will be inherited
+            from the current array's config.
+
+        Returns
+        -------
+        A new Array
+        """
+        return type(self)(self._async_array.with_config(config))
 
     @property
     def nbytes(self) -> int:
