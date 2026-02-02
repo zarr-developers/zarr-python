@@ -324,9 +324,6 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: ManagedMemoryStore) -> None:
         assert store.supports_listing
 
-    async def test_list_prefix(self, store: MemoryStore) -> None:
-        assert True
-
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "int64"])
     @pytest.mark.parametrize("zarr_format", [2, 3])
     async def test_deterministic_size(

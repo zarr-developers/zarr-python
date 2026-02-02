@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, NamedTuple, TypeVar
+from urllib.parse import urlparse
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 
@@ -11,6 +12,73 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
+
+
+class ParsedStoreUrl(NamedTuple):
+    """
+    Parsed components of a store URL.
+
+    Attributes
+    ----------
+    scheme : str
+        The URL scheme (e.g., "memory", "file", "s3"). Empty string for local paths.
+    name : str | None
+        The store name/host component. For memory:// URLs this is the store name.
+        None if empty.
+    path : str
+        The path component within the store.
+    raw : str
+        The original URL string.
+    """
+
+    scheme: str
+    name: str | None
+    path: str
+    raw: str
+
+
+def parse_store_url(url: str) -> ParsedStoreUrl:
+    """
+    Parse a store URL into its components.
+
+    Parameters
+    ----------
+    url : str
+        A URL like "memory://store-name/path" or "s3://bucket/key" or a local path.
+
+    Returns
+    -------
+    ParsedStoreUrl
+        Named tuple with scheme, name, path, and raw URL.
+
+    Examples
+    --------
+    >>> parse_store_url("memory://mystore")
+    ParsedStoreUrl(scheme='memory', name='mystore', path='', raw='memory://mystore')
+
+    >>> parse_store_url("memory://mystore/path/to/data")
+    ParsedStoreUrl(scheme='memory', name='mystore', path='path/to/data', raw='memory://mystore/path/to/data')
+
+    >>> parse_store_url("s3://bucket/key")
+    ParsedStoreUrl(scheme='s3', name='bucket', path='key', raw='s3://bucket/key')
+
+    >>> parse_store_url("/local/path")
+    ParsedStoreUrl(scheme='', name=None, path='/local/path', raw='/local/path')
+    """
+    parsed = urlparse(url)
+
+    # netloc is the "host" part (store name for memory://, bucket for s3://, etc.)
+    name = parsed.netloc or None
+
+    # For URLs with a scheme and netloc (like memory://store/path or s3://bucket/key),
+    # strip the leading slash from the path component.
+    # For local paths (no scheme), preserve the path as-is.
+    if parsed.scheme and parsed.netloc:
+        path = parsed.path.lstrip("/")
+    else:
+        path = parsed.path
+
+    return ParsedStoreUrl(scheme=parsed.scheme, name=name, path=path, raw=url)
 
 
 def normalize_path(path: str | bytes | Path | None) -> str:

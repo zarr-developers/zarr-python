@@ -9,7 +9,12 @@ from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
-from zarr.storage._utils import _dereference_path, _normalize_byte_range_index, normalize_path
+from zarr.storage._utils import (
+    _dereference_path,
+    _normalize_byte_range_index,
+    normalize_path,
+    parse_store_url,
+)
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
@@ -572,33 +577,6 @@ class _ManagedStoreDictRegistry:
         """
         return self._registry.get(name)
 
-    def get_from_url(self, url: str) -> tuple[_ManagedStoreDict | None, str, str]:
-        """
-        Look up a managed store dict by its URL.
-
-        Parameters
-        ----------
-        url : str
-            A URL like "memory://mystore" or "memory://mystore/path/to/node"
-
-        Returns
-        -------
-        tuple[_ManagedStoreDict | None, str, str]
-            The store dict (if found), the extracted name, and the path.
-        """
-        if not url.startswith("memory://"):
-            return None, "", ""
-
-        # Parse the store name and path from the URL
-        # "memory://mystore" -> name="mystore", path=""
-        # "memory://mystore/path/to/data" -> name="mystore", path="path/to/data"
-        url_without_scheme = url[len("memory://") :]
-        parts = url_without_scheme.split("/", 1)
-        name = parts[0]
-        path = parts[1] if len(parts) > 1 else ""
-
-        return self._registry.get(name), name, path
-
 
 _managed_store_dict_registry = _ManagedStoreDictRegistry()
 
@@ -752,13 +730,20 @@ class ManagedMemoryStore(MemoryStore):
             If the URL is not a valid memory:// URL or the store has been
             garbage collected.
         """
-        managed_dict, name, path = _managed_store_dict_registry.get_from_url(url)
+        parsed = parse_store_url(url)
+        if parsed.scheme != "memory":
+            raise ValueError(
+                f"Memory store not found for URL '{url}'. "
+                "The store may have been garbage collected or the URL is invalid."
+            )
+        name = parsed.name or ""
+        managed_dict = _managed_store_dict_registry.get(name)
         if managed_dict is None:
             raise ValueError(
                 f"Memory store not found for URL '{url}'. "
                 "The store may have been garbage collected or the URL is invalid."
             )
-        return cls._from_managed_dict(managed_dict, name, path=path, read_only=read_only)
+        return cls._from_managed_dict(managed_dict, name, path=parsed.path, read_only=read_only)
 
     # Override MemoryStore methods to use path prefix and check process
 
