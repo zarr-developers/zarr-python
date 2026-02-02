@@ -16,29 +16,27 @@ concurrency:
 
 jobs:
   test:
-    name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
+    name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, deps=${{ matrix.dependency-set }}
 
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        numpy-version: ['1.26', '2.2']
         dependency-set: ["minimal", "optional"]
         os: ["ubuntu-latest"]
         include:
           - python-version: '3.11'
-            numpy-version: '1.26'
             dependency-set: 'optional'
             os: 'macos-latest'
+
           - python-version: '3.13'
-            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'macos-latest'
+
           - python-version: '3.11'
-            numpy-version: '1.26'
             dependency-set: 'optional'
             os: 'windows-latest'
+
           - python-version: '3.13'
-            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'windows-latest'
     runs-on: ${{ matrix.os }}
@@ -58,13 +56,13 @@ jobs:
         pip install hatch
     - name: Set Up Hatch Env
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
+        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
       env:
         HYPOTHESIS_PROFILE: ci
       run: |
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
+        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@v5
