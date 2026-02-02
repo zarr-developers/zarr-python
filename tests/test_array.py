@@ -44,6 +44,7 @@ from zarr.core.array import (
     default_filters_v2,
     default_serializer_v3,
 )
+from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
@@ -889,7 +890,7 @@ def test_write_empty_chunks_behavior(
         config={"write_empty_chunks": write_empty_chunks},
     )
 
-    assert arr.async_array._config.write_empty_chunks == write_empty_chunks
+    assert arr.async_array.config.write_empty_chunks == write_empty_chunks
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
@@ -1562,7 +1563,7 @@ class TestCreateArray:
         """
         with zarr.config.set({"array.write_empty_chunks": write_empty_chunks}):
             arr = await create_array(store, shape=(2, 2), dtype="i4")
-            assert arr._config.write_empty_chunks == write_empty_chunks
+            assert arr.config.write_empty_chunks == write_empty_chunks
 
     @staticmethod
     @pytest.mark.parametrize("path", [None, "", "/", "/foo", "foo", "foo/bar"])
@@ -2194,3 +2195,40 @@ def test_create_array_with_data_num_gets(
     # one get for the metadata and one per shard.
     # Note: we don't actually need one get per shard, but this is the current behavior
     assert store.counter["get"] == 1 + num_shards
+
+
+@pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])
+def test_with_config(config: ArrayConfigParams) -> None:
+    """
+    Test that `AsyncArray.with_config` and `Array.with_config` create a copy of the source
+    array with a new runtime configuration.
+    """
+    # the config we start with
+    source_config: ArrayConfigParams = {"write_empty_chunks": False, "order": "F"}
+    source_array = zarr.create_array({}, shape=(1,), dtype="uint8", config=source_config)
+
+    new_async_array_config_dict = source_array._async_array.with_config(config).config.to_dict()
+    new_array_config_dict = source_array.with_config(config).config.to_dict()
+
+    for key in source_config:
+        if key in config:
+            assert new_async_array_config_dict[key] == config[key]  # type: ignore[literal-required]
+            assert new_array_config_dict[key] == config[key]  # type: ignore[literal-required]
+        else:
+            assert new_async_array_config_dict[key] == source_config[key]  # type: ignore[literal-required]
+            assert new_array_config_dict[key] == source_config[key]  # type: ignore[literal-required]
+
+
+def test_with_config_polymorphism() -> None:
+    """
+    Test that `AsyncArray.with_config` and `Array.with_config` accept dicts and full array config
+    objects.
+    """
+    source_config: ArrayConfig = ArrayConfig.from_dict({"write_empty_chunks": False, "order": "F"})
+    source_config_dict = source_config.to_dict()
+
+    arr = zarr.create_array({}, shape=(1,), dtype="uint8")
+    arr_source_config = arr.with_config(source_config)
+    arr_source_config_dict = arr.with_config(source_config_dict)
+
+    assert arr_source_config.config == arr_source_config_dict.config

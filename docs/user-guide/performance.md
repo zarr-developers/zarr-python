@@ -125,7 +125,14 @@ This optimization prevents storing redundant objects and can speed up reads, but
 added computation during array writes, since the contents of
 each chunk must be compared to the fill value, and these advantages are contingent on the content of the array.
 If you know that your data will form chunks that are almost always non-empty, then there is no advantage to the optimization described above.
-In this case, creating an array with `write_empty_chunks=True` (the default) will instruct Zarr to write every chunk without checking for emptiness.
+In this case, creating an array with `write_empty_chunks=True` will instruct Zarr to write every chunk without checking for emptiness.
+
+The default value of `write_empty_chunks` is `False`:
+
+```python exec="true" session="performance" source="above" result="ansi"
+arr = zarr.create_array(store={}, shape=(1,), dtype='uint8')
+assert arr.config.write_empty_chunks == False
+```
 
 The following example illustrates the effect of the `write_empty_chunks` flag on
 the time required to write an array with different values.:
