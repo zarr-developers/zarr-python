@@ -6,7 +6,7 @@ import math
 import numbers
 import operator
 import warnings
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from functools import cached_property, reduce

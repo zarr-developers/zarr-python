@@ -1326,7 +1326,13 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The shape of the shard grid for this array.
         """
         if self.shards is None:
-            shard_shape = self.metadata.chunk_grid.chunk_shape
+            chunk_grid = self.metadata.chunk_grid
+            if not isinstance(chunk_grid, RegularChunkGrid):
+                raise NotImplementedError(
+                    "shard_shape is not supported for arrays with variable chunk sizes "
+                    "(RectilinearChunkGrid)."
+                )
+            shard_shape = chunk_grid.chunk_shape
         else:
             shard_shape = self.shards
         return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
@@ -1402,10 +1408,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if self.shards is None:
             chunks_per_shard = 1
         else:
-            # Sharding only applies to RegularChunkGrid, so chunks is tuple[int, ...]
-            chunks = cast(tuple[int, ...], self.chunks)
+            # Sharding only applies to RegularChunkGrid
+            # Use metadata.chunks to get the inner chunk shape when sharding is used
+            chunk_shape = self.metadata.chunks
             chunks_per_shard = product(
-                tuple(a // b for a, b in zip(self.shards, chunks, strict=True))
+                tuple(a // b for a, b in zip(self.shards, chunk_shape, strict=True))
             )
         return (await self._nshards_initialized()) * chunks_per_shard
 
@@ -5221,7 +5228,15 @@ def _parse_keep_array_attr(
 ]:
     if isinstance(data, Array):
         if chunks == "keep":
-            chunks = data.chunks  # type: ignore[assignment]
+            # Get the chunk shape(s) from the chunk_grid
+            chunk_grid = data.chunk_grid
+            if isinstance(chunk_grid, RegularChunkGrid):
+                chunks = chunk_grid.chunk_shape
+            elif isinstance(chunk_grid, RectilinearChunkGrid):
+                chunks = chunk_grid.chunk_shapes  # type: ignore[assignment]
+            else:
+                msg = f"Unsupported chunk grid type: {type(chunk_grid).__name__}"
+                raise TypeError(msg)
         if shards == "keep":
             shards = data.shards
         if zarr_format is None:
@@ -5701,14 +5716,15 @@ def _iter_shard_regions(
         If the array uses RectilinearChunkGrid (variable-sized chunks).
         when no shards are present.
     """
-    if isinstance(array.metadata.chunk_grid, RectilinearChunkGrid):
+    chunk_grid = array.metadata.chunk_grid
+    if not isinstance(chunk_grid, RegularChunkGrid):
         raise NotImplementedError(
             "_iter_shard_regions is not supported for arrays with variable-sized chunks "
             "(RectilinearChunkGrid). Use the chunk_grid API directly for variable chunk access."
         )
 
     if array.shards is None:
-        shard_shape: Sequence[int] = array.metadata.chunk_grid.chunk_shape
+        shard_shape: Sequence[int] = chunk_grid.chunk_shape
     else:
         shard_shape = array.shards
 
@@ -5747,7 +5763,8 @@ def _iter_chunk_regions(
     NotImplementedError
         If the array uses RectilinearChunkGrid (variable-sized chunks).
     """
-    if isinstance(array.metadata.chunk_grid, RectilinearChunkGrid):
+    chunk_grid = array.metadata.chunk_grid
+    if not isinstance(chunk_grid, RegularChunkGrid):
         raise NotImplementedError(
             "_iter_chunk_regions is not supported for arrays with variable-sized chunks "
             "(RectilinearChunkGrid). Use the chunk_grid API directly for variable chunk access."
@@ -5755,7 +5772,7 @@ def _iter_chunk_regions(
 
     return _iter_regions(
         array.shape,
-        array.metadata.chunk_grid.chunk_shape,
+        chunk_grid.chunk_shape,
         origin=origin,
         selection_shape=selection_shape,
         trim_excess=True,

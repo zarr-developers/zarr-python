@@ -9,6 +9,7 @@ import pytest
 import zarr
 from zarr.core.chunk_grids import (
     RectilinearChunkGrid,
+    RegularChunkGrid,
     _compress_run_length_encoding,
     _expand_run_length_encoding,
     _parse_chunk_shapes,
@@ -1280,7 +1281,9 @@ async def test_array_chunks_property_rectilinear_raises() -> None:
         _ = arr.chunks
 
     # Use chunk_grid instead
-    assert arr.chunk_grid.chunk_shapes == ((10, 20, 30), (25, 25))
+    chunk_grid = arr.chunk_grid
+    assert isinstance(chunk_grid, RectilinearChunkGrid)
+    assert chunk_grid.chunk_shapes == ((10, 20, 30), (25, 25))
 
 
 async def test_array_chunk_grid_property_rectilinear() -> None:
@@ -1318,7 +1321,9 @@ def test_sync_array_chunks_property_rectilinear_raises() -> None:
         _ = arr.chunks
 
     # Use chunk_grid instead
-    assert arr.chunk_grid.chunk_shapes == ((10, 20, 30, 40), (25, 25, 50))
+    chunk_grid = arr.chunk_grid
+    assert isinstance(chunk_grid, RectilinearChunkGrid)
+    assert chunk_grid.chunk_shapes == ((10, 20, 30, 40), (25, 25, 50))
 
 
 async def test_array_chunks_property_regular_with_warning() -> None:
@@ -1349,7 +1354,9 @@ async def test_array_chunks_property_regular_with_warning() -> None:
     assert isinstance(chunks[1], int)
 
     # chunk_grid.chunk_shape works without warning
-    assert arr.chunk_grid.chunk_shape == (10, 20)
+    chunk_grid = arr.chunk_grid
+    assert isinstance(chunk_grid, RegularChunkGrid)
+    assert chunk_grid.chunk_shape == (10, 20)
 
 
 async def test_array_chunk_grid_after_resize() -> None:
@@ -1364,13 +1371,17 @@ async def test_array_chunk_grid_after_resize() -> None:
         zarr_format=3,
     )
 
-    assert arr.chunk_grid.chunk_shapes == ((10, 20), (15, 15))
+    chunk_grid = arr.chunk_grid
+    assert isinstance(chunk_grid, RectilinearChunkGrid)
+    assert chunk_grid.chunk_shapes == ((10, 20), (15, 15))
 
     # Resize to grow
     await arr.resize((50, 45))
 
     # Chunk grid should be updated
-    assert arr.chunk_grid.chunk_shapes == ((10, 20, 20), (15, 15, 15))
+    chunk_grid = arr.chunk_grid
+    assert isinstance(chunk_grid, RectilinearChunkGrid)
+    assert chunk_grid.chunk_shapes == ((10, 20, 20), (15, 15, 15))
 
 
 async def test_metadata_chunks_property_raises_for_rectilinear() -> None:
@@ -1390,7 +1401,9 @@ async def test_metadata_chunks_property_raises_for_rectilinear() -> None:
         _ = arr.metadata.chunks
 
     # Use chunk_grid instead
-    assert arr.metadata.chunk_grid.chunk_shapes == ((10, 20, 30), (25, 25))
+    chunk_grid = arr.metadata.chunk_grid
+    assert isinstance(chunk_grid, RectilinearChunkGrid)
+    assert chunk_grid.chunk_shapes == ((10, 20, 30), (25, 25))
 
 
 # ===================================================================

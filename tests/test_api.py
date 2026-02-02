@@ -154,7 +154,7 @@ async def test_array_like_creation(
         kwargs["chunks"] = out_chunks
         expect_chunks = out_chunks
     else:
-        expect_chunks = ref_arr.chunks  # type: ignore[assignment]
+        expect_chunks = ref_arr.chunks
     if out_dtype != "keep":
         kwargs["dtype"] = out_dtype
         expect_dtype = out_dtype

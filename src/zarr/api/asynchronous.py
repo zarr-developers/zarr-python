@@ -123,7 +123,7 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple
             # bcolz carray
             chunks = (a.chunklen,) + a.shape[1:]
 
-    return shape, chunks  # type: ignore[return-value]
+    return shape, chunks
 
 
 class _LikeArgs(TypedDict):
