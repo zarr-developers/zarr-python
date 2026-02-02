@@ -23,7 +23,14 @@ import numpy as np
 from typing_extensions import deprecated
 
 import zarr
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
+from zarr.abc.codec import (
+    ArrayArrayCodec,
+    ArrayBytesCodec,
+    BytesBytesCodec,
+    Codec,
+    ReadBatchInfo,
+    WriteBatchInfo,
+)
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
@@ -1611,12 +1618,15 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             # reading chunks and decoding them
             await self.codec_pipeline.read(
                 [
-                    (
-                        self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                        self.metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
-                        chunk_selection,
-                        out_selection,
-                        is_complete_chunk,
+                    ReadBatchInfo(
+                        byte_operator=self.store_path
+                        / self.metadata.encode_chunk_key(chunk_coords),
+                        array_spec=self.metadata.get_chunk_spec(
+                            chunk_coords, _config, prototype=prototype
+                        ),
+                        chunk_selection=chunk_selection,
+                        out_selection=out_selection,
+                        is_complete_chunk=is_complete_chunk,
                     )
                     for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
                 ],
@@ -1782,12 +1792,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # merging with existing data and encoding chunks
         await self.codec_pipeline.write(
             [
-                (
-                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, _config, prototype),
-                    chunk_selection,
-                    out_selection,
-                    is_complete_chunk,
+                WriteBatchInfo(
+                    byte_operator=self.store_path / self.metadata.encode_chunk_key(chunk_coords),
+                    array_spec=self.metadata.get_chunk_spec(chunk_coords, _config, prototype),
+                    chunk_selection=chunk_selection,
+                    out_selection=out_selection,
+                    is_complete_chunk=is_complete_chunk,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
             ],
