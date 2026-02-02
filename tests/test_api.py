@@ -232,7 +232,7 @@ def test_open_array_respects_write_empty_chunks_config(zarr_format: ZarrFormat) 
     arr2 = zarr.open(store=store, path="test_array", config={"write_empty_chunks": True})
     assert isinstance(arr2, zarr.Array)
 
-    assert arr2.async_array._config.write_empty_chunks is True
+    assert arr2.async_array.config.write_empty_chunks is True
 
     arr2[0:5] = np.zeros(5)
     assert arr2.nchunks_initialized == 1
