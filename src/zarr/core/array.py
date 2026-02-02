@@ -6076,7 +6076,7 @@ async def _append(
         array.store_path,
         array.metadata,
         array.codec_pipeline,
-        array._config,
+        array.config,
         append_selection,
         data,
     )
