@@ -14,15 +14,14 @@ np.random.seed(0)
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 import zarr
-store = zarr.storage.MemoryStore()
-z = zarr.create_array(store=store, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
+z = zarr.create_array(store="memory://arrays-demo", shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
 print(z)
 ```
 
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
-columns (and so there will be 100 chunks in total). The data is written to a
-[`zarr.storage.MemoryStore`][] (e.g. an in-memory dict). See
+columns (and so there will be 100 chunks in total). The data is written to an
+in-memory store (see [`zarr.storage.MemoryStore`][] for more details). See
 [Persistent arrays](#persistent-arrays) for details on storing arrays in other stores,
 and see [Data types](data_types.md) for an in-depth look at the data types supported
 by Zarr.

@@ -35,9 +35,15 @@ print(group)
 ```
 
 ```python exec="true" session="storage" source="above" result="ansi"
-# Implicitly creates a MemoryStore
+# Implicitly creates a MemoryStore backed by a regular `dict`
 data = {}
 group = zarr.create_group(store=data)
+print(group)
+```
+
+```python exec="true" session="storage" source="above" result="ansi"
+# Creates a ManagedMemoryStore backed by a `dict` managed by Zarr
+group = zarr.create_group(store="memory://my-store")
 print(group)
 ```
 
@@ -83,6 +89,12 @@ print(group)
   create a [memory store](#memory-store), using this dictionary as the
   [`store_dict` argument][zarr.storage.MemoryStore].
 
+- a `memory://` URL string, which will create a [managed memory store](#managed-memory-store):
+   ```python exec="true" session="storage" source="above" result="ansi"
+   group = zarr.create_group(store="memory://my-store/path")
+   print(group)
+   ```
+
 - an FSSpec [FSMap object](https://filesystem-spec.readthedocs.io/en/latest/api.html#fsspec.FSMap),
   which will create an [FsspecStore](#remote-store).
 
@@ -91,9 +103,9 @@ print(group)
 
 ## Explicit Store Creation
 
-In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
-built-in store: [`zarr.storage.LocalStore`][], [`zarr.storage.FsspecStore`][],
-[`zarr.storage.ZipStore`][], [`zarr.storage.MemoryStore`][], and [`zarr.storage.ObjectStore`][].
+In some cases, it may be helpful to create a store instance directly. Zarr-Python offers six
+built-in stores: [`zarr.storage.LocalStore`][], [`zarr.storage.FsspecStore`][],
+[`zarr.storage.ZipStore`][], [`zarr.storage.MemoryStore`][], [`zarr.storage.ManagedMemoryStore`][], and [`zarr.storage.ObjectStore`][].
 
 ### Local Store
 
@@ -162,6 +174,22 @@ data = {}
 store = zarr.storage.MemoryStore(data)
 array = zarr.create_array(store=store, shape=(2,), dtype='float64')
 print(array)
+```
+
+### Managed Memory Store
+
+The [`zarr.storage.ManagedMemoryStore`][] is an in-memory store like `MemoryStore`, except
+`ManagedMemoryStore` manages the dictionary internally. This allows Zarr to create a `ManagedMemoryStore`
+from a string URL. Using the same store name will return a store backed by the same underlying dictionary.
+
+```python exec="true" session="storage" source="above" result="ansi"
+store = zarr.storage.ManagedMemoryStore(name="data")
+url = str(store)
+# "memory://data/"
+array_1 = zarr.create_array(store=store, name='a1', shape=(2,), dtype='float64')
+array_2 = zarr.create_array(url, name='a2', shape=(2,), dtype='uint8')
+print(array_1)
+print(array_2)
 ```
 
 ### Object Store
