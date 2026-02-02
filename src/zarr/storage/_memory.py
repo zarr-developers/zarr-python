@@ -636,7 +636,6 @@ class ManagedMemoryStore(MemoryStore):
     _store_dict: _ManagedStoreDict
     _name: str
     path: str
-    _created_pid: int
 
     def __init__(self, name: str | None = None, *, path: str = "", read_only: bool = False) -> None:
         # Skip MemoryStore.__init__ and call Store.__init__ directly
@@ -646,7 +645,6 @@ class ManagedMemoryStore(MemoryStore):
         # Get or create a managed dict from the registry
         self._store_dict, self._name = _managed_store_dict_registry.get_or_create(name)
         self.path = normalize_path(path)
-        self._created_pid = os.getpid()
 
     def __str__(self) -> str:
         return _dereference_path(f"memory://{self._name}", self.path)
@@ -667,18 +665,6 @@ class ManagedMemoryStore(MemoryStore):
         """The name of this store, used in the memory:// URL."""
         return self._name
 
-    def _check_same_process(self) -> None:
-        """Raise an error if this store is being used in a different process."""
-        current_pid = os.getpid()
-        if self._created_pid != current_pid:
-            raise RuntimeError(
-                f"ManagedMemoryStore '{self._name}' was created in process {self._created_pid} "
-                f"but is being used in process {current_pid}. "
-                "ManagedMemoryStore instances cannot be shared across processes because "
-                "their backing dict is not serialized. Use a persistent store (e.g., "
-                "LocalStore, ZipStore) for cross-process data sharing."
-            )
-
     @classmethod
     def _from_managed_dict(
         cls,
@@ -694,7 +680,6 @@ class ManagedMemoryStore(MemoryStore):
         store._store_dict = managed_dict
         store._name = name
         store.path = normalize_path(path)
-        store._created_pid = os.getpid()
         return store
 
     def with_read_only(self, read_only: bool = False) -> ManagedMemoryStore:
@@ -754,7 +739,6 @@ class ManagedMemoryStore(MemoryStore):
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
-        self._check_same_process()
         return await super().get(
             _dereference_path(self.path, key), prototype=prototype, byte_range=byte_range
         )
@@ -765,7 +749,6 @@ class ManagedMemoryStore(MemoryStore):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        self._check_same_process()
         key_ranges = [
             (_dereference_path(self.path, key), byte_range) for key, byte_range in key_ranges
         ]
@@ -773,27 +756,22 @@ class ManagedMemoryStore(MemoryStore):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        self._check_same_process()
         return await super().exists(_dereference_path(self.path, key))
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
-        self._check_same_process()
         return await super().set(_dereference_path(self.path, key), value, byte_range=byte_range)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
-        self._check_same_process()
         return await super().set_if_not_exists(_dereference_path(self.path, key), value)
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        self._check_same_process()
         return await super().delete(_dereference_path(self.path, key))
 
     async def list(self) -> AsyncIterator[str]:
         # docstring inherited
-        self._check_same_process()
         prefix = self.path + "/" if self.path else ""
         async for key in super().list():
             if key.startswith(prefix):
@@ -801,7 +779,6 @@ class ManagedMemoryStore(MemoryStore):
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        self._check_same_process()
         # Don't use _dereference_path here because it strips trailing slashes,
         # which would break prefix matching (e.g., "fo/" vs "foo/")
         full_prefix = f"{self.path}/{prefix}" if self.path else prefix
@@ -811,7 +788,6 @@ class ManagedMemoryStore(MemoryStore):
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        self._check_same_process()
         full_prefix = _dereference_path(self.path, prefix)
         async for key in super().list_dir(full_prefix):
             yield key
@@ -829,8 +805,8 @@ class ManagedMemoryStore(MemoryStore):
         identity (name, path, read_only) is preserved. If the original store has
         been garbage collected, the unpickled store will have an empty dict.
 
-        The original process ID is preserved so that cross-process usage can be
-        detected and will raise an error.
+        The current process ID is preserved so that cross-process unpickling can be
+        detected and will raise an error at unpickle time.
         """
         return (
             self.__class__,
@@ -838,7 +814,7 @@ class ManagedMemoryStore(MemoryStore):
             {
                 "path": self.path,
                 "read_only": self.read_only,
-                "created_pid": self._created_pid,
+                "created_pid": os.getpid(),
             },
         )
 
@@ -847,8 +823,17 @@ class ManagedMemoryStore(MemoryStore):
         # The __reduce__ method returns (cls, (name,), state)
         # Python calls cls(name) then __setstate__(state)
         # But __init__ already set up _store_dict and _name from the registry
-        # We just need to restore path, read_only, and the original process ID
+        # We just need to restore path and read_only
         self.path = normalize_path(state.get("path", ""))
         self._read_only = state.get("read_only", False)
-        # Preserve the original process ID to detect cross-process usage
-        self._created_pid = state.get("created_pid", os.getpid())
+
+        # Check for cross-process usage - fail fast at unpickle time
+        created_pid = state.get("created_pid")
+        if created_pid is not None and created_pid != os.getpid():
+            raise RuntimeError(
+                f"ManagedMemoryStore '{self._name}' was created in process {created_pid} "
+                f"but is being unpickled in process {os.getpid()}. "
+                "ManagedMemoryStore instances cannot be shared across processes because "
+                "their backing dict is not serialized. Use a persistent store (e.g., "
+                "LocalStore, ZipStore) for cross-process data sharing."
+            )

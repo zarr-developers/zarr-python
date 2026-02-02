@@ -279,44 +279,25 @@ class TestManagedMemoryStore(StoreTests[ManagedMemoryStore, cpu.Buffer]):
 
     async def test_cross_process_detection(self) -> None:
         """
-        Test that using a ManagedMemoryStore in a different process raises an error.
+        Test that unpickling a ManagedMemoryStore in a different process raises an error.
 
         This prevents silent data loss when a store is pickled and unpickled
         in a different process (e.g., with multiprocessing).
         """
-        import pickle
+        import os
 
         store = ManagedMemoryStore(name="cross-process-test")
         await store.set("key", self.buffer_cls.from_bytes(b"value"))
 
-        # Simulate unpickling in a different process by manipulating _created_pid
-        pickled = pickle.dumps(store)
-        store2 = pickle.loads(pickled)
+        # Get the reduce tuple and modify the state to simulate a different process
+        cls, args, state = store.__reduce__()
+        state["created_pid"] = os.getpid() + 1  # Fake a different process ID
 
-        # Manually change the created_pid to simulate a different process
-        store2._created_pid = store2._created_pid + 1
-
-        # All operations should raise RuntimeError
+        # Manually reconstruct what pickle.loads would do
+        # This simulates unpickling data that was pickled in a different process
+        reconstructed = cls(*args)
         with pytest.raises(RuntimeError, match="was created in process"):
-            await store2.get("key")
-
-        with pytest.raises(RuntimeError, match="was created in process"):
-            await store2.set("key", self.buffer_cls.from_bytes(b"value"))
-
-        with pytest.raises(RuntimeError, match="was created in process"):
-            await store2.exists("key")
-
-        with pytest.raises(RuntimeError, match="was created in process"):
-            await store2.delete("key")
-
-        with pytest.raises(RuntimeError, match="was created in process"):
-            [k async for k in store2.list()]
-
-        with pytest.raises(RuntimeError, match="was created in process"):
-            [k async for k in store2.list_prefix("")]
-
-        with pytest.raises(RuntimeError, match="was created in process"):
-            [k async for k in store2.list_dir("")]
+            reconstructed.__setstate__(state)
 
     def test_store_supports_writes(self, store: ManagedMemoryStore) -> None:
         assert store.supports_writes
