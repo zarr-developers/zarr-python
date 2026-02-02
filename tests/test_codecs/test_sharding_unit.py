@@ -1027,7 +1027,7 @@ def test_shard_reader_create_empty() -> None:
 
     assert reader.index.is_all_empty()
     assert len(reader.buf) == 0
-    assert len(reader) == 6  # 2 * 3
+    assert len(reader) == 2 * 3
 
 
 def test_shard_reader_iteration() -> None:
