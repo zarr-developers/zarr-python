@@ -762,7 +762,7 @@ async def test_load_partial_shard_maybe_all_chunks_empty(
 async def test_load_partial_shard_single_group_coalesced_chunks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Test that single group with coalesced adjacent chunks works correctly."""
+    """Test that single group with two coalesced adjacent chunks returns two, correct chunks."""
     codec = ShardingCodec(chunk_shape=(8,))
     chunks_per_shard = (4,)
 
