@@ -13,7 +13,6 @@ import zarr.core.buffer
 import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
-from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype import FixedLengthUTF32, Structured, VariableLengthUTF8
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes
 from zarr.core.dtype.wrapper import ZDType
@@ -78,7 +77,7 @@ async def test_v2_encode_decode(
         name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
     )
 
-    result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
+    result = await store.get("foo/.zarray")
     assert result is not None
 
     serialized = json.loads(result.to_bytes())
@@ -183,7 +182,7 @@ def test_v2_non_contiguous(numpy_order: Literal["C", "F"], zarr_order: Literal["
     arr[6:9, 3:6] = a[6:9, 3:6]  # The slice on the RHS is important
     np.testing.assert_array_equal(arr[6:9, 3:6], a[6:9, 3:6])
 
-    buf = sync(store.get("2.1", default_buffer_prototype()))
+    buf = sync(store.get("2.1"))
     assert buf is not None
     np.testing.assert_array_equal(
         a[6:9, 3:6],

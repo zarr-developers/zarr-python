@@ -7,16 +7,19 @@ from dataclasses import dataclass
 from itertools import starmap
 from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
+from zarr.core.buffer import Buffer, BufferPrototype
 from zarr.core.sync import sync
+from zarr.registry import get_buffer_class
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
     from types import TracebackType
     from typing import Any, Self, TypeAlias
 
-    from zarr.core.buffer import Buffer, BufferPrototype
+__all__ = ["BufferClassLike", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
-__all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+BufferClassLike = type[Buffer] | BufferPrototype
+"""An object that is or contains a Buffer class"""
 
 
 @dataclass
@@ -183,11 +186,17 @@ class Store(ABC):
         """Equality comparison."""
         ...
 
+    def _get_default_buffer_class(self) -> type[Buffer]:
+        """
+        Get the default buffer class.
+        """
+        return get_buffer_class()
+
     @abstractmethod
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
@@ -195,8 +204,12 @@ class Store(ABC):
         Parameters
         ----------
         key : str
-        prototype : BufferPrototype
-            The prototype of the output buffer. Stores may support a default buffer prototype.
+        prototype : BufferLike | None, optional
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer class for this store will be retrieved via the
+            ``_get_default_buffer_class`` method.
         byte_range : ByteRequest, optional
             ByteRequest may be one of the following. If not provided, all data associated with the key is retrieved.
             - RangeByteRequest(int, int): Request a specific range of bytes in the form (start, end). The end is exclusive. If the given range is zero-length or starts after the end of the object, an error will be returned. Additionally, if the range ends after the end of the object, the entire remainder of the object will be returned. Otherwise, the exact requested range will be returned.
@@ -210,7 +223,11 @@ class Store(ABC):
         ...
 
     async def _get_bytes(
-        self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        *,
+        prototype: BufferClassLike | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
         Retrieve raw bytes from the store asynchronously.
@@ -222,8 +239,12 @@ class Store(ABC):
         ----------
         key : str
             The key identifying the data to retrieve.
-        prototype : BufferPrototype
-            The buffer prototype to use for reading the data.
+        prototype : BufferLike | None, optional
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer prototype for this store will be retrieved via the
+            ``_get_default_buffer_class`` method.
         byte_range : ByteRequest, optional
             If specified, only retrieve a portion of the stored data.
             Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
@@ -248,7 +269,7 @@ class Store(ABC):
         --------
         >>> store = await MemoryStore.open()
         >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = await store.get_bytes("data", prototype=default_buffer_prototype())
+        >>> data = await store._get_bytes("data")
         >>> print(data)
         b'hello world'
         """
@@ -258,7 +279,11 @@ class Store(ABC):
         return buffer.to_bytes()
 
     def _get_bytes_sync(
-        self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str = "",
+        *,
+        prototype: BufferClassLike | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
         Retrieve raw bytes from the store synchronously.
@@ -271,8 +296,12 @@ class Store(ABC):
         ----------
         key : str, optional
             The key identifying the data to retrieve. Defaults to an empty string.
-        prototype : BufferPrototype
-            The buffer prototype to use for reading the data.
+        prototype : BufferLike | None, optional
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer prototype for this store will be retrieved via the
+            ``_get_default_buffer_class`` method.
         byte_range : ByteRequest, optional
             If specified, only retrieve a portion of the stored data.
             Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
@@ -301,7 +330,7 @@ class Store(ABC):
         --------
         >>> store = MemoryStore()
         >>> await store.set("data", Buffer.from_bytes(b"hello world"))
-        >>> data = store.get_bytes_sync("data", prototype=default_buffer_prototype())
+        >>> data = store._get_bytes_sync("data")
         >>> print(data)
         b'hello world'
         """
@@ -309,7 +338,11 @@ class Store(ABC):
         return sync(self._get_bytes(key, prototype=prototype, byte_range=byte_range))
 
     async def _get_json(
-        self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        *,
+        prototype: BufferClassLike | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Any:
         """
         Retrieve and parse JSON data from the store asynchronously.
@@ -321,8 +354,12 @@ class Store(ABC):
         ----------
         key : str
             The key identifying the JSON data to retrieve.
-        prototype : BufferPrototype
-            The buffer prototype to use for reading the data.
+        prototype : BufferLike | None, optional
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer prototype for this store will be retrieved via the
+            ``_get_default_buffer_class`` method.
         byte_range : ByteRequest, optional
             If specified, only retrieve a portion of the stored data.
             Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
@@ -351,7 +388,7 @@ class Store(ABC):
         >>> store = await MemoryStore.open()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> await store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = await store.get_json("zarr.json", prototype=default_buffer_prototype())
+        >>> data = await store._get_json("zarr.json")
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
@@ -359,7 +396,11 @@ class Store(ABC):
         return json.loads(await self._get_bytes(key, prototype=prototype, byte_range=byte_range))
 
     def _get_json_sync(
-        self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str = "",
+        *,
+        prototype: BufferClassLike | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Any:
         """
         Retrieve and parse JSON data from the store synchronously.
@@ -372,8 +413,12 @@ class Store(ABC):
         ----------
         key : str, optional
             The key identifying the JSON data to retrieve. Defaults to an empty string.
-        prototype : BufferPrototype
-            The buffer prototype to use for reading the data.
+        prototype : BufferLike | None, optional
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer prototype for this store will be retrieved via the
+            ``_get_default_buffer_class`` method.
         byte_range : ByteRequest, optional
             If specified, only retrieve a portion of the stored data.
             Can be a ``RangeByteRequest``, ``OffsetByteRequest``, or ``SuffixByteRequest``.
@@ -407,7 +452,7 @@ class Store(ABC):
         >>> store = MemoryStore()
         >>> metadata = {"zarr_format": 3, "node_type": "array"}
         >>> store.set("zarr.json", Buffer.from_bytes(json.dumps(metadata).encode()))
-        >>> data = store.get_json_sync("zarr.json", prototype=default_buffer_prototype())
+        >>> data = store._get_json_sync("zarr.json")
         >>> print(data)
         {'zarr_format': 3, 'node_type': 'array'}
         """
@@ -417,15 +462,19 @@ class Store(ABC):
     @abstractmethod
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferClassLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
         ----------
-        prototype : BufferPrototype
-            The prototype of the output buffer. Stores may support a default buffer prototype.
+        prototype : BufferLike | None
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer prototype for this store will be retrieved via the
+            ``_get_default_buffer_class`` method.
         key_ranges : Iterable[tuple[str, tuple[int | None, int | None]]]
             Ordered set of key, range pairs, a key may occur multiple times with different ranges
 
@@ -597,7 +646,7 @@ class Store(ABC):
         self._is_open = False
 
     async def _get_many(
-        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
+        self, requests: Iterable[tuple[str, BufferClassLike | None, ByteRequest | None]]
     ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
         """
         Retrieve a collection of objects from storage. In general this method does not guarantee
@@ -628,10 +677,8 @@ class Store(ABC):
         # Note to implementers: this default implementation is very inefficient since
         # it requires reading the entire object. Many systems will have ways to get the
         # size of an object without reading it.
-        # avoid circular import
-        from zarr.core.buffer.core import default_buffer_prototype
 
-        value = await self.get(key, prototype=default_buffer_prototype())
+        value = await self.get(key)
         if value is None:
             raise FileNotFoundError(key)
         return len(value)

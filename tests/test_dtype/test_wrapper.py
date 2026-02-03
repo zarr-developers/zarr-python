@@ -80,7 +80,7 @@ class BaseTestZDType:
     valid_json_v2: ClassVar[tuple[DTypeSpec_V2, ...]] = ()
     invalid_json_v2: ClassVar[tuple[str | dict[str, object] | list[object], ...]] = ()
 
-    valid_json_v3: ClassVar[tuple[DTypeSpec_V3, ...]] = ()
+    valid_json_v3: ClassVar[tuple[DTypeSpec_V3, ...]] = ()  # type: ignore[valid-type]
     invalid_json_v3: ClassVar[tuple[str | dict[str, object], ...]] = ()
 
     # for testing scalar round-trip serialization, we need a tuple of (data type json, scalar json)
@@ -120,9 +120,9 @@ class BaseTestZDType:
         assert zdtype.to_json(zarr_format=2) == valid_json_v2
 
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-    def test_from_json_roundtrip_v3(self, valid_json_v3: DTypeSpec_V3) -> None:
+    def test_from_json_roundtrip_v3(self, valid_json_v3: DTypeSpec_V3) -> None:  # type: ignore[valid-type]
         zdtype = self.test_cls.from_json(valid_json_v3, zarr_format=3)
-        assert zdtype.to_json(zarr_format=3) == valid_json_v3
+        assert zdtype.to_json(zarr_format=3) == valid_json_v3  # type: ignore[operator]
 
     def test_scalar_roundtrip_v2(self, scalar_v2_params: tuple[ZDType[Any, Any], Any]) -> None:
         zdtype, scalar_json = scalar_v2_params

@@ -57,7 +57,7 @@ TDType_co = TypeVar("TDType_co", bound=TBaseDType, covariant=True)
 
 
 @dataclass(frozen=True, kw_only=True, slots=True)
-class ZDType(ABC, Generic[TDType_co, TScalar_co]):
+class ZDType(ABC, Generic[TDType_co, TScalar_co]):  # type: ignore[misc]
     """
     Abstract base class for wrapping native array data types, e.g. numpy dtypes
 
@@ -169,10 +169,10 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     def to_json(self, zarr_format: Literal[2]) -> DTypeSpec_V2: ...
 
     @overload
-    def to_json(self, zarr_format: Literal[3]) -> DTypeSpec_V3: ...
+    def to_json(self, zarr_format: Literal[3]) -> DTypeSpec_V3: ...  # type: ignore[valid-type]
 
     @abstractmethod
-    def to_json(self, zarr_format: ZarrFormat) -> DTypeSpec_V2 | DTypeSpec_V3:
+    def to_json(self, zarr_format: ZarrFormat) -> DTypeSpec_V2 | DTypeSpec_V3:  # type: ignore[valid-type]
         """
         Serialize this ZDType to JSON.
 

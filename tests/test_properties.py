@@ -6,8 +6,6 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
-from zarr.core.buffer import default_buffer_prototype
-
 pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
@@ -91,15 +89,9 @@ def test_array_creates_implicit_groups(array):
     for i in range(len(ancestry)):
         parent = "/".join(ancestry[: i + 1])
         if array.metadata.zarr_format == 2:
-            assert (
-                sync(array.store.get(f"{parent}/.zgroup", prototype=default_buffer_prototype()))
-                is not None
-            )
+            assert sync(array.store.get(f"{parent}/.zgroup")) is not None
         elif array.metadata.zarr_format == 3:
-            assert (
-                sync(array.store.get(f"{parent}/zarr.json", prototype=default_buffer_prototype()))
-                is not None
-            )
+            assert sync(array.store.get(f"{parent}/zarr.json")) is not None
 
 
 # this decorator removes timeout; not ideal but it should avoid intermittent CI failures
@@ -211,10 +203,10 @@ async def test_roundtrip_array_metadata_from_store(
     prefixed with "0/", and then reads them back. The test asserts that each
     retrieved buffer exactly matches the original buffer.
     """
-    asdict = meta.to_buffer_dict(prototype=default_buffer_prototype())
+    asdict = meta.to_buffer_dict()
     for key, expected in asdict.items():
         await store.set(f"0/{key}", expected)
-        actual = await store.get(f"0/{key}", prototype=default_buffer_prototype())
+        actual = await store.get(f"0/{key}")
         assert actual == expected
 
 
@@ -236,7 +228,7 @@ def test_roundtrip_array_metadata_from_json(data: st.DataObject, zarr_format: in
     cases like NaN, Infinity, complex numbers, and datetime values).
     """
     metadata = data.draw(array_metadata(zarr_formats=st.just(zarr_format)))
-    buffer_dict = metadata.to_buffer_dict(prototype=default_buffer_prototype())
+    buffer_dict = metadata.to_buffer_dict()
 
     if zarr_format == 2:
         zarray_dict = json.loads(buffer_dict[ZARRAY_JSON].to_bytes().decode())
