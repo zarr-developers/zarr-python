@@ -416,7 +416,8 @@ addopts = [
 filterwarnings = [
     "error",
     "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning",
-    "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning"
+    "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning",
+    "ignore:Array.chunks is deprecated and will be removed in a future version.*:FutureWarning"
 ]
 markers = [
     "asyncio: mark test as asyncio test",
