@@ -64,7 +64,7 @@ hatch env show  # list all available environments
 To verify that your development environment is working, you can run the unit tests for one of the test environments, e.g.:
 
 ```bash
-hatch env run --env test.py3.12-2.2-optional run-pytest
+hatch env run --env test.py3.13-optional run-pytest
 ```
 
 ### Creating a branch
