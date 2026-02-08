@@ -91,8 +91,8 @@ print(group)
 
 ## Explicit Store Creation
 
-In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
-built-in store: [`zarr.storage.LocalStore`][], [`zarr.storage.FsspecStore`][],
+In some cases, it may be helpful to create a store instance directly. Zarr-Python offers
+built-in stores: [`zarr.storage.LocalStore`][], [`zarr.storage.FsspecStore`][],
 [`zarr.storage.ZipStore`][], [`zarr.storage.MemoryStore`][], and [`zarr.storage.ObjectStore`][].
 
 ### Local Store
