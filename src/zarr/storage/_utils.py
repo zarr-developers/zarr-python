@@ -70,10 +70,12 @@ def with_concurrency_limit(
 
             self = args[0]
 
-            semaphore: asyncio.Semaphore = getattr(self, semaphore_attr)
+            semaphore: asyncio.Semaphore | None = getattr(self, semaphore_attr)
 
-            # Apply concurrency limit
-            async with semaphore:
+            if semaphore is not None:
+                async with semaphore:
+                    return await func(*args, **kwargs)
+            else:
                 return await func(*args, **kwargs)
 
         return wrapper

@@ -154,7 +154,7 @@ class StoreConcurrencyTests(Generic[S, B]):
 
         # Verify results
         assert len(results) == num_items
-        for result, (key, expected_value) in zip(results, test_data.items()):
+        for result, (_key, expected_value) in zip(results, test_data.items(), strict=True):
             assert result is not None
             assert result.to_bytes() == expected_value.to_bytes()
 
@@ -188,7 +188,9 @@ class StoreConcurrencyTests(Generic[S, B]):
         ]
 
         # Write all concurrently
-        await asyncio.gather(*[store.set(k, v) for k, v in zip(write_keys, write_values)])
+        await asyncio.gather(
+            *[store.set(k, v) for k, v in zip(write_keys, write_values, strict=True)]
+        )
 
         # Read all concurrently
         results = await asyncio.gather(
@@ -196,7 +198,7 @@ class StoreConcurrencyTests(Generic[S, B]):
         )
 
         # Verify correctness
-        for result, expected in zip(results, write_values):
+        for result, expected in zip(results, write_values, strict=True):
             assert result is not None
             assert result.to_bytes() == expected.to_bytes()
 

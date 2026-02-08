@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import functools
 import math
 import operator
-import threading
 import warnings
-import weakref
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
-from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -29,7 +25,7 @@ from zarr.core.config import config as zarr_config
 from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterator
+    from collections.abc import Iterator
 
 
 ZARR_JSON = "zarr.json"
@@ -94,139 +90,6 @@ def ceildiv(a: float, b: float) -> int:
     if a == 0:
         return 0
     return math.ceil(a / b)
-
-
-T = TypeVar("T", bound=tuple[Any, ...])
-V = TypeVar("V")
-
-
-# Global semaphore management for per-process concurrency limiting
-# Use WeakKeyDictionary to automatically clean up semaphores when event loops are garbage collected
-_global_semaphores: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
-    weakref.WeakKeyDictionary()
-)
-# Use threading.Lock instead of asyncio.Lock to coordinate across event loops
-_global_semaphore_lock = threading.Lock()
-
-
-def get_global_semaphore() -> asyncio.Semaphore:
-    """
-    Get the global semaphore for the current event loop.
-
-    This ensures that all concurrent operations across the process share the same
-    concurrency limit, preventing excessive concurrent task creation when multiple
-    arrays or operations are running simultaneously.
-
-    The semaphore is lazily created per event loop and uses the configured
-    `async.concurrency` value from zarr config. The semaphore is cached per event
-    loop, so subsequent calls return the same semaphore instance.
-
-    Note: Config changes after the first call will not affect the semaphore limit.
-    To apply new config values, use :func:`reset_global_semaphores` to clear the cache.
-
-    Returns
-    -------
-    asyncio.Semaphore
-        The global semaphore for this event loop.
-
-    Raises
-    ------
-    RuntimeError
-        If called outside of an async context (no running event loop).
-
-    See Also
-    --------
-    reset_global_semaphores : Clear the global semaphore cache
-    """
-    loop = asyncio.get_running_loop()
-
-    # Acquire lock FIRST to prevent TOCTOU race condition
-    with _global_semaphore_lock:
-        if loop not in _global_semaphores:
-            limit = zarr_config.get("async.concurrency")
-            _global_semaphores[loop] = asyncio.Semaphore(limit)
-        return _global_semaphores[loop]
-
-
-def reset_global_semaphores() -> None:
-    """
-    Clear all cached global semaphores.
-
-    This is useful when you want config changes to take effect, or for testing.
-    The next call to :func:`get_global_semaphore` will create a new semaphore
-    using the current configuration.
-
-    Warning: This should only be called when no async operations are in progress,
-    as it will invalidate all existing semaphore references.
-
-    Examples
-    --------
-    >>> import zarr
-    >>> zarr.config.set({"async.concurrency": 50})
-    >>> reset_global_semaphores()  # Apply new config
-    """
-    with _global_semaphore_lock:
-        _global_semaphores.clear()
-
-
-async def concurrent_map(
-    items: Iterable[T],
-    func: Callable[..., Awaitable[V]],
-    limit: int | None = None,
-    *,
-    use_global_semaphore: bool = True,
-) -> list[V]:
-    """
-    Execute an async function concurrently over multiple items with concurrency limiting.
-
-    Parameters
-    ----------
-    items : Iterable[T]
-        Items to process, where each item is a tuple of arguments to pass to func.
-    func : Callable[..., Awaitable[V]]
-        Async function to execute for each item.
-    limit : int | None, optional
-        If provided and use_global_semaphore is False, creates a local semaphore
-        with this limit. If None, no concurrency limiting is applied.
-    use_global_semaphore : bool, default True
-        If True, uses the global per-process semaphore for concurrency limiting,
-        ensuring all concurrent operations share the same limit. If False, uses
-        the `limit` parameter for local limiting (legacy behavior).
-
-    Returns
-    -------
-    list[V]
-        Results from executing func on all items.
-    """
-    if use_global_semaphore:
-        if limit is not None:
-            raise ValueError(
-                "Cannot specify both use_global_semaphore=True and a limit value. "
-                "Either use the global semaphore (use_global_semaphore=True, limit=None) "
-                "or specify a local limit (use_global_semaphore=False, limit=<int>)."
-            )
-        # Use the global semaphore for process-wide concurrency limiting
-        sem = get_global_semaphore()
-
-        async def run(item: tuple[Any]) -> V:
-            async with sem:
-                return await func(*item)
-
-        return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
-
-    elif limit is None:
-        # No concurrency limiting
-        return await asyncio.gather(*list(starmap(func, items)))
-
-    else:
-        # Legacy mode: create local semaphore with specified limit
-        sem = asyncio.Semaphore(limit)
-
-        async def run(item: tuple[Any]) -> V:
-            async with sem:
-                return await func(*item)
-
-        return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
 E = TypeVar("E", bound=Enum)
