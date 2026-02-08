@@ -1,4 +1,4 @@
-This section  will help you get up and running with
+This section will help you get up and running with
 the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
 
 ### Creating an Array
@@ -92,7 +92,7 @@ spam[:] = np.arange(10)
 print(root.tree())
 ```
 
-This creates a group with two datasets: `foo` and `bar`.
+This creates a group hierarchy with a group (`foo`) and two arrays (`bar` and `spam`).
 
 #### Batch Hierarchy Creation
 
