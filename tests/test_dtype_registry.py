@@ -80,7 +80,7 @@ class TestRegistry:
     def test_match_dtype_string_na_object_error(
         data_type_registry_fixture: DataTypeRegistry,
     ) -> None:
-        dtype = np.dtypes.StringDType(na_object=None)
+        dtype: np.dtype[Any] = np.dtypes.StringDType(na_object=None)  # type: ignore[call-arg]
         with pytest.raises(ValueError, match=r"Zarr data type resolution from StringDType.*failed"):
             data_type_registry_fixture.match_dtype(dtype)
 
