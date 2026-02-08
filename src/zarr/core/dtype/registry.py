@@ -159,6 +159,13 @@ class DataTypeRegistry:
                 "data type, see https://github.com/zarr-developers/zarr-python/issues/3117"
             )
             raise ValueError(msg)
+        if dtype.kind == "T" and hasattr(dtype, "na_object"):
+            msg = (
+                f"Zarr data type resolution from {dtype} failed. "
+                "Attempted to resolve a zarr data type from a `numpy.dtypes.StringDType` "
+                "with `na_object` set, which is not supported."
+            )
+            raise ValueError(msg)
         matched: list[ZDType[TBaseDType, TBaseScalar]] = []
         for val in self.contents.values():
             with contextlib.suppress(DataTypeValidationError):
