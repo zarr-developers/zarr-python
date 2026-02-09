@@ -1,20 +1,20 @@
 # optional library requirements
 # bsddb3==6.2.6; sys_platform != 'win32'
-lmdb==1.7.3; sys_platform != 'win32'
+lmdb==1.7.5; sys_platform != 'win32'
 # optional library requirements for Jupyter
 ipytree==0.2.2
-ipywidgets==8.1.7
+ipywidgets==8.1.8
 azure-storage-blob==12.24.1
-redis==6.4.0
+redis==7.1.0
 types-redis
 types-setuptools
-pymongo==4.14.0
+pymongo==4.16.0
 # optional test requirements
 coverage
-pytest-cov==6.2.1
-pytest-doctestplus==1.4.0
+pytest-cov==7.0.0
+pytest-doctestplus==1.7.1
 pytest-timeout==2.4.0
-h5py==3.14.0
+h5py==3.15.1
 fsspec==2023.12.2
 s3fs==2023.12.2
 moto[server]>=5.0.1
