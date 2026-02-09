@@ -16,35 +16,33 @@ concurrency:
 
 jobs:
   test:
-    name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
+    name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, deps=${{ matrix.dependency-set }}
 
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        numpy-version: ['1.26', '2.2']
         dependency-set: ["minimal", "optional"]
         os: ["ubuntu-latest"]
         include:
           - python-version: '3.11'
-            numpy-version: '1.26'
             dependency-set: 'optional'
             os: 'macos-latest'
+
           - python-version: '3.13'
-            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'macos-latest'
+
           - python-version: '3.11'
-            numpy-version: '1.26'
             dependency-set: 'optional'
             os: 'windows-latest'
+
           - python-version: '3.13'
-            numpy-version: '2.2'
             dependency-set: 'optional'
             os: 'windows-latest'
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0  # grab all branches and tags
     - name: Set up Python
@@ -58,13 +56,13 @@ jobs:
         pip install hatch
     - name: Set Up Hatch Env
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
+        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
       env:
         HYPOTHESIS_PROFILE: ci
       run: |
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
+        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@v5
@@ -86,7 +84,7 @@ jobs:
           - python-version: "3.11"
             dependency-set: upstream
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0
     - name: Set up Python
@@ -115,7 +113,7 @@ jobs:
     name: doctests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@v6
       with:
         fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
     - name: Set up Python
@@ -129,11 +127,10 @@ jobs:
         pip install hatch
     - name: Set Up Hatch Env
       run: |
-        hatch env create docs
-        hatch env run -e docs list-env
+        hatch run doctest:pip list
     - name: Run Tests
       run: |
-        hatch env run --env docs check
+        hatch run doctest:test
 
   test-complete:
     name: Test complete

@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 import zarr
-import zarr.api
 from zarr import zeros
 from zarr.abc.codec import CodecPipeline
 from zarr.abc.store import ByteSetter, Store
@@ -54,6 +53,7 @@ def test_config_defaults_set() -> None:
                 "array": {
                     "order": "C",
                     "write_empty_chunks": False,
+                    "target_shard_size_bytes": None,
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},
@@ -109,7 +109,7 @@ def test_config_defaults_set() -> None:
 
 @pytest.mark.parametrize(
     ("key", "old_val", "new_val"),
-    [("array.order", "C", "F"), ("async.concurrency", 10, 20), ("json_indent", 2, 0)],
+    [("array.order", "C", "F"), ("async.concurrency", 10, 128), ("json_indent", 2, 0)],
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
     assert config.get(key) == old_val

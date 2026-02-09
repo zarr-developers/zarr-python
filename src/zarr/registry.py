@@ -227,11 +227,11 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, ArrayBytesCodec):
-            msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
+            msg = f"Expected a dict representation of an ArrayBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
         if not isinstance(data, ArrayBytesCodec):
-            raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
+            raise TypeError(f"Expected an ArrayBytesCodec. Got {type(data)} instead.")
         result = data
     return result
 
@@ -247,11 +247,11 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, ArrayArrayCodec):
-            msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
+            msg = f"Expected a dict representation of an ArrayArrayCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
         if not isinstance(data, ArrayArrayCodec):
-            raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")
+            raise TypeError(f"Expected an ArrayArrayCodec. Got {type(data)} instead.")
         result = data
     return result
 
@@ -325,10 +325,12 @@ def get_numcodec(data: CodecJSON_V2[str]) -> Numcodec:
 
     Examples
     --------
-
-    >>> codec = get_codec({'id': 'zlib', 'level': 1})
-    >>> codec
-    Zlib(level=1)
+    ```python
+    from zarr.registry import get_numcodec
+    codec = get_numcodec({'id': 'zlib', 'level': 1})
+    codec
+    # Zlib(level=1)
+    ```
     """
 
     from numcodecs.registry import get_codec

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -124,7 +125,7 @@ class Buffer(ABC):
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
 
-    A Buffer is backed by a underlying array-like instance that represents
+    A Buffer is backed by an underlying array-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     array-like instance can be copied/converted to a regular Numpy array
@@ -294,9 +295,13 @@ class Buffer(ABC):
         return self._data.size
 
     @abstractmethod
+    def combine(self, others: Iterable[Buffer]) -> Self:
+        """Concatenate many buffers"""
+        ...
+
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
-        ...
+        return self.combine([other])
 
     def __eq__(self, other: object) -> bool:
         # Another Buffer class can override this to choose a more efficient path
@@ -310,7 +315,7 @@ class NDBuffer:
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
-    A NDBuffer is backed by a underlying ndarray-like instance that represents
+    An NDBuffer is backed by an underlying ndarray-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
     ndarray-like instance can be copied/converted to a regular Numpy array
@@ -363,7 +368,7 @@ class NDBuffer:
 
         Notes
         -----
-        A subclass can overwrite this method to create a ndarray-like object
+        A subclass can overwrite this method to create an ndarray-like object
         other then the default Numpy array.
         """
         if cls is NDBuffer:
@@ -411,7 +416,7 @@ class NDBuffer:
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
-        """Create a new buffer of a ndarray-like object
+        """Create a new buffer of an ndarray-like object
 
         Parameters
         ----------
@@ -537,7 +542,7 @@ class NDBuffer:
         # every single time we have to write data?
         _data, other = np.broadcast_arrays(self._data, other)
         return np.array_equal(
-            self._data,
+            _data,
             other,
             equal_nan=equal_nan
             if self._data.dtype.kind not in ("U", "S", "T", "O", "V")

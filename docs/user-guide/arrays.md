@@ -27,7 +27,7 @@ columns (and so there will be 100 chunks in total). The data is written to a
 and see [Data types](data_types.md) for an in-depth look at the data types supported
 by Zarr.
 
-See the [creation API documentation](../api/create.md) for more detailed information about
+See the [creation API documentation](../api/zarr/create.md) for more detailed information about
 creating arrays.
 
 ## Reading and writing data
@@ -154,6 +154,32 @@ z.append(np.vstack([a, a]), axis=1)
 print(f"Shape after second append: {z.shape}")
 ```
 
+## Runtime configuration
+
+Zarr arrays are parametrized with a configuration that determines certain aspects of array behavior.
+
+We currently support two configuration options for arrays: `write_empty_chunks` and `order`.
+
+| field | type | default | description |
+| - |     - | - | - |
+| `write_empty_chunks` | `bool` | `False` | Controls whether empty chunks are written to storage. See [Empty chunks](performance.md#empty-chunks).
+| `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
+
+You can specify the configuration when you create an array with the `config` keyword argument.
+`config` can be passed as either a `dict` or an `ArrayConfig` object.
+
+```python exec="true" session="arrays" source="above" result="ansi"
+arr = zarr.create_array({}, shape=(10,), dtype='int8', config={"write_empty_chunks": True})
+print(arr.config)
+```
+
+To get an array view with a different config, use the `with_config` method.
+
+```python exec="true" session="arrays" source="above" result="ansi"
+arr_f = arr.with_config({"order": "F"})
+print(arr_f.config)
+```
+
 ## Compressors
 
 A number of different compressors can be used with Zarr. Zarr includes Blosc,
@@ -213,7 +239,7 @@ built-in delta filter:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 import lzma
-from numcodecs.zarr3 import LZMA
+from zarr.codecs.numcodecs import LZMA
 
 lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
 compressors = LZMA(filters=lzma_filters)
@@ -251,7 +277,7 @@ mechanism for configuring filters outside of the primary compressor.
 Here is an example using a delta filter with the Blosc compressor:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-from numcodecs.zarr3 import Delta
+from zarr.codecs.numcodecs import Delta
 
 filters = [Delta(dtype='int32')]
 compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle=zarr.codecs.BloscShuffle.shuffle)

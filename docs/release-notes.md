@@ -2,16 +2,55 @@
 
 <!-- towncrier release notes start -->
 
-# zarr 3.1.3 (2025-09-18)
+# zarr 3.1.5 (2025-11-21)
 
-## Features
+## Bugfixes
+
+- Fix formatting errors in the release notes section of the docs. ([#3594](https://github.com/zarr-developers/zarr-python/issues/3594))
+
+
+## 3.1.4 (2025-11-20)
+
+### Features
+
+- The `Array` class can now also be parametrized in the same manner as the `AsyncArray` class, allowing Zarr format v2 and v3 `Array`s to be distinguished.
+  New types have been added to `zarr.types` to help with this. ([#3304](https://github.com/zarr-developers/zarr-python/issues/3304))
+- Adds `zarr.experimental.cache_store.CacheStore`, a `Store` that implements caching by combining two other `Store` instances. See the [docs page](https://zarr.readthedocs.io/en/latest/user-guide/experimental#cachestore) for more information about this feature. ([#3366](https://github.com/zarr-developers/zarr-python/issues/3366))
+- Adds a `zarr.experimental` module for unstable user-facing features. ([#3490](https://github.com/zarr-developers/zarr-python/issues/3490))
+- Add a `array.target_shard_size_bytes` to [`zarr.config`][] to allow users to set a maximum number of bytes per-shard when `shards="auto"` in, for example, [`zarr.create_array`][]. ([#3547](https://github.com/zarr-developers/zarr-python/issues/3547))
+- Make `async_array` on the [`zarr.Array`][] class public (`_async_array` will remain untouched, but its stability is not guaranteed). ([#3556](https://github.com/zarr-developers/zarr-python/issues/3556))
+
+### Bugfixes
+
+- Fix a bug that prevented `PCodec` from being properly resolved when loading arrays using that compressor. ([#3483](https://github.com/zarr-developers/zarr-python/issues/3483))
+- Fixed a bug that prevented Zarr Python from opening Zarr V3 array metadata documents that contained
+   extra keys with permissible values (dicts with a `"must_understand"` key set to `"false"`). ([#3530](https://github.com/zarr-developers/zarr-python/issues/3530))
+- Fixed a bug where the `"consolidated_metadata"` key was written to metadata documents even when
+  consolidated metadata was not used, resulting in invalid metadata documents. ([#3535](https://github.com/zarr-developers/zarr-python/issues/3535))
+- Improve write performance to large shards by up to 10x. ([#3560](https://github.com/zarr-developers/zarr-python/issues/3560))
+
+### Improved Documentation
+
+- Use mkdocs-material for Zarr-Python documentation ([#3118](https://github.com/zarr-developers/zarr-python/issues/3118))
+- Document different values of StoreLike with examples in the user guide. ([#3303](https://github.com/zarr-developers/zarr-python/issues/3303))
+- Reorganize the top-level `examples` directory to give each example its own sub-directory. Adds content to the docs for each example. ([#3502](https://github.com/zarr-developers/zarr-python/issues/3502))
+- Updated 3.0 Migration Guide to include function signature change to zarr.Array.resize function. ([#3536](https://github.com/zarr-developers/zarr-python/issues/3536))
+
+### Misc
+
+- [#3515](https://github.com/zarr-developers/zarr-python/issues/3515), [#3532](https://github.com/zarr-developers/zarr-python/issues/3532), [#3533](https://github.com/zarr-developers/zarr-python/issues/3533), [#3553](https://github.com/zarr-developers/zarr-python/issues/3553)
+
+
+## zarr 3.1.3 (2025-09-18)
+
+### Features
 
 - Add a command-line interface to migrate v2 Zarr metadata to v3. Corresponding functions are also provided under zarr.metadata. ([#1798](https://github.com/zarr-developers/zarr-python/issues/1798))
 - Add obstore implementation of delete_dir. ([#3310](https://github.com/zarr-developers/zarr-python/issues/3310))
 - Adds a registry for chunk key encodings for extensibility. This allows users to implement a custom `ChunkKeyEncoding`, which can be registered via `register_chunk_key_encoding` or as an entry point under `zarr.chunk_key_encoding`. ([#3436](https://github.com/zarr-developers/zarr-python/issues/3436))
-- Trying to open a group at a path were a array already exists now raises a helpful error. ([#3444](https://github.com/zarr-developers/zarr-python/issues/3444))
+- Trying to open a group at a path where an array already exists now raises a helpful error. ([#3444](https://github.com/zarr-developers/zarr-python/issues/3444))
 
-## Bugfixes
+### Bugfixes
 
 - Prevents creation of groups (.create_group) or arrays (.create_array) as children of an existing array. ([#2582](https://github.com/zarr-developers/zarr-python/issues/2582))
 - Fix a bug preventing `ones_like`, `full_like`, `empty_like`, `zeros_like` and `open_like` functions from accepting an explicit specification of array attributes like shape, dtype, chunks etc. The functions `full_like`, `empty_like`, and `open_like` now also more consistently infer a `fill_value` parameter from the provided array. ([#2992](https://github.com/zarr-developers/zarr-python/issues/2992))
@@ -22,11 +61,11 @@
 - Creating a new group with `zarr.group` no longer errors. This fixes a regression introduced in version 3.1.2. ([#3431](https://github.com/zarr-developers/zarr-python/issues/3431))
 - Setting `fill_value` to a float like `0.0` when the data type of the array is an integer is a common mistake. This change lets Zarr Python read arrays with this erroneous metadata, although Zarr Python will not create such arrays. ([#3448](https://github.com/zarr-developers/zarr-python/issues/3448))
 
-## Deprecations and Removals
+### Deprecations and Removals
 
 - The `Store.set_partial_writes` method, which was not used by Zarr-Python, has been removed. `store.supports_partial_writes` is now always `False`. ([#2859](https://github.com/zarr-developers/zarr-python/issues/2859))
 
-## Misc
+### Misc
 
 - [#3376](https://github.com/zarr-developers/zarr-python/issues/3376), [#3390](https://github.com/zarr-developers/zarr-python/issues/3390), [#3403](https://github.com/zarr-developers/zarr-python/issues/3403), [#3449](https://github.com/zarr-developers/zarr-python/issues/3449)
 

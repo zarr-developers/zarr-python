@@ -298,14 +298,8 @@ assert scalar_value == np.int8(42)
 Each Zarr data type is a separate Python class that inherits from
 [ZDType][zarr.dtype.ZDType]. You can define a custom data type by
 writing your own subclass of [ZDType][zarr.dtype.ZDType] and adding
-your data type to the data type registry. A complete example of this process is included below.
-
-The source code for this example can be found in the `examples/custom_dtype.py` file in the Zarr
-Python project directory.
-
-```python
---8<-- "examples/custom_dtype.py"
-```
+your data type to the data type registry. To see an executable demonstration
+of this process, see the [`custom_dtype` example](../user-guide/examples/custom_dtype.md).
 
 ### Data Type Resolution
 

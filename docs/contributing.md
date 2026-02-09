@@ -109,26 +109,50 @@ All tests are automatically run via GitHub Actions for every pull request and mu
 
 > **Note:** Previous versions of Zarr-Python made extensive use of doctests. These tests were not maintained during the 3.0 refactor but may be brought back in the future. See issue #2614 for more details.
 
-### Code standards - using pre-commit
+### Code standards - using prek
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
 
-`Zarr` uses a set of `pre-commit` hooks and the `pre-commit` bot to format, type-check, and prettify the codebase. `pre-commit` can be installed locally by running:
+`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager that is fully compatible with `.pre-commit-config.yaml` files. `prek` can be installed locally by running:
 
 ```bash
-python -m pip install pre-commit
+uv tool install prek
+```
+
+or:
+
+```bash
+pip install prek
 ```
 
 The hooks can be installed locally by running:
 
 ```bash
-pre-commit install
+prek install
 ```
 
-This would run the checks every time a commit is created locally. These checks will also run on every commit pushed to an open PR, resulting in some automatic styling fixes by the `pre-commit` bot. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
+This would run the checks every time a commit is created locally. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
 
 ```bash
-pre-commit run --all-files
+prek run --all-files
+```
+
+You can also run hooks only for files in a specific directory:
+
+```bash
+prek run --directory src/zarr
+```
+
+Or run hooks for files changed in the last commit:
+
+```bash
+prek run --last-commit
+```
+
+To list all available hooks:
+
+```bash
+prek list
 ```
 
 If you would like to skip the failing checks and push the code for further discussion, use the `--no-verify` option with `git commit`.
@@ -143,7 +167,7 @@ Zarr strives to maintain 100% test coverage under the latest Python stable relea
 hatch env run --env test.py3.12-2.2-optional run-coverage
 ```
 
-will automatically run the test suite with coverage and produce a XML coverage report. This should be 100% before code can be accepted into the main code base.
+will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
 
 You can also generate an HTML coverage report by running:
 
@@ -172,6 +196,40 @@ Hatch can also be used to serve continuously updating version of the documentati
 ```bash
 hatch --env docs run serve
 ```
+
+#### Adding executable code blocks in the documentation
+
+Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="on"` to a code block header for it to be executed when the docs are built. For example:
+
+````md
+```python exec="on"
+print("Hello world")
+```
+````
+
+Below are other useful options that can be added to the code block. See [Markdown Exec's documentation](https://pawamoy.github.io/markdown-exec/usage/#options-summary) for a full list:
+
+  - `source="above"` makes sure the code within the code block is also rendered in the documentation (rather than just the output).
+  - `session="<name-of-docs-page>"` executes code blocks in a named session reusing previously defined variables.
+  - `result="ansi"` or `result="html"` to render the output. If the code does not produce output, you should leave off the `result` option to prevent an empty cell from rendering in the docs.
+
+For example:
+
+````md
+```python exec="true" session="contributing" source="above" result="ansi"
+print("Hello world")
+```
+````
+
+renders as:
+
+```python exec="true" session="contributing" source="above" result="ansi"
+print("Hello world")
+```
+
+#### Building documentation without executing code blocks
+
+Sometimes, you may want the documentation to build quicker. You can disable code block execution by commenting out the [markdown-exec](https://github.com/zarr-developers/zarr-python/blob/884a8c91afcc3efe28b3da952be3b85125c453cb/mkdocs.yml#L132 plugin in the mkdocs configuration file). This will make code blocks and cross references render incorrectly (i.e., expect build warnings), but also reduces build time by ~3x. Be sure to undo the commenting out before opening your pull request.
 
 ### Changelog
 
@@ -231,3 +289,12 @@ If an existing Zarr format version changes, or a new version of the Zarr format 
 
 Open an issue on GitHub announcing the release using the release checklist template:
 [https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md>). The release checklist includes all steps necessary for the release.
+
+## Benchmarks
+
+Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
+performance benchmarks as part of our test suite. The benchmarks can be are found in `tests/benchmarks`.
+By default pytest is configured to run these benchmarks as plain tests (i.e., no benchmarking). To run
+a benchmark with timing measurements, use the `--benchmark-enable` when invoking `pytest`.
+
+The benchmarks are run as part of the continuous integration suite through [codspeed](https://codspeed.io/zarr-developers/zarr-python).

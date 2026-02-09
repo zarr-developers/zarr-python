@@ -51,7 +51,7 @@ def normalize_path(path: str | bytes | Path | None) -> str:
 
 def _normalize_byte_range_index(data: Buffer, byte_range: ByteRequest | None) -> tuple[int, int]:
     """
-    Convert an ByteRequest into an explicit start and stop
+    Convert a ByteRequest into an explicit start and stop
     """
     if byte_range is None:
         start = 0
@@ -84,10 +84,13 @@ def _join_paths(paths: Iterable[str]) -> str:
 
     Examples
     --------
-    >>> _join_paths(["", "a", "b"])
-    'a/b'
-    >>> _join_paths(["a", "b", "c"])
-    'a/b/c'
+    ```python
+    from zarr.storage._utils import _join_paths
+    _join_paths(["", "a", "b"])
+    # 'a/b'
+    _join_paths(["a", "b", "c"])
+    # 'a/b/c'
+    ```
     """
     return "/".join(filter(lambda v: v != "", paths))
 
@@ -116,10 +119,13 @@ def _relativize_path(*, path: str, prefix: str) -> str:
 
     Examples
     --------
-    >>> _relativize_path(path="", prefix="a/b")
-    'a/b'
-    >>> _relativize_path(path="a/b", prefix="a/b/c")
-    'c'
+    ```python
+    from zarr.storage._utils import _relativize_path
+    _relativize_path(path="a/b", prefix="")
+    # 'a/b'
+    _relativize_path(path="a/b/c", prefix="a/b")
+    # 'c'
+    ```
     """
     if prefix == "":
         return path

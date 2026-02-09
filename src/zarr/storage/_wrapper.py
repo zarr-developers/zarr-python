@@ -7,8 +7,9 @@ if TYPE_CHECKING:
     from types import TracebackType
     from typing import Any, Self
 
+    from zarr.abc.buffer import Buffer
     from zarr.abc.store import ByteRequest
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.buffer import BufferPrototype
 
 from zarr.abc.store import Store
 

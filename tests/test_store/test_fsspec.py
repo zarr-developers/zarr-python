@@ -238,14 +238,6 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         assert result.fs.asynchronous
         assert result.path == f"{test_bucket_name}/foo/bar"
 
-    def test_init_raises_if_path_has_scheme(self, store_kwargs: dict[str, Any]) -> None:
-        # regression test for https://github.com/zarr-developers/zarr-python/issues/2342
-        store_kwargs["path"] = "s3://" + store_kwargs["path"]
-        with pytest.raises(
-            ValueError, match="path argument to FsspecStore must not include scheme .*"
-        ):
-            self.store_cls(**store_kwargs)
-
     def test_init_warns_if_fs_asynchronous_is_false(self) -> None:
         try:
             from fsspec import url_to_fs
@@ -387,7 +379,7 @@ def test_open_s3map_raises() -> None:
         zarr.open(store=mapper, path="bar", mode="w", shape=(3, 3))
     with pytest.raises(
         TypeError,
-        match="'storage_options' is only used when the store is passed as a FSSpec URI string.",
+        match="'storage_options' is only used when the store is passed as an FSSpec URI string.",
     ):
         zarr.open(store=mapper, storage_options={"anon": True}, mode="w", shape=(3, 3))
 

@@ -191,7 +191,7 @@ class ZDType(ABC, Generic[TDType_co, TScalar_co]):
     @abstractmethod
     def _check_scalar(self, data: object) -> bool:
         """
-        Check that an python object is a valid scalar value for the wrapped data type.
+        Check that a python object is a valid scalar value for the wrapped data type.
 
         Parameters
         ----------

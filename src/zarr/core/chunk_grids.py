@@ -12,9 +12,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
+import zarr
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
     JSON,
+    NamedConfig,
     ShapeLike,
     ceildiv,
     parse_named_configuration,
@@ -60,6 +62,8 @@ def _guess_chunks(
     tuple[int, ...]
 
     """
+    if min_bytes >= max_bytes:
+        raise ValueError(f"Cannot have more min_bytes ({min_bytes}) than max_bytes ({max_bytes})")
     if isinstance(shape, int):
         shape = (shape,)
 
@@ -152,7 +156,7 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
     @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkGrid) -> ChunkGrid:
+    def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
         if isinstance(data, ChunkGrid):
             return data
 
@@ -180,7 +184,7 @@ class RegularChunkGrid(ChunkGrid):
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @classmethod
-    def _from_dict(cls, data: dict[str, JSON]) -> Self:
+    def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "regular")
 
         return cls(**configuration_parsed)  # type: ignore[arg-type]
@@ -199,6 +203,43 @@ class RegularChunkGrid(ChunkGrid):
             itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
             1,
         )
+
+
+def _guess_num_chunks_per_axis_shard(
+    chunk_shape: tuple[int, ...], item_size: int, max_bytes: int, array_shape: tuple[int, ...]
+) -> int:
+    """Generate the number of chunks per axis to hit a target max byte size for a shard.
+
+    For example, for a (2,2,2) chunk size and item size 4, maximum bytes of 256 would return 2.
+    In other words the shard would be a (2,2,2) grid of (2,2,2) chunks
+    i.e., prod(chunk_shape) * (returned_val * len(chunk_shape)) * item_size = 256 bytes.
+
+    Parameters
+    ----------
+    chunk_shape
+        The shape of the (inner) chunks.
+    item_size
+        The item size of the data i.e., 2 for uint16.
+    max_bytes
+        The maximum number of bytes per shard to allow.
+    array_shape
+        The shape of the underlying array.
+
+    Returns
+    -------
+        The number of chunks per axis.
+    """
+    bytes_per_chunk = np.prod(chunk_shape) * item_size
+    if max_bytes < bytes_per_chunk:
+        return 1
+    num_axes = len(chunk_shape)
+    chunks_per_shard = 1
+    # First check for byte size, second check to make sure we don't go bigger than the array shape
+    while (bytes_per_chunk * ((chunks_per_shard + 1) ** num_axes)) <= max_bytes and all(
+        c * (chunks_per_shard + 1) <= a for c, a in zip(chunk_shape, array_shape, strict=True)
+    ):
+        chunks_per_shard += 1
+    return chunks_per_shard
 
 
 def _auto_partition(
@@ -225,7 +266,7 @@ def _auto_partition(
     else:
         if chunk_shape == "auto":
             # aim for a 1MiB chunk
-            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1024)
+            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1048576)
         else:
             _chunks_out = chunk_shape
 
@@ -236,12 +277,22 @@ def _auto_partition(
                 stacklevel=2,
             )
             _shards_out = ()
+            target_shard_size_bytes = zarr.config.get("array.target_shard_size_bytes", None)
+            num_chunks_per_shard_axis = (
+                _guess_num_chunks_per_axis_shard(
+                    chunk_shape=_chunks_out,
+                    item_size=item_size,
+                    max_bytes=target_shard_size_bytes,
+                    array_shape=array_shape,
+                )
+                if (has_auto_shard := (target_shard_size_bytes is not None))
+                else 2
+            )
             for a_shape, c_shape in zip(array_shape, _chunks_out, strict=True):
-                # TODO: make a better heuristic than this.
-                # for each axis, if there are more than 8 chunks along that axis, then put
-                # 2 chunks in each shard for that axis.
-                if a_shape // c_shape > 8:
-                    _shards_out += (c_shape * 2,)
+                # The previous heuristic was `a_shape // c_shape > 8` and now, with target_shard_size_bytes, we only check that the shard size is less than the array size.
+                can_shard_axis = a_shape // c_shape > 8 if not has_auto_shard else True
+                if can_shard_axis:
+                    _shards_out += (c_shape * num_chunks_per_shard_axis,)
                 else:
                     _shards_out += (c_shape,)
         elif isinstance(shard_shape, dict):

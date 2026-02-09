@@ -36,9 +36,10 @@ from zarr.errors import (
 )
 
 if TYPE_CHECKING:
-    from zarr.core.array import Array, AsyncArray
+    from zarr.core.array import AsyncArray
     from zarr.core.buffer import NDArrayLikeOrScalar
     from zarr.core.chunk_grids import ChunkGrid
+    from zarr.types import AnyArray
 
 
 IntSequence = list[int] | npt.NDArray[np.intp]
@@ -61,7 +62,7 @@ def err_too_many_indices(selection: Any, shape: tuple[int, ...]) -> None:
     raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
 
 
-def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
+def _zarr_array_to_int_or_bool_array(arr: AnyArray) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
     if arr.dtype.kind in ("i", "b"):
         return np.asarray(arr)
     else:
@@ -111,17 +112,20 @@ def _iter_grid(
 
     Examples
     --------
-    >>> tuple(iter_grid((1,)))
-    ((0,),)
+    ```python
+    from zarr.core.indexing import _iter_grid
+    tuple(_iter_grid((1,)))
+    # ((0,),)
 
-    >>> tuple(iter_grid((2,3)))
-    ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
+    tuple(_iter_grid((2,3)))
+    # ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3), origin=(1,1)))
-    ((1, 1), (1, 2))
+    tuple(_iter_grid((2,3), origin=(1,1)))
+    # ((1, 1), (1, 2))
 
-    >>> tuple(iter_grid((2,3), origin=(0,0), selection_shape=(2,2)))
-    ((0, 0), (0, 1), (1, 0), (1, 1))
+    tuple(_iter_grid((2,3), origin=(0,0), selection_shape=(2,2)))
+    # ((0, 0), (0, 1), (1, 0), (1, 1))
+    ```
     """
     if origin is None:
         origin_parsed = (0,) * len(grid_shape)
@@ -190,17 +194,20 @@ def _iter_regions(
 
     Examples
     --------
-    >>> tuple(iter_regions((1,), (1,)))
-    ((slice(0, 1, 1),),)
+    ```python
+    from zarr.core.indexing import _iter_regions
+    tuple(_iter_regions((1,), (1,)))
+    # ((slice(0, 1, 1),),)
 
-    >>> tuple(iter_regions((2, 3), (1, 2)))
-    ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
+    tuple(_iter_regions((2, 3), (1, 2)))
+    # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
 
-    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1))
-    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+    tuple(_iter_regions((2,3), (1,2), origin=(1,1)))
+    # ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
 
-    >>> tuple(iter_regions((2,3), (1,2)), origin=(1,1), selection_shape=(2,2))
-    ((slice(1, 2, 1), slice(1, 3, 1)), (slice(2, 3, 1), slice(1, 3, 1)))
+    tuple(_iter_regions((2,3), (1,2), origin=(0,0), selection_shape=(2,2)))
+    # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
+    ```
     """
     grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
     for grid_position in _iter_grid(
@@ -975,10 +982,10 @@ class OrthogonalIndexer(Indexer):
 
 @dataclass(frozen=True)
 class OIndex:
-    array: Array
+    array: AnyArray
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
+    def __getitem__(self, selection: OrthogonalSelection | AnyArray) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -1005,7 +1012,7 @@ class OIndex:
 class AsyncOIndex(Generic[T_ArrayMetadata]):
     array: AsyncArray[T_ArrayMetadata]
 
-    async def getitem(self, selection: OrthogonalSelection | Array) -> NDArrayLikeOrScalar:
+    async def getitem(self, selection: OrthogonalSelection | AnyArray) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -1105,7 +1112,7 @@ class BlockIndexer(Indexer):
 
 @dataclass(frozen=True)
 class BlockIndex:
-    array: Array
+    array: AnyArray
 
     def __getitem__(self, selection: BasicSelection) -> NDArrayLikeOrScalar:
         fields, new_selection = pop_fields(selection)
@@ -1296,11 +1303,11 @@ class MaskIndexer(CoordinateIndexer):
 
 @dataclass(frozen=True)
 class VIndex:
-    array: Array
+    array: AnyArray
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
     def __getitem__(
-        self, selection: CoordinateSelection | MaskSelection | Array
+        self, selection: CoordinateSelection | MaskSelection | AnyArray
     ) -> NDArrayLikeOrScalar:
         from zarr.core.array import Array
 
@@ -1347,7 +1354,7 @@ class AsyncVIndex(Generic[T_ArrayMetadata]):
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
     async def getitem(
-        self, selection: CoordinateSelection | MaskSelection | Array
+        self, selection: CoordinateSelection | MaskSelection | AnyArray
     ) -> NDArrayLikeOrScalar:
         # TODO deduplicate these internals with the sync version of getitem
         # TODO requires solving this circular sync issue: https://github.com/zarr-developers/zarr-python/pull/3083#discussion_r2230737448

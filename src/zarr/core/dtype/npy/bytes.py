@@ -899,7 +899,7 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
 
     def from_json_scalar(self, data: JSON, *, zarr_format: ZarrFormat) -> np.void:
         """
-        Read a JSON-serializable value as a np.void.
+        Read a JSON-serializable value as an np.void.
 
         Parameters
         ----------
@@ -1046,7 +1046,7 @@ class VariableLengthBytes(ZDType[np.dtypes.ObjectDType, bytes], HasObjectCodec):
             True if the input is a valid representation of this class in Zarr V3, False otherwise.
         """
 
-        return data == cls._zarr_v3_name
+        return data in (cls._zarr_v3_name, "bytes")
 
     @classmethod
     def _from_json_v2(cls, data: DTypeJSON) -> Self:

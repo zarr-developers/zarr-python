@@ -22,7 +22,7 @@ __all__ = [
 
 
 class TestNDArrayLike(np.ndarray):
-    """An example of a ndarray-like class"""
+    """An example of an ndarray-like class"""
 
     __test__ = False
 
@@ -45,7 +45,7 @@ class NDBufferUsingTestNDArrayLike(cpu.NDBuffer):
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
-        """Overwrite `NDBuffer.create` to create an TestNDArrayLike instance"""
+        """Overwrite `NDBuffer.create` to create a TestNDArrayLike instance"""
         ret = cls(TestNDArrayLike(shape=shape, dtype=dtype, order=order))
         if fill_value is not None:
             ret.fill(fill_value)

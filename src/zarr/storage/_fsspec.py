@@ -138,10 +138,6 @@ class FsspecStore(Store):
                 category=ZarrUserWarning,
                 stacklevel=2,
             )
-        if "://" in path and not path.startswith("http"):
-            # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
-            scheme, _ = path.split("://", maxsplit=1)
-            raise ValueError(f"path argument to FsspecStore must not include scheme ({scheme}://)")
 
     @classmethod
     def from_upath(
@@ -151,7 +147,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from an upath object.
+        Create an FsspecStore from a upath object.
 
         Parameters
         ----------
@@ -182,7 +178,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from a FSMap object.
+        Create an FsspecStore from an FSMap object.
 
         Parameters
         ----------
@@ -215,7 +211,7 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from a URL. The type of store is determined from the URL scheme.
+        Create an FsspecStore from a URL. The type of store is determined from the URL scheme.
 
         Parameters
         ----------
@@ -245,12 +241,6 @@ class FsspecStore(Store):
         fs, path = url_to_fs(url, **opts)
         if not fs.async_impl:
             fs = _make_async(fs)
-
-        # fsspec is not consistent about removing the scheme from the path, so check and strip it here
-        # https://github.com/fsspec/filesystem_spec/issues/1722
-        if "://" in path and not path.startswith("http"):
-            # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
-            path = fs._strip_protocol(path)
 
         return cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
 

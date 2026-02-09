@@ -14,6 +14,7 @@ from typing import (
     Final,
     Generic,
     Literal,
+    NotRequired,
     TypedDict,
     TypeVar,
     cast,
@@ -41,7 +42,7 @@ ShapeLike = Iterable[int] | int
 ChunkCoords = tuple[int, ...]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
-JSON = str | int | float | Mapping[str, "JSON"] | Sequence["JSON"] | None
+JSON = str | int | float | bool | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
@@ -52,6 +53,22 @@ TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 
 
 class NamedConfig(TypedDict, Generic[TName, TConfig]):
+    """
+    A typed dictionary representing an object with a name and configuration, where the configuration
+    is an optional mapping of string keys to values, e.g. another typed dictionary or a JSON object.
+
+    This class is generic with two type parameters: the type of the name (``TName``) and the type of
+    the configuration (``TConfig``).
+    """
+
+    name: ReadOnly[TName]
+    """The name of the object."""
+
+    configuration: NotRequired[ReadOnly[TConfig]]
+    """The configuration of the object. Not required."""
+
+
+class NamedRequiredConfig(TypedDict, Generic[TName, TConfig]):
     """
     A typed dictionary representing an object with a name and configuration, where the configuration
     is a mapping of string keys to values, e.g. another typed dictionary or a JSON object.
@@ -134,18 +151,24 @@ def parse_configuration(data: JSON) -> JSON:
 
 @overload
 def parse_named_configuration(
-    data: JSON, expected_name: str | None = None
+    data: JSON | NamedConfig[str, Any], expected_name: str | None = None
 ) -> tuple[str, dict[str, JSON]]: ...
 
 
 @overload
 def parse_named_configuration(
-    data: JSON, expected_name: str | None = None, *, require_configuration: bool = True
+    data: JSON | NamedConfig[str, Any],
+    expected_name: str | None = None,
+    *,
+    require_configuration: bool = True,
 ) -> tuple[str, dict[str, JSON] | None]: ...
 
 
 def parse_named_configuration(
-    data: JSON, expected_name: str | None = None, *, require_configuration: bool = True
+    data: JSON | NamedConfig[str, Any],
+    expected_name: str | None = None,
+    *,
+    require_configuration: bool = True,
 ) -> tuple[str, JSON | None]:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
