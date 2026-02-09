@@ -2,7 +2,7 @@ ci:
   autoupdate_commit_msg: "chore: update pre-commit hooks"
   autoupdate_schedule: "monthly"
   autofix_prs: false
-  skip: []  # pre-commit.ci only checks for updates, prek runs hooks locally
+  skip: [] # pre-commit.ci only checks for updates, prek runs hooks locally
 
 default_stages: [pre-commit, pre-push]
 
@@ -41,7 +41,8 @@ repos:
           - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
           - typing_extensions
           - universal-pathlib
-          - obstore>=0.5.1
+          - obstore>=0.7.0
+          - obspec>=0.1.0
           # Tests
           - pytest
           - hypothesis
