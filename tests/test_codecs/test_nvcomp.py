@@ -21,7 +21,7 @@ if typing.TYPE_CHECKING:
 # libraries in the pre-commit mypy environment.
 
 
-@gpu_test  # type: ignore[misc,unused-ignore]
+@gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize(
     "checksum",
@@ -64,7 +64,7 @@ def test_nvcomp_zstd(store: Store, checksum: bool, selection: tuple[slice, slice
             cp.testing.assert_array_equal(expected[:, :], a[:, :])
 
 
-@gpu_test  # type: ignore[misc,unused-ignore]
+@gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 @pytest.mark.parametrize("host_encode", [True, False])
 def test_gpu_codec_compatibility(host_encode: bool) -> None:
     # Ensure that the we can decode CPU-encoded data with the GPU
@@ -116,7 +116,7 @@ def test_gpu_codec_compatibility(host_encode: bool) -> None:
         xp.testing.assert_array_equal(result, read_data)
 
 
-@gpu_test  # type: ignore[misc,unused-ignore]
+@gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 def test_invalid_raises() -> None:
     with pytest.raises(ValueError):
         NvcompZstdCodec(level=100, checksum=False)
@@ -128,7 +128,7 @@ def test_invalid_raises() -> None:
         NvcompZstdCodec(checksum="False")  # type: ignore[arg-type,unused-ignore]
 
 
-@gpu_test  # type: ignore[misc,unused-ignore]
+@gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 def test_uses_default_codec() -> None:
     with zarr.config.enable_gpu():
         a = zarr.create_array(
@@ -141,7 +141,7 @@ def test_uses_default_codec() -> None:
         assert isinstance(a.metadata.codecs[-1], NvcompZstdCodec)
 
 
-@gpu_test  # type: ignore[misc,unused-ignore]
+@gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 def test_nvcomp_from_dict() -> None:
     config: dict[str, JSON] = {
         "name": "zstd",
@@ -155,7 +155,7 @@ def test_nvcomp_from_dict() -> None:
     assert codec.checksum is False
 
 
-@gpu_test  # type: ignore[misc,unused-ignore]
+@gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 def test_compute_encoded_chunk_size() -> None:
     codec = NvcompZstdCodec(level=0, checksum=False)
     with pytest.raises(NotImplementedError):
@@ -163,7 +163,7 @@ def test_compute_encoded_chunk_size() -> None:
             _input_byte_length=0,
             _chunk_spec=ArraySpec(
                 shape=(10, 10),
-                dtype=zarr.core.dtype.npy.int.Int32(),
+                dtype=zarr.core.dtype.Int32(),
                 fill_value=0,
                 config=ArrayConfig(order="C", write_empty_chunks=False),
                 prototype=buffer_prototype,
@@ -171,7 +171,7 @@ def test_compute_encoded_chunk_size() -> None:
         )
 
 
-@gpu_test  # type: ignore[misc,unused-ignore]
+@gpu_test  # type: ignore[untyped-decorator,unused-ignore]
 async def test_nvcomp_zstd_encode_none() -> None:
     codec = NvcompZstdCodec(level=0, checksum=False)
     chunks_and_specs = [
@@ -179,7 +179,7 @@ async def test_nvcomp_zstd_encode_none() -> None:
             None,
             ArraySpec(
                 shape=(10, 10),
-                dtype=zarr.core.dtype.npy.int.Int32(),
+                dtype=zarr.core.dtype.Int32(),
                 fill_value=0,
                 config=ArrayConfig(order="C", write_empty_chunks=False),
                 prototype=buffer_prototype,
