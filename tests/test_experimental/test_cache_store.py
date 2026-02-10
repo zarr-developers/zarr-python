@@ -32,6 +32,60 @@ class TestCacheStore:
         """Create a cached store instance."""
         return CacheStore(source_store, cache_store=cache_store, key_insert_times={})
 
+    async def test_with_read_only_round_trip(self) -> None:
+        """
+        Ensure that CacheStore.with_read_only returns another CacheStore with
+        the requested read_only state, shares cache state, and does not change
+        the original store's read_only flag.
+        """
+        source = MemoryStore()
+        cache = MemoryStore()
+
+        # Start from a read-only underlying store
+        source_ro = source.with_read_only(read_only=True)
+        cached_ro = CacheStore(store=source_ro, cache_store=cache, key_insert_times={})
+        assert cached_ro.read_only
+
+        buf = CPUBuffer.from_bytes(b"0123")
+
+        # Cannot write through the read-only cache store
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await cached_ro.set("foo", buf)
+
+        # Create a writable cache store from the read-only one
+        writer = cached_ro.with_read_only(read_only=False)
+        assert isinstance(writer, CacheStore)
+        assert not writer.read_only
+
+        # Cache configuration and state are shared
+        assert writer._cache is cached_ro._cache
+        assert writer._state is cached_ro._state
+        assert writer.key_insert_times is cached_ro.key_insert_times
+
+        # Writes via the writable cache store succeed and are cached
+        await writer.set("foo", buf)
+        out = await writer.get("foo", default_buffer_prototype())
+        assert out is not None
+        assert out.to_bytes() == buf.to_bytes()
+
+        # The original cache store remains read-only
+        assert cached_ro.read_only
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await cached_ro.set("bar", buf)
+
+        # Creating a read-only copy from the writable cache store works and is enforced
+        reader = writer.with_read_only(read_only=True)
+        assert isinstance(reader, CacheStore)
+        assert reader.read_only
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
+            await reader.set("baz", buf)
+
     async def test_basic_caching(self, cached_store: CacheStore, source_store: Store) -> None:
         """Test basic cache functionality."""
         # Store some data
@@ -519,7 +573,7 @@ class TestCacheStore:
 
         # Manually corrupt the tracking to trigger exception
         # Remove from one structure but not others to create inconsistency
-        del cached_store._cache_order["test_key"]
+        del cached_store._state._cache_order["test_key"]
 
         # Try to evict - should handle the KeyError gracefully
         await cached_store._evict_key("test_key")
@@ -540,7 +594,7 @@ class TestCacheStore:
         await cached_store._cache_value("phantom_key", test_data)
 
         # Verify it's in tracking
-        assert "phantom_key" in cached_store._cache_order
+        assert "phantom_key" in cached_store._state._cache_order
         assert "phantom_key" in cached_store.key_insert_times
 
         # Now try to get it - since it's not in source, should clean up tracking
@@ -548,7 +602,7 @@ class TestCacheStore:
         assert result is None
 
         # Should have cleaned up tracking
-        assert "phantom_key" not in cached_store._cache_order
+        assert "phantom_key" not in cached_store._state._cache_order
         assert "phantom_key" not in cached_store.key_insert_times
 
     async def test_accommodate_value_no_max_size(self) -> None:
@@ -609,7 +663,9 @@ class TestCacheStore:
         # Size should be consistent with tracked keys
         assert info["current_size"] <= 200  # Might pass
         # But verify actual cache store size matches tracking
-        total_size = sum(cached_store._key_sizes.get(k, 0) for k in cached_store._cache_order)
+        total_size = sum(
+            cached_store._state._key_sizes.get(k, 0) for k in cached_store._state._cache_order
+        )
         assert total_size == info["current_size"]  # WOULD FAIL
 
     async def test_concurrent_get_and_evict(self) -> None:
@@ -638,7 +694,7 @@ class TestCacheStore:
         # Verify consistency
         info = cached_store.cache_info()
         assert info["current_size"] <= 100
-        assert len(cached_store._cache_order) == len(cached_store._key_sizes)
+        assert len(cached_store._state._cache_order) == len(cached_store._state._key_sizes)
 
     async def test_eviction_actually_deletes_from_cache_store(self) -> None:
         """Test that eviction removes keys from cache_store, not just tracking."""
@@ -659,8 +715,8 @@ class TestCacheStore:
         await cached_store.set("key2", data2)
 
         # Check tracking - key1 should be removed
-        assert "key1" not in cached_store._cache_order
-        assert "key1" not in cached_store._key_sizes
+        assert "key1" not in cached_store._state._cache_order
+        assert "key1" not in cached_store._state._key_sizes
 
         # CRITICAL: key1 should also be removed from cache_store
         assert not await cache_store.exists("key1"), (
@@ -733,13 +789,13 @@ class TestCacheStore:
             await cached_store.set(f"key_{i}", data)
 
         # Every key in tracking should exist in cache_store
-        for key in cached_store._cache_order:
+        for key in cached_store._state._cache_order:
             assert await cache_store.exists(key), (
                 f"Key '{key}' is tracked but doesn't exist in cache_store"
             )
 
         # Every key in _key_sizes should exist in cache_store
-        for key in cached_store._key_sizes:
+        for key in cached_store._state._key_sizes:
             assert await cache_store.exists(key), (
                 f"Key '{key}' has size tracked but doesn't exist in cache_store"
             )
@@ -778,7 +834,7 @@ class TestCacheStore:
 
         # Attempt to evict should raise the exception
         with pytest.raises(RuntimeError, match="Simulated cache deletion failure"):
-            async with cached_store._lock:
+            async with cached_store._state._lock:
                 await cached_store._evict_key("test_key")
 
     async def test_cache_stats_method(self) -> None:
