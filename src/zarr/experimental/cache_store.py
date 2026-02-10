@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.storage._wrapper import WrapperStore
@@ -119,6 +119,11 @@ class CacheStore(WrapperStore[Store]):
         self._hits = 0
         self._misses = 0
         self._evictions = 0
+
+    def _with_store(self, store: Store) -> Self:
+        # Cannot support this operation because it would share a cache, but have a new store
+        # So cache keys would conflict
+        raise NotImplementedError("CacheStore does not support this operation.")
 
     def _is_key_fresh(self, key: str) -> bool:
         """Check if a cached key is still fresh based on max_age_seconds.
