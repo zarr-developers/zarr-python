@@ -744,19 +744,12 @@ class AsyncGroup:
             zarr_format=self.metadata.zarr_format,
         )
 
-        async for _, member in self.members(
+        async for child_path, member in self.members(
             max_depth=None, use_consolidated_for_children=use_consolidated_for_children
         ):
-            child_path = member.store_path.path
-            if new_group.store_path.path:
-                full_child_path = f"{new_group.store_path.path}/{child_path}"
-            else:
-                full_child_path = child_path
-            target_path = StorePath(store=new_group.store, path=full_child_path)
-
             if isinstance(member, AsyncGroup):
                 await self.from_store(
-                    store=target_path,
+                    store=new_group.store_path / child_path,
                     zarr_format=self.metadata.zarr_format,
                     overwrite=overwrite,
                     attributes=member.metadata.attributes,
