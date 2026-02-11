@@ -338,13 +338,19 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
 
 @pytest.fixture
 def copy_to_test_data(
-    request,
+    request: pytest.FixtureRequest,
 ) -> tuple[Group, np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]], int, bool]:
     """Fixture that creates test data for copy_to tests."""
-    zarr_format, shards, consolidate_metadata = request.param
+    zarr_format, shards, consolidate_metadata, src_path = request.param
 
     src_store = MemoryStore()
-    src = Group.from_store(src_store, attributes={"root": True}, zarr_format=zarr_format)
+    src = zarr.open_group(
+        src_store,
+        path=src_path or None,
+        mode="w",
+        zarr_format=zarr_format,
+        attributes={"root": True},
+    )
 
     subgroup = src.create_group("subgroup", attributes={"subgroup": True})
 
@@ -368,23 +374,28 @@ def copy_to_test_data(
     )
     src["dataset"] = arr_data
 
-    src = consolidate(src_store, src, consolidate_metadata, zarr_format)
+    src = consolidate(src_store, src, consolidate_metadata, zarr_format, path=src_path)
 
     return src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata
 
 
 def consolidate(
-    src_store: MemoryStore, src: Group, consolidate_metadata: bool, zarr_format: int
+    src_store: MemoryStore,
+    src: Group,
+    consolidate_metadata: bool,
+    zarr_format: int,
+    path: str = "",
 ) -> Group:
     if consolidate_metadata:
+        subgroup_path = f"{path}/subgroup" if path else "subgroup"
         if zarr_format == 3:
             with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
-                src = zarr.consolidate_metadata(src_store)
+                src = zarr.consolidate_metadata(src_store, path=path)
             with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
-                zarr.consolidate_metadata(src_store, path="subgroup")
+                zarr.consolidate_metadata(src_store, path=subgroup_path)
         else:
-            src = zarr.consolidate_metadata(src_store)
-            zarr.consolidate_metadata(src_store, path="subgroup")
+            src = zarr.consolidate_metadata(src_store, path=path)
+            zarr.consolidate_metadata(src_store, path=subgroup_path)
     return src
 
 
@@ -407,10 +418,11 @@ def check_consolidated_metadata(
 @pytest.mark.parametrize(
     "copy_to_test_data",
     [
-        (2, None, False),
-        (2, None, True),
-        (3, (50,), False),
-        (3, (50,), True),
+        (2, None, False, ""),
+        (2, None, True, ""),
+        (3, (50,), False, ""),
+        (3, (50,), True, ""),
+        (3, (50,), False, "nested/source"),
     ],
     indirect=True,
 )
@@ -445,10 +457,11 @@ def test_copy_to(
 @pytest.mark.parametrize(
     "copy_to_test_data",
     [
-        (2, None, False),
-        (2, None, True),
-        (3, (50,), False),
-        (3, (50,), True),
+        (2, None, False, ""),
+        (2, None, True, ""),
+        (3, (50,), False, ""),
+        (3, (50,), True, ""),
+        (3, (50,), False, "nested/source"),
     ],
     indirect=True,
 )
