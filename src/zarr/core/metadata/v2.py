@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     )
 
 import json
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field, fields
 
 import numpy as np
 
@@ -61,7 +61,7 @@ CompressorLikev2: TypeAlias = dict[str, JSON] | Numcodec | None
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
     shape: tuple[int, ...]
-    chunks: tuple[int, ...]
+    _chunks_tuple: tuple[int, ...] = field(repr=False)
     dtype: ZDType[TBaseDType, TBaseScalar]
     fill_value: int | float | str | bytes | None = None
     order: MemoryOrder = "C"
@@ -70,6 +70,11 @@ class ArrayV2Metadata(Metadata):
     compressor: Numcodec | None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
+
+    @cached_property
+    def chunks(self) -> tuple[int, ...]:
+        """Return the chunk specification."""
+        return self._chunks_tuple
 
     def __init__(
         self,
@@ -102,7 +107,7 @@ class ArrayV2Metadata(Metadata):
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "dtype", dtype)
-        object.__setattr__(self, "chunks", chunks_parsed)
+        object.__setattr__(self, "_chunks_tuple", chunks_parsed)
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "dimension_separator", dimension_separator_parsed)
@@ -196,6 +201,9 @@ class ArrayV2Metadata(Metadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
+        # Rename internal field to public JSON key
+        if "_chunks_tuple" in zarray_dict:
+            zarray_dict["chunks"] = zarray_dict.pop("_chunks_tuple")
         if _is_numcodec(zarray_dict["compressor"]):
             codec_config = zarray_dict["compressor"].get_config()
             # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
@@ -242,11 +250,30 @@ class ArrayV2Metadata(Metadata):
         chunk_identifier = self.dimension_separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
 
+    def _replace_with_field_mapping(self, **changes: Any) -> Self:
+        """Helper to use replace() with field name mapping."""
+        # Get current instance as dict, using internal field names
+        from dataclasses import fields as dc_fields
+
+        current_values = {f.name: getattr(self, f.name) for f in dc_fields(self)}
+        # Apply changes
+        current_values.update(changes)
+        # Map internal field name to __init__ parameter name
+        if "_chunks_tuple" in current_values:
+            current_values["chunks"] = current_values.pop("_chunks_tuple")
+        # Remove fields that are not in __init__ (init=False fields)
+        init_field_names = {f.name for f in dc_fields(self) if f.init}
+        if "_chunks_tuple" in init_field_names:
+            init_field_names.remove("_chunks_tuple")
+            init_field_names.add("chunks")
+        current_values = {k: v for k, v in current_values.items() if k in init_field_names}
+        return type(self)(**current_values)
+
     def update_shape(self, shape: tuple[int, ...]) -> Self:
-        return replace(self, shape=shape)
+        return self._replace_with_field_mapping(shape=shape)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
-        return replace(self, attributes=attributes)
+        return self._replace_with_field_mapping(attributes=attributes)
 
 
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:

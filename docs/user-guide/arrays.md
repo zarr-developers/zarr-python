@@ -592,6 +592,120 @@ In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is
 This means that `10*10` chunks are stored in each shard, and there are `10*10` shards in total.
 Without the `shards` argument, there would be 10,000 chunks stored as individual files.
 
+## Variable Chunking (Zarr v3)
+
+!!! warning "Experimental Feature"
+    Variable chunking with `RectilinearChunkGrid` is an experimental feature and may change
+    in future releases. This feature is expected to stabilize in Zarr version 3.3.
+
+In addition to regular chunking where all chunks have the same size, Zarr v3 supports
+**variable chunking** (also called rectilinear chunking), where chunks can have different
+sizes along each dimension. This is useful when your data has non-uniform structure or
+when you need to align chunks with existing data partitions.
+
+The specification for this chunking scheme can be found [here](https://github.com/zarr-developers/zarr-extensions/tree/main/chunk-grids/rectilinear/).
+### Basic usage
+
+To create an array with variable chunking, provide a nested sequence to the `chunks`
+parameter instead of a regular tuple:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+# Create an array with variable chunk sizes
+z = zarr.create_array(
+    store='data/example-21.zarr',
+    shape=(60, 100),
+    chunks=[[10, 20, 30], [25, 25, 25, 25]],  # Variable chunks
+    dtype='float32',
+    zarr_format=3
+)
+print(z)
+print(f"Chunk grid type: {type(z.metadata.chunk_grid).__name__}")
+```
+
+In this example, the first dimension is divided into 3 chunks with sizes 10, 20, and 30
+(totaling 60), and the second dimension is divided into 4 chunks of size 25 (totaling 100).
+
+### Reading and writing
+
+Arrays with variable chunking support the same read/write operations as regular arrays:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+# Write data
+data = np.arange(60 * 100, dtype='float32').reshape(60, 100)
+z[:] = data
+
+# Read data back
+result = z[:]
+print(f"Data matches: {np.all(result == data)}")
+print(f"Slice [10:30, 50:75]: {z[10:30, 50:75].shape}")
+```
+
+### Accessing chunk information
+
+With variable chunking, the standard `.chunks` property is not available since chunks
+have different sizes. Instead, access chunk information through the `.chunk_grid` property:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+from zarr.core.chunk_grids import RectilinearChunkGrid
+
+# Access the chunk grid
+chunk_grid = z.chunk_grid
+print(f"Chunk grid type: {type(chunk_grid).__name__}")
+
+# Get chunk shapes for each dimension
+if isinstance(chunk_grid, RectilinearChunkGrid):
+    print(f"Dimension 0 chunk sizes: {chunk_grid.chunk_shapes[0]}")
+    print(f"Dimension 1 chunk sizes: {chunk_grid.chunk_shapes[1]}")
+    print(f"Total number of chunks: {chunk_grid.get_nchunks((60, 100))}")
+```
+
+### Use cases
+
+Variable chunking is particularly useful for:
+
+1. **Irregular time series**: When your data has non-uniform time intervals, you can
+   create chunks that align with your sampling periods.
+
+2. **Aligning with partitions**: When you need to match chunk boundaries with existing
+   data partitions or structural boundaries in your data.
+
+3. **Optimizing access patterns**: When certain regions of your array are accessed more
+   frequently, you can use smaller chunks there for finer-grained access.
+
+### Example: Time series with irregular intervals
+
+```python exec="true" session="arrays" source="above" result="ansi"
+# Daily measurements for one year, chunked by month
+# Each chunk corresponds to one month (varying from 28-31 days)
+z_timeseries = zarr.create_array(
+    store='data/example-22.zarr',
+    shape=(365, 100),  # 365 days, 100 measurements per day
+    chunks=[[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], [100]],  # Days per month
+    dtype='float64',
+    zarr_format=3
+)
+print(f"Created array with shape {z_timeseries.shape}")
+print(f"Chunk shapes: {z_timeseries.chunk_grid.chunk_shapes}")
+print(f"Number of chunks: {len(z_timeseries.chunk_grid.chunk_shapes[0])} months")
+```
+
+### Limitations
+
+Variable chunking has some important limitations:
+
+1. **Zarr v3 only**: This feature is only available when using `zarr_format=3`.
+   Attempting to use variable chunks with `zarr_format=2` will raise an error.
+
+2. **Not compatible with sharding**: You cannot use variable chunking together with
+   the sharding feature. Arrays must use either variable chunking or sharding, but not both.
+
+3. **Not compatible with `from_array()`**: Variable chunking cannot be used when creating
+   arrays from existing data using [`zarr.from_array`][]. This is because the function needs
+   to partition the input data, which requires regular chunk sizes.
+
+4. **No `.chunks` property**: For arrays with variable chunking, accessing the `.chunks`
+   property will raise a `NotImplementedError`. Use `.chunk_grid.chunk_shapes` instead.
+
 ## Missing features in 3.0
 
 The following features have not been ported to 3.0 yet.

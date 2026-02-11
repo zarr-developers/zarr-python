@@ -83,7 +83,7 @@ class ArrayInfo:
     _fill_value: object
     _shape: tuple[int, ...]
     _shard_shape: tuple[int, ...] | None = None
-    _chunk_shape: tuple[int, ...] | None = None
+    _chunk_shape: tuple[int, ...] | tuple[tuple[int, ...], ...] | None = None
     _order: Literal["C", "F"]
     _read_only: bool
     _store_type: str
