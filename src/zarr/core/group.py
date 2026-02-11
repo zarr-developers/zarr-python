@@ -713,6 +713,9 @@ class AsyncGroup:
         """
         Copy this group and all its contents to a new store.
 
+        This performs a raw byte-level copy of all data, without decoding or
+        re-encoding array contents.
+
         Parameters
         ----------
         store : StoreLike
@@ -731,62 +734,63 @@ class AsyncGroup:
         AsyncGroup
             The new group in the target store.
         """
-        if path is not None:
-            target_store = await make_store_path(store, path=path)
+        target_store_path = await make_store_path(store, path=path or "")
+
+        if overwrite:
+            dst_store = target_store_path.store
+            dst_prefix = target_store_path.path + "/" if target_store_path.path else ""
+            async for key in dst_store.list_prefix(dst_prefix):
+                await dst_store.delete(key)
         else:
-            target_store = await make_store_path(store)
+            await ensure_no_existing_node(target_store_path, zarr_format=self.metadata.zarr_format)
 
-        new_group = await self.from_store(
-            target_store,
-            overwrite=overwrite,
-            attributes=self.metadata.attributes,
-            consolidated_metadata=self.metadata.consolidated_metadata,
-            zarr_format=self.metadata.zarr_format,
-        )
+        src_store = self.store_path.store
+        src_prefix = self.store_path.path + "/" if self.store_path.path else ""
+        dst_store = target_store_path.store
+        dst_prefix = target_store_path.path + "/" if target_store_path.path else ""
 
+        prototype = default_buffer_prototype()
+
+        # Determine the metadata keys for a group based on zarr format
+        group_metadata_keys: tuple[str, ...]
+        if self.metadata.zarr_format == 3:
+            group_metadata_keys = (ZARR_JSON,)
+        else:
+            group_metadata_keys = (ZGROUP_JSON, ZATTRS_JSON, ZMETADATA_V2_JSON)
+
+        async def _copy_key(src_key: str, dst_key: str) -> None:
+            """Copy a single key from source to destination store."""
+            data = await src_store.get(src_key, prototype=prototype)
+            if data is not None:
+                await dst_store.set(dst_key, data)
+
+        # Copy the root group's metadata keys
+        for key in group_metadata_keys:
+            await _copy_key(
+                f"{src_prefix}{key}" if src_prefix else key,
+                f"{dst_prefix}{key}" if dst_prefix else key,
+            )
+
+        # Copy all children discovered via members()
         async for child_path, member in self.members(
             max_depth=None, use_consolidated_for_children=use_consolidated_for_children
         ):
             if isinstance(member, AsyncGroup):
-                await self.from_store(
-                    store=new_group.store_path / child_path,
-                    zarr_format=self.metadata.zarr_format,
-                    overwrite=overwrite,
-                    attributes=member.metadata.attributes,
-                    consolidated_metadata=member.metadata.consolidated_metadata,
-                )
+                # For groups, copy only the known metadata keys
+                for key in group_metadata_keys:
+                    src_key = f"{src_prefix}{child_path}/{key}"
+                    dst_key = f"{dst_prefix}{child_path}/{key}"
+                    await _copy_key(src_key, dst_key)
             else:
-                kwargs = {}
-                if self.metadata.zarr_format == 3:
-                    kwargs["chunk_key_encoding"] = member.metadata.chunk_key_encoding
-                    kwargs["dimension_names"] = member.metadata.dimension_names
-                else:
-                    kwargs["chunk_key_encoding"] = {
-                        "name": "v2",
-                        "separator": member.metadata.dimension_separator,
-                    }
-                    # Serializer done this way in case of having zarr_format 2, otherwise mypy complains.
-                new_array = await new_group.create_array(
-                    name=child_path,
-                    shape=member.shape,
-                    dtype=member.dtype,
-                    chunks=member.chunks,
-                    shards=member.shards,
-                    filters=member.filters,
-                    compressors=member.compressors,
-                    serializer=member.serializer if member.serializer is not None else "auto",
-                    fill_value=member.metadata.fill_value,
-                    attributes=member.attrs,
-                    overwrite=overwrite,
-                    config={"order": member.order},
-                    **kwargs,
-                )
+                # For arrays, list all keys under the array's prefix to get
+                # metadata + only the chunks that actually exist in the store
+                array_src_prefix = f"{src_prefix}{child_path}/"
+                async for src_key in src_store.list_prefix(array_src_prefix):
+                    relative_key = src_key.removeprefix(src_prefix)
+                    dst_key = f"{dst_prefix}{relative_key}" if dst_prefix else relative_key
+                    await _copy_key(src_key, dst_key)
 
-                for region in member._iter_shard_regions():
-                    data = await member.getitem(selection=region)
-                    await new_array.setitem(selection=region, value=data)
-
-        return new_group
+        return await type(self).open(target_store_path, zarr_format=self.metadata.zarr_format)
 
     async def setitem(self, key: str, value: Any) -> None:
         """
@@ -2000,7 +2004,7 @@ class Group(SyncMixin):
 
         Returns
         -------
-        AsyncGroup
+        Group
             The new group in the target store.
         """
         return Group(
