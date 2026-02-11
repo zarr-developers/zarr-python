@@ -1887,7 +1887,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = self.metadata.update_shape(new_shape)
 
-        if delete_outside_chunks:
+        # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
+        only_growing = all(
+            new >= old for new, old in zip(new_shape, self.metadata.shape, strict=True)
+        )
+
+        if delete_outside_chunks and not only_growing:
             # Remove all chunks outside of the new shape
             old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
             new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
