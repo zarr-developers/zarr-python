@@ -109,26 +109,50 @@ All tests are automatically run via GitHub Actions for every pull request and mu
 
 > **Note:** Previous versions of Zarr-Python made extensive use of doctests. These tests were not maintained during the 3.0 refactor but may be brought back in the future. See issue #2614 for more details.
 
-### Code standards - using pre-commit
+### Code standards - using prek
 
 All code must conform to the PEP8 standard. Regarding line length, lines up to 100 characters are allowed, although please try to keep under 90 wherever possible.
 
-`Zarr` uses a set of `pre-commit` hooks and the `pre-commit` bot to format, type-check, and prettify the codebase. `pre-commit` can be installed locally by running:
+`Zarr` uses a set of git hooks managed by [`prek`](https://github.com/j178/prek), a fast, Rust-based pre-commit hook manager that is fully compatible with `.pre-commit-config.yaml` files. `prek` can be installed locally by running:
 
 ```bash
-python -m pip install pre-commit
+uv tool install prek
+```
+
+or:
+
+```bash
+pip install prek
 ```
 
 The hooks can be installed locally by running:
 
 ```bash
-pre-commit install
+prek install
 ```
 
-This would run the checks every time a commit is created locally. These checks will also run on every commit pushed to an open PR, resulting in some automatic styling fixes by the `pre-commit` bot. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
+This will run the checks every time a commit is created locally. The checks will by default only run on the files modified by a commit, but the checks can be triggered for all the files by running:
 
 ```bash
-pre-commit run --all-files
+prek run --all-files
+```
+
+You can also run hooks only for files in a specific directory:
+
+```bash
+prek run --directory src/zarr
+```
+
+Or run hooks for files changed in the last commit:
+
+```bash
+prek run --last-commit
+```
+
+To list all available hooks:
+
+```bash
+prek list
 ```
 
 If you would like to skip the failing checks and push the code for further discussion, use the `--no-verify` option with `git commit`.
@@ -143,7 +167,7 @@ Zarr strives to maintain 100% test coverage under the latest Python stable relea
 hatch env run --env test.py3.12-2.2-optional run-coverage
 ```
 
-will automatically run the test suite with coverage and produce a XML coverage report. This should be 100% before code can be accepted into the main code base.
+will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
 
 You can also generate an HTML coverage report by running:
 
@@ -173,6 +197,40 @@ Hatch can also be used to serve continuously updating version of the documentati
 hatch --env docs run serve
 ```
 
+#### Adding executable code blocks in the documentation
+
+Zarr uses [Markdown Exec](https://pawamoy.github.io/markdown-exec/usage/) to execute code blocks in Markdown files. Add `exec="on"` to a code block header for it to be executed when the docs are built. For example:
+
+````md
+```python exec="on"
+print("Hello world")
+```
+````
+
+Below are other useful options that can be added to the code block. See [Markdown Exec's documentation](https://pawamoy.github.io/markdown-exec/usage/#options-summary) for a full list:
+
+  - `source="above"` makes sure the code within the code block is also rendered in the documentation (rather than just the output).
+  - `session="<name-of-docs-page>"` executes code blocks in a named session reusing previously defined variables.
+  - `result="ansi"` or `result="html"` to render the output. If the code does not produce output, you should leave off the `result` option to prevent an empty cell from rendering in the docs.
+
+For example:
+
+````md
+```python exec="true" session="contributing" source="above" result="ansi"
+print("Hello world")
+```
+````
+
+renders as:
+
+```python exec="true" session="contributing" source="above" result="ansi"
+print("Hello world")
+```
+
+#### Building documentation without executing code blocks
+
+Sometimes, you may want the documentation to build quicker. You can disable code block execution by commenting out the [markdown-exec](https://github.com/zarr-developers/zarr-python/blob/884a8c91afcc3efe28b3da952be3b85125c453cb/mkdocs.yml#L132 plugin in the mkdocs configuration file). This will make code blocks and cross references render incorrectly (i.e., expect build warnings), but also reduces build time by ~3x. Be sure to undo the commenting out before opening your pull request.
+
 ### Changelog
 
 zarr-python uses [towncrier](https://towncrier.readthedocs.io/en/stable/tutorial.html) to manage release notes. Most pull requests should include at least one news fragment describing the changes. To add a release note, you'll need the GitHub issue or pull request number and the type of your change (`feature`, `bugfix`, `doc`, `removal`, `misc`). With that, run `towncrier create` with your development environment, which will prompt you for the issue number, change type, and the news text:
@@ -191,13 +249,13 @@ Pull requests submitted by an external contributor should be reviewed and approv
 
 Pull requests should not be merged until all CI checks have passed (GitHub Actions, Codecov) against code that has had the latest main merged in.
 
-Before merging the milestone must be set either to decide whether a PR will be in the next patch, minor, or major release. The next section explains which types of changes go in each release.
+Before merging, the milestone must be set to decide whether a PR will be in the next patch, minor, or major release. The next section explains which types of changes go in each release.
 
 ## Compatibility and versioning policies
 
 ### Versioning
 
-Versions of this library are identified by a triplet of integers with the form `<major>.<minor>.<patch>`, for example `3.0.4`. A release of `zarr-python` is associated with a new version identifier. That new identifier is generated by incrementing exactly one of the components of the previous version identifier by 1. When incrementing the `major` component of the version identifier, the `minor` and `patch` components is reset to 0. When incrementing the minor component, the patch component is reset to 0.
+Versions of this library are identified by a triplet of integers with the form `<major>.<minor>.<patch>`, for example `3.0.4`. A release of `zarr-python` is associated with a new version identifier. That new identifier is generated by incrementing exactly one of the components of the previous version identifier by 1. When incrementing the `major` component of the version identifier, the `minor` and `patch` components are reset to 0. When incrementing the minor component, the patch component is reset to 0.
 
 Releases are classified by the library changes contained in that release. This classification determines which component of the version identifier is incremented on release.
 
@@ -205,7 +263,7 @@ Releases are classified by the library changes contained in that release. This c
 
   Users and downstream projects should carefully consider the impact of a major release before adopting it. In advance of a major release, developers should communicate the scope of the upcoming changes, and help users prepare for them.
 
-* **minor** releases (for example, `3.0.0` -> `3.1.0`) are for changes that do not require significant effort from most users or downstream downstream projects to respond to. API changes are possible in minor releases if the burden on users imposed by those changes is sufficiently small.
+* **minor** releases (for example, `3.0.0` -> `3.1.0`) are for changes that do not require significant effort from most users or downstream projects to respond to. API changes are possible in minor releases if the burden on users imposed by those changes is sufficiently small.
 
   For example, a recently released API may need fixes or refinements that are breaking, but low impact due to the recency of the feature. Such API changes are permitted in a minor release.
 
@@ -213,11 +271,11 @@ Releases are classified by the library changes contained in that release. This c
 
 * **patch** releases (for example, `3.1.0` -> `3.1.1`) are for changes that contain no breaking or behaviour changes for downstream projects or users. Examples of changes suitable for a patch release are bugfixes and documentation improvements.
 
-  Users should always feel safe upgrading to a the latest patch release.
+  Users should always feel safe upgrading to the latest patch release.
 
 Note that this versioning scheme is not consistent with [Semantic Versioning](https://semver.org/). Contrary to SemVer, the Zarr library may release breaking changes in `minor` releases, or even `patch` releases under exceptional circumstances. But we should strive to avoid doing so.
 
-A better model for our versioning scheme is [Intended Effort Versioning](https://jacobtomlinson.dev/effver/), or "EffVer". The guiding principle off EffVer is to categorize releases based on the *expected effort required to upgrade to that release*.
+A better model for our versioning scheme is [Intended Effort Versioning](https://jacobtomlinson.dev/effver/), or "EffVer". The guiding principle of EffVer is to categorize releases based on the *expected effort required to upgrade to that release*.
 
 Zarr developers should make changes as smooth as possible for users. This means making backwards-compatible changes wherever possible. When a backwards-incompatible change is necessary, users should be notified well in advance, e.g. via informative deprecation warnings.
 
@@ -230,4 +288,13 @@ If an existing Zarr format version changes, or a new version of the Zarr format 
 ## Release procedure
 
 Open an issue on GitHub announcing the release using the release checklist template:
-[https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md>). The release checklist includes all steps necessary for the release.
+[https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md](https://github.com/zarr-developers/zarr-python/issues/new?template=release-checklist.md). The release checklist includes all steps necessary for the release.
+
+## Benchmarks
+
+Zarr uses [pytest-benchmark](https://pytest-benchmark.readthedocs.io/en/latest/) for running
+performance benchmarks as part of our test suite. The benchmarks are found in `tests/benchmarks`.
+By default pytest is configured to run these benchmarks as plain tests (i.e., no benchmarking). To run
+a benchmark with timing measurements, use the `--benchmark-enable` when invoking `pytest`.
+
+The benchmarks are run as part of the continuous integration suite through [codspeed](https://codspeed.io/zarr-developers/zarr-python).
