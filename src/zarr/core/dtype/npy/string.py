@@ -742,6 +742,43 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
 
         dtype_cls = np.dtypes.StringDType
 
+        @classmethod
+        def from_native_dtype(cls, dtype: TBaseDType) -> Self:
+            """
+            Create an instance of this data type from a compatible NumPy data type.
+            We reject NumPy StringDType instances that have the `na_object` field set,
+            because this is not representable by the Zarr `string` data type.
+
+            Parameters
+            ----------
+            dtype : TBaseDType
+                The native data type.
+
+            Returns
+            -------
+            Self
+                An instance of this data type.
+
+            Raises
+            ------
+            DataTypeValidationError
+                If the input is not compatible with this data type.
+            ValueError
+                If the input is `numpy.dtypes.StringDType` and has `na_object` set.
+            """
+            if cls._check_native_dtype(dtype):
+                if hasattr(dtype, "na_object"):
+                    msg = (
+                        f"Zarr data type resolution from {dtype} failed. "
+                        "Attempted to resolve a zarr data type from a `numpy.dtypes.StringDType` "
+                        "with `na_object` set, which is not supported."
+                    )
+                    raise ValueError(msg)
+                return cls()
+            raise DataTypeValidationError(
+                f"Invalid data type: {dtype}. Expected an instance of {cls.dtype_cls}"
+            )
+
         def to_native_dtype(self) -> np.dtypes.StringDType:
             """
             Create a NumPy string dtype from this VariableLengthUTF8 ZDType.
