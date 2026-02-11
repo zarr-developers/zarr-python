@@ -12,7 +12,7 @@ root = zarr.create_group(store="memory://groups-demo")
 print(root)
 ```
 
-Groups have a similar API to the Group class from [h5py](https://www.h5py.org/).  For example, groups can contain other groups:
+Groups have a similar API to the Group class from [h5py](https://www.h5py.org/). For example, groups can contain other groups:
 
 ```python exec="true" session="groups" source="above"
 foo = root.create_group('foo')
