@@ -1,10 +1,24 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import pickle
 from collections import defaultdict
-from typing import TYPE_CHECKING, Generic, Self, TypedDict, TypeVar
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Generic, Protocol, Self, TypedDict, TypeVar
+
+from obspec import (
+    DeleteAsync,
+    GetAsync,
+    GetRangeAsync,
+    GetRangesAsync,
+    HeadAsync,
+    ListAsync,
+    ListWithDelimiterAsync,
+    OffsetRange,
+    PutAsync,
+    SuffixRange,
+)
+from obspec.exceptions import AlreadyExistsError, NotSupportedError, map_exception
 
 from zarr.abc.store import (
     ByteRequest,
@@ -20,8 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
     from typing import Any
 
-    from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
-    from obstore.store import ObjectStore as _UpstreamObjectStore
+    from obspec import ListResult, ObjectMeta
 
     from zarr.core.buffer import Buffer, BufferPrototype
 
@@ -34,7 +47,21 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
-T_Store = TypeVar("T_Store", bound="_UpstreamObjectStore")
+class ObspecInput(
+    DeleteAsync,
+    GetAsync,
+    GetRangeAsync,
+    GetRangesAsync,
+    HeadAsync,
+    ListAsync,
+    ListWithDelimiterAsync,
+    PutAsync,
+    Protocol,
+):
+    pass
+
+
+T_Store = TypeVar("T_Store", bound=ObspecInput)
 
 
 class ObjectStore(Store, Generic[T_Store]):
@@ -98,42 +125,44 @@ class ObjectStore(Store, Generic[T_Store]):
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         # docstring inherited
-        import obstore as obs
 
         try:
             if byte_range is None:
-                resp = await obs.get_async(self.store, key)
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+                resp = await self.store.get_async(key)
+                return prototype.buffer.from_bytes(await resp.buffer_async())  # type: ignore[arg-type]
             elif isinstance(byte_range, RangeByteRequest):
-                bytes = await obs.get_range_async(
-                    self.store, key, start=byte_range.start, end=byte_range.end
+                bytes = await self.store.get_range_async(
+                    key, start=byte_range.start, end=byte_range.end
                 )
                 return prototype.buffer.from_bytes(bytes)  # type: ignore[arg-type]
             elif isinstance(byte_range, OffsetByteRequest):
-                resp = await obs.get_async(
-                    self.store, key, options={"range": {"offset": byte_range.offset}}
+                resp = await self.store.get_async(
+                    key, options={"range": {"offset": byte_range.offset}}
                 )
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+                return prototype.buffer.from_bytes(await resp.buffer_async())  # type: ignore[arg-type]
             elif isinstance(byte_range, SuffixByteRequest):
                 # some object stores (Azure) don't support suffix requests. In this
                 # case, our workaround is to first get the length of the object and then
                 # manually request the byte range at the end.
                 try:
-                    resp = await obs.get_async(
-                        self.store, key, options={"range": {"suffix": byte_range.suffix}}
+                    resp = await self.store.get_async(
+                        key, options={"range": {"suffix": byte_range.suffix}}
                     )
-                    return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
-                except obs.exceptions.NotSupportedError:
-                    head_resp = await obs.head_async(self.store, key)
-                    file_size = head_resp["size"]
-                    suffix_len = byte_range.suffix
-                    buffer = await obs.get_range_async(
-                        self.store,
-                        key,
-                        start=file_size - suffix_len,
-                        length=suffix_len,
-                    )
-                    return prototype.buffer.from_bytes(buffer)  # type: ignore[arg-type]
+                    return prototype.buffer.from_bytes(await resp.buffer_async())  # type: ignore[arg-type]
+                except Exception as e:
+                    if isinstance(map_exception(e), NotSupportedError):
+                        head_resp = await self.store.head_async(key)
+                        file_size = head_resp["size"]
+                        suffix_len = byte_range.suffix
+                        buffer = await self.store.get_range_async(
+                            key,
+                            start=file_size - suffix_len,
+                            length=suffix_len,
+                        )
+                        return prototype.buffer.from_bytes(buffer)  # type: ignore[arg-type]
+                    else:
+                        raise e from None
+
             else:
                 raise ValueError(f"Unexpected byte_range, got {byte_range}")
         except _ALLOWED_EXCEPTIONS:
@@ -149,10 +178,9 @@ class ObjectStore(Store, Generic[T_Store]):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        import obstore as obs
 
         try:
-            await obs.head_async(self.store, key)
+            await self.store.head_async(key)
         except FileNotFoundError:
             return False
         else:
@@ -165,21 +193,26 @@ class ObjectStore(Store, Generic[T_Store]):
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
-        import obstore as obs
 
         self._check_writable()
 
         buf = value.as_buffer_like()
-        await obs.put_async(self.store, key, buf)
+        await self.store.put_async(key, buf)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
-        import obstore as obs
 
         self._check_writable()
         buf = value.as_buffer_like()
-        with contextlib.suppress(obs.exceptions.AlreadyExistsError):
-            await obs.put_async(self.store, key, buf, mode="create")
+        try:
+            await self.store.put_async(key, buf, mode="create")
+        # Suppress an AlreadyExistsError
+        except Exception as e:
+            mapped_exc = map_exception(e)
+            if isinstance(mapped_exc, AlreadyExistsError):
+                pass
+            else:
+                raise mapped_exc from None
 
     @property
     def supports_deletes(self) -> bool:
@@ -188,7 +221,6 @@ class ObjectStore(Store, Generic[T_Store]):
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        import obstore as obs
 
         self._check_writable()
 
@@ -196,18 +228,25 @@ class ObjectStore(Store, Generic[T_Store]):
         # when deleting a non-existent key, while others such as S3 and in-memory do
         # not. We suppress the error to make the behavior consistent across all obstore
         # stores. This is also in line with the behavior of the other Zarr store adapters.
-        with contextlib.suppress(FileNotFoundError):
-            await obs.delete_async(self.store, key)
+        try:
+            await self.store.delete_async(key)
+        except Exception as e:
+            mapped_exc = map_exception(e)
+            # The obspec NotFoundError subclasses from the global FileNotFoundError
+            # https://developmentseed.org/obspec/latest/api/exceptions/#obspec.exceptions.NotFoundError
+            if isinstance(mapped_exc, FileNotFoundError):
+                pass
+            else:
+                raise mapped_exc from None
 
     async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
-        import obstore as obs
 
         self._check_writable()
         if prefix != "" and not prefix.endswith("/"):
             prefix += "/"
 
-        metas = await obs.list(self.store, prefix).collect_async()
+        metas = [obj async for batch in self.store.list_async(prefix) for obj in batch]
         keys = [(m["path"],) for m in metas]
         await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
 
@@ -217,9 +256,7 @@ class ObjectStore(Store, Generic[T_Store]):
         return True
 
     async def _list(self, prefix: str | None = None) -> AsyncGenerator[ObjectMeta, None]:
-        import obstore as obs
-
-        objects: ListStream[Sequence[ObjectMeta]] = obs.list(self.store, prefix=prefix)
+        objects = self.store.list_async(prefix=prefix)
         async for batch in objects:
             for item in batch:
                 yield item
@@ -234,16 +271,14 @@ class ObjectStore(Store, Generic[T_Store]):
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        import obstore as obs
 
-        coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
+        coroutine = self.store.list_with_delimiter_async(prefix=prefix)
         return _transform_list_dir(coroutine, prefix)
 
     async def getsize(self, key: str) -> int:
         # docstring inherited
-        import obstore as obs
 
-        resp = await obs.head_async(self.store, key)
+        resp = await self.store.head_async(key)
         return resp["size"]
 
     async def getsize_prefix(self, prefix: str) -> int:
@@ -333,7 +368,7 @@ class _Response(TypedDict):
 
 
 async def _make_bounded_requests(
-    store: _UpstreamObjectStore,
+    store: ObspecInput,
     path: str,
     requests: list[_BoundedRequest],
     prototype: BufferPrototype,
@@ -345,12 +380,11 @@ async def _make_bounded_requests(
     within a single file, and will e.g. merge concurrent requests. This only uses one
     single Python coroutine.
     """
-    import obstore as obs
 
     starts = [r["start"] for r in requests]
     ends = [r["end"] for r in requests]
     async with semaphore:
-        responses = await obs.get_ranges_async(store, path=path, starts=starts, ends=ends)
+        responses = await store.get_ranges_async(path=path, starts=starts, ends=ends)
 
     buffer_responses: list[_Response] = []
     for request, response in zip(requests, responses, strict=True):
@@ -365,7 +399,7 @@ async def _make_bounded_requests(
 
 
 async def _make_other_request(
-    store: _UpstreamObjectStore,
+    store: ObspecInput,
     request: _OtherRequest,
     prototype: BufferPrototype,
     semaphore: asyncio.Semaphore,
@@ -375,14 +409,13 @@ async def _make_other_request(
     We return a `list[_Response]` for symmetry with `_make_bounded_requests` so that all
     futures can be gathered together.
     """
-    import obstore as obs
 
     async with semaphore:
         if request["range"] is None:
-            resp = await obs.get_async(store, request["path"])
+            resp = await store.get_async(request["path"])
         else:
-            resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
-        buffer = await resp.bytes_async()
+            resp = await store.get_async(request["path"], options={"range": request["range"]})
+        buffer = await resp.buffer_async()
 
     return [
         {
@@ -393,7 +426,7 @@ async def _make_other_request(
 
 
 async def _make_suffix_request(
-    store: _UpstreamObjectStore,
+    store: ObspecInput,
     request: _SuffixRequest,
     prototype: BufferPrototype,
     semaphore: asyncio.Semaphore,
@@ -407,18 +440,19 @@ async def _make_suffix_request(
     We return a `list[_Response]` for symmetry with `_make_bounded_requests` so that all
     futures can be gathered together.
     """
-    import obstore as obs
-
     async with semaphore:
         try:
-            resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
-            buffer = await resp.bytes_async()
-        except obs.exceptions.NotSupportedError:
-            head_resp = await obs.head_async(store, request["path"])
+            resp = await store.get_async(request["path"], options={"range": request["range"]})
+            buffer = await resp.buffer_async()
+        except Exception as e:
+            mapped_exc = map_exception(e)
+            if not isinstance(mapped_exc, NotSupportedError):
+                raise mapped_exc from None
+
+            head_resp = await store.head_async(request["path"])
             file_size = head_resp["size"]
             suffix_len = request["range"]["suffix"]
-            buffer = await obs.get_range_async(
-                store,
+            buffer = await store.get_range_async(
                 request["path"],
                 start=file_size - suffix_len,
                 length=suffix_len,
@@ -433,7 +467,7 @@ async def _make_suffix_request(
 
 
 async def _get_partial_values(
-    store: _UpstreamObjectStore,
+    store: ObspecInput,
     prototype: BufferPrototype,
     key_ranges: Iterable[tuple[str, ByteRequest | None]],
 ) -> list[Buffer | None]:
