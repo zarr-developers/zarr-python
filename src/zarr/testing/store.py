@@ -4,7 +4,7 @@ import asyncio
 import json
 import pickle
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING
 
 from zarr.storage import WrapperStore
 
@@ -31,11 +31,7 @@ from zarr.testing.utils import assert_bytes_equal
 __all__ = ["StoreTests"]
 
 
-S = TypeVar("S", bound=Store)
-B = TypeVar("B", bound=Buffer)
-
-
-class StoreTests(Generic[S, B]):
+class StoreTests[S: Store, B: Buffer]:
     store_cls: type[S]
     buffer_cls: type[B]
 

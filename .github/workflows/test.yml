@@ -20,23 +20,23 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ['3.11', '3.12', '3.13']
+        python-version: ['3.12', '3.13', '3.14']
         dependency-set: ["minimal", "optional"]
         os: ["ubuntu-latest"]
         include:
-          - python-version: '3.11'
+          - python-version: '3.12'
             dependency-set: 'optional'
             os: 'macos-latest'
 
-          - python-version: '3.13'
+          - python-version: '3.14'
             dependency-set: 'optional'
             os: 'macos-latest'
 
-          - python-version: '3.11'
+          - python-version: '3.12'
             dependency-set: 'optional'
             os: 'windows-latest'
 
-          - python-version: '3.13'
+          - python-version: '3.14'
             dependency-set: 'optional'
             os: 'windows-latest'
     runs-on: ${{ matrix.os }}
@@ -76,12 +76,12 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.11', "3.13"]
+        python-version: ['3.12', "3.14"]
         dependency-set: ["upstream", "min_deps"]
         exclude:
-          - python-version: "3.13"
+          - python-version: "3.14"
             dependency-set: min_deps
-          - python-version: "3.11"
+          - python-version: "3.12"
             dependency-set: upstream
     steps:
     - uses: actions/checkout@v6

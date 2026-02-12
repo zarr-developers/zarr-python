@@ -24,7 +24,7 @@ jobs:
     runs-on: gpu-runner
     strategy:
       matrix:
-        python-version: ['3.11']
+        python-version: ['3.12']
         dependency-set: ["minimal"]
 
     steps:

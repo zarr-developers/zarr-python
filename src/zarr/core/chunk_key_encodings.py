@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypedDict, cast
 
 if TYPE_CHECKING:
     from typing import NotRequired, Self
@@ -62,7 +62,7 @@ class ChunkKeyEncoding(ABC, Metadata):
         """
 
 
-ChunkKeyEncodingLike: TypeAlias = (
+type ChunkKeyEncodingLike = (
     dict[str, JSON] | ChunkKeyEncodingParams | ChunkKeyEncoding | NamedConfig[str, Any]
 )
 
