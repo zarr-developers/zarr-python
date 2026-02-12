@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, get_args
 
 import numpy as np
@@ -15,7 +16,6 @@ from zarr.core.common import (
 from zarr.core.config import parse_indexing_order
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from typing import Any, Literal
 
 
@@ -115,9 +115,15 @@ def test_parse_shapelike_invalid_iterable_values(data: Any) -> None:
         parse_shapelike(data)
 
 
-@pytest.mark.parametrize("data", [range(10), [0, 1, 2, 3], (3, 4, 5), ()])
-def test_parse_shapelike_valid(data: Iterable[int]) -> None:
-    assert parse_shapelike(data) == tuple(data)
+@pytest.mark.parametrize(
+    "data", [range(10), [0, 1, 2, np.uint64(3)], (3, 4, 5), (), 1, np.uint8(1)]
+)
+def test_parse_shapelike_valid(data: Iterable[int] | int) -> None:
+    if isinstance(data, Iterable):
+        expected = tuple(data)
+    else:
+        expected = (data,)
+    assert parse_shapelike(data) == expected
 
 
 # todo: more dtypes
