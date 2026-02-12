@@ -38,7 +38,7 @@ ZATTRS_JSON = ".zattrs"
 ZMETADATA_V2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
-ShapeLike = Iterable[int | np.integer] | int | np.integer
+ShapeLike = Iterable[int | np.integer[Any]] | int | np.integer[Any]
 # For backwards compatibility
 ChunkCoords = tuple[int, ...]
 ZarrFormat = Literal[2, 3]
