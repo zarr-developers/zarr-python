@@ -5,10 +5,8 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from typing import TYPE_CHECKING
 
-import numpy as np
-
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
+from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.core.dtype.common import HasEndianness
 
@@ -80,7 +78,7 @@ class BytesCodec(ArrayBytesCodec):
             dtype = chunk_spec.dtype.to_native_dtype()
         as_array_like = chunk_bytes.as_array_like()
         chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
-            as_array_like.view(dtype=dtype)
+            as_array_like.view(dtype=dtype)  # type: ignore[attr-defined]
         )
 
         # ensure correct chunk shape
