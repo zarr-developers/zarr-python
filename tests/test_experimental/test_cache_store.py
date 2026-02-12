@@ -30,7 +30,7 @@ class TestCacheStore:
     @pytest.fixture
     def cached_store(self, source_store: Store, cache_store: Store) -> CacheStore:
         """Create a cached store instance."""
-        return CacheStore(source_store, cache_store=cache_store, key_insert_times={})
+        return CacheStore(source_store, cache_store=cache_store)
 
     async def test_with_read_only_round_trip(self) -> None:
         """
@@ -43,7 +43,7 @@ class TestCacheStore:
 
         # Start from a read-only underlying store
         source_ro = source.with_read_only(read_only=True)
-        cached_ro = CacheStore(store=source_ro, cache_store=cache, key_insert_times={})
+        cached_ro = CacheStore(store=source_ro, cache_store=cache)
         assert cached_ro.read_only
 
         buf = CPUBuffer.from_bytes(b"0123")
@@ -62,7 +62,7 @@ class TestCacheStore:
         # Cache configuration and state are shared
         assert writer._cache is cached_ro._cache
         assert writer._state is cached_ro._state
-        assert writer.key_insert_times is cached_ro.key_insert_times
+        assert writer._state.key_insert_times is cached_ro._state.key_insert_times
 
         # Writes via the writable cache store succeed and are cached
         await writer.set("foo", buf)
@@ -125,7 +125,6 @@ class TestCacheStore:
             source_store,
             cache_store=cache_store,
             max_age_seconds=1,  # 1 second expiration
-            key_insert_times={},
         )
 
         # Store data
@@ -150,9 +149,7 @@ class TestCacheStore:
 
     async def test_cache_set_data_false(self, source_store: Store, cache_store: Store) -> None:
         """Test behavior when cache_set_data=False."""
-        cached_store = CacheStore(
-            source_store, cache_store=cache_store, cache_set_data=False, key_insert_times={}
-        )
+        cached_store = CacheStore(source_store, cache_store=cache_store, cache_set_data=False)
 
         test_data = CPUBuffer.from_bytes(b"no cache data")
         await cached_store.set("no_cache_key", test_data)
@@ -208,9 +205,7 @@ class TestCacheStore:
         """Test that stale cache entries are refreshed from source."""
         source_store = MemoryStore()
         cache_store = MemoryStore()
-        cached_store = CacheStore(
-            source_store, cache_store=cache_store, max_age_seconds=1, key_insert_times={}
-        )
+        cached_store = CacheStore(source_store, cache_store=cache_store, max_age_seconds=1)
 
         # Store initial data
         old_data = CPUBuffer.from_bytes(b"old data")
@@ -248,14 +243,10 @@ class TestCacheStore:
         self, cached_store: CacheStore, source_store: Store
     ) -> None:
         """Test that cache returns cached data for performance, even if not in source."""
-        # Skip test if key_insert_times attribute doesn't exist
-        if not hasattr(cached_store, "key_insert_times"):
-            pytest.skip("key_insert_times attribute not implemented")
-
         # Put data in cache but not source (simulates orphaned cache entry)
         test_data = CPUBuffer.from_bytes(b"orphaned data")
         await cached_store._cache.set("orphan_key", test_data)
-        cached_store.key_insert_times["orphan_key"] = time.monotonic()
+        cached_store._state.key_insert_times["orphan_key"] = time.monotonic()
 
         # Cache should return data for performance (no source verification)
         result = await cached_store.get("orphan_key", default_buffer_prototype())
@@ -264,7 +255,7 @@ class TestCacheStore:
 
         # Cache entry should remain (performance optimization)
         assert await cached_store._cache.exists("orphan_key")
-        assert "orphan_key" in cached_store.key_insert_times
+        assert "orphan_key" in cached_store._state.key_insert_times
 
     async def test_cache_coherency_through_expiration(self) -> None:
         """Test that cache coherency is managed through cache expiration, not source verification."""
@@ -342,7 +333,6 @@ class TestCacheStore:
             cache_store=cache_store,
             max_size=1024,
             max_age_seconds=300,
-            key_insert_times={},
         )
 
         info = cached_store.cache_info()
@@ -419,7 +409,7 @@ class TestCacheStore:
         assert cached_store._is_key_fresh("test_key")
 
         # Manually set old timestamp to test expiration
-        cached_store.key_insert_times["test_key"] = time.monotonic() - 2  # 2 seconds ago
+        cached_store._state.key_insert_times["test_key"] = time.monotonic() - 2  # 2 seconds ago
 
         # Key should now be stale
         assert not cached_store._is_key_fresh("test_key")
@@ -573,7 +563,7 @@ class TestCacheStore:
 
         # Manually corrupt the tracking to trigger exception
         # Remove from one structure but not others to create inconsistency
-        del cached_store._state._cache_order["test_key"]
+        del cached_store._state.cache_order["test_key"]
 
         # Try to evict - should handle the KeyError gracefully
         await cached_store._evict_key("test_key")
@@ -594,16 +584,16 @@ class TestCacheStore:
         await cached_store._cache_value("phantom_key", test_data)
 
         # Verify it's in tracking
-        assert "phantom_key" in cached_store._state._cache_order
-        assert "phantom_key" in cached_store.key_insert_times
+        assert "phantom_key" in cached_store._state.cache_order
+        assert "phantom_key" in cached_store._state.key_insert_times
 
         # Now try to get it - since it's not in source, should clean up tracking
         result = await cached_store._get_no_cache("phantom_key", default_buffer_prototype())
         assert result is None
 
         # Should have cleaned up tracking
-        assert "phantom_key" not in cached_store._state._cache_order
-        assert "phantom_key" not in cached_store.key_insert_times
+        assert "phantom_key" not in cached_store._state.cache_order
+        assert "phantom_key" not in cached_store._state.key_insert_times
 
     async def test_accommodate_value_no_max_size(self) -> None:
         """Test _accommodate_value early return when max_size is None."""
@@ -664,7 +654,7 @@ class TestCacheStore:
         assert info["current_size"] <= 200  # Might pass
         # But verify actual cache store size matches tracking
         total_size = sum(
-            cached_store._state._key_sizes.get(k, 0) for k in cached_store._state._cache_order
+            cached_store._state.key_sizes.get(k, 0) for k in cached_store._state.cache_order
         )
         assert total_size == info["current_size"]  # WOULD FAIL
 
@@ -694,7 +684,7 @@ class TestCacheStore:
         # Verify consistency
         info = cached_store.cache_info()
         assert info["current_size"] <= 100
-        assert len(cached_store._state._cache_order) == len(cached_store._state._key_sizes)
+        assert len(cached_store._state.cache_order) == len(cached_store._state.key_sizes)
 
     async def test_eviction_actually_deletes_from_cache_store(self) -> None:
         """Test that eviction removes keys from cache_store, not just tracking."""
@@ -715,8 +705,8 @@ class TestCacheStore:
         await cached_store.set("key2", data2)
 
         # Check tracking - key1 should be removed
-        assert "key1" not in cached_store._state._cache_order
-        assert "key1" not in cached_store._state._key_sizes
+        assert "key1" not in cached_store._state.cache_order
+        assert "key1" not in cached_store._state.key_sizes
 
         # CRITICAL: key1 should also be removed from cache_store
         assert not await cache_store.exists("key1"), (
@@ -789,13 +779,13 @@ class TestCacheStore:
             await cached_store.set(f"key_{i}", data)
 
         # Every key in tracking should exist in cache_store
-        for key in cached_store._state._cache_order:
+        for key in cached_store._state.cache_order:
             assert await cache_store.exists(key), (
                 f"Key '{key}' is tracked but doesn't exist in cache_store"
             )
 
         # Every key in _key_sizes should exist in cache_store
-        for key in cached_store._state._key_sizes:
+        for key in cached_store._state.key_sizes:
             assert await cache_store.exists(key), (
                 f"Key '{key}' has size tracked but doesn't exist in cache_store"
             )
@@ -834,7 +824,7 @@ class TestCacheStore:
 
         # Attempt to evict should raise the exception
         with pytest.raises(RuntimeError, match="Simulated cache deletion failure"):
-            async with cached_store._state._lock:
+            async with cached_store._state.lock:
                 await cached_store._evict_key("test_key")
 
     async def test_cache_stats_method(self) -> None:
