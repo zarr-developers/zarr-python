@@ -7,13 +7,13 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal, Self
 
-from zarr.abc.store import ByteRequest, Store
+from zarr.abc.store import BufferClassLike, ByteRequest, Store
 from zarr.storage._wrapper import WrapperStore
 
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from zarr.core.buffer.core import Buffer, BufferPrototype
+    from zarr.core.buffer.core import Buffer
 
 
 @dataclass(slots=True)
@@ -227,7 +227,7 @@ class CacheStore(WrapperStore[Store]):
         self._state.key_sizes.pop(key, None)
 
     async def _get_try_cache(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self, key: str, prototype: BufferClassLike | None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         """Try to get data from cache first, falling back to source store."""
         maybe_cached_result = await self._cache.get(key, prototype, byte_range)
@@ -255,7 +255,10 @@ class CacheStore(WrapperStore[Store]):
             return maybe_fresh_result
 
     async def _get_no_cache(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferClassLike | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """Get data directly from source store and update cache."""
         self._state.misses += 1
@@ -274,7 +277,7 @@ class CacheStore(WrapperStore[Store]):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """
@@ -284,8 +287,12 @@ class CacheStore(WrapperStore[Store]):
         ----------
         key : str
             The key to retrieve
-        prototype : BufferPrototype
-            Buffer prototype for creating the result buffer
+        prototype : BufferLike | None, optional
+            The prototype of the output buffer.
+            Can be either a Buffer class or an instance of `BufferPrototype`, in which the
+            `buffer` attribute will be used.
+            If `None`, the default buffer class for this store will be retrieved via the
+            ``_get_default_buffer_class`` method.
         byte_range : ByteRequest, optional
             Byte range to retrieve
 

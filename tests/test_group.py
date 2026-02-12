@@ -20,9 +20,9 @@ import zarr.api.synchronous
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
+from zarr.buffer import cpu
 from zarr.core import sync_group
 from zarr.core._info import GroupInfo
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
 from zarr.core.dtype.common import unpack_dtype_json
 from zarr.core.dtype.npy.int import UInt8
@@ -196,7 +196,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     sync(
         store.set(
             f"{path}/extra_object-1",
-            default_buffer_prototype().buffer.from_bytes(b"000000"),
+            cpu.Buffer.from_bytes(b"000000"),
         )
     )
     # add an extra object under a directory-like prefix in the domain of the group.
@@ -205,7 +205,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     sync(
         store.set(
             f"{path}/extra_directory/extra_object-2",
-            default_buffer_prototype().buffer.from_bytes(b"000000"),
+            cpu.Buffer.from_bytes(b"000000"),
         )
     )
 
@@ -1481,12 +1481,10 @@ def test_open_mutable_mapping_sync():
 
 
 async def test_open_ambiguous_node():
-    zarr_json_bytes = default_buffer_prototype().buffer.from_bytes(
+    zarr_json_bytes = cpu.Buffer.from_bytes(
         json.dumps({"zarr_format": 3, "node_type": "group"}).encode("utf-8")
     )
-    zgroup_bytes = default_buffer_prototype().buffer.from_bytes(
-        json.dumps({"zarr_format": 2}).encode("utf-8")
-    )
+    zgroup_bytes = cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode("utf-8"))
     store: dict[str, Buffer] = {"zarr.json": zarr_json_bytes, ".zgroup": zgroup_bytes}
     with pytest.warns(
         ZarrUserWarning,

@@ -8,14 +8,14 @@ from collections import defaultdict
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Self, TypeVar
 
-from zarr.abc.store import Store
+from zarr.abc.store import BufferClassLike, Store
 from zarr.storage._wrapper import WrapperStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
 
     from zarr.abc.store import ByteRequest
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.buffer import Buffer
 
     counter: defaultdict[str, int]
 
@@ -168,7 +168,7 @@ class LoggingStore(WrapperStore[T_Store]):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferClassLike | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
@@ -177,7 +177,7 @@ class LoggingStore(WrapperStore[T_Store]):
 
     async def get_partial_values(
         self,
-        prototype: BufferPrototype,
+        prototype: BufferClassLike | None,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited

@@ -23,11 +23,14 @@ from typing import (
 
 from typing_extensions import ReadOnly
 
+from zarr.core.buffer import Buffer, BufferPrototype
 from zarr.core.config import config as zarr_config
 from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
+
+    from zarr.abc.store import BufferClassLike
 
 
 ZARR_JSON = "zarr.json"
@@ -246,3 +249,17 @@ def _warn_order_kwarg() -> None:
 def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_version"""
     return cast("ZarrFormat", int(zarr_config.get("default_zarr_format", 3)))
+
+
+def parse_bufferclasslike(obj: BufferClassLike | None) -> type[Buffer]:
+    """
+    Take an optional BufferClassLike and return a Buffer class
+    """
+    # Avoid a circular import. Temporary fix until we re-organize modules appropriately.
+    from zarr.registry import get_buffer_class
+
+    if obj is None:
+        return get_buffer_class()
+    if isinstance(obj, BufferPrototype):
+        return obj.buffer
+    return obj

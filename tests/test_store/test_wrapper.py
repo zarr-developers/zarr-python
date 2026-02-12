@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 
 import pytest
 
-from zarr.abc.store import ByteRequest, Store
+from zarr.abc.store import BufferClassLike, ByteRequest, Store
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.core.buffer.cpu import buffer_prototype
@@ -13,8 +13,6 @@ from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from zarr.core.buffer.core import BufferPrototype
 
 
 class StoreKwargs(TypedDict):
@@ -111,10 +109,13 @@ async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> 
     # define a class that prints when it sets
     class NoisyGetter(WrapperStore[Any]):
         async def get(
-            self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-        ) -> None:
+            self,
+            key: str,
+            prototype: BufferClassLike | None = None,
+            byte_range: ByteRequest | None = None,
+        ) -> Buffer | None:
             print(f"getting {key}")
-            await super().get(key, prototype=prototype, byte_range=byte_range)
+            return await super().get(key, prototype=prototype, byte_range=byte_range)
 
     key = "foo"
     value = CPUBuffer.from_bytes(b"bar")

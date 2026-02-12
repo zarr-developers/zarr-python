@@ -8,7 +8,6 @@ import time
 import pytest
 
 from zarr.abc.store import Store
-from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.experimental.cache_store import CacheStore
 from zarr.storage import MemoryStore
@@ -97,7 +96,7 @@ class TestCacheStore:
         assert await cached_store._cache.exists("test_key")
 
         # Retrieve and verify caching works
-        result = await cached_store.get("test_key", default_buffer_prototype())
+        result = await cached_store.get("test_key")
         assert result is not None
         assert result.to_bytes() == b"test data"
 
@@ -110,7 +109,7 @@ class TestCacheStore:
         await source_store.set("source_key", test_data)
 
         # First access should miss cache but populate it
-        result = await cached_store.get("source_key", default_buffer_prototype())
+        result = await cached_store.get("source_key")
         assert result is not None
         assert result.to_bytes() == b"source data"
 
@@ -144,7 +143,7 @@ class TestCacheStore:
             # Skip freshness check if method doesn't exist
             await asyncio.sleep(1.1)
             # Just verify the data is still accessible
-            result = await cached_store.get("expire_key", default_buffer_prototype())
+            result = await cached_store.get("expire_key")
             assert result is not None
 
     async def test_cache_set_data_false(self, source_store: Store, cache_store: Store) -> None:
@@ -219,7 +218,7 @@ class TestCacheStore:
         await source_store.set("refresh_key", new_data)
 
         # Access should refresh from source when cache is stale
-        result = await cached_store.get("refresh_key", default_buffer_prototype())
+        result = await cached_store.get("refresh_key")
         assert result is not None
         assert result.to_bytes() == b"new data"
 
@@ -249,7 +248,7 @@ class TestCacheStore:
         cached_store._state.key_insert_times["orphan_key"] = time.monotonic()
 
         # Cache should return data for performance (no source verification)
-        result = await cached_store.get("orphan_key", default_buffer_prototype())
+        result = await cached_store.get("orphan_key")
         assert result is not None
         assert result.to_bytes() == b"orphaned data"
 
@@ -275,7 +274,7 @@ class TestCacheStore:
         await source_store.delete("coherency_key")
 
         # Cache should still return cached data (performance optimization)
-        result = await cached_store.get("coherency_key", default_buffer_prototype())
+        result = await cached_store.get("coherency_key")
         assert result is not None
         assert result.to_bytes() == b"original data"
 
@@ -283,7 +282,7 @@ class TestCacheStore:
         await asyncio.sleep(1.1)
 
         # Now stale cache should be refreshed from source
-        result = await cached_store.get("coherency_key", default_buffer_prototype())
+        result = await cached_store.get("coherency_key")
         assert result is None  # Key no longer exists in source
 
     async def test_cache_info(self, cached_store: CacheStore) -> None:
@@ -491,7 +490,7 @@ class TestCacheStore:
         cached_store = CacheStore(source_store, cache_store=cache_store)
 
         # Try to get nonexistent key
-        result = await cached_store.get("nonexistent", default_buffer_prototype())
+        result = await cached_store.get("nonexistent")
         assert result is None
 
         # Should not create any cache entries
@@ -588,7 +587,7 @@ class TestCacheStore:
         assert "phantom_key" in cached_store._state.key_insert_times
 
         # Now try to get it - since it's not in source, should clean up tracking
-        result = await cached_store._get_no_cache("phantom_key", default_buffer_prototype())
+        result = await cached_store._get_no_cache("phantom_key")
         assert result is None
 
         # Should have cleaned up tracking
@@ -672,7 +671,7 @@ class TestCacheStore:
         # Concurrent: read key1 while adding key3 (triggers eviction)
         async def read_key() -> None:
             for _ in range(100):
-                await cached_store.get("key1", default_buffer_prototype())
+                await cached_store.get("key1")
 
         async def write_key() -> None:
             for i in range(10):
@@ -848,11 +847,11 @@ class TestCacheStore:
         await source_store.set("key1", buffer)
 
         # First get is a miss (not in cache yet)
-        result1 = await cached_store.get("key1", default_buffer_prototype())
+        result1 = await cached_store.get("key1")
         assert result1 is not None
 
         # Second get is a hit (now in cache)
-        result2 = await cached_store.get("key1", default_buffer_prototype())
+        result2 = await cached_store.get("key1")
         assert result2 is not None
 
         stats = cached_store.cache_stats()

@@ -9,7 +9,6 @@ import pytest
 import zarr.api.asynchronous
 import zarr.storage
 from zarr.core.buffer import cpu
-from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.dtype.npy.float import Float32, Float64
 from zarr.core.dtype.npy.int import Int16
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
@@ -318,9 +317,7 @@ def test_zstd_checksum() -> None:
         compressors=compressor_config,
         zarr_format=2,
     )
-    metadata = json.loads(
-        arr.metadata.to_buffer_dict(default_buffer_prototype())[".zarray"].to_bytes()
-    )
+    metadata = json.loads(arr.metadata.to_buffer_dict()[".zarray"].to_bytes())
     assert "checksum" not in metadata["compressor"]
 
 
