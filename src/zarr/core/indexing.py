@@ -7,7 +7,7 @@ import operator
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from functools import reduce
+from functools import lru_cache, reduce
 from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
@@ -1467,16 +1467,21 @@ def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(out)
 
 
-def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    i = 0
+@lru_cache
+def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    n_total = product(chunk_shape)
     order: list[tuple[int, ...]] = []
-    while len(order) < product(chunk_shape):
+    i = 0
+    while len(order) < n_total:
         m = decode_morton(i, chunk_shape)
-        if m not in order and all(x < y for x, y in zip(m, chunk_shape, strict=False)):
+        if all(x < y for x, y in zip(m, chunk_shape, strict=False)):
             order.append(m)
         i += 1
-    for j in range(product(chunk_shape)):
-        yield order[j]
+    return tuple(order)
+
+
+def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+    return iter(_morton_order(tuple(chunk_shape)))
 
 
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
