@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
+    from zarr.core.indexing import SelectorTuple
 
 
 def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
@@ -94,6 +95,14 @@ class TransposeCodec(ArrayArrayCodec):
             config=chunk_spec.config,
             prototype=chunk_spec.prototype,
         )
+
+    def resolve_selection(self, selection: SelectorTuple) -> SelectorTuple | None:
+        # Decode applies transpose(inverse_order) where inverse_order = argsort(order).
+        # decoded[i] = encoded[inverse_order[i]], so to go back:
+        # encoded[j] = decoded[order[j]]
+        if isinstance(selection, tuple):
+            return tuple(selection[self.order[j]] for j in range(len(selection)))
+        return selection
 
     async def _decode_single(
         self,

@@ -18,6 +18,8 @@ Key concepts:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+from itertools import product as itertools_product
 from itertools import starmap
 from typing import TYPE_CHECKING, Any
 
@@ -53,6 +55,7 @@ from zarr.core.buffer import (
     BufferPrototype,
     NDArrayLikeOrScalar,
     NDBuffer,
+    default_buffer_prototype,
 )
 from zarr.core.common import (
     JSON,
@@ -224,6 +227,24 @@ class IndexDomain:
         if any(lo >= hi for lo, hi in zip(new_min, new_max, strict=True)):
             return None
         return IndexDomain(inclusive_min=new_min, exclusive_max=new_max)
+
+    def to_slices(self) -> tuple[slice, ...]:
+        """Convert this domain to a tuple of slices.
+
+        Returns
+        -------
+        tuple[slice, ...]
+            One slice per dimension, from inclusive_min to exclusive_max.
+
+        Examples
+        --------
+        >>> IndexDomain(inclusive_min=(5, 10), exclusive_max=(8, 15)).to_slices()
+        (slice(5, 8), slice(10, 15))
+        """
+        return tuple(
+            slice(lo, hi)
+            for lo, hi in zip(self.inclusive_min, self.exclusive_max, strict=True)
+        )
 
     def translate(self, offset: tuple[int, ...]) -> IndexDomain:
         """
@@ -546,7 +567,17 @@ class StorageSource:
 
     @property
     def chunks(self) -> tuple[int, ...]:
-        """The chunk shape."""
+        """The store-level chunk shape.
+
+        For unsharded arrays, this is the chunk shape. For sharded arrays,
+        this is the shard shape (chunk_grid.chunk_shape), since shards are
+        the store-level unit that maps to store keys. The ShardingCodec
+        handles inner chunk decoding internally.
+        """
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+        if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
+            return self.metadata.chunk_grid.chunk_shape
         return self.metadata.chunks
 
     @property
@@ -674,6 +705,7 @@ def get_chunk_projections(
     chunk_shape: tuple[int, ...],
     domain: IndexDomain,
     index_transform: tuple[int, ...] | None = None,
+    output_origin: tuple[int, ...] | None = None,
 ) -> Iterator[tuple[tuple[slice, ...], ChunkCoordSlice]]:
     """
     Compute chunk projections for resolving data from a domain.
@@ -696,14 +728,19 @@ def get_chunk_projections(
         The offset to subtract from domain coordinates to get storage coordinates.
         If None, defaults to (0, 0, ...), meaning domain coordinates equal storage
         coordinates.
+    output_origin : tuple[int, ...] | None
+        The origin of the output array's coordinate system. When provided,
+        output_selection slices are relative to this origin (i.e., position 0 in
+        the output array corresponds to output_origin in domain space).
+        If None, defaults to the domain's origin.
 
     Yields
     ------
     tuple[tuple[slice, ...], ChunkCoordSlice]
         For each chunk that overlaps with the domain (after translation to storage
         coordinates), yields a tuple of:
-        - output_selection: where to place the data in the output array (the key)
-        - chunk_info: ChunkCoordSlice with chunk coords and slice within chunk (the value)
+        - output_selection: where to place the data in the output array
+        - chunk_info: ChunkCoordSlice with chunk coords and slice within chunk
 
     Examples
     --------
@@ -735,76 +772,755 @@ def get_chunk_projections(
     if len(index_transform) != ndim:
         raise ValueError(f"index_transform has {len(index_transform)} dims, expected {ndim}")
 
-    # Translate domain to storage coordinates
-    # storage_coord = domain_coord - index_transform
-    neg_transform = tuple(-x for x in index_transform)
-    storage_domain = domain.translate(neg_transform)
+    if output_origin is None:
+        output_origin = domain.inclusive_min
 
-    # Intersect with valid storage bounds [0, storage_dim)
-    # This gives us the range of storage coordinates we can actually read
-    storage_bounds = IndexDomain.from_shape(storage_shape)
-    valid_storage = storage_domain.intersect(storage_bounds)
+    # Translate domain to storage coordinates: storage_coord = domain_coord - index_transform
+    # Then intersect with valid storage bounds [0, storage_dim)
+    # All done with raw tuples to avoid IndexDomain allocation overhead in the hot loop.
+    valid_lo = tuple(
+        max(d_lo - it, 0)
+        for d_lo, it in zip(domain.inclusive_min, index_transform, strict=True)
+    )
+    valid_hi = tuple(
+        min(d_hi - it, s)
+        for d_hi, it, s in zip(domain.exclusive_max, index_transform, storage_shape, strict=True)
+    )
 
     # Check if there's any valid intersection
-    if valid_storage is None:
+    if any(lo >= hi for lo, hi in zip(valid_lo, valid_hi, strict=True)):
         return  # No chunks to read
+
+    # Precompute the offset from storage coordinates to output coordinates.
+    # domain_coord = storage_coord + index_transform
+    # output_index = domain_coord - output_origin = storage_coord + index_transform - output_origin
+    storage_to_output = tuple(
+        it - oo for it, oo in zip(index_transform, output_origin, strict=True)
+    )
 
     # Compute the range of chunk coordinates that overlap with the valid storage region
     chunk_start = tuple(
-        lo // c for lo, c in zip(valid_storage.inclusive_min, chunk_shape, strict=True)
+        lo // c for lo, c in zip(valid_lo, chunk_shape, strict=True)
     )
     chunk_end = tuple(
-        ceildiv(hi, c) for hi, c in zip(valid_storage.exclusive_max, chunk_shape, strict=True)
+        ceildiv(hi, c) for hi, c in zip(valid_hi, chunk_shape, strict=True)
     )
 
-    # Iterate over all chunks in the range
-    def iter_chunk_coords_range(
-        starts: tuple[int, ...], ends: tuple[int, ...]
-    ) -> Iterator[tuple[int, ...]]:
-        """Iterate over all chunk coordinates in the given range."""
-        if not starts:
-            yield ()
-            return
-        for coord in range(starts[0], ends[0]):
-            for rest in iter_chunk_coords_range(starts[1:], ends[1:]):
-                yield (coord,) + rest
-
-    for chunk_coords in iter_chunk_coords_range(chunk_start, chunk_end):
+    # Iterate over all chunks using itertools.product (replaces recursive generator)
+    for chunk_coords in itertools_product(*(range(s, e) for s, e in zip(chunk_start, chunk_end, strict=True))):
         # Compute the storage region covered by this chunk
         chunk_storage_start = tuple(c * cs for c, cs in zip(chunk_coords, chunk_shape, strict=True))
         chunk_storage_end = tuple(
             min((c + 1) * cs, dim)
             for c, cs, dim in zip(chunk_coords, chunk_shape, storage_shape, strict=True)
         )
-        chunk_domain = IndexDomain(
-            inclusive_min=chunk_storage_start, exclusive_max=chunk_storage_end
-        )
 
-        # Intersect chunk region with valid storage region
-        intersection = chunk_domain.intersect(valid_storage)
-
-        # Skip if no intersection (shouldn't happen given our chunk range, but be safe)
-        if intersection is None:
+        # Intersect with valid storage region — inline arithmetic, no IndexDomain
+        inter_lo = tuple(max(a, b) for a, b in zip(chunk_storage_start, valid_lo, strict=True))
+        inter_hi = tuple(min(a, b) for a, b in zip(chunk_storage_end, valid_hi, strict=True))
+        if any(lo >= hi for lo, hi in zip(inter_lo, inter_hi, strict=True)):
             continue
 
-        # Compute chunk_selection: slice within the chunk (chunk-local coordinates)
-        chunk_local = intersection.translate(tuple(-x for x in chunk_storage_start))
+        # chunk_selection: translate to chunk-local coords and make slices directly
         chunk_selection = tuple(
-            slice(chunk_local.inclusive_min[d], chunk_local.exclusive_max[d]) for d in range(ndim)
+            slice(lo - cs, hi - cs)
+            for lo, hi, cs in zip(inter_lo, inter_hi, chunk_storage_start, strict=True)
         )
-
-        # Compute output_selection: where to place in output array
-        # Output array index 0 corresponds to domain.origin, which maps to storage_domain.origin
-        # So output_index = storage_index - storage_domain.origin
-        output_local = intersection.translate(tuple(-x for x in storage_domain.inclusive_min))
+        # output_selection: translate to output coords and make slices directly
         output_selection = tuple(
-            slice(output_local.inclusive_min[d], output_local.exclusive_max[d]) for d in range(ndim)
+            slice(lo + off, hi + off)
+            for lo, hi, off in zip(inter_lo, inter_hi, storage_to_output, strict=True)
         )
 
         yield (
             output_selection,
             ChunkCoordSlice(chunk_coords=chunk_coords, selection=chunk_selection),
         )
+
+
+# ---------------------------------------------------------------------------
+# Fast codec classes — bypass the overhead in the standard decode/encode path.
+#
+# The standard inner-shard path goes through:
+#   codec.decode() → _batching_helper → concurrent_map → _noop_for_none
+#   → BytesCodec._decode_single (with isinstance(x, NDArrayLike) Protocol check)
+#
+# On the write side, morton_order_iter recomputes from scratch every call
+# (~250 decode_morton calls with O(n) list scans), totaling 35% of write time.
+#
+# These fast codecs eliminate that overhead while preserving correctness.
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=16)
+def _cached_morton_order(chunks_per_shard: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    """Compute and cache the morton ordering for a given shard shape.
+
+    The standard ``morton_order_iter`` recomputes the ordering from scratch on
+    every call: ~250 ``decode_morton`` invocations with O(n) list-membership
+    checks per call.  For (5,5,5) shards this adds up to 35% of write time.
+    Caching the result eliminates this entirely after the first call.
+    """
+    from zarr.core.indexing import morton_order_iter
+
+    return tuple(morton_order_iter(chunks_per_shard))
+
+
+class _FastBytesCodec:
+    """Drop-in replacement for BytesCodec._decode_single that avoids:
+    1. isinstance(x, NDArrayLike) Protocol check (~16 getattr_static calls)
+    2. _batching_helper/concurrent_map/Semaphore overhead
+    3. _noop_for_none wrapper and its typing introspection
+
+    This is not a full Codec subclass — it only implements the decode path
+    needed by the inner shard pipeline. It stores the endian configuration
+    from the original BytesCodec.
+    """
+
+    __slots__ = ("_endian_str", "_has_endianness_type")
+
+    def __init__(self, endian_str: str | None) -> None:
+        self._endian_str = endian_str
+        # Cache the import so we don't re-import in the hot loop
+        from zarr.core.dtype.common import HasEndianness
+
+        self._has_endianness_type = HasEndianness
+
+    def decode_single(self, chunk_bytes: Any, chunk_spec: Any) -> Any:
+        """Synchronous fast decode — no async overhead needed for in-memory work."""
+        from dataclasses import replace as dataclass_replace
+
+        if isinstance(chunk_spec.dtype, self._has_endianness_type):
+            dtype = dataclass_replace(
+                chunk_spec.dtype, endianness=self._endian_str
+            ).to_native_dtype()
+        else:
+            dtype = chunk_spec.dtype.to_native_dtype()
+
+        as_nd_array_like = np.asanyarray(chunk_bytes.as_array_like())
+        chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
+            as_nd_array_like.view(dtype=dtype)
+        )
+        if chunk_array.shape != chunk_spec.shape:
+            chunk_array = chunk_array.reshape(chunk_spec.shape)
+        return chunk_array
+
+    def encode_single(self, chunk_array: Any, chunk_spec: Any) -> Any:
+        """Synchronous fast encode — mirrors BytesCodec._encode_single."""
+        from zarr.codecs.bytes import Endian
+
+        if (
+            chunk_array.dtype.itemsize > 1
+            and self._endian_str is not None
+            and chunk_array.byteorder != Endian(self._endian_str)
+        ):
+            new_dtype = chunk_array.dtype.newbyteorder(Endian(self._endian_str).name)
+            chunk_array = chunk_array.astype(new_dtype)
+
+        nd_array = chunk_array.as_ndarray_like()
+        nd_array = nd_array.ravel().view(dtype="B")
+        return chunk_spec.prototype.buffer.from_array_like(nd_array)
+
+
+def _make_fast_sharding_codec(
+    original: Any,
+) -> Any:
+    """Create a FastShardingCodec from an existing ShardingCodec.
+
+    Returns a new ShardingCodec subclass instance whose codec_pipeline property
+    returns a pipeline that uses _FastBytesCodec for the inner decode path,
+    bypassing all the standard overhead.
+
+    Only transforms the decode path — encoding is unchanged (uses the standard
+    codec pipeline).
+    """
+    from zarr.codecs.bytes import BytesCodec as _BytesCodec
+    from zarr.codecs.sharding import ShardingCodec
+
+    if not isinstance(original, ShardingCodec):
+        return original
+
+    # Find the BytesCodec in the inner codecs and extract its endian config
+    endian_str = None
+    for codec in original.codecs:
+        if isinstance(codec, _BytesCodec):
+            endian_str = codec.endian.value if codec.endian is not None else None
+            break
+
+    fast_bytes = _FastBytesCodec(endian_str)
+
+    # Create a subclass that overrides _decode_partial_single with a fast path
+    class _FastShardingCodec(ShardingCodec):
+        """ShardingCodec with a fast inner decode path.
+
+        Overrides _decode_partial_single to decode inner chunks directly using
+        _FastBytesCodec instead of going through codec_pipeline.read() which
+        adds per-chunk overhead from:
+        - BasicIndexer iteration + morton ordering
+        - concurrent_map + Semaphore per batch
+        - _batching_helper + _noop_for_none per codec
+        - isinstance(x, NDArrayLike) Protocol check per chunk
+        """
+
+        _fast_bytes: _FastBytesCodec
+
+        async def _decode_partial_single(
+            self,
+            byte_getter: Any,
+            selection: Any,
+            shard_spec: Any,
+        ) -> NDBuffer | None:
+            from zarr.abc.store import RangeByteRequest
+            from zarr.core.chunk_grids import RegularChunkGrid
+            from zarr.core.indexing import get_indexer
+
+            shard_shape = shard_spec.shape
+            chunk_shape = self.chunk_shape
+            chunks_per_shard = self._get_chunks_per_shard(shard_spec)
+            chunk_spec = self._get_chunk_spec(shard_spec)
+
+            indexer = get_indexer(
+                selection,
+                shape=shard_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            )
+
+            # Setup output array
+            out = shard_spec.prototype.nd_buffer.empty(
+                shape=indexer.shape,
+                dtype=shard_spec.dtype.to_native_dtype(),
+                order=shard_spec.order,
+            )
+
+            indexed_chunks = list(indexer)
+            all_chunk_coords = {chunk_coords for chunk_coords, *_ in indexed_chunks}
+
+            # Read bytes of all requested chunks (same logic as standard ShardingCodec)
+            shard_dict: dict[tuple[int, ...], Any] = {}
+            if self._is_total_shard(all_chunk_coords, chunks_per_shard):
+                shard_dict_maybe = await self._load_full_shard_maybe(
+                    byte_getter=byte_getter,
+                    prototype=chunk_spec.prototype,
+                    chunks_per_shard=chunks_per_shard,
+                )
+                if shard_dict_maybe is None:
+                    return None
+                shard_dict = shard_dict_maybe  # type: ignore[assignment]
+            else:
+                shard_index = await self._load_shard_index_maybe(
+                    byte_getter, chunks_per_shard
+                )
+                if shard_index is None:
+                    return None
+                for chunk_coords in all_chunk_coords:
+                    chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
+                    if chunk_byte_slice:
+                        chunk_bytes = await byte_getter.get(
+                            prototype=chunk_spec.prototype,
+                            byte_range=RangeByteRequest(
+                                chunk_byte_slice[0], chunk_byte_slice[1]
+                            ),
+                        )
+                        if chunk_bytes:
+                            shard_dict[chunk_coords] = chunk_bytes
+
+            # Fast inner decode: directly decode + slice each chunk without
+            # going through codec_pipeline.read() and all its overhead.
+            fill_value = shard_spec.fill_value
+            fb = self._fast_bytes
+            for chunk_coords, chunk_selection, out_selection, _is_complete in indexed_chunks:
+                chunk_bytes = shard_dict.get(chunk_coords)
+                if chunk_bytes is not None:
+                    chunk_array = fb.decode_single(chunk_bytes, chunk_spec)
+                    out[out_selection] = chunk_array[chunk_selection]
+                else:
+                    out[out_selection] = fill_value
+
+            if hasattr(indexer, "sel_shape"):
+                return out.reshape(indexer.sel_shape)
+            return out
+
+        async def _decode_single(
+            self,
+            shard_bytes: Any,
+            shard_spec: Any,
+        ) -> NDBuffer:
+            """Fast full-shard decode that bypasses codec_pipeline.read()."""
+            from zarr.codecs.sharding import _ShardReader, _ShardingByteGetter
+            from zarr.core.chunk_grids import RegularChunkGrid
+            from zarr.core.indexing import BasicIndexer
+
+            shard_shape = shard_spec.shape
+            chunk_shape = self.chunk_shape
+            chunks_per_shard = self._get_chunks_per_shard(shard_spec)
+            chunk_spec = self._get_chunk_spec(shard_spec)
+
+            indexer = BasicIndexer(
+                tuple(slice(0, s) for s in shard_shape),
+                shape=shard_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            )
+
+            out = chunk_spec.prototype.nd_buffer.empty(
+                shape=shard_shape,
+                dtype=shard_spec.dtype.to_native_dtype(),
+                order=shard_spec.order,
+            )
+            shard_dict = await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
+
+            if shard_dict.index.is_all_empty():
+                out.fill(shard_spec.fill_value)
+                return out
+
+            fill_value = shard_spec.fill_value
+            fb = self._fast_bytes
+            for chunk_coords, chunk_selection, out_selection, _is_complete in indexer:
+                try:
+                    chunk_bytes = shard_dict[chunk_coords]
+                except KeyError:
+                    out[out_selection] = fill_value
+                    continue
+                chunk_array = fb.decode_single(chunk_bytes, chunk_spec)
+                out[out_selection] = chunk_array[chunk_selection]
+
+            return out
+
+        async def _encode_partial_single(
+            self,
+            byte_setter: Any,
+            shard_array: Any,
+            selection: Any,
+            shard_spec: Any,
+        ) -> None:
+            """Fast partial encode that bypasses the inner codec_pipeline.write().
+
+            The standard path:
+              codec_pipeline.write() → write_batch (not partial) →
+              decode_batch → _merge_chunk_array → all_equal → encode_batch
+            Each step goes through _batching_helper → concurrent_map overhead.
+
+            This override:
+            - Uses cached morton ordering (eliminates 35% of write time)
+            - Decodes/encodes inline with _FastBytesCodec (no async overhead)
+            - Merges data directly (no _merge_chunk_array/all_equal overhead)
+            """
+            from zarr.codecs.sharding import _ShardReader
+            from zarr.core.buffer import default_buffer_prototype
+            from zarr.core.chunk_grids import RegularChunkGrid
+            from zarr.core.indexing import get_indexer
+
+            shard_shape = shard_spec.shape
+            chunk_shape = self.chunk_shape
+            chunks_per_shard = self._get_chunks_per_shard(shard_spec)
+            chunk_spec = self._get_chunk_spec(shard_spec)
+
+            # Load existing shard data (same as parent)
+            shard_reader = await self._load_full_shard_maybe(
+                byte_getter=byte_setter,
+                prototype=chunk_spec.prototype,
+                chunks_per_shard=chunks_per_shard,
+            )
+            shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
+
+            # Build shard_dict from existing data using CACHED morton order
+            morton = _cached_morton_order(chunks_per_shard)
+            shard_dict: dict[tuple[int, ...], Any] = {
+                k: shard_reader.get(k) for k in morton
+            }
+
+            # Get the indexer for the selection being written
+            indexer = get_indexer(
+                selection,
+                shape=shard_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            )
+
+            # Fast inner write: decode existing → merge → encode, all inline.
+            fb = self._fast_bytes
+            fill_value = shard_spec.fill_value
+            write_empty = chunk_spec.config.write_empty_chunks
+
+            for chunk_coords, chunk_selection, out_selection, is_complete in indexer:
+                existing_bytes = shard_dict.get(chunk_coords)
+
+                if (
+                    is_complete
+                    and shard_array.shape == chunk_spec.shape
+                    and shard_array[out_selection].shape == chunk_spec.shape
+                ):
+                    # Complete overwrite — encode the new data directly
+                    chunk_array = shard_array
+                else:
+                    # Partial write — merge with existing data
+                    if existing_bytes is not None:
+                        chunk_array = fb.decode_single(existing_bytes, chunk_spec)
+                        chunk_array = chunk_array.copy()
+                    else:
+                        chunk_array = chunk_spec.prototype.nd_buffer.create(
+                            shape=chunk_spec.shape,
+                            dtype=chunk_spec.dtype.to_native_dtype(),
+                            order=chunk_spec.order,
+                            fill_value=fill_value,
+                        )
+                    chunk_array[chunk_selection] = shard_array[out_selection]
+
+                if not write_empty and chunk_array.all_equal(fill_value):
+                    shard_dict[chunk_coords] = None
+                else:
+                    shard_dict[chunk_coords] = fb.encode_single(chunk_array, chunk_spec)
+
+            # Encode the shard dict using CACHED morton order
+            buf = await self._fast_encode_shard_dict(
+                shard_dict, chunks_per_shard, default_buffer_prototype()
+            )
+
+            if buf is None:
+                await byte_setter.delete()
+            else:
+                await byte_setter.set(buf)
+
+        async def _encode_single(
+            self,
+            shard_array: Any,
+            shard_spec: Any,
+        ) -> Any:
+            """Fast full-shard encode that bypasses codec_pipeline.write()."""
+            from zarr.core.buffer import default_buffer_prototype
+            from zarr.core.chunk_grids import RegularChunkGrid
+            from zarr.core.indexing import BasicIndexer
+
+            shard_shape = shard_spec.shape
+            chunk_shape = self.chunk_shape
+            chunks_per_shard = self._get_chunks_per_shard(shard_spec)
+            chunk_spec = self._get_chunk_spec(shard_spec)
+
+            indexer = BasicIndexer(
+                tuple(slice(0, s) for s in shard_shape),
+                shape=shard_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            )
+
+            morton = _cached_morton_order(chunks_per_shard)
+            shard_builder: dict[tuple[int, ...], Any] = dict.fromkeys(morton)
+
+            fb = self._fast_bytes
+            fill_value = shard_spec.fill_value
+            write_empty = chunk_spec.config.write_empty_chunks
+
+            for chunk_coords, chunk_selection, out_selection, is_complete in indexer:
+                if (
+                    is_complete
+                    and shard_array.shape == chunk_spec.shape
+                    and shard_array[out_selection].shape == chunk_spec.shape
+                ):
+                    chunk_array = shard_array
+                else:
+                    chunk_array = shard_array[out_selection]
+                    if chunk_array.shape != chunk_spec.shape:
+                        full = chunk_spec.prototype.nd_buffer.create(
+                            shape=chunk_spec.shape,
+                            dtype=chunk_spec.dtype.to_native_dtype(),
+                            order=chunk_spec.order,
+                            fill_value=fill_value,
+                        )
+                        full[chunk_selection] = chunk_array
+                        chunk_array = full
+
+                if not write_empty and chunk_array.all_equal(fill_value):
+                    shard_builder[chunk_coords] = None
+                else:
+                    shard_builder[chunk_coords] = fb.encode_single(chunk_array, chunk_spec)
+
+            return await self._fast_encode_shard_dict(
+                shard_builder, chunks_per_shard, default_buffer_prototype()
+            )
+
+        async def _fast_encode_shard_dict(
+            self,
+            map: Any,
+            chunks_per_shard: tuple[int, ...],
+            buffer_prototype: Any,
+        ) -> Any:
+            """Encode a shard dict using cached morton order."""
+            from zarr.codecs.sharding import (
+                MAX_UINT_64,
+                ShardingCodecIndexLocation,
+                _ShardIndex,
+            )
+
+            index = _ShardIndex.create_empty(chunks_per_shard)
+            buffers = []
+            template = buffer_prototype.buffer.create_zero_length()
+            chunk_start = 0
+
+            for chunk_coords in _cached_morton_order(chunks_per_shard):
+                value = map.get(chunk_coords)
+                if value is None:
+                    continue
+                if len(value) == 0:
+                    continue
+                chunk_length = len(value)
+                buffers.append(value)
+                index.set_chunk_slice(
+                    chunk_coords, slice(chunk_start, chunk_start + chunk_length)
+                )
+                chunk_start += chunk_length
+
+            if len(buffers) == 0:
+                return None
+
+            index_bytes = await self._encode_shard_index(index)
+            if self.index_location == ShardingCodecIndexLocation.start:
+                empty_chunks_mask = index.offsets_and_lengths[..., 0] == MAX_UINT_64
+                index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
+                index_bytes = await self._encode_shard_index(index)
+                buffers.insert(0, index_bytes)
+            else:
+                buffers.append(index_bytes)
+
+            return template.combine(buffers)
+
+    # Construct the fast sharding codec instance by bypassing __init__
+    # (which would re-parse all the codecs through parse_codecs).
+    fast_codec = object.__new__(_FastShardingCodec)
+    object.__setattr__(fast_codec, "chunk_shape", original.chunk_shape)
+    object.__setattr__(fast_codec, "codecs", original.codecs)
+    object.__setattr__(fast_codec, "index_codecs", original.index_codecs)
+    object.__setattr__(fast_codec, "index_location", original.index_location)
+    object.__setattr__(fast_codec, "_fast_bytes", fast_bytes)
+
+    # Copy the lru_cached methods from the original
+    from functools import lru_cache
+
+    object.__setattr__(fast_codec, "_get_index_chunk_spec", lru_cache()(fast_codec._get_index_chunk_spec))
+    object.__setattr__(fast_codec, "_get_chunks_per_shard", lru_cache()(fast_codec._get_chunks_per_shard))
+
+    return fast_codec
+
+
+def _make_fast_codec_pipeline(pipeline: Any) -> Any:
+    """Replace standard codecs in a pipeline with fast versions.
+
+    This function takes a BatchedCodecPipeline and returns a new one where:
+    - ShardingCodec is replaced with _FastShardingCodec (fast inner decode)
+    - BytesCodec as the outer array-bytes codec is left alone (we already
+      use _decode_bytes_fast in _decode_chunks_with_selection)
+
+    Only modifies the codec if it's a ShardingCodec — other codecs pass through.
+    """
+    from zarr.codecs.sharding import ShardingCodec
+    from zarr.core.codec_pipeline import BatchedCodecPipeline
+
+    if not isinstance(pipeline, BatchedCodecPipeline):
+        return pipeline
+
+    ab_codec = pipeline.array_bytes_codec
+    if isinstance(ab_codec, ShardingCodec):
+        fast_ab = _make_fast_sharding_codec(ab_codec)
+        return BatchedCodecPipeline(
+            array_array_codecs=pipeline.array_array_codecs,
+            array_bytes_codec=fast_ab,
+            bytes_bytes_codecs=pipeline.bytes_bytes_codecs,
+            batch_size=pipeline.batch_size,
+        )
+
+    return pipeline
+
+
+class _StoreByteGetter:
+    """Lightweight ByteGetter that wraps a store + path string.
+
+    Avoids StorePath construction overhead (normalize_path with regex,
+    string splitting, and validation) by storing the path directly.
+    Satisfies the ByteGetter protocol: async def get(prototype, byte_range=None).
+    """
+
+    __slots__ = ("_store", "_path")
+
+    def __init__(self, store: Any, path: str) -> None:
+        self._store = store
+        self._path = path
+
+    async def get(
+        self, prototype: BufferPrototype, byte_range: Any = None
+    ) -> Buffer | None:
+        return await self._store.get(self._path, prototype=prototype, byte_range=byte_range)
+
+
+def _decode_bytes_fast(
+    endian_str: str | None,
+    chunk_bytes: Buffer,
+    chunk_spec: Any,
+) -> NDBuffer:
+    """Fast-path for BytesCodec._decode_single that avoids the expensive
+    isinstance(x, NDArrayLike) Protocol check.
+
+    The standard BytesCodec._decode_single checks isinstance(x, NDArrayLike)
+    where NDArrayLike is a @runtime_checkable Protocol with 16 members. Each
+    check triggers ~16 inspect.getattr_static() calls via typing.__instancecheck__.
+    This adds up to ~213k getattr_static calls for a typical workload.
+
+    Instead, we call np.asanyarray() unconditionally, which is a no-op for numpy
+    arrays (returns the same object) and correctly handles other array types.
+    """
+    from dataclasses import replace as dataclass_replace
+
+    from zarr.core.dtype.common import HasEndianness
+
+    if isinstance(chunk_spec.dtype, HasEndianness):
+        dtype = dataclass_replace(chunk_spec.dtype, endianness=endian_str).to_native_dtype()
+    else:
+        dtype = chunk_spec.dtype.to_native_dtype()
+
+    # Skip the expensive isinstance(x, NDArrayLike) Protocol check.
+    # np.asanyarray is a no-op on numpy arrays, so this is always safe.
+    as_nd_array_like = np.asanyarray(chunk_bytes.as_array_like())
+
+    chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
+        as_nd_array_like.view(dtype=dtype)
+    )
+
+    if chunk_array.shape != chunk_spec.shape:
+        chunk_array = chunk_array.reshape(chunk_spec.shape)
+    return chunk_array
+
+
+async def _decode_chunks_with_selection(
+    codec_pipeline: Any,
+    store: Any,
+    chunk_paths: list[str],
+    chunk_spec: Any,
+    chunk_selections: list[tuple[slice, ...]],
+    prototype: BufferPrototype,
+) -> list[NDBuffer | None]:
+    """Decode chunks and apply selections in storage-coordinate space.
+
+    Unlike the standard codec pipeline read path which applies selections
+    after the full decode pipeline (in decoded/user space), this function
+    applies chunk_selections directly to the output of the array-bytes codec
+    (in storage/encoded space), before array-array codecs run. This is
+    correct because chunk_selections from get_chunk_projections are already
+    expressed in storage coordinates, which is the same coordinate space as
+    the array-bytes codec output.
+
+    This avoids the need to reverse-transform selections through array-array
+    codecs (e.g. transpose), which the standard path would require.
+
+    Key optimizations vs standard path:
+    - Takes store + path strings directly, avoiding StorePath creation and
+      normalize_path (regex, string splitting) per chunk.
+    - Takes a single chunk_spec instead of per-chunk specs, since all chunks
+      in a regular chunk grid have the same spec. Metadata is resolved once
+      through the codec chain, not per-chunk.
+    - For codecs that support partial decoding (e.g. ShardingCodec), uses
+      _decode_partial_single to read only the needed inner chunks.
+    - For BytesCodec, uses _decode_bytes_fast to avoid the expensive
+      isinstance(x, NDArrayLike) Protocol check.
+    - Other codec decode calls bypass the batching machinery and call
+      _decode_single directly.
+    """
+    from zarr.abc.codec import ArrayBytesCodecPartialDecodeMixin
+    from zarr.codecs.bytes import BytesCodec as _BytesCodec
+    from zarr.core.codec_pipeline import BatchedCodecPipeline
+    from zarr.core.common import concurrent_map
+    from zarr.core.config import config
+
+    assert isinstance(codec_pipeline, BatchedCodecPipeline)
+
+    ab_codec = codec_pipeline.array_bytes_codec
+
+    # Check if we can use partial decoding. This requires:
+    # 1. No bytes-bytes codecs (they scramble byte ranges)
+    # 2. No array-array codecs (they transform array structure)
+    # 3. Array-bytes codec supports partial decode (e.g. ShardingCodec)
+    use_partial_decode = (
+        len(codec_pipeline.bytes_bytes_codecs) == 0
+        and len(codec_pipeline.array_array_codecs) == 0
+        and isinstance(ab_codec, ArrayBytesCodecPartialDecodeMixin)
+    )
+
+    if use_partial_decode:
+        # Partial decode path: pass ByteGetter + selection to the codec.
+        # The codec reads only the needed inner chunks (for ShardingCodec)
+        # and returns an NDBuffer already shaped to the selection.
+        # No post-decode slicing needed.
+
+        # Resolve spec through the codec chain (just the ab codec, no aa/bb)
+        ab_spec = ab_codec.resolve_metadata(chunk_spec)
+
+        # Use concurrent_map so shard decodes can overlap (important for
+        # remote stores where each shard decode does I/O).
+        chunk_array_batch: list[NDBuffer | None] = await concurrent_map(
+            [
+                (_StoreByteGetter(store, path), sel, ab_spec)
+                for path, sel in zip(chunk_paths, chunk_selections, strict=False)
+            ],
+            ab_codec._decode_partial_single,
+            config.get("async.concurrency"),
+        )
+
+        return chunk_array_batch
+
+    # Full decode path: fetch all bytes, decode, then apply selection.
+
+    # Fetch chunk bytes from store directly (bypass StorePath construction).
+    chunk_bytes_batch = await concurrent_map(
+        [(path,) for path in chunk_paths],
+        lambda path: store.get(path, prototype=prototype),
+        config.get("async.concurrency"),
+    )
+
+    # Resolve metadata through codec chain once (all chunks share the same spec).
+    spec = chunk_spec
+    aa_codecs_with_spec = []
+    for aa_codec in codec_pipeline.array_array_codecs:
+        aa_codecs_with_spec.append((aa_codec, spec))
+        spec = aa_codec.resolve_metadata(spec)
+
+    ab_codec_spec = (ab_codec, spec)
+    spec = ab_codec.resolve_metadata(spec)
+
+    bb_codecs_with_spec = []
+    for bb_codec in codec_pipeline.bytes_bytes_codecs:
+        bb_codecs_with_spec.append((bb_codec, spec))
+        spec = bb_codec.resolve_metadata(spec)
+
+    # Decode: bytes-bytes codecs (reverse order) — direct _decode_single calls
+    for bb_codec, bb_spec in bb_codecs_with_spec[::-1]:
+        chunk_bytes_batch = [
+            (await bb_codec._decode_single(chunk, bb_spec)) if chunk is not None else None
+            for chunk in chunk_bytes_batch
+        ]
+
+    # Decode: array-bytes codec — use fast path for BytesCodec to avoid
+    # the expensive isinstance(x, NDArrayLike) Protocol check.
+    ab_codec_resolved, ab_spec = ab_codec_spec
+    if isinstance(ab_codec_resolved, _BytesCodec):
+        endian_str = ab_codec_resolved.endian.value if ab_codec_resolved.endian is not None else None
+        chunk_array_batch = [
+            _decode_bytes_fast(endian_str, chunk, ab_spec) if chunk is not None else None
+            for chunk in chunk_bytes_batch
+        ]
+    else:
+        chunk_array_batch = [
+            (await ab_codec_resolved._decode_single(chunk, ab_spec)) if chunk is not None else None
+            for chunk in chunk_bytes_batch
+        ]
+
+    # Apply chunk_selections in storage-coordinate space (array-bytes output space).
+    chunk_array_batch = [
+        chunk_array[sel] if chunk_array is not None else None
+        for chunk_array, sel in zip(chunk_array_batch, chunk_selections, strict=False)
+    ]
+
+    # Decode: array-array codecs (reverse order) — direct _decode_single calls
+    for aa_codec, aa_spec in aa_codecs_with_spec[::-1]:
+        chunk_array_batch = [
+            (await aa_codec._decode_single(chunk, aa_spec)) if chunk is not None else None
+            for chunk in chunk_array_batch
+        ]
+
+    return chunk_array_batch
 
 
 class Array:
@@ -879,6 +1595,12 @@ class Array:
 
         if codec_pipeline is None:
             codec_pipeline = create_codec_pipeline(metadata=metadata_parsed, store=store_path.store)
+
+        # Replace standard codecs with fast versions for the decode path.
+        # This replaces ShardingCodec with _FastShardingCodec which bypasses
+        # the inner codec_pipeline.read() overhead (concurrent_map, Semaphore,
+        # _batching_helper, _noop_for_none, isinstance Protocol checks).
+        codec_pipeline = _make_fast_codec_pipeline(codec_pipeline)
 
         # Default domain is origin at zero with shape from metadata
         if domain is None:
@@ -1800,16 +2522,11 @@ class Array:
         # Create output array filled with fill_value
         output = np.full(self.shape, self._fill_value, dtype=self._dtype)
 
-        # Precompute the negative of our domain origin for translating to output coords
-        neg_origin = tuple(-x for x in self._domain.inclusive_min)
-
         for source in self._sources:
             if isinstance(source, StorageSource):
-                # Resolve from storage source
-                await self._resolve_storage_source(source, output, neg_origin, prototype)
+                await self._resolve_storage_source(source, output, prototype)
             else:
-                # source is an Array - resolve recursively
-                await self._resolve_array_source(source, output, neg_origin)
+                await self._resolve_array_source(source, output)
 
         return output
 
@@ -1817,16 +2534,16 @@ class Array:
         self,
         source: StorageSource,
         output: np.ndarray[Any, Any],
-        neg_origin: tuple[int, ...],
         prototype: BufferPrototype | None,
     ) -> None:
         """Resolve data from a storage source into the output array."""
         # Compute the domain of this source in our coordinate system
-        # The source has an index_transform that maps domain coords to storage coords
-        # storage_coord = domain_coord - index_transform
-        # So domain_coord = storage_coord + index_transform
-        source_domain = IndexDomain.from_shape(source.storage_shape).translate(
-            source.index_transform
+        source_domain = IndexDomain(
+            inclusive_min=source.index_transform,
+            exclusive_max=tuple(
+                o + s
+                for o, s in zip(source.index_transform, source.storage_shape, strict=True)
+            ),
         )
 
         # Find intersection with our domain
@@ -1834,70 +2551,59 @@ class Array:
         if intersection is None:
             return
 
-        # Get chunk projections for the intersection
-        projections = list(
-            get_chunk_projections(
-                storage_shape=source.storage_shape,
-                chunk_shape=source.chunks,
-                domain=intersection,
-                index_transform=source.index_transform,
-            )
-        )
+        if prototype is None:
+            prototype = default_buffer_prototype()
 
-        if not projections:
+        # Compute chunk_spec once — all chunks in a regular grid share the same spec.
+        # This avoids creating ~N ArraySpec objects (each calling parse_shapelike).
+        chunk_spec = source.metadata.get_chunk_spec((0,) * len(source.chunks), source.config, prototype=prototype)
+
+        # Build chunk paths as plain strings, bypassing StorePath construction
+        # and its normalize_path call (regex + string splitting per chunk).
+        store = source.store_path.store
+        base_path = source.store_path.path
+
+        chunk_paths = []
+        chunk_selections = []
+        out_selections = []
+        for out_selection, chunk_info in get_chunk_projections(
+            storage_shape=source.storage_shape,
+            chunk_shape=source.chunks,
+            domain=intersection,
+            index_transform=source.index_transform,
+            output_origin=self._domain.inclusive_min,
+        ):
+            chunk_key = source.metadata.encode_chunk_key(chunk_info.chunk_coords)
+            path = f"{base_path}/{chunk_key}" if base_path else chunk_key
+            chunk_paths.append(path)
+            chunk_selections.append(chunk_info.selection)
+            out_selections.append(out_selection)
+
+        if not chunk_paths:
             return
 
-        for output_selection_in_intersection, chunk_info in projections:
-            # Compute storage selection from chunk coords and chunk selection
-            storage_selection = tuple(
-                slice(
-                    coord * chunk_size + sel.start,
-                    coord * chunk_size + sel.stop,
-                )
-                for coord, chunk_size, sel in zip(
-                    chunk_info.chunk_coords, source.chunks, chunk_info.selection, strict=True
-                )
-            )
+        # Decode chunks with selections applied in storage-coordinate space
+        chunk_arrays = await _decode_chunks_with_selection(
+            source.codec_pipeline,
+            store,
+            chunk_paths,
+            chunk_spec,
+            chunk_selections,
+            prototype,
+        )
 
-            data = await _getitem(
-                source.store_path,
-                source.metadata,
-                source.codec_pipeline,
-                source.config,
-                storage_selection,
-                prototype=prototype,
-            )
-
-            # The output_selection_in_intersection is relative to intersection.origin
-            # We need to translate it to be relative to our domain's origin
-            # First, get the absolute coordinates of this chunk region
-            intersection_neg_origin = tuple(-x for x in intersection.inclusive_min)
-            abs_start = tuple(
-                sel.start - off
-                for sel, off in zip(
-                    output_selection_in_intersection, intersection_neg_origin, strict=True
-                )
-            )
-            abs_end = tuple(
-                sel.stop - off
-                for sel, off in zip(
-                    output_selection_in_intersection, intersection_neg_origin, strict=True
-                )
-            )
-
-            # Now translate to our output coordinates
-            output_selection = tuple(
-                slice(start + neg_off, end + neg_off)
-                for start, end, neg_off in zip(abs_start, abs_end, neg_origin, strict=True)
-            )
-
-            output[output_selection] = data
+        # Write decoded chunks into the output array
+        fill_value = self._fill_value
+        for chunk_array, out_sel in zip(chunk_arrays, out_selections, strict=True):
+            if chunk_array is not None:
+                output[out_sel] = chunk_array.as_ndarray_like()
+            else:
+                output[out_sel] = fill_value
 
     async def _resolve_array_source(
         self,
         source: Array,
         output: np.ndarray[Any, Any],
-        neg_origin: tuple[int, ...],
     ) -> None:
         """Resolve data from an Array source into the output array."""
         # Find intersection of source's domain with our domain
@@ -1908,20 +2614,13 @@ class Array:
         # Resolve the source array's data
         data = await source.resolve_async()
 
-        # Translate intersection to output coordinates (origin at 0)
-        output_region = intersection.translate(neg_origin)
-        output_slices = tuple(
-            slice(output_region.inclusive_min[d], output_region.exclusive_max[d])
-            for d in range(self.ndim)
-        )
+        # Map intersection to output array coordinates (relative to our origin)
+        neg_origin = tuple(-x for x in self._domain.inclusive_min)
+        output_slices = intersection.translate(neg_origin).to_slices()
 
-        # Translate intersection to data coordinates (relative to source's origin)
-        source_neg_origin = tuple(-x for x in source.domain.inclusive_min)
-        data_region = intersection.translate(source_neg_origin)
-        data_slices = tuple(
-            slice(data_region.inclusive_min[d], data_region.exclusive_max[d])
-            for d in range(self.ndim)
-        )
+        # Map intersection to source data coordinates (relative to source's origin)
+        neg_source_origin = tuple(-x for x in source.domain.inclusive_min)
+        data_slices = intersection.translate(neg_source_origin).to_slices()
 
         output[output_slices] = data[data_slices]
 
