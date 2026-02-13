@@ -47,6 +47,7 @@ class BytesCodec(ArrayBytesCodec):
             data, "bytes", require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
+        configuration_parsed.setdefault("endian", None)
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
