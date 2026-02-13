@@ -71,7 +71,11 @@ def test_sharded_morton_indexing(
 
     This benchmark exercises the Morton order iteration path in the sharding
     codec, which benefits from the hypercube and vectorization optimizations.
+    The Morton order cache is cleared before each iteration to measure the
+    full computation cost.
     """
+    from zarr.core.indexing import _morton_order
+
     # Create array where each shard contains many small chunks
     # e.g., shards=(32,32,32) with chunks=(2,2,2) means 16x16x16 = 4096 chunks per shard
     shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
@@ -91,4 +95,56 @@ def test_sharded_morton_indexing(
     data[:] = 1
     # Read a sub-shard region to exercise Morton order iteration
     indexer = (slice(shards[0]),) * 3
-    benchmark(getitem, data, indexer)
+
+    def read_with_cache_clear() -> None:
+        _morton_order.cache_clear()
+        getitem(data, indexer)
+
+    benchmark(read_with_cache_clear)
+
+
+# Benchmark with larger chunks_per_shard to make Morton order impact more visible
+large_morton_shards = (
+    (32,) * 3,  # With 1x1x1 chunks: 32x32x32 = 32768 chunks per shard
+)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize("shards", large_morton_shards, ids=str)
+def test_sharded_morton_indexing_large(
+    store: Store,
+    shards: tuple[int, ...],
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark sharded array indexing with large chunks_per_shard.
+
+    Uses 1x1x1 chunks to maximize chunks_per_shard (32^3 = 32768), making
+    the Morton order computation a more significant portion of total time.
+    The Morton order cache is cleared before each iteration.
+    """
+    from zarr.core.indexing import _morton_order
+
+    # 1x1x1 chunks means chunks_per_shard equals shard shape
+    shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
+    chunks = (1,) * 3  # 1x1x1 chunks: chunks_per_shard = shards
+
+    data = create_array(
+        store=store,
+        shape=shape,
+        dtype="uint8",
+        chunks=chunks,
+        shards=shards,
+        compressors=None,
+        filters=None,
+        fill_value=0,
+    )
+
+    data[:] = 1
+    # Read one full shard
+    indexer = (slice(shards[0]),) * 3
+
+    def read_with_cache_clear() -> None:
+        _morton_order.cache_clear()
+        getitem(data, indexer)
+
+    benchmark(read_with_cache_clear)
