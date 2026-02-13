@@ -1467,6 +1467,78 @@ def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(out)
 
 
+# Magic numbers for 2D Morton decode: extract every 2nd bit and compact them.
+# Bits for dimension d are at positions d, d+2, d+4, ...
+_MORTON_2D_MASKS: tuple[int, ...] = (
+    0x5555555555555555,  # Extract mask: bits 0, 2, 4, ...
+    0x3333333333333333,  # Compact stage 1
+    0x0F0F0F0F0F0F0F0F,  # Compact stage 2
+    0x00FF00FF00FF00FF,  # Compact stage 3
+    0x0000FFFF0000FFFF,  # Compact stage 4
+)
+
+# Magic numbers for 3D Morton decode: extract every 3rd bit and compact them.
+# Bits for dimension d are at positions d, d+3, d+6, d+9, ...
+# Uses uint64 to handle large mask values correctly with numpy.
+_MORTON_3D_MASKS: tuple[np.uint64, ...] = (
+    np.uint64(0x1249249249249249),  # Extract mask: bits 0, 3, 6, 9, ...
+    np.uint64(0x30C30C30C30C30C3),  # Compact stage 1
+    np.uint64(0xF00F00F00F00F00F),  # Compact stage 2
+    np.uint64(0x00FF0000FF0000FF),  # Compact stage 3
+    np.uint64(0x00FF00000000FFFF),  # Compact stage 4
+    np.uint64(0x00000000001FFFFF),  # Compact stage 5
+)
+
+
+def _decode_morton_2d(z: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+    """Decode 2D Morton codes using magic number bit manipulation.
+
+    This extracts interleaved x,y coordinates from Morton codes using
+    parallel bit operations instead of bit-by-bit loops.
+    """
+    out = np.zeros((len(z), 2), dtype=np.intp)
+
+    # Extract x (bits 0, 2, 4, ...) and compact to (bits 0, 1, 2, ...)
+    x = z & _MORTON_2D_MASKS[0]
+    x = (x | (x >> 1)) & _MORTON_2D_MASKS[1]
+    x = (x | (x >> 2)) & _MORTON_2D_MASKS[2]
+    x = (x | (x >> 4)) & _MORTON_2D_MASKS[3]
+    x = (x | (x >> 8)) & _MORTON_2D_MASKS[4]
+    out[:, 0] = x
+
+    # Extract y (bits 1, 3, 5, ...) and compact
+    y = (z >> 1) & _MORTON_2D_MASKS[0]
+    y = (y | (y >> 1)) & _MORTON_2D_MASKS[1]
+    y = (y | (y >> 2)) & _MORTON_2D_MASKS[2]
+    y = (y | (y >> 4)) & _MORTON_2D_MASKS[3]
+    y = (y | (y >> 8)) & _MORTON_2D_MASKS[4]
+    out[:, 1] = y
+
+    return out
+
+
+def _decode_morton_3d(z: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+    """Decode 3D Morton codes using magic number bit manipulation.
+
+    This extracts interleaved x,y,z coordinates from Morton codes using
+    parallel bit operations instead of bit-by-bit loops.
+    """
+    # Convert to uint64 for bitwise operations with large masks
+    z_u64 = z.astype(np.uint64)
+    out = np.zeros((len(z), 3), dtype=np.intp)
+
+    for dim in range(3):
+        x = (z_u64 >> dim) & _MORTON_3D_MASKS[0]
+        x = (x ^ (x >> 2)) & _MORTON_3D_MASKS[1]
+        x = (x ^ (x >> 4)) & _MORTON_3D_MASKS[2]
+        x = (x ^ (x >> 8)) & _MORTON_3D_MASKS[3]
+        x = (x ^ (x >> 16)) & _MORTON_3D_MASKS[4]
+        x = (x ^ (x >> 32)) & _MORTON_3D_MASKS[5]
+        out[:, dim] = x
+
+    return out
+
+
 def decode_morton_vectorized(
     z: npt.NDArray[np.intp], chunk_shape: tuple[int, ...]
 ) -> npt.NDArray[np.intp]:
@@ -1486,9 +1558,18 @@ def decode_morton_vectorized(
     """
     n_dims = len(chunk_shape)
     bits = tuple((c - 1).bit_length() for c in chunk_shape)
-    max_coords_bits = max(bits) if bits else 0
 
-    # Output array: each row is a decoded coordinate
+    # Use magic number optimization for 2D/3D with uniform bit widths.
+    # Magic numbers have bit limits: 2D supports up to 32 bits, 3D up to 21 bits per dimension.
+    if len(set(bits)) == 1:  # All dimensions have same bit width
+        max_bits = bits[0] if bits else 0
+        if n_dims == 2 and max_bits <= 32:
+            return _decode_morton_2d(z)
+        if n_dims == 3 and max_bits <= 21:
+            return _decode_morton_3d(z)
+
+    # Fall back to generic bit-by-bit decoding
+    max_coords_bits = max(bits) if bits else 0
     out = np.zeros((len(z), n_dims), dtype=np.intp)
 
     input_bit = 0
