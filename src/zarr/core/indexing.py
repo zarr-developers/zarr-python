@@ -1658,6 +1658,31 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     if n_total == 0:
         return ()
 
+    # Optimization: Remove singleton dimensions to enable magic number usage
+    # for shapes like (1,1,32,32,32). Compute Morton on squeezed shape, then expand.
+    singleton_dims = tuple(i for i, s in enumerate(chunk_shape) if s == 1)
+    if singleton_dims:
+        squeezed_shape = tuple(s for s in chunk_shape if s != 1)
+        if squeezed_shape:
+            # Compute Morton order on squeezed shape
+            squeezed_order = _morton_order(squeezed_shape)
+            # Expand coordinates to include singleton dimensions (always 0)
+            order: list[tuple[int, ...]] = []
+            for coord in squeezed_order:
+                full_coord: list[int] = []
+                squeezed_idx = 0
+                for i in range(len(chunk_shape)):
+                    if chunk_shape[i] == 1:
+                        full_coord.append(0)
+                    else:
+                        full_coord.append(coord[squeezed_idx])
+                        squeezed_idx += 1
+                order.append(tuple(full_coord))
+            return tuple(order)
+        else:
+            # All dimensions are singletons, just return the single point
+            return ((0,) * len(chunk_shape),)
+
     n_dims = len(chunk_shape)
 
     # Find the largest power-of-2 hypercube that fits within chunk_shape.
