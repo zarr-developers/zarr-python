@@ -1470,13 +1470,31 @@ def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
 @lru_cache
 def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     n_total = product(chunk_shape)
+    n_dims = len(chunk_shape)
     order: list[tuple[int, ...]] = []
-    i = 0
+
+    # Find the largest power-of-2 hypercube that fits within chunk_shape.
+    # Within this hypercube, Morton codes are guaranteed to be in bounds.
+    min_dim = min(chunk_shape)
+    if min_dim >= 1:
+        power = min_dim.bit_length() - 1  # floor(log2(min_dim))
+        hypercube_size = 1 << power  # 2^power
+        n_hypercube = hypercube_size**n_dims
+    else:
+        n_hypercube = 0
+
+    # Within the hypercube, no bounds checking needed
+    for i in range(n_hypercube):
+        order.append(decode_morton(i, chunk_shape))
+
+    # For remaining elements, bounds checking is needed
+    i = n_hypercube
     while len(order) < n_total:
         m = decode_morton(i, chunk_shape)
         if all(x < y for x, y in zip(m, chunk_shape, strict=False)):
             order.append(m)
         i += 1
+
     return tuple(order)
 
 
