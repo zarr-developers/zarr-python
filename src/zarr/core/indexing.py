@@ -1452,7 +1452,7 @@ def make_slice_selection(selection: Any) -> list[slice]:
 def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     # Inspired by compressed morton code as implemented in Neuroglancer
     # https://github.com/google/neuroglancer/blob/master/src/neuroglancer/datasource/precomputed/volume.md#compressed-morton-code
-    bits = tuple(math.ceil(math.log2(c)) for c in chunk_shape)
+    bits = tuple((c - 1).bit_length() for c in chunk_shape)
     max_coords_bits = max(bits)
     input_bit = 0
     input_value = z
@@ -1485,8 +1485,8 @@ def decode_morton_vectorized(
         2D array of shape (len(z), len(chunk_shape)) containing decoded coordinates.
     """
     n_dims = len(chunk_shape)
-    bits = tuple(math.ceil(math.log2(c)) if c > 1 else 1 for c in chunk_shape)
-    max_coords_bits = max(bits)
+    bits = tuple((c - 1).bit_length() for c in chunk_shape)
+    max_coords_bits = max(bits) if bits else 0
 
     # Output array: each row is a decoded coordinate
     out = np.zeros((len(z), n_dims), dtype=np.intp)
@@ -1507,6 +1507,9 @@ def decode_morton_vectorized(
 @lru_cache
 def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     n_total = product(chunk_shape)
+    if n_total == 0:
+        return ()
+
     n_dims = len(chunk_shape)
 
     # Find the largest power-of-2 hypercube that fits within chunk_shape.
@@ -1520,9 +1523,12 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
         n_hypercube = 0
 
     # Within the hypercube, no bounds checking needed - use vectorized decoding
-    z_values = np.arange(n_hypercube, dtype=np.intp)
-    hypercube_coords = decode_morton_vectorized(z_values, chunk_shape)
-    order: list[tuple[int, ...]] = [tuple(row) for row in hypercube_coords]
+    if n_hypercube > 0:
+        z_values = np.arange(n_hypercube, dtype=np.intp)
+        hypercube_coords = decode_morton_vectorized(z_values, chunk_shape)
+        order: list[tuple[int, ...]] = [tuple(row) for row in hypercube_coords]
+    else:
+        order = []
 
     # For remaining elements, bounds checking is needed
     i = n_hypercube
