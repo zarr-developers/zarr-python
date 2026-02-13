@@ -190,3 +190,32 @@ def test_sharded_morton_single_chunk(
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
+
+
+# Benchmark for morton_order_iter directly (no I/O)
+morton_iter_shapes = (
+    (8, 8, 8),  # 512 elements
+    (16, 16, 16),  # 4096 elements
+    (32, 32, 32),  # 32768 elements
+)
+
+
+@pytest.mark.parametrize("shape", morton_iter_shapes, ids=str)
+def test_morton_order_iter(
+    shape: tuple[int, ...],
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark morton_order_iter directly without I/O.
+
+    This isolates the Morton order computation to measure the
+    optimization impact without array read/write overhead.
+    The cache is cleared before each iteration.
+    """
+    from zarr.core.indexing import _morton_order, morton_order_iter
+
+    def compute_morton_order() -> None:
+        _morton_order.cache_clear()
+        # Consume the iterator to force computation
+        list(morton_order_iter(shape))
+
+    benchmark(compute_morton_order)
