@@ -1499,6 +1499,17 @@ _MORTON_4D_MASKS: tuple[np.uint64, ...] = (
     np.uint64(0x000000000000FFFF),  # Compact stage 4
 )
 
+# Magic numbers for 5D Morton decode: extract every 5th bit and compact them.
+# Bits for dimension d are at positions d, d+5, d+10, d+15, ...
+# Max 12 bits per dimension (64 // 5 = 12), supporting values up to 4095.
+_MORTON_5D_MASKS: tuple[np.uint64, ...] = (
+    np.uint64(0x1084210842108421),  # Extract mask: bits 0, 5, 10, 15, ...
+    np.uint64(0x0318C6318C6318C63),  # Compact stage 1
+    np.uint64(0xF03C0F03C0F03C0F),  # Compact stage 2
+    np.uint64(0x0000FF000FF000FF),  # Compact stage 3
+    np.uint64(0x0000000000000FFF),  # Compact stage 4 (12 bits max)
+)
+
 
 def _decode_morton_2d(z: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
     """Decode 2D Morton codes using magic number bit manipulation.
@@ -1570,6 +1581,27 @@ def _decode_morton_4d(z: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
     return out
 
 
+def _decode_morton_5d(z: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+    """Decode 5D Morton codes using magic number bit manipulation.
+
+    This extracts interleaved coordinates from Morton codes using
+    parallel bit operations instead of bit-by-bit loops.
+    """
+    # Convert to uint64 for bitwise operations with large masks
+    z_u64 = z.astype(np.uint64)
+    out = np.zeros((len(z), 5), dtype=np.intp)
+
+    for dim in range(5):
+        x = (z_u64 >> dim) & _MORTON_5D_MASKS[0]
+        x = (x ^ (x >> 4)) & _MORTON_5D_MASKS[1]
+        x = (x ^ (x >> 8)) & _MORTON_5D_MASKS[2]
+        x = (x ^ (x >> 16)) & _MORTON_5D_MASKS[3]
+        x = (x ^ (x >> 32)) & _MORTON_5D_MASKS[4]
+        out[:, dim] = x
+
+    return out
+
+
 def decode_morton_vectorized(
     z: npt.NDArray[np.intp], chunk_shape: tuple[int, ...]
 ) -> npt.NDArray[np.intp]:
@@ -1590,8 +1622,8 @@ def decode_morton_vectorized(
     n_dims = len(chunk_shape)
     bits = tuple((c - 1).bit_length() for c in chunk_shape)
 
-    # Use magic number optimization for 2D/3D/4D with uniform bit widths.
-    # Magic numbers have bit limits: 2D up to 32, 3D up to 21, 4D up to 16 bits per dimension.
+    # Use magic number optimization for 2D/3D/4D/5D with uniform bit widths.
+    # Bit limits are floor(64 / n_dims): 2D=32, 3D=21, 4D=16, 5D=12 bits per dimension.
     if len(set(bits)) == 1:  # All dimensions have same bit width
         max_bits = bits[0] if bits else 0
         if n_dims == 2 and max_bits <= 32:
@@ -1600,6 +1632,8 @@ def decode_morton_vectorized(
             return _decode_morton_3d(z)
         if n_dims == 4 and max_bits <= 16:
             return _decode_morton_4d(z)
+        if n_dims == 5 and max_bits <= 12:
+            return _decode_morton_5d(z)
 
     # Fall back to generic bit-by-bit decoding
     max_coords_bits = max(bits) if bits else 0
