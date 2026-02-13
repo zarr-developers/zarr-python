@@ -1503,7 +1503,7 @@ def decode_morton_vectorized(
     return out
 
 
-@lru_cache
+@lru_cache(maxsize=16)
 def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     n_total = product(chunk_shape)
     if n_total == 0:
