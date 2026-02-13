@@ -1484,8 +1484,7 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
         n_hypercube = 0
 
     # Within the hypercube, no bounds checking needed
-    for i in range(n_hypercube):
-        order.append(decode_morton(i, chunk_shape))
+    order = [decode_morton(i, chunk_shape) for i in range(n_hypercube)]
 
     # For remaining elements, bounds checking is needed
     i = n_hypercube
