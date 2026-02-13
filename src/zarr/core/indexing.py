@@ -1467,11 +1467,47 @@ def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(out)
 
 
+def decode_morton_vectorized(
+    z: npt.NDArray[np.intp], chunk_shape: tuple[int, ...]
+) -> npt.NDArray[np.intp]:
+    """Vectorized Morton code decoding for multiple z values.
+
+    Parameters
+    ----------
+    z : ndarray
+        1D array of Morton codes to decode.
+    chunk_shape : tuple of int
+        Shape defining the coordinate space.
+
+    Returns
+    -------
+    ndarray
+        2D array of shape (len(z), len(chunk_shape)) containing decoded coordinates.
+    """
+    n_dims = len(chunk_shape)
+    bits = tuple(math.ceil(math.log2(c)) if c > 1 else 1 for c in chunk_shape)
+    max_coords_bits = max(bits)
+
+    # Output array: each row is a decoded coordinate
+    out = np.zeros((len(z), n_dims), dtype=np.intp)
+
+    input_bit = 0
+    for coord_bit in range(max_coords_bits):
+        for dim in range(n_dims):
+            if coord_bit < bits[dim]:
+                # Extract bit at position input_bit from all z values
+                bit_values = (z >> input_bit) & 1
+                # Place bit at coord_bit position in dimension dim
+                out[:, dim] |= bit_values << coord_bit
+                input_bit += 1
+
+    return out
+
+
 @lru_cache
 def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     n_total = product(chunk_shape)
     n_dims = len(chunk_shape)
-    order: list[tuple[int, ...]] = []
 
     # Find the largest power-of-2 hypercube that fits within chunk_shape.
     # Within this hypercube, Morton codes are guaranteed to be in bounds.
@@ -1483,8 +1519,10 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     else:
         n_hypercube = 0
 
-    # Within the hypercube, no bounds checking needed
-    order = [decode_morton(i, chunk_shape) for i in range(n_hypercube)]
+    # Within the hypercube, no bounds checking needed - use vectorized decoding
+    z_values = np.arange(n_hypercube, dtype=np.intp)
+    hypercube_coords = decode_morton_vectorized(z_values, chunk_shape)
+    order: list[tuple[int, ...]] = [tuple(row) for row in hypercube_coords]
 
     # For remaining elements, bounds checking is needed
     i = n_hypercube
