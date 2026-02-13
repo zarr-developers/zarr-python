@@ -148,3 +148,45 @@ def test_sharded_morton_indexing_large(
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize("shards", large_morton_shards, ids=str)
+def test_sharded_morton_single_chunk(
+    store: Store,
+    shards: tuple[int, ...],
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark reading a single chunk from a large shard.
+
+    This isolates the Morton order computation overhead by minimizing I/O.
+    Reading one chunk from a shard with 32^3 = 32768 chunks still requires
+    computing the full Morton order, making the optimization impact clear.
+    The Morton order cache is cleared before each iteration.
+    """
+    from zarr.core.indexing import _morton_order
+
+    # 1x1x1 chunks means chunks_per_shard equals shard shape
+    shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
+    chunks = (1,) * 3  # 1x1x1 chunks: chunks_per_shard = shards
+
+    data = create_array(
+        store=store,
+        shape=shape,
+        dtype="uint8",
+        chunks=chunks,
+        shards=shards,
+        compressors=None,
+        filters=None,
+        fill_value=0,
+    )
+
+    data[:] = 1
+    # Read only a single chunk (1x1x1) from the shard
+    indexer = (slice(1),) * 3
+
+    def read_with_cache_clear() -> None:
+        _morton_order.cache_clear()
+        getitem(data, indexer)
+
+    benchmark(read_with_cache_clear)
