@@ -4,7 +4,7 @@ import asyncio
 import json
 import pickle
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
 from zarr.storage import WrapperStore
 
@@ -590,10 +590,13 @@ class LatencyStore(WrapperStore[Store]):
     get_latency: float
     set_latency: float
 
-    def __init__(self, cls: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
+    def __init__(self, store: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
         self.get_latency = float(get_latency)
         self.set_latency = float(set_latency)
-        self._store = cls
+        self._store = store
+
+    def _with_store(self, store: Store) -> Self:
+        return type(self)(store, get_latency=self.get_latency, set_latency=self.set_latency)
 
     async def set(self, key: str, value: Buffer) -> None:
         """
