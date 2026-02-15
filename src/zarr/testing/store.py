@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import pickle
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
 from zarr.storage import WrapperStore
 
@@ -23,7 +24,7 @@ from zarr.abc.store import (
     SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.sync import _collect_aiterator
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage._utils import _normalize_byte_range_index
 from zarr.testing.utils import assert_bytes_equal
 
@@ -491,24 +492,36 @@ class StoreTests(Generic[S, B]):
         assert observed_prefix_sorted == expected_prefix_sorted
 
     async def test_list_dir(self, store: S) -> None:
-        root = "foo"
-        store_dict = {
-            root + "/zarr.json": self.buffer_cls.from_bytes(b"bar"),
-            root + "/c/1": self.buffer_cls.from_bytes(b"\x01"),
-        }
+        roots_and_keys: list[tuple[str, dict[str, Buffer]]] = [
+            (
+                "foo",
+                {
+                    "foo/zarr.json": self.buffer_cls.from_bytes(b"bar"),
+                    "foo/c/1": self.buffer_cls.from_bytes(b"\x01"),
+                },
+            ),
+            (
+                "foo/bar",
+                {
+                    "foo/bar/foobar_first_child": self.buffer_cls.from_bytes(b"1"),
+                    "foo/bar/foobar_second_child/zarr.json": self.buffer_cls.from_bytes(b"2"),
+                },
+            ),
+        ]
 
         assert await _collect_aiterator(store.list_dir("")) == ()
-        assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        await store._set_many(store_dict.items())
+        for root, store_dict in roots_and_keys:
+            assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        keys_observed = await _collect_aiterator(store.list_dir(root))
-        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
+            await store._set_many(store_dict.items())
 
-        assert sorted(keys_observed) == sorted(keys_expected)
+            keys_observed = await _collect_aiterator(store.list_dir(root))
+            keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
+            assert sorted(keys_observed) == sorted(keys_expected)
 
-        keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
-        assert sorted(keys_expected) == sorted(keys_observed)
+            keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
+            assert sorted(keys_expected) == sorted(keys_observed)
 
     async def test_set_if_not_exists(self, store: S) -> None:
         key = "k"
@@ -526,6 +539,46 @@ class StoreTests(Generic[S, B]):
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
 
+    async def test_get_bytes(self, store: S) -> None:
+        """
+        Test that the get_bytes method reads bytes.
+        """
+        data = b"hello world"
+        key = "zarr.json"
+        await self.set(store, key, self.buffer_cls.from_bytes(data))
+        assert await store._get_bytes(key, prototype=default_buffer_prototype()) == data
+        with pytest.raises(FileNotFoundError):
+            await store._get_bytes("nonexistent_key", prototype=default_buffer_prototype())
+
+    def test_get_bytes_sync(self, store: S) -> None:
+        """
+        Test that the get_bytes_sync method reads bytes.
+        """
+        data = b"hello world"
+        key = "zarr.json"
+        sync(self.set(store, key, self.buffer_cls.from_bytes(data)))
+        assert store._get_bytes_sync(key, prototype=default_buffer_prototype()) == data
+
+    async def test_get_json(self, store: S) -> None:
+        """
+        Test that the get_json method reads json.
+        """
+        data = {"foo": "bar"}
+        data_bytes = json.dumps(data).encode("utf-8")
+        key = "zarr.json"
+        await self.set(store, key, self.buffer_cls.from_bytes(data_bytes))
+        assert await store._get_json(key, prototype=default_buffer_prototype()) == data
+
+    def test_get_json_sync(self, store: S) -> None:
+        """
+        Test that the get_json method reads json.
+        """
+        data = {"foo": "bar"}
+        data_bytes = json.dumps(data).encode("utf-8")
+        key = "zarr.json"
+        sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
+        assert store._get_json_sync(key, prototype=default_buffer_prototype()) == data
+
 
 class LatencyStore(WrapperStore[Store]):
     """
@@ -537,10 +590,13 @@ class LatencyStore(WrapperStore[Store]):
     get_latency: float
     set_latency: float
 
-    def __init__(self, cls: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
+    def __init__(self, store: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
         self.get_latency = float(get_latency)
         self.set_latency = float(set_latency)
-        self._store = cls
+        self._store = store
+
+    def _with_store(self, store: Store) -> Self:
+        return type(self)(store, get_latency=self.get_latency, set_latency=self.set_latency)
 
     async def set(self, key: str, value: Buffer) -> None:
         """
