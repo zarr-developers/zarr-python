@@ -13,6 +13,7 @@ from functools import cached_property, reduce
 from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias, TypedDict, Union, cast
 
 import numpy as np
+import numpy.typing as npt
 
 import zarr
 from zarr.abc.metadata import Metadata
@@ -428,6 +429,28 @@ class ChunkGrid(Metadata):
         """
 
     @abstractmethod
+    def array_indices_to_chunk_dim(
+        self, array_shape: tuple[int, ...], dim: int, indices: npt.NDArray[np.intp]
+    ) -> npt.NDArray[np.intp]:
+        """
+        Map an array of indices along one dimension to chunk coordinates (vectorized).
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        dim : int
+            Dimension index.
+        indices : np.ndarray
+            Array of indices along the given dimension.
+
+        Returns
+        -------
+        np.ndarray
+            Array of chunk coordinates, same shape as indices.
+        """
+
+    @abstractmethod
     def chunks_per_dim(self, array_shape: tuple[int, ...], dim: int) -> int:
         """
         Get the number of chunks along a specific dimension.
@@ -533,6 +556,19 @@ class RegularChunkGrid(ChunkGrid):
             0 if size == 0 else idx // size
             for idx, size in zip(array_index, self.chunk_shape, strict=False)
         )
+
+    def array_indices_to_chunk_dim(
+        self, array_shape: tuple[int, ...], dim: int, indices: npt.NDArray[np.intp]
+    ) -> npt.NDArray[np.intp]:
+        """
+        Vectorized mapping of array indices to chunk coordinates along one dimension.
+
+        For RegularChunkGrid, this is simply indices // chunk_size.
+        """
+        chunk_size = self.chunk_shape[dim]
+        if chunk_size == 0:
+            return np.zeros_like(indices)
+        return indices // chunk_size
 
     def chunks_per_dim(self, array_shape: tuple[int, ...], dim: int) -> int:
         """
@@ -1070,6 +1106,17 @@ class RectilinearChunkGrid(ChunkGrid):
             result.append(chunk_idx)
 
         return tuple(result)
+
+    def array_indices_to_chunk_dim(
+        self, array_shape: tuple[int, ...], dim: int, indices: npt.NDArray[np.intp]
+    ) -> npt.NDArray[np.intp]:
+        """
+        Vectorized mapping of array indices to chunk coordinates along one dimension.
+
+        For RectilinearChunkGrid, uses np.searchsorted on cumulative sizes.
+        """
+        cumsum = np.asarray(self._cumulative_sizes[dim])
+        return np.searchsorted(cumsum, indices, side="right").astype(np.intp) - 1
 
     def chunks_in_selection(
         self, array_shape: tuple[int, ...], selection: tuple[slice, ...]

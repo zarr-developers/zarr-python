@@ -1804,3 +1804,142 @@ def test_invalid_chunk_coordinates_raise() -> None:
 
     with pytest.raises(IndexError):
         grid.get_chunk_start(array_shape, (0, 2))  # Only 2 chunks in dim 1 (0,1)
+
+
+# ===================================================================
+# End-to-end indexing tests through full zarr Array pipeline
+# (SliceDimIndexer, IntDimIndexer, etc. with rectilinear grids)
+# ===================================================================
+
+
+def test_slice_at_exact_chunk_boundaries() -> None:
+    """Test slicing exactly at rectilinear chunk boundaries.
+
+    This exercises the SliceDimIndexer code path end-to-end, verifying
+    that the refactored boundary calculation (stop-1 → +1 pattern) is correct.
+    Chunk boundaries for rows: [0:10, 10:30, 30:60]
+    Chunk boundaries for cols: [0:25, 25:50, 50:75, 75:100]
+    """
+    store = MemoryStore()
+    data = np.arange(6000, dtype="float64").reshape(60, 100)
+    arr = zarr.create_array(
+        store=store,
+        shape=(60, 100),
+        chunks=[[10, 20, 30], [25, 25, 25, 25]],
+        dtype="float64",
+        zarr_format=3,
+    )
+    arr[:] = data
+
+    # Slice exactly one chunk (second row-chunk, first col-chunk)
+    np.testing.assert_array_equal(arr[10:30, 0:25], data[10:30, 0:25])
+
+    # Slice exactly at a boundary start
+    np.testing.assert_array_equal(arr[30:60, 75:100], data[30:60, 75:100])
+
+    # Slice spanning exactly two chunk boundaries
+    np.testing.assert_array_equal(arr[0:30, 0:50], data[0:30, 0:50])
+    np.testing.assert_array_equal(arr[10:60, 25:75], data[10:60, 25:75])
+
+    # Single-element slices at each boundary
+    np.testing.assert_array_equal(arr[9:10, :], data[9:10, :])  # last row of chunk 0
+    np.testing.assert_array_equal(arr[10:11, :], data[10:11, :])  # first row of chunk 1
+    np.testing.assert_array_equal(arr[29:30, :], data[29:30, :])  # last row of chunk 1
+    np.testing.assert_array_equal(arr[30:31, :], data[30:31, :])  # first row of chunk 2
+
+
+def test_strided_slicing_rectilinear() -> None:
+    """Test slicing with step > 1 on rectilinear arrays."""
+    store = MemoryStore()
+    data = np.arange(6000, dtype="float64").reshape(60, 100)
+    arr = zarr.create_array(
+        store=store,
+        shape=(60, 100),
+        chunks=[[10, 20, 30], [25, 25, 25, 25]],
+        dtype="float64",
+        zarr_format=3,
+    )
+    arr[:] = data
+
+    np.testing.assert_array_equal(arr[::2, ::3], data[::2, ::3])
+    np.testing.assert_array_equal(arr[5:55:5, 10:90:10], data[5:55:5, 10:90:10])
+    np.testing.assert_array_equal(arr[::7, ::13], data[::7, ::13])
+
+
+def test_fancy_indexing_rectilinear() -> None:
+    """Test oindex and vindex on rectilinear arrays through the full Array pipeline."""
+    store = MemoryStore()
+    data = np.arange(6000, dtype="float64").reshape(60, 100)
+    arr = zarr.create_array(
+        store=store,
+        shape=(60, 100),
+        chunks=[[10, 20, 30], [25, 25, 25, 25]],
+        dtype="float64",
+        zarr_format=3,
+    )
+    arr[:] = data
+
+    # oindex: orthogonal indexing with integer arrays spanning multiple chunks
+    rows = np.array([0, 9, 10, 29, 30, 59])
+    cols = np.array([0, 24, 25, 49, 50, 99])
+    np.testing.assert_array_equal(arr.oindex[rows, cols], data[np.ix_(rows, cols)])
+
+    # vindex: coordinate-based indexing
+    r = np.array([0, 10, 30, 59])
+    c = np.array([0, 25, 50, 99])
+    np.testing.assert_array_equal(arr.vindex[r, c], data[r, c])
+
+    # oindex with slice on one axis, int array on other
+    np.testing.assert_array_equal(arr.oindex[rows, 50:75], data[np.ix_(rows, np.arange(50, 75))])
+    np.testing.assert_array_equal(arr.oindex[10:30, cols], data[np.ix_(np.arange(10, 30), cols)])
+
+
+def test_boolean_mask_indexing_rectilinear() -> None:
+    """Test boolean mask indexing on rectilinear arrays."""
+    store = MemoryStore()
+    data = np.arange(6000, dtype="float64").reshape(60, 100)
+    arr = zarr.create_array(
+        store=store,
+        shape=(60, 100),
+        chunks=[[10, 20, 30], [25, 25, 25, 25]],
+        dtype="float64",
+        zarr_format=3,
+    )
+    arr[:] = data
+
+    # Full 2D boolean mask
+    mask = data > 3000
+    np.testing.assert_array_equal(arr.vindex[mask], data[mask])
+
+    # 1D boolean mask on rows via oindex
+    row_mask = np.zeros(60, dtype=bool)
+    row_mask[[0, 9, 10, 29, 30, 59]] = True  # hits all chunk boundaries
+    np.testing.assert_array_equal(arr.oindex[row_mask, :], data[row_mask, :])
+
+    # 1D boolean mask on cols via oindex
+    col_mask = np.zeros(100, dtype=bool)
+    col_mask[[0, 24, 25, 49, 50, 99]] = True  # hits all chunk boundaries
+    np.testing.assert_array_equal(arr.oindex[:, col_mask], data[:, col_mask])
+
+
+def test_block_indexing_rectilinear() -> None:
+    """Test block (chunk-level) indexing on rectilinear arrays."""
+    store = MemoryStore()
+    data = np.arange(6000, dtype="float64").reshape(60, 100)
+    arr = zarr.create_array(
+        store=store,
+        shape=(60, 100),
+        chunks=[[10, 20, 30], [25, 25, 25, 25]],
+        dtype="float64",
+        zarr_format=3,
+    )
+    arr[:] = data
+
+    # Individual blocks
+    np.testing.assert_array_equal(arr.blocks[0, 0], data[0:10, 0:25])
+    np.testing.assert_array_equal(arr.blocks[1, 0], data[10:30, 0:25])
+    np.testing.assert_array_equal(arr.blocks[2, 3], data[30:60, 75:100])
+
+    # Block range
+    np.testing.assert_array_equal(arr.blocks[0:2, 0:2], data[0:30, 0:50])
+    np.testing.assert_array_equal(arr.blocks[1:3, 2:4], data[10:60, 50:100])

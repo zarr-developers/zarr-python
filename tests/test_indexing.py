@@ -2138,3 +2138,173 @@ class TestAsync:
 
         with pytest.raises(IndexError):
             await async_zarr.oindex.getitem("invalid_indexer")
+
+
+# ===================================================================
+# Rectilinear chunk grid indexing through the full Array pipeline
+# ===================================================================
+
+
+class TestRectilinearIndexing:
+    """Test that all indexing modes work correctly with RectilinearChunkGrid.
+
+    These tests verify that the refactored indexing code (which delegates
+    to ChunkGrid methods instead of using direct division) produces correct
+    results when used with variable-sized chunks.
+    """
+
+    @pytest.fixture
+    def rectilinear_1d(self, store: StorePath) -> tuple[Array, npt.NDArray[Any]]:
+        """1D array with rectilinear chunks [5, 10, 15] (total=30)."""
+        a = np.arange(30, dtype=int)
+        z = zarr.create_array(
+            store=store / str(uuid4()),
+            shape=(30,),
+            dtype=a.dtype,
+            chunks=[[5, 10, 15]],
+            zarr_format=3,
+        )
+        z[:] = a
+        return z, a
+
+    @pytest.fixture
+    def rectilinear_2d(self, store: StorePath) -> tuple[Array, npt.NDArray[Any]]:
+        """2D array with rectilinear chunks [[10, 20, 30], [25, 25, 25, 25]] (60x100)."""
+        a = np.arange(6000, dtype=int).reshape(60, 100)
+        z = zarr.create_array(
+            store=store / str(uuid4()),
+            shape=(60, 100),
+            dtype=a.dtype,
+            chunks=[[10, 20, 30], [25, 25, 25, 25]],
+            zarr_format=3,
+        )
+        z[:] = a
+        return z, a
+
+    # --- Basic selection ---
+
+    def test_basic_selection_1d(self, rectilinear_1d: tuple[Array, npt.NDArray[Any]]) -> None:
+        z, a = rectilinear_1d
+        for sel in [0, 4, 5, 14, 15, 29, -1, slice(None), slice(3, 18), slice(0, 0)]:
+            assert_array_equal(z[sel], a[sel])
+
+    def test_basic_selection_1d_strided(
+        self, rectilinear_1d: tuple[Array, npt.NDArray[Any]]
+    ) -> None:
+        z, a = rectilinear_1d
+        for sel in [slice(None, None, 2), slice(1, 25, 3), slice(0, 30, 7)]:
+            assert_array_equal(z[sel], a[sel])
+
+    def test_basic_selection_2d(self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]) -> None:
+        z, a = rectilinear_2d
+        selections = [
+            42,
+            -1,
+            (9, 24),
+            (10, 25),
+            (30, 50),
+            (59, 99),
+            slice(None),
+            (slice(5, 35), slice(20, 80)),
+            (slice(0, 10), slice(0, 25)),  # within one chunk
+            (slice(10, 10), slice(None)),  # empty
+            (slice(None, None, 3), slice(None, None, 7)),  # strided
+        ]
+        for sel in selections:
+            assert_array_equal(z[sel], a[sel])
+
+    # --- Orthogonal selection ---
+
+    def test_orthogonal_selection_1d_bool(
+        self, rectilinear_1d: tuple[Array, npt.NDArray[Any]]
+    ) -> None:
+        z, a = rectilinear_1d
+        ix = np.zeros(30, dtype=bool)
+        ix[[0, 4, 5, 14, 15, 29]] = True
+        assert_array_equal(z.oindex[ix], a[ix])
+
+    def test_orthogonal_selection_1d_int(
+        self, rectilinear_1d: tuple[Array, npt.NDArray[Any]]
+    ) -> None:
+        z, a = rectilinear_1d
+        ix = np.array([0, 4, 5, 14, 15, 29])
+        assert_array_equal(z.oindex[ix], a[ix])
+        # Wraparound
+        ix_neg = np.array([0, -1, -15, -25])
+        assert_array_equal(z.oindex[ix_neg], a[ix_neg])
+
+    def test_orthogonal_selection_2d_bool(
+        self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]
+    ) -> None:
+        z, a = rectilinear_2d
+        ix0 = np.zeros(60, dtype=bool)
+        ix0[[0, 9, 10, 29, 30, 59]] = True
+        ix1 = np.zeros(100, dtype=bool)
+        ix1[[0, 24, 25, 49, 50, 99]] = True
+        assert_array_equal(z.oindex[ix0, ix1], a[np.ix_(ix0, ix1)])
+
+    def test_orthogonal_selection_2d_int(
+        self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]
+    ) -> None:
+        z, a = rectilinear_2d
+        ix0 = np.array([0, 9, 10, 29, 30, 59])
+        ix1 = np.array([0, 24, 25, 49, 50, 99])
+        assert_array_equal(z.oindex[ix0, ix1], a[np.ix_(ix0, ix1)])
+
+    def test_orthogonal_selection_2d_mixed(
+        self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]
+    ) -> None:
+        z, a = rectilinear_2d
+        ix = np.array([0, 9, 10, 29, 30, 59])
+        assert_array_equal(z.oindex[ix, slice(25, 75)], a[np.ix_(ix, range(25, 75))])
+        assert_array_equal(z.oindex[slice(10, 30), ix[:4]], a[np.ix_(range(10, 30), ix[:4])])
+
+    # --- Coordinate (vindex) selection ---
+
+    def test_coordinate_selection_1d(self, rectilinear_1d: tuple[Array, npt.NDArray[Any]]) -> None:
+        z, a = rectilinear_1d
+        ix = np.array([0, 4, 5, 14, 15, 29])
+        assert_array_equal(z.vindex[ix], a[ix])
+
+    def test_coordinate_selection_2d(self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]) -> None:
+        z, a = rectilinear_2d
+        r = np.array([0, 9, 10, 29, 30, 59])
+        c = np.array([0, 24, 25, 49, 50, 99])
+        assert_array_equal(z.vindex[r, c], a[r, c])
+
+    def test_coordinate_selection_2d_bool_mask(
+        self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]
+    ) -> None:
+        z, a = rectilinear_2d
+        mask = a > 3000
+        assert_array_equal(z.vindex[mask], a[mask])
+
+    # --- Block selection ---
+
+    def test_block_selection(self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]) -> None:
+        z, a = rectilinear_2d
+        # Individual blocks
+        assert_array_equal(z.blocks[0, 0], a[0:10, 0:25])
+        assert_array_equal(z.blocks[1, 2], a[10:30, 50:75])
+        assert_array_equal(z.blocks[2, 3], a[30:60, 75:100])
+        # Block range
+        assert_array_equal(z.blocks[0:2, 1:3], a[0:30, 25:75])
+
+    # --- Set selection ---
+
+    def test_set_basic_selection(self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]) -> None:
+        z, a = rectilinear_2d
+        # Write across chunk boundaries
+        new_data = np.full((20, 50), -1, dtype=int)
+        z[5:25, 10:60] = new_data
+        a[5:25, 10:60] = new_data
+        assert_array_equal(z[:], a)
+
+    def test_set_orthogonal_selection(self, rectilinear_2d: tuple[Array, npt.NDArray[Any]]) -> None:
+        z, a = rectilinear_2d
+        rows = np.array([0, 10, 30])
+        cols = np.array([0, 25, 50, 75])
+        val = np.full((3, 4), -99, dtype=int)
+        z.oindex[rows, cols] = val
+        a[np.ix_(rows, cols)] = val
+        assert_array_equal(z[:], a)

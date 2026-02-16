@@ -864,12 +864,7 @@ class IntArrayDimIndexer:
             boundscheck_indices(dim_sel, dim_len)
 
         # determine which chunk is needed for each selection item
-        # Use chunk grid to map each index to its chunk coordinate
-        dim_sel_chunk = np.empty(len(dim_sel), dtype=np.intp)
-        for i, idx in enumerate(dim_sel):
-            full_index = tuple(int(idx) if j == dim else 0 for j in range(len(array_shape)))
-            chunk_coords = chunk_grid.array_index_to_chunk_coord(array_shape, full_index)
-            dim_sel_chunk[i] = chunk_coords[dim]
+        dim_sel_chunk = chunk_grid.array_indices_to_chunk_dim(array_shape, dim, dim_sel)
 
         # determine order of indices
         if order == Order.UNKNOWN:
@@ -1315,19 +1310,10 @@ class CoordinateIndexer(Indexer):
         selection_broadcast = tuple(dim_sel.reshape(-1) for dim_sel in selection_broadcast)
 
         # compute chunk index for each point in the selection using chunk grid
-        # For each point, we need to find which chunk it belongs to
-        npoints = selection_broadcast[0].size
-        chunks_multi_index_list = []
-        for dim in range(len(shape)):
-            dim_chunk_indices = np.empty(npoints, dtype=np.intp)
-            for i in range(npoints):
-                # Build full coordinate for this point
-                point_coords = tuple(int(selection_broadcast[d][i]) for d in range(len(shape)))
-                # Map to chunk coordinates
-                chunk_coords = chunk_grid.array_index_to_chunk_coord(shape, point_coords)
-                dim_chunk_indices[i] = chunk_coords[dim]
-            chunks_multi_index_list.append(dim_chunk_indices)
-        chunks_multi_index_broadcast = tuple(chunks_multi_index_list)
+        chunks_multi_index_broadcast = tuple(
+            chunk_grid.array_indices_to_chunk_dim(shape, dim, selection_broadcast[dim])
+            for dim in range(len(shape))
+        )
 
         # ravel chunk indices
         chunks_raveled_indices = np.ravel_multi_index(
