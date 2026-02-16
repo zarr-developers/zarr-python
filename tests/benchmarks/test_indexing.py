@@ -190,3 +190,115 @@ def test_sharded_morton_single_chunk(
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
+
+
+# Benchmark for morton_order_iter directly (no I/O)
+morton_iter_shapes = (
+    (8, 8, 8),  # 512 elements
+    (16, 16, 16),  # 4096 elements
+    (32, 32, 32),  # 32768 elements
+)
+
+
+@pytest.mark.parametrize("shape", morton_iter_shapes, ids=str)
+def test_morton_order_iter(
+    shape: tuple[int, ...],
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark morton_order_iter directly without I/O.
+
+    This isolates the Morton order computation to measure the
+    optimization impact without array read/write overhead.
+    The cache is cleared before each iteration.
+    """
+    from zarr.core.indexing import _morton_order, morton_order_iter
+
+    def compute_morton_order() -> None:
+        _morton_order.cache_clear()
+        # Consume the iterator to force computation
+        list(morton_order_iter(shape))
+
+    benchmark(compute_morton_order)
+
+
+# Benchmark for Morton order in write path
+# Morton order is used when encoding shards, so writes should show improvement
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize("shards", large_morton_shards, ids=str)
+def test_sharded_morton_write_full(
+    store: Store,
+    shards: tuple[int, ...],
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark writing a full shard with Morton order.
+
+    Morton order is used in the write/encode path of the sharding codec.
+    This benchmark writes to a full shard with cache clearing to measure
+    the Morton optimization impact on writes.
+    """
+    import numpy as np
+
+    from zarr.core.indexing import _morton_order
+
+    shape = tuple(s * 2 for s in shards)
+    chunks = (1,) * 3
+
+    data = create_array(
+        store=store,
+        shape=shape,
+        dtype="uint8",
+        chunks=chunks,
+        shards=shards,
+        compressors=None,
+        filters=None,
+        fill_value=0,
+    )
+
+    # Pre-create write data
+    write_data = np.ones(shards, dtype="uint8")
+    indexer = (slice(shards[0]),) * 3
+
+    def write_with_cache_clear() -> None:
+        _morton_order.cache_clear()
+        data[indexer] = write_data
+
+    benchmark(write_with_cache_clear)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize("shards", morton_iter_shapes, ids=str)
+def test_sharded_morton_write(
+    store: Store,
+    shards: tuple[int, ...],
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark writing to sharded arrays with various shard sizes.
+
+    Tests Morton order impact on writes across different shard sizes.
+    """
+    import numpy as np
+
+    from zarr.core.indexing import _morton_order
+
+    shape = tuple(s * 2 for s in shards)
+    chunks = (1,) * len(shards)
+
+    data = create_array(
+        store=store,
+        shape=shape,
+        dtype="uint8",
+        chunks=chunks,
+        shards=shards,
+        compressors=None,
+        filters=None,
+        fill_value=0,
+    )
+
+    write_data = np.ones(shards, dtype="uint8")
+    indexer = tuple(slice(s) for s in shards)
+
+    def write_with_cache_clear() -> None:
+        _morton_order.cache_clear()
+        data[indexer] = write_data
+
+    benchmark(write_with_cache_clear)
