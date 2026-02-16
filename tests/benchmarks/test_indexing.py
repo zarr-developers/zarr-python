@@ -219,3 +219,49 @@ def test_morton_order_iter(
         list(morton_order_iter(shape))
 
     benchmark(compute_morton_order)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+@pytest.mark.parametrize("shards", large_morton_shards, ids=str)
+def test_sharded_morton_write_single_chunk(
+    store: Store,
+    shards: tuple[int, ...],
+    benchmark: BenchmarkFixture,
+) -> None:
+    """Benchmark writing a single chunk to a large shard.
+
+    This is the clearest end-to-end demonstration of Morton order optimization.
+    Writing a single chunk to a shard with 32^3 = 32768 chunks requires
+    computing the full Morton order, but minimizes I/O overhead.
+
+    Expected improvement: ~160ms (matching Morton computation speedup of ~178ms).
+    The Morton order cache is cleared before each iteration.
+    """
+    import numpy as np
+
+    from zarr.core.indexing import _morton_order
+
+    # 1x1x1 chunks means chunks_per_shard equals shard shape
+    shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
+    chunks = (1,) * 3  # 1x1x1 chunks: chunks_per_shard = shards
+
+    data = create_array(
+        store=store,
+        shape=shape,
+        dtype="uint8",
+        chunks=chunks,
+        shards=shards,
+        compressors=None,
+        filters=None,
+        fill_value=0,
+    )
+
+    # Write data for a single chunk
+    write_data = np.ones((1, 1, 1), dtype="uint8")
+    indexer = (slice(1), slice(1), slice(1))
+
+    def write_with_cache_clear() -> None:
+        _morton_order.cache_clear()
+        data[indexer] = write_data
+
+    benchmark(write_with_cache_clear)
