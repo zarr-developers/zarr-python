@@ -137,6 +137,23 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
             The array chunk grid
         """
 
+    def _decode_sync(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
+        """Synchronously decode a single chunk. Override in subclasses to enable
+        SyncCodecPipeline support."""
+        raise NotImplementedError  # pragma: no cover
+
+    def _encode_sync(
+        self, chunk_data: CodecInput, chunk_spec: ArraySpec
+    ) -> CodecOutput | None:
+        """Synchronously encode a single chunk. Override in subclasses to enable
+        SyncCodecPipeline support."""
+        raise NotImplementedError  # pragma: no cover
+
+    @property
+    def supports_sync(self) -> bool:
+        """Whether this codec has synchronous encode/decode implementations."""
+        return type(self)._decode_sync is not BaseCodec._decode_sync
+
     async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
         raise NotImplementedError  # pragma: no cover
 

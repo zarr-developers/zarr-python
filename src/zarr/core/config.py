@@ -102,7 +102,7 @@ config = Config(
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
-                "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
+                "path": "zarr.experimental.sync_codecs.SyncCodecPipeline",
                 "batch_size": 1,
             },
             "codecs": {

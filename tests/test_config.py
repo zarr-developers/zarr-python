@@ -59,7 +59,7 @@ def test_config_defaults_set() -> None:
                 "threading": {"max_workers": None},
                 "json_indent": 2,
                 "codec_pipeline": {
-                    "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
+                    "path": "zarr.experimental.sync_codecs.SyncCodecPipeline",
                     "batch_size": 1,
                 },
                 "codecs": {
@@ -132,7 +132,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
+    config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
     assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
 
     _mock = Mock()
@@ -188,6 +188,10 @@ def test_config_codec_implementation(store: Store) -> None:
 
     class MockBloscCodec(BloscCodec):
         async def _encode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+            _mock.call()
+            return None
+
+        def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
             _mock.call()
             return None
 
