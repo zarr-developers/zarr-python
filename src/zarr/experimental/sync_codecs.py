@@ -578,5 +578,102 @@ class SyncCodecPipeline(CodecPipeline):
                     result.append(chunk_array)
         return result
 
+    # -------------------------------------------------------------------
+    # Fully synchronous read / write (bypass event loop entirely)
+    # -------------------------------------------------------------------
+
+    @property
+    def supports_sync_io(self) -> bool:
+        return self._all_sync
+
+    def read_sync(
+        self,
+        batch_info: Iterable[tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        out: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
+    ) -> None:
+        batch_info_list = list(batch_info)
+        if not batch_info_list:
+            return
+
+        # Resolve metadata chain once (all chunks share the same spec structure)
+        _, first_spec, *_ = batch_info_list[0]
+        aa_chain, ab_pair, bb_chain = self._resolve_metadata_chain(first_spec)
+
+        for byte_getter, chunk_spec, chunk_selection, out_selection, _ in batch_info_list:
+            # IO: sync store read
+            chunk_bytes: Buffer | None = byte_getter.get_sync(prototype=chunk_spec.prototype)
+
+            # Compute: decode through codec chain
+            chunk_array = self._decode_one(chunk_bytes, chunk_spec, aa_chain, ab_pair, bb_chain)
+
+            # Scatter into output buffer
+            if chunk_array is not None:
+                tmp = chunk_array[chunk_selection]
+                if drop_axes != ():
+                    tmp = tmp.squeeze(axis=drop_axes)
+                out[out_selection] = tmp
+            else:
+                out[out_selection] = _fill_value_or_default(chunk_spec)
+
+    def write_sync(
+        self,
+        batch_info: Iterable[tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        value: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
+    ) -> None:
+        batch_info_list = list(batch_info)
+        if not batch_info_list:
+            return
+
+        for (
+            byte_setter,
+            chunk_spec,
+            chunk_selection,
+            out_selection,
+            is_complete_chunk,
+        ) in batch_info_list:
+            # Phase 1: Read existing chunk if needed (for partial writes)
+            existing_bytes: Buffer | None = None
+            if not is_complete_chunk:
+                existing_bytes = byte_setter.get_sync(prototype=chunk_spec.prototype)
+
+            # Phase 2: Decode existing chunk
+            existing_array: NDBuffer | None = None
+            if existing_bytes is not None:
+                aa_chain, ab_pair, bb_chain = self._resolve_metadata_chain(chunk_spec)
+                existing_array = self._decode_one(
+                    existing_bytes, chunk_spec, aa_chain, ab_pair, bb_chain
+                )
+
+            # Phase 3: Merge
+            chunk_array: NDBuffer | None = self._merge_chunk_array(
+                existing_array,
+                value,
+                out_selection,
+                chunk_spec,
+                chunk_selection,
+                is_complete_chunk,
+                drop_axes,
+            )
+
+            # Phase 4: Check empty chunk
+            if (
+                chunk_array is not None
+                and not chunk_spec.config.write_empty_chunks
+                and chunk_array.all_equal(_fill_value_or_default(chunk_spec))
+            ):
+                chunk_array = None
+
+            # Phase 5: Encode and write
+            if chunk_array is None:
+                byte_setter.delete_sync()
+            else:
+                chunk_bytes = self._encode_one(chunk_array, chunk_spec)
+                if chunk_bytes is None:
+                    byte_setter.delete_sync()
+                else:
+                    byte_setter.set_sync(chunk_bytes)
+
 
 register_pipeline(SyncCodecPipeline)

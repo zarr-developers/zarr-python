@@ -142,9 +142,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         SyncCodecPipeline support."""
         raise NotImplementedError  # pragma: no cover
 
-    def _encode_sync(
-        self, chunk_data: CodecInput, chunk_spec: ArraySpec
-    ) -> CodecOutput | None:
+    def _encode_sync(self, chunk_data: CodecInput, chunk_spec: ArraySpec) -> CodecOutput | None:
         """Synchronously encode a single chunk. Override in subclasses to enable
         SyncCodecPipeline support."""
         raise NotImplementedError  # pragma: no cover
@@ -475,6 +473,29 @@ class CodecPipeline:
         value : NDBuffer
         """
         ...
+
+    @property
+    def supports_sync_io(self) -> bool:
+        """Whether this pipeline supports fully synchronous read/write."""
+        return False
+
+    def read_sync(
+        self,
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        out: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
+    ) -> None:
+        """Synchronous read path. Only available on pipelines that support it."""
+        raise NotImplementedError
+
+    def write_sync(
+        self,
+        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        value: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
+    ) -> None:
+        """Synchronous write path. Only available on pipelines that support it."""
+        raise NotImplementedError
 
 
 async def _batching_helper(

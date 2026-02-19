@@ -77,6 +77,46 @@ class MemoryStore(Store):
             and self.read_only == other.read_only
         )
 
+    @property
+    def supports_sync(self) -> bool:
+        return True
+
+    def get_sync(
+        self,
+        key: str,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        if not self._is_open:
+            self._is_open = True
+        assert isinstance(key, str)
+        try:
+            value = self._store_dict[key]
+            start, stop = _normalize_byte_range_index(value, byte_range)
+            return prototype.buffer.from_buffer(value[start:stop])
+        except KeyError:
+            return None
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        self._check_writable()
+        if not self._is_open:
+            self._is_open = True
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
+        self._store_dict[key] = value
+
+    def delete_sync(self, key: str) -> None:
+        self._check_writable()
+        try:
+            del self._store_dict[key]
+        except KeyError:
+            logger.debug("Key %s does not exist.", key)
+
     async def get(
         self,
         key: str,

@@ -187,6 +187,55 @@ class LocalStore(Store):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
 
+    @property
+    def supports_sync(self) -> bool:
+        return True
+
+    def get_sync(
+        self,
+        key: str,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        if not self._is_open:
+            if not self.read_only:
+                self.root.mkdir(parents=True, exist_ok=True)
+            if not self.root.exists():
+                raise FileNotFoundError(f"{self.root} does not exist")
+            self._is_open = True
+        assert isinstance(key, str)
+        path = self.root / key
+        try:
+            return _get(path, prototype, byte_range)
+        except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+            return None
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        if not self._is_open:
+            if not self.read_only:
+                self.root.mkdir(parents=True, exist_ok=True)
+            if not self.root.exists():
+                raise FileNotFoundError(f"{self.root} does not exist")
+            self._is_open = True
+        self._check_writable()
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
+        path = self.root / key
+        _put(path, value)
+
+    def delete_sync(self, key: str) -> None:
+        self._check_writable()
+        path = self.root / key
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+
     async def get(
         self,
         key: str,

@@ -525,6 +525,32 @@ class Store(ABC):
         return False
 
     @property
+    def supports_sync(self) -> bool:
+        """Does the store support synchronous get/set/delete?
+
+        When True, the sync codec pipeline can bypass the event loop for IO.
+        Override in subclasses that have native sync implementations.
+        """
+        return False
+
+    def get_sync(
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Synchronous version of get(). Only available when supports_sync is True."""
+        raise NotImplementedError
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        """Synchronous version of set(). Only available when supports_sync is True."""
+        raise NotImplementedError
+
+    def delete_sync(self, key: str) -> None:
+        """Synchronous version of delete(). Only available when supports_sync is True."""
+        raise NotImplementedError
+
+    @property
     @abstractmethod
     def supports_listing(self) -> bool:
         """Does the store support listing?"""

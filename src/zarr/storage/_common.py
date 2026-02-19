@@ -228,6 +228,29 @@ class StorePath:
         """
         return await self.store.is_empty(self.path)
 
+    @property
+    def supports_sync(self) -> bool:
+        """Whether the underlying store supports synchronous operations."""
+        return self.store.supports_sync
+
+    def get_sync(
+        self,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Synchronous read from the store."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
+
+    def set_sync(self, value: Buffer) -> None:
+        """Synchronous write to the store."""
+        self.store.set_sync(self.path, value)
+
+    def delete_sync(self) -> None:
+        """Synchronous delete from the store."""
+        self.store.delete_sync(self.path)
+
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))

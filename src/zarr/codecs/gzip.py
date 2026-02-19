@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
@@ -48,11 +49,15 @@ class GzipCodec(BytesBytesCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "gzip", "configuration": {"level": self.level}}
 
+    @cached_property
+    def _gzip_codec(self) -> GZip:
+        return GZip(self.level)
+
     def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer:
-        return as_numpy_array_wrapper(GZip(self.level).decode, chunk_bytes, chunk_spec.prototype)
+        return as_numpy_array_wrapper(self._gzip_codec.decode, chunk_bytes, chunk_spec.prototype)
 
     def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
-        return as_numpy_array_wrapper(GZip(self.level).encode, chunk_bytes, chunk_spec.prototype)
+        return as_numpy_array_wrapper(self._gzip_codec.encode, chunk_bytes, chunk_spec.prototype)
 
     async def _decode_single(
         self,
