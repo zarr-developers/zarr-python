@@ -17,7 +17,9 @@ Key concepts:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from enum import Enum, auto
 from functools import lru_cache
 from itertools import product as itertools_product
 from itertools import starmap
@@ -25,8 +27,6 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-from zarr.abc.numcodec import Numcodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     _append,
@@ -59,7 +59,6 @@ from zarr.core.buffer import (
 )
 from zarr.core.common import (
     JSON,
-    MemoryOrder,
     ShapeLike,
     ZarrFormat,
     ceildiv,
@@ -88,11 +87,49 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.abc.codec import CodecPipeline
-    from zarr.abc.store import Store
     from zarr.storage import StoreLike
 
 
-@dataclass(frozen=True)
+Region = tuple[tuple[int, ...], tuple[int, ...]]
+"""Low-level representation of a rectangular region: ``(inclusive_min, exclusive_max)``.
+
+Used as the key type for :class:`ChunkMap` to avoid object-creation overhead
+during iteration.  Convertible to/from :class:`IndexDomain`.
+"""
+
+
+def _normalize_basic_selection(
+    selection: BasicSelection, ndim: int
+) -> tuple[int | slice, ...]:
+    """Normalize a basic selection to a tuple of ints/slices with length *ndim*."""
+    if not isinstance(selection, tuple):
+        selection = (selection,)
+
+    result: list[int | slice] = []
+    ellipsis_seen = False
+    for sel in selection:
+        if sel is Ellipsis:
+            if ellipsis_seen:
+                raise IndexError("an index can only have a single ellipsis ('...')")
+            ellipsis_seen = True
+            num_missing = ndim - (len(selection) - 1)
+            result.extend([slice(None)] * num_missing)
+        else:
+            result.append(sel)  # type: ignore[arg-type]
+
+    while len(result) < ndim:
+        result.append(slice(None))
+
+    if len(result) > ndim:
+        raise IndexError(
+            f"too many indices for array: array has {ndim} dimensions, "
+            f"but {len(result)} were indexed"
+        )
+
+    return tuple(result)
+
+
+@dataclass(frozen=True, slots=True)
 class IndexDomain:
     """
     Represents a rectangular region in index space.
@@ -228,24 +265,6 @@ class IndexDomain:
             return None
         return IndexDomain(inclusive_min=new_min, exclusive_max=new_max)
 
-    def to_slices(self) -> tuple[slice, ...]:
-        """Convert this domain to a tuple of slices.
-
-        Returns
-        -------
-        tuple[slice, ...]
-            One slice per dimension, from inclusive_min to exclusive_max.
-
-        Examples
-        --------
-        >>> IndexDomain(inclusive_min=(5, 10), exclusive_max=(8, 15)).to_slices()
-        (slice(5, 8), slice(10, 15))
-        """
-        return tuple(
-            slice(lo, hi)
-            for lo, hi in zip(self.inclusive_min, self.exclusive_max, strict=True)
-        )
-
     def translate(self, offset: tuple[int, ...]) -> IndexDomain:
         """
         Translate (shift) this domain by an offset.
@@ -282,6 +301,348 @@ class IndexDomain:
         new_min = tuple(lo + off for lo, off in zip(self.inclusive_min, offset, strict=True))
         new_max = tuple(hi + off for hi, off in zip(self.exclusive_max, offset, strict=True))
         return IndexDomain(inclusive_min=new_min, exclusive_max=new_max)
+
+    def narrow(self, selection: BasicSelection) -> IndexDomain:
+        """Apply a basic selection and return a narrowed domain.
+
+        Indices are absolute coordinates in this domain's index space
+        (TensorStore convention).  Negative indices mean negative coordinates,
+        not "from the end".
+
+        Integer indices produce a length-1 extent (the dimension is *not*
+        dropped, unlike NumPy).
+        """
+        normalized = _normalize_basic_selection(selection, self.ndim)
+
+        new_inclusive_min: list[int] = []
+        new_exclusive_max: list[int] = []
+
+        for dim_idx, (sel, dim_lo, dim_hi) in enumerate(
+            zip(normalized, self.inclusive_min, self.exclusive_max, strict=True)
+        ):
+            if isinstance(sel, int):
+                abs_idx = sel
+                if abs_idx < dim_lo or abs_idx >= dim_hi:
+                    raise IndexError(
+                        f"index {sel} is out of bounds for dimension {dim_idx} "
+                        f"with domain [{dim_lo}, {dim_hi})"
+                    )
+                new_inclusive_min.append(abs_idx)
+                new_exclusive_max.append(abs_idx + 1)
+            else:
+                start, stop, step = sel.start, sel.stop, sel.step
+                if step is not None and step != 1:
+                    raise IndexError(
+                        "lazy indexing only supports step=1 slices. "
+                        f"Got step={step}. Use resolve() first for strided access."
+                    )
+                abs_start = dim_lo if start is None else start
+                abs_stop = dim_hi if stop is None else stop
+                abs_start = max(abs_start, dim_lo)
+                abs_stop = min(abs_stop, dim_hi)
+                abs_stop = max(abs_stop, abs_start)
+                new_inclusive_min.append(abs_start)
+                new_exclusive_max.append(abs_stop)
+
+        return IndexDomain(
+            inclusive_min=tuple(new_inclusive_min),
+            exclusive_max=tuple(new_exclusive_max),
+        )
+
+
+
+
+# ---------------------------------------------------------------------------
+# IndexTransform — domain + offset mapping
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class IndexTransform:
+    """Maps coordinates from a user-facing domain to storage coordinates.
+
+    For now, supports offset-only transforms:
+        storage_coord[d] = user_coord[d] - offset[d]
+
+    The ``domain`` is the input (user-facing) domain.  The ``offset`` defines
+    the mapping.  This can later be extended to support stride, permutation,
+    and index arrays.
+
+    Parameters
+    ----------
+    domain : IndexDomain
+        The input (user-facing) domain.
+    offset : tuple[int, ...]
+        Per-dimension offset: ``storage = user - offset``.
+    """
+
+    domain: IndexDomain
+    offset: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.offset) != self.domain.ndim:
+            raise ValueError(
+                f"offset must have same length as domain dimensions. "
+                f"Domain has {self.domain.ndim} dims, offset has {len(self.offset)}."
+            )
+
+    @classmethod
+    def identity(cls, domain: IndexDomain) -> IndexTransform:
+        """Create an identity transform (offset=0) for the given domain."""
+        return cls(domain=domain, offset=(0,) * domain.ndim)
+
+    @classmethod
+    def from_shape(cls, shape: tuple[int, ...]) -> IndexTransform:
+        """Create an identity transform for a zero-origin domain with given shape."""
+        return cls.identity(IndexDomain.from_shape(shape))
+
+    @property
+    def ndim(self) -> int:
+        """Number of dimensions."""
+        return self.domain.ndim
+
+    @property
+    def storage_origin(self) -> tuple[int, ...]:
+        """Where ``domain.origin`` maps to in storage space."""
+        return tuple(
+            o - off for o, off in zip(self.domain.origin, self.offset, strict=True)
+        )
+
+    def narrow(self, selection: Any) -> IndexTransform:
+        """Apply a basic selection, returning a new transform with narrowed domain.
+
+        The offset is preserved — only the domain is narrowed.
+        """
+        new_domain = self.domain.narrow(selection)
+        return IndexTransform(domain=new_domain, offset=self.offset)
+
+    def compose_or_none(self, inner: IndexTransform) -> IndexTransform | None:
+        """Compose this (outer) transform with an inner transform.
+
+        The outer transform maps user coordinates to intermediate coordinates:
+            intermediate = user - outer.offset
+
+        The inner transform maps intermediate coordinates to storage:
+            storage = intermediate - inner.offset
+
+        The composed transform maps:
+            storage = user - outer.offset - inner.offset
+
+        To find the valid domain, we map the outer domain into intermediate
+        space (subtract outer.offset), intersect with inner.domain
+        (which is already in intermediate space), then map back to user space
+        (add outer.offset).
+
+        Returns ``None`` if the domains don't overlap in intermediate space.
+        """
+        neg_offset = tuple(-o for o in self.offset)
+        outer_in_intermediate = self.domain.translate(neg_offset)
+        intersection = outer_in_intermediate.intersect(inner.domain)
+        if intersection is None:
+            return None
+        # Map intersection back to user space
+        user_domain = intersection.translate(self.offset)
+        composed_offset = tuple(
+            a + b for a, b in zip(self.offset, inner.offset, strict=True)
+        )
+        return IndexTransform(domain=user_domain, offset=composed_offset)
+
+    def __repr__(self) -> str:
+        return f"IndexTransform(domain={self.domain}, offset={self.offset})"
+
+
+# ---------------------------------------------------------------------------
+# ArrayDesc — structural metadata for an array node
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class ArrayDesc:
+    """Structural description of an array node.
+
+    This is the subset of zarr v3 array metadata needed for indexing and I/O,
+    without user-facing annotation (attributes, dimension names).
+
+    Parameters
+    ----------
+    shape : tuple[int, ...]
+        Shape of this node (may be the full array, a shard, or a single chunk).
+    data_type : np.dtype
+        The numpy dtype.
+    chunk_grid : ChunkGrid | None
+        How this node is subdivided into children. ``None`` for leaf nodes
+        (single chunks with no further subdivision).
+    encode_chunk_key : Callable[[tuple[int, ...]], str] | None
+        Maps chunk grid coordinates to storage key strings.
+        ``None`` for leaf nodes.
+    fill_value : Any
+        Fill value for missing data.
+    codecs : tuple[Any, ...] | None
+        Codec pipeline for encoding/decoding. ``None`` for virtual nodes.
+    """
+
+    shape: tuple[int, ...]
+    data_type: np.dtype[Any]
+    chunk_grid: Any  # ChunkGrid | None
+    encode_chunk_key: Any  # Callable[[tuple[int, ...]], str] | None
+    fill_value: Any
+    codecs: tuple[Any, ...] | None
+
+    @classmethod
+    def from_metadata(
+        cls,
+        metadata: ArrayV2Metadata | ArrayV3Metadata,
+    ) -> ArrayDesc:
+        """Construct from zarr array metadata, extracting only what's needed
+        for indexing and I/O."""
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+        if hasattr(metadata, "data_type"):
+            dtype = metadata.data_type.to_native_dtype()
+        else:
+            dtype = metadata.dtype.to_native_dtype()
+
+        chunk_grid = metadata.chunk_grid if isinstance(metadata.chunk_grid, RegularChunkGrid) else None
+        encode_key = metadata.encode_chunk_key if chunk_grid is not None else None
+
+        return cls(
+            shape=metadata.shape,
+            data_type=dtype,
+            chunk_grid=chunk_grid,
+            encode_chunk_key=encode_key,
+            fill_value=metadata.fill_value,
+            codecs=tuple(metadata.codecs) if hasattr(metadata, "codecs") else None,
+        )
+
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
+
+
+# ---------------------------------------------------------------------------
+# Layer / ZarrSource / ChunkEntry — per-source and per-chunk records
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Layer:
+    """A positioned storage source.
+
+    Each layer pairs an ``IndexTransform`` (positioning this layer in the
+    combined coordinate space) with a ``ZarrSource`` (the storage backend).
+
+    At resolve time, the Array's outer transform is composed with each
+    layer's transform to get the full user-to-storage mapping.
+
+    Parameters
+    ----------
+    transform : IndexTransform
+        Positions this layer in the combined coordinate space.
+    source : ZarrSource
+        Storage backend for this layer.
+    """
+
+    transform: IndexTransform
+    source: ZarrSource
+
+
+@dataclass(frozen=True, slots=True)
+class ZarrSource:
+    """Immutable, self-contained description of one zarr array's storage.
+
+    Carries everything needed to generate chunk reads for any sub-domain.
+    Coordinate mapping is NOT stored here — it lives on ``Layer.transform``
+    and ``Array._transform``.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        Where the array bytes live.
+    metadata : ArrayV2Metadata | ArrayV3Metadata
+        Parsed zarr metadata.
+    codec_pipeline : Any
+        Codec pipeline (possibly fast-optimized) for decode/encode.
+    config : ArrayConfig
+        Array configuration.
+    desc : ArrayDesc
+        Structural description (shape, chunk grid, etc.).
+    """
+
+    store_path: StorePath
+    metadata: ArrayV2Metadata | ArrayV3Metadata
+    codec_pipeline: Any  # CodecPipeline
+    config: ArrayConfig
+    desc: ArrayDesc
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkEntry:
+    """Lightweight record for a single chunk within a ``ChunkMap``.
+
+    Contains only what the resolve path needs.
+
+    Parameters
+    ----------
+    domain : IndexDomain
+        The chunk's domain (intersection of parent domain with chunk region).
+    path : str
+        Storage key for this chunk's bytes.
+    chunk_selection : tuple[slice, ...]
+        Chunk-local slices for decoding.
+    chunk_coords : tuple[int, ...]
+        Grid coordinates of this chunk.
+    chunk_shape : tuple[int, ...]
+        Actual shape of this chunk (may be truncated at boundary).
+    """
+
+    domain: IndexDomain
+    path: str
+    chunk_selection: tuple[slice, ...]
+    chunk_coords: tuple[int, ...]
+    chunk_shape: tuple[int, ...]
+
+
+# ---------------------------------------------------------------------------
+# Advanced indexing types
+# ---------------------------------------------------------------------------
+
+
+class SelectionKind(Enum):
+    """The kind of advanced (non-basic) indexing operation."""
+
+    ORTHOGONAL = auto()  # arr.oindex[[1,2], :, [3,4]]
+    COORDINATE = auto()  # arr.vindex[([1,5], [2,4])]
+    MASK = auto()  # arr[mask]
+
+
+@dataclass(frozen=True, slots=True)
+class PendingSelection:
+    """A non-rectangular selection deferred until ``resolve()`` time.
+
+    Stores the raw selection arrays/masks and precomputed output shape,
+    but does NOT load any data.  The selection is applied at ``resolve()``
+    by resolving the bounding-box region first, then indexing the dense
+    result with numpy.
+
+    Parameters
+    ----------
+    kind : SelectionKind
+        The type of advanced selection.
+    raw_selection : tuple[Any, ...]
+        Normalized selection — numpy arrays, slices, or ints.
+        For MASK: ``(mask_array,)``.
+        For COORDINATE: ``(idx_array_dim0, idx_array_dim1, ...)``.
+        For ORTHOGONAL: ``(per_dim_sel_0, per_dim_sel_1, ...)``.
+    output_shape : tuple[int, ...]
+        Precomputed shape of the resolved result.
+    bounding_domain : IndexDomain
+        Tightest rectangular bounding box covering the selected indices.
+    """
+
+    kind: SelectionKind
+    raw_selection: tuple[Any, ...]
+    output_shape: tuple[int, ...]
+    bounding_domain: IndexDomain
 
 
 @dataclass(frozen=True)
@@ -530,311 +891,271 @@ class ChunkLayout:
         return f"ChunkLayout(grid_origin={self.grid_origin}, chunk_shape={self.chunk_shape})"
 
 
-@dataclass(frozen=True)
-class StorageSource:
-    """
-    A source backed by Zarr storage.
 
-    This encapsulates all the information needed to read data from a Zarr array
-    stored on disk or in memory. It includes the store path, metadata, codec
-    pipeline, and the index transform that maps domain coordinates to storage
-    coordinates.
-
-    Parameters
-    ----------
-    store_path : StorePath
-        The path to the Zarr store.
-    metadata : ArrayV2Metadata | ArrayV3Metadata
-        The metadata of the array.
-    codec_pipeline : CodecPipeline
-        The codec pipeline used for encoding and decoding chunks.
-    config : ArrayConfig
-        The runtime configuration of the array.
-    index_transform : tuple[int, ...]
-        The offset to subtract from domain coordinates to get storage coordinates.
-    """
-
-    store_path: StorePath
-    metadata: ArrayV2Metadata | ArrayV3Metadata
-    codec_pipeline: Any  # CodecPipeline - avoid forward reference issues
-    config: ArrayConfig
-    index_transform: tuple[int, ...]
-
-    @property
-    def storage_shape(self) -> tuple[int, ...]:
-        """The shape of the underlying storage."""
-        return self.metadata.shape
-
-    @property
-    def chunks(self) -> tuple[int, ...]:
-        """The store-level chunk shape.
-
-        For unsharded arrays, this is the chunk shape. For sharded arrays,
-        this is the shard shape (chunk_grid.chunk_shape), since shards are
-        the store-level unit that maps to store keys. The ShardingCodec
-        handles inner chunk decoding internally.
-        """
-        from zarr.core.chunk_grids import RegularChunkGrid
-
-        if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
-            return self.metadata.chunk_grid.chunk_shape
-        return self.metadata.chunks
-
-    @property
-    def dtype(self) -> np.dtype[Any]:
-        """The data type."""
-        return (
-            self.metadata.data_type.to_native_dtype()
-            if hasattr(self.metadata, "data_type")
-            else self.metadata.dtype.to_native_dtype()
-        )
-
-    @property
-    def fill_value(self) -> Any:
-        """The fill value."""
-        return self.metadata.fill_value
-
-
-def _get_storage_identity(arr: Array) -> tuple[Any, tuple[int, ...]] | None:
-    """
-    Get the storage identity for an Array if it's backed by a single storage source.
-
-    Returns (store_path, index_transform) if the array has a single StorageSource,
-    or None if it has multiple sources or Array sources.
-    """
-    if len(arr._sources) == 1 and isinstance(arr._sources[0], StorageSource):
-        source = arr._sources[0]
-        return (source.store_path, source.index_transform)
-    return None
-
-
-def _try_merge_to_single_source(
-    arrays: list[Array],
+def _try_merge_to_single_layer(
+    all_layers: list[Layer],
     domain: IndexDomain,
-) -> StorageSource | None:
+) -> Layer | None:
     """
-    Try to merge multiple Arrays into a single StorageSource.
+    Try to collapse multiple layers into a single layer.
 
-    This succeeds when all input arrays:
-    1. Are backed by the same storage (same store_path)
-    2. Have the same index_transform (same coordinate mapping)
-    3. Their combined domains fully cover the target domain (no gaps)
-
-    In this case, we can represent the concatenation as a single StorageSource,
-    since the storage already contains all the data we need.
-
-    Returns the merged StorageSource, or None if merging isn't possible.
+    Succeeds when all layers share the same storage identity
+    (store_path and transform offset) AND their domains fully cover the
+    target domain (no gaps that should be filled with fill_value).
     """
-    if not arrays:
+    if not all_layers:
         return None
 
-    # Check if all arrays share the same storage identity
-    first_identity = _get_storage_identity(arrays[0])
-    if first_identity is None:
-        return None
-
-    for arr in arrays[1:]:
-        identity = _get_storage_identity(arr)
-        if identity != first_identity:
+    first = all_layers[0]
+    for layer in all_layers[1:]:
+        if (
+            layer.source.store_path != first.source.store_path
+            or layer.transform.offset != first.transform.offset
+        ):
             return None
 
-    # All arrays share the same storage identity.
-    # Now check if the source domains fully cover the target domain.
-    # We need to verify there are no gaps that would require fill_value.
-
-    # For simplicity, check if the union of input domains equals the target domain.
-    # This is a conservative check - we only merge when domains are exactly covering.
-
-    # Compute the bounding box of all input domains
+    # Check coverage: total volume of layer domains must be >= target domain volume
     ndim = domain.ndim
-    input_min = tuple(min(arr.domain.inclusive_min[d] for arr in arrays) for d in range(ndim))
-    input_max = tuple(max(arr.domain.exclusive_max[d] for arr in arrays) for d in range(ndim))
-    input_bbox = IndexDomain(inclusive_min=input_min, exclusive_max=input_max)
-
-    # For the merge to be valid without gaps, we need to check that the input arrays
-    # completely cover their bounding box. This is complex to check in general.
-    #
-    # A simple conservative approach: only merge if there's a single input array
-    # or if the input arrays' total volume equals the bounding box volume.
-    # This works for non-overlapping, gap-free cases like arr[:10] and arr[10:].
-
     total_input_volume = sum(
-        int(
-            np.prod(
-                [arr.domain.exclusive_max[d] - arr.domain.inclusive_min[d] for d in range(ndim)]
-            )
-        )
-        for arr in arrays
+        int(np.prod([
+            lay.transform.domain.exclusive_max[i] - lay.transform.domain.inclusive_min[i]
+            for i in range(ndim)
+        ]))
+        for lay in all_layers
     )
     bbox_volume = int(
-        np.prod([input_bbox.exclusive_max[d] - input_bbox.inclusive_min[d] for d in range(ndim)])
+        np.prod([domain.exclusive_max[i] - domain.inclusive_min[i] for i in range(ndim)])
     )
 
-    # If total volume < bbox volume, there are gaps -> can't merge
-    # If total volume > bbox volume, there are overlaps -> we can still merge
-    #   (overlaps are fine, we just read from one source)
-    # If total volume == bbox volume, perfect coverage -> can merge
     if total_input_volume < bbox_volume:
         return None
 
-    # All arrays share the same storage and fully cover the domain
-    first_source = arrays[0]._sources[0]
-    assert isinstance(first_source, StorageSource)
-    return first_source
+    # All layers share same storage — use single layer with full domain
+    return Layer(
+        transform=IndexTransform(domain=domain, offset=first.transform.offset),
+        source=first.source,
+    )
 
 
-@dataclass(frozen=True)
-class ChunkCoordSlice:
-    """
-    Identifies a slice within a specific chunk.
+class ChunkMap(Mapping[Region, Any]):
+    """A lazy mapping from array regions to child arrays.
 
-    Parameters
-    ----------
-    chunk_coords : tuple[int, ...]
-        The coordinates of the chunk in the chunk grid.
-    selection : tuple[slice, ...]
-        The slice within the chunk to read (in chunk-local coordinates, starting at 0).
-    """
+    Maps ``Region -> Array`` where each key is a ``(inclusive_min, exclusive_max)``
+    tuple pair describing the chunk's full region in storage coordinates, and
+    each value is a child ``Array`` representing that chunk (or shard).
 
-    chunk_coords: tuple[int, ...]
-    selection: tuple[slice, ...]
+    Keys are plain tuples — no object creation overhead during iteration.
 
-
-def get_chunk_projections(
-    storage_shape: tuple[int, ...],
-    chunk_shape: tuple[int, ...],
-    domain: IndexDomain,
-    index_transform: tuple[int, ...] | None = None,
-    output_origin: tuple[int, ...] | None = None,
-) -> Iterator[tuple[tuple[slice, ...], ChunkCoordSlice]]:
-    """
-    Compute chunk projections for resolving data from a domain.
-
-    This function maps domain coordinates to storage coordinates and determines
-    which chunks need to be read and how to assemble them into an output array.
-
-    The mapping from domain to storage coordinates is:
-        storage_coord = domain_coord - index_transform
+    All spatial arithmetic is delegated to ``desc.chunk_grid``, so this works
+    identically for regular and rectilinear grids.
 
     Parameters
     ----------
-    storage_shape : tuple[int, ...]
-        The shape of the underlying storage array.
-    chunk_shape : tuple[int, ...]
-        The shape of each chunk.
+    desc : ArrayDesc
+        Structural description of the *parent* array (must have a non-None
+        ``chunk_grid``).
     domain : IndexDomain
-        The domain to resolve.
-    index_transform : tuple[int, ...] | None
-        The offset to subtract from domain coordinates to get storage coordinates.
-        If None, defaults to (0, 0, ...), meaning domain coordinates equal storage
-        coordinates.
-    output_origin : tuple[int, ...] | None
-        The origin of the output array's coordinate system. When provided,
-        output_selection slices are relative to this origin (i.e., position 0 in
-        the output array corresponds to output_origin in domain space).
-        If None, defaults to the domain's origin.
-
-    Yields
-    ------
-    tuple[tuple[slice, ...], ChunkCoordSlice]
-        For each chunk that overlaps with the domain (after translation to storage
-        coordinates), yields a tuple of:
-        - output_selection: where to place the data in the output array
-        - chunk_info: ChunkCoordSlice with chunk coords and slice within chunk
-
-    Examples
-    --------
-    >>> # Storage is shape (100,) with chunks of size 10
-    >>> # Domain is [25, 75), with default offset (0,) so storage coords are [25, 75)
-    >>> storage_shape = (100,)
-    >>> chunk_shape = (10,)
-    >>> domain = IndexDomain(inclusive_min=(25,), exclusive_max=(75,))
-    >>> projs = list(get_chunk_projections(storage_shape, chunk_shape, domain))
-    >>> projs[0]  # First chunk: output_selection, chunk_info
-    ((slice(0, 5),), ChunkCoordSlice(chunk_coords=(2,), selection=(slice(5, 10),)))
-
-    >>> # With index_transform=(10,), domain 10 maps to storage 0
-    >>> domain = IndexDomain(inclusive_min=(10,), exclusive_max=(20,))
-    >>> list(get_chunk_projections((10,), (5,), domain, index_transform=(10,)))
-    [((slice(0, 5),), ChunkCoordSlice(chunk_coords=(0,), selection=(slice(0, 5),))),
-     ((slice(5, 10),), ChunkCoordSlice(chunk_coords=(1,), selection=(slice(0, 5),)))]
+        The region of interest (in the parent array's coordinate system).
+    index_transform : tuple[int, ...]
+        Offset from domain coordinates to storage coordinates:
+        ``storage_coord = domain_coord - index_transform``.
+    make_child : callable
+        Factory ``(chunk_coords, chunk_selection, chunk_domain) -> Array``
+        that creates the child array for a given chunk.  The ``chunk_selection``
+        is a tuple of slices in chunk-local coordinates.  The ``chunk_domain``
+        is an ``IndexDomain`` in the parent's storage coordinate space.
     """
-    ndim = len(storage_shape)
-    if len(chunk_shape) != ndim or domain.ndim != ndim:
-        raise ValueError(
-            f"Dimension mismatch: storage_shape has {ndim} dims, "
-            f"chunk_shape has {len(chunk_shape)} dims, domain has {domain.ndim} dims"
+
+    __slots__ = (
+        "_chunk_end",
+        "_chunk_start",
+        "_empty",
+        "_make_child",
+        "_valid_hi",
+        "_valid_lo",
+        "desc",
+        "domain",
+        "index_transform",
+    )
+
+    desc: ArrayDesc
+    domain: IndexDomain
+    index_transform: tuple[int, ...]
+    _make_child: Any  # Callable
+    _valid_lo: tuple[int, ...]
+    _valid_hi: tuple[int, ...]
+    _chunk_start: tuple[int, ...]
+    _chunk_end: tuple[int, ...]
+    _empty: bool
+
+    def __init__(
+        self,
+        desc: ArrayDesc,
+        domain: IndexDomain,
+        index_transform: tuple[int, ...],
+        make_child: Any,
+    ) -> None:
+        chunk_grid = desc.chunk_grid
+        storage_shape = desc.shape
+        ndim = len(storage_shape)
+
+        if domain.ndim != ndim:
+            raise ValueError(
+                f"Dimension mismatch: desc.shape has {ndim} dims, "
+                f"domain has {domain.ndim} dims"
+            )
+        if len(index_transform) != ndim:
+            raise ValueError(
+                f"index_transform has {len(index_transform)} dims, expected {ndim}"
+            )
+        if chunk_grid is None:
+            raise ValueError("Cannot create ChunkMap: desc.chunk_grid is None (leaf node)")
+
+        self.desc = desc
+        self.domain = domain
+        self.index_transform = index_transform
+        self._make_child = make_child
+
+        # Translate domain to storage coords, clamp to [0, storage_dim)
+        valid_lo = tuple(
+            max(d_lo - it, 0)
+            for d_lo, it in zip(domain.inclusive_min, index_transform, strict=True)
+        )
+        valid_hi = tuple(
+            min(d_hi - it, s)
+            for d_hi, it, s in zip(
+                domain.exclusive_max, index_transform, storage_shape, strict=True
+            )
+        )
+        self._empty = any(lo >= hi for lo, hi in zip(valid_lo, valid_hi, strict=True))
+        self._valid_lo = valid_lo
+        self._valid_hi = valid_hi
+
+        if not self._empty:
+            # Use chunk_grid to find the range of chunk coords that overlap
+            chunk_start = chunk_grid.array_index_to_chunk_coord(storage_shape, valid_lo)
+            # valid_hi is exclusive, so use valid_hi - 1 for the last element
+            last_idx = tuple(h - 1 for h in valid_hi)
+            last_chunk = chunk_grid.array_index_to_chunk_coord(storage_shape, last_idx)
+            chunk_end = tuple(c + 1 for c in last_chunk)
+        else:
+            chunk_start = (0,) * ndim
+            chunk_end = (0,) * ndim
+
+        self._chunk_start = chunk_start
+        self._chunk_end = chunk_end
+
+    def _chunk_coords_iter(self) -> Iterator[tuple[int, ...]]:
+        """Iterate over chunk grid coordinates (internal)."""
+        if self._empty:
+            return
+        yield from itertools_product(
+            *(range(s, e) for s, e in zip(self._chunk_start, self._chunk_end, strict=True))
         )
 
-    if index_transform is None:
-        index_transform = (0,) * ndim
+    def _region_to_chunk_coords(self, key: Region) -> tuple[int, ...] | None:
+        """Map a Region key back to chunk grid coordinates, or None if invalid.
 
-    if len(index_transform) != ndim:
-        raise ValueError(f"index_transform has {len(index_transform)} dims, expected {ndim}")
+        Returns None if the region doesn't exactly match a chunk's bounds.
+        """
+        lo, hi = key
+        chunk_grid = self.desc.chunk_grid
+        storage_shape = self.desc.shape
+        if len(lo) != len(storage_shape):
+            return None
+        coords = chunk_grid.array_index_to_chunk_coord(storage_shape, lo)
+        # Check coords are in range
+        if not all(
+            s <= c < e
+            for c, s, e in zip(coords, self._chunk_start, self._chunk_end, strict=True)
+        ):
+            return None
+        # Verify the region matches the actual chunk bounds
+        expected_start = chunk_grid.get_chunk_start(storage_shape, coords)
+        expected_shape = chunk_grid.get_chunk_shape(storage_shape, coords)
+        expected_end = tuple(
+            s + cs for s, cs in zip(expected_start, expected_shape, strict=True)
+        )
+        if lo != expected_start or hi != expected_end:
+            return None
+        return coords
 
-    if output_origin is None:
-        output_origin = domain.inclusive_min
+    def _get_by_chunk_coords(self, chunk_coords: tuple[int, ...]) -> Any:
+        """Build and return the child for the given grid coordinates (internal)."""
+        chunk_grid = self.desc.chunk_grid
+        storage_shape = self.desc.shape
+        valid_lo = self._valid_lo
+        valid_hi = self._valid_hi
 
-    # Translate domain to storage coordinates: storage_coord = domain_coord - index_transform
-    # Then intersect with valid storage bounds [0, storage_dim)
-    # All done with raw tuples to avoid IndexDomain allocation overhead in the hot loop.
-    valid_lo = tuple(
-        max(d_lo - it, 0)
-        for d_lo, it in zip(domain.inclusive_min, index_transform, strict=True)
-    )
-    valid_hi = tuple(
-        min(d_hi - it, s)
-        for d_hi, it, s in zip(domain.exclusive_max, index_transform, storage_shape, strict=True)
-    )
-
-    # Check if there's any valid intersection
-    if any(lo >= hi for lo, hi in zip(valid_lo, valid_hi, strict=True)):
-        return  # No chunks to read
-
-    # Precompute the offset from storage coordinates to output coordinates.
-    # domain_coord = storage_coord + index_transform
-    # output_index = domain_coord - output_origin = storage_coord + index_transform - output_origin
-    storage_to_output = tuple(
-        it - oo for it, oo in zip(index_transform, output_origin, strict=True)
-    )
-
-    # Compute the range of chunk coordinates that overlap with the valid storage region
-    chunk_start = tuple(
-        lo // c for lo, c in zip(valid_lo, chunk_shape, strict=True)
-    )
-    chunk_end = tuple(
-        ceildiv(hi, c) for hi, c in zip(valid_hi, chunk_shape, strict=True)
-    )
-
-    # Iterate over all chunks using itertools.product (replaces recursive generator)
-    for chunk_coords in itertools_product(*(range(s, e) for s, e in zip(chunk_start, chunk_end, strict=True))):
-        # Compute the storage region covered by this chunk
-        chunk_storage_start = tuple(c * cs for c, cs in zip(chunk_coords, chunk_shape, strict=True))
+        chunk_storage_start = chunk_grid.get_chunk_start(storage_shape, chunk_coords)
+        chunk_shape = chunk_grid.get_chunk_shape(storage_shape, chunk_coords)
         chunk_storage_end = tuple(
-            min((c + 1) * cs, dim)
-            for c, cs, dim in zip(chunk_coords, chunk_shape, storage_shape, strict=True)
+            s + cs for s, cs in zip(chunk_storage_start, chunk_shape, strict=True)
         )
 
-        # Intersect with valid storage region — inline arithmetic, no IndexDomain
-        inter_lo = tuple(max(a, b) for a, b in zip(chunk_storage_start, valid_lo, strict=True))
-        inter_hi = tuple(min(a, b) for a, b in zip(chunk_storage_end, valid_hi, strict=True))
-        if any(lo >= hi for lo, hi in zip(inter_lo, inter_hi, strict=True)):
-            continue
+        inter_lo = tuple(
+            max(a, b) for a, b in zip(chunk_storage_start, valid_lo, strict=True)
+        )
+        inter_hi = tuple(
+            min(a, b) for a, b in zip(chunk_storage_end, valid_hi, strict=True)
+        )
 
-        # chunk_selection: translate to chunk-local coords and make slices directly
-        chunk_selection = tuple(
+        selection = tuple(
             slice(lo - cs, hi - cs)
             for lo, hi, cs in zip(inter_lo, inter_hi, chunk_storage_start, strict=True)
         )
-        # output_selection: translate to output coords and make slices directly
-        output_selection = tuple(
-            slice(lo + off, hi + off)
-            for lo, hi, off in zip(inter_lo, inter_hi, storage_to_output, strict=True)
-        )
 
-        yield (
-            output_selection,
-            ChunkCoordSlice(chunk_coords=chunk_coords, selection=chunk_selection),
+        chunk_domain = IndexDomain(inclusive_min=inter_lo, exclusive_max=inter_hi)
+        return self._make_child(chunk_coords, selection, chunk_domain)
+
+    def __len__(self) -> int:
+        if self._empty:
+            return 0
+        result = 1
+        for s, e in zip(self._chunk_start, self._chunk_end, strict=True):
+            result *= e - s
+        return result
+
+    def __iter__(self) -> Iterator[Region]:
+        """Iterate over chunk regions as ``(inclusive_min, exclusive_max)`` tuples."""
+        chunk_grid = self.desc.chunk_grid
+        storage_shape = self.desc.shape
+        for chunk_coords in self._chunk_coords_iter():
+            start = chunk_grid.get_chunk_start(storage_shape, chunk_coords)
+            shape = chunk_grid.get_chunk_shape(storage_shape, chunk_coords)
+            end = tuple(s + cs for s, cs in zip(start, shape, strict=True))
+            yield (start, end)
+
+    def __contains__(self, key: object) -> bool:
+        if self._empty:
+            return False
+        if not isinstance(key, tuple) or len(key) != 2:
+            return False
+        lo, hi = key
+        if not isinstance(lo, tuple) or not isinstance(hi, tuple):
+            return False
+        return self._region_to_chunk_coords(key) is not None  # type: ignore[arg-type]
+
+    def __getitem__(self, key: Region) -> Any:
+        """Return the child Array for the given chunk region."""
+        if self._empty:
+            raise KeyError(key)
+
+        chunk_coords = self._region_to_chunk_coords(key)
+        if chunk_coords is None:
+            raise KeyError(key)
+
+        return self._get_by_chunk_coords(chunk_coords)
+
+    @property
+    def ndim(self) -> int:
+        """Number of dimensions."""
+        return self.desc.ndim
+
+    def __repr__(self) -> str:
+        return (
+            f"ChunkMap(domain={self.domain}, desc.shape={self.desc.shape}, "
+            f"len={len(self)})"
         )
 
 
@@ -867,43 +1188,24 @@ def _cached_morton_order(chunks_per_shard: tuple[int, ...]) -> tuple[tuple[int, 
 
 
 class _FastBytesCodec:
-    """Drop-in replacement for BytesCodec._decode_single that avoids:
+    """Drop-in replacement for BytesCodec decode/encode that avoids:
     1. isinstance(x, NDArrayLike) Protocol check (~16 getattr_static calls)
     2. _batching_helper/concurrent_map/Semaphore overhead
     3. _noop_for_none wrapper and its typing introspection
 
-    This is not a full Codec subclass — it only implements the decode path
-    needed by the inner shard pipeline. It stores the endian configuration
-    from the original BytesCodec.
+    This is not a full Codec subclass — it only implements the decode/encode
+    paths needed by the inner shard pipeline. It stores the endian
+    configuration from the original BytesCodec.
     """
 
-    __slots__ = ("_endian_str", "_has_endianness_type")
+    __slots__ = ("_endian_str",)
 
     def __init__(self, endian_str: str | None) -> None:
         self._endian_str = endian_str
-        # Cache the import so we don't re-import in the hot loop
-        from zarr.core.dtype.common import HasEndianness
-
-        self._has_endianness_type = HasEndianness
 
     def decode_single(self, chunk_bytes: Any, chunk_spec: Any) -> Any:
-        """Synchronous fast decode — no async overhead needed for in-memory work."""
-        from dataclasses import replace as dataclass_replace
-
-        if isinstance(chunk_spec.dtype, self._has_endianness_type):
-            dtype = dataclass_replace(
-                chunk_spec.dtype, endianness=self._endian_str
-            ).to_native_dtype()
-        else:
-            dtype = chunk_spec.dtype.to_native_dtype()
-
-        as_nd_array_like = np.asanyarray(chunk_bytes.as_array_like())
-        chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
-            as_nd_array_like.view(dtype=dtype)
-        )
-        if chunk_array.shape != chunk_spec.shape:
-            chunk_array = chunk_array.reshape(chunk_spec.shape)
-        return chunk_array
+        """Synchronous fast decode — delegates to ``_decode_bytes_fast``."""
+        return _decode_bytes_fast(self._endian_str, chunk_bytes, chunk_spec)
 
     def encode_single(self, chunk_array: Any, chunk_spec: Any) -> Any:
         """Synchronous fast encode — mirrors BytesCodec._encode_single."""
@@ -1523,6 +1825,89 @@ async def _decode_chunks_with_selection(
     return chunk_array_batch
 
 
+
+def _make_chunk_entry(
+    *,
+    base_path: str,
+    parent_desc: ArrayDesc,
+) -> Any:
+    """Return a factory that creates ``ChunkEntry`` records for chunks.
+
+    The factory is called by ``ChunkMap.__getitem__`` with
+    ``(chunk_coords, selection, chunk_domain)`` and returns a ``ChunkEntry``.
+    Only captures ``base_path`` and ``parent_desc`` — storage/codec info
+    lives on the ``ZarrSource``.
+    """
+
+    def _factory(
+        chunk_coords: tuple[int, ...],
+        selection: tuple[slice, ...],
+        chunk_domain: IndexDomain,
+    ) -> ChunkEntry:
+        encode_key = parent_desc.encode_chunk_key
+        if encode_key is not None:
+            key = encode_key(chunk_coords)
+        else:
+            key = "/".join(map(str, ("c",) + chunk_coords))
+
+        path = f"{base_path}/{key}" if base_path else key
+        chunk_shape = parent_desc.chunk_grid.get_chunk_shape(parent_desc.shape, chunk_coords)
+
+        return ChunkEntry(
+            domain=chunk_domain,
+            path=path,
+            chunk_selection=selection,
+            chunk_coords=chunk_coords,
+            chunk_shape=chunk_shape,
+        )
+
+    return _factory
+
+
+# ---------------------------------------------------------------------------
+# Lazy indexing accessors (oindex / vindex)
+# ---------------------------------------------------------------------------
+
+
+class LazyOIndex:
+    """Lazy orthogonal indexing accessor.
+
+    ``arr.oindex[[1, 2], :, [3, 4]]`` returns a lazy ``Array`` whose
+    ``resolve()`` yields the outer-product selection.
+    """
+
+    __slots__ = ("_array",)
+
+    def __init__(self, array: Array) -> None:
+        self._array = array
+
+    def __getitem__(self, selection: Any) -> Array:
+        return self._array._apply_advanced_selection(selection, SelectionKind.ORTHOGONAL)
+
+
+class LazyVIndex:
+    """Lazy vectorized (coordinate) indexing accessor.
+
+    ``arr.vindex[([1, 5], [2, 4])]`` returns a lazy ``Array`` whose
+    ``resolve()`` yields the point selection.
+    """
+
+    __slots__ = ("_array",)
+
+    def __init__(self, array: Array) -> None:
+        self._array = array
+
+    def __getitem__(self, selection: Any) -> Array:
+        from zarr.core.indexing import is_bool_array, is_mask_selection
+
+        sel_tuple = selection if isinstance(selection, tuple) else (selection,)
+        if is_bool_array(selection) or (
+            isinstance(selection, tuple) and is_mask_selection(sel_tuple, self._array.shape)
+        ):
+            return self._array._apply_advanced_selection(selection, SelectionKind.MASK)
+        return self._array._apply_advanced_selection(selection, SelectionKind.COORDINATE)
+
+
 class Array:
     """
     A Zarr array class that supports lazy indexing with explicit domain tracking.
@@ -1567,17 +1952,11 @@ class Array:
     True
     """
 
-    _domain: IndexDomain
-    _sources: tuple[StorageSource | Array, ...]
+    _transform: IndexTransform
+    _layers: tuple[Layer, ...]
     _dtype: np.dtype[Any]
     _fill_value: Any
-
-    # For storage-backed arrays, keep references to these for compatibility
-    # These are None for multi-source arrays
-    _metadata: ArrayV2Metadata | ArrayV3Metadata | None
-    _store_path: StorePath | None
-    _codec_pipeline: Any | None  # CodecPipeline
-    _config: ArrayConfig | None
+    _pending_selection: PendingSelection | None  # advanced indexing deferred to resolve()
 
     def __init__(
         self,
@@ -1597,10 +1976,9 @@ class Array:
             codec_pipeline = create_codec_pipeline(metadata=metadata_parsed, store=store_path.store)
 
         # Replace standard codecs with fast versions for the decode path.
-        # This replaces ShardingCodec with _FastShardingCodec which bypasses
-        # the inner codec_pipeline.read() overhead (concurrent_map, Semaphore,
-        # _batching_helper, _noop_for_none, isinstance Protocol checks).
         codec_pipeline = _make_fast_codec_pipeline(codec_pipeline)
+
+        desc = ArrayDesc.from_metadata(metadata_parsed)
 
         # Default domain is origin at zero with shape from metadata
         if domain is None:
@@ -1608,62 +1986,47 @@ class Array:
 
         # Default storage transform offset is zero (domain coords = storage coords)
         if index_transform is None:
-            index_transform = (0,) * domain.ndim
+            offset = (0,) * domain.ndim
+        else:
+            offset = index_transform
 
-        # Create a single storage source
-        source = StorageSource(
+        source = ZarrSource(
             store_path=store_path,
             metadata=metadata_parsed,
             codec_pipeline=codec_pipeline,
             config=config_parsed,
-            index_transform=index_transform,
+            desc=desc,
         )
 
-        self._domain = domain
-        self._sources = (source,)
-        self._dtype = (
-            metadata_parsed.data_type.to_native_dtype()
-            if hasattr(metadata_parsed, "data_type")
-            else metadata_parsed.dtype.to_native_dtype()
+        # The layer covers the full storage with identity transform
+        storage_domain = IndexDomain.from_shape(metadata_parsed.shape)
+        layer = Layer(
+            transform=IndexTransform.identity(storage_domain),
+            source=source,
         )
-        self._fill_value = metadata_parsed.fill_value
 
-        # Keep references for backward compatibility
-        self._metadata = metadata_parsed
-        self._store_path = store_path
-        self._codec_pipeline = codec_pipeline
-        self._config = config_parsed
+        self._transform = IndexTransform(domain=domain, offset=offset)
+        self._layers = (layer,)
+        self._dtype = desc.data_type
+        self._fill_value = desc.fill_value
+        self._pending_selection = None
 
     @classmethod
-    def _from_sources(
+    def _from_layers(
         cls,
-        sources: Sequence[StorageSource | Array],
         *,
-        domain: IndexDomain,
+        transform: IndexTransform,
+        layers: tuple[Layer, ...],
         dtype: np.dtype[Any],
         fill_value: Any,
     ) -> Array:
-        """Create an Array from multiple sources (internal constructor)."""
+        """Create an Array from a transform and positioned layers."""
         arr = object.__new__(cls)
-        arr._domain = domain
-        arr._sources = tuple(sources)
+        arr._transform = transform
+        arr._layers = layers
         arr._dtype = dtype
         arr._fill_value = fill_value
-
-        # For single StorageSource, preserve the storage references for compatibility
-        if len(sources) == 1 and isinstance(sources[0], StorageSource):
-            source = sources[0]
-            arr._metadata = source.metadata
-            arr._store_path = source.store_path
-            arr._codec_pipeline = source.codec_pipeline
-            arr._config = source.config
-        else:
-            # Multi-source arrays don't have single storage references
-            arr._metadata = None
-            arr._store_path = None
-            arr._codec_pipeline = None
-            arr._config = None
-
+        arr._pending_selection = None
         return arr
 
     # -------------------------------------------------------------------------
@@ -1753,54 +2116,38 @@ class Array:
     @property
     def domain(self) -> IndexDomain:
         """The domain defining valid indices for this array view."""
-        return self._domain
+        return self._transform.domain
 
     @property
-    def sources(self) -> tuple[StorageSource | Array, ...]:
-        """The sources backing this array."""
-        return self._sources
+    def layers(self) -> tuple[Layer, ...]:
+        """The positioned storage layers backing this array."""
+        return self._layers
 
     @property
-    def store(self) -> Store | None:
-        """The store containing the array data, or None for multi-source arrays."""
-        if self._store_path is not None:
-            return self._store_path.store
+    def source(self) -> ZarrSource | None:
+        """The single ZarrSource if this is a single-layer array, else None."""
+        if len(self._layers) == 1:
+            return self._layers[0].source
         return None
-
-    @property
-    def store_path(self) -> StorePath | None:
-        """The store path, or None for multi-source arrays."""
-        return self._store_path
-
-    @property
-    def metadata(self) -> ArrayV2Metadata | ArrayV3Metadata | None:
-        """The metadata, or None for multi-source arrays."""
-        return self._metadata
-
-    @property
-    def codec_pipeline(self) -> Any | None:
-        """The codec pipeline, or None for multi-source arrays."""
-        return self._codec_pipeline
-
-    @property
-    def config(self) -> ArrayConfig | None:
-        """The config, or None for multi-source arrays."""
-        return self._config
 
     @property
     def origin(self) -> tuple[int, ...]:
         """The origin (inclusive lower bounds) of this array's domain."""
-        return self._domain.origin
+        return self._transform.domain.origin
 
     @property
     def ndim(self) -> int:
         """Returns the number of dimensions in the Array."""
-        return self._domain.ndim
+        if self._pending_selection is not None:
+            return len(self._pending_selection.output_shape)
+        return self._transform.domain.ndim
 
     @property
     def shape(self) -> tuple[int, ...]:
         """Returns the shape of the Array (from the domain, not metadata)."""
-        return self._domain.shape
+        if self._pending_selection is not None:
+            return self._pending_selection.output_shape
+        return self._transform.domain.shape
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -1814,17 +2161,11 @@ class Array:
 
     @property
     def index_transform(self) -> tuple[int, ...] | None:
-        """The index transform for single-source storage arrays, or None."""
-        if len(self._sources) == 1 and isinstance(self._sources[0], StorageSource):
-            return self._sources[0].index_transform
-        return None
-
-    @property
-    def chunks(self) -> tuple[int, ...] | None:
-        """Returns the chunk shape of the Array, or None for multi-source arrays."""
-        if self._metadata is not None:
-            return self._metadata.chunks
-        return None
+        """The combined offset for single-source storage arrays, or None."""
+        if len(self._layers) != 1:
+            return None
+        composed = self._transform.compose_or_none(self._layers[0].transform)
+        return composed.offset if composed is not None else None
 
     @property
     def chunk_layout(self) -> ChunkLayout | None:
@@ -1862,117 +2203,81 @@ class Array:
         >>> sliced.chunk_layout.is_aligned((30,))  # 30 is a chunk boundary
         True
         """
-        if self.index_transform is not None and self.chunks is not None:
-            return ChunkLayout(grid_origin=self.index_transform, chunk_shape=self.chunks)
-        return None
+        s = self.source
+        if s is None:
+            return None
+        it = self.index_transform
+        if it is None:
+            return None
+        return ChunkLayout(grid_origin=it, chunk_shape=s.metadata.chunks)
 
     @property
-    def shards(self) -> tuple[int, ...] | None:
-        """Returns the shard shape of the Array, or None if sharding is not used."""
-        if self._metadata is not None:
-            return self._metadata.shards
-        return None
+    def chunk_map(self) -> ChunkMap | None:
+        """
+        A lazy mapping from chunk coordinates to child arrays.
+
+        Returns a :class:`ChunkMap` that maps ``IndexDomain -> Array`` for
+        all chunks overlapping this array's domain.  Keys are the chunk regions
+        (as ``IndexDomain`` objects in storage coordinates) and values are child
+        ``Array`` nodes.
+
+        Composes naturally with ``__getitem__``: narrowing the domain creates a
+        new Array whose ``chunk_map`` reflects the narrowed view.
+
+        Returns ``None`` for leaf nodes (single chunks) or virtual arrays.
+
+        Returns
+        -------
+        ChunkMap | None
+            The chunk map, or None for multi-source arrays.
+
+        Examples
+        --------
+        >>> arr = Array.open("path/to/array")  # shape (100,), chunks (10,)
+        >>> len(arr.chunk_map)  # 10 chunks
+        10
+        >>> list(arr.chunk_map.keys())[:3]
+        [IndexDomain([0, 10)), IndexDomain([10, 20)), IndexDomain([20, 30))]
+        """
+        if len(self._layers) != 1:
+            return None
+        layer = self._layers[0]
+        s = layer.source
+        if s.desc.chunk_grid is None:
+            return None
+        composed = self._transform.compose_or_none(layer.transform)
+        if composed is None:
+            return None
+        return ChunkMap(
+            desc=s.desc,
+            domain=self._transform.domain,
+            index_transform=composed.offset,
+            make_child=_make_chunk_entry(
+                base_path=s.store_path.path,
+                parent_desc=s.desc,
+            ),
+        )
+
+    @property
+    def oindex(self) -> LazyOIndex:
+        """Lazy orthogonal indexing accessor.
+
+        Usage: ``arr.oindex[[1, 2], :, [3, 4]]`` returns a lazy Array.
+        """
+        return LazyOIndex(self)
+
+    @property
+    def vindex(self) -> LazyVIndex:
+        """Lazy vectorized (coordinate) indexing accessor.
+
+        Usage: ``arr.vindex[([1, 5], [2, 4])]`` returns a lazy Array.
+        """
+        return LazyVIndex(self)
 
     @property
     def size(self) -> int:
         """Returns the total number of elements in the array."""
         return product(self.shape)
-
-    @property
-    def filters(self) -> tuple[Numcodec, ...] | tuple[ArrayArrayCodec, ...] | None:
-        """Filters applied to each chunk before serialization."""
-        if self._metadata is None:
-            return None
-        if self._metadata.zarr_format == 2:
-            filters = self._metadata.filters
-            if filters is None:
-                return ()
-            return filters
-        return tuple(
-            codec for codec in self._metadata.inner_codecs if isinstance(codec, ArrayArrayCodec)
-        )
-
-    @property
-    def serializer(self) -> ArrayBytesCodec | None:
-        """Array-to-bytes codec for serializing chunks."""
-        if self._metadata is None:
-            return None
-        if self._metadata.zarr_format == 2:
-            return None
-        return next(
-            codec for codec in self._metadata.inner_codecs if isinstance(codec, ArrayBytesCodec)
-        )
-
-    @property
-    def compressors(self) -> tuple[Numcodec, ...] | tuple[BytesBytesCodec, ...] | None:
-        """Compressors applied to each chunk after serialization."""
-        if self._metadata is None:
-            return None
-        if self._metadata.zarr_format == 2:
-            if self._metadata.compressor is not None:
-                return (self._metadata.compressor,)
-            return ()
-        return tuple(
-            codec for codec in self._metadata.inner_codecs if isinstance(codec, BytesBytesCodec)
-        )
-
-    @property
-    def _zdtype(self) -> Any:
-        """The zarr-specific representation of the array data type."""
-        if self._metadata is None:
-            return None
-        if self._metadata.zarr_format == 2:
-            return self._metadata.dtype
-        else:
-            return self._metadata.data_type
-
-    @property
-    def order(self) -> MemoryOrder | None:
-        """Returns the memory order of the array."""
-        if self._metadata is None or self._config is None:
-            return None
-        if self._metadata.zarr_format == 2:
-            return self._metadata.order
-        else:
-            return self._config.order
-
-    @property
-    def attrs(self) -> dict[str, JSON] | None:
-        """Returns the attributes of the array."""
-        if self._metadata is None:
-            return None
-        return self._metadata.attributes
-
-    @property
-    def read_only(self) -> bool | None:
-        """Returns True if the array is read-only, or None for multi-source arrays."""
-        if self._store_path is not None:
-            return self._store_path.read_only
-        return None
-
-    @property
-    def path(self) -> str | None:
-        """Storage path, or None for multi-source arrays."""
-        if self._store_path is not None:
-            return self._store_path.path
-        return None
-
-    @property
-    def name(self) -> str | None:
-        """Array name following h5py convention, or None for multi-source arrays."""
-        if self.path is None:
-            return None
-        name = self.path
-        if not name.startswith("/"):
-            name = "/" + name
-        return name
-
-    @property
-    def basename(self) -> str | None:
-        """Final component of name, or None for multi-source arrays."""
-        if self.name is None:
-            return None
-        return self.name.split("/")[-1]
 
     @property
     def cdata_shape(self) -> tuple[int, ...] | None:
@@ -1982,19 +2287,18 @@ class Array:
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...] | None:
         """The shape of the chunk grid for this array."""
-        if self.chunks is None:
+        s = self.source
+        if s is None:
             return None
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
+        return tuple(starmap(ceildiv, zip(self.shape, s.metadata.chunks, strict=True)))
 
     @property
     def _shard_grid_shape(self) -> tuple[int, ...] | None:
         """The shape of the shard grid for this array."""
-        if self.chunks is None:
+        s = self.source
+        if s is None:
             return None
-        if self.shards is None:
-            shard_shape = self.chunks
-        else:
-            shard_shape = self.shards
+        shard_shape = s.metadata.shards if s.metadata.shards is not None else s.metadata.chunks
         return tuple(starmap(ceildiv, zip(self.shape, shard_shape, strict=True)))
 
     @property
@@ -2019,28 +2323,69 @@ class Array:
     @property
     def info(self) -> ArrayInfo | None:
         """Return the statically known information for an array, or None for multi-source."""
-        if self._metadata is None:
+        if self.source is None:
             return None
         return self._info()
 
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> ArrayInfo | None:
-        if self._metadata is None or self._store_path is None:
+        s = self.source
+        if s is None:
             return None
+        m = s.metadata
+
+        # Extract zdtype (v2 vs v3)
+        if m.zarr_format == 2:
+            zdtype = m.dtype
+        else:
+            zdtype = m.data_type
+
+        # Extract order (v2 vs v3)
+        if m.zarr_format == 2:
+            order = m.order
+        else:
+            order = s.config.order
+
+        # Extract filters (v2 vs v3)
+        if m.zarr_format == 2:
+            from zarr.abc.numcodec import Numcodec
+
+            filters: tuple[Numcodec, ...] | tuple[Any, ...] = m.filters if m.filters is not None else ()
+        else:
+            from zarr.abc.codec import ArrayArrayCodec
+
+            filters = tuple(c for c in m.inner_codecs if isinstance(c, ArrayArrayCodec))
+
+        # Extract serializer (v3 only)
+        if m.zarr_format == 2:
+            serializer = None
+        else:
+            from zarr.abc.codec import ArrayBytesCodec
+
+            serializer = next(c for c in m.inner_codecs if isinstance(c, ArrayBytesCodec))
+
+        # Extract compressors (v2 vs v3)
+        if m.zarr_format == 2:
+            compressors: tuple[Any, ...] = (m.compressor,) if m.compressor is not None else ()
+        else:
+            from zarr.abc.codec import BytesBytesCodec
+
+            compressors = tuple(c for c in m.inner_codecs if isinstance(c, BytesBytesCodec))
+
         return ArrayInfo(
-            _zarr_format=self._metadata.zarr_format,
-            _data_type=self._zdtype,
+            _zarr_format=m.zarr_format,
+            _data_type=zdtype,
             _fill_value=self._fill_value,
             _shape=self.shape,
-            _order=self.order,
-            _shard_shape=self.shards,
-            _chunk_shape=self.chunks,
-            _read_only=self.read_only,
-            _compressors=self.compressors,
-            _filters=self.filters,
-            _serializer=self.serializer,
-            _store_type=type(self._store_path.store).__name__,
+            _order=order,
+            _shard_shape=m.shards,
+            _chunk_shape=m.chunks,
+            _read_only=s.store_path.read_only,
+            _compressors=compressors,
+            _filters=filters,
+            _serializer=serializer,
+            _store_type=type(s.store_path.store).__name__,
             _count_bytes=self.nbytes,
             _count_bytes_stored=count_bytes_stored,
             _count_chunks_initialized=count_chunks_initialized,
@@ -2145,7 +2490,10 @@ class Array:
         int
             The number of bytes stored.
         """
-        return await _nbytes_stored(self.store_path)
+        s = self.source
+        if s is None:
+            raise ValueError("nbytes_stored requires a single-source array")
+        return await _nbytes_stored(s.store_path)
 
     def nbytes_stored(self) -> int:
         """
@@ -2183,11 +2531,14 @@ class Array:
         NDArrayLikeOrScalar
             The retrieved subset of the array's data.
         """
+        s = self.source
+        if s is None:
+            raise ValueError("getitem requires a single-source array")
         return await _getitem(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
+            s.store_path,
+            s.metadata,
+            s.codec_pipeline,
+            s.config,
             selection,
             prototype=prototype,
         )
@@ -2215,226 +2566,316 @@ class Array:
         """
         return sync(self.getitem_async(selection, prototype=prototype))
 
-    def __getitem__(self, selection: BasicSelection) -> Self:
+    def __getitem__(self, selection: Any) -> Self:
         """
         Lazy indexing: returns a new Array with a narrowed domain.
 
-        Unlike standard Zarr arrays which load data immediately, this method
-        returns a new Array view with an updated domain. No I/O is performed.
-        To actually load data, call `resolve()` on the result.
+        Supports both basic indexing (slices, ints) and advanced indexing
+        (boolean masks, integer arrays).  In either case, no I/O is performed —
+        call ``resolve()`` to load data.
 
-        This follows TensorStore's design where:
-        - Indexing operations create virtual views without loading data
-        - Indices are ABSOLUTE coordinates in the domain's index space
-        - Negative indices refer to actual negative coordinates, NOT "from the end"
+        Basic indexing narrows the rectangular domain.  Advanced indexing
+        stores a :class:`PendingSelection` that is applied at resolve time.
 
-        This is different from NumPy where arr[-1] means "last element". Here,
-        arr[-1] means "coordinate -1" which is only valid if -1 is within the
-        array's domain.
+        Indices are **absolute coordinates** in the domain's index space
+        (TensorStore convention).  Negative indices mean negative coordinates,
+        not "from the end".
 
         Parameters
         ----------
-        selection : BasicSelection
-            The selection (int, slice, or tuple of ints/slices). These are
-            absolute coordinates in the domain's index space.
+        selection
+            Basic: ``int``, ``slice``, ``Ellipsis``, or tuple thereof.
+            Advanced: boolean mask (``ndarray[bool]``), integer array, or
+            tuple mixing arrays with slices/ints.
 
         Returns
         -------
         Array
-            A new Array with a narrowed domain.
-
-        Examples
-        --------
-        >>> arr = Array.open("path/to/array")  # shape (100,), domain [0, 100)
-        >>> arr.domain
-        IndexDomain([0, 100))
-
-        >>> sliced = arr[20:30]  # No data loaded!
-        >>> sliced.domain
-        IndexDomain([20, 30))
-
-        >>> # To get element at coordinate 25:
-        >>> arr[25].domain
-        IndexDomain([25, 26))
-
-        >>> # With a shifted domain:
-        >>> shifted = arr.with_domain(IndexDomain((-50,), (50,)))
-        >>> shifted[-10:10].domain  # Coordinates -10 to 10
-        IndexDomain([-10, 10))
-
-        >>> data = sliced.resolve()  # Now data is loaded
+            A new lazy Array.
         """
-        new_domain = self._apply_selection_to_domain(selection)
-        return self._with_domain(new_domain)
-
-    def _normalize_selection(self, selection: BasicSelection) -> tuple[int | slice, ...]:
-        """Normalize a selection to a tuple of ints/slices."""
-        if not isinstance(selection, tuple):
-            selection = (selection,)
-
-        # Handle ellipsis
-        result: list[int | slice] = []
-        ellipsis_seen = False
-        for sel in selection:
-            if sel is Ellipsis:
-                if ellipsis_seen:
-                    raise IndexError("an index can only have a single ellipsis ('...')")
-                ellipsis_seen = True
-                # Insert enough slices to fill remaining dimensions
-                num_missing = self.ndim - (len(selection) - 1)
-                result.extend([slice(None)] * num_missing)
-            else:
-                result.append(sel)  # type: ignore[arg-type]
-
-        # Pad with full slices if needed
-        while len(result) < self.ndim:
-            result.append(slice(None))
-
-        if len(result) > self.ndim:
-            raise IndexError(
-                f"too many indices for array: array has {self.ndim} dimensions, "
-                f"but {len(result)} were indexed"
-            )
-
-        return tuple(result)
-
-    def _apply_selection_to_domain(self, selection: BasicSelection) -> IndexDomain:
-        """
-        Apply a selection to the current domain and return a new domain.
-
-        Following TensorStore's design:
-        - Indices are ABSOLUTE coordinates in the domain's index space
-        - Negative indices refer to actual negative coordinates, NOT "from the end"
-        - This is different from NumPy where -1 means "last element"
-
-        For example, with domain [10, 20):
-        - arr[15] selects coordinate 15 (valid)
-        - arr[5] selects coordinate 5 (out of bounds - before domain start)
-        - arr[-1] selects coordinate -1 (out of bounds - before domain start)
-
-        This matches TensorStore's behavior where the index space has meaning
-        independent of array bounds.
-        """
-        normalized = self._normalize_selection(selection)
-
-        new_inclusive_min: list[int] = []
-        new_exclusive_max: list[int] = []
-
-        for dim_idx, (sel, dim_lo, dim_hi) in enumerate(
-            zip(normalized, self.domain.inclusive_min, self.domain.exclusive_max, strict=True)
-        ):
-            if isinstance(sel, int):
-                # In TensorStore style, the index IS the coordinate - no translation
-                # Negative indices mean negative coordinates, not "from the end"
-                abs_idx = sel
-
-                # Bounds check against domain
-                if abs_idx < dim_lo or abs_idx >= dim_hi:
-                    raise IndexError(
-                        f"index {sel} is out of bounds for dimension {dim_idx} "
-                        f"with domain [{dim_lo}, {dim_hi})"
-                    )
-
-                # Integer indexing gives a length-1 slice in lazy indexing
-                # (dimension is NOT dropped, unlike NumPy)
-                new_inclusive_min.append(abs_idx)
-                new_exclusive_max.append(abs_idx + 1)
-
-            else:
-                # sel is a slice
-                # Slice bounds are also absolute coordinates
-                start, stop, step = sel.start, sel.stop, sel.step
-
-                if step is not None and step != 1:
-                    raise IndexError(
-                        "lazy indexing only supports step=1 slices. "
-                        f"Got step={step}. Use resolve() first for strided access."
-                    )
-
-                # Handle None/default values - None means "to the edge of domain"
-                if start is None:
-                    abs_start = dim_lo
-                else:
-                    abs_start = start  # Absolute coordinate
-
-                if stop is None:
-                    abs_stop = dim_hi
-                else:
-                    abs_stop = stop  # Absolute coordinate
-
-                # Clamp to domain bounds (like NumPy slice behavior - no error for OOB)
-                abs_start = max(abs_start, dim_lo)
-                abs_stop = min(abs_stop, dim_hi)
-                abs_stop = max(abs_stop, abs_start)  # Ensure stop >= start
-
-                new_inclusive_min.append(abs_start)
-                new_exclusive_max.append(abs_stop)
-
-        return IndexDomain(
-            inclusive_min=tuple(new_inclusive_min),
-            exclusive_max=tuple(new_exclusive_max),
+        from zarr.core.indexing import (
+            is_bool_array,
+            is_bool_list,
+            is_integer_array,
+            is_integer_list,
+            is_pure_fancy_indexing,
+            is_pure_orthogonal_indexing,
         )
 
-    def _with_domain(
-        self,
-        new_domain: IndexDomain,
-        index_transform: tuple[int, ...] | None = None,
-    ) -> Self:
-        """Create a new Array with a different domain (internal helper).
+        # --- Detect advanced indexing ---
+        sel_tuple = selection if isinstance(selection, tuple) else (selection,)
+        has_advanced = any(
+            is_integer_array(s) or is_integer_list(s) or is_bool_array(s) or is_bool_list(s)
+            for s in sel_tuple
+        )
 
-        Parameters
-        ----------
-        new_domain : IndexDomain
-            The new domain.
-        index_transform : tuple[int, ...] | None
-            The new storage transform offset. Only used for single-source storage arrays.
-            If None, preserves the current offset.
+        if has_advanced:
+            # Determine the kind of advanced indexing
+            domain_shape = self._transform.domain.shape  # use domain shape, not self.shape
+            if is_bool_array(selection) and np.asarray(selection).shape == domain_shape:
+                return self._apply_advanced_selection(selection, SelectionKind.MASK)
+            if is_pure_fancy_indexing(selection, self._transform.domain.ndim):
+                # Check if it's a mask selection (tuple of one bool array)
+                if (
+                    isinstance(selection, tuple)
+                    and len(sel_tuple) == 1
+                    and is_bool_array(sel_tuple[0])
+                    and np.asarray(sel_tuple[0]).shape == domain_shape
+                ):
+                    return self._apply_advanced_selection(
+                        sel_tuple[0], SelectionKind.MASK
+                    )
+                return self._apply_advanced_selection(
+                    selection, SelectionKind.COORDINATE
+                )
+            if is_pure_orthogonal_indexing(selection, self._transform.domain.ndim):
+                return self._apply_advanced_selection(
+                    selection, SelectionKind.ORTHOGONAL
+                )
+            # Fallback: treat as orthogonal
+            return self._apply_advanced_selection(
+                selection, SelectionKind.ORTHOGONAL
+            )
+
+        # --- Basic indexing path ---
+        if self._pending_selection is not None:
+            raise IndexError(
+                "Cannot apply basic indexing to an array with a pending "
+                "advanced selection. Call resolve() first."
+            )
+        new_transform = self._transform.narrow(selection)
+        return self._with_transform(new_transform)
+
+    # -------------------------------------------------------------------------
+    # Advanced indexing
+    # -------------------------------------------------------------------------
+
+    def _apply_advanced_selection(self, selection: Any, kind: SelectionKind) -> Self:
+        """Create a new Array with a pending advanced selection.
+
+        This does NOT load data — it normalizes the selection, computes
+        the output shape and bounding domain, and attaches a
+        :class:`PendingSelection` to the returned Array.
         """
-        # For single storage source, we can update the index_transform
-        if len(self._sources) == 1 and isinstance(self._sources[0], StorageSource):
-            source = self._sources[0]
-            if index_transform is None:
-                index_transform = source.index_transform
-            new_source = StorageSource(
-                store_path=source.store_path,
-                metadata=source.metadata,
-                codec_pipeline=source.codec_pipeline,
-                config=source.config,
-                index_transform=index_transform,
+        if self._pending_selection is not None:
+            raise IndexError(
+                "Cannot apply advanced indexing to an array that already has "
+                "a pending advanced selection. Call resolve() first."
             )
-            return self.__class__._from_sources(
-                sources=[new_source],
-                domain=new_domain,
-                dtype=self._dtype,
-                fill_value=self._fill_value,
-            )
-        else:
-            # For multi-source arrays, just narrow the domain
-            # Filter sources to only include those that overlap with new domain
-            new_sources: list[StorageSource | Array] = []
-            for source in self._sources:
-                if isinstance(source, StorageSource):
-                    # Keep the source as-is, resolve will handle the intersection
-                    new_sources.append(source)
-                else:
-                    # It's an Array - slice it to the new domain
-                    intersection = source.domain.intersect(new_domain)
-                    if intersection is not None:
-                        slices = tuple(
-                            slice(
-                                max(new_domain.inclusive_min[d], source.domain.inclusive_min[d]),
-                                min(new_domain.exclusive_max[d], source.domain.exclusive_max[d]),
-                            )
-                            for d in range(self.ndim)
-                        )
-                        new_sources.append(source[slices])
 
-            return self.__class__._from_sources(
-                sources=new_sources if new_sources else list(self._sources),
-                domain=new_domain,
-                dtype=self._dtype,
-                fill_value=self._fill_value,
+        domain = self._transform.domain
+
+        if kind == SelectionKind.MASK:
+            mask = np.asarray(selection, dtype=bool)
+            if mask.shape != domain.shape:
+                raise IndexError(
+                    f"Boolean mask shape {mask.shape} doesn't match "
+                    f"array shape {domain.shape}"
+                )
+            output_shape = (int(np.count_nonzero(mask)),)
+            bounding_domain = self._mask_bounding_domain(mask, domain)
+            # Crop the mask to the bounding domain so raw_selection aligns
+            # with the narrowed domain (bbox_data) at resolve time.
+            origin = domain.inclusive_min
+            bbox_crop = tuple(
+                slice(
+                    bounding_domain.inclusive_min[d] - origin[d],
+                    bounding_domain.exclusive_max[d] - origin[d],
+                )
+                for d in range(domain.ndim)
             )
+            raw_selection = (mask[bbox_crop],)
+
+        elif kind == SelectionKind.COORDINATE:
+            raw_selection, output_shape, bounding_domain = (
+                self._normalize_coordinate_selection(selection, domain)
+            )
+
+        elif kind == SelectionKind.ORTHOGONAL:
+            raw_selection, output_shape, bounding_domain = (
+                self._normalize_orthogonal_selection(selection, domain)
+            )
+
+        else:
+            raise ValueError(f"Unknown selection kind: {kind}")
+
+        pending = PendingSelection(
+            kind=kind,
+            raw_selection=raw_selection,
+            output_shape=output_shape,
+            bounding_domain=bounding_domain,
+        )
+
+        # Narrow the transform to the bounding box, then attach pending selection
+        narrowed = IndexTransform(domain=bounding_domain, offset=self._transform.offset)
+        result = self._with_transform(narrowed)
+        result._pending_selection = pending
+        return result
+
+    @staticmethod
+    def _mask_bounding_domain(mask: np.ndarray[Any, Any], domain: IndexDomain) -> IndexDomain:
+        """Compute the tightest rectangular bounding box around True values."""
+        indices = np.nonzero(mask)
+        if any(len(idx) == 0 for idx in indices):
+            # Empty selection — zero-size domain
+            return IndexDomain(
+                inclusive_min=domain.inclusive_min,
+                exclusive_max=domain.inclusive_min,
+            )
+        origin = domain.inclusive_min
+        lo = tuple(int(idx.min()) + origin[d] for d, idx in enumerate(indices))
+        hi = tuple(int(idx.max()) + 1 + origin[d] for d, idx in enumerate(indices))
+        return IndexDomain(inclusive_min=lo, exclusive_max=hi)
+
+    @staticmethod
+    def _normalize_coordinate_selection(
+        selection: Any,
+        domain: IndexDomain,
+    ) -> tuple[tuple[Any, ...], tuple[int, ...], IndexDomain]:
+        """Normalize coordinate (vindex) selection.
+
+        Returns ``(raw_selection, output_shape, bounding_domain)``.
+        """
+        sel_tuple = selection if isinstance(selection, tuple) else (selection,)
+        origin = domain.inclusive_min
+
+        # Convert lists to arrays
+        arrays: list[np.ndarray[Any, Any]] = []
+        for i, s in enumerate(sel_tuple):
+            arr = np.asarray(s)
+            if arr.dtype == bool:
+                # Bool in coordinate context → convert to indices
+                arr = np.nonzero(arr)[0] + origin[i]
+            arrays.append(arr)
+
+        # Broadcast all arrays to same shape
+        broadcasted = np.broadcast_arrays(*arrays)
+        flat_len = broadcasted[0].size
+        output_shape = (flat_len,)
+
+        # Compute bounding box
+        lo = list(domain.inclusive_min)
+        hi = list(domain.exclusive_max)
+        for d, arr in enumerate(broadcasted):
+            if arr.size > 0:
+                lo[d] = max(int(arr.min()), domain.inclusive_min[d])
+                hi[d] = min(int(arr.max()) + 1, domain.exclusive_max[d])
+            else:
+                hi[d] = lo[d]
+
+        bounding = IndexDomain(inclusive_min=tuple(lo), exclusive_max=tuple(hi))
+        raw_selection = tuple(broadcasted)
+        return raw_selection, output_shape, bounding
+
+    @staticmethod
+    def _normalize_orthogonal_selection(
+        selection: Any,
+        domain: IndexDomain,
+    ) -> tuple[tuple[Any, ...], tuple[int, ...], IndexDomain]:
+        """Normalize orthogonal (oindex) selection.
+
+        Returns ``(raw_selection, output_shape, bounding_domain)``.
+        """
+        sel_tuple = selection if isinstance(selection, tuple) else (selection,)
+        ndim = domain.ndim
+
+        # Pad with full slices for missing trailing dims
+        if len(sel_tuple) < ndim:
+            sel_tuple = sel_tuple + (slice(None),) * (ndim - len(sel_tuple))
+
+        # Handle ellipsis
+        expanded: list[Any] = []
+        for s in sel_tuple:
+            if s is Ellipsis:
+                n_expand = ndim - (len(sel_tuple) - 1)
+                expanded.extend([slice(None)] * n_expand)
+            else:
+                expanded.append(s)
+        sel_tuple = tuple(expanded[:ndim])
+
+        normalized: list[Any] = []
+        shape_parts: list[int] = []
+        lo = list(domain.inclusive_min)
+        hi = list(domain.exclusive_max)
+
+        for d, s in enumerate(sel_tuple):
+            dim_lo = domain.inclusive_min[d]
+            dim_hi = domain.exclusive_max[d]
+            dim_size = dim_hi - dim_lo
+
+            if isinstance(s, (int, np.integer)):
+                # Single integer — selects one element, dimension dropped in output
+                # but we keep it in the selection for later indexing
+                idx = int(s)
+                normalized.append(np.array([idx]))
+                shape_parts.append(1)
+                lo[d] = max(idx, dim_lo)
+                hi[d] = min(idx + 1, dim_hi)
+
+            elif isinstance(s, slice):
+                start, stop, step = s.start, s.stop, s.step
+                if start is None:
+                    start = dim_lo
+                if stop is None:
+                    stop = dim_hi
+                if step is None:
+                    step = 1
+                # Clamp to domain
+                start = max(start, dim_lo)
+                stop = min(stop, dim_hi)
+                rng = range(start, stop, step)
+                normalized.append(slice(start, stop, step))
+                shape_parts.append(len(rng))
+                if len(rng) > 0:
+                    lo[d] = rng[0]
+                    hi[d] = rng[-1] + 1
+                else:
+                    hi[d] = lo[d]
+
+            else:
+                # Array-like
+                arr = np.asarray(s)
+                if arr.dtype == bool:
+                    if len(arr) != dim_size:
+                        raise IndexError(
+                            f"Boolean array length {len(arr)} doesn't match "
+                            f"dimension size {dim_size} for axis {d}"
+                        )
+                    # Convert to integer indices in domain coords
+                    int_idx = np.nonzero(arr)[0] + dim_lo
+                    normalized.append(int_idx)
+                    shape_parts.append(len(int_idx))
+                    if len(int_idx) > 0:
+                        lo[d] = max(int(int_idx.min()), dim_lo)
+                        hi[d] = min(int(int_idx.max()) + 1, dim_hi)
+                    else:
+                        hi[d] = lo[d]
+                else:
+                    int_arr = np.asarray(arr, dtype=np.intp)
+                    normalized.append(int_arr)
+                    shape_parts.append(len(int_arr))
+                    if len(int_arr) > 0:
+                        lo[d] = max(int(int_arr.min()), dim_lo)
+                        hi[d] = min(int(int_arr.max()) + 1, dim_hi)
+                    else:
+                        hi[d] = lo[d]
+
+        bounding = IndexDomain(inclusive_min=tuple(lo), exclusive_max=tuple(hi))
+        return tuple(normalized), tuple(shape_parts), bounding
+
+    def _with_transform(self, new_transform: IndexTransform) -> Self:
+        """Create a new Array with a different outer transform.
+
+        Layers are unchanged. Only the user-facing transform changes.
+        This is the single unified code path for both single-source and
+        multi-source arrays — no branching needed.
+        """
+        return self.__class__._from_layers(
+            transform=new_transform,
+            layers=self._layers,
+            dtype=self._dtype,
+            fill_value=self._fill_value,
+        )
 
     def with_domain(self, new_domain: IndexDomain) -> Self:
         """
@@ -2481,14 +2922,20 @@ class Array:
         (10,)
         >>> neg[-3].resolve()  # domain -3 -> storage 2, returns data[2]
         """
-        if new_domain.ndim != self.ndim:
+        if self._pending_selection is not None:
+            raise IndexError(
+                "Cannot change domain on an array with a pending advanced "
+                "selection. Call resolve() first."
+            )
+        if new_domain.ndim != self._transform.domain.ndim:
             raise ValueError(
                 f"New domain must have same number of dimensions as array. "
-                f"Array has {self.ndim} dimensions, new domain has {new_domain.ndim}."
+                f"Array has {self._transform.domain.ndim} dimensions, new domain has {new_domain.ndim}."
             )
-        # Set storage transform offset to the new domain's origin
-        # so that domain.origin maps to storage coordinate 0
-        return self._with_domain(new_domain, index_transform=new_domain.origin)
+        # Set offset to the new domain's origin so that
+        # domain.origin maps to storage coordinate 0
+        new_transform = IndexTransform(domain=new_domain, offset=new_domain.origin)
+        return self._with_transform(new_transform)
 
     async def resolve_async(
         self,
@@ -2519,72 +2966,138 @@ class Array:
         NDArrayLikeOrScalar
             The data as a numpy array (or scalar if the domain has size 1 in all dims).
         """
-        # Create output array filled with fill_value
-        output = np.full(self.shape, self._fill_value, dtype=self._dtype)
+        if self._pending_selection is not None:
+            return await self._resolve_with_advanced_selection(prototype)
 
-        for source in self._sources:
-            if isinstance(source, StorageSource):
-                await self._resolve_storage_source(source, output, prototype)
-            else:
-                await self._resolve_array_source(source, output)
-
-        return output
-
-    async def _resolve_storage_source(
-        self,
-        source: StorageSource,
-        output: np.ndarray[Any, Any],
-        prototype: BufferPrototype | None,
-    ) -> None:
-        """Resolve data from a storage source into the output array."""
-        # Compute the domain of this source in our coordinate system
-        source_domain = IndexDomain(
-            inclusive_min=source.index_transform,
-            exclusive_max=tuple(
-                o + s
-                for o, s in zip(source.index_transform, source.storage_shape, strict=True)
-            ),
-        )
-
-        # Find intersection with our domain
-        intersection = source_domain.intersect(self._domain)
-        if intersection is None:
-            return
+        output = np.full(self._transform.domain.shape, self._fill_value, dtype=self._dtype)
 
         if prototype is None:
             prototype = default_buffer_prototype()
 
-        # Compute chunk_spec once — all chunks in a regular grid share the same spec.
-        # This avoids creating ~N ArraySpec objects (each calling parse_shapelike).
-        chunk_spec = source.metadata.get_chunk_spec((0,) * len(source.chunks), source.config, prototype=prototype)
+        for layer in self._layers:
+            await self._resolve_layer(layer, output, prototype)
 
-        # Build chunk paths as plain strings, bypassing StorePath construction
-        # and its normalize_path call (regex + string splitting per chunk).
-        store = source.store_path.store
-        base_path = source.store_path.path
+        return output
 
-        chunk_paths = []
-        chunk_selections = []
-        out_selections = []
-        for out_selection, chunk_info in get_chunk_projections(
-            storage_shape=source.storage_shape,
-            chunk_shape=source.chunks,
-            domain=intersection,
-            index_transform=source.index_transform,
-            output_origin=self._domain.inclusive_min,
-        ):
-            chunk_key = source.metadata.encode_chunk_key(chunk_info.chunk_coords)
-            path = f"{base_path}/{chunk_key}" if base_path else chunk_key
-            chunk_paths.append(path)
-            chunk_selections.append(chunk_info.selection)
-            out_selections.append(out_selection)
+    async def _resolve_with_advanced_selection(
+        self,
+        prototype: BufferPrototype | None,
+    ) -> NDArrayLikeOrScalar:
+        """Resolve an array with a pending advanced selection.
 
+        Two-step approach:
+        1. Resolve the bounding-box domain to a dense numpy array.
+        2. Apply the advanced selection to the dense array using numpy indexing.
+        """
+        pending = self._pending_selection
+        assert pending is not None
+
+        # Step 1: resolve the rectangular bounding box
+        # Create a temporary copy without the pending selection
+        temp = self._copy_without_pending()
+        bbox_data = await temp.resolve_async(prototype=prototype)
+
+        # Step 2: apply the advanced selection to the dense array
+        # Translate indices from domain coords to bbox-local (zero-based) coords
+        bbox_origin = pending.bounding_domain.inclusive_min
+
+        if pending.kind == SelectionKind.MASK:
+            # The mask was pre-cropped to the bounding domain in
+            # _apply_advanced_selection, so mask.shape == bbox_data.shape.
+            mask = pending.raw_selection[0]
+            return bbox_data[mask]
+
+        elif pending.kind == SelectionKind.ORTHOGONAL:
+            local_sel = self._translate_orthogonal_to_local(
+                pending.raw_selection, bbox_origin
+            )
+            # Use np.ix_ to create an open mesh for orthogonal indexing
+            ix_args = []
+            for s in local_sel:
+                if isinstance(s, np.ndarray):
+                    ix_args.append(s)
+                elif isinstance(s, slice):
+                    start = s.start if s.start is not None else 0
+                    stop = s.stop if s.stop is not None else 0
+                    step = s.step if s.step is not None else 1
+                    ix_args.append(np.arange(start, stop, step))
+                else:
+                    ix_args.append(np.array([s]))
+            return bbox_data[np.ix_(*ix_args)]
+
+        elif pending.kind == SelectionKind.COORDINATE:
+            local_sel = self._translate_coordinate_to_local(
+                pending.raw_selection, bbox_origin
+            )
+            return bbox_data[tuple(local_sel)]
+
+        raise ValueError(f"Unknown selection kind: {pending.kind}")
+
+    def _copy_without_pending(self) -> Array:
+        """Return a copy of this Array with ``_pending_selection`` cleared."""
+        return self._with_transform(self._transform)
+
+    @staticmethod
+    def _translate_orthogonal_to_local(
+        raw_selection: tuple[Any, ...],
+        bbox_origin: tuple[int, ...],
+    ) -> tuple[Any, ...]:
+        """Translate orthogonal selection indices to bbox-local (zero-based) coords."""
+        result: list[Any] = []
+        for d, s in enumerate(raw_selection):
+            off = bbox_origin[d]
+            if isinstance(s, np.ndarray):
+                result.append(s - off)
+            elif isinstance(s, slice):
+                start = (s.start - off) if s.start is not None else None
+                stop = (s.stop - off) if s.stop is not None else None
+                result.append(slice(start, stop, s.step))
+            elif isinstance(s, (int, np.integer)):
+                result.append(int(s) - off)
+            else:
+                result.append(s)
+        return tuple(result)
+
+    @staticmethod
+    def _translate_coordinate_to_local(
+        raw_selection: tuple[Any, ...],
+        bbox_origin: tuple[int, ...],
+    ) -> tuple[Any, ...]:
+        """Translate coordinate selection indices to bbox-local (zero-based) coords."""
+        return tuple(
+            arr - bbox_origin[d] if isinstance(arr, np.ndarray) else arr
+            for d, arr in enumerate(raw_selection)
+        )
+
+    async def _decode_and_scatter(
+        self,
+        *,
+        codec_pipeline: Any,
+        store: Any,
+        metadata: ArrayV2Metadata | ArrayV3Metadata,
+        config: ArrayConfig,
+        chunk_paths: list[str],
+        chunk_selections: list[tuple[slice, ...]],
+        out_selections: list[tuple[slice, ...]],
+        output: np.ndarray[Any, Any],
+        prototype: BufferPrototype,
+    ) -> None:
+        """Decode chunks and scatter the results into *output*.
+
+        This is the shared tail of ``_resolve_via_chunk_map`` and
+        ``_resolve_storage_source``: given pre-collected chunk paths,
+        chunk-local selections, and output-space selections, decode
+        everything in one batch and write the results into *output*.
+        """
         if not chunk_paths:
             return
 
-        # Decode chunks with selections applied in storage-coordinate space
+        chunk_spec = metadata.get_chunk_spec(
+            (0,) * len(output.shape), config, prototype=prototype
+        )
+
         chunk_arrays = await _decode_chunks_with_selection(
-            source.codec_pipeline,
+            codec_pipeline,
             store,
             chunk_paths,
             chunk_spec,
@@ -2592,7 +3105,6 @@ class Array:
             prototype,
         )
 
-        # Write decoded chunks into the output array
         fill_value = self._fill_value
         for chunk_array, out_sel in zip(chunk_arrays, out_selections, strict=True):
             if chunk_array is not None:
@@ -2600,29 +3112,82 @@ class Array:
             else:
                 output[out_sel] = fill_value
 
-    async def _resolve_array_source(
+    async def _resolve_layer(
         self,
-        source: Array,
+        layer: Layer,
         output: np.ndarray[Any, Any],
+        prototype: BufferPrototype,
     ) -> None:
-        """Resolve data from an Array source into the output array."""
-        # Find intersection of source's domain with our domain
-        intersection = source.domain.intersect(self._domain)
-        if intersection is None:
+        """Resolve data from a single Layer into the output.
+
+        Composes the Array's outer transform with the layer's transform
+        to get the full user-to-storage mapping, then builds a ChunkMap
+        and does batched decode.
+        """
+        source = layer.source
+        desc = source.desc
+        if desc.chunk_grid is None:
             return
 
-        # Resolve the source array's data
-        data = await source.resolve_async()
+        # Compose outer transform with layer transform
+        composed = self._transform.compose_or_none(layer.transform)
+        if composed is None:
+            return  # No overlap between user domain and this layer
 
-        # Map intersection to output array coordinates (relative to our origin)
-        neg_origin = tuple(-x for x in self._domain.inclusive_min)
-        output_slices = intersection.translate(neg_origin).to_slices()
+        # composed.domain = intersection of user domain and layer domain
+        # composed.offset = outer.offset + layer.offset
+        # storage_coord = user_coord - composed.offset
 
-        # Map intersection to source data coordinates (relative to source's origin)
-        neg_source_origin = tuple(-x for x in source.domain.inclusive_min)
-        data_slices = intersection.translate(neg_source_origin).to_slices()
+        chunk_map = ChunkMap(
+            desc=desc,
+            domain=composed.domain,
+            index_transform=composed.offset,
+            make_child=_make_chunk_entry(
+                base_path=source.store_path.path,
+                parent_desc=desc,
+            ),
+        )
 
-        output[output_slices] = data[data_slices]
+        # Output offset: translate from storage coords to output-array coords
+        output_origin = self._transform.domain.inclusive_min
+        storage_to_output = tuple(
+            off - oo for off, oo in zip(composed.offset, output_origin, strict=True)
+        )
+
+        # Collect chunk info for batched decode
+        chunk_paths: list[str] = []
+        chunk_selections: list[tuple[slice, ...]] = []
+        out_selections: list[tuple[slice, ...]] = []
+
+        for cc in chunk_map._chunk_coords_iter():
+            entry = chunk_map._get_by_chunk_coords(cc)
+
+            chunk_paths.append(entry.path)
+            chunk_selections.append(entry.chunk_selection)
+
+            out_selections.append(
+                tuple(
+                    slice(lo + off, hi + off)
+                    for lo, hi, off in zip(
+                        entry.domain.inclusive_min,
+                        entry.domain.exclusive_max,
+                        storage_to_output,
+                        strict=True,
+                    )
+                )
+            )
+
+        await self._decode_and_scatter(
+            codec_pipeline=source.codec_pipeline,
+            store=source.store_path.store,
+            metadata=source.metadata,
+            config=source.config,
+            chunk_paths=chunk_paths,
+            chunk_selections=chunk_selections,
+            out_selections=out_selections,
+            output=output,
+            prototype=prototype,
+        )
 
     def resolve(
         self,
@@ -2656,13 +3221,6 @@ class Array:
         """
         return sync(self.resolve_async(prototype=prototype))
 
-    def _domain_to_selection(self) -> tuple[slice, ...]:
-        """Convert the current domain to a selection tuple for the underlying storage."""
-        return tuple(
-            slice(lo, hi)
-            for lo, hi in zip(self.domain.inclusive_min, self.domain.exclusive_max, strict=True)
-        )
-
     # -------------------------------------------------------------------------
     # setitem: async and sync
     # -------------------------------------------------------------------------
@@ -2685,11 +3243,14 @@ class Array:
         prototype : BufferPrototype, optional
             A buffer prototype to use.
         """
+        s = self.source
+        if s is None:
+            raise ValueError("setitem requires a single-source array")
         return await _setitem(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
+            s.store_path,
+            s.metadata,
+            s.codec_pipeline,
+            s.config,
             selection,
             value,
             prototype=prototype,
@@ -2750,11 +3311,14 @@ class Array:
         NDArrayLikeOrScalar
             The selected data.
         """
+        s = self.source
+        if s is None:
+            raise ValueError("get_orthogonal_selection requires a single-source array")
         return await _get_orthogonal_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
+            s.store_path,
+            s.metadata,
+            s.codec_pipeline,
+            s.config,
             selection,
             out=out,
             fields=fields,
@@ -2825,11 +3389,14 @@ class Array:
         NDArrayLikeOrScalar
             The selected data.
         """
+        s = self.source
+        if s is None:
+            raise ValueError("get_mask_selection requires a single-source array")
         return await _get_mask_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
+            s.store_path,
+            s.metadata,
+            s.codec_pipeline,
+            s.config,
             mask,
             out=out,
             fields=fields,
@@ -2898,11 +3465,14 @@ class Array:
         NDArrayLikeOrScalar
             The selected data.
         """
+        s = self.source
+        if s is None:
+            raise ValueError("get_coordinate_selection requires a single-source array")
         return await _get_coordinate_selection(
-            self.store_path,
-            self.metadata,
-            self.codec_pipeline,
-            self.config,
+            s.store_path,
+            s.metadata,
+            s.codec_pipeline,
+            s.config,
             selection,
             out=out,
             fields=fields,
@@ -3080,43 +3650,28 @@ class Array:
     # -------------------------------------------------------------------------
 
     def __repr__(self) -> str:
-        if self._store_path is not None:
-            return f"<Array {self._store_path} domain={self._domain} dtype={self._dtype}>"
+        s = self.source
+        if s is not None:
+            return f"<Array {s.store_path} domain={self._transform.domain} dtype={self._dtype}>"
         else:
-            return f"<Array domain={self._domain} dtype={self._dtype} sources={len(self._sources)}>"
+            return f"<Array domain={self._transform.domain} dtype={self._dtype} sources={len(self._layers)}>"
 
     def __eq__(self, other: object) -> bool:
         """
         Check equality between two Arrays.
 
-        Two Arrays are equal if they have the same domain, dtype, fill_value,
-        and equivalent sources. For single-source arrays backed by the same
-        storage with the same index_transform, they are considered equal.
+        Two Arrays are equal if they have the same transform, dtype, fill_value,
+        and layers.
         """
         if not isinstance(other, Array):
             return NotImplemented
 
-        # Basic properties must match
-        if self._domain != other._domain:
-            return False
-        if self._dtype != other._dtype:
-            return False
-        if self._fill_value != other._fill_value:
-            return False
-
-        # Compare sources
-        if len(self._sources) != len(other._sources):
-            return False
-
-        for s1, s2 in zip(self._sources, other._sources, strict=True):
-            if type(s1) is not type(s2):
-                return False
-            # StorageSource is a frozen dataclass, so equality works
-            # Array uses recursive equality check
-            if s1 != s2:
-                return False
-
-        return True
+        return (
+            self._transform == other._transform
+            and self._dtype == other._dtype
+            and self._fill_value == other._fill_value
+            and self._layers == other._layers
+        )
 
     def __array__(
         self, dtype: np.dtype[Any] | None = None, copy: bool | None = None
@@ -3218,6 +3773,13 @@ def merge(
     if not arrays:
         raise ValueError("merge requires at least one array")
 
+    for arr in arrays:
+        if arr._pending_selection is not None:
+            raise ValueError(
+                "Cannot merge arrays with pending advanced selections. "
+                "Call resolve() on each array first."
+            )
+
     arrays_list = list(arrays)
     first = arrays_list[0]
     ndim = first.domain.ndim
@@ -3249,29 +3811,26 @@ def merge(
         )
         domain = IndexDomain(inclusive_min=inclusive_min, exclusive_max=exclusive_max)
 
-    # Create an Array with the input arrays as sources
-    # We need to convert ArrayLike to Array - for now we only support Array inputs
-    sources: list[StorageSource | Array] = []
+    # Flatten: compose each child's outer transform into its layers
+    all_layers: list[Layer] = []
     for arr in arrays_list:
-        if isinstance(arr, Array):
-            sources.append(arr)
-        else:
-            raise TypeError(f"merge currently only supports Array inputs, got {type(arr).__name__}")
+        for layer in arr._layers:
+            composed = arr._transform.compose_or_none(layer.transform)
+            if composed is not None:
+                all_layers.append(Layer(transform=composed, source=layer.source))
 
-    # Try to merge sources if they all come from the same storage
-    merged_source = _try_merge_to_single_source(arrays_list, domain)
-    if merged_source is not None:
-        # All arrays share the same storage - use the merged source
-        return Array._from_sources(
-            sources=[merged_source],
-            domain=domain,
-            dtype=first.dtype,
-            fill_value=fill_value,
-        )
+    # Try to collapse to a single layer if all share same storage
+    merged_layer = _try_merge_to_single_layer(all_layers, domain)
+    if merged_layer is not None:
+        layers = (merged_layer,)
+    else:
+        layers = tuple(all_layers)
 
-    return Array._from_sources(
-        sources=sources,
-        domain=domain,
+    outer_transform = IndexTransform.identity(domain)
+
+    return Array._from_layers(
+        transform=outer_transform,
+        layers=layers,
         dtype=first.dtype,
         fill_value=fill_value,
     )

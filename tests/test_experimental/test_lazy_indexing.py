@@ -10,14 +10,69 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.experimental.lazy_indexing import (
     Array,
+    ArrayDesc,
+    ChunkEntry,
     ChunkLayout,
+    ChunkMap,
     IndexDomain,
-    get_chunk_projections,
+    IndexTransform,
+    Layer,
+    PendingSelection,
+    SelectionKind,
     merge,
 )
 from zarr.storage import MemoryStore
+
+
+def _make_test_cmap(
+    *,
+    domain: IndexDomain,
+    chunk_shape: tuple[int, ...],
+    storage_shape: tuple[int, ...],
+    index_transform: tuple[int, ...],
+    encode_chunk_key: object = None,
+) -> ChunkMap:
+    """Helper to create a ChunkMap for tests using the new API."""
+    desc = ArrayDesc(
+        shape=storage_shape,
+        data_type=np.dtype("float32"),
+        chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+        encode_chunk_key=encode_chunk_key,
+        fill_value=0,
+        codecs=None,
+    )
+
+    def _make_child(
+        chunk_coords: tuple[int, ...],
+        selection: tuple[slice, ...],
+        chunk_domain: IndexDomain,
+    ) -> ChunkEntry:
+        """Return a ChunkEntry for test inspection."""
+        ek = encode_chunk_key
+        if ek is not None:
+            key = ek(chunk_coords)
+        else:
+            key = "/".join(map(str, ("c",) + chunk_coords))
+
+        chunk_shape_actual = desc.chunk_grid.get_chunk_shape(storage_shape, chunk_coords)
+
+        return ChunkEntry(
+            domain=chunk_domain,
+            path=key,
+            chunk_selection=selection,
+            chunk_coords=chunk_coords,
+            chunk_shape=chunk_shape_actual,
+        )
+
+    return ChunkMap(
+        desc=desc,
+        domain=domain,
+        index_transform=index_transform,
+        make_child=_make_child,
+    )
 
 
 class TestIndexDomain:
@@ -141,141 +196,284 @@ class TestIndexDomain:
         assert translated.exclusive_max == (50,)
 
 
-class TestGetChunkProjections:
-    """Tests for the get_chunk_projections function."""
+class TestChunkMap:
+    """Tests for the ChunkMap class.
+
+    Keys are Region tuples: ``(inclusive_min, exclusive_max)``.
+    """
+
+    # Helper for concise Region creation
+    @staticmethod
+    def D(
+        lo: tuple[int, ...], hi: tuple[int, ...]
+    ) -> tuple[tuple[int, ...], tuple[int, ...]]:
+        return (lo, hi)
 
     def test_single_chunk_full_domain(self) -> None:
-        """Test projection for domain covering exactly one chunk."""
-        storage_shape = (10,)
-        chunk_shape = (10,)
-        domain = IndexDomain.from_shape((10,))
+        """ChunkMap with domain covering exactly one chunk."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain.from_shape((10,)),
+            chunk_shape=(10,),
+            storage_shape=(10,),
+            index_transform=(0,),
+        )
+        assert len(cmap) == 1
+        assert list(cmap) == [self.D((0,), (10,))]
+        assert self.D((0,), (10,)) in cmap
 
-        projections = list(get_chunk_projections(storage_shape, chunk_shape, domain))
-
-        assert len(projections) == 1
-        output_sel, chunk_info = projections[0]
-        assert chunk_info.chunk_coords == (0,)
-        assert chunk_info.selection == (slice(0, 10),)
-        assert output_sel == (slice(0, 10),)
+        child = cmap[self.D((0,), (10,))]
+        assert child.path == "c/0"
+        assert child.chunk_selection == (slice(0, 10),)
 
     def test_multiple_chunks(self) -> None:
-        """Test projection spanning multiple chunks."""
-        storage_shape = (100,)
-        chunk_shape = (10,)
-        domain = IndexDomain(inclusive_min=(25,), exclusive_max=(75,))
+        """ChunkMap spanning multiple chunks."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(25,), exclusive_max=(75,)),
+            chunk_shape=(10,),
+            storage_shape=(100,),
+            index_transform=(0,),
+        )
+        assert len(cmap) == 6
+        keys = list(cmap)
+        assert keys == [self.D((i * 10,), ((i + 1) * 10,)) for i in range(2, 8)]
 
-        projections = list(get_chunk_projections(storage_shape, chunk_shape, domain))
+        child = cmap[self.D((20,), (30,))]
+        assert child.path == "c/2"
+        assert child.chunk_selection == (slice(5, 10),)
 
-        # Domain [25, 75) covers chunks 2, 3, 4, 5, 6, 7:
-        # Chunk 2 (20-30): selection [25-30) -> chunk_sel [5, 10), output_sel [0, 5)
-        # Chunk 3 (30-40): full chunk -> chunk_sel [0, 10), output_sel [5, 15)
-        # Chunk 4 (40-50): full chunk -> chunk_sel [0, 10), output_sel [15, 25)
-        # Chunk 5 (50-60): full chunk -> chunk_sel [0, 10), output_sel [25, 35)
-        # Chunk 6 (60-70): full chunk -> chunk_sel [0, 10), output_sel [35, 45)
-        # Chunk 7 (70-80): selection [70-75) -> chunk_sel [0, 5), output_sel [45, 50)
-        assert len(projections) == 6  # chunks 2, 3, 4, 5, 6, 7
+        child = cmap[self.D((70,), (80,))]
+        assert child.path == "c/7"
+        assert child.chunk_selection == (slice(0, 5),)
 
-        # Check first chunk
-        output_sel, chunk_info = projections[0]
-        assert chunk_info.chunk_coords == (2,)
-        assert chunk_info.selection == (slice(5, 10),)
-        assert output_sel == (slice(0, 5),)
-
-        # Check last chunk
-        output_sel, chunk_info = projections[-1]
-        assert chunk_info.chunk_coords == (7,)
-        assert chunk_info.selection == (slice(0, 5),)
-        assert output_sel == (slice(45, 50),)
+        child = cmap[self.D((40,), (50,))]
+        assert child.path == "c/4"
+        assert child.chunk_selection == (slice(0, 10),)
 
     def test_with_index_transform(self) -> None:
-        """Test projection with non-zero storage transform offset."""
-        storage_shape = (10,)
-        chunk_shape = (5,)
-        # Domain [10, 20) with offset 10 maps to storage [0, 10)
-        domain = IndexDomain(inclusive_min=(10,), exclusive_max=(20,))
-        offset = (10,)
-
-        projections = list(
-            get_chunk_projections(storage_shape, chunk_shape, domain, index_transform=offset)
+        """ChunkMap with non-zero offset."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(10,), exclusive_max=(20,)),
+            chunk_shape=(5,),
+            storage_shape=(10,),
+            index_transform=(10,),
         )
+        assert len(cmap) == 2
+        child0 = cmap[self.D((0,), (5,))]
+        assert child0.path == "c/0"
+        assert child0.chunk_selection == (slice(0, 5),)
 
-        assert len(projections) == 2
-        # Chunk 0 (storage 0-5) maps to domain [10, 15)
-        output_sel, chunk_info = projections[0]
-        assert chunk_info.chunk_coords == (0,)
-        assert chunk_info.selection == (slice(0, 5),)
-        assert output_sel == (slice(0, 5),)
-        # Chunk 1 (storage 5-10) maps to domain [15, 20)
-        output_sel, chunk_info = projections[1]
-        assert chunk_info.chunk_coords == (1,)
-        assert chunk_info.selection == (slice(0, 5),)
-        assert output_sel == (slice(5, 10),)
+        child1 = cmap[self.D((5,), (10,))]
+        assert child1.path == "c/1"
+        assert child1.chunk_selection == (slice(0, 5),)
 
-    def test_domain_outside_storage_bounds(self) -> None:
-        """Test projection when domain extends beyond storage."""
-        storage_shape = (10,)
-        chunk_shape = (5,)
-        # Domain [5, 15) with no offset - storage only has [0, 10)
-        domain = IndexDomain(inclusive_min=(5,), exclusive_max=(15,))
-
-        projections = list(get_chunk_projections(storage_shape, chunk_shape, domain))
-
-        # Only storage [5, 10) is valid
-        assert len(projections) == 1
-        output_sel, chunk_info = projections[0]
-        assert chunk_info.chunk_coords == (1,)
-        assert chunk_info.selection == (slice(0, 5),)
-        # Domain [5, 15) -> output indices [0, 10), but only [0, 5) has data
-        assert output_sel == (slice(0, 5),)
+    def test_domain_partially_outside_storage(self) -> None:
+        """Domain extending beyond storage bounds gets clipped."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(5,), exclusive_max=(15,)),
+            chunk_shape=(5,),
+            storage_shape=(10,),
+            index_transform=(0,),
+        )
+        assert len(cmap) == 1
+        child = cmap[self.D((5,), (10,))]
+        assert child.chunk_selection == (slice(0, 5),)
 
     def test_domain_completely_outside_storage(self) -> None:
-        """Test projection when domain is entirely outside storage bounds."""
-        storage_shape = (10,)
-        chunk_shape = (5,)
-        domain = IndexDomain(inclusive_min=(20,), exclusive_max=(30,))
-
-        projections = list(get_chunk_projections(storage_shape, chunk_shape, domain))
-
-        # No intersection with storage
-        assert len(projections) == 0
+        """Empty ChunkMap when domain doesn't overlap storage."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(20,), exclusive_max=(30,)),
+            chunk_shape=(5,),
+            storage_shape=(10,),
+            index_transform=(0,),
+        )
+        assert len(cmap) == 0
+        assert list(cmap) == []
 
     def test_multidimensional(self) -> None:
-        """Test projection for multi-dimensional arrays."""
-        storage_shape = (20, 30)
-        chunk_shape = (10, 10)
-        domain = IndexDomain(inclusive_min=(5, 15), exclusive_max=(15, 25))
+        """ChunkMap for 2D array."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(5, 15), exclusive_max=(15, 25)),
+            chunk_shape=(10, 10),
+            storage_shape=(20, 30),
+            index_transform=(0, 0),
+        )
+        assert len(cmap) == 4
+        keys = list(cmap)
+        assert keys == [
+            self.D((0, 10), (10, 20)),
+            self.D((0, 20), (10, 30)),
+            self.D((10, 10), (20, 20)),
+            self.D((10, 20), (20, 30)),
+        ]
 
-        projections = list(get_chunk_projections(storage_shape, chunk_shape, domain))
-
-        # Domain [5, 15) x [15, 25) covers:
-        # Dim 0: chunks 0 and 1 (0-10 and 10-20)
-        # Dim 1: chunks 1 and 2 (10-20 and 20-30)
-        # So 2x2 = 4 chunk combinations
-        assert len(projections) == 4
-
-        # Check first chunk (0, 1)
-        output_sel, chunk_info = projections[0]
-        assert chunk_info.chunk_coords == (0, 1)
-        assert chunk_info.selection == (slice(5, 10), slice(5, 10))
-        assert output_sel == (slice(0, 5), slice(0, 5))
+        child = cmap[self.D((0, 10), (10, 20))]
+        assert child.path == "c/0/1"
+        assert child.chunk_selection == (slice(5, 10), slice(5, 10))
 
     def test_negative_domain_with_offset(self) -> None:
-        """Test projection with negative domain coordinates."""
-        storage_shape = (10,)
-        chunk_shape = (5,)
-        # Domain [-5, 5) with offset -5 maps to storage [0, 10)
-        domain = IndexDomain(inclusive_min=(-5,), exclusive_max=(5,))
-        offset = (-5,)
-
-        projections = list(
-            get_chunk_projections(storage_shape, chunk_shape, domain, index_transform=offset)
+        """ChunkMap with negative domain coordinates."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(-5,), exclusive_max=(5,)),
+            chunk_shape=(5,),
+            storage_shape=(10,),
+            index_transform=(-5,),
         )
+        assert len(cmap) == 2
+        assert cmap[self.D((0,), (5,))].path == "c/0"
+        assert cmap[self.D((5,), (10,))].path == "c/1"
 
-        assert len(projections) == 2
-        _, chunk_info0 = projections[0]
-        _, chunk_info1 = projections[1]
-        assert chunk_info0.chunk_coords == (0,)
-        assert chunk_info1.chunk_coords == (1,)
+    def test_getitem_key_error(self) -> None:
+        """KeyError for regions outside the map."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(25,), exclusive_max=(35,)),
+            chunk_shape=(10,),
+            storage_shape=(100,),
+            index_transform=(0,),
+        )
+        assert self.D((20,), (30,)) in cmap
+        assert self.D((30,), (40,)) in cmap
+        with pytest.raises(KeyError):
+            cmap[self.D((0,), (10,))]
+        with pytest.raises(KeyError):
+            cmap[self.D((40,), (50,))]
+
+    def test_mapping_methods(self) -> None:
+        """Inherited Mapping methods (keys, values, items) work."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain.from_shape((20,)),
+            chunk_shape=(10,),
+            storage_shape=(20,),
+            index_transform=(0,),
+        )
+        assert list(cmap.keys()) == [self.D((0,), (10,)), self.D((10,), (20,))]
+        values = list(cmap.values())
+        assert len(values) == 2
+
+        items = list(cmap.items())
+        assert len(items) == 2
+        assert items[0][0] == self.D((0,), (10,))
+        assert items[0][1].path == "c/0"
+
+    def test_composition_with_array_getitem(self) -> None:
+        """arr[10:20].chunk_map reflects the narrowed domain."""
+        store = MemoryStore()
+        zarr.create_array(
+            store=store,
+            shape=(100,),
+            dtype="float32",
+            chunks=(10,),
+            fill_value=0,
+        )
+        arr = Array.open(store)
+
+        # Full array: 10 chunks
+        assert arr.chunk_map is not None
+        assert len(arr.chunk_map) == 10
+
+        # Sliced: [25, 75) -> chunks 2-7
+        sliced = arr[25:75]
+        assert sliced.chunk_map is not None
+        assert len(sliced.chunk_map) == 6
+        assert self.D((20,), (30,)) in sliced.chunk_map
+        assert self.D((70,), (80,)) in sliced.chunk_map
+        assert self.D((10,), (20,)) not in sliced.chunk_map
+        assert self.D((80,), (90,)) not in sliced.chunk_map
+
+        # Verify first chunk — child is a ChunkEntry now
+        child = sliced.chunk_map[self.D((20,), (30,))]
+        # Chunk 2 covers [20, 30). Sliced to [25, 75) => intersection is [25, 30)
+        assert child.domain == IndexDomain(inclusive_min=(25,), exclusive_max=(30,))
+        assert child.path.endswith("c/2")
+
+    def test_custom_key_encoder(self) -> None:
+        """ChunkMap with custom key encoder (e.g., v2 format)."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain.from_shape((20, 30)),
+            chunk_shape=(10, 10),
+            storage_shape=(20, 30),
+            index_transform=(0, 0),
+            encode_chunk_key=lambda coords: ".".join(map(str, coords)),
+        )
+        assert cmap[self.D((0, 0), (10, 10))].path == "0.0"
+        assert cmap[self.D((10, 20), (20, 30))].path == "1.2"
+
+    def test_repr(self) -> None:
+        """ChunkMap repr is informative."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(25,), exclusive_max=(75,)),
+            chunk_shape=(10,),
+            storage_shape=(100,),
+            index_transform=(0,),
+        )
+        r = repr(cmap)
+        assert "ChunkMap" in r
+        assert "len=6" in r
+
+    def test_3d(self) -> None:
+        """ChunkMap for 3D array."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain.from_shape((30, 20, 10)),
+            chunk_shape=(10, 10, 10),
+            storage_shape=(30, 20, 10),
+            index_transform=(0, 0, 0),
+        )
+        assert len(cmap) == 6  # 3 * 2 * 1
+        keys = list(cmap)
+        assert len(keys) == 6
+        assert keys[0] == self.D((0, 0, 0), (10, 10, 10))
+        assert keys[-1] == self.D((20, 10, 0), (30, 20, 10))
+        assert cmap[self.D((10, 0, 0), (20, 10, 10))].path == "c/1/0/0"
+
+    def test_child_is_chunk_entry(self) -> None:
+        """ChunkMap values are ChunkEntry records."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain.from_shape((100,)),
+            chunk_shape=(10,),
+            storage_shape=(100,),
+            index_transform=(0,),
+        )
+        child = cmap[self.D((0,), (10,))]
+        assert isinstance(child, ChunkEntry)
+        assert child.chunk_shape == (10,)
+
+    def test_child_domain_reflects_intersection(self) -> None:
+        """Child's domain is the intersection of parent domain with chunk region."""
+        cmap = _make_test_cmap(
+            domain=IndexDomain(inclusive_min=(25,), exclusive_max=(75,)),
+            chunk_shape=(10,),
+            storage_shape=(100,),
+            index_transform=(0,),
+        )
+        # Chunk 2 covers [20, 30), intersection with [25, 75) is [25, 30)
+        child = cmap[self.D((20,), (30,))]
+        assert child.domain.inclusive_min == (25,)
+        assert child.domain.exclusive_max == (30,)
+
+        # Chunk 4 covers [40, 50), fully inside [25, 75)
+        child = cmap[self.D((40,), (50,))]
+        assert child.domain.inclusive_min == (40,)
+        assert child.domain.exclusive_max == (50,)
+
+    def test_sharded_via_array(self) -> None:
+        """Array.chunk_map for sharded arrays has correct structure."""
+        store = MemoryStore()
+        zarr.create_array(
+            store=store,
+            shape=(100,),
+            dtype="float32",
+            chunks=(5,),
+            shards=(20,),
+            fill_value=0,
+        )
+        arr = Array.open(store)
+        cmap = arr.chunk_map
+        assert cmap is not None
+        assert len(cmap) == 5  # 100 / 20 = 5 shards
+
+        # Each value is a ChunkEntry
+        child = cmap[self.D((0,), (20,))]
+        assert isinstance(child, ChunkEntry)
+        assert child.chunk_shape == (20,)
 
 
 class TestChunkLayout:
@@ -749,9 +947,9 @@ class TestWithDomain:
         new_domain = IndexDomain(inclusive_min=(50,), exclusive_max=(60,))
         view = base_array.with_domain(new_domain)
 
-        # Should share the same store
-        assert view.store is base_array.store
-        assert view.store_path == base_array.store_path
+        # Should share the same source
+        assert view.source is base_array.source
+        assert view.source.store_path == base_array.source.store_path
 
 
 class TestAbsoluteIndexing:
@@ -1253,3 +1451,538 @@ class TestMerge:
         reassembled = merge(chunks)
 
         np.testing.assert_array_equal(reassembled.resolve(), base_array.resolve())
+
+
+# ---------------------------------------------------------------------------
+# Advanced indexing tests
+# ---------------------------------------------------------------------------
+
+
+class TestAdvancedIndexingDetection:
+    """Test that advanced indexing creates the correct PendingSelection."""
+
+    @pytest.fixture
+    def arr_1d(self) -> Array:
+        store = MemoryStore()
+        zarr.create_array(store, shape=(20,), chunks=(5,), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(20, dtype="i4"))
+        return arr
+
+    @pytest.fixture
+    def arr_2d(self) -> Array:
+        store = MemoryStore()
+        zarr.create_array(store, shape=(10, 20), chunks=(5, 10), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(200, dtype="i4").reshape(10, 20))
+        return arr
+
+    def test_bool_mask_creates_pending(self, arr_1d: Array) -> None:
+        mask = np.array([i % 3 == 0 for i in range(20)])
+        result = arr_1d[mask]
+        assert result._pending_selection is not None
+        assert result._pending_selection.kind == SelectionKind.MASK
+
+    def test_int_array_creates_pending(self, arr_1d: Array) -> None:
+        result = arr_1d[np.array([1, 5, 10])]
+        assert result._pending_selection is not None
+        # 1D int array on 1D array → treated as fancy indexing
+        assert result._pending_selection.kind in (
+            SelectionKind.COORDINATE,
+            SelectionKind.ORTHOGONAL,
+        )
+
+    def test_basic_indexing_unchanged(self, arr_1d: Array) -> None:
+        result = arr_1d[5:10]
+        assert result._pending_selection is None
+        assert result.domain == IndexDomain(inclusive_min=(5,), exclusive_max=(10,))
+
+    def test_oindex_creates_orthogonal(self, arr_2d: Array) -> None:
+        result = arr_2d.oindex[np.array([1, 3]), :]
+        assert result._pending_selection is not None
+        assert result._pending_selection.kind == SelectionKind.ORTHOGONAL
+
+    def test_vindex_creates_coordinate(self, arr_2d: Array) -> None:
+        result = arr_2d.vindex[np.array([1, 3]), np.array([5, 10])]
+        assert result._pending_selection is not None
+        assert result._pending_selection.kind == SelectionKind.COORDINATE
+
+
+class TestAdvancedShape:
+    """Test that shape is computed correctly for advanced selections."""
+
+    @pytest.fixture
+    def arr_1d(self) -> Array:
+        store = MemoryStore()
+        zarr.create_array(store, shape=(20,), chunks=(5,), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(20, dtype="i4"))
+        return arr
+
+    @pytest.fixture
+    def arr_2d(self) -> Array:
+        store = MemoryStore()
+        zarr.create_array(store, shape=(10, 20), chunks=(5, 10), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(200, dtype="i4").reshape(10, 20))
+        return arr
+
+    def test_mask_shape_is_1d(self, arr_1d: Array) -> None:
+        mask = np.zeros(20, dtype=bool)
+        mask[3] = True
+        mask[7] = True
+        mask[15] = True
+        result = arr_1d[mask]
+        assert result.shape == (3,)
+        assert result.ndim == 1
+
+    def test_mask_shape_2d(self, arr_2d: Array) -> None:
+        mask = np.zeros((10, 20), dtype=bool)
+        mask[0, 0] = True
+        mask[5, 10] = True
+        mask[9, 19] = True
+        result = arr_2d[mask]
+        assert result.shape == (3,)
+        assert result.ndim == 1
+
+    def test_oindex_shape(self, arr_2d: Array) -> None:
+        result = arr_2d.oindex[np.array([1, 3, 5]), :]
+        assert result.shape == (3, 20)
+
+    def test_oindex_shape_both_dims(self, arr_2d: Array) -> None:
+        result = arr_2d.oindex[np.array([1, 3]), np.array([5, 10, 15])]
+        assert result.shape == (2, 3)
+
+    def test_vindex_shape(self, arr_2d: Array) -> None:
+        result = arr_2d.vindex[np.array([1, 3, 5]), np.array([5, 10, 15])]
+        assert result.shape == (3,)
+
+    def test_empty_mask_shape(self, arr_1d: Array) -> None:
+        mask = np.zeros(20, dtype=bool)
+        result = arr_1d[mask]
+        assert result.shape == (0,)
+
+
+class TestAdvancedResolve:
+    """Test that advanced indexing resolve produces correct data."""
+
+    @pytest.fixture
+    def arr_1d(self) -> Array:
+        store = MemoryStore()
+        zarr.create_array(store, shape=(20,), chunks=(5,), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(20, dtype="i4"))
+        return arr
+
+    @pytest.fixture
+    def np_1d(self) -> np.ndarray:
+        return np.arange(20, dtype="i4")
+
+    @pytest.fixture
+    def arr_2d(self) -> Array:
+        store = MemoryStore()
+        zarr.create_array(store, shape=(10, 20), chunks=(5, 10), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        data = np.arange(200, dtype="i4").reshape(10, 20)
+        arr.setitem(slice(None), data)
+        return arr
+
+    @pytest.fixture
+    def np_2d(self) -> np.ndarray:
+        return np.arange(200, dtype="i4").reshape(10, 20)
+
+    def test_resolve_bool_mask_1d(self, arr_1d: Array, np_1d: np.ndarray) -> None:
+        mask = np.array([i % 3 == 0 for i in range(20)])
+        result = arr_1d[mask].resolve()
+        expected = np_1d[mask]
+        np.testing.assert_array_equal(result, expected)
+
+    def test_resolve_bool_mask_2d(self, arr_2d: Array, np_2d: np.ndarray) -> None:
+        mask = np.zeros((10, 20), dtype=bool)
+        mask[0, 0] = True
+        mask[3, 15] = True
+        mask[9, 19] = True
+        result = arr_2d[mask].resolve()
+        expected = np_2d[mask]
+        np.testing.assert_array_equal(result, expected)
+
+    def test_resolve_oindex_int_arrays(self, arr_2d: Array, np_2d: np.ndarray) -> None:
+        rows = np.array([1, 3, 7])
+        cols = np.array([0, 5, 10, 15, 19])
+        result = arr_2d.oindex[rows, cols].resolve()
+        expected = np_2d[np.ix_(rows, cols)]
+        np.testing.assert_array_equal(result, expected)
+
+    def test_resolve_oindex_with_slice(self, arr_2d: Array, np_2d: np.ndarray) -> None:
+        rows = np.array([2, 5, 8])
+        result = arr_2d.oindex[rows, :].resolve()
+        expected = np_2d[rows, :]
+        np.testing.assert_array_equal(result, expected)
+
+    def test_resolve_oindex_bool_per_dim(self, arr_2d: Array, np_2d: np.ndarray) -> None:
+        row_mask = np.array([True, False, True, False, True, False, True, False, True, False])
+        col_sel = np.array([0, 5, 10])
+        result = arr_2d.oindex[row_mask, col_sel].resolve()
+        expected = np_2d[np.ix_(np.nonzero(row_mask)[0], col_sel)]
+        np.testing.assert_array_equal(result, expected)
+
+    def test_resolve_vindex_coordinate(self, arr_2d: Array, np_2d: np.ndarray) -> None:
+        rows = np.array([0, 3, 9])
+        cols = np.array([1, 10, 19])
+        result = arr_2d.vindex[rows, cols].resolve()
+        expected = np_2d[rows, cols]
+        np.testing.assert_array_equal(result, expected)
+
+    def test_resolve_empty_mask(self, arr_1d: Array) -> None:
+        mask = np.zeros(20, dtype=bool)
+        result = arr_1d[mask].resolve()
+        assert result.shape == (0,)
+
+    def test_resolve_1d_int_array(self, arr_1d: Array, np_1d: np.ndarray) -> None:
+        idx = np.array([0, 5, 10, 15, 19])
+        result = arr_1d[idx].resolve()
+        expected = np_1d[idx]
+        np.testing.assert_array_equal(result, expected)
+
+    def test_resolve_with_shifted_domain(self) -> None:
+        """Advanced indexing on an array with non-zero domain origin."""
+        store = MemoryStore()
+        zarr.create_array(store, shape=(20,), chunks=(5,), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(20, dtype="i4"))
+
+        # Shift domain to [100, 120)
+        shifted = arr.with_domain(IndexDomain(inclusive_min=(100,), exclusive_max=(120,)))
+
+        # Boolean mask on shifted domain
+        mask = np.array([i % 5 == 0 for i in range(20)])
+        result = shifted[mask].resolve()
+        expected = np.arange(20, dtype="i4")[mask]
+        np.testing.assert_array_equal(result, expected)
+
+    def test_resolve_with_sharded_array(self) -> None:
+        """Advanced indexing on a sharded array."""
+        store = MemoryStore()
+        zarr.create_array(
+            store,
+            shape=(20,),
+            chunks=(5,),
+            shards=(10,),
+            dtype="i4",
+            fill_value=0,
+        )
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(20, dtype="i4"))
+
+        mask = np.array([i % 3 == 0 for i in range(20)])
+        result = arr[mask].resolve()
+        expected = np.arange(20, dtype="i4")[mask]
+        np.testing.assert_array_equal(result, expected)
+
+
+class TestAdvancedGuards:
+    """Test guards that prevent invalid operations on advanced-indexed arrays."""
+
+    @pytest.fixture
+    def arr_1d(self) -> Array:
+        store = MemoryStore()
+        zarr.create_array(store, shape=(20,), chunks=(5,), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(20, dtype="i4"))
+        return arr
+
+    @pytest.fixture
+    def arr_2d(self) -> Array:
+        store = MemoryStore()
+        zarr.create_array(store, shape=(10, 20), chunks=(5, 10), dtype="i4", fill_value=0)
+        arr = Array.open(store)
+        arr.setitem(slice(None), np.arange(200, dtype="i4").reshape(10, 20))
+        return arr
+
+    def test_chaining_advanced_raises(self, arr_1d: Array) -> None:
+        mask = np.zeros(20, dtype=bool)
+        mask[0] = True
+        mask[5] = True
+        advanced = arr_1d[mask]
+        with pytest.raises(IndexError, match="pending advanced selection"):
+            advanced[np.array([0])]
+
+    def test_basic_after_advanced_raises(self, arr_1d: Array) -> None:
+        mask = np.zeros(20, dtype=bool)
+        mask[0] = True
+        advanced = arr_1d[mask]
+        with pytest.raises(IndexError, match="pending.*selection"):
+            advanced[0:1]
+
+    def test_merge_with_pending_raises(self, arr_1d: Array) -> None:
+        mask = np.zeros(20, dtype=bool)
+        mask[0] = True
+        advanced = arr_1d[mask]
+        with pytest.raises(ValueError, match="pending advanced selection"):
+            merge([advanced])
+
+    def test_with_domain_after_advanced_raises(self, arr_1d: Array) -> None:
+        mask = np.zeros(20, dtype=bool)
+        mask[0] = True
+        advanced = arr_1d[mask]
+        with pytest.raises(IndexError, match="pending.*selection"):
+            advanced.with_domain(IndexDomain(inclusive_min=(0,), exclusive_max=(1,)))
+
+    def test_basic_after_basic_works(self, arr_1d: Array) -> None:
+        """Chaining basic indexing should still work."""
+        result = arr_1d[5:15][7:12]
+        assert result._pending_selection is None
+        data = result.resolve()
+        expected = np.arange(7, 12, dtype="i4")
+        np.testing.assert_array_equal(data, expected)
+
+
+class TestIndexTransform:
+    """Tests for the IndexTransform dataclass."""
+
+    def test_identity(self) -> None:
+        domain = IndexDomain(inclusive_min=(10,), exclusive_max=(20,))
+        t = IndexTransform.identity(domain)
+        assert t.domain == domain
+        assert t.offset == (0,)
+
+    def test_from_shape(self) -> None:
+        t = IndexTransform.from_shape((5, 10))
+        assert t.domain == IndexDomain.from_shape((5, 10))
+        assert t.offset == (0, 0)
+        assert t.ndim == 2
+
+    def test_ndim(self) -> None:
+        t = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0, 0, 0), exclusive_max=(1, 2, 3)),
+            offset=(0, 0, 0),
+        )
+        assert t.ndim == 3
+
+    def test_offset_length_mismatch_raises(self) -> None:
+        with pytest.raises(ValueError, match="same length"):
+            IndexTransform(
+                domain=IndexDomain(inclusive_min=(0,), exclusive_max=(10,)),
+                offset=(0, 0),
+            )
+
+    def test_storage_origin(self) -> None:
+        # domain origin = 10, offset = 5 → storage origin = 10 - 5 = 5
+        t = IndexTransform(
+            domain=IndexDomain(inclusive_min=(10,), exclusive_max=(20,)),
+            offset=(5,),
+        )
+        assert t.storage_origin == (5,)
+
+    def test_storage_origin_identity(self) -> None:
+        t = IndexTransform.from_shape((100,))
+        assert t.storage_origin == (0,)
+
+    def test_storage_origin_negative_offset(self) -> None:
+        # domain origin = -5, offset = -5 → storage origin = -5 - (-5) = 0
+        t = IndexTransform(
+            domain=IndexDomain(inclusive_min=(-5,), exclusive_max=(5,)),
+            offset=(-5,),
+        )
+        assert t.storage_origin == (0,)
+
+    def test_narrow(self) -> None:
+        t = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(100,)),
+            offset=(0,),
+        )
+        narrowed = t.narrow(slice(10, 20))
+        assert narrowed.domain == IndexDomain(inclusive_min=(10,), exclusive_max=(20,))
+        # Offset preserved
+        assert narrowed.offset == (0,)
+
+    def test_narrow_preserves_offset(self) -> None:
+        t = IndexTransform(
+            domain=IndexDomain(inclusive_min=(10,), exclusive_max=(50,)),
+            offset=(10,),
+        )
+        narrowed = t.narrow(slice(20, 30))
+        assert narrowed.domain == IndexDomain(inclusive_min=(20,), exclusive_max=(30,))
+        assert narrowed.offset == (10,)
+
+    def test_compose_identity(self) -> None:
+        """Composing two identity transforms over the same domain."""
+        domain = IndexDomain(inclusive_min=(0,), exclusive_max=(100,))
+        outer = IndexTransform.identity(domain)
+        inner = IndexTransform.identity(domain)
+        composed = outer.compose_or_none(inner)
+        assert composed is not None
+        assert composed.domain == domain
+        assert composed.offset == (0,)
+
+    def test_compose_narrowed_outer(self) -> None:
+        """Outer has a narrowed domain, inner is identity over full range."""
+        outer = IndexTransform(
+            domain=IndexDomain(inclusive_min=(10,), exclusive_max=(20,)),
+            offset=(0,),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(100,)),
+            offset=(0,),
+        )
+        composed = outer.compose_or_none(inner)
+        assert composed is not None
+        assert composed.domain == IndexDomain(inclusive_min=(10,), exclusive_max=(20,))
+        assert composed.offset == (0,)
+
+    def test_compose_with_offset(self) -> None:
+        """Outer has an offset (from with_domain), inner is identity."""
+        # with_domain([-5, 5)) sets offset=(-5,)
+        # intermediate = user - (-5) = user + 5
+        # For user [-5,5), intermediate = [0, 10)
+        # Inner domain [0,100) covers that fully
+        outer = IndexTransform(
+            domain=IndexDomain(inclusive_min=(-5,), exclusive_max=(5,)),
+            offset=(-5,),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(100,)),
+            offset=(0,),
+        )
+        composed = outer.compose_or_none(inner)
+        assert composed is not None
+        # Full outer domain is valid (intermediate [0,10) ⊂ [0,100))
+        assert composed.domain == IndexDomain(inclusive_min=(-5,), exclusive_max=(5,))
+        assert composed.offset == (-5,)
+
+    def test_compose_partial_overlap(self) -> None:
+        """Outer domain partially overlaps inner domain in intermediate space."""
+        # outer: domain [0,20), offset 0 → intermediate [0,20)
+        # inner: domain [10,30), offset 0
+        # intersection in intermediate: [10,20)
+        # back to user space: [10,20)
+        outer = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(20,)),
+            offset=(0,),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain(inclusive_min=(10,), exclusive_max=(30,)),
+            offset=(0,),
+        )
+        composed = outer.compose_or_none(inner)
+        assert composed is not None
+        assert composed.domain == IndexDomain(inclusive_min=(10,), exclusive_max=(20,))
+        assert composed.offset == (0,)
+
+    def test_compose_disjoint(self) -> None:
+        """Disjoint domains produce None."""
+        outer = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(10,)),
+            offset=(0,),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain(inclusive_min=(20,), exclusive_max=(30,)),
+            offset=(0,),
+        )
+        assert outer.compose_or_none(inner) is None
+
+    def test_compose_disjoint_with_offset(self) -> None:
+        """Offset can make seemingly overlapping domains disjoint in intermediate space."""
+        # outer: domain [0,10), offset 20 → intermediate [-20,-10)
+        # inner: domain [0,10), offset 0
+        # No overlap in intermediate space
+        outer = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(10,)),
+            offset=(20,),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(10,)),
+            offset=(0,),
+        )
+        assert outer.compose_or_none(inner) is None
+
+    def test_compose_offset_makes_overlap(self) -> None:
+        """Offset can make seemingly disjoint domains overlap in intermediate space."""
+        # outer: domain [100,110), offset 100 → intermediate [0,10)
+        # inner: domain [0,100), offset 0
+        # Overlap in intermediate: [0,10)
+        # Back to user space: [100,110)
+        outer = IndexTransform(
+            domain=IndexDomain(inclusive_min=(100,), exclusive_max=(110,)),
+            offset=(100,),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(100,)),
+            offset=(0,),
+        )
+        composed = outer.compose_or_none(inner)
+        assert composed is not None
+        assert composed.domain == IndexDomain(inclusive_min=(100,), exclusive_max=(110,))
+        assert composed.offset == (100,)
+
+    def test_compose_both_offsets(self) -> None:
+        """Both transforms have non-zero offsets."""
+        outer = IndexTransform(
+            domain=IndexDomain(inclusive_min=(10,), exclusive_max=(20,)),
+            offset=(5,),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0,), exclusive_max=(100,)),
+            offset=(3,),
+        )
+        # intermediate = user - 5. For user [10,20), intermediate = [5,15)
+        # inner domain [0,100) covers that
+        # composed offset = 5 + 3 = 8
+        composed = outer.compose_or_none(inner)
+        assert composed is not None
+        assert composed.domain == IndexDomain(inclusive_min=(10,), exclusive_max=(20,))
+        assert composed.offset == (8,)
+
+    def test_compose_2d(self) -> None:
+        """Composition works in multiple dimensions."""
+        outer = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 20)),
+            offset=(0, 0),
+        )
+        inner = IndexTransform(
+            domain=IndexDomain(inclusive_min=(0, 0), exclusive_max=(50, 50)),
+            offset=(0, 0),
+        )
+        composed = outer.compose_or_none(inner)
+        assert composed is not None
+        assert composed.domain == IndexDomain(inclusive_min=(0, 0), exclusive_max=(10, 20))
+        assert composed.offset == (0, 0)
+
+    def test_repr(self) -> None:
+        t = IndexTransform.from_shape((10,))
+        r = repr(t)
+        assert "IndexTransform" in r
+        assert "domain=" in r
+        assert "offset=" in r
+
+
+class TestLayer:
+    """Tests for the Layer dataclass."""
+
+    def test_construction(self, base_array: Array) -> None:
+        """Layer can be constructed from a transform and source."""
+        source = base_array._layers[0].source
+        transform = IndexTransform.from_shape((100,))
+        layer = Layer(transform=transform, source=source)
+        assert layer.transform == transform
+        assert layer.source is source
+
+    @pytest.fixture
+    def base_array(self) -> Array:
+        store = MemoryStore()
+        arr = zarr.create(shape=(100,), chunks=(10,), dtype="i4", store=store)
+        arr[:] = np.arange(100, dtype="i4")
+        return Array.open(store=store)
+
+    def test_layer_in_array(self, base_array: Array) -> None:
+        """Array should have layers after construction."""
+        assert len(base_array._layers) == 1
+        layer = base_array._layers[0]
+        assert isinstance(layer, Layer)
+        assert isinstance(layer.transform, IndexTransform)
+
+    def test_layers_immutable_after_slice(self, base_array: Array) -> None:
+        """Slicing should not change layers, only the outer transform."""
+        original_layers = base_array._layers
+        sliced = base_array[10:20]
+        assert sliced._layers is original_layers
