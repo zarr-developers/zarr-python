@@ -139,12 +139,12 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 
     def _decode_sync(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
         """Synchronously decode a single chunk. Override in subclasses to enable
-        SyncCodecPipeline support."""
+        sync codec pipeline support."""
         raise NotImplementedError  # pragma: no cover
 
     def _encode_sync(self, chunk_data: CodecInput, chunk_spec: ArraySpec) -> CodecOutput | None:
         """Synchronously encode a single chunk. Override in subclasses to enable
-        SyncCodecPipeline support."""
+        sync codec pipeline support."""
         raise NotImplementedError  # pragma: no cover
 
     @property

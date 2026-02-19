@@ -102,7 +102,13 @@ class _ShardingByteGetter(ByteGetter):
         self, prototype: BufferPrototype | None = None, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         # Sync equivalent of get() — just a dict lookup, no IO.
-        return self.shard_dict.get(self.chunk_coords)
+        value = self.shard_dict.get(self.chunk_coords)
+        if value is None:
+            return None
+        if byte_range is None:
+            return value
+        start, stop = _normalize_byte_range_index(value, byte_range)
+        return value[start:stop]
 
 
 @dataclass(frozen=True)

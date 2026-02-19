@@ -82,7 +82,7 @@ class MemoryStore(Store):
     #
     # MemoryStore is a thin wrapper around a Python dict. The async get/set
     # methods are already synchronous in substance — they just happen to be
-    # ``async def``. These sync variants let SyncCodecPipeline.read_sync /
+    # ``async def``. These sync variants let the codec pipeline's read_sync /
     # write_sync access the dict directly without going through the event
     # loop, eliminating the dominant source of overhead for in-memory arrays.
     #

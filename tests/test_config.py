@@ -59,7 +59,7 @@ def test_config_defaults_set() -> None:
                 "threading": {"max_workers": None},
                 "json_indent": 2,
                 "codec_pipeline": {
-                    "path": "zarr.experimental.sync_codecs.SyncCodecPipeline",
+                    "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                     "batch_size": 1,
                 },
                 "codecs": {
@@ -141,6 +141,14 @@ def test_config_codec_pipeline_class(store: Store) -> None:
         async def write(
             self,
             batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+            value: NDBuffer,
+            drop_axes: tuple[int, ...] = (),
+        ) -> None:
+            _mock.call()
+
+        def write_sync(
+            self,
+            batch_info: Any,
             value: NDBuffer,
             drop_axes: tuple[int, ...] = (),
         ) -> None:

@@ -1979,11 +1979,8 @@ class Array(Generic[T_ArrayMetadata]):
         Two conditions must hold:
 
         1. The codec pipeline supports fully synchronous IO (all codecs in
-           the chain have _decode_sync/_encode_sync, and the pipeline
-           implements read_sync/write_sync). This is True for
-           SyncCodecPipeline when all codecs support sync — including
-           ShardingCodec, which has _decode_sync/_encode_sync and
-           _decode_partial_sync/_encode_partial_sync for the sharding path.
+           the chain have _decode_sync/_encode_sync). This is True for
+           BatchedCodecPipeline when all codecs support sync.
 
         2. The store supports synchronous operations (MemoryStore, LocalStore).
            Remote stores like FsspecStore remain async-only.
@@ -1991,11 +1988,8 @@ class Array(Generic[T_ArrayMetadata]):
         When both hold, the selection methods below call
         _get_selection_sync / _set_selection_sync directly, running the
         entire read/write path on the calling thread with zero async
-        overhead.
-
-        Uses getattr() with defaults for forward compatibility — older or
-        third-party pipelines/stores that lack these attributes gracefully
-        fall back to the async path.
+        overhead. Otherwise, the async path with concurrent IO overlap
+        is used automatically.
         """
         pipeline = self.async_array.codec_pipeline
         store_path = self.async_array.store_path
