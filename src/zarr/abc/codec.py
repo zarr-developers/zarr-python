@@ -482,10 +482,8 @@ class CodecPipeline:
     # event loop, it overrides these methods and sets supports_sync_io
     # to True. This lets Array selection methods bypass sync() entirely.
     #
-    # The default implementations raise NotImplementedError, so
-    # BatchedCodecPipeline (the standard pipeline) is unaffected.
-    #
-    # See docs/design/sync-bypass.md for the full design rationale.
+    # The default implementations raise NotImplementedError.
+    # BatchedCodecPipeline overrides these when all codecs support sync.
     # -------------------------------------------------------------------
 
     @property

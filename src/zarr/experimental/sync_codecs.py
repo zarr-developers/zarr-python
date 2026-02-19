@@ -14,13 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from zarr.core.codec_pipeline import (
-    BatchedCodecPipeline,
-    _CODEC_DECODE_NS_PER_BYTE,  # noqa: F401
-    _CODEC_ENCODE_NS_PER_BYTE,  # noqa: F401
-    _choose_workers,  # noqa: F401
-    _estimate_chunk_work_ns,  # noqa: F401
-)
+from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.registry import register_pipeline
 
 __all__ = ["SyncCodecPipeline"]
