@@ -341,6 +341,24 @@ class SyncCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         batch_info = list(batch_info)
+
+        if self.supports_partial_decode:
+            assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
+            chunk_array_batch = await self.array_bytes_codec.decode_partial(
+                [
+                    (byte_getter, chunk_selection, chunk_spec)
+                    for byte_getter, chunk_spec, chunk_selection, *_ in batch_info
+                ]
+            )
+            for chunk_array, (_, chunk_spec, _, out_selection, _) in zip(
+                chunk_array_batch, batch_info, strict=False
+            ):
+                if chunk_array is not None:
+                    out[out_selection] = chunk_array
+                else:
+                    out[out_selection] = _fill_value_or_default(chunk_spec)
+            return
+
         # Phase 1: IO -- fetch bytes from store (always async)
         chunk_bytes_batch = await concurrent_map(
             [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
@@ -354,8 +372,8 @@ class SyncCodecPipeline(CodecPipeline):
             for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch_info, strict=False)
         ]
 
-        chunk_array_batch: Iterable[NDBuffer | None] = await self.decode(decode_items)
-        self._scatter(chunk_array_batch, batch_info, out, drop_axes)
+        chunk_array_batch_decoded: Iterable[NDBuffer | None] = await self.decode(decode_items)
+        self._scatter(chunk_array_batch_decoded, batch_info, out, drop_axes)
 
     @staticmethod
     def _scatter(
@@ -436,6 +454,24 @@ class SyncCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         batch_info = list(batch_info)
+
+        if self.supports_partial_encode:
+            assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
+            if len(value.shape) == 0:
+                await self.array_bytes_codec.encode_partial(
+                    [
+                        (byte_setter, value, chunk_selection, chunk_spec)
+                        for byte_setter, chunk_spec, chunk_selection, _, _ in batch_info
+                    ],
+                )
+            else:
+                await self.array_bytes_codec.encode_partial(
+                    [
+                        (byte_setter, value[out_selection], chunk_selection, chunk_spec)
+                        for byte_setter, chunk_spec, chunk_selection, out_selection, _ in batch_info
+                    ],
+                )
+            return
 
         # Phase 1: IO -- read existing bytes for non-complete chunks
         async def _read_key(
