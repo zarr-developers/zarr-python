@@ -6,7 +6,7 @@ import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
-from zarr.storage import WrapperStore
+from zarr.storage import WrapperStore, ZipStore
 
 if TYPE_CHECKING:
     from typing import Any
@@ -388,6 +388,15 @@ class StoreTests(Generic[S, B]):
         assert await store.exists("foo/zarr.json")
         await store.delete("foo/zarr.json")
         assert not await store.exists("foo/zarr.json")
+
+    async def test_delete_zip_store(self, store: S) -> None:
+        if not isinstance(store, ZipStore):
+            pytest.skip("store is not a ZipStore")
+        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
+        assert await store.exists("foo/zarr.json")
+        await store.delete("foo/zarr.json")
+        result = await store.get("foo/zarr.json", default_buffer_prototype())
+        assert result == self.buffer_cls.from_bytes(b"")
 
     async def test_delete_dir(self, store: S) -> None:
         if not store.supports_deletes:
