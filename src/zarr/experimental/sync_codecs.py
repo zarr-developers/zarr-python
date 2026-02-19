@@ -14,6 +14,8 @@ Usage::
 
 from __future__ import annotations
 
+import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import islice
 from typing import TYPE_CHECKING, TypeVar
@@ -29,7 +31,7 @@ from zarr.abc.codec import (
 )
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.codec_pipeline import _unzip2, codecs_from_list, resolve_batched
-from zarr.core.common import concurrent_map
+from zarr.core.common import concurrent_map, product
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
 from zarr.registry import register_pipeline
@@ -67,6 +69,150 @@ def _fill_value_or_default(chunk_spec: ArraySpec) -> Any:
     if fill_value is None:
         return chunk_spec.dtype.default_scalar()
     return fill_value
+
+
+def _get_pool(max_workers: int) -> ThreadPoolExecutor:
+    """Get a thread pool with at most *max_workers* threads.
+
+    Reuses a cached pool when the requested size is <= the cached size.
+    CPU-heavy codecs (zstd, gzip, blosc) release the GIL during their C-level
+    compress/decompress calls, so real parallelism is achieved across threads.
+    """
+    global _pool
+    if _pool is None or _pool._max_workers < max_workers:
+        _pool = ThreadPoolExecutor(max_workers=max_workers)
+    return _pool
+
+
+_pool: ThreadPoolExecutor | None = None
+
+# Sentinel to distinguish "delete this key" from None (which _encode_one
+# can return when a chunk encodes to nothing).
+_DELETED = object()
+
+# ---------------------------------------------------------------------------
+# Work estimation for thread pool sizing
+# ---------------------------------------------------------------------------
+
+# Approximate nanoseconds-per-byte for codec decode and encode, measured on
+# typical hardware. These don't need to be exact — they just need to rank
+# codecs correctly so the pool-sizing heuristic makes good decisions.
+#
+# Decode and encode have very different costs for many codecs:
+#   - gzip decode ~5-10 ns/byte vs encode ~50-100 ns/byte
+#   - zstd decode ~1-2 ns/byte vs encode ~2-10 ns/byte
+#   - blosc decode ~0.5-1 ns/byte vs encode ~1-5 ns/byte
+#
+# "Cheap" codecs (memcpy-like): BytesCodec, Crc32cCodec, TransposeCodec
+#   → ~0.1-1 ns/byte, dominated by memcpy; no benefit from threading.
+# "Medium" codecs: ZstdCodec, BloscCodec
+#   → decode ~1-2 ns/byte, encode ~2-5 ns/byte; GIL released in C.
+# "Expensive" codecs: GzipCodec
+#   → decode ~5-10 ns/byte, encode ~50-100 ns/byte; GIL released in C.
+#
+# For unknown codecs (e.g. third-party numcodecs wrappers), we assume
+# "medium" cost — better to over-parallelize slightly than miss a win.
+
+_CODEC_DECODE_NS_PER_BYTE: dict[str, float] = {
+    # Near-zero cost — just reshaping/copying/checksumming
+    "BytesCodec": 0,
+    "Crc32cCodec": 0,
+    "TransposeCodec": 0,
+    "VLenUTF8Codec": 0,
+    "VLenBytesCodec": 0,
+    # Medium cost — fast C codecs, GIL released
+    "ZstdCodec": 1,
+    "BloscCodec": 0.5,
+    # High cost — slower C codecs, GIL released
+    "GzipCodec": 8,
+}
+
+_CODEC_ENCODE_NS_PER_BYTE: dict[str, float] = {
+    # Near-zero cost — just reshaping/copying/checksumming
+    "BytesCodec": 0,
+    "Crc32cCodec": 0,
+    "TransposeCodec": 0,
+    "VLenUTF8Codec": 0,
+    "VLenBytesCodec": 0,
+    # Medium cost — fast C codecs, GIL released
+    "ZstdCodec": 3,
+    "BloscCodec": 2,
+    # High cost — slower C codecs, GIL released
+    "GzipCodec": 50,
+}
+
+_DEFAULT_DECODE_NS_PER_BYTE = 1  # assume medium for unknown codecs
+_DEFAULT_ENCODE_NS_PER_BYTE = 3  # encode is typically slower
+
+# Thread pool dispatch overhead in nanoseconds (~50-100us per task).
+# We only parallelize when the estimated per-chunk work exceeds this.
+_POOL_OVERHEAD_NS = 200_000
+
+
+def _estimate_chunk_work_ns(
+    chunk_nbytes: int,
+    codecs: Iterable[Codec],
+    *,
+    is_encode: bool = False,
+) -> float:
+    """Estimate nanoseconds of codec work for one chunk.
+
+    Sums the per-byte cost of each codec in the chain, multiplied by the
+    chunk size. Uses separate decode/encode cost tables since compression
+    is typically much more expensive than decompression.
+
+    This is a rough estimate — compression ratios, cache effects,
+    and hardware differences mean the actual time can vary 2-5x. But the
+    estimate is good enough to decide "use pool" vs "don't use pool".
+    """
+    table = _CODEC_ENCODE_NS_PER_BYTE if is_encode else _CODEC_DECODE_NS_PER_BYTE
+    default = _DEFAULT_ENCODE_NS_PER_BYTE if is_encode else _DEFAULT_DECODE_NS_PER_BYTE
+    total_ns_per_byte = 0.0
+    for codec in codecs:
+        name = type(codec).__name__
+        total_ns_per_byte += table.get(name, default)
+    return chunk_nbytes * total_ns_per_byte
+
+
+def _choose_workers(
+    n_chunks: int,
+    chunk_nbytes: int,
+    codecs: Iterable[Codec],
+    *,
+    is_encode: bool = False,
+) -> int:
+    """Decide how many thread pool workers to use (0 = don't use pool).
+
+    The model:
+    1. Estimate per-chunk codec work in nanoseconds (decode or encode).
+    2. If per-chunk work < pool dispatch overhead, return 0 (sequential).
+       Small chunks with fast codecs aren't worth the pool dispatch cost.
+    3. Check that total codec work significantly exceeds total dispatch
+       overhead (n_chunks * per-task cost). If not, sequential is faster.
+    4. Scale workers with total work, capped at CPU count and chunk count.
+    """
+    if n_chunks < 2:
+        return 0
+
+    per_chunk_ns = _estimate_chunk_work_ns(chunk_nbytes, codecs, is_encode=is_encode)
+
+    if per_chunk_ns < _POOL_OVERHEAD_NS:
+        return 0
+
+    # Total codec work must exceed total dispatch overhead by a margin.
+    # Each task submitted to pool.map has ~50us dispatch overhead.
+    total_work_ns = per_chunk_ns * n_chunks
+    total_dispatch_ns = n_chunks * 50_000  # ~50us per task
+    if total_work_ns < total_dispatch_ns * 3:
+        return 0
+
+    # Scale workers: each worker should do at least 1ms of work to
+    # amortize pool overhead.
+    target_per_worker_ns = 1_000_000  # 1ms
+    workers = max(1, int(total_work_ns / target_per_worker_ns))
+
+    cpu_count = os.cpu_count() or 4
+    return min(workers, n_chunks, cpu_count)
 
 
 # ---------------------------------------------------------------------------
@@ -618,10 +764,11 @@ class SyncCodecPipeline(CodecPipeline):
     #   - Codec compute uses _decode_one() / _encode_one(), which call
     #     each codec's _decode_sync/_encode_sync inline (no to_thread).
     #
-    #   - Chunks are processed sequentially in a for-loop — no batching,
-    #     no concurrent_map, no asyncio tasks. This is optimal for local
-    #     stores where IO is ~1us (dict) or dominated by OS page cache
-    #     (files), and where the GIL prevents true parallel codec work.
+    #   - When there are multiple chunks, codec compute is parallelized
+    #     across a thread pool. CPU-heavy codecs (zstd, gzip, blosc)
+    #     release the GIL during C-level compress/decompress, so real
+    #     parallelism is achieved. Store IO remains sequential (fast
+    #     for local/memory stores).
     #
     # The byte_getter/byte_setter parameters are typed as `Any` because
     # the ByteGetter/ByteSetter protocols only define async methods.
@@ -678,27 +825,86 @@ class SyncCodecPipeline(CodecPipeline):
         _, first_spec, *_ = batch_info_list[0]
         aa_chain, ab_pair, bb_chain = self._resolve_metadata_chain(first_spec)
 
-        for byte_getter, chunk_spec, chunk_selection, out_selection, _ in batch_info_list:
-            # Step 1: Sync store read — e.g. dict[key] for MemoryStore,
-            # Path.read_bytes() for LocalStore. No event loop involvement.
-            chunk_bytes: Buffer | None = byte_getter.get_sync(prototype=chunk_spec.prototype)
+        # Phase 1: IO — fetch all chunk bytes from the store sequentially.
+        # For MemoryStore this is a dict lookup (~1us), for LocalStore a
+        # file read that benefits from OS page cache. Sequential is fine.
+        chunk_bytes_list: list[Buffer | None] = [
+            byte_getter.get_sync(prototype=chunk_spec.prototype)
+            for byte_getter, chunk_spec, *_ in batch_info_list
+        ]
 
-            # Step 2: Decode through the full codec chain (bytes→bytes
-            # codecs in reverse, then array→bytes, then array→array in
-            # reverse). All synchronous, all inline on this thread.
-            chunk_array = self._decode_one(chunk_bytes, chunk_spec, aa_chain, ab_pair, bb_chain)
+        # Phase 2: Decode — run the codec chain for each chunk.
+        # Estimate per-chunk codec work and decide whether to parallelize.
+        chunk_nbytes = product(first_spec.shape) * first_spec.dtype.item_size
+        n_workers = _choose_workers(len(batch_info_list), chunk_nbytes, self)
+        if n_workers > 0:
+            pool = _get_pool(n_workers)
+            chunk_arrays: list[NDBuffer | None] = list(
+                pool.map(
+                    self._decode_one,
+                    chunk_bytes_list,
+                    [chunk_spec for _, chunk_spec, *_ in batch_info_list],
+                    [aa_chain] * len(batch_info_list),
+                    [ab_pair] * len(batch_info_list),
+                    [bb_chain] * len(batch_info_list),
+                )
+            )
+        else:
+            chunk_arrays = [
+                self._decode_one(chunk_bytes, chunk_spec, aa_chain, ab_pair, bb_chain)
+                for chunk_bytes, (_, chunk_spec, *_) in zip(
+                    chunk_bytes_list, batch_info_list, strict=False
+                )
+            ]
 
-            # Step 3: Scatter decoded chunk data into the output buffer.
-            # chunk_selection picks the relevant region within the decoded
-            # chunk; out_selection places it in the output array.
-            if chunk_array is not None:
-                tmp = chunk_array[chunk_selection]
-                if drop_axes != ():
-                    tmp = tmp.squeeze(axis=drop_axes)
-                out[out_selection] = tmp
-            else:
-                # Chunk not found in store — fill with the array's fill value.
-                out[out_selection] = _fill_value_or_default(chunk_spec)
+        # Phase 3: Scatter decoded chunk data into the output buffer.
+        self._scatter(chunk_arrays, batch_info_list, out, drop_axes)
+
+    def _write_chunk_compute(
+        self,
+        existing_bytes: Buffer | None,
+        chunk_spec: ArraySpec,
+        chunk_selection: SelectorTuple,
+        out_selection: SelectorTuple,
+        is_complete_chunk: bool,
+        value: NDBuffer,
+        drop_axes: tuple[int, ...],
+    ) -> Buffer | None | object:  # object is _DELETED sentinel
+        """Per-chunk compute for write: decode existing → merge → encode.
+
+        Returns encoded bytes, or _DELETED sentinel if the chunk should
+        be removed from the store. Thread-safe: operates only on its own
+        chunk data, no shared mutable state.
+        """
+        # Decode existing chunk (for partial writes)
+        existing_array: NDBuffer | None = None
+        if existing_bytes is not None:
+            aa_chain, ab_pair, bb_chain = self._resolve_metadata_chain(chunk_spec)
+            existing_array = self._decode_one(
+                existing_bytes, chunk_spec, aa_chain, ab_pair, bb_chain
+            )
+
+        # Merge new data into the chunk
+        chunk_array: NDBuffer | None = self._merge_chunk_array(
+            existing_array, value, out_selection, chunk_spec,
+            chunk_selection, is_complete_chunk, drop_axes,
+        )
+
+        # Filter empty chunks
+        if (
+            chunk_array is not None
+            and not chunk_spec.config.write_empty_chunks
+            and chunk_array.all_equal(_fill_value_or_default(chunk_spec))
+        ):
+            chunk_array = None
+
+        # Encode
+        if chunk_array is None:
+            return _DELETED
+        chunk_bytes = self._encode_one(chunk_array, chunk_spec)
+        if chunk_bytes is None:
+            return _DELETED
+        return chunk_bytes
 
     def write_sync(
         self,
@@ -726,64 +932,55 @@ class SyncCodecPipeline(CodecPipeline):
                     )
             return
 
-        for (
-            byte_setter,
-            chunk_spec,
-            chunk_selection,
-            out_selection,
-            is_complete_chunk,
-        ) in batch_info_list:
-            # Phase 1: For partial writes (when we're only updating part of
-            # a chunk), read the existing chunk bytes from the store so we
-            # can merge the new data into it. For complete-chunk writes,
-            # skip this — we'll overwrite the entire chunk.
-            existing_bytes: Buffer | None = None
-            if not is_complete_chunk:
-                existing_bytes = byte_setter.get_sync(prototype=chunk_spec.prototype)
+        # Phase 1: IO — read existing chunk bytes for partial writes.
+        existing_bytes_list: list[Buffer | None] = [
+            byte_setter.get_sync(prototype=chunk_spec.prototype)
+            if not is_complete_chunk
+            else None
+            for byte_setter, chunk_spec, _, _, is_complete_chunk in batch_info_list
+        ]
 
-            # Phase 2: Decode the existing chunk bytes (if any) so we can
-            # merge new data into the decoded array.
-            existing_array: NDBuffer | None = None
-            if existing_bytes is not None:
-                aa_chain, ab_pair, bb_chain = self._resolve_metadata_chain(chunk_spec)
-                existing_array = self._decode_one(
-                    existing_bytes, chunk_spec, aa_chain, ab_pair, bb_chain
+        # Phase 2: Compute — decode existing, merge new data, encode.
+        # Estimate per-chunk work to decide whether to parallelize.
+        # Use encode cost model since writes are dominated by compression.
+        _, first_spec, *_ = batch_info_list[0]
+        chunk_nbytes = product(first_spec.shape) * first_spec.dtype.item_size
+        n_workers = _choose_workers(len(batch_info_list), chunk_nbytes, self, is_encode=True)
+        if n_workers > 0:
+            pool = _get_pool(n_workers)
+            encoded_list: list[Buffer | None | object] = list(
+                pool.map(
+                    self._write_chunk_compute,
+                    existing_bytes_list,
+                    [chunk_spec for _, chunk_spec, *_ in batch_info_list],
+                    [chunk_selection for _, _, chunk_selection, _, _ in batch_info_list],
+                    [out_selection for _, _, _, out_selection, _ in batch_info_list],
+                    [is_complete for _, _, _, _, is_complete in batch_info_list],
+                    [value] * len(batch_info_list),
+                    [drop_axes] * len(batch_info_list),
                 )
-
-            # Phase 3: Merge new data into the chunk. For complete chunks
-            # that match the chunk shape, this is a direct passthrough.
-            # For partial writes, it creates a new buffer (or copies the
-            # existing one) and splices in the new values.
-            chunk_array: NDBuffer | None = self._merge_chunk_array(
-                existing_array,
-                value,
-                out_selection,
-                chunk_spec,
-                chunk_selection,
-                is_complete_chunk,
-                drop_axes,
             )
+        else:
+            encoded_list = [
+                self._write_chunk_compute(
+                    existing_bytes, chunk_spec, chunk_selection,
+                    out_selection, is_complete_chunk, value, drop_axes,
+                )
+                for existing_bytes, (
+                    _, chunk_spec, chunk_selection, out_selection, is_complete_chunk,
+                ) in zip(existing_bytes_list, batch_info_list, strict=False)
+            ]
 
-            # Phase 4: If write_empty_chunks is False and the merged chunk
-            # is entirely fill values, skip writing it (delete instead).
-            if (
-                chunk_array is not None
-                and not chunk_spec.config.write_empty_chunks
-                and chunk_array.all_equal(_fill_value_or_default(chunk_spec))
-            ):
-                chunk_array = None
-
-            # Phase 5: Encode and persist. If the chunk was determined to
-            # be empty (phase 4) or encoding returns None, delete the key.
-            # Otherwise, write the encoded bytes directly to the store.
-            if chunk_array is None:
+        # Phase 3: IO — write encoded chunks to store.
+        # A sentinel _DELETED object distinguishes "delete key" from
+        # "no-op" (which doesn't arise here, but keeps the logic clean).
+        for encoded, (byte_setter, *_) in zip(encoded_list, batch_info_list, strict=False):
+            if encoded is _DELETED:
                 byte_setter.delete_sync()
+            elif encoded is not None:
+                byte_setter.set_sync(encoded)
             else:
-                chunk_bytes = self._encode_one(chunk_array, chunk_spec)
-                if chunk_bytes is None:
-                    byte_setter.delete_sync()
-                else:
-                    byte_setter.set_sync(chunk_bytes)
+                byte_setter.delete_sync()
 
 
 register_pipeline(SyncCodecPipeline)
