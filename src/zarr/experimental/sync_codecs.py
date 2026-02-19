@@ -232,21 +232,48 @@ class SyncCodecPipeline(CodecPipeline):
         self,
         chunk_bytes_and_specs: list[tuple[Buffer | None, ArraySpec]],
     ) -> Iterable[NDBuffer | None]:
-        """Async fallback: walk codecs one at a time (like BatchedCodecPipeline)."""
+        """Async fallback: walk codecs one at a time (like BatchedCodecPipeline).
+
+        Metadata must be resolved forward through the codec chain so each codec
+        gets the correct spec during reverse (decode) traversal. This matches
+        BatchedCodecPipeline._codecs_with_resolved_metadata_batched.
+        """
         chunk_bytes_batch, chunk_specs = _unzip2(chunk_bytes_and_specs)
 
-        for bb_codec in self.bytes_bytes_codecs[::-1]:
+        # Resolve metadata forward: aa → ab → bb, recording the spec at each step.
+        aa_specs: list[list[ArraySpec]] = []
+        specs = list(chunk_specs)
+        for aa_codec in self.array_array_codecs:
+            aa_specs.append(specs)
+            specs = [aa_codec.resolve_metadata(s) for s in specs]
+
+        ab_specs = specs
+        specs = [self.array_bytes_codec.resolve_metadata(s) for s in specs]
+
+        bb_specs: list[list[ArraySpec]] = []
+        for bb_codec in self.bytes_bytes_codecs:
+            bb_specs.append(specs)
+            specs = [bb_codec.resolve_metadata(s) for s in specs]
+
+        # Decode in reverse, using the forward-resolved specs.
+        for bb_codec, bb_spec in zip(
+            self.bytes_bytes_codecs[::-1], bb_specs[::-1], strict=False
+        ):
             chunk_bytes_batch = list(
-                await bb_codec.decode(zip(chunk_bytes_batch, chunk_specs, strict=False))
+                await bb_codec.decode(zip(chunk_bytes_batch, bb_spec, strict=False))
             )
 
         chunk_array_batch: list[NDBuffer | None] = list(
-            await self.array_bytes_codec.decode(zip(chunk_bytes_batch, chunk_specs, strict=False))
+            await self.array_bytes_codec.decode(
+                zip(chunk_bytes_batch, ab_specs, strict=False)
+            )
         )
 
-        for aa_codec in self.array_array_codecs[::-1]:
+        for aa_codec, aa_spec in zip(
+            self.array_array_codecs[::-1], aa_specs[::-1], strict=False
+        ):
             chunk_array_batch = list(
-                await aa_codec.decode(zip(chunk_array_batch, chunk_specs, strict=False))
+                await aa_codec.decode(zip(chunk_array_batch, aa_spec, strict=False))
             )
 
         return chunk_array_batch
