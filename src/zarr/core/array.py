@@ -1993,9 +1993,8 @@ class Array(Generic[T_ArrayMetadata]):
         """
         pipeline = self.async_array.codec_pipeline
         store_path = self.async_array.store_path
-        return (
-            getattr(pipeline, "supports_sync_io", False)
-            and getattr(store_path, "supports_sync", False)
+        return getattr(pipeline, "supports_sync_io", False) and getattr(
+            store_path, "supports_sync", False
         )
 
     @classmethod

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -17,9 +19,7 @@ from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.storage import MemoryStore
 
 
-def _make_array_spec(
-    shape: tuple[int, ...], dtype: np.dtype
-) -> ArraySpec:
+def _make_array_spec(shape: tuple[int, ...], dtype: np.dtype[Any]) -> ArraySpec:
     zdtype = get_data_type_from_native_dtype(dtype)
     return ArraySpec(
         shape=shape,
@@ -30,7 +30,7 @@ def _make_array_spec(
     )
 
 
-def _make_nd_buffer(arr: np.ndarray) -> zarr.core.buffer.NDBuffer:
+def _make_nd_buffer(arr: np.ndarray[Any, Any]) -> zarr.core.buffer.NDBuffer:
     return default_buffer_prototype().nd_buffer.from_numpy_array(arr)
 
 
@@ -40,19 +40,19 @@ def _make_nd_buffer(arr: np.ndarray) -> zarr.core.buffer.NDBuffer:
 
 
 class TestSupportsSync:
-    def test_gzip_supports_sync(self):
+    def test_gzip_supports_sync(self) -> None:
         assert GzipCodec().supports_sync
 
-    def test_zstd_supports_sync(self):
+    def test_zstd_supports_sync(self) -> None:
         assert ZstdCodec().supports_sync
 
-    def test_bytes_supports_sync(self):
+    def test_bytes_supports_sync(self) -> None:
         assert BytesCodec().supports_sync
 
-    def test_transpose_supports_sync(self):
+    def test_transpose_supports_sync(self) -> None:
         assert TransposeCodec(order=(0, 1)).supports_sync
 
-    def test_sharding_supports_sync(self):
+    def test_sharding_supports_sync(self) -> None:
         from zarr.codecs.sharding import ShardingCodec
 
         assert ShardingCodec(chunk_shape=(8,)).supports_sync
@@ -64,7 +64,7 @@ class TestSupportsSync:
 
 
 class TestGzipCodecSync:
-    def test_roundtrip(self):
+    def test_roundtrip(self) -> None:
         codec = GzipCodec(level=1)
         arr = np.arange(100, dtype="float64")
         spec = _make_array_spec(arr.shape, arr.dtype)
@@ -78,7 +78,7 @@ class TestGzipCodecSync:
 
 
 class TestZstdCodecSync:
-    def test_roundtrip(self):
+    def test_roundtrip(self) -> None:
         codec = ZstdCodec(level=1)
         arr = np.arange(100, dtype="float64")
         spec = _make_array_spec(arr.shape, arr.dtype)
@@ -92,7 +92,7 @@ class TestZstdCodecSync:
 
 
 class TestBytesCodecSync:
-    def test_roundtrip(self):
+    def test_roundtrip(self) -> None:
         codec = BytesCodec()
         arr = np.arange(100, dtype="float64")
         spec = _make_array_spec(arr.shape, arr.dtype)
@@ -108,7 +108,7 @@ class TestBytesCodecSync:
 
 
 class TestTransposeCodecSync:
-    def test_roundtrip(self):
+    def test_roundtrip(self) -> None:
         codec = TransposeCodec(order=(1, 0))
         arr = np.arange(12, dtype="float64").reshape(3, 4)
         spec = _make_array_spec(arr.shape, arr.dtype)
@@ -127,29 +127,31 @@ class TestTransposeCodecSync:
 
 
 class TestPipelineConstruction:
-    def test_from_codecs_valid(self):
+    def test_from_codecs_valid(self) -> None:
         pipeline = BatchedCodecPipeline.from_codecs([BytesCodec(), GzipCodec(level=1)])
         assert isinstance(pipeline, BatchedCodecPipeline)
         assert len(pipeline.bytes_bytes_codecs) == 1
         assert isinstance(pipeline.array_bytes_codec, BytesCodec)
 
-    def test_from_codecs_accepts_sharding(self):
+    def test_from_codecs_accepts_sharding(self) -> None:
         from zarr.codecs.sharding import ShardingCodec
 
         pipeline = BatchedCodecPipeline.from_codecs([ShardingCodec(chunk_shape=(8,))])
         assert isinstance(pipeline, BatchedCodecPipeline)
         assert pipeline._all_sync
 
-    def test_from_codecs_rejects_missing_array_bytes(self):
+    def test_from_codecs_rejects_missing_array_bytes(self) -> None:
         with pytest.raises(ValueError, match="Required ArrayBytesCodec"):
             BatchedCodecPipeline.from_codecs([GzipCodec()])
 
-    def test_from_codecs_with_transpose(self):
-        pipeline = BatchedCodecPipeline.from_codecs([
-            TransposeCodec(order=(1, 0)),
-            BytesCodec(),
-            GzipCodec(level=1),
-        ])
+    def test_from_codecs_with_transpose(self) -> None:
+        pipeline = BatchedCodecPipeline.from_codecs(
+            [
+                TransposeCodec(order=(1, 0)),
+                BytesCodec(),
+                GzipCodec(level=1),
+            ]
+        )
         assert len(pipeline.array_array_codecs) == 1
         assert isinstance(pipeline.array_array_codecs[0], TransposeCodec)
 
@@ -161,7 +163,7 @@ class TestPipelineConstruction:
 
 class TestPipelineRoundtrip:
     @pytest.mark.asyncio
-    async def test_encode_decode_single_chunk(self):
+    async def test_encode_decode_single_chunk(self) -> None:
         pipeline = BatchedCodecPipeline.from_codecs([BytesCodec(), GzipCodec(level=1)])
         arr = np.random.default_rng(42).standard_normal((32, 32)).astype("float64")
         spec = _make_array_spec(arr.shape, arr.dtype)
@@ -169,13 +171,13 @@ class TestPipelineRoundtrip:
         nd_buf = _make_nd_buffer(arr)
 
         encoded = await pipeline.encode([(nd_buf, spec)])
-        decoded = await pipeline.decode([(list(encoded)[0], spec)])
-        result = list(decoded)[0]
+        decoded = await pipeline.decode([(next(iter(encoded)), spec)])
+        result = next(iter(decoded))
         assert result is not None
         np.testing.assert_array_equal(arr, result.as_numpy_array())
 
     @pytest.mark.asyncio
-    async def test_encode_decode_multiple_chunks(self):
+    async def test_encode_decode_multiple_chunks(self) -> None:
         pipeline = BatchedCodecPipeline.from_codecs([BytesCodec(), GzipCodec(level=1)])
         rng = np.random.default_rng(42)
         spec = _make_array_spec((16, 16), np.dtype("float64"))
@@ -185,12 +187,12 @@ class TestPipelineRoundtrip:
 
         encoded = list(await pipeline.encode([(buf, spec) for buf in nd_bufs]))
         decoded = list(await pipeline.decode([(enc, spec) for enc in encoded]))
-        for original, dec in zip(chunks, decoded):
+        for original, dec in zip(chunks, decoded, strict=False):
             assert dec is not None
             np.testing.assert_array_equal(original, dec.as_numpy_array())
 
     @pytest.mark.asyncio
-    async def test_encode_decode_empty_batch(self):
+    async def test_encode_decode_empty_batch(self) -> None:
         pipeline = BatchedCodecPipeline.from_codecs([BytesCodec(), GzipCodec(level=1)])
         encoded = await pipeline.encode([])
         assert list(encoded) == []
@@ -198,7 +200,7 @@ class TestPipelineRoundtrip:
         assert list(decoded) == []
 
     @pytest.mark.asyncio
-    async def test_encode_decode_none_chunk(self):
+    async def test_encode_decode_none_chunk(self) -> None:
         pipeline = BatchedCodecPipeline.from_codecs([BytesCodec(), GzipCodec(level=1)])
         spec = _make_array_spec((8,), np.dtype("float64"))
         pipeline = pipeline.evolve_from_array_spec(spec)
@@ -216,7 +218,7 @@ class TestPipelineRoundtrip:
 
 
 class TestDefaultPipelineSync:
-    def test_create_array_uses_batched_pipeline(self):
+    def test_create_array_uses_batched_pipeline(self) -> None:
         store = MemoryStore()
         arr = zarr.create_array(
             store,
@@ -230,7 +232,7 @@ class TestDefaultPipelineSync:
         arr[:] = data
         np.testing.assert_array_equal(arr[:], data)
 
-    def test_open_uses_batched_pipeline(self):
+    def test_open_uses_batched_pipeline(self) -> None:
         store = MemoryStore()
         arr = zarr.create_array(
             store,
@@ -245,7 +247,7 @@ class TestDefaultPipelineSync:
         assert isinstance(arr2.async_array.codec_pipeline, BatchedCodecPipeline)
         np.testing.assert_array_equal(arr2[:], data)
 
-    def test_from_array_uses_batched_pipeline(self):
+    def test_from_array_uses_batched_pipeline(self) -> None:
         store1 = MemoryStore()
         arr1 = zarr.create_array(
             store1,
@@ -261,7 +263,7 @@ class TestDefaultPipelineSync:
         assert isinstance(arr2.async_array.codec_pipeline, BatchedCodecPipeline)
         np.testing.assert_array_equal(arr2[:], data)
 
-    def test_partial_write(self):
+    def test_partial_write(self) -> None:
         store = MemoryStore()
         arr = zarr.create_array(
             store,
@@ -276,7 +278,7 @@ class TestDefaultPipelineSync:
         expected[5:15] = np.arange(10, dtype="int32") + 1
         np.testing.assert_array_equal(result, expected)
 
-    def test_zstd_codec(self):
+    def test_zstd_codec(self) -> None:
         store = MemoryStore()
         arr = zarr.create_array(
             store,
@@ -289,18 +291,16 @@ class TestDefaultPipelineSync:
         arr[:] = data
         np.testing.assert_array_equal(arr[:], data)
 
-    def test_supports_sync_io(self):
+    def test_supports_sync_io(self) -> None:
         """Default pipeline supports sync IO when all codecs are sync."""
         pipeline = BatchedCodecPipeline.from_codecs([BytesCodec(), GzipCodec(level=1)])
         assert pipeline.supports_sync_io
 
-    def test_config_switch_to_sync_pipeline_compat(self):
+    def test_config_switch_to_sync_pipeline_compat(self) -> None:
         """Verify backwards compat: SyncCodecPipeline config path still works."""
         from zarr.experimental.sync_codecs import SyncCodecPipeline
 
-        zarr.config.set(
-            {"codec_pipeline.path": "zarr.experimental.sync_codecs.SyncCodecPipeline"}
-        )
+        zarr.config.set({"codec_pipeline.path": "zarr.experimental.sync_codecs.SyncCodecPipeline"})
         try:
             store = MemoryStore()
             arr = zarr.create_array(store, shape=(10,), dtype="float64")

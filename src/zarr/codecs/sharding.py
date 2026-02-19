@@ -544,7 +544,9 @@ class ShardingCodec(
         if self.index_location == ShardingCodecIndexLocation.start:
             empty_chunks_mask = index.offsets_and_lengths[..., 0] == MAX_UINT_64
             index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
-            index_bytes = self._encode_shard_index_sync(index)  # encode again with corrected offsets
+            index_bytes = self._encode_shard_index_sync(
+                index
+            )  # encode again with corrected offsets
             buffers.insert(0, index_bytes)
         else:
             buffers.append(index_bytes)
@@ -966,10 +968,10 @@ class ShardingCodec(
             spec = bb.resolve_metadata(spec)
 
         # Decode: reverse bb, then ab, then reverse aa
-        chunk_bytes: Buffer | None = index_bytes
+        chunk_bytes: Buffer = index_bytes
         for bb_codec, s in reversed(bb_with_spec):
             chunk_bytes = bb_codec._decode_sync(chunk_bytes, s)
-        chunk_array = ab_codec._decode_sync(chunk_bytes, ab_spec)
+        chunk_array: NDBuffer = ab_codec._decode_sync(chunk_bytes, ab_spec)
         for aa_codec, s in reversed(aa_with_spec):
             chunk_array = aa_codec._decode_sync(chunk_array, s)
 
@@ -984,18 +986,19 @@ class ShardingCodec(
 
         aa_codecs, ab_codec, bb_codecs = codecs_from_list(list(self.index_codecs))
 
-        chunk_array: NDBuffer | None = get_ndbuffer_class().from_numpy_array(
-            index.offsets_and_lengths
-        )
+        aa_out: NDBuffer | None = get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths)
 
         # Encode: aa forward, then ab, then bb forward
         spec = index_chunk_spec
         for aa_codec in aa_codecs:
-            chunk_array = aa_codec._encode_sync(chunk_array, spec)
+            assert aa_out is not None
+            aa_out = aa_codec._encode_sync(aa_out, spec)
             spec = aa_codec.resolve_metadata(spec)
-        chunk_bytes = ab_codec._encode_sync(chunk_array, spec)
+        assert aa_out is not None
+        chunk_bytes = ab_codec._encode_sync(aa_out, spec)
         spec = ab_codec.resolve_metadata(spec)
         for bb_codec in bb_codecs:
+            assert chunk_bytes is not None
             chunk_bytes = bb_codec._encode_sync(chunk_bytes, spec)
             spec = bb_codec.resolve_metadata(spec)
 

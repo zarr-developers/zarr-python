@@ -322,15 +322,22 @@ class BatchedCodecPipeline(CodecPipeline):
             return None
 
         spec = chunk_spec
+        aa_out: NDBuffer | None = chunk_array
 
         for aa_codec in self.array_array_codecs:
-            chunk_array = aa_codec._encode_sync(chunk_array, spec)
+            if aa_out is None:
+                return None
+            aa_out = aa_codec._encode_sync(aa_out, spec)
             spec = aa_codec.resolve_metadata(spec)
 
-        chunk_bytes = self.array_bytes_codec._encode_sync(chunk_array, spec)
+        if aa_out is None:
+            return None
+        chunk_bytes = self.array_bytes_codec._encode_sync(aa_out, spec)
         spec = self.array_bytes_codec.resolve_metadata(spec)
 
         for bb_codec in self.bytes_bytes_codecs:
+            if chunk_bytes is None:
+                return None
             chunk_bytes = bb_codec._encode_sync(chunk_bytes, spec)
             spec = bb_codec.resolve_metadata(spec)
 
@@ -694,7 +701,7 @@ class BatchedCodecPipeline(CodecPipeline):
     def _merge_and_filter(
         self,
         chunk_array_decoded: Iterable[NDBuffer | None],
-        batch_info: list,
+        batch_info: list[tuple[Any, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         value: NDBuffer,
         drop_axes: tuple[int, ...],
     ) -> list[NDBuffer | None]:
@@ -717,9 +724,7 @@ class BatchedCodecPipeline(CodecPipeline):
             ) in zip(chunk_array_decoded, batch_info, strict=False)
         ]
         chunk_array_batch: list[NDBuffer | None] = []
-        for chunk_array, (_, chunk_spec, *_) in zip(
-            chunk_array_merged, batch_info, strict=False
-        ):
+        for chunk_array, (_, chunk_spec, *_) in zip(chunk_array_merged, batch_info, strict=False):
             if chunk_array is None:
                 chunk_array_batch.append(None)  # type: ignore[unreachable]
             else:
