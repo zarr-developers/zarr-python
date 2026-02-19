@@ -4,6 +4,8 @@ import asyncio
 import contextlib
 import pickle
 from collections import defaultdict
+from itertools import chain
+from operator import itemgetter
 from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
 from zarr.abc.store import (
@@ -13,7 +15,7 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.storage._utils import with_concurrency_limit
+from zarr.storage._utils import _relativize_path, with_concurrency_limit
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
@@ -186,23 +188,23 @@ class ObjectStore(Store, Generic[T_Store]):
         """Implementation of get without semaphore decoration."""
         if byte_range is None:
             resp = await obs.get_async(self.store, key)
-            return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+            return prototype.buffer.from_bytes(await resp.bytes_async())
         elif isinstance(byte_range, RangeByteRequest):
             bytes = await obs.get_range_async(
                 self.store, key, start=byte_range.start, end=byte_range.end
             )
-            return prototype.buffer.from_bytes(bytes)  # type: ignore[arg-type]
+            return prototype.buffer.from_bytes(bytes)
         elif isinstance(byte_range, OffsetByteRequest):
             resp = await obs.get_async(
                 self.store, key, options={"range": {"offset": byte_range.offset}}
             )
-            return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+            return prototype.buffer.from_bytes(await resp.bytes_async())
         elif isinstance(byte_range, SuffixByteRequest):
             try:
                 resp = await obs.get_async(
                     self.store, key, options={"range": {"suffix": byte_range.suffix}}
                 )
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
+                return prototype.buffer.from_bytes(await resp.bytes_async())
             except obs.exceptions.NotSupportedError:
                 head_resp = await obs.head_async(self.store, key)
                 file_size = head_resp["size"]
@@ -213,7 +215,7 @@ class ObjectStore(Store, Generic[T_Store]):
                     start=file_size - suffix_len,
                     length=suffix_len,
                 )
-                return prototype.buffer.from_bytes(buffer)  # type: ignore[arg-type]
+                return prototype.buffer.from_bytes(buffer)
         else:
             raise ValueError(f"Unexpected byte_range, got {byte_range}")
 
@@ -367,7 +369,8 @@ async def _transform_list_dir(
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefixes = [obj.lstrip(prefix).lstrip("/") for obj in list_result["common_prefixes"]]
-    objects = [obj["path"].removeprefix(prefix).lstrip("/") for obj in list_result["objects"]]
-    for item in prefixes + objects:
-        yield item
+    prefix = prefix.rstrip("/")
+    for path in chain(
+        list_result["common_prefixes"], map(itemgetter("path"), list_result["objects"])
+    ):
+        yield _relativize_path(path=path, prefix=prefix)

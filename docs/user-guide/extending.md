@@ -29,7 +29,7 @@ of the array data. Examples include compression codecs, such as
 
 Custom codecs for Zarr are implemented by subclassing the relevant base class, see
 [`zarr.abc.codec.ArrayArrayCodec`][], [`zarr.abc.codec.ArrayBytesCodec`][] and
-[`zarr.abc.codec.BytesBytesCodec`][]. Most custom codecs should implemented the
+[`zarr.abc.codec.BytesBytesCodec`][]. Most custom codecs should implement the
 `_encode_single` and `_decode_single` methods. These methods operate on single chunks
 of the array data. Alternatively, custom codecs can implement the `encode` and `decode`
 methods, which operate on batches of chunks, in case the codec is intended to implement

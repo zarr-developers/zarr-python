@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import pytest
 
@@ -36,7 +36,7 @@ class StoreConcurrencyTests(Generic[S, B]):
     expected_concurrency_limit: int | None
 
     @pytest.fixture
-    async def store(self, store_kwargs: dict) -> S:
+    async def store(self, store_kwargs: dict[str, Any]) -> S:
         """Create and open a store instance."""
         return await self.store_cls.open(**store_kwargs)
 
@@ -51,19 +51,19 @@ class StoreConcurrencyTests(Generic[S, B]):
                     f"Expected limit {self.expected_concurrency_limit}, got {store._semaphore._value}"
                 )
 
-    def test_concurrency_limit_custom(self, store_kwargs: dict) -> None:
+    def test_concurrency_limit_custom(self, store_kwargs: dict[str, Any]) -> None:
         """Test that custom concurrency limits can be set."""
         if "concurrency_limit" not in self.store_cls.__init__.__code__.co_varnames:
             pytest.skip("Store does not support custom concurrency limits")
 
         # Test with custom limit
-        store = self.store_cls(**store_kwargs, concurrency_limit=42)
+        store = self.store_cls(**{**store_kwargs, "concurrency_limit": 42})
         if hasattr(store, "_semaphore"):
             assert store._semaphore is not None
             assert store._semaphore._value == 42
 
         # Test with None (unlimited)
-        store = self.store_cls(**store_kwargs, concurrency_limit=None)
+        store = self.store_cls(**{**store_kwargs, "concurrency_limit": None})
         if hasattr(store, "_semaphore"):
             assert store._semaphore is None
 
