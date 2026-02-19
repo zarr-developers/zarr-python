@@ -86,9 +86,13 @@ class ObjectStore(Store, Generic[T_Store]):
             asyncio.Semaphore(concurrency_limit) if concurrency_limit is not None else None
         )
 
+    def get_semaphore(self) -> asyncio.Semaphore | None:
+        return self._semaphore
+
     def with_read_only(self, read_only: bool = False) -> Self:
         # docstring inherited
-        concurrency_limit = self._semaphore._value if self._semaphore else None
+        sem = self.get_semaphore()
+        concurrency_limit = sem._value if sem else None
         return type(self)(
             store=self.store,
             read_only=read_only,
@@ -134,6 +138,7 @@ class ObjectStore(Store, Generic[T_Store]):
         import obstore as obs
 
         key_ranges = list(key_ranges)
+        semaphore = self.get_semaphore()
         # Group bounded range requests by path for batched fetching
         per_file_bounded: dict[str, list[tuple[int, RangeByteRequest]]] = defaultdict(list)
         other_requests: list[tuple[int, str, ByteRequest | None]] = []
@@ -150,8 +155,8 @@ class ObjectStore(Store, Generic[T_Store]):
             """Batch multiple range requests for the same file using get_ranges_async."""
             starts = [r.start for _, r in requests]
             ends = [r.end for _, r in requests]
-            if self._semaphore:
-                async with self._semaphore:
+            if semaphore:
+                async with semaphore:
                     responses = await obs.get_ranges_async(
                         self.store, path=path, starts=starts, ends=ends
                     )
@@ -165,8 +170,8 @@ class ObjectStore(Store, Generic[T_Store]):
         async def _fetch_one(idx: int, path: str, byte_range: ByteRequest | None) -> None:
             """Fetch a single non-range request with semaphore limiting."""
             try:
-                if self._semaphore:
-                    async with self._semaphore:
+                if semaphore:
+                    async with semaphore:
                         buffers[idx] = await self._get_impl(path, prototype, byte_range, obs)
                 else:
                     buffers[idx] = await self._get_impl(path, prototype, byte_range, obs)
@@ -250,11 +255,12 @@ class ObjectStore(Store, Generic[T_Store]):
         import obstore as obs
 
         self._check_writable()
+        semaphore = self.get_semaphore()
 
         async def _set_with_limit(key: str, value: Buffer) -> None:
             buf = value.as_buffer_like()
-            if self._semaphore:
-                async with self._semaphore:
+            if semaphore:
+                async with semaphore:
                     await obs.put_async(self.store, key, buf)
             else:
                 await obs.put_async(self.store, key, buf)
@@ -268,8 +274,9 @@ class ObjectStore(Store, Generic[T_Store]):
 
         self._check_writable()
         buf = value.as_buffer_like()
-        if self._semaphore:
-            async with self._semaphore:
+        semaphore = self.get_semaphore()
+        if semaphore:
+            async with semaphore:
                 with contextlib.suppress(obs.exceptions.AlreadyExistsError):
                     await obs.put_async(self.store, key, buf, mode="create")
         else:
@@ -304,11 +311,12 @@ class ObjectStore(Store, Generic[T_Store]):
             prefix += "/"
 
         metas = await obs.list(self.store, prefix).collect_async()
+        semaphore = self.get_semaphore()
 
         # Delete with semaphore limiting to avoid deadlock
         async def _delete_with_limit(path: str) -> None:
-            if self._semaphore:
-                async with self._semaphore:
+            if semaphore:
+                async with semaphore:
                     with contextlib.suppress(FileNotFoundError):
                         await obs.delete_async(self.store, path)
             else:

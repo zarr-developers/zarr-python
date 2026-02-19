@@ -40,16 +40,25 @@ class StoreConcurrencyTests(Generic[S, B]):
         """Create and open a store instance."""
         return await self.store_cls.open(**store_kwargs)
 
+    @staticmethod
+    def _get_semaphore(store: Store) -> asyncio.Semaphore | None:
+        """Get the semaphore from a store, or None if the store doesn't support concurrency limiting."""
+        get_semaphore = getattr(store, "get_semaphore", None)
+        if get_semaphore is not None:
+            return get_semaphore()  # type: ignore[no-any-return]
+        return None
+
     def test_concurrency_limit_default(self, store: S) -> None:
         """Test that store has the expected default concurrency limit."""
-        if hasattr(store, "_semaphore"):
-            if self.expected_concurrency_limit is None:
-                assert store._semaphore is None, "Expected no concurrency limit"
-            else:
-                assert store._semaphore is not None, "Expected concurrency limit to be set"
-                assert store._semaphore._value == self.expected_concurrency_limit, (
-                    f"Expected limit {self.expected_concurrency_limit}, got {store._semaphore._value}"
-                )
+        semaphore = self._get_semaphore(store)
+        if semaphore is None and self.expected_concurrency_limit is not None:
+            pytest.fail("Expected concurrency limit to be set")
+        if semaphore is not None and self.expected_concurrency_limit is None:
+            pytest.fail("Expected no concurrency limit")
+        if semaphore is not None and self.expected_concurrency_limit is not None:
+            assert semaphore._value == self.expected_concurrency_limit, (
+                f"Expected limit {self.expected_concurrency_limit}, got {semaphore._value}"
+            )
 
     def test_concurrency_limit_custom(self, store_kwargs: dict[str, Any]) -> None:
         """Test that custom concurrency limits can be set."""
@@ -58,14 +67,13 @@ class StoreConcurrencyTests(Generic[S, B]):
 
         # Test with custom limit
         store = self.store_cls(**{**store_kwargs, "concurrency_limit": 42})
-        if hasattr(store, "_semaphore"):
-            assert store._semaphore is not None
-            assert store._semaphore._value == 42
+        semaphore = self._get_semaphore(store)
+        assert semaphore is not None
+        assert semaphore._value == 42
 
         # Test with None (unlimited)
         store = self.store_cls(**{**store_kwargs, "concurrency_limit": None})
-        if hasattr(store, "_semaphore"):
-            assert store._semaphore is None
+        assert self._get_semaphore(store) is None
 
     async def test_concurrency_limit_enforced(self, store: S) -> None:
         """Test that the concurrency limit is actually enforced during execution.
@@ -73,10 +81,11 @@ class StoreConcurrencyTests(Generic[S, B]):
         This test verifies that when many operations are submitted concurrently,
         only up to the concurrency limit are actually executing at once.
         """
-        if not hasattr(store, "_semaphore") or store._semaphore is None:
+        semaphore = self._get_semaphore(store)
+        if semaphore is None:
             pytest.skip("Store has no concurrency limit")
 
-        limit = store._semaphore._value
+        limit = semaphore._value
 
         # We'll monitor the semaphore's available count
         # When it reaches 0, that means `limit` operations are running
@@ -86,7 +95,7 @@ class StoreConcurrencyTests(Generic[S, B]):
             nonlocal min_available
             # Check semaphore state right after we're scheduled
             await asyncio.sleep(0)  # Yield to ensure we're in the queue
-            available = store._semaphore._value
+            available = semaphore._value
             min_available = min(min_available, available)
 
             # Now do the actual operation (which will acquire the semaphore)

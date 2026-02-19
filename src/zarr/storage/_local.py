@@ -134,9 +134,13 @@ class LocalStore(Store):
             asyncio.Semaphore(concurrency_limit) if concurrency_limit is not None else None
         )
 
+    def get_semaphore(self) -> asyncio.Semaphore | None:
+        return self._semaphore
+
     def with_read_only(self, read_only: bool = False) -> Self:
         # docstring inherited
-        concurrency_limit = self._semaphore._value if self._semaphore else None
+        sem = self.get_semaphore()
+        concurrency_limit = sem._value if sem else None
         return type(self)(
             root=self.root,
             read_only=read_only,
@@ -232,11 +236,13 @@ class LocalStore(Store):
         # Note: We directly call the I/O functions here, wrapped with semaphore
         # to avoid deadlock from calling the decorated get() method
 
+        semaphore = self.get_semaphore()
+
         async def _get_with_limit(key: str, byte_range: ByteRequest | None) -> Buffer | None:
             path = self.root / key
             try:
-                if self._semaphore:
-                    async with self._semaphore:
+                if semaphore:
+                    async with semaphore:
                         return await asyncio.to_thread(_get, path, prototype, byte_range)
                 else:
                     return await asyncio.to_thread(_get, path, prototype, byte_range)

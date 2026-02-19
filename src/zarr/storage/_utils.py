@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, Protocol, TypeVar, runtime_checkable
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 
@@ -18,20 +18,24 @@ P = ParamSpec("P")
 T_co = TypeVar("T_co", covariant=True)
 
 
-def with_concurrency_limit(
-    semaphore_attr: str = "_semaphore",
-) -> Callable[[Callable[P, Coroutine[Any, Any, T_co]]], Callable[P, Coroutine[Any, Any, T_co]]]:
+@runtime_checkable
+class HasConcurrencyLimit(Protocol):
+    """Protocol for stores that support concurrency limiting via a semaphore."""
+
+    def get_semaphore(self) -> asyncio.Semaphore | None:
+        """Return the semaphore used for concurrency limiting, or None for unlimited."""
+        ...
+
+
+def with_concurrency_limit() -> Callable[
+    [Callable[P, Coroutine[Any, Any, T_co]]], Callable[P, Coroutine[Any, Any, T_co]]
+]:
     """
     Decorator that applies a semaphore-based concurrency limit to an async method.
 
-    This decorator is designed for Store methods that need to limit concurrent operations.
-    The store instance should have a `_semaphore` attribute (or custom attribute name)
-    that is either an asyncio.Semaphore or None (for unlimited concurrency).
-
-    Parameters
-    ----------
-    semaphore_attr : str, optional
-        Name of the semaphore attribute on the class instance. Default is "_semaphore".
+    This decorator is designed for methods on classes that implement the
+    ``HasConcurrencyLimit`` protocol. The class must define a ``get_semaphore()``
+    method returning either an ``asyncio.Semaphore`` or ``None``.
 
     Returns
     -------
@@ -45,6 +49,9 @@ def with_concurrency_limit(
         def __init__(self, concurrency_limit: int = 100):
             self._semaphore = asyncio.Semaphore(concurrency_limit) if concurrency_limit else None
 
+        def get_semaphore(self) -> asyncio.Semaphore | None:
+            return self._semaphore
+
         @with_concurrency_limit()
         async def get(self, key: str) -> Buffer | None:
             # This will only run when semaphore permits
@@ -55,13 +62,6 @@ def with_concurrency_limit(
     def decorator(
         func: Callable[P, Coroutine[Any, Any, T_co]],
     ) -> Callable[P, Coroutine[Any, Any, T_co]]:
-        """
-        This decorator wraps the invocation of `func` in an `async with semaphore` context manager.
-        The semaphore object is resolved by getting the `semaphor_attr` attribute from the first
-        argument to func. When this decorator is used on a method of a class, that first argument
-        is a reference to the class instance (`self`).
-        """
-
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T_co:
             # First arg should be 'self'
@@ -69,8 +69,7 @@ def with_concurrency_limit(
                 raise TypeError(f"{func.__name__} requires at least one argument (self)")
 
             self = args[0]
-
-            semaphore: asyncio.Semaphore | None = getattr(self, semaphore_attr)
+            semaphore: asyncio.Semaphore | None = self.get_semaphore()  # type: ignore[attr-defined]
 
             if semaphore is not None:
                 async with semaphore:

@@ -255,13 +255,19 @@ class FsspecStore(Store):
 
         return cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
 
+    def get_semaphore(self) -> asyncio.Semaphore | None:
+        return self._semaphore
+
     def with_read_only(self, read_only: bool = False) -> FsspecStore:
         # docstring inherited
+        sem = self.get_semaphore()
+        concurrency_limit = sem._value if sem else None
         return type(self)(
             fs=self.fs,
             path=self.path,
             allowed_exceptions=self.allowed_exceptions,
             read_only=read_only,
+            concurrency_limit=concurrency_limit,
         )
 
     async def clear(self) -> None:
@@ -353,6 +359,7 @@ class FsspecStore(Store):
         if not self._is_open:
             await self._open()
         self._check_writable()
+        semaphore = self.get_semaphore()
 
         async def _set_with_limit(key: str, value: Buffer) -> None:
             if not isinstance(value, Buffer):
@@ -360,8 +367,8 @@ class FsspecStore(Store):
                     f"FsspecStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
                 )
             path = _dereference_path(self.path, key)
-            if self._semaphore:
-                async with self._semaphore:
+            if semaphore:
+                async with semaphore:
                     await self.fs._pipe_file(path, value.to_bytes())
             else:
                 await self.fs._pipe_file(path, value.to_bytes())
