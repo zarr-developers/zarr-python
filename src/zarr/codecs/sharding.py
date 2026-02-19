@@ -140,7 +140,7 @@ class _ShardIndex(NamedTuple):
             return (int(chunk_start), int(chunk_start + chunk_len))
 
     def get_chunk_slices_vectorized(
-        self, chunk_coords_array: npt.NDArray[np.uint64]
+        self, chunk_coords_array: npt.NDArray[np.integer[Any]]
     ) -> tuple[npt.NDArray[np.uint64], npt.NDArray[np.uint64], npt.NDArray[np.bool_]]:
         """Get chunk slices for multiple coordinates at once.
 
@@ -160,7 +160,7 @@ class _ShardIndex(NamedTuple):
         """
         # Localize coordinates via modulo (vectorized)
         shard_shape = np.array(self.offsets_and_lengths.shape[:-1], dtype=np.uint64)
-        localized = chunk_coords_array % shard_shape
+        localized = chunk_coords_array.astype(np.uint64) % shard_shape
 
         # Build index tuple for advanced indexing
         index_tuple = tuple(localized[:, i] for i in range(localized.shape[1]))
@@ -261,8 +261,7 @@ class _ShardReader(ShardMapping):
 
     def to_dict_vectorized(
         self,
-        chunk_coords_array: npt.NDArray[np.uint64],
-        chunk_coords_tuples: tuple[tuple[int, ...], ...],
+        chunk_coords_array: npt.NDArray[np.integer[Any]],
     ) -> dict[tuple[int, ...], Buffer | None]:
         """Build a dict of chunk coordinates to buffers using vectorized lookup.
 
@@ -270,8 +269,6 @@ class _ShardReader(ShardMapping):
         ----------
         chunk_coords_array : ndarray of shape (n_chunks, n_dims)
             Array of chunk coordinates for vectorized index lookup.
-        chunk_coords_tuples : tuple of tuples
-            The same coordinates as tuples, used as dict keys to avoid conversion.
 
         Returns
         -------
@@ -280,7 +277,8 @@ class _ShardReader(ShardMapping):
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
-        for i, coords in enumerate(chunk_coords_tuples):
+        for i, row in enumerate(chunk_coords_array):
+            coords = tuple(int(x) for x in row)
             if valid[i]:
                 result[coords] = self.buf[int(starts[i]) : int(ends[i])]
             else:
@@ -575,9 +573,7 @@ class ShardingCodec(
         )
         shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
         # Use vectorized lookup for better performance
-        morton_coords = _morton_order(chunks_per_shard)
-        chunk_coords_array = np.array(morton_coords, dtype=np.uint64)
-        shard_dict = shard_reader.to_dict_vectorized(chunk_coords_array, morton_coords)
+        shard_dict = shard_reader.to_dict_vectorized(np.asarray(_morton_order(chunks_per_shard)))
 
         indexer = list(
             get_indexer(
