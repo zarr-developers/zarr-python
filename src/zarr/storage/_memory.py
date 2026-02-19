@@ -77,6 +77,20 @@ class MemoryStore(Store):
             and self.read_only == other.read_only
         )
 
+    # -------------------------------------------------------------------
+    # Synchronous store methods
+    #
+    # MemoryStore is a thin wrapper around a Python dict. The async get/set
+    # methods are already synchronous in substance — they just happen to be
+    # ``async def``. These sync variants let SyncCodecPipeline.read_sync /
+    # write_sync access the dict directly without going through the event
+    # loop, eliminating the dominant source of overhead for in-memory arrays.
+    #
+    # The logic mirrors the async counterparts exactly, except:
+    # - We set _is_open = True inline instead of ``await self._open()``,
+    #   since MemoryStore._open() is a no-op beyond setting the flag.
+    # -------------------------------------------------------------------
+
     @property
     def supports_sync(self) -> bool:
         return True
@@ -89,10 +103,13 @@ class MemoryStore(Store):
     ) -> Buffer | None:
         if prototype is None:
             prototype = default_buffer_prototype()
+        # Inline open: MemoryStore._open() just sets _is_open = True.
         if not self._is_open:
             self._is_open = True
         assert isinstance(key, str)
         try:
+            # Direct dict lookup — this is what async get() does too,
+            # but without the event loop round-trip.
             value = self._store_dict[key]
             start, stop = _normalize_byte_range_index(value, byte_range)
             return prototype.buffer.from_buffer(value[start:stop])
@@ -108,6 +125,7 @@ class MemoryStore(Store):
             raise TypeError(
                 f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
             )
+        # Direct dict assignment — no event loop overhead.
         self._store_dict[key] = value
 
     def delete_sync(self, key: str) -> None:

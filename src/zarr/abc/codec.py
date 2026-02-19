@@ -474,9 +474,31 @@ class CodecPipeline:
         """
         ...
 
+    # -------------------------------------------------------------------
+    # Fully synchronous read/write (opt-in)
+    #
+    # When a CodecPipeline subclass can run the entire read/write path
+    # (store IO + codec compute + buffer scatter) without touching the
+    # event loop, it overrides these methods and sets supports_sync_io
+    # to True. This lets Array selection methods bypass sync() entirely.
+    #
+    # The default implementations raise NotImplementedError, so
+    # BatchedCodecPipeline (the standard pipeline) is unaffected.
+    #
+    # See docs/design/sync-bypass.md for the full design rationale.
+    # -------------------------------------------------------------------
+
     @property
     def supports_sync_io(self) -> bool:
-        """Whether this pipeline supports fully synchronous read/write."""
+        """Whether this pipeline can run read/write entirely on the calling thread.
+
+        True when:
+        - All codecs support synchronous encode/decode (_decode_sync/_encode_sync)
+        - The pipeline's read_sync/write_sync methods are implemented
+
+        Checked by ``Array._can_use_sync_path()`` to decide whether to bypass
+        the ``sync()`` event-loop bridge.
+        """
         return False
 
     def read_sync(
@@ -485,7 +507,12 @@ class CodecPipeline:
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        """Synchronous read path. Only available on pipelines that support it."""
+        """Synchronous read: fetch bytes from store, decode, scatter into out.
+
+        Runs entirely on the calling thread. Only available when
+        ``supports_sync_io`` is True. Called by ``_get_selection_sync`` in
+        ``array.py`` when the sync bypass is active.
+        """
         raise NotImplementedError
 
     def write_sync(
@@ -494,7 +521,12 @@ class CodecPipeline:
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        """Synchronous write path. Only available on pipelines that support it."""
+        """Synchronous write: gather from value, encode, persist to store.
+
+        Runs entirely on the calling thread. Only available when
+        ``supports_sync_io`` is True. Called by ``_set_selection_sync`` in
+        ``array.py`` when the sync bypass is active.
+        """
         raise NotImplementedError
 
 

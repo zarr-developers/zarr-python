@@ -1974,7 +1974,31 @@ class Array(Generic[T_ArrayMetadata]):
         return self.async_array.config
 
     def _can_use_sync_path(self) -> bool:
-        """Check if we can bypass the event loop entirely for read/write."""
+        """Check if we can bypass the event loop entirely for read/write.
+
+        Three conditions must hold:
+
+        1. The codec pipeline supports fully synchronous IO (all codecs in
+           the chain have _decode_sync/_encode_sync, and the pipeline
+           implements read_sync/write_sync). This is True for
+           SyncCodecPipeline when all codecs support sync.
+
+        2. Partial decode is NOT active. Partial decode is used by sharding,
+           whose decode_partial method is async (it issues byte-range reads).
+           When sharding is in use, we must fall back to the sync() bridge.
+
+        3. The store supports synchronous operations (MemoryStore, LocalStore).
+           Remote stores like FsspecStore remain async-only.
+
+        When all three hold, the selection methods below call
+        _get_selection_sync / _set_selection_sync directly, running the
+        entire read/write path on the calling thread with zero async
+        overhead.
+
+        Uses getattr() with defaults for forward compatibility — older or
+        third-party pipelines/stores that lack these attributes gracefully
+        fall back to the async path.
+        """
         pipeline = self.async_array.codec_pipeline
         store_path = self.async_array.store_path
         return (
@@ -3060,6 +3084,10 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
+        # Sync bypass: when the codec pipeline and store both support
+        # synchronous operation, skip the sync() → event loop bridge and
+        # run the entire read path on the calling thread. This pattern is
+        # repeated in all 10 get_*/set_* methods below.
         if self._can_use_sync_path():
             return _get_selection_sync(
                 self.async_array.store_path,
@@ -3071,6 +3099,9 @@ class Array(Generic[T_ArrayMetadata]):
                 fields=fields,
                 prototype=prototype,
             )
+        # Fallback: submit the async coroutine to the background event loop
+        # thread via sync(). Used for remote stores, sharded arrays, or when
+        # SyncCodecPipeline is not active.
         return sync(
             self.async_array._get_selection(
                 indexer,
@@ -5755,8 +5786,23 @@ def _get_selection_sync(
     out: NDBuffer | None = None,
     fields: Fields | None = None,
 ) -> NDArrayLikeOrScalar:
-    """Synchronous version of _get_selection — bypasses the event loop entirely."""
-    # Get dtype from metadata
+    """Synchronous version of _get_selection — bypasses the event loop entirely.
+
+    This function mirrors ``_get_selection`` (the async version defined above)
+    exactly, with one critical difference: it calls ``codec_pipeline.read_sync()``
+    instead of ``await codec_pipeline.read()``. This means the entire operation
+    — store IO, codec decode, buffer scatter — runs on the calling thread with
+    no event loop involvement.
+
+    Called by ``Array.get_basic_selection``, ``get_orthogonal_selection``, etc.
+    when ``Array._can_use_sync_path()`` returns True.
+
+    The setup logic (dtype resolution, output buffer creation, field checks) is
+    duplicated from the async version rather than extracted into a shared helper.
+    This keeps the hot path simple and avoids adding indirection. The two
+    versions should be kept in sync manually.
+    """
+    # Get dtype from metadata — same logic as async _get_selection
     if metadata.zarr_format == 2:
         zdtype = metadata.dtype
     else:
@@ -5793,6 +5839,12 @@ def _get_selection_sync(
         if metadata.zarr_format == 2:
             _config = replace(_config, order=order)
 
+        # This is the key difference from the async version: read_sync()
+        # runs the entire pipeline (store fetch → codec decode → scatter)
+        # on this thread. Each entry in the list is a (StorePath, ArraySpec,
+        # chunk_selection, out_selection, is_complete_chunk) tuple.
+        # StorePath acts as the ByteGetter — its get_sync() method is called
+        # by the pipeline to fetch raw chunk bytes from the store.
         codec_pipeline.read_sync(
             [
                 (
@@ -5823,7 +5875,15 @@ def _set_selection_sync(
     prototype: BufferPrototype,
     fields: Fields | None = None,
 ) -> None:
-    """Synchronous version of _set_selection — bypasses the event loop entirely."""
+    """Synchronous version of _set_selection — bypasses the event loop entirely.
+
+    Mirrors ``_set_selection`` (the async version) with the same setup logic
+    (dtype coercion, value shape validation, buffer wrapping) but calls
+    ``codec_pipeline.write_sync()`` instead of ``await codec_pipeline.write()``.
+
+    Called by ``Array.set_basic_selection``, ``set_orthogonal_selection``, etc.
+    when ``Array._can_use_sync_path()`` returns True.
+    """
     # Get dtype from metadata
     if metadata.zarr_format == 2:
         zdtype = metadata.dtype
@@ -5863,6 +5923,10 @@ def _set_selection_sync(
     if metadata.zarr_format == 2:
         _config = replace(_config, order=order)
 
+    # Key difference from async version: write_sync() runs the entire
+    # pipeline (read existing → decode → merge → encode → store write)
+    # on this thread. StorePath acts as ByteSetter — its set_sync() and
+    # delete_sync() methods persist/remove chunk bytes directly.
     codec_pipeline.write_sync(
         [
             (

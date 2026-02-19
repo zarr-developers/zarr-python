@@ -228,6 +228,21 @@ class StorePath:
         """
         return await self.store.is_empty(self.path)
 
+    # -------------------------------------------------------------------
+    # Synchronous IO delegation
+    #
+    # StorePath is what gets passed to the codec pipeline as a ByteGetter /
+    # ByteSetter. The async path uses get() / set() / delete(); the sync
+    # bypass uses these sync variants instead. They simply prepend
+    # self.path to the key and delegate to the underlying Store's sync
+    # methods.
+    #
+    # Note: The ByteGetter / ByteSetter protocols only define async
+    # methods. The sync pipeline uses `Any` type annotations to call
+    # these methods at runtime. See docs/design/sync-bypass.md for why
+    # we chose not to modify the protocols.
+    # -------------------------------------------------------------------
+
     @property
     def supports_sync(self) -> bool:
         """Whether the underlying store supports synchronous operations."""
@@ -238,17 +253,17 @@ class StorePath:
         prototype: BufferPrototype | None = None,
         byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
-        """Synchronous read from the store."""
+        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
         if prototype is None:
             prototype = default_buffer_prototype()
         return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
 
     def set_sync(self, value: Buffer) -> None:
-        """Synchronous write to the store."""
+        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
         self.store.set_sync(self.path, value)
 
     def delete_sync(self) -> None:
-        """Synchronous delete from the store."""
+        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
         self.store.delete_sync(self.path)
 
     def __truediv__(self, other: str) -> StorePath:

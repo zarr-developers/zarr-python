@@ -580,10 +580,37 @@ class SyncCodecPipeline(CodecPipeline):
 
     # -------------------------------------------------------------------
     # Fully synchronous read / write (bypass event loop entirely)
+    #
+    # These methods implement the same logic as the async read/write
+    # methods above, but run entirely on the calling thread:
+    #
+    #   - Store IO uses byte_getter.get_sync() / byte_setter.set_sync()
+    #     instead of the async get()/set() — direct dict lookup for
+    #     MemoryStore, direct file IO for LocalStore.
+    #
+    #   - Codec compute uses _decode_one() / _encode_one(), which call
+    #     each codec's _decode_sync/_encode_sync inline (no to_thread).
+    #
+    #   - Chunks are processed sequentially in a for-loop — no batching,
+    #     no concurrent_map, no asyncio tasks. This is optimal for local
+    #     stores where IO is ~1us (dict) or dominated by OS page cache
+    #     (files), and where the GIL prevents true parallel codec work.
+    #
+    # The byte_getter/byte_setter parameters are typed as `Any` because
+    # the ByteGetter/ByteSetter protocols only define async methods.
+    # At runtime, these are always StorePath instances which have the
+    # get_sync/set_sync/delete_sync methods. See docs/design/sync-bypass.md.
+    #
+    # These methods are only called when supports_sync_io is True (i.e.
+    # _all_sync is True), which guarantees every codec in the chain has
+    # _decode_sync/_encode_sync implementations.
     # -------------------------------------------------------------------
 
     @property
     def supports_sync_io(self) -> bool:
+        # Only enable the fully-sync path when every codec in the chain
+        # supports synchronous dispatch. If any codec lacks _decode_sync
+        # (e.g. ShardingCodec), we fall back to the async path.
         return self._all_sync
 
     def read_sync(
@@ -596,24 +623,32 @@ class SyncCodecPipeline(CodecPipeline):
         if not batch_info_list:
             return
 
-        # Resolve metadata chain once (all chunks share the same spec structure)
+        # Resolve the metadata chain once: compute the ArraySpec at each
+        # codec boundary. All chunks in a single array share the same codec
+        # structure, so this is invariant across the loop.
         _, first_spec, *_ = batch_info_list[0]
         aa_chain, ab_pair, bb_chain = self._resolve_metadata_chain(first_spec)
 
         for byte_getter, chunk_spec, chunk_selection, out_selection, _ in batch_info_list:
-            # IO: sync store read
+            # Step 1: Sync store read — e.g. dict[key] for MemoryStore,
+            # Path.read_bytes() for LocalStore. No event loop involvement.
             chunk_bytes: Buffer | None = byte_getter.get_sync(prototype=chunk_spec.prototype)
 
-            # Compute: decode through codec chain
+            # Step 2: Decode through the full codec chain (bytes→bytes
+            # codecs in reverse, then array→bytes, then array→array in
+            # reverse). All synchronous, all inline on this thread.
             chunk_array = self._decode_one(chunk_bytes, chunk_spec, aa_chain, ab_pair, bb_chain)
 
-            # Scatter into output buffer
+            # Step 3: Scatter decoded chunk data into the output buffer.
+            # chunk_selection picks the relevant region within the decoded
+            # chunk; out_selection places it in the output array.
             if chunk_array is not None:
                 tmp = chunk_array[chunk_selection]
                 if drop_axes != ():
                     tmp = tmp.squeeze(axis=drop_axes)
                 out[out_selection] = tmp
             else:
+                # Chunk not found in store — fill with the array's fill value.
                 out[out_selection] = _fill_value_or_default(chunk_spec)
 
     def write_sync(
@@ -633,12 +668,16 @@ class SyncCodecPipeline(CodecPipeline):
             out_selection,
             is_complete_chunk,
         ) in batch_info_list:
-            # Phase 1: Read existing chunk if needed (for partial writes)
+            # Phase 1: For partial writes (when we're only updating part of
+            # a chunk), read the existing chunk bytes from the store so we
+            # can merge the new data into it. For complete-chunk writes,
+            # skip this — we'll overwrite the entire chunk.
             existing_bytes: Buffer | None = None
             if not is_complete_chunk:
                 existing_bytes = byte_setter.get_sync(prototype=chunk_spec.prototype)
 
-            # Phase 2: Decode existing chunk
+            # Phase 2: Decode the existing chunk bytes (if any) so we can
+            # merge new data into the decoded array.
             existing_array: NDBuffer | None = None
             if existing_bytes is not None:
                 aa_chain, ab_pair, bb_chain = self._resolve_metadata_chain(chunk_spec)
@@ -646,7 +685,10 @@ class SyncCodecPipeline(CodecPipeline):
                     existing_bytes, chunk_spec, aa_chain, ab_pair, bb_chain
                 )
 
-            # Phase 3: Merge
+            # Phase 3: Merge new data into the chunk. For complete chunks
+            # that match the chunk shape, this is a direct passthrough.
+            # For partial writes, it creates a new buffer (or copies the
+            # existing one) and splices in the new values.
             chunk_array: NDBuffer | None = self._merge_chunk_array(
                 existing_array,
                 value,
@@ -657,7 +699,8 @@ class SyncCodecPipeline(CodecPipeline):
                 drop_axes,
             )
 
-            # Phase 4: Check empty chunk
+            # Phase 4: If write_empty_chunks is False and the merged chunk
+            # is entirely fill values, skip writing it (delete instead).
             if (
                 chunk_array is not None
                 and not chunk_spec.config.write_empty_chunks
@@ -665,7 +708,9 @@ class SyncCodecPipeline(CodecPipeline):
             ):
                 chunk_array = None
 
-            # Phase 5: Encode and write
+            # Phase 5: Encode and persist. If the chunk was determined to
+            # be empty (phase 4) or encoding returns None, delete the key.
+            # Otherwise, write the encoded bytes directly to the store.
             if chunk_array is None:
                 byte_setter.delete_sync()
             else:
