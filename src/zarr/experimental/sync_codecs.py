@@ -402,22 +402,16 @@ class SyncCodecPipeline(CodecPipeline):
             specs = [bb_codec.resolve_metadata(s) for s in specs]
 
         # Decode in reverse, using the forward-resolved specs.
-        for bb_codec, bb_spec in zip(
-            self.bytes_bytes_codecs[::-1], bb_specs[::-1], strict=False
-        ):
+        for bb_codec, bb_spec in zip(self.bytes_bytes_codecs[::-1], bb_specs[::-1], strict=False):
             chunk_bytes_batch = list(
                 await bb_codec.decode(zip(chunk_bytes_batch, bb_spec, strict=False))
             )
 
         chunk_array_batch: list[NDBuffer | None] = list(
-            await self.array_bytes_codec.decode(
-                zip(chunk_bytes_batch, ab_specs, strict=False)
-            )
+            await self.array_bytes_codec.decode(zip(chunk_bytes_batch, ab_specs, strict=False))
         )
 
-        for aa_codec, aa_spec in zip(
-            self.array_array_codecs[::-1], aa_specs[::-1], strict=False
-        ):
+        for aa_codec, aa_spec in zip(self.array_array_codecs[::-1], aa_specs[::-1], strict=False):
             chunk_array_batch = list(
                 await aa_codec.decode(zip(chunk_array_batch, aa_spec, strict=False))
             )
@@ -835,7 +829,10 @@ class SyncCodecPipeline(CodecPipeline):
 
         # Phase 2: Decode — run the codec chain for each chunk.
         # Estimate per-chunk codec work and decide whether to parallelize.
-        chunk_nbytes = product(first_spec.shape) * first_spec.dtype.item_size
+        # Not all dtypes have item_size (e.g. custom dtypes), so fall back
+        # to sequential processing when we can't estimate chunk size.
+        dtype_item_size = getattr(first_spec.dtype, "item_size", 1)
+        chunk_nbytes = product(first_spec.shape) * dtype_item_size
         n_workers = _choose_workers(len(batch_info_list), chunk_nbytes, self)
         if n_workers > 0:
             pool = _get_pool(n_workers)
@@ -886,8 +883,13 @@ class SyncCodecPipeline(CodecPipeline):
 
         # Merge new data into the chunk
         chunk_array: NDBuffer | None = self._merge_chunk_array(
-            existing_array, value, out_selection, chunk_spec,
-            chunk_selection, is_complete_chunk, drop_axes,
+            existing_array,
+            value,
+            out_selection,
+            chunk_spec,
+            chunk_selection,
+            is_complete_chunk,
+            drop_axes,
         )
 
         # Filter empty chunks
@@ -934,17 +936,18 @@ class SyncCodecPipeline(CodecPipeline):
 
         # Phase 1: IO — read existing chunk bytes for partial writes.
         existing_bytes_list: list[Buffer | None] = [
-            byte_setter.get_sync(prototype=chunk_spec.prototype)
-            if not is_complete_chunk
-            else None
+            byte_setter.get_sync(prototype=chunk_spec.prototype) if not is_complete_chunk else None
             for byte_setter, chunk_spec, _, _, is_complete_chunk in batch_info_list
         ]
 
         # Phase 2: Compute — decode existing, merge new data, encode.
         # Estimate per-chunk work to decide whether to parallelize.
         # Use encode cost model since writes are dominated by compression.
+        # Not all dtypes have item_size (e.g. custom dtypes), so fall back
+        # to sequential processing when we can't estimate chunk size.
         _, first_spec, *_ = batch_info_list[0]
-        chunk_nbytes = product(first_spec.shape) * first_spec.dtype.item_size
+        dtype_item_size = getattr(first_spec.dtype, "item_size", 1)
+        chunk_nbytes = product(first_spec.shape) * dtype_item_size
         n_workers = _choose_workers(len(batch_info_list), chunk_nbytes, self, is_encode=True)
         if n_workers > 0:
             pool = _get_pool(n_workers)
@@ -963,11 +966,20 @@ class SyncCodecPipeline(CodecPipeline):
         else:
             encoded_list = [
                 self._write_chunk_compute(
-                    existing_bytes, chunk_spec, chunk_selection,
-                    out_selection, is_complete_chunk, value, drop_axes,
+                    existing_bytes,
+                    chunk_spec,
+                    chunk_selection,
+                    out_selection,
+                    is_complete_chunk,
+                    value,
+                    drop_axes,
                 )
                 for existing_bytes, (
-                    _, chunk_spec, chunk_selection, out_selection, is_complete_chunk,
+                    _,
+                    chunk_spec,
+                    chunk_selection,
+                    out_selection,
+                    is_complete_chunk,
                 ) in zip(existing_bytes_list, batch_info_list, strict=False)
             ]
 
