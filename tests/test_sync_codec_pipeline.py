@@ -52,10 +52,10 @@ class TestSupportsSync:
     def test_transpose_supports_sync(self):
         assert TransposeCodec(order=(0, 1)).supports_sync
 
-    def test_sharding_does_not_support_sync(self):
+    def test_sharding_supports_sync(self):
         from zarr.codecs.sharding import ShardingCodec
 
-        assert not ShardingCodec(chunk_shape=(8,)).supports_sync
+        assert ShardingCodec(chunk_shape=(8,)).supports_sync
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +138,7 @@ class TestSyncCodecPipelineConstruction:
 
         pipeline = SyncCodecPipeline.from_codecs([ShardingCodec(chunk_shape=(8,))])
         assert isinstance(pipeline, SyncCodecPipeline)
-        assert not pipeline._all_sync
+        assert pipeline._all_sync
 
     def test_from_codecs_rejects_missing_array_bytes(self):
         with pytest.raises(ValueError, match="Required ArrayBytesCodec"):

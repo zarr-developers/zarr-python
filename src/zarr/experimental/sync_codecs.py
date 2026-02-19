@@ -608,9 +608,10 @@ class SyncCodecPipeline(CodecPipeline):
 
     @property
     def supports_sync_io(self) -> bool:
-        # Only enable the fully-sync path when every codec in the chain
-        # supports synchronous dispatch. If any codec lacks _decode_sync
-        # (e.g. ShardingCodec), we fall back to the async path.
+        # Enable the fully-sync path when every codec in the chain supports
+        # synchronous dispatch. This includes ShardingCodec, which has
+        # _decode_sync/_encode_sync (full shard) and _decode_partial_sync/
+        # _encode_partial_sync (byte-range reads for partial shard access).
         return self._all_sync
 
     def read_sync(
@@ -623,6 +624,27 @@ class SyncCodecPipeline(CodecPipeline):
         if not batch_info_list:
             return
 
+        # Partial decode path: when the array_bytes_codec supports partial
+        # decode (e.g. ShardingCodec), delegate to its _decode_partial_sync.
+        # This handles shard index fetch + per-chunk byte-range reads + inner
+        # codec decode, all synchronously.
+        if self.supports_partial_decode:
+            # The array_bytes_codec is a ShardingCodec (or similar) that has
+            # _decode_partial_sync. We use getattr to avoid coupling to the
+            # concrete type — the type system can't express this through the
+            # ArrayBytesCodecPartialDecodeMixin protocol.
+            ab_codec: Any = self.array_bytes_codec
+            for byte_getter, chunk_spec, chunk_selection, out_selection, _ in batch_info_list:
+                chunk_array: NDBuffer | None = ab_codec._decode_partial_sync(
+                    byte_getter, chunk_selection, chunk_spec
+                )
+                if chunk_array is not None:
+                    out[out_selection] = chunk_array
+                else:
+                    out[out_selection] = _fill_value_or_default(chunk_spec)
+            return
+
+        # Non-partial path: standard sync decode through the full codec chain.
         # Resolve the metadata chain once: compute the ArraySpec at each
         # codec boundary. All chunks in a single array share the same codec
         # structure, so this is invariant across the loop.
@@ -659,6 +681,22 @@ class SyncCodecPipeline(CodecPipeline):
     ) -> None:
         batch_info_list = list(batch_info)
         if not batch_info_list:
+            return
+
+        # Partial encode path: when the array_bytes_codec supports partial
+        # encode (e.g. ShardingCodec), delegate to its _encode_partial_sync.
+        # This reads the existing shard, merges new data, encodes and writes
+        # back, all synchronously.
+        if self.supports_partial_encode:
+            ab_codec: Any = self.array_bytes_codec
+            if len(value.shape) == 0:
+                for byte_setter, chunk_spec, chunk_selection, _, _ in batch_info_list:
+                    ab_codec._encode_partial_sync(byte_setter, value, chunk_selection, chunk_spec)
+            else:
+                for byte_setter, chunk_spec, chunk_selection, out_selection, _ in batch_info_list:
+                    ab_codec._encode_partial_sync(
+                        byte_setter, value[out_selection], chunk_selection, chunk_spec
+                    )
             return
 
         for (

@@ -1976,21 +1976,19 @@ class Array(Generic[T_ArrayMetadata]):
     def _can_use_sync_path(self) -> bool:
         """Check if we can bypass the event loop entirely for read/write.
 
-        Three conditions must hold:
+        Two conditions must hold:
 
         1. The codec pipeline supports fully synchronous IO (all codecs in
            the chain have _decode_sync/_encode_sync, and the pipeline
            implements read_sync/write_sync). This is True for
-           SyncCodecPipeline when all codecs support sync.
+           SyncCodecPipeline when all codecs support sync — including
+           ShardingCodec, which has _decode_sync/_encode_sync and
+           _decode_partial_sync/_encode_partial_sync for the sharding path.
 
-        2. Partial decode is NOT active. Partial decode is used by sharding,
-           whose decode_partial method is async (it issues byte-range reads).
-           When sharding is in use, we must fall back to the sync() bridge.
-
-        3. The store supports synchronous operations (MemoryStore, LocalStore).
+        2. The store supports synchronous operations (MemoryStore, LocalStore).
            Remote stores like FsspecStore remain async-only.
 
-        When all three hold, the selection methods below call
+        When both hold, the selection methods below call
         _get_selection_sync / _set_selection_sync directly, running the
         entire read/write path on the calling thread with zero async
         overhead.
@@ -2003,7 +2001,6 @@ class Array(Generic[T_ArrayMetadata]):
         store_path = self.async_array.store_path
         return (
             getattr(pipeline, "supports_sync_io", False)
-            and not pipeline.supports_partial_decode
             and getattr(store_path, "supports_sync", False)
         )
 
