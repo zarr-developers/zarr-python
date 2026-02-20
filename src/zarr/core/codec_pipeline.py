@@ -249,12 +249,32 @@ class BatchedCodecPipeline(CodecPipeline):
 
     @property
     def supports_partial_decode(self) -> bool:
+        """Determines whether the codec pipeline supports partial decoding.
+
+        Currently, only codec pipelines with a single ArrayBytesCodec that supports
+        partial decoding can support partial decoding. This limitation is due to the fact
+        that ArrayArrayCodecs can change the slice selection leading to non-contiguous
+        slices and BytesBytesCodecs can change the chunk bytes in a way that slice
+        selections cannot be attributed to byte ranges anymore which renders partial
+        decoding infeasible.
+
+        This limitation may softened in the future."""
         return (len(self.array_array_codecs) + len(self.bytes_bytes_codecs)) == 0 and isinstance(
             self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin
         )
 
     @property
     def supports_partial_encode(self) -> bool:
+        """Determines whether the codec pipeline supports partial encoding.
+
+        Currently, only codec pipelines with a single ArrayBytesCodec that supports
+        partial encoding can support partial encoding. This limitation is due to the fact
+        that ArrayArrayCodecs can change the slice selection leading to non-contiguous
+        slices and BytesBytesCodecs can change the chunk bytes in a way that slice
+        selections cannot be attributed to byte ranges anymore which renders partial
+        encoding infeasible.
+
+        This limitation may softened in the future."""
         return (len(self.array_array_codecs) + len(self.bytes_bytes_codecs)) == 0 and isinstance(
             self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin
         )
@@ -637,6 +657,7 @@ class BatchedCodecPipeline(CodecPipeline):
         if (
             is_complete_chunk
             and value.shape == chunk_spec.shape
+            # Guard that this is not a partial chunk at the end with is_complete_chunk=True
             and value[out_selection].shape == chunk_spec.shape
         ):
             return value
@@ -648,16 +669,20 @@ class BatchedCodecPipeline(CodecPipeline):
                 fill_value=fill_value_or_default(chunk_spec),
             )
         else:
-            chunk_array = existing_chunk_array.copy()
+            chunk_array = existing_chunk_array.copy()  # make a writable copy
         if chunk_selection == () or is_scalar(
             value.as_ndarray_like(), chunk_spec.dtype.to_native_dtype()
         ):
             chunk_value = value
         else:
             chunk_value = value[out_selection]
+            # handle missing singleton dimensions
             if drop_axes != ():
                 item = tuple(
-                    None if idx in drop_axes else slice(None) for idx in range(chunk_spec.ndim)
+                    None  # equivalent to np.newaxis
+                    if idx in drop_axes
+                    else slice(None)
+                    for idx in range(chunk_spec.ndim)
                 )
                 chunk_value = chunk_value[item]
         chunk_array[chunk_selection] = chunk_value
@@ -672,6 +697,7 @@ class BatchedCodecPipeline(CodecPipeline):
         batch_info = list(batch_info)
 
         if self.supports_partial_encode:
+            # Pass scalar values as is
             if len(value.shape) == 0:
                 await self.encode_partial_batch(
                     [
