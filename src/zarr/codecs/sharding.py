@@ -52,6 +52,7 @@ from zarr.core.indexing import (
 )
 from zarr.core.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
+from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -86,11 +87,16 @@ class _ShardingByteGetter(ByteGetter):
     async def get(
         self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
-        assert byte_range is None, "byte_range is not supported within shards"
         assert prototype == default_buffer_prototype(), (
             f"prototype is not supported within shards currently. diff: {prototype} != {default_buffer_prototype()}"
         )
-        return self.shard_dict.get(self.chunk_coords)
+        value = self.shard_dict.get(self.chunk_coords)
+        if value is None:
+            return None
+        if byte_range is None:
+            return value
+        start, stop = _normalize_byte_range_index(value, byte_range)
+        return value[start:stop]
 
 
 @dataclass(frozen=True)
@@ -597,7 +603,8 @@ class ShardingCodec(
                 )
             )
         )
-        assert index_array is not None
+        # This cannot be None because we have the bytes already
+        index_array = cast(NDBuffer, index_array)
         return _ShardIndex(index_array.as_numpy_array())
 
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
