@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import pairwise
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from warnings import warn
@@ -182,7 +182,10 @@ def _get_pool(max_workers: int) -> ThreadPoolExecutor:
     """Get a thread pool with at most *max_workers* threads."""
     global _pool
     if _pool is None or _pool._max_workers < max_workers:
+        old = _pool
         _pool = ThreadPoolExecutor(max_workers=max_workers)
+        if old is not None:
+            old.shutdown(wait=False)
     return _pool
 
 
@@ -214,6 +217,8 @@ class BatchedCodecPipeline(CodecPipeline):
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
     batch_size: int | None = None
 
+    _all_sync: bool = field(default=False, init=False, repr=False, compare=False)
+
     def __post_init__(self) -> None:
         if self.batch_size is not None:
             warn(
@@ -222,11 +227,12 @@ class BatchedCodecPipeline(CodecPipeline):
                 FutureWarning,
                 stacklevel=2,
             )
-
-    @property
-    def _all_sync(self) -> bool:
-        """True when every codec in the chain implements SupportsSyncCodec."""
-        return all(isinstance(c, SupportsSyncCodec) for c in self)
+        # Compute once; frozen dataclass requires object.__setattr__.
+        object.__setattr__(
+            self,
+            "_all_sync",
+            all(isinstance(c, SupportsSyncCodec) for c in self),
+        )
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
@@ -710,7 +716,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 )
 
                 # 3) Write result
-                if chunk_bytes is _DELETED or chunk_bytes is None:
+                if chunk_bytes is _DELETED:
                     await byte_setter.delete()
                 else:
                     await byte_setter.set(chunk_bytes)  # type: ignore[arg-type]
@@ -1020,10 +1026,8 @@ class BatchedCodecPipeline(CodecPipeline):
         for encoded, (byte_setter, *_) in zip(encoded_list, batch_info_list, strict=False):
             if encoded is _DELETED:
                 byte_setter.delete_sync()
-            elif encoded is not None:
-                byte_setter.set_sync(encoded)
             else:
-                byte_setter.delete_sync()
+                byte_setter.set_sync(encoded)
 
 
 def codecs_from_list(
@@ -1031,11 +1035,12 @@ def codecs_from_list(
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     from zarr.codecs.sharding import ShardingCodec
 
+    codecs = list(codecs)
     array_array: tuple[ArrayArrayCodec, ...] = ()
     array_bytes_maybe: ArrayBytesCodec | None = None
     bytes_bytes: tuple[BytesBytesCodec, ...] = ()
 
-    if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(tuple(codecs)) > 1:
+    if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
         warn(
             "Combining a `sharding_indexed` codec disables partial reads and "
             "writes, which may lead to inefficient performance.",

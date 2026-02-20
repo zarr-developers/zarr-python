@@ -100,9 +100,12 @@ class _ShardingByteGetter(ByteGetter):
         return value[start:stop]
 
     def get_sync(
-        self, prototype: BufferPrototype | None = None, byte_range: ByteRequest | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         # Sync equivalent of get() — just a dict lookup, no IO.
+        assert prototype == default_buffer_prototype(), (
+            f"prototype is not supported within shards currently. diff: {prototype} != {default_buffer_prototype()}"
+        )
         value = self.shard_dict.get(self.chunk_coords)
         if value is None:
             return None
