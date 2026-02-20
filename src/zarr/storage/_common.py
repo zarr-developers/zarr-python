@@ -237,16 +237,11 @@ class StorePath:
     # self.path to the key and delegate to the underlying Store's sync
     # methods.
     #
-    # Note: The ByteGetter / ByteSetter protocols only define async
-    # methods. The sync pipeline uses `Any` type annotations to call
-    # these methods at runtime. See docs/design/sync-bypass.md for why
-    # we chose not to modify the protocols.
+    # Note: These methods satisfy the SyncByteGetter / SyncByteSetter
+    # protocols (from zarr.abc.store) only when the underlying Store
+    # also has get_sync / set_sync / delete_sync.  Callers check the
+    # store before invoking these.
     # -------------------------------------------------------------------
-
-    @property
-    def supports_sync(self) -> bool:
-        """Whether the underlying store supports synchronous operations."""
-        return self.store.supports_sync
 
     def get_sync(
         self,
@@ -256,15 +251,15 @@ class StorePath:
         """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
         if prototype is None:
             prototype = default_buffer_prototype()
-        return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
+        return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)  # type: ignore[attr-defined, no-any-return]
 
     def set_sync(self, value: Buffer) -> None:
         """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
-        self.store.set_sync(self.path, value)
+        self.store.set_sync(self.path, value)  # type: ignore[attr-defined]
 
     def delete_sync(self) -> None:
         """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
-        self.store.delete_sync(self.path)
+        self.store.delete_sync(self.path)  # type: ignore[attr-defined]
 
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""

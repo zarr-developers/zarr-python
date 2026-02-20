@@ -16,7 +16,14 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import Buffer, BufferPrototype
 
-__all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = [
+    "ByteGetter",
+    "ByteSetter",
+    "Store",
+    "SyncByteGetter",
+    "SyncByteSetter",
+    "set_or_delete",
+]
 
 
 @dataclass
@@ -524,61 +531,6 @@ class Store(ABC):
         """
         return False
 
-    # -----------------------------------------------------------------------
-    # Synchronous IO interface (opt-in)
-    #
-    # These methods enable the codec pipeline to bypass the event loop
-    # entirely for store IO. The default implementations raise
-    # NotImplementedError; stores that wrap fundamentally synchronous
-    # operations (MemoryStore, LocalStore) override them with direct
-    # implementations. Remote/cloud stores (FsspecStore) leave them as-is
-    # and remain async-only.
-    # -----------------------------------------------------------------------
-
-    @property
-    def supports_sync(self) -> bool:
-        """Whether this store has native synchronous get/set/delete methods.
-
-        When True, the codec pipeline's ``read_sync`` / ``write_sync`` will
-        call ``get_sync`` / ``set_sync`` / ``delete_sync`` directly on the
-        calling thread, avoiding the event loop overhead of the async
-        equivalents.
-
-        Subclasses that override the sync methods below should also override
-        this property to return True.
-        """
-        return False
-
-    def get_sync(
-        self,
-        key: str,
-        prototype: BufferPrototype,
-        byte_range: ByteRequest | None = None,
-    ) -> Buffer | None:
-        """Synchronous version of ``get()``.
-
-        Called by the codec pipeline's ``read_sync`` to fetch chunk bytes without
-        going through the event loop. Only called when ``supports_sync`` is
-        True, so the default ``NotImplementedError`` is never hit in practice.
-        """
-        raise NotImplementedError
-
-    def set_sync(self, key: str, value: Buffer) -> None:
-        """Synchronous version of ``set()``.
-
-        Called by the codec pipeline's ``write_sync`` to persist encoded chunk
-        bytes without going through the event loop.
-        """
-        raise NotImplementedError
-
-    def delete_sync(self, key: str) -> None:
-        """Synchronous version of ``delete()``.
-
-        Called by the codec pipeline's ``write_sync`` when a chunk should be
-        removed (e.g. an empty chunk with ``write_empty_chunks=False``).
-        """
-        raise NotImplementedError
-
     @property
     @abstractmethod
     def supports_listing(self) -> bool:
@@ -753,6 +705,24 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+@runtime_checkable
+class SyncByteGetter(Protocol):
+    """Protocol for stores that support synchronous byte reads."""
+
+    def get_sync(
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+    ) -> Buffer | None: ...
+
+
+@runtime_checkable
+class SyncByteSetter(SyncByteGetter, Protocol):
+    """Protocol for stores that support synchronous byte reads, writes, and deletes."""
+
+    def set_sync(self, value: Buffer) -> None: ...
+
+    def delete_sync(self) -> None: ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

@@ -16,6 +16,7 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialEncodeMixin,
     Codec,
     CodecPipeline,
+    SupportsSyncCodec,
 )
 from zarr.abc.store import (
     ByteGetter,
@@ -968,15 +969,15 @@ class ShardingCodec(
             spec = bb.resolve_metadata(spec)
 
         # Decode: reverse bb, then ab, then reverse aa
-        chunk_bytes: Buffer = index_bytes
+        bb_out: Any = index_bytes
         for bb_codec, s in reversed(bb_with_spec):
-            chunk_bytes = bb_codec._decode_sync(chunk_bytes, s)
-        chunk_array: NDBuffer = ab_codec._decode_sync(chunk_bytes, ab_spec)
+            bb_out = cast("SupportsSyncCodec", bb_codec)._decode_sync(bb_out, s)
+        ab_out: Any = cast("SupportsSyncCodec", ab_codec)._decode_sync(bb_out, ab_spec)
         for aa_codec, s in reversed(aa_with_spec):
-            chunk_array = aa_codec._decode_sync(chunk_array, s)
+            ab_out = cast("SupportsSyncCodec", aa_codec)._decode_sync(ab_out, s)
 
-        assert chunk_array is not None
-        return _ShardIndex(chunk_array.as_numpy_array())
+        assert ab_out is not None
+        return _ShardIndex(ab_out.as_numpy_array())
 
     def _encode_shard_index_sync(self, index: _ShardIndex) -> Buffer:
         """Encode shard index synchronously by running index codecs inline."""
@@ -986,25 +987,25 @@ class ShardingCodec(
 
         aa_codecs, ab_codec, bb_codecs = codecs_from_list(list(self.index_codecs))
 
-        aa_out: NDBuffer | None = get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths)
+        aa_out: Any = get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths)
 
         # Encode: aa forward, then ab, then bb forward
         spec = index_chunk_spec
         for aa_codec in aa_codecs:
             assert aa_out is not None
-            aa_out = aa_codec._encode_sync(aa_out, spec)
+            aa_out = cast("SupportsSyncCodec", aa_codec)._encode_sync(aa_out, spec)
             spec = aa_codec.resolve_metadata(spec)
         assert aa_out is not None
-        chunk_bytes = ab_codec._encode_sync(aa_out, spec)
+        bb_out: Any = cast("SupportsSyncCodec", ab_codec)._encode_sync(aa_out, spec)
         spec = ab_codec.resolve_metadata(spec)
         for bb_codec in bb_codecs:
-            assert chunk_bytes is not None
-            chunk_bytes = bb_codec._encode_sync(chunk_bytes, spec)
+            assert bb_out is not None
+            bb_out = cast("SupportsSyncCodec", bb_codec)._encode_sync(bb_out, spec)
             spec = bb_codec.resolve_metadata(spec)
 
-        assert chunk_bytes is not None
-        assert isinstance(chunk_bytes, Buffer)
-        return chunk_bytes
+        assert bb_out is not None
+        assert isinstance(bb_out, Buffer)
+        return bb_out
 
     async def _decode_shard_index(
         self, index_bytes: Buffer, chunks_per_shard: tuple[int, ...]

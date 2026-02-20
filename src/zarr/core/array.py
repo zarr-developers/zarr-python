@@ -1978,12 +1978,12 @@ class Array(Generic[T_ArrayMetadata]):
 
         Two conditions must hold:
 
-        1. The codec pipeline supports fully synchronous IO (all codecs in
-           the chain have _decode_sync/_encode_sync). This is True for
+        1. The codec pipeline supports fully synchronous IO (all codecs
+           implement ``SupportsSyncCodec``). This is True for
            BatchedCodecPipeline when all codecs support sync.
 
-        2. The store supports synchronous operations (MemoryStore, LocalStore).
-           Remote stores like FsspecStore remain async-only.
+        2. The store supports synchronous operations (has ``get_sync``).
+           MemoryStore and LocalStore provide this; remote stores do not.
 
         When both hold, the selection methods below call
         _get_selection_sync / _set_selection_sync directly, running the
@@ -1992,10 +1992,8 @@ class Array(Generic[T_ArrayMetadata]):
         is used automatically.
         """
         pipeline = self.async_array.codec_pipeline
-        store_path = self.async_array.store_path
-        return getattr(pipeline, "supports_sync_io", False) and getattr(
-            store_path, "supports_sync", False
-        )
+        store = self.async_array.store_path.store
+        return getattr(pipeline, "supports_sync_io", False) and hasattr(store, "get_sync")
 
     @classmethod
     @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)

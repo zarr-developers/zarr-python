@@ -91,10 +91,6 @@ class MemoryStore(Store):
     #   since MemoryStore._open() is a no-op beyond setting the flag.
     # -------------------------------------------------------------------
 
-    @property
-    def supports_sync(self) -> bool:
-        return True
-
     def get_sync(
         self,
         key: str,

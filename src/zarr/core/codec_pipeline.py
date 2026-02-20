@@ -4,7 +4,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import islice, pairwise
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 from warnings import warn
 
 from zarr.abc.codec import (
@@ -15,6 +15,7 @@ from zarr.abc.codec import (
     BytesBytesCodec,
     Codec,
     CodecPipeline,
+    SupportsSyncCodec,
 )
 from zarr.core.common import concurrent_map, product
 from zarr.core.config import config
@@ -211,8 +212,8 @@ class BatchedCodecPipeline(CodecPipeline):
 
     @property
     def _all_sync(self) -> bool:
-        """True when every codec in the chain supports synchronous dispatch."""
-        return all(c.supports_sync for c in self)
+        """True when every codec in the chain implements SupportsSyncCodec."""
+        return all(isinstance(c, SupportsSyncCodec) for c in self)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
@@ -297,51 +298,62 @@ class BatchedCodecPipeline(CodecPipeline):
         ab_pair: tuple[ArrayBytesCodec, ArraySpec],
         bb_chain: list[tuple[BytesBytesCodec, ArraySpec]],
     ) -> NDBuffer | None:
-        """Decode a single chunk through the full codec chain, synchronously."""
+        """Decode a single chunk through the full codec chain, synchronously.
+
+        Only called when ``_all_sync`` is True, so every codec implements
+        ``SupportsSyncCodec``.
+        """
         if chunk_bytes is None:
             return None
 
+        # Use Any to avoid verbose casts on every codec call — we know
+        # all codecs satisfy SupportsSyncCodec because _all_sync is True.
+        bb_out: Any = chunk_bytes
         for bb_codec, spec in reversed(bb_chain):
-            chunk_bytes = bb_codec._decode_sync(chunk_bytes, spec)
+            bb_out = cast("SupportsSyncCodec", bb_codec)._decode_sync(bb_out, spec)
 
         ab_codec, ab_spec = ab_pair
-        chunk_array = ab_codec._decode_sync(chunk_bytes, ab_spec)
+        ab_out: Any = cast("SupportsSyncCodec", ab_codec)._decode_sync(bb_out, ab_spec)
 
         for aa_codec, spec in reversed(aa_chain):
-            chunk_array = aa_codec._decode_sync(chunk_array, spec)
+            ab_out = cast("SupportsSyncCodec", aa_codec)._decode_sync(ab_out, spec)
 
-        return chunk_array
+        return ab_out  # type: ignore[no-any-return]
 
     def _encode_one(
         self,
         chunk_array: NDBuffer | None,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        """Encode a single chunk through the full codec chain, synchronously."""
+        """Encode a single chunk through the full codec chain, synchronously.
+
+        Only called when ``_all_sync`` is True, so every codec implements
+        ``SupportsSyncCodec``.
+        """
         if chunk_array is None:
             return None
 
         spec = chunk_spec
-        aa_out: NDBuffer | None = chunk_array
+        aa_out: Any = chunk_array
 
         for aa_codec in self.array_array_codecs:
             if aa_out is None:
                 return None
-            aa_out = aa_codec._encode_sync(aa_out, spec)
+            aa_out = cast("SupportsSyncCodec", aa_codec)._encode_sync(aa_out, spec)
             spec = aa_codec.resolve_metadata(spec)
 
         if aa_out is None:
             return None
-        chunk_bytes = self.array_bytes_codec._encode_sync(aa_out, spec)
+        bb_out: Any = cast("SupportsSyncCodec", self.array_bytes_codec)._encode_sync(aa_out, spec)
         spec = self.array_bytes_codec.resolve_metadata(spec)
 
         for bb_codec in self.bytes_bytes_codecs:
-            if chunk_bytes is None:
+            if bb_out is None:
                 return None
-            chunk_bytes = bb_codec._encode_sync(chunk_bytes, spec)
+            bb_out = cast("SupportsSyncCodec", bb_codec)._encode_sync(bb_out, spec)
             spec = bb_codec.resolve_metadata(spec)
 
-        return chunk_bytes
+        return bb_out  # type: ignore[no-any-return]
 
     # -------------------------------------------------------------------
     # Batched async decode/encode (layer-by-layer across all chunks)
@@ -517,21 +529,62 @@ class BatchedCodecPipeline(CodecPipeline):
                     out[out_selection] = fill_value_or_default(chunk_spec)
             return
 
-        # Phase 1: IO -- fetch bytes from store (always async)
-        chunk_bytes_batch = await concurrent_map(
-            [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
-            lambda byte_getter, prototype: byte_getter.get(prototype),
-            config.get("async.concurrency"),
-        )
+        if self._all_sync:
+            # Streaming per-chunk pipeline: each chunk flows through
+            # fetch → decode → scatter as a single task. Running N tasks
+            # concurrently overlaps IO with codec compute.
+            _, first_spec, *_ = batch_info[0]
+            aa_chain, ab_pair, bb_chain = self._resolve_metadata_chain(first_spec)
 
-        # Phase 2: Compute -- decode + scatter
-        decode_items = [
-            (chunk_bytes, chunk_spec)
-            for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch_info, strict=False)
-        ]
+            async def _read_chunk(
+                byte_getter: ByteGetter,
+                chunk_spec: ArraySpec,
+                chunk_selection: SelectorTuple,
+                out_selection: SelectorTuple,
+            ) -> None:
+                # 1) Fetch
+                chunk_bytes = await byte_getter.get(prototype=chunk_spec.prototype)
 
-        chunk_array_batch_decoded: Iterable[NDBuffer | None] = await self.decode(decode_items)
-        self._scatter(chunk_array_batch_decoded, batch_info, out, drop_axes)
+                # 2) Decode (full chain, sync)
+                chunk_array = self._decode_one(chunk_bytes, chunk_spec, aa_chain, ab_pair, bb_chain)
+
+                # 3) Scatter
+                if chunk_array is not None:
+                    tmp = chunk_array[chunk_selection]
+                    if drop_axes != ():
+                        tmp = tmp.squeeze(axis=drop_axes)
+                    out[out_selection] = tmp
+                else:
+                    out[out_selection] = fill_value_or_default(chunk_spec)
+
+            await concurrent_map(
+                [
+                    (byte_getter, chunk_spec, chunk_selection, out_selection)
+                    for byte_getter, chunk_spec, chunk_selection, out_selection, _ in batch_info
+                ],
+                _read_chunk,
+                config.get("async.concurrency"),
+            )
+        else:
+            # Async fallback: fetch all → decode all (async codec API) → scatter.
+            # Used for codecs that don't implement _decode_sync (e.g. numcodecs).
+
+            async def _fetch(byte_getter: ByteGetter, prototype: BufferPrototype) -> Buffer | None:
+                return await byte_getter.get(prototype=prototype)
+
+            chunk_bytes_batch = await concurrent_map(
+                [(byte_getter, chunk_spec.prototype) for byte_getter, chunk_spec, *_ in batch_info],
+                _fetch,
+                config.get("async.concurrency"),
+            )
+            chunk_array_batch = await self.decode_batch(
+                zip(
+                    chunk_bytes_batch,
+                    [chunk_spec for _, chunk_spec, *_ in batch_info],
+                    strict=False,
+                )
+            )
+            self._scatter(chunk_array_batch, batch_info, out, drop_axes)
 
     @staticmethod
     def _scatter(
@@ -630,50 +683,95 @@ class BatchedCodecPipeline(CodecPipeline):
                 )
             return
 
-        # Phase 1: IO -- read existing bytes for non-complete chunks
-        async def _read_key(
-            byte_setter: ByteSetter | None, prototype: BufferPrototype
-        ) -> Buffer | None:
-            if byte_setter is None:
-                return None
-            return await byte_setter.get(prototype=prototype)
+        if self._all_sync:
+            # Streaming per-chunk pipeline: each chunk flows through
+            # read_existing → decode → merge → encode → write as a single
+            # task. Running N tasks concurrently overlaps IO with compute.
+            async def _write_chunk(
+                byte_setter: ByteSetter,
+                chunk_spec: ArraySpec,
+                chunk_selection: SelectorTuple,
+                out_selection: SelectorTuple,
+                is_complete_chunk: bool,
+            ) -> None:
+                # 1) Read existing chunk (for partial writes)
+                existing_bytes: Buffer | None = None
+                if not is_complete_chunk:
+                    existing_bytes = await byte_setter.get(prototype=chunk_spec.prototype)
 
-        chunk_bytes_batch: list[Buffer | None]
-        chunk_bytes_batch = await concurrent_map(
-            [
-                (
-                    None if is_complete_chunk else byte_setter,
-                    chunk_spec.prototype,
+                # 2) Compute: decode existing, merge, encode
+                chunk_bytes = self._write_chunk_compute(
+                    existing_bytes,
+                    chunk_spec,
+                    chunk_selection,
+                    out_selection,
+                    is_complete_chunk,
+                    value,
+                    drop_axes,
                 )
-                for byte_setter, chunk_spec, chunk_selection, _, is_complete_chunk in batch_info
-            ],
-            _read_key,
-            config.get("async.concurrency"),
-        )
 
-        # Phase 2: Compute -- decode, merge, encode
-        decode_items = [
-            (chunk_bytes, chunk_spec)
-            for chunk_bytes, (_, chunk_spec, *_) in zip(chunk_bytes_batch, batch_info, strict=False)
-        ]
+                # 3) Write result
+                if chunk_bytes is _DELETED or chunk_bytes is None:
+                    await byte_setter.delete()
+                else:
+                    await byte_setter.set(chunk_bytes)  # type: ignore[arg-type]
 
-        encoded_batch = await self._write_batch_compute(decode_items, batch_info, value, drop_axes)
+            await concurrent_map(
+                [
+                    (byte_setter, chunk_spec, chunk_selection, out_selection, is_complete_chunk)
+                    for byte_setter, chunk_spec, chunk_selection, out_selection, is_complete_chunk in batch_info
+                ],
+                _write_chunk,
+                config.get("async.concurrency"),
+            )
+        else:
+            # Async fallback: phased approach for codecs without sync support.
+            # Phase 1: Fetch existing chunks for partial writes.
 
-        # Phase 3: IO -- write to store
-        async def _write_key(byte_setter: ByteSetter, chunk_bytes: Buffer | None) -> None:
-            if chunk_bytes is None:
-                await byte_setter.delete()
-            else:
-                await byte_setter.set(chunk_bytes)
+            async def _fetch_existing(
+                byte_setter: ByteSetter, chunk_spec: ArraySpec, is_complete_chunk: bool
+            ) -> Buffer | None:
+                if is_complete_chunk:
+                    return None
+                return await byte_setter.get(prototype=chunk_spec.prototype)
 
-        await concurrent_map(
-            [
-                (byte_setter, chunk_bytes)
-                for chunk_bytes, (byte_setter, *_) in zip(encoded_batch, batch_info, strict=False)
-            ],
-            _write_key,
-            config.get("async.concurrency"),
-        )
+            existing_bytes_list: list[Buffer | None] = await concurrent_map(
+                [
+                    (byte_setter, chunk_spec, is_complete_chunk)
+                    for byte_setter, chunk_spec, _, _, is_complete_chunk in batch_info
+                ],
+                _fetch_existing,
+                config.get("async.concurrency"),
+            )
+
+            # Phase 2: Decode → merge → encode (async codec API).
+            decode_items: list[tuple[Buffer | None, ArraySpec]] = [
+                (existing_bytes if not is_complete_chunk else None, chunk_spec)
+                for existing_bytes, (_, chunk_spec, _, _, is_complete_chunk) in zip(
+                    existing_bytes_list, batch_info, strict=False
+                )
+            ]
+            encoded_list = await self._write_batch_compute(
+                decode_items, batch_info, value, drop_axes
+            )
+
+            # Phase 3: Write encoded chunks to store.
+            async def _write_out(byte_setter: ByteSetter, chunk_bytes: Buffer | None) -> None:
+                if chunk_bytes is None:
+                    await byte_setter.delete()
+                else:
+                    await byte_setter.set(chunk_bytes)
+
+            await concurrent_map(
+                [
+                    (byte_setter, chunk_bytes)
+                    for (byte_setter, *_), chunk_bytes in zip(
+                        batch_info, encoded_list, strict=False
+                    )
+                ],
+                _write_out,
+                config.get("async.concurrency"),
+            )
 
     async def _write_batch_compute(
         self,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -32,6 +32,7 @@ __all__ = [
     "CodecInput",
     "CodecOutput",
     "CodecPipeline",
+    "SupportsSyncCodec",
 ]
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
@@ -57,6 +58,19 @@ CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
 # This covers v2 and v3
 CodecJSON = str | Mapping[str, object]
 """The widest type of JSON-like input that could specify a codec."""
+
+
+@runtime_checkable
+class SupportsSyncCodec(Protocol):
+    """Protocol for codecs that support synchronous encode/decode."""
+
+    def _decode_sync(
+        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
+    ) -> NDBuffer | Buffer: ...
+
+    def _encode_sync(
+        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
+    ) -> NDBuffer | Buffer | None: ...
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
@@ -136,21 +150,6 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         chunk_grid : ChunkGrid
             The array chunk grid
         """
-
-    def _decode_sync(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
-        """Synchronously decode a single chunk. Override in subclasses to enable
-        sync codec pipeline support."""
-        raise NotImplementedError  # pragma: no cover
-
-    def _encode_sync(self, chunk_data: CodecInput, chunk_spec: ArraySpec) -> CodecOutput | None:
-        """Synchronously encode a single chunk. Override in subclasses to enable
-        sync codec pipeline support."""
-        raise NotImplementedError  # pragma: no cover
-
-    @property
-    def supports_sync(self) -> bool:
-        """Whether this codec has synchronous encode/decode implementations."""
-        return type(self)._decode_sync is not BaseCodec._decode_sync
 
     async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
         raise NotImplementedError  # pragma: no cover
@@ -491,7 +490,7 @@ class CodecPipeline:
         """Whether this pipeline can run read/write entirely on the calling thread.
 
         True when:
-        - All codecs support synchronous encode/decode (_decode_sync/_encode_sync)
+        - All codecs implement ``SupportsSyncCodec``
         - The pipeline's read_sync/write_sync methods are implemented
 
         Checked by ``Array._can_use_sync_path()`` to decide whether to bypass

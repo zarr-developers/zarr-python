@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr.abc.codec import SupportsSyncCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
@@ -35,27 +36,27 @@ def _make_nd_buffer(arr: np.ndarray[Any, Any]) -> zarr.core.buffer.NDBuffer:
 
 
 # ---------------------------------------------------------------------------
-# Unit tests: supports_sync property
+# Unit tests: SupportsSyncCodec protocol
 # ---------------------------------------------------------------------------
 
 
 class TestSupportsSync:
     def test_gzip_supports_sync(self) -> None:
-        assert GzipCodec().supports_sync
+        assert isinstance(GzipCodec(), SupportsSyncCodec)
 
     def test_zstd_supports_sync(self) -> None:
-        assert ZstdCodec().supports_sync
+        assert isinstance(ZstdCodec(), SupportsSyncCodec)
 
     def test_bytes_supports_sync(self) -> None:
-        assert BytesCodec().supports_sync
+        assert isinstance(BytesCodec(), SupportsSyncCodec)
 
     def test_transpose_supports_sync(self) -> None:
-        assert TransposeCodec(order=(0, 1)).supports_sync
+        assert isinstance(TransposeCodec(order=(0, 1)), SupportsSyncCodec)
 
     def test_sharding_supports_sync(self) -> None:
         from zarr.codecs.sharding import ShardingCodec
 
-        assert ShardingCodec(chunk_shape=(8,)).supports_sync
+        assert isinstance(ShardingCodec(chunk_shape=(8,)), SupportsSyncCodec)
 
 
 # ---------------------------------------------------------------------------

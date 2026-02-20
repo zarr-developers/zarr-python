@@ -199,10 +199,6 @@ class LocalStore(Store):
     # _open() from a sync context, so we replicate its logic here.
     # -------------------------------------------------------------------
 
-    @property
-    def supports_sync(self) -> bool:
-        return True
-
     def get_sync(
         self,
         key: str,
