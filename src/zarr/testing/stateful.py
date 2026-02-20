@@ -340,11 +340,11 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         self.all_arrays.remove(array_path)
 
     @precondition(lambda self: self.store.supports_deletes)
-    @precondition(lambda self: bool(self.all_groups - {"", "/"}))
+    @precondition(lambda self: bool(self.all_groups))
     @rule(data=st.data())
     def delete_group_using_del(self, data: DataObject) -> None:
         group_path = data.draw(
-            st.sampled_from(sorted(self.all_groups - {"", "/"})),
+            st.sampled_from(sorted(self.all_groups)),
             label="Group deletion target",
         )
         prefix, group_name = split_prefix_name(group_path)
