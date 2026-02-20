@@ -1564,8 +1564,13 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> Iterable[Sequence[int]]:
     return order
 
 
+@lru_cache(maxsize=16)
+def _morton_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    return tuple(tuple(int(x) for x in row) for row in _morton_order(chunk_shape))
+
+
 def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    return (tuple(int(x) for x in row) for row in _morton_order(tuple(chunk_shape)))
+    return iter(_morton_order_keys(tuple(chunk_shape)))
 
 
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:

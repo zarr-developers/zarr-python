@@ -47,6 +47,7 @@ from zarr.core.indexing import (
     BasicIndexer,
     SelectorTuple,
     _morton_order,
+    _morton_order_keys,
     c_order_iter,
     get_indexer,
     morton_order_iter,
@@ -275,10 +276,11 @@ class _ShardReader(ShardMapping):
         dict mapping chunk coordinate tuples to Buffer or None
         """
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
+        chunks_per_shard = tuple(self.index.offsets_and_lengths.shape[:-1])
+        chunk_coords_keys = _morton_order_keys(chunks_per_shard)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
-        for i, row in enumerate(chunk_coords_array):
-            coords = tuple(int(x) for x in row)
+        for i, coords in enumerate(chunk_coords_keys):
             if valid[i]:
                 result[coords] = self.buf[int(starts[i]) : int(ends[i])]
             else:
