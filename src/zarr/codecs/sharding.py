@@ -47,6 +47,8 @@ from zarr.core.dtype.npy.int import UInt64
 from zarr.core.indexing import (
     BasicIndexer,
     SelectorTuple,
+    _morton_order,
+    _morton_order_keys,
     c_order_iter,
     get_indexer,
     morton_order_iter,
@@ -166,6 +168,45 @@ class _ShardIndex(NamedTuple):
         else:
             return (int(chunk_start), int(chunk_start + chunk_len))
 
+    def get_chunk_slices_vectorized(
+        self, chunk_coords_array: npt.NDArray[np.integer[Any]]
+    ) -> tuple[npt.NDArray[np.uint64], npt.NDArray[np.uint64], npt.NDArray[np.bool_]]:
+        """Get chunk slices for multiple coordinates at once.
+
+        Parameters
+        ----------
+        chunk_coords_array : ndarray of shape (n_chunks, n_dims)
+            Array of chunk coordinates to look up.
+
+        Returns
+        -------
+        starts : ndarray of shape (n_chunks,)
+            Start byte positions for each chunk.
+        ends : ndarray of shape (n_chunks,)
+            End byte positions for each chunk.
+        valid : ndarray of shape (n_chunks,)
+            Boolean mask indicating which chunks are non-empty.
+        """
+        # Localize coordinates via modulo (vectorized)
+        shard_shape = np.array(self.offsets_and_lengths.shape[:-1], dtype=np.uint64)
+        localized = chunk_coords_array.astype(np.uint64) % shard_shape
+
+        # Build index tuple for advanced indexing
+        index_tuple = tuple(localized[:, i] for i in range(localized.shape[1]))
+
+        # Fetch all offsets and lengths at once
+        offsets_and_lengths = self.offsets_and_lengths[index_tuple]
+        starts = offsets_and_lengths[:, 0]
+        lengths = offsets_and_lengths[:, 1]
+
+        # Check for valid (non-empty) chunks
+        valid = starts != MAX_UINT_64
+
+        # Compute end positions
+        ends = starts + lengths
+
+        return starts, ends, valid
+
     def set_chunk_slice(self, chunk_coords: tuple[int, ...], chunk_slice: slice | None) -> None:
         localized_chunk = self._localize_chunk(chunk_coords)
         if chunk_slice is None:
@@ -262,6 +303,34 @@ class _ShardReader(ShardMapping):
 
     def __iter__(self) -> Iterator[tuple[int, ...]]:
         return c_order_iter(self.index.offsets_and_lengths.shape[:-1])
+
+    def to_dict_vectorized(
+        self,
+        chunk_coords_array: npt.NDArray[np.integer[Any]],
+    ) -> dict[tuple[int, ...], Buffer | None]:
+        """Build a dict of chunk coordinates to buffers using vectorized lookup.
+
+        Parameters
+        ----------
+        chunk_coords_array : ndarray of shape (n_chunks, n_dims)
+            Array of chunk coordinates for vectorized index lookup.
+
+        Returns
+        -------
+        dict mapping chunk coordinate tuples to Buffer or None
+        """
+        starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
+        chunks_per_shard = tuple(self.index.offsets_and_lengths.shape[:-1])
+        chunk_coords_keys = _morton_order_keys(chunks_per_shard)
+
+        result: dict[tuple[int, ...], Buffer | None] = {}
+        for i, coords in enumerate(chunk_coords_keys):
+            if valid[i]:
+                result[coords] = self.buf[int(starts[i]) : int(ends[i])]
+            else:
+                result[coords] = None
+
+        return result
 
 
 @dataclass(frozen=True)
@@ -862,7 +931,8 @@ class ShardingCodec(
             chunks_per_shard=chunks_per_shard,
         )
         shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
-        shard_dict = {k: shard_reader.get(k) for k in morton_order_iter(chunks_per_shard)}
+        # Use vectorized lookup for better performance
+        shard_dict = shard_reader.to_dict_vectorized(np.asarray(_morton_order(chunks_per_shard)))
 
         indexer = list(
             get_indexer(
