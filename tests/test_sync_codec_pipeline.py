@@ -297,18 +297,9 @@ class TestDefaultPipelineSync:
         pipeline = BatchedCodecPipeline.from_codecs([BytesCodec(), GzipCodec(level=1)])
         assert pipeline.supports_sync_io
 
-    def test_config_switch_to_sync_pipeline_compat(self) -> None:
-        """Verify backwards compat: SyncCodecPipeline config path still works."""
-        from zarr.experimental.sync_codecs import SyncCodecPipeline
-
-        zarr.config.set({"codec_pipeline.path": "zarr.experimental.sync_codecs.SyncCodecPipeline"})
-        try:
-            store = MemoryStore()
-            arr = zarr.create_array(store, shape=(10,), dtype="float64")
-            assert isinstance(arr.async_array.codec_pipeline, SyncCodecPipeline)
-            # SyncCodecPipeline is-a BatchedCodecPipeline
-            assert isinstance(arr.async_array.codec_pipeline, BatchedCodecPipeline)
-        finally:
-            zarr.config.set(
-                {"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"}
-            )
+    def test_supports_sync_io_default(self) -> None:
+        """Default BatchedCodecPipeline is the sync pipeline — no config switch needed."""
+        store = MemoryStore()
+        arr = zarr.create_array(store, shape=(10,), dtype="float64")
+        assert isinstance(arr.async_array.codec_pipeline, BatchedCodecPipeline)
+        assert arr.async_array.codec_pipeline.supports_sync_io
