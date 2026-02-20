@@ -45,6 +45,14 @@ def with_concurrency_limit() -> Callable[
     Examples
     --------
     ```python
+    import asyncio
+    from zarr.abc.store import Store
+    from zarr.abc.buffer import Buffer
+    from zarr.storage._utils import with_concurrency_limit
+
+    async def expensive_io_operation(key: str):
+        asyncio.sleep(10)
+
     class MyStore(Store):
         def __init__(self, concurrency_limit: int = 100):
             self._semaphore = asyncio.Semaphore(concurrency_limit) if concurrency_limit else None
