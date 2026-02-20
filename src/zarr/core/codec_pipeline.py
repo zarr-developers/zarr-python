@@ -212,6 +212,16 @@ class BatchedCodecPipeline(CodecPipeline):
     array_array_codecs: tuple[ArrayArrayCodec, ...]
     array_bytes_codec: ArrayBytesCodec
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
+    batch_size: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.batch_size is not None:
+            warn(
+                "The 'batch_size' parameter is deprecated and has no effect. "
+                "Batch size is now determined automatically.",
+                FutureWarning,
+                stacklevel=2,
+            )
 
     @property
     def _all_sync(self) -> bool:
