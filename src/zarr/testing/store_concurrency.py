@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 import pytest
 
 from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.storage._utils import ConcurrencyLimiter
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
@@ -43,37 +44,36 @@ class StoreConcurrencyTests(Generic[S, B]):
     @staticmethod
     def _get_semaphore(store: Store) -> asyncio.Semaphore | None:
         """Get the semaphore from a store, or None if the store doesn't support concurrency limiting."""
-        get_semaphore = getattr(store, "get_semaphore", None)
-        if get_semaphore is not None:
-            return get_semaphore()  # type: ignore[no-any-return]
+        if isinstance(store, ConcurrencyLimiter):
+            return store._semaphore
         return None
 
     def test_concurrency_limit_default(self, store: S) -> None:
         """Test that store has the expected default concurrency limit."""
-        semaphore = self._get_semaphore(store)
-        if semaphore is None and self.expected_concurrency_limit is not None:
-            pytest.fail("Expected concurrency limit to be set")
-        if semaphore is not None and self.expected_concurrency_limit is None:
-            pytest.fail("Expected no concurrency limit")
-        if semaphore is not None and self.expected_concurrency_limit is not None:
-            assert semaphore._value == self.expected_concurrency_limit, (
-                f"Expected limit {self.expected_concurrency_limit}, got {semaphore._value}"
-            )
+        # Concrete subclasses inherit from both Store and ConcurrencyLimiter,
+        # but S is bound to Store so mypy considers this branch unreachable.
+        if not isinstance(store, ConcurrencyLimiter):
+            assert self.expected_concurrency_limit is None
+            return
+        assert store.concurrency_limit == self.expected_concurrency_limit  # type: ignore[unreachable]
 
     def test_concurrency_limit_custom(self, store_kwargs: dict[str, Any]) -> None:
         """Test that custom concurrency limits can be set."""
-        if "concurrency_limit" not in self.store_cls.__init__.__code__.co_varnames:
+        if not issubclass(self.store_cls, ConcurrencyLimiter):
             pytest.skip("Store does not support custom concurrency limits")
 
+        # mypy considers this unreachable because S is bound to Store, not ConcurrencyLimiter.
         # Test with custom limit
-        store = self.store_cls(**{**store_kwargs, "concurrency_limit": 42})
-        semaphore = self._get_semaphore(store)
-        assert semaphore is not None
-        assert semaphore._value == 42
+        store = self.store_cls(**{**store_kwargs, "concurrency_limit": 42})  # type: ignore[unreachable]
+        assert isinstance(store, ConcurrencyLimiter)
+        assert store.concurrency_limit == 42
+        assert store._semaphore is not None
 
         # Test with None (unlimited)
         store = self.store_cls(**{**store_kwargs, "concurrency_limit": None})
-        assert self._get_semaphore(store) is None
+        assert isinstance(store, ConcurrencyLimiter)
+        assert store.concurrency_limit is None
+        assert store._semaphore is None
 
     async def test_concurrency_limit_enforced(self, store: S) -> None:
         """Test that the concurrency limit is actually enforced during execution.
@@ -85,7 +85,9 @@ class StoreConcurrencyTests(Generic[S, B]):
         if semaphore is None:
             pytest.skip("Store has no concurrency limit")
 
-        limit = semaphore._value
+        assert isinstance(store, ConcurrencyLimiter)
+        assert store.concurrency_limit is not None  # type: ignore[unreachable]
+        limit = store.concurrency_limit
 
         # We'll monitor the semaphore's available count
         # When it reaches 0, that means `limit` operations are running

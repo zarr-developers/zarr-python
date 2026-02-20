@@ -18,7 +18,7 @@ from zarr.abc.store import (
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
 from zarr.storage._common import _dereference_path
-from zarr.storage._utils import with_concurrency_limit
+from zarr.storage._utils import ConcurrencyLimiter, with_concurrency_limit
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -69,7 +69,7 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
     return AsyncFileSystemWrapper(fs, asynchronous=True)
 
 
-class FsspecStore(Store):
+class FsspecStore(Store, ConcurrencyLimiter):
     """
     Store for remote data based on FSSpec.
 
@@ -122,7 +122,6 @@ class FsspecStore(Store):
     fs: AsyncFileSystem
     allowed_exceptions: tuple[type[Exception], ...]
     path: str
-    _semaphore: asyncio.Semaphore | None
 
     def __init__(
         self,
@@ -133,13 +132,11 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
         concurrency_limit: int | None = 50,
     ) -> None:
-        super().__init__(read_only=read_only)
+        Store.__init__(self, read_only=read_only)
+        ConcurrencyLimiter.__init__(self, concurrency_limit)
         self.fs = fs
         self.path = path
         self.allowed_exceptions = allowed_exceptions
-        self._semaphore = (
-            asyncio.Semaphore(concurrency_limit) if concurrency_limit is not None else None
-        )
 
         if not self.fs.async_impl:
             raise TypeError("Filesystem needs to support async operations.")
@@ -255,19 +252,14 @@ class FsspecStore(Store):
 
         return cls(fs=fs, path=path, read_only=read_only, allowed_exceptions=allowed_exceptions)
 
-    def get_semaphore(self) -> asyncio.Semaphore | None:
-        return self._semaphore
-
     def with_read_only(self, read_only: bool = False) -> FsspecStore:
         # docstring inherited
-        sem = self.get_semaphore()
-        concurrency_limit = sem._value if sem else None
         return type(self)(
             fs=self.fs,
             path=self.path,
             allowed_exceptions=self.allowed_exceptions,
             read_only=read_only,
-            concurrency_limit=concurrency_limit,
+            concurrency_limit=self.concurrency_limit,
         )
 
     async def clear(self) -> None:
@@ -290,7 +282,7 @@ class FsspecStore(Store):
             and self.fs == other.fs
         )
 
-    @with_concurrency_limit()
+    @with_concurrency_limit
     async def get(
         self,
         key: str,
@@ -333,7 +325,7 @@ class FsspecStore(Store):
         else:
             return value
 
-    @with_concurrency_limit()
+    @with_concurrency_limit
     async def set(
         self,
         key: str,
@@ -359,7 +351,6 @@ class FsspecStore(Store):
         if not self._is_open:
             await self._open()
         self._check_writable()
-        semaphore = self.get_semaphore()
 
         async def _set_with_limit(key: str, value: Buffer) -> None:
             if not isinstance(value, Buffer):
@@ -367,15 +358,12 @@ class FsspecStore(Store):
                     f"FsspecStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
                 )
             path = _dereference_path(self.path, key)
-            if semaphore:
-                async with semaphore:
-                    await self.fs._pipe_file(path, value.to_bytes())
-            else:
+            async with self._limit():
                 await self.fs._pipe_file(path, value.to_bytes())
 
         await asyncio.gather(*[_set_with_limit(key, value) for key, value in values])
 
-    @with_concurrency_limit()
+    @with_concurrency_limit
     async def delete(self, key: str) -> None:
         # docstring inherited
         self._check_writable()
