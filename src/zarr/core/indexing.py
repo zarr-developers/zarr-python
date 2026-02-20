@@ -4,7 +4,7 @@ import itertools
 import math
 import numbers
 import operator
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import lru_cache, reduce
@@ -1504,7 +1504,7 @@ def decode_morton_vectorized(
 
 
 @lru_cache(maxsize=16)
-def _morton_order(chunk_shape: tuple[int, ...]) -> Iterable[Sequence[int]]:
+def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     n_total = product(chunk_shape)
     n_dims = len(chunk_shape)
     if n_total == 0:
