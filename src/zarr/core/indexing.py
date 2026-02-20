@@ -1504,10 +1504,13 @@ def decode_morton_vectorized(
 
 
 @lru_cache(maxsize=16)
-def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     n_total = product(chunk_shape)
+    n_dims = len(chunk_shape)
     if n_total == 0:
-        return ()
+        out = np.empty((0, n_dims), dtype=np.intp)
+        out.flags.writeable = False
+        return out
 
     # Optimization: Remove singleton dimensions to enable magic number usage
     # for shapes like (1,1,32,32,32). Compute Morton on squeezed shape, then expand.
@@ -1515,26 +1518,19 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
     if singleton_dims:
         squeezed_shape = tuple(s for s in chunk_shape if s != 1)
         if squeezed_shape:
-            # Compute Morton order on squeezed shape
-            squeezed_order = _morton_order(squeezed_shape)
-            # Expand coordinates to include singleton dimensions (always 0)
-            expanded: list[tuple[int, ...]] = []
-            for coord in squeezed_order:
-                full_coord: list[int] = []
-                squeezed_idx = 0
-                for i in range(len(chunk_shape)):
-                    if chunk_shape[i] == 1:
-                        full_coord.append(0)
-                    else:
-                        full_coord.append(coord[squeezed_idx])
-                        squeezed_idx += 1
-                expanded.append(tuple(full_coord))
-            return tuple(expanded)
+            # Compute Morton order on squeezed shape, then expand singleton dims (always 0)
+            squeezed_order = np.asarray(_morton_order(squeezed_shape))
+            out = np.zeros((n_total, n_dims), dtype=np.intp)
+            squeezed_col = 0
+            for full_col in range(n_dims):
+                if chunk_shape[full_col] != 1:
+                    out[:, full_col] = squeezed_order[:, squeezed_col]
+                    squeezed_col += 1
         else:
             # All dimensions are singletons, just return the single point
-            return ((0,) * len(chunk_shape),)
-
-    n_dims = len(chunk_shape)
+            out = np.zeros((1, n_dims), dtype=np.intp)
+        out.flags.writeable = False
+        return out
 
     # Find the largest power-of-2 hypercube that fits within chunk_shape.
     # Within this hypercube, Morton codes are guaranteed to be in bounds.
@@ -1547,27 +1543,34 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
         n_hypercube = 0
 
     # Within the hypercube, no bounds checking needed - use vectorized decoding
-    order: list[tuple[int, ...]]
     if n_hypercube > 0:
         z_values = np.arange(n_hypercube, dtype=np.intp)
-        hypercube_coords = decode_morton_vectorized(z_values, chunk_shape)
-        order = [tuple(row) for row in hypercube_coords]
+        order: npt.NDArray[np.intp] = decode_morton_vectorized(z_values, chunk_shape)
     else:
-        order = []
+        order = np.empty((0, n_dims), dtype=np.intp)
 
-    # For remaining elements, bounds checking is needed
+    # For remaining elements outside the hypercube, bounds checking is needed
+    remaining: list[tuple[int, ...]] = []
     i = n_hypercube
-    while len(order) < n_total:
+    while len(order) + len(remaining) < n_total:
         m = decode_morton(i, chunk_shape)
         if all(x < y for x, y in zip(m, chunk_shape, strict=False)):
-            order.append(m)
+            remaining.append(m)
         i += 1
 
-    return tuple(order)
+    if remaining:
+        order = np.vstack([order, np.array(remaining, dtype=np.intp)])
+    order.flags.writeable = False
+    return order
+
+
+@lru_cache(maxsize=16)
+def _morton_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    return tuple(tuple(int(x) for x in row) for row in _morton_order(chunk_shape))
 
 
 def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    return iter(_morton_order(tuple(chunk_shape)))
+    return iter(_morton_order_keys(tuple(chunk_shape)))
 
 
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
