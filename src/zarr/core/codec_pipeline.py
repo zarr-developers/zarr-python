@@ -64,87 +64,28 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Work estimation for thread pool sizing
+# Thread pool for parallel codec compute
 # ---------------------------------------------------------------------------
 
-# Approximate nanoseconds-per-byte for codec decode and encode, measured on
-# typical hardware. These don't need to be exact — they just need to rank
-# codecs correctly so the pool-sizing heuristic makes good decisions.
-#
-# Decode and encode have very different costs for many codecs:
-#   - gzip decode ~5-10 ns/byte vs encode ~50-100 ns/byte
-#   - zstd decode ~1-2 ns/byte vs encode ~2-10 ns/byte
-#   - blosc decode ~0.5-1 ns/byte vs encode ~1-5 ns/byte
-#
-# "Cheap" codecs (memcpy-like): BytesCodec, Crc32cCodec, TransposeCodec
-#   → ~0.1-1 ns/byte, dominated by memcpy; no benefit from threading.
-# "Medium" codecs: ZstdCodec, BloscCodec
-#   → decode ~1-2 ns/byte, encode ~2-5 ns/byte; GIL released in C.
-# "Expensive" codecs: GzipCodec
-#   → decode ~5-10 ns/byte, encode ~50-100 ns/byte; GIL released in C.
-#
-# For unknown codecs (e.g. third-party numcodecs wrappers), we assume
-# "medium" cost — better to over-parallelize slightly than miss a win.
+# Codecs that are essentially free (memcpy / reshape / checksum).
+# Threading overhead exceeds the work these do, so we skip the pool
+# when these are the only codecs in the pipeline.
+_CHEAP_CODECS: frozenset[str] = frozenset(
+    {
+        "BytesCodec",
+        "Crc32cCodec",
+        "TransposeCodec",
+        "VLenUTF8Codec",
+        "VLenBytesCodec",
+    }
+)
 
-_CODEC_DECODE_NS_PER_BYTE: dict[str, float] = {
-    # Near-zero cost — just reshaping/copying/checksumming
-    "BytesCodec": 0,
-    "Crc32cCodec": 0,
-    "TransposeCodec": 0,
-    "VLenUTF8Codec": 0,
-    "VLenBytesCodec": 0,
-    # Medium cost — fast C codecs, GIL released
-    "ZstdCodec": 1,
-    "BloscCodec": 0.5,
-    # High cost — slower C codecs, GIL released
-    "GzipCodec": 8,
-}
-
-_CODEC_ENCODE_NS_PER_BYTE: dict[str, float] = {
-    # Near-zero cost — just reshaping/copying/checksumming
-    "BytesCodec": 0,
-    "Crc32cCodec": 0,
-    "TransposeCodec": 0,
-    "VLenUTF8Codec": 0,
-    "VLenBytesCodec": 0,
-    # Medium cost — fast C codecs, GIL released
-    "ZstdCodec": 3,
-    "BloscCodec": 2,
-    # High cost — slower C codecs, GIL released
-    "GzipCodec": 50,
-}
-
-_DEFAULT_DECODE_NS_PER_BYTE = 1  # assume medium for unknown codecs
-_DEFAULT_ENCODE_NS_PER_BYTE = 3  # encode is typically slower
-
-# Thread pool dispatch overhead in nanoseconds (~50-100us per task).
-# We only parallelize when the estimated per-chunk work exceeds this.
-_POOL_OVERHEAD_NS = 200_000
+# Minimum chunk size (in bytes) to consider using the thread pool.
+# Below this, per-chunk codec work is too small to offset dispatch overhead.
+_MIN_CHUNK_NBYTES_FOR_POOL = 100_000  # 100 KB
 
 
-def _estimate_chunk_work_ns(
-    chunk_nbytes: int,
-    codecs: Iterable[Codec],
-    *,
-    is_encode: bool = False,
-) -> float:
-    """Estimate nanoseconds of codec work for one chunk."""
-    table = _CODEC_ENCODE_NS_PER_BYTE if is_encode else _CODEC_DECODE_NS_PER_BYTE
-    default = _DEFAULT_ENCODE_NS_PER_BYTE if is_encode else _DEFAULT_DECODE_NS_PER_BYTE
-    total_ns_per_byte = 0.0
-    for codec in codecs:
-        name = type(codec).__name__
-        total_ns_per_byte += table.get(name, default)
-    return chunk_nbytes * total_ns_per_byte
-
-
-def _choose_workers(
-    n_chunks: int,
-    chunk_nbytes: int,
-    codecs: Iterable[Codec],
-    *,
-    is_encode: bool = False,
-) -> int:
+def _choose_workers(n_chunks: int, chunk_nbytes: int, codecs: Iterable[Codec]) -> int:
     """Decide how many thread pool workers to use (0 = don't use pool).
 
     Respects ``threading.codec_workers`` config:
@@ -162,30 +103,23 @@ def _choose_workers(
     if n_chunks < 2:
         return min_workers
 
-    per_chunk_ns = _estimate_chunk_work_ns(chunk_nbytes, codecs, is_encode=is_encode)
-
-    if per_chunk_ns < _POOL_OVERHEAD_NS and min_workers == 0:
+    # Only use the pool when at least one codec does real work
+    # and the chunks are large enough to offset dispatch overhead.
+    has_expensive = any(type(c).__name__ not in _CHEAP_CODECS for c in codecs)
+    if not has_expensive and min_workers == 0:
+        return 0
+    if chunk_nbytes < _MIN_CHUNK_NBYTES_FOR_POOL and min_workers == 0:
         return 0
 
-    total_work_ns = per_chunk_ns * n_chunks
-    total_dispatch_ns = n_chunks * 50_000  # ~50us per task
-    if total_work_ns < total_dispatch_ns * 3 and min_workers == 0:
-        return 0
-
-    target_per_worker_ns = 1_000_000  # 1ms
-    workers = max(1, int(total_work_ns / target_per_worker_ns))
-
-    return max(min_workers, min(workers, n_chunks, max_workers))
+    return max(min_workers, min(n_chunks, max_workers))
 
 
-def _get_pool(max_workers: int) -> ThreadPoolExecutor:
-    """Get a thread pool with at most *max_workers* threads."""
+def _get_pool() -> ThreadPoolExecutor:
+    """Get the module-level thread pool, creating it lazily."""
     global _pool
-    if _pool is None or _pool._max_workers < max_workers:
-        old = _pool
+    if _pool is None:
+        max_workers: int = config.get("threading.codec_workers").get("max") or os.cpu_count() or 4
         _pool = ThreadPoolExecutor(max_workers=max_workers)
-        if old is not None:
-            old.shutdown(wait=False)
     return _pool
 
 
@@ -913,11 +847,10 @@ class BatchedCodecPipeline(CodecPipeline):
         ]
 
         # Phase 2: Decode — run the codec chain for each chunk.
-        dtype_item_size = getattr(first_spec.dtype, "item_size", 1)
-        chunk_nbytes = product(first_spec.shape) * dtype_item_size
+        chunk_nbytes = product(first_spec.shape) * getattr(first_spec.dtype, "item_size", 1)
         n_workers = _choose_workers(len(batch_info_list), chunk_nbytes, self)
         if n_workers > 0:
-            pool = _get_pool(n_workers)
+            pool = _get_pool()
             chunk_arrays: list[NDBuffer | None] = list(
                 pool.map(
                     self._decode_one,
@@ -1011,11 +944,10 @@ class BatchedCodecPipeline(CodecPipeline):
 
         # Phase 2: Compute — decode existing, merge new data, encode.
         _, first_spec, *_ = batch_info_list[0]
-        dtype_item_size = getattr(first_spec.dtype, "item_size", 1)
-        chunk_nbytes = product(first_spec.shape) * dtype_item_size
-        n_workers = _choose_workers(len(batch_info_list), chunk_nbytes, self, is_encode=True)
+        chunk_nbytes = product(first_spec.shape) * getattr(first_spec.dtype, "item_size", 1)
+        n_workers = _choose_workers(len(batch_info_list), chunk_nbytes, self)
         if n_workers > 0:
-            pool = _get_pool(n_workers)
+            pool = _get_pool()
             encoded_list: list[Buffer | None | object] = list(
                 pool.map(
                     self._write_chunk_compute,
