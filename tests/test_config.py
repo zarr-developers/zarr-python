@@ -56,11 +56,13 @@ def test_config_defaults_set() -> None:
                     "target_shard_size_bytes": None,
                 },
                 "async": {"concurrency": 10, "timeout": None},
-                "threading": {"max_workers": None},
+                "threading": {
+                    "max_workers": None,
+                    "codec_workers": {"enabled": True, "min": 0, "max": None},
+                },
                 "json_indent": 2,
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
-                    "batch_size": 1,
                 },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -103,7 +105,6 @@ def test_config_defaults_set() -> None:
     assert config.get("array.order") == "C"
     assert config.get("async.concurrency") == 10
     assert config.get("async.timeout") is None
-    assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
 
 

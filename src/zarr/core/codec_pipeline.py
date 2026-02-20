@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from itertools import islice, pairwise
+from itertools import pairwise
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 from warnings import warn
 
@@ -44,14 +44,6 @@ def _unzip2(iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
         out0.append(item0)
         out1.append(item1)
     return (out0, out1)
-
-
-def batched(iterable: Iterable[T], n: int) -> Iterable[tuple[T, ...]]:
-    if n < 1:
-        raise ValueError("n must be at least one")
-    it = iter(iterable)
-    while batch := tuple(islice(it, n)):
-        yield batch
 
 
 def resolve_batched(codec: Codec, chunk_specs: Iterable[ArraySpec]) -> Iterable[ArraySpec]:
@@ -153,25 +145,37 @@ def _choose_workers(
     *,
     is_encode: bool = False,
 ) -> int:
-    """Decide how many thread pool workers to use (0 = don't use pool)."""
-    if n_chunks < 2:
+    """Decide how many thread pool workers to use (0 = don't use pool).
+
+    Respects ``threading.codec_workers`` config:
+    - ``enabled``: if False, always returns 0.
+    - ``min``: floor for the number of workers.
+    - ``max``: ceiling for the number of workers (default: ``os.cpu_count()``).
+    """
+    codec_workers = config.get("threading.codec_workers")
+    if not codec_workers.get("enabled", True):
         return 0
+
+    min_workers: int = codec_workers.get("min", 0)
+    max_workers: int = codec_workers.get("max") or os.cpu_count() or 4
+
+    if n_chunks < 2:
+        return min_workers
 
     per_chunk_ns = _estimate_chunk_work_ns(chunk_nbytes, codecs, is_encode=is_encode)
 
-    if per_chunk_ns < _POOL_OVERHEAD_NS:
+    if per_chunk_ns < _POOL_OVERHEAD_NS and min_workers == 0:
         return 0
 
     total_work_ns = per_chunk_ns * n_chunks
     total_dispatch_ns = n_chunks * 50_000  # ~50us per task
-    if total_work_ns < total_dispatch_ns * 3:
+    if total_work_ns < total_dispatch_ns * 3 and min_workers == 0:
         return 0
 
     target_per_worker_ns = 1_000_000  # 1ms
     workers = max(1, int(total_work_ns / target_per_worker_ns))
 
-    cpu_count = os.cpu_count() or 4
-    return min(workers, n_chunks, cpu_count)
+    return max(min_workers, min(workers, n_chunks, max_workers))
 
 
 def _get_pool(max_workers: int) -> ThreadPoolExecutor:
@@ -208,7 +212,6 @@ class BatchedCodecPipeline(CodecPipeline):
     array_array_codecs: tuple[ArrayArrayCodec, ...]
     array_bytes_codec: ArrayBytesCodec
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
-    batch_size: int
 
     @property
     def _all_sync(self) -> bool:
@@ -219,14 +222,13 @@ class BatchedCodecPipeline(CodecPipeline):
         return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
 
     @classmethod
-    def from_codecs(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
+    def from_codecs(cls, codecs: Iterable[Codec]) -> Self:
         array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(list(codecs))
 
         return cls(
             array_array_codecs=array_array_codecs,
             array_bytes_codec=array_bytes_codec,
             bytes_bytes_codecs=bytes_bytes_codecs,
-            batch_size=batch_size or config.get("codec_pipeline.batch_size"),
         )
 
     @property
@@ -478,10 +480,7 @@ class BatchedCodecPipeline(CodecPipeline):
             ]
 
         # Async fallback: layer-by-layer across all chunks.
-        output: list[NDBuffer | None] = []
-        for batch_info in batched(items, self.batch_size):
-            output.extend(await self.decode_batch(batch_info))
-        return output
+        return list(await self.decode_batch(items))
 
     async def encode(
         self,
@@ -496,10 +495,7 @@ class BatchedCodecPipeline(CodecPipeline):
             return [self._encode_one(chunk_array, chunk_spec) for chunk_array, chunk_spec in items]
 
         # Async fallback: layer-by-layer across all chunks.
-        output: list[Buffer | None] = []
-        for single_batch_info in batched(items, self.batch_size):
-            output.extend(await self.encode_batch(single_batch_info))
-        return output
+        return list(await self.encode_batch(items))
 
     # -------------------------------------------------------------------
     # Async read / write (IO overlap via concurrent_map)
@@ -610,14 +606,7 @@ class BatchedCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        await concurrent_map(
-            [
-                (single_batch_info, out, drop_axes)
-                for single_batch_info in batched(batch_info, self.batch_size)
-            ],
-            self.read_batch,
-            config.get("async.concurrency"),
-        )
+        await self.read_batch(batch_info, out, drop_axes)
 
     def _merge_chunk_array(
         self,
@@ -840,14 +829,7 @@ class BatchedCodecPipeline(CodecPipeline):
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        await concurrent_map(
-            [
-                (single_batch_info, value, drop_axes)
-                for single_batch_info in batched(batch_info, self.batch_size)
-            ],
-            self.write_batch,
-            config.get("async.concurrency"),
-        )
+        await self.write_batch(batch_info, value, drop_axes)
 
     # -------------------------------------------------------------------
     # Fully synchronous read / write (no event loop)
