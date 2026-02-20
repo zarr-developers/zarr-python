@@ -18,7 +18,6 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
-from zarr.errors import ZarrUserWarning
 from zarr.storage import StorePath, ZipStore
 
 from ..conftest import ArrayRequest
@@ -239,12 +238,14 @@ def test_sharding_partial_overwrite(
     assert np.array_equal(data, read_data)
 
 
+# Zip storage raises a warning about a duplicate name, which we ignore.
+@pytest.mark.filterwarnings("ignore:Duplicate name.*:UserWarning")
 @pytest.mark.parametrize(
     "array_fixture",
     [
-        ArrayRequest(shape=(128,) * 3, dtype="uint16", order="F"),
+        ArrayRequest(shape=(127, 128, 129), dtype="uint16", order="F"),
     ],
-    indirect=["array_fixture"],
+    indirect=True,
 )
 @pytest.mark.parametrize(
     "outer_index_location",
@@ -263,24 +264,23 @@ def test_nested_sharding(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    msg = "Combining a `sharding_indexed` codec disables partial reads and writes, which may lead to inefficient performance."
-    with pytest.warns(ZarrUserWarning, match=msg):
-        a = zarr.create_array(
-            spath,
-            shape=data.shape,
-            chunks=(64, 64, 64),
-            dtype=data.dtype,
-            fill_value=0,
-            serializer=ShardingCodec(
-                chunk_shape=(32, 32, 32),
-                codecs=[
-                    ShardingCodec(chunk_shape=(16, 16, 16), index_location=inner_index_location)
-                ],
-                index_location=outer_index_location,
-            ),
-        )
+    # compressors=None ensures no BytesBytesCodec is added, which keeps
+    # supports_partial_decode=True and exercises the partial decode path
+    a = zarr.create_array(
+        spath,
+        data=data,
+        chunks=(64,) * data.ndim,
+        compressors=None,
+        serializer=ShardingCodec(
+            chunk_shape=(32,) * data.ndim,
+            codecs=[
+                ShardingCodec(chunk_shape=(16,) * data.ndim, index_location=inner_index_location)
+            ],
+            index_location=outer_index_location,
+        ),
+    )
 
-    a[:, :, :] = data
+    a[:] = data
 
     read_data = a[0 : data.shape[0], 0 : data.shape[1], 0 : data.shape[2]]
     assert isinstance(read_data, NDArrayLike)
@@ -326,13 +326,10 @@ def test_nested_sharding_create_array(
         filters=None,
         compressors=None,
     )
-    print(a.metadata.to_dict())
 
-    a[:, :, :] = data
+    a[:] = data
 
-    read_data = a[0 : data.shape[0], 0 : data.shape[1], 0 : data.shape[2]]
-    assert isinstance(read_data, NDArrayLike)
-    assert data.shape == read_data.shape
+    read_data = a[:]
     assert np.array_equal(data, read_data)
 
 
