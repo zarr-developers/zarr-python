@@ -108,7 +108,8 @@ def test_sharded_morton_indexing(
 large_morton_shards = (
     (32,) * 3,  # With 1x1x1 chunks: 32x32x32 = 32768 chunks per shard (power-of-2)
     (30,) * 3,  # With 1x1x1 chunks: 30x30x30 = 27000 chunks per shard (non-power-of-2)
-    (33,) * 3,  # With 1x1x1 chunks: 33x33x33 = 35937 chunks per shard (near-miss: just above power-of-2)
+    (33,)
+    * 3,  # With 1x1x1 chunks: 33x33x33 = 35937 chunks per shard (near-miss: just above power-of-2)
 )
 
 
@@ -199,13 +200,13 @@ def test_sharded_morton_single_chunk(
 
 # Benchmark for morton_order_iter directly (no I/O)
 morton_iter_shapes = (
-    (8, 8, 8),    # 512 elements    (power-of-2)
-    (10, 10, 10), # 1000 elements   (non-power-of-2)
-    (16, 16, 16), # 4096 elements   (power-of-2)
-    (20, 20, 20), # 8000 elements   (non-power-of-2)
-    (32, 32, 32), # 32768 elements  (power-of-2)
-    (30, 30, 30), # 27000 elements  (non-power-of-2)
-    (33, 33, 33), # 35937 elements  (near-miss: just above power-of-2, n_z=262144)
+    (8, 8, 8),  # 512 elements    (power-of-2)
+    (10, 10, 10),  # 1000 elements   (non-power-of-2)
+    (16, 16, 16),  # 4096 elements   (power-of-2)
+    (20, 20, 20),  # 8000 elements   (non-power-of-2)
+    (32, 32, 32),  # 32768 elements  (power-of-2)
+    (30, 30, 30),  # 27000 elements  (non-power-of-2)
+    (33, 33, 33),  # 35937 elements  (near-miss: just above power-of-2, n_z=262144)
 )
 
 
