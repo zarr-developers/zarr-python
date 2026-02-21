@@ -1532,7 +1532,7 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
         order = all_coords[valid_mask]
     else:
         # Argsort strategy: enumerate all n_total valid coordinates directly,
-        # encode each to a Morton code, then sort by code. Avoids the 8× or
+        # encode each to a Morton code, then sort by code. Avoids the 8x or
         # larger overgeneration penalty for near-miss shapes like (33,33,33).
         # Cost: O(n_total * bits) encode + O(n_total log n_total) sort,
         # vs O(n_z * bits) = O(8 * n_total * bits) for ceiling.
@@ -1550,7 +1550,7 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
                     z_codes |= ((all_coords[:, dim] >> coord_bit) & 1) << output_bit
                     output_bit += 1
 
-        sort_idx = np.argsort(z_codes, kind="stable")
+        sort_idx: npt.NDArray[np.intp] = np.argsort(z_codes, kind="stable")
         order = all_coords[sort_idx]
 
     order.flags.writeable = False
