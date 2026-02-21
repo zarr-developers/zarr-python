@@ -8,9 +8,6 @@ from typing import (
     cast,
 )
 
-import numpy as np
-import numpy.typing as npt
-
 from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
 from zarr.errors import ZarrUserWarning
@@ -23,8 +20,9 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
 
-    from zarr.core.common import BytesLike
+    import numpy.typing as npt
 
+    from zarr.core.common import BytesLike
 try:
     import cupy as cp
 except ImportError:
@@ -54,14 +52,14 @@ class Buffer(core.Buffer):
 
     def __init__(self, array_like: ArrayLike) -> None:
         if cp is None:
-            raise ImportError(
+            raise ImportError(  # pragma: no cover
                 "Cannot use zarr.buffer.gpu.Buffer without cupy. Please install cupy."
             )
 
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
-        if array_like.dtype != np.dtype("B"):
-            raise ValueError("array_like: only byte dtype allowed")
+        if array_like.dtype.itemsize != 1:
+            raise ValueError("array_like: only dtypes with itemsize=1 allowed")
 
         if not hasattr(array_like, "__cuda_array_interface__"):
             # Slow copy based path for arrays that don't support the __cuda_array_interface__
@@ -111,7 +109,8 @@ class Buffer(core.Buffer):
         data = [cp.asanyarray(self._data)]
         for other in others:
             other_array = other.as_array_like()
-            assert other_array.dtype == np.dtype("B")
+            # Check that the dtype is bytes (itemsize=1)
+            assert other_array.dtype.itemsize == 1
             gpu_other = Buffer(other_array)
             gpu_other_array = gpu_other.as_array_like()
             data.append(cp.asanyarray(gpu_other_array))
@@ -145,7 +144,7 @@ class NDBuffer(core.NDBuffer):
 
     def __init__(self, array: NDArrayLike) -> None:
         if cp is None:
-            raise ImportError(
+            raise ImportError(  # pragma: no cover
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."
             )
 
