@@ -670,13 +670,8 @@ class Store(ABC):
         # improve tail latency and might reduce memory pressure (since not all keys
         # would be in memory at once).
 
-        # avoid circular import
-        from zarr.core.common import concurrent_map
-        from zarr.core.config import config
-
-        keys = [(x,) async for x in self.list_prefix(prefix)]
-        limit = config.get("async.concurrency")
-        sizes = await concurrent_map(keys, self.getsize, limit=limit)
+        keys = [x async for x in self.list_prefix(prefix)]
+        sizes = await asyncio.gather(*[self.getsize(key) for key in keys])
         return sum(sizes)
 
 

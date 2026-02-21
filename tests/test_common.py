@@ -32,10 +32,6 @@ def test_access_modes() -> None:
 
 
 # todo: test
-def test_concurrent_map() -> None: ...
-
-
-# todo: test
 def test_to_thread() -> None: ...
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import warnings
 from asyncio import gather
@@ -22,7 +23,6 @@ from warnings import warn
 import numpy as np
 from typing_extensions import deprecated
 
-import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
@@ -60,7 +60,6 @@ from zarr.core.common import (
     _default_zarr_format,
     _warn_order_kwarg,
     ceildiv,
-    concurrent_map,
     parse_shapelike,
     product,
 )
@@ -4481,28 +4480,26 @@ async def from_array(
     if write_data:
         if isinstance(data, Array):
 
-            async def _copy_array_region(
-                chunk_coords: tuple[int, ...] | slice, _data: AnyArray
-            ) -> None:
+            async def _copy_array_region(chunk_coords: tuple[slice, ...], _data: AnyArray) -> None:
                 arr = await _data.async_array.getitem(chunk_coords)
                 await result.setitem(chunk_coords, arr)
 
             # Stream data from the source array to the new array
-            await concurrent_map(
-                [(region, data) for region in result._iter_shard_regions()],
-                _copy_array_region,
-                zarr.core.config.config.get("async.concurrency"),
+            # Store handles concurrency limiting internally
+            await asyncio.gather(
+                *[_copy_array_region(region, data) for region in result._iter_shard_regions()]
             )
         else:
 
-            async def _copy_arraylike_region(chunk_coords: slice, _data: NDArrayLike) -> None:
-                await result.setitem(chunk_coords, _data[chunk_coords])
+            async def _copy_arraylike_region(
+                chunk_coords: tuple[slice, ...], _data: npt.ArrayLike
+            ) -> None:
+                await result.setitem(chunk_coords, _data[chunk_coords])  # type: ignore[call-overload, index]
 
             # Stream data from the source array to the new array
-            await concurrent_map(
-                [(region, data) for region in result._iter_shard_regions()],
-                _copy_arraylike_region,
-                zarr.core.config.config.get("async.concurrency"),
+            # Store handles concurrency limiting internally
+            await asyncio.gather(
+                *[_copy_arraylike_region(region, data) for region in result._iter_shard_regions()]
             )
     return result
 
@@ -6001,13 +5998,12 @@ async def _resize(
         async def _delete_key(key: str) -> None:
             await (array.store_path / key).delete()
 
-        await concurrent_map(
-            [
-                (array.metadata.encode_chunk_key(chunk_coords),)
+        # Store handles concurrency limiting internally
+        await asyncio.gather(
+            *[
+                _delete_key(array.metadata.encode_chunk_key(chunk_coords))
                 for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
-            ],
-            _delete_key,
-            zarr_config.get("async.concurrency"),
+            ]
         )
 
     # Write new metadata

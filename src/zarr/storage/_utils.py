@@ -1,16 +1,82 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import functools
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar
 
 from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Coroutine, Iterable, Mapping
 
     from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
+
+P = ParamSpec("P")
+T_co = TypeVar("T_co", covariant=True)
+
+
+class ConcurrencyLimiter:
+    """Mixin that adds a semaphore-based concurrency limit to a store.
+
+    Stores that inherit from this class gain a ``concurrency_limit`` attribute,
+    a ``_semaphore`` for internal use, and a ``_limit()`` context-manager helper.
+    Use the ``@with_concurrency_limit`` decorator on individual async I/O methods.
+    """
+
+    concurrency_limit: int | None
+    """The concurrency limit, or ``None`` for unlimited."""
+
+    _semaphore: asyncio.Semaphore | None
+
+    def __init__(self, concurrency_limit: int | None = None) -> None:
+        self.concurrency_limit = concurrency_limit
+        self._semaphore = (
+            asyncio.Semaphore(concurrency_limit) if concurrency_limit is not None else None
+        )
+
+    def _limit(self) -> asyncio.Semaphore | contextlib.nullcontext[None]:
+        """Return the semaphore if set, otherwise a no-op context manager."""
+        sem = self._semaphore
+        return sem if sem is not None else contextlib.nullcontext()
+
+
+def with_concurrency_limit(
+    func: Callable[P, Coroutine[Any, Any, T_co]],
+) -> Callable[P, Coroutine[Any, Any, T_co]]:
+    """Decorator that applies a semaphore-based concurrency limit to an async method.
+
+    This decorator is designed for methods on classes that inherit from
+    :class:`ConcurrencyLimiter`.
+
+    Examples
+    --------
+    ```python
+    from zarr.abc.store import Store
+    from zarr.storage._utils import ConcurrencyLimiter, with_concurrency_limit
+
+    class MyStore(Store, ConcurrencyLimiter):
+        def __init__(self, concurrency_limit: int = 100):
+            Store.__init__(self, read_only=False)
+            ConcurrencyLimiter.__init__(self, concurrency_limit)
+
+        @with_concurrency_limit
+        async def get(self, key, prototype, byte_range=None):
+            # This will only run when semaphore permits
+            ...
+    ```
+    """
+
+    @functools.wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T_co:
+        self = args[0]
+        async with self._limit():  # type: ignore[attr-defined]
+            return await func(*args, **kwargs)
+
+    return wrapper
 
 
 def normalize_path(path: str | bytes | Path | None) -> str:

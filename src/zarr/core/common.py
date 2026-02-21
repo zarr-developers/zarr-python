@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import asyncio
 import functools
 import math
 import operator
 import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from enum import Enum
-from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -28,7 +26,7 @@ from zarr.core.config import config as zarr_config
 from zarr.errors import ZarrRuntimeWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable, Iterator
+    from collections.abc import Iterator
 
 
 ZARR_JSON = "zarr.json"
@@ -93,28 +91,6 @@ def ceildiv(a: float, b: float) -> int:
     if a == 0:
         return 0
     return math.ceil(a / b)
-
-
-T = TypeVar("T", bound=tuple[Any, ...])
-V = TypeVar("V")
-
-
-async def concurrent_map(
-    items: Iterable[T],
-    func: Callable[..., Awaitable[V]],
-    limit: int | None = None,
-) -> list[V]:
-    if limit is None:
-        return await asyncio.gather(*list(starmap(func, items)))
-
-    else:
-        sem = asyncio.Semaphore(limit)
-
-        async def run(item: tuple[Any]) -> V:
-            async with sem:
-                return await func(*item)
-
-        return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
 E = TypeVar("E", bound=Enum)

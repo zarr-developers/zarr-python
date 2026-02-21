@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
@@ -102,12 +102,10 @@ class MemoryStore(Store):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-
-        # All the key-ranges arguments goes with the same prototype
-        async def _get(key: str, byte_range: ByteRequest | None) -> Buffer | None:
-            return await self.get(key, prototype=prototype, byte_range=byte_range)
-
-        return await concurrent_map(key_ranges, _get, limit=None)
+        # In-memory operations are fast and don't need concurrency limiting
+        return await asyncio.gather(
+            *[self.get(key, prototype, byte_range) for key, byte_range in key_ranges]
+        )
 
     async def exists(self, key: str) -> bool:
         # docstring inherited

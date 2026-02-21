@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -14,7 +15,6 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
 from zarr.errors import ZarrUserWarning
@@ -267,10 +267,12 @@ class BatchedCodecPipeline(CodecPipeline):
                 else:
                     out[out_selection] = fill_value_or_default(chunk_spec)
         else:
-            chunk_bytes_batch = await concurrent_map(
-                [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
-                lambda byte_getter, prototype: byte_getter.get(prototype),
-                config.get("async.concurrency"),
+            # Store handles concurrency limiting internally
+            chunk_bytes_batch = await asyncio.gather(
+                *[
+                    byte_getter.get(array_spec.prototype)
+                    for byte_getter, array_spec, *_ in batch_info
+                ]
             )
             chunk_array_batch = await self.decode_batch(
                 [
@@ -368,16 +370,15 @@ class BatchedCodecPipeline(CodecPipeline):
                 return await byte_setter.get(prototype=prototype)
 
             chunk_bytes_batch: Iterable[Buffer | None]
-            chunk_bytes_batch = await concurrent_map(
-                [
-                    (
+            # Store handles concurrency limiting internally
+            chunk_bytes_batch = await asyncio.gather(
+                *[
+                    _read_key(
                         None if is_complete_chunk else byte_setter,
                         chunk_spec.prototype,
                     )
                     for byte_setter, chunk_spec, chunk_selection, _, is_complete_chunk in batch_info
-                ],
-                _read_key,
-                config.get("async.concurrency"),
+                ]
             )
             chunk_array_decoded = await self.decode_batch(
                 [
@@ -435,15 +436,14 @@ class BatchedCodecPipeline(CodecPipeline):
                 else:
                     await byte_setter.set(chunk_bytes)
 
-            await concurrent_map(
-                [
-                    (byte_setter, chunk_bytes)
+            # Store handles concurrency limiting internally
+            await asyncio.gather(
+                *[
+                    _write_key(byte_setter, chunk_bytes)
                     for chunk_bytes, (byte_setter, *_) in zip(
                         chunk_bytes_batch, batch_info, strict=False
                     )
-                ],
-                _write_key,
-                config.get("async.concurrency"),
+                ]
             )
 
     async def decode(
@@ -470,13 +470,12 @@ class BatchedCodecPipeline(CodecPipeline):
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        await concurrent_map(
-            [
-                (single_batch_info, out, drop_axes)
+        # Process mini-batches concurrently - stores handle I/O concurrency internally
+        await asyncio.gather(
+            *[
+                self.read_batch(single_batch_info, out, drop_axes)
                 for single_batch_info in batched(batch_info, self.batch_size)
-            ],
-            self.read_batch,
-            config.get("async.concurrency"),
+            ]
         )
 
     async def write(
@@ -485,13 +484,12 @@ class BatchedCodecPipeline(CodecPipeline):
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
-        await concurrent_map(
-            [
-                (single_batch_info, value, drop_axes)
+        # Process mini-batches concurrently - stores handle I/O concurrency internally
+        await asyncio.gather(
+            *[
+                self.write_batch(single_batch_info, value, drop_axes)
                 for single_batch_info in batched(batch_info, self.batch_size)
-            ],
-            self.write_batch,
-            config.get("async.concurrency"),
+            ]
         )
 
 

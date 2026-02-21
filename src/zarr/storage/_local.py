@@ -19,12 +19,13 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.common import AccessModeLiteral, concurrent_map
+from zarr.storage._utils import ConcurrencyLimiter, with_concurrency_limit
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, Iterator
 
     from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None) -> Buffer:
@@ -85,7 +86,7 @@ def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
         return f.write(view)
 
 
-class LocalStore(Store):
+class LocalStore(Store, ConcurrencyLimiter):
     """
     Store for the local file system.
 
@@ -95,6 +96,9 @@ class LocalStore(Store):
         Directory to use as root of store.
     read_only : bool
         Whether the store is read-only
+    concurrency_limit : int, optional
+        Maximum number of concurrent I/O operations. Default is 100.
+        Set to None for unlimited concurrency.
 
     Attributes
     ----------
@@ -110,14 +114,21 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, read_only: bool = False) -> None:
-        super().__init__(read_only=read_only)
+    def __init__(
+        self,
+        root: Path | str,
+        *,
+        read_only: bool = False,
+        concurrency_limit: int | None = 100,
+    ) -> None:
         if isinstance(root, str):
             root = Path(root)
         if not isinstance(root, Path):
             raise TypeError(
                 f"'root' must be a string or Path instance. Got an instance of {type(root)} instead."
             )
+        Store.__init__(self, read_only=read_only)
+        ConcurrencyLimiter.__init__(self, concurrency_limit)
         self.root = root
 
     def with_read_only(self, read_only: bool = False) -> Self:
@@ -125,6 +136,7 @@ class LocalStore(Store):
         return type(self)(
             root=self.root,
             read_only=read_only,
+            concurrency_limit=self.concurrency_limit,
         )
 
     @classmethod
@@ -187,6 +199,7 @@ class LocalStore(Store):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
 
+    @with_concurrency_limit
     async def get(
         self,
         key: str,
@@ -212,12 +225,20 @@ class LocalStore(Store):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        args = []
-        for key, byte_range in key_ranges:
-            assert isinstance(key, str)
+        # We directly call the I/O functions here, wrapped with the semaphore,
+        # to avoid deadlock from calling the decorated get() method.
+
+        async def _get_with_limit(key: str, byte_range: ByteRequest | None) -> Buffer | None:
             path = self.root / key
-            args.append((_get, path, prototype, byte_range))
-        return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
+            try:
+                async with self._limit():
+                    return await asyncio.to_thread(_get, path, prototype, byte_range)
+            except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+                return None
+
+        return await asyncio.gather(
+            *[_get_with_limit(key, byte_range) for key, byte_range in key_ranges]
+        )
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
@@ -230,6 +251,7 @@ class LocalStore(Store):
         except FileExistsError:
             pass
 
+    @with_concurrency_limit
     async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
         if not self._is_open:
             await self._open()
@@ -242,6 +264,7 @@ class LocalStore(Store):
         path = self.root / key
         await asyncio.to_thread(_put, path, value, exclusive=exclusive)
 
+    @with_concurrency_limit
     async def delete(self, key: str) -> None:
         """
         Remove a key from the store.

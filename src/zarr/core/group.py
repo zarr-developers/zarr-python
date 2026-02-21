@@ -1440,13 +1440,10 @@ class AsyncGroup:
             )
 
             raise ValueError(msg)
-        # enforce a concurrency limit by passing a semaphore to all the recursive functions
-        semaphore = asyncio.Semaphore(config.get("async.concurrency"))
         async for member in _iter_members_deep(
             self,
             max_depth=max_depth,
             skip_keys=skip_keys,
-            semaphore=semaphore,
             use_consolidated_for_children=use_consolidated_for_children,
         ):
             yield member
@@ -3323,14 +3320,11 @@ async def create_nodes(
         The created nodes in the order they are created.
     """
 
-    # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
-    # then we should consider adding a keyword argument this this function
-    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
     create_tasks: list[Coroutine[None, None, str]] = []
 
     for key, value in nodes.items():
         # make the key absolute
-        create_tasks.extend(_persist_metadata(store, key, value, semaphore=semaphore))
+        create_tasks.extend(_persist_metadata(store, key, value))
 
     created_object_keys = []
 
@@ -3476,28 +3470,16 @@ def _ensure_consistent_zarr_format(
     )
 
 
-async def _getitem_semaphore(
-    node: AsyncGroup, key: str, semaphore: asyncio.Semaphore | None
-) -> AnyAsyncArray | AsyncGroup:
+async def _getitem(node: AsyncGroup, key: str) -> AnyAsyncArray | AsyncGroup:
     """
-    Wrap Group.getitem with an optional semaphore.
-
-    If the semaphore parameter is an
-    asyncio.Semaphore instance, then the getitem operation is performed inside an async context
-    manager provided by that semaphore. If the semaphore parameter is None, then getitem is invoked
-    without a context manager.
+    Fetch a child node from a group by key.
     """
-    if semaphore is not None:
-        async with semaphore:
-            return await node.getitem(key)
-    else:
-        return await node.getitem(key)
+    return await node.getitem(key)
 
 
 async def _iter_members(
     node: AsyncGroup,
     skip_keys: tuple[str, ...],
-    semaphore: asyncio.Semaphore | None,
 ) -> AsyncGenerator[tuple[str, AnyAsyncArray | AsyncGroup], None]:
     """
     Iterate over the arrays and groups contained in a group.
@@ -3508,8 +3490,6 @@ async def _iter_members(
         The group to traverse.
     skip_keys : tuple[str, ...]
         A tuple of keys to skip when iterating over the possible members of the group.
-    semaphore : asyncio.Semaphore | None
-        An optional semaphore to use for concurrency control.
 
     Yields
     ------
@@ -3520,10 +3500,7 @@ async def _iter_members(
     keys = [key async for key in node.store.list_dir(node.path)]
     keys_filtered = tuple(filter(lambda v: v not in skip_keys, keys))
 
-    node_tasks = tuple(
-        asyncio.create_task(_getitem_semaphore(node, key, semaphore), name=key)
-        for key in keys_filtered
-    )
+    node_tasks = tuple(asyncio.create_task(_getitem(node, key), name=key) for key in keys_filtered)
 
     for fetched_node_coro in asyncio.as_completed(node_tasks):
         try:
@@ -3550,7 +3527,6 @@ async def _iter_members_deep(
     *,
     max_depth: int | None,
     skip_keys: tuple[str, ...],
-    semaphore: asyncio.Semaphore | None = None,
     use_consolidated_for_children: bool = True,
 ) -> AsyncGenerator[tuple[str, AnyAsyncArray | AsyncGroup], None]:
     """
@@ -3565,8 +3541,6 @@ async def _iter_members_deep(
         The maximum depth of recursion.
     skip_keys : tuple[str, ...]
         A tuple of keys to skip when iterating over the possible members of the group.
-    semaphore : asyncio.Semaphore | None
-        An optional semaphore to use for concurrency control.
     use_consolidated_for_children : bool, default True
         Whether to use the consolidated metadata of child groups loaded
         from the store. Note that this only affects groups loaded from the
@@ -3585,7 +3559,7 @@ async def _iter_members_deep(
         new_depth = None
     else:
         new_depth = max_depth - 1
-    async for name, node in _iter_members(group, skip_keys=skip_keys, semaphore=semaphore):
+    async for name, node in _iter_members(group, skip_keys=skip_keys):
         is_group = isinstance(node, AsyncGroup)
         if (
             is_group
@@ -3599,9 +3573,7 @@ async def _iter_members_deep(
         yield name, node
         if is_group and do_recursion:
             node = cast("AsyncGroup", node)
-            to_recurse[name] = _iter_members_deep(
-                node, max_depth=new_depth, skip_keys=skip_keys, semaphore=semaphore
-            )
+            to_recurse[name] = _iter_members_deep(node, max_depth=new_depth, skip_keys=skip_keys)
 
     for prefix, subgroup_iter in to_recurse.items():
         async for name, node in subgroup_iter:
@@ -3811,9 +3783,7 @@ async def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> AnyAsync
             raise ValueError(f"Unexpected zarr format: {zarr_format}")  # pragma: no cover
 
 
-async def _set_return_key(
-    *, store: Store, key: str, value: Buffer, semaphore: asyncio.Semaphore | None = None
-) -> str:
+async def _set_return_key(*, store: Store, key: str, value: Buffer) -> str:
     """
     Write a value to storage at the given key. The key is returned.
     Useful when saving values via routines that return results in execution order,
@@ -3828,15 +3798,8 @@ async def _set_return_key(
         The key to save the value to.
     value : Buffer
         The value to save.
-    semaphore : asyncio.Semaphore | None
-        An optional semaphore to use to limit the number of concurrent writes.
     """
-
-    if semaphore is not None:
-        async with semaphore:
-            await store.set(key, value)
-    else:
-        await store.set(key, value)
+    await store.set(key, value)
     return key
 
 
@@ -3844,7 +3807,6 @@ def _persist_metadata(
     store: Store,
     path: str,
     metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata,
-    semaphore: asyncio.Semaphore | None = None,
 ) -> tuple[Coroutine[None, None, str], ...]:
     """
     Prepare to save a metadata document to storage, returning a tuple of coroutines that must be awaited.
@@ -3852,7 +3814,7 @@ def _persist_metadata(
 
     to_save = metadata.to_buffer_dict(default_buffer_prototype())
     return tuple(
-        _set_return_key(store=store, key=_join_paths([path, key]), value=value, semaphore=semaphore)
+        _set_return_key(store=store, key=_join_paths([path, key]), value=value)
         for key, value in to_save.items()
     )
 
