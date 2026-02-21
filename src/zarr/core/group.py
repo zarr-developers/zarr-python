@@ -472,6 +472,7 @@ class AsyncGroup:
         store: StoreLike,
         *,
         attributes: dict[str, Any] | None = None,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
         overwrite: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
@@ -486,7 +487,11 @@ class AsyncGroup:
             await ensure_no_existing_node(store_path, zarr_format=zarr_format)
         attributes = attributes or {}
         group = cls(
-            metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
+            metadata=GroupMetadata(
+                attributes=attributes,
+                consolidated_metadata=consolidated_metadata,
+                zarr_format=zarr_format,
+            ),
             store_path=store_path,
         )
         await group._save_metadata(ensure_parents=True)
@@ -696,6 +701,96 @@ class AsyncGroup:
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
         )
+
+    async def copy_to(
+        self,
+        store: StoreLike,
+        *,
+        path: str | None = None,
+        overwrite: bool = False,
+        use_consolidated_for_children: bool = True,
+    ) -> AsyncGroup:
+        """
+        Copy this group and all its contents to a new store.
+
+        This performs a raw byte-level copy of all data, without decoding or
+        re-encoding array contents.
+
+        Parameters
+        ----------
+        store : StoreLike
+            The store to copy to.
+        path : str, optional
+            Group path within the destination store.
+        overwrite : bool, optional
+            If True, overwrite any existing data in the target store. Default is False.
+        use_consolidated_for_children : bool, default True
+            Whether to use the consolidated metadata of child groups when iterating over the store contents.
+            Note that this only affects groups loaded from the store. If the current Group already has
+            consolidated metadata, it will always be used.
+
+        Returns
+        -------
+        AsyncGroup
+            The new group in the target store.
+        """
+        target_store_path = await make_store_path(store, path=path or "")
+
+        if overwrite:
+            dst_store = target_store_path.store
+            dst_prefix = target_store_path.path + "/" if target_store_path.path else ""
+            async for key in dst_store.list_prefix(dst_prefix):
+                await dst_store.delete(key)
+        else:
+            await ensure_no_existing_node(target_store_path, zarr_format=self.metadata.zarr_format)
+
+        src_store = self.store_path.store
+        src_prefix = self.store_path.path + "/" if self.store_path.path else ""
+        dst_store = target_store_path.store
+        dst_prefix = target_store_path.path + "/" if target_store_path.path else ""
+
+        prototype = default_buffer_prototype()
+
+        # Determine the metadata keys for a group based on zarr format
+        group_metadata_keys: tuple[str, ...]
+        if self.metadata.zarr_format == 3:
+            group_metadata_keys = (ZARR_JSON,)
+        else:
+            group_metadata_keys = (ZGROUP_JSON, ZATTRS_JSON, ZMETADATA_V2_JSON)
+
+        async def _copy_key(src_key: str, dst_key: str) -> None:
+            """Copy a single key from source to destination store."""
+            data = await src_store.get(src_key, prototype=prototype)
+            if data is not None:
+                await dst_store.set(dst_key, data)
+
+        # Copy the root group's metadata keys
+        for key in group_metadata_keys:
+            await _copy_key(
+                f"{src_prefix}{key}" if src_prefix else key,
+                f"{dst_prefix}{key}" if dst_prefix else key,
+            )
+
+        # Copy all children discovered via members()
+        async for child_path, member in self.members(
+            max_depth=None, use_consolidated_for_children=use_consolidated_for_children
+        ):
+            if isinstance(member, AsyncGroup):
+                # For groups, copy only the known metadata keys
+                for key in group_metadata_keys:
+                    src_key = f"{src_prefix}{child_path}/{key}"
+                    dst_key = f"{dst_prefix}{child_path}/{key}"
+                    await _copy_key(src_key, dst_key)
+            else:
+                # For arrays, list all keys under the array's prefix to get
+                # metadata + only the chunks that actually exist in the store
+                array_src_prefix = f"{src_prefix}{child_path}/"
+                async for src_key in src_store.list_prefix(array_src_prefix):
+                    relative_key = src_key.removeprefix(src_prefix)
+                    dst_key = f"{dst_prefix}{relative_key}" if dst_prefix else relative_key
+                    await _copy_key(src_key, dst_key)
+
+        return await type(self).open(target_store_path, zarr_format=self.metadata.zarr_format)
 
     async def setitem(self, key: str, value: Any) -> None:
         """
@@ -945,6 +1040,7 @@ class AsyncGroup:
         *,
         overwrite: bool = False,
         attributes: dict[str, Any] | None = None,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
     ) -> AsyncGroup:
         """Create a sub-group.
 
@@ -956,6 +1052,9 @@ class AsyncGroup:
             If True, do not raise an error if the group already exists.
         attributes : dict, optional
             Group attributes.
+        consolidated_metadata : ConsolidatedMetadata, optional
+            Consolidated Zarr metadata mapping that represents the entire hierarchy's
+            group and array metadata collected into a single dictionary.
 
         Returns
         -------
@@ -965,6 +1064,7 @@ class AsyncGroup:
         return await type(self).from_store(
             self.store_path / name,
             attributes=attributes,
+            consolidated_metadata=consolidated_metadata,
             overwrite=overwrite,
             zarr_format=self.metadata.zarr_format,
         )
@@ -1810,6 +1910,7 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         attributes: dict[str, Any] | None = None,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
         zarr_format: ZarrFormat = 3,
         overwrite: bool = False,
     ) -> Group:
@@ -1823,6 +1924,8 @@ class Group(SyncMixin):
             for a description of all valid StoreLike values.
         attributes : dict, optional
             A dictionary of JSON-serializable values with user-defined attributes.
+        consolidated_metadata : ConsolidatedMetadata, optional
+            Consolidated Metadata for this Group. This should contain metadata of child nodes below this group.
         zarr_format : {2, 3}, optional
             Zarr storage format version.
         overwrite : bool, optional
@@ -1842,6 +1945,7 @@ class Group(SyncMixin):
             AsyncGroup.from_store(
                 store,
                 attributes=attributes,
+                consolidated_metadata=consolidated_metadata,
                 overwrite=overwrite,
                 zarr_format=zarr_format,
             ),
@@ -1873,6 +1977,46 @@ class Group(SyncMixin):
         """
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
+
+    def copy_to(
+        self,
+        store: StoreLike,
+        *,
+        path: str | None = None,
+        overwrite: bool = False,
+        use_consolidated_for_children: bool = True,
+    ) -> Group:
+        """
+        Copy this group and all its contents to a new store.
+
+        Parameters
+        ----------
+        store : StoreLike
+            The store to copy to.
+        path : str, optional
+            Group path within the destination store.
+        overwrite : bool, optional
+            If True, overwrite any existing data in the target store. Default is False.
+        use_consolidated_for_children : bool, default True
+            Whether to use the consolidated metadata of child groups when iterating over the store contents.
+            Note that this only affects groups loaded from the store. If the current Group already has
+            consolidated metadata, it will always be used.
+
+        Returns
+        -------
+        Group
+            The new group in the target store.
+        """
+        return Group(
+            sync(
+                self._async_group.copy_to(
+                    store=store,
+                    path=path,
+                    overwrite=overwrite,
+                    use_consolidated_for_children=use_consolidated_for_children,
+                )
+            )
+        )
 
     def __getitem__(self, path: str) -> AnyArray | Group:
         """Obtain a group member.
@@ -2392,13 +2536,26 @@ class Group(SyncMixin):
         """
         return self._sync(self._async_group.tree(expand=expand, level=level))
 
-    def create_group(self, name: str, **kwargs: Any) -> Group:
+    def create_group(
+        self,
+        name: str,
+        overwrite: bool = False,
+        attributes: dict[str, Any] | None = None,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
+    ) -> Group:
         """Create a sub-group.
 
         Parameters
         ----------
         name : str
             Name of the new subgroup.
+        overwrite : bool, optional
+            If True, do not raise an error if the group already exists.
+        attributes : dict, optional
+            Group attributes.
+        consolidated_metadata : ConsolidatedMetadata, optional
+            Consolidated Zarr metadata mapping that represents the entire hierarchy's
+            group and array metadata collected into a single dictionary.
 
         Returns
         -------
@@ -2412,7 +2569,16 @@ class Group(SyncMixin):
         >>> subgroup
         <Group memory://132270269438272/subgroup>
         """
-        return Group(self._sync(self._async_group.create_group(name, **kwargs)))
+        return Group(
+            self._sync(
+                self._async_group.create_group(
+                    name,
+                    overwrite=overwrite,
+                    attributes=attributes,
+                    consolidated_metadata=consolidated_metadata,
+                )
+            )
+        )
 
     def require_group(self, name: str, **kwargs: Any) -> Group:
         """Obtain a sub-group, creating one if it doesn't exist.
