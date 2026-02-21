@@ -547,6 +547,23 @@ def check_json_floatish_str(data: JSON) -> TypeGuard[FloatishStr]:
         return True
 
 
+def check_json_array_of_ints(data: JSON) -> TypeGuard[Sequence[int]]:
+    """
+    Check if an object is a sequence of integers.
+
+    Parameters
+    ----------
+    data : JSON
+        The JSON value to check.
+
+    Returns
+    -------
+    bool
+        True if the data is a sequence of integers, False otherwise.
+    """
+    return isinstance(data, Sequence) and all(isinstance(item, int) for item in data)
+
+
 def check_json_str(data: JSON) -> TypeGuard[str]:
     """
     Check if a JSON value is a string.
