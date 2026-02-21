@@ -72,6 +72,18 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
 _MIN_CHUNK_NBYTES_FOR_POOL = 100_000  # 100 KB
 
 
+def _get_codec_worker_config() -> tuple[bool, int, int]:
+    """Read the ``threading.codec_workers`` config.
+
+    Returns (enabled, min_workers, max_workers).
+    """
+    codec_workers = config.get("threading.codec_workers")
+    enabled: bool = codec_workers.get("enabled", True)
+    min_workers: int = codec_workers.get("min", 0)
+    max_workers: int = max(codec_workers.get("max") or os.cpu_count() or 4, min_workers)
+    return enabled, min_workers, max_workers
+
+
 def _choose_workers(n_chunks: int, chunk_nbytes: int, codecs: Iterable[Codec]) -> int:
     """Decide how many thread pool workers to use (0 = don't use pool).
 
@@ -80,12 +92,9 @@ def _choose_workers(n_chunks: int, chunk_nbytes: int, codecs: Iterable[Codec]) -
     - ``min``: floor for the number of workers.
     - ``max``: ceiling for the number of workers (default: ``os.cpu_count()``).
     """
-    codec_workers = config.get("threading.codec_workers")
-    if not codec_workers.get("enabled", True):
+    enabled, min_workers, max_workers = _get_codec_worker_config()
+    if not enabled:
         return 0
-
-    min_workers: int = codec_workers.get("min", 0)
-    max_workers: int = codec_workers.get("max") or os.cpu_count() or 4
 
     if n_chunks < 2:
         return min_workers
@@ -105,7 +114,7 @@ def _get_pool() -> ThreadPoolExecutor:
     """Get the module-level thread pool, creating it lazily."""
     global _pool
     if _pool is None:
-        max_workers: int = config.get("threading.codec_workers").get("max") or os.cpu_count() or 4
+        _, _, max_workers = _get_codec_worker_config()
         _pool = ThreadPoolExecutor(max_workers=max_workers)
     return _pool
 
