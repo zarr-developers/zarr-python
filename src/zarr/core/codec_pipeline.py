@@ -67,19 +67,6 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
 # Thread pool for parallel codec compute
 # ---------------------------------------------------------------------------
 
-# Codecs that are essentially free (memcpy / reshape / checksum).
-# Threading overhead exceeds the work these do, so we skip the pool
-# when these are the only codecs in the pipeline.
-_CHEAP_CODECS: frozenset[str] = frozenset(
-    {
-        "BytesCodec",
-        "Crc32cCodec",
-        "TransposeCodec",
-        "VLenUTF8Codec",
-        "VLenBytesCodec",
-    }
-)
-
 # Minimum chunk size (in bytes) to consider using the thread pool.
 # Below this, per-chunk codec work is too small to offset dispatch overhead.
 _MIN_CHUNK_NBYTES_FOR_POOL = 100_000  # 100 KB
@@ -104,9 +91,9 @@ def _choose_workers(n_chunks: int, chunk_nbytes: int, codecs: Iterable[Codec]) -
         return min_workers
 
     # Only use the pool when at least one codec does real work
+    # (BytesBytesCodec = compression/checksum, which releases the GIL in C)
     # and the chunks are large enough to offset dispatch overhead.
-    has_expensive = any(type(c).__name__ not in _CHEAP_CODECS for c in codecs)
-    if not has_expensive and min_workers == 0:
+    if not any(isinstance(c, BytesBytesCodec) for c in codecs) and min_workers == 0:
         return 0
     if chunk_nbytes < _MIN_CHUNK_NBYTES_FOR_POOL and min_workers == 0:
         return 0
