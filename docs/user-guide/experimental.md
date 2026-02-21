@@ -19,7 +19,7 @@ Because the `CacheStore` uses an ordinary Zarr `Store` object as the caching lay
 > **Note:** The CacheStore is a wrapper store that maintains compatibility with the full
 > `zarr.abc.store.Store` API while adding transparent caching functionality.
 
-## Basic Usage
+### Basic Usage
 
 Creating a CacheStore requires both a source store and a cache store. The cache store
 can be any Store implementation, providing flexibility in cache persistence:
@@ -51,7 +51,7 @@ zarr_array[:] = np.random.random((100, 100))
 The dual-store architecture allows you to use different store types for source and cache,
 such as a remote store for source data and a local store for persistent caching.
 
-## Performance Benefits
+### Performance Benefits
 
 The CacheStore provides significant performance improvements for repeated data access:
 
@@ -79,7 +79,7 @@ print(f"Speedup is {speedup}")
 Cache effectiveness is particularly pronounced with repeated access to the same data chunks.
 
 
-## Cache Configuration
+### Cache Configuration
 
 The CacheStore can be configured with several parameters:
 
@@ -137,7 +137,7 @@ cache = CacheStore(
 )
 ```
 
-## Cache Statistics
+### Cache Statistics
 
 The CacheStore provides statistics to monitor cache performance and state:
 
@@ -159,7 +159,7 @@ print(info['cache_set_data'])
 
 The `cache_info()` method returns a dictionary with detailed information about the cache state.
 
-## Cache Management
+### Cache Management
 
 The CacheStore provides methods for manual cache management:
 
@@ -177,7 +177,7 @@ assert info['current_size'] == 0
 The `clear_cache()` method is an async method that clears both the cache store
 (if it supports the `clear` method) and all internal tracking data.
 
-## Best Practices
+### Best Practices
 
 1. **Choose appropriate cache store**: Use MemoryStore for fast temporary caching or LocalStore for persistent caching
 2. **Size the cache appropriately**: Set `max_size` based on available storage and expected data access patterns
@@ -186,12 +186,12 @@ The `clear_cache()` method is an async method that clears both the cache store
 5. **Consider data locality**: Group related data accesses together to improve cache efficiency
 6. **Set appropriate expiration**: Use `max_age_seconds` for time-sensitive data or "infinity" for static data
 
-## Working with Different Store Types
+### Working with Different Store Types
 
 The CacheStore can wrap any store that implements the `zarr.abc.store.Store` interface
 and use any store type for the cache backend:
 
-### Local Store with Memory Cache
+#### Local Store with Memory Cache
 
 ```python exec="true" session="experimental-memory-cache" source="above"
 from zarr.storage import LocalStore, MemoryStore
@@ -208,7 +208,7 @@ cached_store = CacheStore(
 )
 ```
 
-### Memory Store with Persistent Cache
+#### Memory Store with Persistent Cache
 
 ```python exec="true" session="experimental-local-cache" source="above"
 from tempfile import mkdtemp
@@ -228,7 +228,7 @@ cached_store = CacheStore(
 The dual-store architecture provides flexibility in choosing the best combination
 of source and cache stores for your specific use case.
 
-## Examples from Real Usage
+### Examples from Real Usage
 
 Here's a complete example demonstrating cache effectiveness:
 
@@ -273,3 +273,40 @@ print(f"Cache contains {info['cached_keys']} keys with {info['current_size']} by
 This example shows how the CacheStore can significantly reduce access times for repeated
 data reads, particularly important when working with remote data sources. The dual-store
 architecture allows for flexible cache persistence and management.
+
+## Lazy indexing
+
+Experimental support for lazy indexing can be found in an array class defined in `zarr.experimental.lazy_indexing`.
+
+```python exec="true" session="lazy-indexing-intro" source="above" result="ansi"
+import zarr
+import numpy as np
+from zarr.experimental.lazy_indexing import Array, merge
+
+store = {}
+np_data = np.arange(100)
+zarr.create_array(store, data=np_data, chunks=(10,), fill_value=0, write_data=True)
+
+lazy_array = Array.open(store)
+print(lazy_array)
+# <Array memory://129773024766528 domain=IndexDomain([0, 100)) dtype=int64>
+
+slice_a = slice(0, 10)
+slice_b = slice(10, None)
+
+subregion_a = lazy_array[slice_a]
+print(subregion_a)
+# <Array memory://129773024766528 domain=IndexDomain([0, 10)) dtype=int64>
+assert np.array_equal(np.array(subregion_a), np_data[slice_a])
+
+subregion_b = lazy_array[slice_b]
+print(subregion_b)
+# <Array memory://129773024766528 domain=IndexDomain([10, 100)) dtype=int64>
+assert np.array_equal(np.array(subregion_a), np_data[slice_a])
+
+merged = merge([subregion_a, subregion_b])
+assert  merged == lazy_array
+assert np.array_equal(np.array(merged), np_data)
+```
+
+The base `zarr.Array` class returns a NumPy array when you index it. But when indexing an instance of `zarr.experimental.lazy_indexing.Array`, you get another lazy array. This is possible because the lazy indexing array keeps track its coordinates relative to the chunk grid.
