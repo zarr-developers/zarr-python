@@ -340,13 +340,13 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         self.all_arrays.remove(array_path)
 
     @precondition(lambda self: self.store.supports_deletes)
-    @precondition(lambda self: len(self.all_groups) >= 2)  # fixme don't delete root
+    @precondition(lambda self: bool(self.all_groups))
     @rule(data=st.data())
     def delete_group_using_del(self, data: DataObject) -> None:
-        # ensure that we don't include the root group in the list of member names that we try
-        # to delete
-        member_names = tuple(filter(lambda v: "/" in v, sorted(self.all_groups)))
-        group_path = data.draw(st.sampled_from(member_names), label="Group deletion target")
+        group_path = data.draw(
+            st.sampled_from(sorted(self.all_groups)),
+            label="Group deletion target",
+        )
         prefix, group_name = split_prefix_name(group_path)
         note(f"Deleting group '{group_path=!r}', {prefix=!r}, {group_name=!r} using delete")
         members = zarr.open_group(store=self.model, path=group_path).members(max_depth=None)
@@ -359,9 +359,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
             group = zarr.open_group(store=store, path=prefix)
             group[group_name]  # check that it exists
             del group[group_name]
-        if group_path != "/":
-            # The root group is always present
-            self.all_groups.remove(group_path)
+        self.all_groups.remove(group_path)
 
     # # --------------- assertions -----------------
     # def check_group_arrays(self, group):
