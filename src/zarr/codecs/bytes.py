@@ -65,7 +65,7 @@ class BytesCodec(ArrayBytesCodec):
             )
         return self
 
-    async def _decode_single(
+    def _decode_sync(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -88,7 +88,7 @@ class BytesCodec(ArrayBytesCodec):
             )
         return chunk_array
 
-    async def _encode_single(
+    def _encode_sync(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
@@ -108,6 +108,20 @@ class BytesCodec(ArrayBytesCodec):
         # Flatten the nd-array (only copy if needed) and reinterpret as bytes
         nd_array = nd_array.ravel().view(dtype="B")
         return chunk_spec.prototype.buffer.from_array_like(nd_array)
+
+    async def _decode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
+        return self._decode_sync(chunk_bytes, chunk_spec)
+
+    async def _encode_single(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return self._encode_sync(chunk_array, chunk_spec)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

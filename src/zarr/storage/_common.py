@@ -228,6 +228,39 @@ class StorePath:
         """
         return await self.store.is_empty(self.path)
 
+    # -------------------------------------------------------------------
+    # Synchronous IO delegation
+    #
+    # StorePath is what gets passed to the codec pipeline as a ByteGetter /
+    # ByteSetter. The async path uses get() / set() / delete(); the sync
+    # bypass uses these sync variants instead. They simply prepend
+    # self.path to the key and delegate to the underlying Store's sync
+    # methods.
+    #
+    # Note: These methods satisfy the SyncByteGetter / SyncByteSetter
+    # protocols (from zarr.abc.store) only when the underlying Store
+    # also has get_sync / set_sync / delete_sync.  Callers check the
+    # store before invoking these.
+    # -------------------------------------------------------------------
+
+    def get_sync(
+        self,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)  # type: ignore[attr-defined, no-any-return]
+
+    def set_sync(self, value: Buffer) -> None:
+        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
+        self.store.set_sync(self.path, value)  # type: ignore[attr-defined]
+
+    def delete_sync(self) -> None:
+        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
+        self.store.delete_sync(self.path)  # type: ignore[attr-defined]
+
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))

@@ -299,28 +299,29 @@ class BloscCodec(BytesBytesCodec):
             config_dict["typesize"] = self.typesize
         return Blosc.from_config(config_dict)
 
+    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer:
+        return as_numpy_array_wrapper(self._blosc_codec.decode, chunk_bytes, chunk_spec.prototype)
+
+    def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+        # Since blosc only support host memory, we convert the input and output of the encoding
+        # between numpy array and buffer
+        return chunk_spec.prototype.buffer.from_bytes(
+            self._blosc_codec.encode(chunk_bytes.as_numpy_array())
+        )
+
     async def _decode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await asyncio.to_thread(
-            as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes, chunk_spec.prototype
-        )
+        return await asyncio.to_thread(self._decode_sync, chunk_bytes, chunk_spec)
 
     async def _encode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        # Since blosc only support host memory, we convert the input and output of the encoding
-        # between numpy array and buffer
-        return await asyncio.to_thread(
-            lambda chunk: chunk_spec.prototype.buffer.from_bytes(
-                self._blosc_codec.encode(chunk.as_numpy_array())
-            ),
-            chunk_bytes,
-        )
+        return await asyncio.to_thread(self._encode_sync, chunk_bytes, chunk_spec)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

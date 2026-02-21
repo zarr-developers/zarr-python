@@ -56,11 +56,13 @@ def test_config_defaults_set() -> None:
                     "target_shard_size_bytes": None,
                 },
                 "async": {"concurrency": 10, "timeout": None},
-                "threading": {"max_workers": None},
+                "threading": {
+                    "max_workers": None,
+                    "codec_workers": {"enabled": True, "min": 0, "max": None},
+                },
                 "json_indent": 2,
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
-                    "batch_size": 1,
                 },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -103,7 +105,6 @@ def test_config_defaults_set() -> None:
     assert config.get("array.order") == "C"
     assert config.get("async.concurrency") == 10
     assert config.get("async.timeout") is None
-    assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
 
 
@@ -132,7 +133,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
+    config.set({"codec_pipeline.path": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
     assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
 
     _mock = Mock()
@@ -141,6 +142,14 @@ def test_config_codec_pipeline_class(store: Store) -> None:
         async def write(
             self,
             batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+            value: NDBuffer,
+            drop_axes: tuple[int, ...] = (),
+        ) -> None:
+            _mock.call()
+
+        def write_sync(
+            self,
+            batch_info: Any,
             value: NDBuffer,
             drop_axes: tuple[int, ...] = (),
         ) -> None:
@@ -188,6 +197,10 @@ def test_config_codec_implementation(store: Store) -> None:
 
     class MockBloscCodec(BloscCodec):
         async def _encode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+            _mock.call()
+            return None
+
+        def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
             _mock.call()
             return None
 

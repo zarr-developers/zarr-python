@@ -386,7 +386,9 @@ async def open(
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
+                    store_path=store_path,
+                    metadata=_metadata_dict,
+                    config=kwargs.get("config"),
                 )
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
@@ -1279,7 +1281,10 @@ async def open_array(
         _warn_write_empty_chunks_kwarg()
 
     try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format)
+        return await AsyncArray.open(
+            store_path,
+            zarr_format=zarr_format,
+        )
     except FileNotFoundError as err:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)

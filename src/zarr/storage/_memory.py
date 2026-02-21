@@ -77,6 +77,60 @@ class MemoryStore(Store):
             and self.read_only == other.read_only
         )
 
+    # -------------------------------------------------------------------
+    # Synchronous store methods
+    #
+    # MemoryStore is a thin wrapper around a Python dict. The async get/set
+    # methods are already synchronous in substance — they just happen to be
+    # ``async def``. These sync variants let the codec pipeline's read_sync /
+    # write_sync access the dict directly without going through the event
+    # loop, eliminating the dominant source of overhead for in-memory arrays.
+    #
+    # The logic mirrors the async counterparts exactly, except:
+    # - We set _is_open = True inline instead of ``await self._open()``,
+    #   since MemoryStore._open() is a no-op beyond setting the flag.
+    # -------------------------------------------------------------------
+
+    def get_sync(
+        self,
+        key: str,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        # Inline open: MemoryStore._open() just sets _is_open = True.
+        if not self._is_open:
+            self._is_open = True
+        assert isinstance(key, str)
+        try:
+            # Direct dict lookup — this is what async get() does too,
+            # but without the event loop round-trip.
+            value = self._store_dict[key]
+            start, stop = _normalize_byte_range_index(value, byte_range)
+            return prototype.buffer.from_buffer(value[start:stop])
+        except KeyError:
+            return None
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        self._check_writable()
+        if not self._is_open:
+            self._is_open = True
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
+        # Direct dict assignment — no event loop overhead.
+        self._store_dict[key] = value
+
+    def delete_sync(self, key: str) -> None:
+        self._check_writable()
+        try:
+            del self._store_dict[key]
+        except KeyError:
+            logger.debug("Key %s does not exist.", key)
+
     async def get(
         self,
         key: str,
