@@ -21,7 +21,7 @@ from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
-from zarr.storage._common import _dereference_path
+from zarr.storage._common import _dereference_path  # type: ignore[attr-defined]
 from zarr.storage._utils import normalize_path
 from zarr.types import AnyArray
 

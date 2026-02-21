@@ -16,7 +16,7 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.errors import ZarrUserWarning
-from zarr.storage._common import _dereference_path
+from zarr.storage._common import _dereference_path  # type: ignore[attr-defined]
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable

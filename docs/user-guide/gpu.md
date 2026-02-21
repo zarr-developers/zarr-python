@@ -20,9 +20,8 @@ buffers used internally by Zarr via `enable_gpu()`.
 import zarr
 import cupy as cp
 zarr.config.enable_gpu()
-store = zarr.storage.MemoryStore()
 z = zarr.create_array(
-    store=store, shape=(100, 100), chunks=(10, 10), dtype="float32",
+    store="memory://gpu-demo", shape=(100, 100), chunks=(10, 10), dtype="float32",
 )
 type(z[:10, :10])
 # cupy.ndarray
