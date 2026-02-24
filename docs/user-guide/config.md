@@ -1,4 +1,4 @@
-# Runtime configuration
+# Runtime configuration {#config-runtime-configuration}
 
 [`zarr.config`][] is responsible for managing the configuration of zarr and
 is based on the [donfig](https://github.com/pytroll/donfig) Python library.
