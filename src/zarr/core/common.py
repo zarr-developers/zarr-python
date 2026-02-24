@@ -21,6 +21,7 @@ from typing import (
     overload,
 )
 
+import numpy as np
 from typing_extensions import ReadOnly
 
 from zarr.core.config import config as zarr_config
@@ -37,7 +38,7 @@ ZATTRS_JSON = ".zattrs"
 ZMETADATA_V2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
-ShapeLike = Iterable[int] | int
+ShapeLike = Iterable[int | np.integer[Any]] | int | np.integer[Any]
 # For backwards compatibility
 ChunkCoords = tuple[int, ...]
 ZarrFormat = Literal[2, 3]
@@ -185,23 +186,28 @@ def parse_named_configuration(
 
 
 def parse_shapelike(data: ShapeLike) -> tuple[int, ...]:
-    if isinstance(data, int):
+    """
+    Parse a shape-like input into an explicit shape.
+    """
+    if isinstance(data, int | np.integer):
         if data < 0:
             raise ValueError(f"Expected a non-negative integer. Got {data} instead")
-        return (data,)
+        return (int(data),)
     try:
         data_tuple = tuple(data)
     except TypeError as e:
         msg = f"Expected an integer or an iterable of integers. Got {data} instead."
         raise TypeError(msg) from e
 
-    if not all(isinstance(v, int) for v in data_tuple):
+    if not all(isinstance(v, int | np.integer) for v in data_tuple):
         msg = f"Expected an iterable of integers. Got {data} instead."
         raise TypeError(msg)
     if not all(v > -1 for v in data_tuple):
         msg = f"Expected all values to be non-negative. Got {data} instead."
         raise ValueError(msg)
-    return data_tuple
+
+    # cast NumPy scalars to plain python ints
+    return tuple(int(x) for x in data_tuple)
 
 
 def parse_fill_value(data: Any) -> Any:

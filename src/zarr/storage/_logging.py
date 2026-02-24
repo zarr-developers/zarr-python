@@ -77,6 +77,9 @@ class LoggingStore(WrapperStore[T_Store]):
         )
         return handler
 
+    def _with_store(self, store: T_Store) -> Self:
+        return type(self)(store=store, log_level=self.log_level, log_handler=self.log_handler)
+
     @contextmanager
     def log(self, hint: Any = "") -> Generator[None, None, None]:
         """Context manager to log method calls
