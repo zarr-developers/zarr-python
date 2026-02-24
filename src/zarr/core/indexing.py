@@ -1452,7 +1452,7 @@ def make_slice_selection(selection: Any) -> list[slice]:
 def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     # Inspired by compressed morton code as implemented in Neuroglancer
     # https://github.com/google/neuroglancer/blob/master/src/neuroglancer/datasource/precomputed/volume.md#compressed-morton-code
-    bits = tuple(math.ceil(math.log2(c)) for c in chunk_shape)
+    bits = tuple((c - 1).bit_length() for c in chunk_shape)
     max_coords_bits = max(bits)
     input_bit = 0
     input_value = z
@@ -1467,21 +1467,110 @@ def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(out)
 
 
-@lru_cache
-def _morton_order(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+def decode_morton_vectorized(
+    z: npt.NDArray[np.intp], chunk_shape: tuple[int, ...]
+) -> npt.NDArray[np.intp]:
+    """Vectorized Morton code decoding for multiple z values.
+
+    Parameters
+    ----------
+    z : ndarray
+        1D array of Morton codes to decode.
+    chunk_shape : tuple of int
+        Shape defining the coordinate space.
+
+    Returns
+    -------
+    ndarray
+        2D array of shape (len(z), len(chunk_shape)) containing decoded coordinates.
+    """
+    n_dims = len(chunk_shape)
+    bits = tuple((c - 1).bit_length() for c in chunk_shape)
+
+    max_coords_bits = max(bits) if bits else 0
+    out = np.zeros((len(z), n_dims), dtype=np.intp)
+
+    input_bit = 0
+    for coord_bit in range(max_coords_bits):
+        for dim in range(n_dims):
+            if coord_bit < bits[dim]:
+                # Extract bit at position input_bit from all z values
+                bit_values = (z >> input_bit) & 1
+                # Place bit at coord_bit position in dimension dim
+                out[:, dim] |= bit_values << coord_bit
+                input_bit += 1
+
+    return out
+
+
+@lru_cache(maxsize=16)
+def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     n_total = product(chunk_shape)
-    order: list[tuple[int, ...]] = []
-    i = 0
-    while len(order) < n_total:
+    n_dims = len(chunk_shape)
+    if n_total == 0:
+        out = np.empty((0, n_dims), dtype=np.intp)
+        out.flags.writeable = False
+        return out
+
+    # Optimization: Remove singleton dimensions to enable magic number usage
+    # for shapes like (1,1,32,32,32). Compute Morton on squeezed shape, then expand.
+    singleton_dims = tuple(i for i, s in enumerate(chunk_shape) if s == 1)
+    if singleton_dims:
+        squeezed_shape = tuple(s for s in chunk_shape if s != 1)
+        if squeezed_shape:
+            # Compute Morton order on squeezed shape, then expand singleton dims (always 0)
+            squeezed_order = np.asarray(_morton_order(squeezed_shape))
+            out = np.zeros((n_total, n_dims), dtype=np.intp)
+            squeezed_col = 0
+            for full_col in range(n_dims):
+                if chunk_shape[full_col] != 1:
+                    out[:, full_col] = squeezed_order[:, squeezed_col]
+                    squeezed_col += 1
+        else:
+            # All dimensions are singletons, just return the single point
+            out = np.zeros((1, n_dims), dtype=np.intp)
+        out.flags.writeable = False
+        return out
+
+    # Find the largest power-of-2 hypercube that fits within chunk_shape.
+    # Within this hypercube, Morton codes are guaranteed to be in bounds.
+    min_dim = min(chunk_shape)
+    if min_dim >= 1:
+        power = min_dim.bit_length() - 1  # floor(log2(min_dim))
+        hypercube_size = 1 << power  # 2^power
+        n_hypercube = hypercube_size**n_dims
+    else:
+        n_hypercube = 0
+
+    # Within the hypercube, no bounds checking needed - use vectorized decoding
+    if n_hypercube > 0:
+        z_values = np.arange(n_hypercube, dtype=np.intp)
+        order: npt.NDArray[np.intp] = decode_morton_vectorized(z_values, chunk_shape)
+    else:
+        order = np.empty((0, n_dims), dtype=np.intp)
+
+    # For remaining elements outside the hypercube, bounds checking is needed
+    remaining: list[tuple[int, ...]] = []
+    i = n_hypercube
+    while len(order) + len(remaining) < n_total:
         m = decode_morton(i, chunk_shape)
         if all(x < y for x, y in zip(m, chunk_shape, strict=False)):
-            order.append(m)
+            remaining.append(m)
         i += 1
-    return tuple(order)
+
+    if remaining:
+        order = np.vstack([order, np.array(remaining, dtype=np.intp)])
+    order.flags.writeable = False
+    return order
+
+
+@lru_cache(maxsize=16)
+def _morton_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    return tuple(tuple(int(x) for x in row) for row in _morton_order(chunk_shape))
 
 
 def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    return iter(_morton_order(tuple(chunk_shape)))
+    return iter(_morton_order_keys(tuple(chunk_shape)))
 
 
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
