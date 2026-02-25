@@ -1522,6 +1522,7 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
     # Decode all Morton codes in the ceiling hypercube, then filter to valid coords.
     # This is fully vectorized. For shapes with n_z >> n_total (e.g. (33,33,33):
     # n_z=262144, n_total=35937), consider the argsort strategy below.
+    order: npt.NDArray[np.intp]
     if n_z <= 4 * n_total:
         # Ceiling strategy: decode all n_z codes vectorized, filter in-bounds.
         # Works well when the overgeneration ratio n_z/n_total is small (≤4).
