@@ -204,6 +204,37 @@ class RegularChunkGrid(ChunkGrid):
             1,
         )
 
+    def get_chunk_start(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """Get the starting position of a chunk in the array."""
+        return tuple(
+            coord * size for coord, size in zip(chunk_coord, self.chunk_shape, strict=True)
+        )
+
+    def get_chunk_shape(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """Get the shape of a specific chunk (may be truncated at array boundary)."""
+        return tuple(
+            min(cs, dim - coord * cs)
+            for coord, cs, dim in zip(chunk_coord, self.chunk_shape, array_shape, strict=True)
+        )
+
+    def array_index_to_chunk_coord(
+        self, array_shape: tuple[int, ...], array_index: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """Map an array index to the chunk coordinates that contain it."""
+        return tuple(
+            idx // cs for idx, cs in zip(array_index, self.chunk_shape, strict=True)
+        )
+
+    def get_chunk_grid_shape(self, array_shape: tuple[int, ...]) -> tuple[int, ...]:
+        """Get the number of chunks along each dimension."""
+        return tuple(
+            ceildiv(s, c) for s, c in zip(array_shape, self.chunk_shape, strict=True)
+        )
+
 
 def _guess_num_chunks_per_axis_shard(
     chunk_shape: tuple[int, ...], item_size: int, max_bytes: int, array_shape: tuple[int, ...]
