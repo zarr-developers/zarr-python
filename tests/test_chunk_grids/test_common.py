@@ -95,3 +95,52 @@ def test_normalize_chunks_dask_style_irregular_multiple_dims() -> None:
 
     # Should use first chunk size from each dimension
     assert result == (10, 20)
+
+
+# =============================================================================
+# Tests for _is_nested_sequence()
+# =============================================================================
+
+
+def test_is_nested_sequence_basic() -> None:
+    """Test _is_nested_sequence with typical inputs."""
+    from zarr.core.chunk_grids import _is_nested_sequence
+
+    # Nested sequences → True
+    assert _is_nested_sequence([[10, 20], [5, 5]]) is True
+    assert _is_nested_sequence([(10, 20), (5, 5)]) is True
+    assert _is_nested_sequence(([10, 20], [5, 5])) is True
+
+    # Flat sequences → False
+    assert _is_nested_sequence((10, 10)) is False
+    assert _is_nested_sequence([10, 10]) is False
+
+
+def test_is_nested_sequence_non_sequences() -> None:
+    """Test _is_nested_sequence with non-sequence types."""
+    from zarr.core.chunk_grids import _is_nested_sequence
+
+    assert _is_nested_sequence(10) is False
+    assert _is_nested_sequence("auto") is False
+    assert _is_nested_sequence(None) is False
+    assert _is_nested_sequence(3.14) is False
+
+
+def test_is_nested_sequence_chunk_grid_instance() -> None:
+    """Test _is_nested_sequence with ChunkGrid instances."""
+    from zarr.core.chunk_grids import RectilinearChunkGrid, RegularChunkGrid, _is_nested_sequence
+
+    assert _is_nested_sequence(RegularChunkGrid(chunk_shape=(10, 10))) is False
+    assert _is_nested_sequence(RectilinearChunkGrid(chunk_shapes=[[10, 20], [5, 5]])) is False
+
+
+def test_is_nested_sequence_empty_iterables() -> None:
+    """Test _is_nested_sequence with empty iterables.
+
+    Empty sequences return False because there's no first element to inspect.
+    """
+    from zarr.core.chunk_grids import _is_nested_sequence
+
+    assert _is_nested_sequence([]) is False
+    assert _is_nested_sequence(()) is False
+    assert _is_nested_sequence([[]]) is True  # outer has one element which is a list
