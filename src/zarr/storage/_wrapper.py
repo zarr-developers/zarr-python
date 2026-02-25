@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
@@ -31,14 +31,23 @@ class WrapperStore(Store, Generic[T_Store]):
     def __init__(self, store: T_Store) -> None:
         self._store = store
 
+    def _with_store(self, store: T_Store) -> Self:
+        """
+        Constructs a new instance of the wrapper store with the same details but a new store.
+        """
+        return type(self)(store=store)
+
     @classmethod
     async def open(cls: type[Self], store_cls: type[T_Store], *args: Any, **kwargs: Any) -> Self:
         store = store_cls(*args, **kwargs)
         await store._open()
         return cls(store=store)
 
+    def with_read_only(self, read_only: bool = False) -> Self:
+        return self._with_store(cast(T_Store, self._store.with_read_only(read_only)))
+
     def __enter__(self) -> Self:
-        return type(self)(self._store.__enter__())
+        return self._with_store(self._store.__enter__())
 
     def __exit__(
         self,
