@@ -1551,7 +1551,7 @@ def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
                     output_bit += 1
 
         sort_idx: npt.NDArray[np.intp] = np.argsort(z_codes, kind="stable")
-        order = all_coords[sort_idx]
+        order = np.asarray(all_coords[sort_idx], dtype=np.intp)
 
     order.flags.writeable = False
     return order
