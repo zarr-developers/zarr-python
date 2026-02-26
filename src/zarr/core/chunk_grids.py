@@ -1397,6 +1397,12 @@ def _normalize_rectilinear_chunks(
                 f"Variable chunks along dimension {i} sum to {chunk_sum} "
                 f"but array shape is {dim_size}. Chunks must sum to be greater than or equal to the shape."
             )
+        if sum(dim_chunks[:-1]) >= dim_size:
+            raise ValueError(
+                f"Dimension {i} has more chunks than needed. "
+                f"The last chunk(s) would contain no valid data. "
+                f"Remove the extra chunk(s) or increase the array shape."
+            )
 
     return chunk_shapes
 

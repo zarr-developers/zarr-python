@@ -1070,15 +1070,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def chunks(self) -> tuple[int, ...]:
         """Returns the chunk shape of the Array.
 
-        .. deprecated::
-            The `chunks` property is deprecated and will be removed in a future version.
-            Use `chunk_grid` instead to access chunk information.
-
         For arrays using RegularChunkGrid: returns a tuple of ints with uniform chunk sizes.
         If sharding is used, the inner chunk shape is returned.
 
         For arrays using RectilinearChunkGrid: raises NotImplementedError as variable chunks
-        cannot be represented as a simple tuple.
+        cannot be represented as a simple tuple. Use ``chunk_grid`` instead.
 
         Returns
         -------
@@ -1096,12 +1092,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 "(RectilinearChunkGrid). Use `chunk_grid` instead to access chunk information."
             )
             raise NotImplementedError(msg)
-        warnings.warn(
-            "Array.chunks is deprecated and will be removed in a future version. "
-            "Use Array.chunk_grid.chunk_shape instead.",
-            FutureWarning,
-            stacklevel=2,
-        )
         return self.metadata.chunks
 
     @property
@@ -1990,6 +1980,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
+        try:
+            chunk_shape: tuple[int, ...] | None = self.metadata.chunks
+        except NotImplementedError:
+            chunk_shape = None
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=self._zdtype,
@@ -1997,7 +1991,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _shape=self.shape,
             _order=self.order,
             _shard_shape=self.shards,
-            _chunk_shape=self.chunks,
+            _chunk_shape=chunk_shape,
             _read_only=self.read_only,
             _compressors=self.compressors,
             _filters=self.filters,
@@ -2342,15 +2336,11 @@ class Array(Generic[T_ArrayMetadata]):
     def chunks(self) -> tuple[int, ...]:
         """Returns the chunk shape of the Array.
 
-        .. deprecated::
-            The `chunks` property is deprecated and will be removed in a future version.
-            Use `chunk_grid` instead to access chunk information.
-
         For arrays using RegularChunkGrid: returns a tuple of ints with uniform chunk sizes.
         If sharding is used, the inner chunk shape is returned.
 
         For arrays using RectilinearChunkGrid: raises NotImplementedError as variable chunks
-        cannot be represented as a simple tuple.
+        cannot be represented as a simple tuple. Use ``chunk_grid`` instead.
 
         Returns
         -------
@@ -5734,7 +5724,7 @@ async def _nchunks_initialized(
         chunks_per_shard = 1
     else:
         chunks_per_shard = product(
-            tuple(a // b for a, b in zip(array.shards, array.chunks, strict=True))
+            tuple(a // b for a, b in zip(array.shards, array.metadata.chunks, strict=True))
         )
     return (await _nshards_initialized(array)) * chunks_per_shard
 

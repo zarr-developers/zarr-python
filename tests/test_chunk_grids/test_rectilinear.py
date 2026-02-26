@@ -1326,10 +1326,8 @@ def test_sync_array_chunks_property_rectilinear_raises() -> None:
     assert chunk_grid.chunk_shapes == ((10, 20, 30, 40), (25, 25, 50))
 
 
-async def test_array_chunks_property_regular_with_warning() -> None:
-    """Test that Array.chunks emits FutureWarning for RegularChunkGrid."""
-    import warnings
-
+async def test_array_chunks_property_regular() -> None:
+    """Test that Array.chunks works for RegularChunkGrid."""
     store = MemoryStore()
 
     arr = await zarr.api.asynchronous.create_array(
@@ -1340,20 +1338,13 @@ async def test_array_chunks_property_regular_with_warning() -> None:
         zarr_format=3,
     )
 
-    # chunks should emit FutureWarning for regular grids
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        chunks = arr.chunks
-        assert len(w) == 1
-        assert issubclass(w[0].category, FutureWarning)
-        assert "deprecated" in str(w[0].message)
-
-    # For regular chunks, it's tuple[int, ...]
+    # For regular chunks, returns tuple[int, ...]
+    chunks = arr.chunks
     assert chunks == (10, 20)
     assert isinstance(chunks[0], int)
     assert isinstance(chunks[1], int)
 
-    # chunk_grid.chunk_shape works without warning
+    # chunk_grid.chunk_shape also works
     chunk_grid = arr.chunk_grid
     assert isinstance(chunk_grid, RegularChunkGrid)
     assert chunk_grid.chunk_shape == (10, 20)
