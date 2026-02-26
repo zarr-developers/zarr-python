@@ -16,7 +16,7 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-      - uses: actions/setup-python@v6.1.0
+      - uses: actions/setup-python@v6.2.0
         name: Install Python
         with:
           python-version: '3.11'
