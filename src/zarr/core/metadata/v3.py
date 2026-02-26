@@ -24,7 +24,11 @@ from typing import Any, Literal
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.chunk_grids import (
+    ChunkGrid,
+    RectilinearChunkGrid,
+    RegularChunkGrid,
+)
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -104,7 +108,7 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: ZDType[TBaseDType, TBaseSc
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
     codec_class_name = abc.__class__.__name__
-    # TODO: Fix typing here
+    # TODO: Fix typing here - mypy cannot express the relationship between ZDType and VariableLengthUTF8
     if isinstance(dtype, VariableLengthUTF8) and not codec_class_name == "VLenUTF8Codec":  # type: ignore[unreachable]
         raise ValueError(
             f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
@@ -287,6 +291,24 @@ class ArrayV3Metadata(Metadata):
 
     @property
     def chunks(self) -> tuple[int, ...]:
+        """Return the chunk specification for this array.
+
+        For RegularChunkGrid: returns a tuple of ints with uniform chunk sizes.
+        If sharding is used, the inner chunk shape is returned.
+
+        For RectilinearChunkGrid: raises NotImplementedError as variable chunks
+        cannot be represented as a simple tuple.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The chunk shape for regular chunk grids
+
+        Raises
+        ------
+        NotImplementedError
+            If the array uses RectilinearChunkGrid (variable chunks)
+        """
         if isinstance(self.chunk_grid, RegularChunkGrid):
             from zarr.codecs.sharding import ShardingCodec
 
@@ -297,9 +319,16 @@ class ArrayV3Metadata(Metadata):
             else:
                 return self.chunk_grid.chunk_shape
 
+        if isinstance(self.chunk_grid, RectilinearChunkGrid):
+            msg = (
+                "The `chunks` property is not supported for arrays with variable chunk sizes "
+                "(RectilinearChunkGrid). Use `chunk_grid` instead to access chunk information."
+            )
+            raise NotImplementedError(msg)
+
         msg = (
-            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
-            f"This array has a {self.chunk_grid} instead."
+            f"The `chunks` attribute is not defined for chunk grid type "
+            f"`{type(self.chunk_grid).__name__}`."
         )
         raise NotImplementedError(msg)
 
@@ -312,12 +341,9 @@ class ArrayV3Metadata(Metadata):
                 return self.chunk_grid.chunk_shape
             else:
                 return None
-
-        msg = (
-            f"The `shards` attribute is only defined for arrays using `RegularChunkGrid`."
-            f"This array has a {self.chunk_grid} instead."
-        )
-        raise NotImplementedError(msg)
+        else:
+            # RectilinearChunkGrid and other chunk grids don't support sharding at this time
+            return None
 
     @property
     def inner_codecs(self) -> tuple[Codec, ...]:
@@ -331,11 +357,16 @@ class ArrayV3Metadata(Metadata):
     def get_chunk_spec(
         self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
-        assert isinstance(self.chunk_grid, RegularChunkGrid), (
-            "Currently, only regular chunk grid is supported"
-        )
+        # For RegularChunkGrid, use the uniform chunk_shape for all chunks
+        # The indexing and codec layers handle partial chunks at array edges
+        # For RectilinearChunkGrid and other grids, get the actual chunk shape per chunk
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            chunk_shape = self.chunk_grid.chunk_shape
+        else:
+            chunk_shape = self.chunk_grid.get_chunk_shape(self.shape, _chunk_coords)
+
         return ArraySpec(
-            shape=self.chunk_grid.chunk_shape,
+            shape=chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
             config=array_config,
@@ -436,6 +467,21 @@ class ArrayV3Metadata(Metadata):
         return out_dict
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
+        """Evolve the shape of this array.
+
+        If the array uses the RectilinearChunkGrid, the chunk_grid will also be evolved.
+
+        Parameters
+        ----------
+        shape : tuple[int, ...]
+            The desired new shape of the array.
+
+        Returns
+        -------
+        metadata : ArrayV3Metadata
+        """
+        if isinstance(self.chunk_grid, RectilinearChunkGrid):
+            return replace(self, shape=shape, chunk_grid=self.chunk_grid.update_shape(shape))
         return replace(self, shape=shape)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:

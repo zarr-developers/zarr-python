@@ -929,7 +929,8 @@ async def create(
         Chunk shape. If True, will be guessed from ``shape`` and ``dtype``. If
         False, will be set to ``shape``, i.e., single chunk for the whole array.
         If an int, the chunk size in each dimension will be given by the value
-        of ``chunks``. Default is True.
+        of ``chunks``. Default is True. Also supports nested sequences for
+        variable-sized chunks (Zarr format 3 only, experimental until 3.3).
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
