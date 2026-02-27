@@ -40,6 +40,10 @@ pytestmark = [
     pytest.mark.filterwarnings(
         "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
     ),
+    # s3fs finalizers can fail when sessions are garbage collected without being entered
+    pytest.mark.filterwarnings(
+        "ignore:Exception ignored in.*finalize object.*:pytest.PytestUnraisableExceptionWarning"
+    ),
 ]
 
 fsspec = pytest.importorskip("fsspec")
@@ -129,7 +133,7 @@ async def test_basic() -> None:
     assert out[0].to_bytes() == data[1:]
 
 
-class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
+class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):  # type: ignore[misc]
     store_cls = FsspecStore
     buffer_cls = cpu.Buffer
 
