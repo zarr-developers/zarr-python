@@ -408,6 +408,10 @@ filterwarnings = [
     "error",
     "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning",
     "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning",
+    # s3fs finalizers can fail during session cleanup when aiobotocore sessions are garbage
+    # collected without being entered. This is a known issue in s3fs/aiobotocore, and pytest
+    # per-test filterwarnings markers can't catch it (https://github.com/pytest-dev/pytest/issues/14096).
+    "ignore:Exception ignored in[\\s\\S]*Session was never entered:pytest.PytestUnraisableExceptionWarning",
 ]
 markers = [
     "asyncio: mark test as asyncio test",
