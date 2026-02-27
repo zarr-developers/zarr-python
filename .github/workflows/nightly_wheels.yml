@@ -22,10 +22,10 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install hatch
+      - name: Install Hatch
+        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+        with:
+          version: '1.16.5'
 
       - name: Build wheel and sdist
         run: hatch build

@@ -51,9 +51,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install Hatch
-      run: |
-        python -m pip install --upgrade pip
-        pip install hatch
+      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      with:
+        version: '1.16.5'
     - name: Set Up Hatch Env
       run: |
         hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
@@ -93,9 +93,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install Hatch
-      run: |
-        python -m pip install --upgrade pip
-        pip install hatch
+      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      with:
+        version: '1.16.5'
     - name: Set Up Hatch Env
       run: |
         hatch env create ${{ matrix.dependency-set }}
@@ -122,9 +122,9 @@ jobs:
         python-version: '3.13'
         cache: 'pip'
     - name: Install Hatch
-      run: |
-        python -m pip install --upgrade pip
-        pip install hatch
+      uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+      with:
+        version: '1.16.5'
     - name: Set Up Hatch Env
       run: |
         hatch run doctest:pip list
