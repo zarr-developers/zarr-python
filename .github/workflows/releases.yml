@@ -25,7 +25,7 @@ jobs:
         uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
         with:
           version: '1.16.4'
-      - name: Pin virtualenv
+      - name: Pin virtualenv  # TODO: drop when hatch 1.16.5 is released on PyPI
         run: pip install 'virtualenv<21'
       - name: Build wheel and sdist
         run: hatch build
