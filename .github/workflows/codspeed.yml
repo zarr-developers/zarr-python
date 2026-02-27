@@ -33,7 +33,9 @@ jobs:
     - name: Install Hatch
       uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
       with:
-        version: '1.16.5'
+        version: '1.16.4'
+    - name: Pin virtualenv
+      run: pip install 'virtualenv<21'
     - name: Run the benchmarks
       uses: CodSpeedHQ/action@v4
       with:
