@@ -64,7 +64,7 @@ hatch env show  # list all available environments
 To verify that your development environment is working, you can run the unit tests for one of the test environments, e.g.:
 
 ```bash
-hatch env run --env test.py3.12-2.2-optional run-pytest
+hatch env run --env test.py3.12-optional run
 ```
 
 ### Creating a branch
@@ -102,7 +102,7 @@ Again, any conflicts need to be resolved before submitting a pull request.
 Zarr includes a suite of unit tests. The simplest way to run the unit tests is to activate your development environment (see [creating a development environment](#creating-a-development-environment) above) and invoke:
 
 ```bash
-hatch env run --env test.py3.12-2.2-optional run-pytest
+hatch env run --env test.py3.12-optional run
 ```
 
 All tests are automatically run via GitHub Actions for every pull request and must pass before code can be accepted. Test coverage is also collected automatically via the Codecov service.
@@ -164,7 +164,7 @@ If you would like to skip the failing checks and push the code for further discu
 Zarr strives to maintain 100% test coverage under the latest Python stable release. Both unit tests and docstring doctests are included when computing coverage. Running:
 
 ```bash
-hatch env run --env test.py3.12-2.2-optional run-coverage
+hatch env run --env test.py3.12-optional run-coverage
 ```
 
 will automatically run the test suite with coverage and produce an XML coverage report. This should be 100% before code can be accepted into the main code base.
@@ -172,7 +172,7 @@ will automatically run the test suite with coverage and produce an XML coverage 
 You can also generate an HTML coverage report by running:
 
 ```bash
-hatch env run --env test.py3.12-2.2-optional run-coverage-html
+hatch env run --env test.py3.12-optional run-coverage-html
 ```
 
 When submitting a pull request, coverage will also be collected across all supported Python versions via the Codecov service, and will be reported back within the pull request. Codecov coverage must also be 100% before code can be accepted.
