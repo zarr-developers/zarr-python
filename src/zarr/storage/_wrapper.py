@@ -111,6 +111,9 @@ class WrapperStore(Store, Generic[T_Store]):
     async def set(self, key: str, value: Buffer) -> None:
         await self._store.set(key, value)
 
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        await self._store.set_range(key, value, start)
+
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         return await self._store.set_if_not_exists(key, value)
 

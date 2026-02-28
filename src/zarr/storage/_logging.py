@@ -195,6 +195,11 @@ class LoggingStore(WrapperStore[T_Store]):
         with self.log(key):
             return await self._store.set(key=key, value=value)
 
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        # docstring inherited
+        with self.log(key):
+            return await self._store.set_range(key=key, value=value, start=start)
+
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
         with self.log(key):

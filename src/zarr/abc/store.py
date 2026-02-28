@@ -16,7 +16,12 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import Buffer, BufferPrototype
 
-__all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = [
+    "ByteGetter",
+    "ByteSetter",
+    "Store",
+    "set_or_delete",
+]
 
 
 @dataclass
@@ -466,6 +471,21 @@ class Store(ABC):
         """
         ...
 
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        """Write ``value`` into an existing key beginning at byte offset ``start``.
+
+        The key must already exist and ``start + len(value)`` must not exceed
+        the current size of the stored value.
+
+        Parameters
+        ----------
+        key : str
+        value : Buffer
+        start : int
+            Byte offset at which to begin writing.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support set_range")
+
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         """
         Store a key to ``value`` if the key is not already present.
@@ -694,6 +714,8 @@ class ByteSetter(Protocol):
     ) -> Buffer | None: ...
 
     async def set(self, value: Buffer) -> None: ...
+
+    async def set_range(self, value: Buffer, start: int) -> None: ...
 
     async def delete(self) -> None: ...
 
