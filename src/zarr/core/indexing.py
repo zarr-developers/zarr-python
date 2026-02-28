@@ -373,7 +373,6 @@ class ChunkDimProjection(NamedTuple):
     dim_chunk_ix: int
     dim_chunk_sel: Selector
     dim_out_sel: Selector | None
-    is_complete_chunk: bool
 
 
 @dataclass(frozen=True)
@@ -393,8 +392,7 @@ class IntDimIndexer:
         dim_offset = dim_chunk_ix * self.dim_chunk_len
         dim_chunk_sel = self.dim_sel - dim_offset
         dim_out_sel = None
-        is_complete_chunk = self.dim_chunk_len == 1
-        yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
+        yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
 @dataclass(frozen=True)
@@ -468,10 +466,7 @@ class SliceDimIndexer:
 
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
-            is_complete_chunk = (
-                dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
-            )
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
 def check_selection_length(selection: SelectionNormalized, shape: tuple[int, ...]) -> None:
@@ -531,6 +526,35 @@ def ensure_tuple(v: Any) -> SelectionNormalized:
     return cast("SelectionNormalized", v)
 
 
+def _is_complete_chunk(
+    dim_indexers: Sequence[
+        IntDimIndexer | SliceDimIndexer | BoolArrayDimIndexer | IntArrayDimIndexer
+    ],
+    dim_projections: tuple[ChunkDimProjection, ...],
+) -> bool:
+    """Return True if the combined chunk selection covers the full actual extent.
+
+    The actual extent of each chunk dimension accounts for edge chunks
+    (where the array length is not a multiple of the chunk length).
+    """
+    for dim_indexer, p in zip(dim_indexers, dim_projections, strict=True):
+        chunk_ix = p.dim_chunk_ix
+        actual_extent = (
+            min(dim_indexer.dim_len, (chunk_ix + 1) * dim_indexer.dim_chunk_len)
+            - chunk_ix * dim_indexer.dim_chunk_len
+        )
+        s = p.dim_chunk_sel
+        if isinstance(s, slice):
+            if not (s.start in (0, None) and s.stop >= actual_extent and s.step in (1, None)):
+                return False
+        elif isinstance(dim_indexer, IntDimIndexer):
+            if actual_extent != 1:
+                return False
+        else:
+            return False
+    return True
+
+
 class ChunkProjection(NamedTuple):
     """A mapping of items from chunk to output array. Can be used to extract items from the
     chunk array for loading into an output array. Can also be used to extract items from a
@@ -544,8 +568,8 @@ class ChunkProjection(NamedTuple):
         Selection of items from chunk array.
     out_selection
         Selection of items in target (output) array.
-    is_complete_chunk:
-        True if a complete chunk is indexed
+    is_complete_chunk
+        True if the selection covers the full actual extent of the chunk.
     """
 
     chunk_coords: tuple[int, ...]
@@ -627,8 +651,8 @@ class BasicIndexer(Indexer):
             out_selection = tuple(
                 p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None
             )
-            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
+            is_complete = _is_complete_chunk(self.dim_indexers, dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete)
 
 
 @dataclass(frozen=True)
@@ -696,9 +720,8 @@ class BoolArrayDimIndexer:
                 start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
             stop = self.chunk_nitems_cumsum[dim_chunk_ix]
             dim_out_sel = slice(start, stop)
-            is_complete_chunk = False  # TODO
 
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
 class Order(Enum):
@@ -838,8 +861,7 @@ class IntArrayDimIndexer:
             # find region in chunk
             dim_offset = dim_chunk_ix * self.dim_chunk_len
             dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
-            is_complete_chunk = False  # TODO
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
 def slice_to_range(s: slice, length: int) -> range:
@@ -976,8 +998,8 @@ class OrthogonalIndexer(Indexer):
                 if not is_basic_selection(out_selection):
                     out_selection = ix_(out_selection, self.shape)
 
-            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
+            is_complete = _is_complete_chunk(self.dim_indexers, dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete)
 
 
 @dataclass(frozen=True)
@@ -1106,8 +1128,8 @@ class BlockIndexer(Indexer):
             out_selection = tuple(
                 p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None
             )
-            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
+            is_complete = _is_complete_chunk(self.dim_indexers, dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete)
 
 
 @dataclass(frozen=True)
@@ -1274,8 +1296,9 @@ class CoordinateIndexer(Indexer):
                 for (dim_sel, dim_chunk_offset) in zip(self.selection, chunk_offsets, strict=True)
             )
 
-            is_complete_chunk = False  # TODO
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
+            yield ChunkProjection(
+                chunk_coords, chunk_selection, out_selection, is_complete_chunk=False
+            )
 
 
 @dataclass(frozen=True)

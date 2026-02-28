@@ -99,7 +99,10 @@ config = Config(
                 "target_shard_size_bytes": None,
             },
             "async": {"concurrency": 10, "timeout": None},
-            "threading": {"max_workers": None},
+            "threading": {
+                "max_workers": None,
+                "codec_workers": {"enabled": True, "min": 0, "max": None},
+            },
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
