@@ -77,6 +77,49 @@ class MemoryStore(Store):
             and self.read_only == other.read_only
         )
 
+    # -------------------------------------------------------------------
+    # Synchronous store methods
+    # -------------------------------------------------------------------
+
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        if not self._is_open:
+            self._is_open = True
+        assert isinstance(key, str)
+        try:
+            value = self._store_dict[key]
+            start, stop = _normalize_byte_range_index(value, byte_range)
+            return prototype.buffer.from_buffer(value[start:stop])
+        except KeyError:
+            return None
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        self._check_writable()
+        if not self._is_open:
+            self._is_open = True
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
+        self._store_dict[key] = value
+
+    def delete_sync(self, key: str) -> None:
+        self._check_writable()
+        if not self._is_open:
+            self._is_open = True
+        try:
+            del self._store_dict[key]
+        except KeyError:
+            logger.debug("Key %s does not exist.", key)
+
     async def get(
         self,
         key: str,
@@ -122,13 +165,32 @@ class MemoryStore(Store):
             raise TypeError(
                 f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
             )
-
         if byte_range is not None:
             buf = self._store_dict[key]
             buf[byte_range[0] : byte_range[1]] = value
             self._store_dict[key] = buf
         else:
             self._store_dict[key] = value
+
+    def _set_range_impl(self, key: str, value: Buffer, start: int) -> None:
+        buf = self._store_dict[key]
+        target = buf.as_numpy_array()
+        if start + len(value) > len(target):
+            raise ValueError(
+                f"set_range would write beyond the end of the stored value: "
+                f"start={start}, len(value)={len(value)}, stored size={len(target)}"
+            )
+        if not target.flags.writeable:
+            target = target.copy()
+            self._store_dict[key] = buf.__class__(target)
+        target[start : start + len(value)] = value.as_numpy_array()
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
+        """Synchronous byte-range write."""
+        self._check_writable()
+        if not self._is_open:
+            self._is_open = True
+        self._set_range_impl(key, value, start)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited

@@ -228,6 +228,33 @@ class StorePath:
         """
         return await self.store.is_empty(self.path)
 
+    # -------------------------------------------------------------------
+    # Synchronous IO delegation
+    # -------------------------------------------------------------------
+
+    def get_sync(
+        self,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)  # type: ignore[attr-defined, no-any-return]
+
+    def set_sync(self, value: Buffer) -> None:
+        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
+        self.store.set_sync(self.path, value)  # type: ignore[attr-defined]
+
+    def set_range_sync(self, value: Buffer, start: int) -> None:
+        """Synchronous byte-range write."""
+        self.store.set_range_sync(self.path, value, start)  # type: ignore[attr-defined]
+
+    def delete_sync(self) -> None:
+        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
+        self.store.delete_sync(self.path)  # type: ignore[attr-defined]
+
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))
