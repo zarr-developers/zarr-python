@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.27.0", "hatch-vcs"]
+requires = ["hatchling>=1.29.0", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.sdist]
@@ -61,7 +61,7 @@ license-files = ["LICENSE.txt"]
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
-# User extras
+# User-facing extras (shipped in package metadata)
 remote = [
     "fsspec>=2023.10.0",
     "obstore>=0.5.1",
@@ -70,58 +70,7 @@ gpu = [
     "cupy-cuda12x",
 ]
 cli = ["typer"]
-# Testing extras
-test = [
-    "coverage>=7.10",
-    "pytest",
-    "pytest-asyncio",
-    "pytest-cov",
-    "pytest-accept",
-    'numpydoc',
-    "hypothesis",
-    "pytest-xdist",
-    "pytest-benchmark",
-    "pytest-codspeed",
-    "packaging",
-    "tomlkit",
-    "uv",
-]
-remote_tests = [
-    'zarr[remote]',
-    "botocore",
-    "s3fs>=2023.10.0",
-    "moto[s3,server]",
-    "requests",
-]
 optional = ["rich", "universal-pathlib"]
-docs = [
-    # Doc building
-    "mkdocs-material[imaging]>=9.6.14",
-    "mkdocs>=1.6.1",
-    "mkdocstrings>=0.29.1",
-    "mkdocstrings-python>=1.16.10",
-    "mike>=2.1.3",
-    "mkdocs-redirects>=1.2.0",
-    "markdown-exec[ansi]",
-    "griffe-inherited-docstrings",
-    "ruff",
-    # Changelog generation
-    'towncrier',
-    # Optional dependencies to run examples
-    'numcodecs[msgpack]',
-    'rich',
-    's3fs>=2023.10.0',
-    'astroid<4',
-    'pytest'
-]
-# All development extras
-dev = [
-    "zarr[optional]",
-    "zarr[test]",
-    "zarr[remote_tests]",
-    "zarr[docs]",
-    "mypy",
-]
 
 [project.scripts]
 zarr = "zarr._cli.cli:app"
@@ -135,9 +84,56 @@ documentation = "https://zarr.readthedocs.io/"
 homepage = "https://github.com/zarr-developers/zarr-python"
 
 [dependency-groups]
+test = [
+    "coverage>=7.10",
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-accept",
+    "numpydoc",
+    "hypothesis",
+    "pytest-xdist",
+    "pytest-benchmark",
+    "pytest-codspeed",
+    "tomlkit",
+    "uv",
+]
+remote-tests = [
+    {include-group = "test"},
+    "fsspec>=2023.10.0",
+    "obstore>=0.5.1",
+    "botocore",
+    "s3fs>=2023.10.0",
+    "moto[s3,server]",
+    "requests",
+]
+docs = [
+    # Doc building
+    "mkdocs-material[imaging]>=9.6.14",
+    "mkdocs>=1.6.1",
+    "mkdocstrings>=0.29.1",
+    "mkdocstrings-python>=1.16.10",
+    "mike>=2.1.3",
+    "mkdocs-redirects>=1.2.0",
+    "markdown-exec[ansi]",
+    "griffe-inherited-docstrings",
+    "ruff",
+    # Changelog generation
+    "towncrier",
+    # Optional dependencies to run examples
+    "numcodecs[msgpack]",
+    "rich",
+    "s3fs>=2023.10.0",
+    "astroid<4",
+    "pytest",
+]
 dev = [
-    "ipykernel>=6.29.5",
-    "pip>=25.0.1",
+    {include-group = "test"},
+    {include-group = "remote-tests"},
+    {include-group = "docs"},
+    "rich",
+    "universal-pathlib",
+    "mypy",
 ]
 
 [tool.coverage.report]
@@ -158,7 +154,7 @@ version.source = "vcs"
 hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
-features = ["test"]
+dependency-groups = ["test"]
 
 [tool.hatch.envs.test.env-vars]
 # Required to test with a pytest plugin; see https://pytest-cov.readthedocs.io/en/latest/plugins.html
@@ -171,16 +167,19 @@ python = ["3.11", "3.12", "3.13"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
-matrix.deps.dependencies = [
-  {value = "zarr[remote, remote_tests, test, optional, cli]", if = ["optional"]}
+matrix.deps.features = [
+  {value = "remote", if = ["optional"]},
+  {value = "optional", if = ["optional"]},
+  {value = "cli", if = ["optional"]},
+]
+matrix.deps.dependency-groups = [
+  {value = "remote-tests", if = ["optional"]},
 ]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
 run = "run-coverage --no-cov --ignore tests/benchmarks"
-run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "run-coverage -nauto --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
@@ -189,27 +188,22 @@ list-env = "pip list"
 
 [tool.hatch.envs.gputest]
 template = "test"
-dependencies = [
+extra-dependencies = [
     "universal_pathlib",
 ]
-features = ["test", "gpu"]
+features = ["gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks"
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-report xml --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks"
 run = "run-coverage --no-cov"
-run-verbose = "run-coverage --verbose"
-run-mypy = "mypy src"
-run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
-list-env = "pip list"
 
 [tool.hatch.envs.upstream]
 template = 'test'
 python = "3.13"
-dependencies = [
+extra-dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
@@ -218,8 +212,6 @@ dependencies = [
     'typing_extensions @ git+https://github.com/python/typing_extensions',
     'donfig @ git+https://github.com/pytroll/donfig',
     'obstore @ git+https://github.com/developmentseed/obstore@main#subdirectory=obstore',
-    # test deps
-    'zarr[test]',
 ]
 
 [tool.hatch.envs.upstream.env-vars]
@@ -234,8 +226,9 @@ See Spec 0000 for details and drop schedule: https://scientific-python.org/specs
 """
 template = "test"
 python = "3.11"
-dependencies = [
-    'zarr[remote]',
+features = ["remote"]
+dependency-groups = ["remote-tests"]
+extra-dependencies = [
     'packaging==22.*',
     'numpy==2.0.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
@@ -245,13 +238,11 @@ dependencies = [
     'typing_extensions==4.12.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
-    # test deps
-    'zarr[test]',
-    'zarr[remote_tests]',
 ]
 
 [tool.hatch.envs.docs]
-features = ['docs', 'remote']
+features = ['remote']
+dependency-groups = ['docs']
 
 [tool.hatch.envs.docs.scripts]
 serve = "mkdocs serve --watch src"
@@ -261,10 +252,10 @@ readthedocs = "rm -rf $READTHEDOCS_OUTPUT/html && cp -r site $READTHEDOCS_OUTPUT
 
 [tool.hatch.envs.doctest]
 description = "Test environment for validating executable code blocks in documentation"
-features = ['test', 'remote']  # Include remote dependencies for s3fs
-dependencies = [
+features = ['remote']
+dependency-groups = ['test']
+extra-dependencies = [
     "s3fs>=2023.10.0",
-    "pytest",
     "pytest-examples",
 ]
 
@@ -416,7 +407,11 @@ addopts = [
 filterwarnings = [
     "error",
     "ignore:Unclosed client session <aiohttp.client.ClientSession.*:ResourceWarning",
-    "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning"
+    "ignore:Numcodecs codecs are not in the Zarr version 3 specification.*:UserWarning",
+    # s3fs finalizers can fail during session cleanup when aiobotocore sessions are garbage
+    # collected without being entered. This is a known issue in s3fs/aiobotocore, and pytest
+    # per-test filterwarnings markers can't catch it (https://github.com/pytest-dev/pytest/issues/14096).
+    "ignore:Exception ignored in[\\s\\S]*Session was never entered:pytest.PytestUnraisableExceptionWarning",
 ]
 markers = [
     "asyncio: mark test as asyncio test",

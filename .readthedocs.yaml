@@ -5,6 +5,9 @@ build:
   tools:
     python: "3.12"
   jobs:
+    install:
+      - pip install --upgrade pip
+      - pip install .[remote] --group docs
     pre_build:
       - |
         if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];
@@ -16,11 +19,3 @@ build:
           - mkdocs build --strict --site-dir $READTHEDOCS_OUTPUT/html
 mkdocs:
   configuration: mkdocs.yml
-
-python:
-   install:
-   - method: pip
-     path: .
-     extra_requirements:
-        - docs
-        - remote
