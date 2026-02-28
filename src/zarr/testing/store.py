@@ -6,12 +6,13 @@ import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
+import numpy as np
+
 from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from zarr.abc.store import ByteRequest
     from zarr.core.buffer.core import BufferPrototype
 
 import pytest
@@ -22,6 +23,10 @@ from zarr.abc.store import (
     RangeByteRequest,
     Store,
     SuffixByteRequest,
+    SupportsDeleteSync,
+    SupportsGetSync,
+    SupportsSetRangeSync,
+    SupportsSetSync,
 )
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
@@ -38,6 +43,34 @@ B = TypeVar("B", bound=Buffer)
 class StoreTests(Generic[S, B]):
     store_cls: type[S]
     buffer_cls: type[B]
+
+    @staticmethod
+    def _require_get_sync(store: S) -> SupportsGetSync:
+        """Skip unless *store* implements :class:`SupportsGetSync`."""
+        if not isinstance(store, SupportsGetSync):
+            pytest.skip("store does not implement SupportsGetSync")
+        return store  # type: ignore[unreachable]
+
+    @staticmethod
+    def _require_set_sync(store: S) -> SupportsSetSync:
+        """Skip unless *store* implements :class:`SupportsSetSync`."""
+        if not isinstance(store, SupportsSetSync):
+            pytest.skip("store does not implement SupportsSetSync")
+        return store  # type: ignore[unreachable]
+
+    @staticmethod
+    def _require_set_range_sync(store: S) -> SupportsSetRangeSync:
+        """Skip unless *store* implements :class:`SupportsSetRangeSync`."""
+        if not isinstance(store, SupportsSetRangeSync):
+            pytest.skip("store does not implement SupportsSetRangeSync")
+        return store  # type: ignore[unreachable]
+
+    @staticmethod
+    def _require_delete_sync(store: S) -> SupportsDeleteSync:
+        """Skip unless *store* implements :class:`SupportsDeleteSync`."""
+        if not isinstance(store, SupportsDeleteSync):
+            pytest.skip("store does not implement SupportsDeleteSync")
+        return store  # type: ignore[unreachable]
 
     @abstractmethod
     async def set(self, store: S, key: str, value: Buffer) -> None:
@@ -578,6 +611,107 @@ class StoreTests(Generic[S, B]):
         key = "zarr.json"
         sync(self.set(store, key, self.buffer_cls.from_bytes(data_bytes)))
         assert store._get_json_sync(key, prototype=default_buffer_prototype()) == data
+
+    # -------------------------------------------------------------------
+    # Synchronous store methods (SupportsSyncStore protocol)
+    # -------------------------------------------------------------------
+
+    def test_get_sync(self, store: S) -> None:
+        getter = self._require_get_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_get"
+        sync(self.set(store, key, data_buf))
+        result = getter.get_sync(key)
+        assert result is not None
+        assert_bytes_equal(result, data_buf)
+
+    def test_get_sync_missing(self, store: S) -> None:
+        getter = self._require_get_sync(store)
+        result = getter.get_sync("nonexistent")
+        assert result is None
+
+    def test_set_sync(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_set"
+        setter.set_sync(key, data_buf)
+        result = sync(self.get(store, key))
+        assert_bytes_equal(result, data_buf)
+
+    def test_delete_sync(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        deleter = self._require_delete_sync(store)
+        getter = self._require_get_sync(store)
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "sync_delete"
+        setter.set_sync(key, data_buf)
+        deleter.delete_sync(key)
+        result = getter.get_sync(key)
+        assert result is None
+
+    def test_delete_sync_missing(self, store: S) -> None:
+        deleter = self._require_delete_sync(store)
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        # should not raise
+        deleter.delete_sync("nonexistent_sync")
+
+    # -------------------------------------------------------------------
+    # set_range (sync only — set_range is exclusively a sync-path API)
+    # -------------------------------------------------------------------
+
+    def test_set_range_sync(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        ranger = self._require_set_range_sync(store)
+        getter = self._require_get_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"hello world")
+        key = "range_sync_key"
+        setter.set_sync(key, data_buf)
+        patch = default_buffer_prototype().buffer.from_bytes(b"WORLD")
+        ranger.set_range_sync(key, patch, 6)
+        result = getter.get_sync(key)
+        assert result is not None
+        assert result.to_bytes() == b"hello WORLD"
+
+    def test_set_range_sync_preserves_other_bytes(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        ranger = self._require_set_range_sync(store)
+        getter = self._require_get_sync(store)
+        data = np.arange(100, dtype="uint8")
+        data_buf = default_buffer_prototype().buffer.from_array_like(data)
+        key = "range_preserve"
+        setter.set_sync(key, data_buf)
+        patch = np.full(10, 255, dtype="uint8")
+        patch_buf = default_buffer_prototype().buffer.from_array_like(patch)
+        ranger.set_range_sync(key, patch_buf, 50)
+        result = getter.get_sync(key)
+        assert result is not None
+        result_arr = np.frombuffer(result.to_bytes(), dtype="uint8")
+        expected = data.copy()
+        expected[50:60] = 255
+        np.testing.assert_array_equal(result_arr, expected)
+
+    def test_set_range_sync_beyond_end_raises(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        ranger = self._require_set_range_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"hello")
+        key = "range_oob"
+        setter.set_sync(key, data_buf)
+        patch = default_buffer_prototype().buffer.from_bytes(b"world!")
+        with pytest.raises(ValueError, match="set_range would write beyond"):
+            ranger.set_range_sync(key, patch, 0)
+
+    def test_set_range_sync_start_beyond_end_raises(self, store: S) -> None:
+        setter = self._require_set_sync(store)
+        ranger = self._require_set_range_sync(store)
+        data_buf = self.buffer_cls.from_bytes(b"hello")
+        key = "range_oob2"
+        setter.set_sync(key, data_buf)
+        patch = default_buffer_prototype().buffer.from_bytes(b"x")
+        with pytest.raises(ValueError, match="set_range would write beyond"):
+            ranger.set_range_sync(key, patch, 10)
 
 
 class LatencyStore(WrapperStore[Store]):
