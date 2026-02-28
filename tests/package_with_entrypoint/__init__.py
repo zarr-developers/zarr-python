@@ -40,7 +40,7 @@ class TestEntrypointCodec(ArrayBytesCodec):
 
 
 class TestEntrypointCodecPipeline(CodecPipeline):
-    def __init__(self, batch_size: int = 1) -> None:
+    def __init__(self) -> None:
         pass
 
     async def encode(

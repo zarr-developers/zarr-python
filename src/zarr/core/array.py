@@ -25,6 +25,7 @@ from typing_extensions import deprecated
 import zarr
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.numcodec import Numcodec, _is_numcodec
+from zarr.abc.store import SyncByteGetter
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
@@ -1973,6 +1974,29 @@ class Array(Generic[T_ArrayMetadata]):
         """
         return self.async_array.config
 
+    def _can_use_sync_path(self) -> bool:
+        """Check if we can bypass the event loop entirely for read/write.
+
+        Two conditions must hold:
+
+        1. The codec pipeline supports fully synchronous IO (all codecs
+           implement ``SupportsSyncCodec``). This is True for
+           BatchedCodecPipeline when all codecs support sync.
+
+        2. The store supports synchronous operations (implements
+           ``SyncByteGetter``). MemoryStore and LocalStore provide this;
+           remote stores do not.
+
+        When both hold, the selection methods below call
+        _get_selection_sync / _set_selection_sync directly, running the
+        entire read/write path on the calling thread with zero async
+        overhead. Otherwise, the async path with concurrent IO overlap
+        is used automatically.
+        """
+        pipeline = self.async_array.codec_pipeline
+        store = self.async_array.store_path.store
+        return getattr(pipeline, "supports_sync_io", False) and isinstance(store, SyncByteGetter)
+
     @classmethod
     @deprecated("Use zarr.create_array instead.", category=ZarrDeprecationWarning)
     def create(
@@ -3049,9 +3073,28 @@ class Array(Generic[T_ArrayMetadata]):
 
         if prototype is None:
             prototype = default_buffer_prototype()
+        indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
+        # Sync bypass: when the codec pipeline and store both support
+        # synchronous operation, skip the sync() → event loop bridge and
+        # run the entire read path on the calling thread. This pattern is
+        # repeated in all 10 get_*/set_* methods below.
+        if self._can_use_sync_path():
+            return _get_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                out=out,
+                fields=fields,
+                prototype=prototype,
+            )
+        # Fallback: submit the async coroutine to the background event loop
+        # thread via sync(). Used for remote stores or when the sync bypass
+        # is not active.
         return sync(
             self.async_array._get_selection(
-                BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
+                indexer,
                 out=out,
                 fields=fields,
                 prototype=prototype,
@@ -3159,6 +3202,18 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
+        if self._can_use_sync_path():
+            _set_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                value,
+                fields=fields,
+                prototype=prototype,
+            )
+            return
         sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_orthogonal_selection(
@@ -3287,6 +3342,17 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        if self._can_use_sync_path():
+            return _get_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                out=out,
+                fields=fields,
+                prototype=prototype,
+            )
         return sync(
             self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
@@ -3406,9 +3472,19 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
-        return sync(
-            self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
-        )
+        if self._can_use_sync_path():
+            _set_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                value,
+                fields=fields,
+                prototype=prototype,
+            )
+            return
+        sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_mask_selection(
         self,
@@ -3494,6 +3570,17 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
+        if self._can_use_sync_path():
+            return _get_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                out=out,
+                fields=fields,
+                prototype=prototype,
+            )
         return sync(
             self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
@@ -3584,6 +3671,18 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
+        if self._can_use_sync_path():
+            _set_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                value,
+                fields=fields,
+                prototype=prototype,
+            )
+            return
         sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_coordinate_selection(
@@ -3672,11 +3771,23 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
-        out_array = sync(
-            self.async_array._get_selection(
-                indexer=indexer, out=out, fields=fields, prototype=prototype
+        if self._can_use_sync_path():
+            out_array = _get_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                out=out,
+                fields=fields,
+                prototype=prototype,
             )
-        )
+        else:
+            out_array = sync(
+                self.async_array._get_selection(
+                    indexer=indexer, out=out, fields=fields, prototype=prototype
+                )
+            )
 
         if hasattr(out_array, "shape"):
             # restore shape
@@ -3786,6 +3897,18 @@ class Array(Generic[T_ArrayMetadata]):
                 f"elements with an array of {value.shape[0]} elements."
             )
 
+        if self._can_use_sync_path():
+            _set_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                value,
+                fields=fields,
+                prototype=prototype,
+            )
+            return
         sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_block_selection(
@@ -3887,6 +4010,17 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
+        if self._can_use_sync_path():
+            return _get_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                out=out,
+                fields=fields,
+                prototype=prototype,
+            )
         return sync(
             self.async_array._get_selection(
                 indexer=indexer, out=out, fields=fields, prototype=prototype
@@ -3988,6 +4122,18 @@ class Array(Generic[T_ArrayMetadata]):
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
+        if self._can_use_sync_path():
+            _set_selection_sync(
+                self.async_array.store_path,
+                self.async_array.metadata,
+                self.async_array.codec_pipeline,
+                self.async_array.config,
+                indexer,
+                value,
+                fields=fields,
+                prototype=prototype,
+            )
+            return
         sync(self.async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     @property
@@ -5617,6 +5763,174 @@ async def _get_selection(
     if isinstance(indexer, BasicIndexer) and indexer.shape == ():
         return out_buffer.as_scalar()
     return out_buffer.as_ndarray_like()
+
+
+def _get_selection_sync(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    indexer: Indexer,
+    *,
+    prototype: BufferPrototype,
+    out: NDBuffer | None = None,
+    fields: Fields | None = None,
+) -> NDArrayLikeOrScalar:
+    """Synchronous version of _get_selection — bypasses the event loop entirely.
+
+    This function mirrors ``_get_selection`` (the async version defined above)
+    exactly, with one critical difference: it calls ``codec_pipeline.read_sync()``
+    instead of ``await codec_pipeline.read()``. This means the entire operation
+    — store IO, codec decode, buffer scatter — runs on the calling thread with
+    no event loop involvement.
+
+    Called by ``Array.get_basic_selection``, ``get_orthogonal_selection``, etc.
+    when ``Array._can_use_sync_path()`` returns True.
+
+    The setup logic (dtype resolution, output buffer creation, field checks) is
+    duplicated from the async version rather than extracted into a shared helper.
+    This keeps the hot path simple and avoids adding indirection. The two
+    versions should be kept in sync manually.
+    """
+    # Get dtype from metadata — same logic as async _get_selection
+    if metadata.zarr_format == 2:
+        zdtype = metadata.dtype
+    else:
+        zdtype = metadata.data_type
+    dtype = zdtype.to_native_dtype()
+
+    # Determine memory order
+    if metadata.zarr_format == 2:
+        order = metadata.order
+    else:
+        order = config.order
+
+    # check fields are sensible
+    out_dtype = check_fields(fields, dtype)
+
+    # setup output buffer
+    if out is not None:
+        if isinstance(out, NDBuffer):
+            out_buffer = out
+        else:
+            raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
+        if out_buffer.shape != indexer.shape:
+            raise ValueError(
+                f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
+            )
+    else:
+        out_buffer = prototype.nd_buffer.empty(
+            shape=indexer.shape,
+            dtype=out_dtype,
+            order=order,
+        )
+    if product(indexer.shape) > 0:
+        _config = config
+        if metadata.zarr_format == 2:
+            _config = replace(_config, order=order)
+
+        # This is the key difference from the async version: read_sync()
+        # runs the entire pipeline (store fetch → codec decode → scatter)
+        # on this thread. Each entry in the list is a (StorePath, ArraySpec,
+        # chunk_selection, out_selection, is_complete_chunk) tuple.
+        # StorePath acts as the ByteGetter — its get_sync() method is called
+        # by the pipeline to fetch raw chunk bytes from the store.
+        codec_pipeline.read_sync(
+            [
+                (
+                    store_path / metadata.encode_chunk_key(chunk_coords),
+                    metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
+                    chunk_selection,
+                    out_selection,
+                    is_complete_chunk,
+                )
+                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
+            ],
+            out_buffer,
+            drop_axes=indexer.drop_axes,
+        )
+    if isinstance(indexer, BasicIndexer) and indexer.shape == ():
+        return out_buffer.as_scalar()
+    return out_buffer.as_ndarray_like()
+
+
+def _set_selection_sync(
+    store_path: StorePath,
+    metadata: ArrayMetadata,
+    codec_pipeline: CodecPipeline,
+    config: ArrayConfig,
+    indexer: Indexer,
+    value: npt.ArrayLike,
+    *,
+    prototype: BufferPrototype,
+    fields: Fields | None = None,
+) -> None:
+    """Synchronous version of _set_selection — bypasses the event loop entirely.
+
+    Mirrors ``_set_selection`` (the async version) with the same setup logic
+    (dtype coercion, value shape validation, buffer wrapping) but calls
+    ``codec_pipeline.write_sync()`` instead of ``await codec_pipeline.write()``.
+
+    Called by ``Array.set_basic_selection``, ``set_orthogonal_selection``, etc.
+    when ``Array._can_use_sync_path()`` returns True.
+    """
+    # Get dtype from metadata
+    if metadata.zarr_format == 2:
+        zdtype = metadata.dtype
+    else:
+        zdtype = metadata.data_type
+    dtype = zdtype.to_native_dtype()
+
+    # check fields are sensible
+    check_fields(fields, dtype)
+    fields = check_no_multi_fields(fields)
+
+    # check value shape
+    if np.isscalar(value):
+        array_like = prototype.buffer.create_zero_length().as_array_like()
+        if isinstance(array_like, np._typing._SupportsArrayFunc):
+            array_like_ = cast("np._typing._SupportsArrayFunc", array_like)
+        value = np.asanyarray(value, dtype=dtype, like=array_like_)
+    else:
+        if not hasattr(value, "shape"):
+            value = np.asarray(value, dtype)
+        if not hasattr(value, "dtype") or value.dtype.name != dtype.name:
+            if hasattr(value, "astype"):
+                value = value.astype(dtype=dtype, order="A")
+            else:
+                value = np.array(value, dtype=dtype, order="A")
+    value = cast("NDArrayLike", value)
+
+    value_buffer = prototype.nd_buffer.from_ndarray_like(value)
+
+    # Determine memory order
+    if metadata.zarr_format == 2:
+        order = metadata.order
+    else:
+        order = config.order
+
+    _config = config
+    if metadata.zarr_format == 2:
+        _config = replace(_config, order=order)
+
+    # Key difference from async version: write_sync() runs the entire
+    # pipeline (read existing → decode → merge → encode → store write)
+    # on this thread. StorePath acts as ByteSetter — its set_sync() and
+    # delete_sync() methods persist/remove chunk bytes directly.
+    codec_pipeline.write_sync(
+        [
+            (
+                store_path / metadata.encode_chunk_key(chunk_coords),
+                metadata.get_chunk_spec(chunk_coords, _config, prototype),
+                chunk_selection,
+                out_selection,
+                is_complete_chunk,
+            )
+            for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
+        ],
+        value_buffer,
+        drop_axes=indexer.drop_axes,
+    )
 
 
 async def _getitem(

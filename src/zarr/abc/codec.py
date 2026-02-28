@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -32,6 +32,7 @@ __all__ = [
     "CodecInput",
     "CodecOutput",
     "CodecPipeline",
+    "SupportsSyncCodec",
 ]
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
@@ -57,6 +58,19 @@ CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
 # This covers v2 and v3
 CodecJSON = str | Mapping[str, object]
 """The widest type of JSON-like input that could specify a codec."""
+
+
+@runtime_checkable
+class SupportsSyncCodec(Protocol):
+    """Protocol for codecs that support synchronous encode/decode."""
+
+    def _decode_sync(
+        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
+    ) -> NDBuffer | Buffer: ...
+
+    def _encode_sync(
+        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
+    ) -> NDBuffer | Buffer | None: ...
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
@@ -458,6 +472,59 @@ class CodecPipeline:
         value : NDBuffer
         """
         ...
+
+    # -------------------------------------------------------------------
+    # Fully synchronous read/write (opt-in)
+    #
+    # When a CodecPipeline subclass can run the entire read/write path
+    # (store IO + codec compute + buffer scatter) without touching the
+    # event loop, it overrides these methods and sets supports_sync_io
+    # to True. This lets Array selection methods bypass sync() entirely.
+    #
+    # The default implementations raise NotImplementedError.
+    # BatchedCodecPipeline overrides these when all codecs support sync.
+    # -------------------------------------------------------------------
+
+    @property
+    def supports_sync_io(self) -> bool:
+        """Whether this pipeline can run read/write entirely on the calling thread.
+
+        True when:
+        - All codecs implement ``SupportsSyncCodec``
+        - The pipeline's read_sync/write_sync methods are implemented
+
+        Checked by ``Array._can_use_sync_path()`` to decide whether to bypass
+        the ``sync()`` event-loop bridge.
+        """
+        return False
+
+    def read_sync(
+        self,
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        out: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
+    ) -> None:
+        """Synchronous read: fetch bytes from store, decode, scatter into out.
+
+        Runs entirely on the calling thread. Only available when
+        ``supports_sync_io`` is True. Called by ``_get_selection_sync`` in
+        ``array.py`` when the sync bypass is active.
+        """
+        raise NotImplementedError
+
+    def write_sync(
+        self,
+        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        value: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
+    ) -> None:
+        """Synchronous write: gather from value, encode, persist to store.
+
+        Runs entirely on the calling thread. Only available when
+        ``supports_sync_io`` is True. Called by ``_set_selection_sync`` in
+        ``array.py`` when the sync bypass is active.
+        """
+        raise NotImplementedError
 
 
 async def _batching_helper(
