@@ -130,7 +130,7 @@ def test_rectilinear_from_dict_spec_example() -> None:
         },
     }
 
-    grid = RectilinearChunkGrid._from_dict(metadata)  # type: ignore[arg-type]
+    grid = RectilinearChunkGrid.from_dict(metadata)  # type: ignore[arg-type]
 
     assert grid.chunk_shapes == (
         (2, 2, 2),
@@ -151,7 +151,7 @@ def test_rectilinear_from_dict_invalid_kind() -> None:
         },
     }
     with pytest.raises(ValueError, match="Only 'inline' kind is supported"):
-        RectilinearChunkGrid._from_dict(metadata)  # type: ignore[arg-type]
+        RectilinearChunkGrid.from_dict(metadata)  # type: ignore[arg-type]
 
 
 def test_rectilinear_from_dict_missing_chunk_shapes() -> None:
@@ -163,7 +163,7 @@ def test_rectilinear_from_dict_missing_chunk_shapes() -> None:
         },
     }
     with pytest.raises(ValueError, match="must contain 'chunk_shapes'"):
-        RectilinearChunkGrid._from_dict(metadata)  # type: ignore[arg-type]
+        RectilinearChunkGrid.from_dict(metadata)  # type: ignore[arg-type]
 
 
 def test_rectilinear_to_dict() -> None:
@@ -234,7 +234,7 @@ def test_rectilinear_roundtrip() -> None:
     """Test that to_dict and from_dict are inverses"""
     original = RectilinearChunkGrid(chunk_shapes=[[1, 2, 3], [4, 5]])
     metadata = original.to_dict()
-    reconstructed = RectilinearChunkGrid._from_dict(metadata)
+    reconstructed = RectilinearChunkGrid.from_dict(metadata)
 
     assert reconstructed.chunk_shapes == original.chunk_shapes
 
@@ -331,7 +331,7 @@ def test_roundtrip_with_compression() -> None:
     assert metadata["configuration"]["chunk_shapes"] == [[[10, 6]], [[5, 5]]]  # type: ignore[call-overload,index]
 
     # Deserialize from dict
-    grid2 = RectilinearChunkGrid._from_dict(metadata)
+    grid2 = RectilinearChunkGrid.from_dict(metadata)
 
     # Verify the expanded chunk_shapes match
     assert grid2.chunk_shapes == grid1.chunk_shapes

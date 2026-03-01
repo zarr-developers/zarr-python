@@ -28,6 +28,7 @@ from zarr.core.chunk_grids import (
     ChunkGrid,
     RectilinearChunkGrid,
     RegularChunkGrid,
+    parse_chunk_grid_from_dict,
 )
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -233,7 +234,7 @@ class ArrayV3Metadata(Metadata):
         """
 
         shape_parsed = parse_shapelike(shape)
-        chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
+        chunk_grid_parsed = parse_chunk_grid_from_dict(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
