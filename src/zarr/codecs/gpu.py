@@ -74,6 +74,7 @@ class NvcompZstdCodec(BytesBytesCodec):
     def _zstd_codec(self) -> nvcomp.Codec:
         device = cp.cuda.Device()  # Select the current default device
         stream = cp.cuda.get_current_stream()  # Use the current default stream
+        # Note: this returns an array with dtype=np.dtype("int8")
         return nvcomp.Codec(
             algorithm="Zstd",
             bitstream_kind=nvcomp.BitstreamKind.RAW,
@@ -95,12 +96,18 @@ class NvcompZstdCodec(BytesBytesCodec):
         arrays: Iterable[nvcomp.Array],
         chunks_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
     ) -> Iterable[Buffer | None]:
-        return [
-            spec.prototype.buffer.from_array_like(cp.array(a, dtype=np.dtype("B"), copy=False))
-            if a
-            else None
-            for a, (_, spec) in zip(arrays, chunks_and_specs, strict=True)
-        ]
+        result: list[Buffer | None] = []
+
+        for a, (_, spec) in zip(arrays, chunks_and_specs, strict=True):
+            if a is None:
+                result.append(None)
+            else:
+                a2 = cp.array(a, dtype=a.dtype, copy=False)
+                if a2.dtype != np.dtype("B"):
+                    a2 = a2.view(dtype=np.dtype("B"))
+                result.append(spec.prototype.buffer.from_array_like(a2))
+
+        return result
 
     async def decode(
         self,
