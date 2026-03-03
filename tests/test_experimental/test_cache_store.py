@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from zarr.abc.store import Store
+from zarr.abc.store import RangeByteRequest, Store, SuffixByteRequest
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.buffer.cpu import Buffer as CPUBuffer
 from zarr.experimental.cache_store import CacheStore
@@ -581,7 +581,7 @@ class TestCacheStore:
         # First, add key to cache tracking but not to source
         test_data = CPUBuffer.from_bytes(b"test data")
         await cache_store.set("phantom_key", test_data)
-        await cached_store._cache_value("phantom_key", test_data)
+        await cached_store._track_entry("phantom_key", test_data)
 
         # Verify it's in tracking
         assert "phantom_key" in cached_store._state.cache_order
@@ -778,17 +778,20 @@ class TestCacheStore:
             data = CPUBuffer.from_bytes(b"x" * 50)
             await cached_store.set(f"key_{i}", data)
 
-        # Every key in tracking should exist in cache_store
-        for key in cached_store._state.cache_order:
-            assert await cache_store.exists(key), (
-                f"Key '{key}' is tracked but doesn't exist in cache_store"
-            )
+        # Every str key in tracking should exist in cache_store
+        # (tuple keys are byte-range entries stored in-memory, not in the Store)
+        for entry_key in cached_store._state.cache_order:
+            if isinstance(entry_key, str):
+                assert await cache_store.exists(entry_key), (
+                    f"Key '{entry_key}' is tracked but doesn't exist in cache_store"
+                )
 
-        # Every key in _key_sizes should exist in cache_store
-        for key in cached_store._state.key_sizes:
-            assert await cache_store.exists(key), (
-                f"Key '{key}' has size tracked but doesn't exist in cache_store"
-            )
+        # Every str key in _key_sizes should exist in cache_store
+        for entry_key in cached_store._state.key_sizes:
+            if isinstance(entry_key, str):
+                assert await cache_store.exists(entry_key), (
+                    f"Key '{entry_key}' has size tracked but doesn't exist in cache_store"
+                )
 
     # Additional coverage tests for 100% coverage
 
@@ -908,3 +911,139 @@ class TestCacheStore:
         stats = cached_store.cache_stats()
         assert stats["hit_rate"] == 0.0
         assert stats["total_requests"] == 0
+
+    async def test_byte_range_does_not_corrupt_cache(self) -> None:
+        """Test that fetching a byte range does not store partial data under the full key.
+
+        Reproduces https://github.com/zarr-developers/zarr-python/issues/3690:
+        when a byte-range read populates the cache, subsequent reads of different
+        ranges (or the full key) return wrong data.
+        """
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(store=source_store, cache_store=cache_store)
+
+        full_data = b"bar baz"
+        await source_store.set("foo", CPUBuffer.from_bytes(full_data))
+
+        proto = default_buffer_prototype()
+
+        # First read: byte range [0, 3) -> b"bar"
+        bar = await cached_store.get("foo", proto, byte_range=RangeByteRequest(0, 3))
+        assert bar is not None
+        assert bar.to_bytes() == b"bar"
+
+        # Second read: different byte range [4, 7) -> b"baz"
+        baz = await cached_store.get("foo", proto, byte_range=RangeByteRequest(4, 7))
+        assert baz is not None
+        assert baz.to_bytes() == b"baz"
+
+        # Third read: full key -> full data
+        full = await cached_store.get("foo", proto)
+        assert full is not None
+        assert full.to_bytes() == full_data
+
+    async def test_full_read_then_byte_range(self) -> None:
+        """Test that a cached full read correctly serves subsequent byte-range requests."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(store=source_store, cache_store=cache_store)
+
+        full_data = b"hello world"
+        await source_store.set("key", CPUBuffer.from_bytes(full_data))
+
+        proto = default_buffer_prototype()
+
+        # Full read populates cache
+        full = await cached_store.get("key", proto)
+        assert full is not None
+        assert full.to_bytes() == full_data
+
+        # Byte-range reads should return the correct slices
+        part = await cached_store.get("key", proto, byte_range=RangeByteRequest(0, 5))
+        assert part is not None
+        assert part.to_bytes() == b"hello"
+
+        part2 = await cached_store.get("key", proto, byte_range=RangeByteRequest(6, 11))
+        assert part2 is not None
+        assert part2.to_bytes() == b"world"
+
+        suffix = await cached_store.get("key", proto, byte_range=SuffixByteRequest(5))
+        assert suffix is not None
+        assert suffix.to_bytes() == b"world"
+
+    async def test_byte_range_set_then_read(self) -> None:
+        """Test that data written via set() can be read back with byte ranges."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(store=source_store, cache_store=cache_store)
+
+        full_data = b"abcdefghij"
+        await cached_store.set("key", CPUBuffer.from_bytes(full_data))
+
+        proto = default_buffer_prototype()
+
+        # Byte-range reads from the cached data
+        mid = await cached_store.get("key", proto, byte_range=RangeByteRequest(3, 7))
+        assert mid is not None
+        assert mid.to_bytes() == b"defg"
+
+        # Full read should still work
+        full = await cached_store.get("key", proto)
+        assert full is not None
+        assert full.to_bytes() == full_data
+
+    async def test_set_invalidates_cached_byte_ranges(self) -> None:
+        """Test that set() invalidates previously cached byte-range entries."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(store=source_store, cache_store=cache_store)
+
+        proto = default_buffer_prototype()
+
+        # Populate source and cache some byte ranges
+        await source_store.set("key", CPUBuffer.from_bytes(b"old data!!"))
+        r1 = await cached_store.get("key", proto, byte_range=RangeByteRequest(0, 3))
+        assert r1 is not None
+        assert r1.to_bytes() == b"old"
+
+        # Byte-range entry should be in range_cache
+        assert ("key", RangeByteRequest(0, 3)) in cached_store._state.cache_order
+
+        # Overwrite via set() — range entries must be invalidated
+        await cached_store.set("key", CPUBuffer.from_bytes(b"NEW DATA!!"))
+
+        # The old range entry should be gone from tracking and range_cache
+        assert ("key", RangeByteRequest(0, 3)) not in cached_store._state.cache_order
+        assert "key" not in cached_store._state.range_cache
+
+        # A fresh byte-range read should return the new data
+        r2 = await cached_store.get("key", proto, byte_range=RangeByteRequest(0, 3))
+        assert r2 is not None
+        assert r2.to_bytes() == b"NEW"
+
+    async def test_delete_invalidates_cached_byte_ranges(self) -> None:
+        """Test that delete() removes previously cached byte-range entries."""
+        source_store = MemoryStore()
+        cache_store = MemoryStore()
+        cached_store = CacheStore(store=source_store, cache_store=cache_store)
+
+        proto = default_buffer_prototype()
+
+        # Populate and cache a byte range
+        await source_store.set("key", CPUBuffer.from_bytes(b"hello world"))
+        r = await cached_store.get("key", proto, byte_range=RangeByteRequest(0, 5))
+        assert r is not None
+        assert r.to_bytes() == b"hello"
+
+        assert ("key", RangeByteRequest(0, 5)) in cached_store._state.cache_order
+
+        # Delete the key — range entries must be cleaned up
+        await cached_store.delete("key")
+
+        assert ("key", RangeByteRequest(0, 5)) not in cached_store._state.cache_order
+        assert "key" not in cached_store._state.range_cache
+
+        # Key is gone from source
+        result = await cached_store.get("key", proto)
+        assert result is None
