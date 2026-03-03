@@ -47,7 +47,7 @@ repos:
           - hypothesis
           - s3fs
   - repo: https://github.com/scientific-python/cookie
-    rev: 2025.11.21
+    rev: 2026.03.02
     hooks:
       - id: sp-repo-review
   - repo: https://github.com/pre-commit/pygrep-hooks
