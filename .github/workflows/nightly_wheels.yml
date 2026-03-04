@@ -6,6 +6,9 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build_and_upload_nightly:
     name: Build and upload nightly wheels

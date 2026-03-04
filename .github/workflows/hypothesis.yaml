@@ -9,6 +9,9 @@ on:
     - cron: "0 0 * * *" # Daily “At 00:00” UTC
   workflow_dispatch: # allows you to trigger manually
 
+permissions:
+  contents: read
+
 env:
   FORCE_COLOR: 3
 
