@@ -268,7 +268,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     if config.get("codec_pipeline.fill_missing_chunks", True):
                         out[out_selection] = fill_value_or_default(chunk_spec)
                     else:
-                        raise MissingChunkError()
+                        raise MissingChunkError
         else:
             chunk_bytes_batch = await concurrent_map(
                 [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
@@ -295,7 +295,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     if config.get("codec_pipeline.fill_missing_chunks", True):
                         out[out_selection] = fill_value_or_default(chunk_spec)
                     else:
-                        raise MissingChunkError()
+                        raise MissingChunkError
 
     def _merge_chunk_array(
         self,

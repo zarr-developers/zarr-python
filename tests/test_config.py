@@ -329,7 +329,7 @@ def test_warning_on_missing_codec_config() -> None:
     ],
     ids=["partial_decode", "full_decode"],
 )
-def test_config_fill_missing_chunks(store: Store, kwargs: dict) -> None:
+def test_config_fill_missing_chunks(store: Store, kwargs: dict[str, Any]) -> None:
     arr = zarr.create_array(
         store=store,
         shape=(4, 4),
