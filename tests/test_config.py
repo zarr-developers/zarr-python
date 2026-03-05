@@ -321,12 +321,27 @@ def test_warning_on_missing_codec_config() -> None:
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_config_fill_missing_chunks(store: Store) -> None:
-    arr = zarr.create_array(store=store, shape=(3, 3), chunks=(2, 2), dtype="int32", fill_value=42)
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"shards": (4, 4)},
+        {"compressors": None},
+    ],
+    ids=["partial_decode", "full_decode"],
+)
+def test_config_fill_missing_chunks(store: Store, kwargs: dict) -> None:
+    arr = zarr.create_array(
+        store=store,
+        shape=(4, 4),
+        chunks=(2, 2),
+        dtype="int32",
+        fill_value=42,
+        **kwargs,
+    )
 
     # default behavior: missing chunks are filled with the fill value
     result = zarr.open_array(store)[:]
-    assert np.array_equal(result, np.full((3, 3), 42, dtype="int32"))
+    assert np.array_equal(result, np.full((4, 4), 42, dtype="int32"))
 
     # with fill_missing_chunks=False, reading missing chunks raises an error
     with config.set({"codec_pipeline.fill_missing_chunks": False}):
@@ -334,10 +349,10 @@ def test_config_fill_missing_chunks(store: Store) -> None:
             zarr.open_array(store)[:]
 
     # after writing data, all chunks exist and no error is raised
-    arr[:] = np.arange(9, dtype="int32").reshape(3, 3)
+    arr[:] = np.arange(16, dtype="int32").reshape(4, 4)
     with config.set({"codec_pipeline.fill_missing_chunks": False}):
         result = zarr.open_array(store)[:]
-        assert np.array_equal(result, np.arange(9, dtype="int32").reshape(3, 3))
+        assert np.array_equal(result, np.arange(16, dtype="int32").reshape(4, 4))
 
 
 @pytest.mark.parametrize(
