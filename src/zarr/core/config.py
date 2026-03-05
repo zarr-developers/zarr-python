@@ -104,6 +104,7 @@ config = Config(
             "codec_pipeline": {
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
+                "fill_missing_chunks": True,
             },
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",

@@ -23,7 +23,7 @@ from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
-from zarr.errors import ZarrUserWarning
+from zarr.errors import MissingChunkError, ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -61,6 +61,7 @@ def test_config_defaults_set() -> None:
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                     "batch_size": 1,
+                    "fill_missing_chunks": True,
                 },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -317,6 +318,26 @@ def test_warning_on_missing_codec_config() -> None:
     # no warning if multiple implementations are available and one is selected in the config
     with config.set({"codecs.new_codec": fully_qualified_name(NewCodec)}):
         get_codec_class("new_codec")
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_config_fill_missing_chunks(store: Store) -> None:
+    arr = zarr.create_array(store=store, shape=(3, 3), chunks=(2, 2), dtype="int32", fill_value=42)
+
+    # default behavior: missing chunks are filled with the fill value
+    result = zarr.open_array(store)[:]
+    assert np.array_equal(result, np.full((3, 3), 42, dtype="int32"))
+
+    # with fill_missing_chunks=False, reading missing chunks raises an error
+    with config.set({"codec_pipeline.fill_missing_chunks": False}):
+        with pytest.raises(MissingChunkError):
+            zarr.open_array(store)[:]
+
+    # after writing data, all chunks exist and no error is raised
+    arr[:] = np.arange(9, dtype="int32").reshape(3, 3)
+    with config.set({"codec_pipeline.fill_missing_chunks": False}):
+        result = zarr.open_array(store)[:]
+        assert np.array_equal(result, np.arange(9, dtype="int32").reshape(3, 3))
 
 
 @pytest.mark.parametrize(
