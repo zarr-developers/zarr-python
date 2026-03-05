@@ -53,6 +53,7 @@ def test_config_defaults_set() -> None:
                 "array": {
                     "order": "C",
                     "write_empty_chunks": False,
+                    "fill_missing_chunks": True,
                     "target_shard_size_bytes": None,
                 },
                 "async": {"concurrency": 10, "timeout": None},
@@ -61,7 +62,6 @@ def test_config_defaults_set() -> None:
                 "codec_pipeline": {
                     "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                     "batch_size": 1,
-                    "fill_missing_chunks": True,
                 },
                 "codecs": {
                     "blosc": "zarr.codecs.blosc.BloscCodec",
@@ -344,13 +344,13 @@ def test_config_fill_missing_chunks(store: Store, kwargs: dict[str, Any]) -> Non
     assert np.array_equal(result, np.full((4, 4), 42, dtype="int32"))
 
     # with fill_missing_chunks=False, reading missing chunks raises an error
-    with config.set({"codec_pipeline.fill_missing_chunks": False}):
+    with config.set({"array.fill_missing_chunks": False}):
         with pytest.raises(MissingChunkError):
             zarr.open_array(store)[:]
 
     # after writing data, all chunks exist and no error is raised
     arr[:] = np.arange(16, dtype="int32").reshape(4, 4)
-    with config.set({"codec_pipeline.fill_missing_chunks": False}):
+    with config.set({"array.fill_missing_chunks": False}):
         result = zarr.open_array(store)[:]
         assert np.array_equal(result, np.arange(16, dtype="int32").reshape(4, 4))
 

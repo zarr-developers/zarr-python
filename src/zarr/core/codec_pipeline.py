@@ -265,7 +265,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 if chunk_array is not None:
                     out[out_selection] = chunk_array
                 else:
-                    if config.get("codec_pipeline.fill_missing_chunks", True):
+                    if chunk_spec.config.fill_missing_chunks:
                         out[out_selection] = fill_value_or_default(chunk_spec)
                     else:
                         raise MissingChunkError
@@ -292,7 +292,7 @@ class BatchedCodecPipeline(CodecPipeline):
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
                 else:
-                    if config.get("codec_pipeline.fill_missing_chunks", True):
+                    if chunk_spec.config.fill_missing_chunks:
                         out[out_selection] = fill_value_or_default(chunk_spec)
                     else:
                         raise MissingChunkError
