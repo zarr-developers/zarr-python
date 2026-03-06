@@ -40,6 +40,10 @@ pytestmark = [
     pytest.mark.filterwarnings(
         "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
     ),
+    # s3fs finalizers can fail when sessions are garbage collected without being entered
+    pytest.mark.filterwarnings(
+        "ignore:Exception ignored in.*finalize object.*:pytest.PytestUnraisableExceptionWarning"
+    ),
 ]
 
 fsspec = pytest.importorskip("fsspec")

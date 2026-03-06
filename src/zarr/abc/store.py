@@ -29,7 +29,7 @@ __all__ = [
 ]
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class RangeByteRequest:
     """Request a specific byte range"""
 
@@ -39,7 +39,7 @@ class RangeByteRequest:
     """The end of the byte range request (exclusive)."""
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class OffsetByteRequest:
     """Request all bytes starting from a given byte offset"""
 
@@ -47,7 +47,7 @@ class OffsetByteRequest:
     """The byte offset for the offset range request."""
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class SuffixByteRequest:
     """Request up to the last `n` bytes"""
 

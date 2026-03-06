@@ -322,6 +322,13 @@ class BloscCodec(BytesBytesCodec):
             self._blosc_codec.encode(chunk_bytes.as_numpy_array())
         )
 
+    def _encode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return await asyncio.to_thread(self._encode_sync, chunk_bytes, chunk_spec)
+
     async def _encode_single(
         self,
         chunk_bytes: Buffer,
