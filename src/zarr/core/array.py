@@ -28,7 +28,6 @@ from zarr.abc.numcodec import Numcodec, _is_numcodec
 from zarr.codecs._v2 import V2Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
-from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_config
 from zarr.core.attributes import Attributes
@@ -128,6 +127,7 @@ from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
     _parse_bytes_bytes_codec,
+    get_codec_class,
     get_pipeline_class,
 )
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
@@ -5040,9 +5040,9 @@ def default_compressors_v3(dtype: ZDType[Any, Any]) -> tuple[BytesBytesCodec, ..
     """
     Given a data type, return the default compressors for that data type.
 
-    This is just a tuple containing ``ZstdCodec``
+    This is just a tuple containing an instance of the default "zstd" codec class.
     """
-    return (ZstdCodec(),)
+    return (cast(BytesBytesCodec, get_codec_class("zstd")()),)
 
 
 def default_serializer_v3(dtype: ZDType[Any, Any]) -> ArrayBytesCodec:
