@@ -10,7 +10,6 @@ from zarr.abc.store import (
     Store,
     SupportsDeleteSync,
     SupportsGetSync,
-    SupportsSetRangeSync,
     SupportsSetSync,
 )
 from zarr.core.buffer import Buffer, default_buffer_prototype
@@ -257,14 +256,6 @@ class StorePath:
         if not isinstance(self.store, SupportsSetSync):
             raise TypeError(f"Store {type(self.store).__name__} does not support synchronous set.")
         self.store.set_sync(self.path, value)
-
-    def set_range_sync(self, value: Buffer, start: int) -> None:
-        """Synchronous byte-range write."""
-        if not isinstance(self.store, SupportsSetRangeSync):
-            raise TypeError(
-                f"Store {type(self.store).__name__} does not support synchronous set_range."
-            )
-        self.store.set_range_sync(self.path, value, start)
 
     def delete_sync(self) -> None:
         """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
