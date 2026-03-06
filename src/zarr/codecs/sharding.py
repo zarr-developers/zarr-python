@@ -711,17 +711,22 @@ class ShardingCodec(
             dtype=UInt64(endianness="little"),
             fill_value=MAX_UINT_64,
             config=ArrayConfig(
-                order="C", write_empty_chunks=False
+                order="C", write_empty_chunks=False, fill_missing_chunks=True
             ),  # Note: this is hard-coded for simplicity -- it is not surfaced into user code,
             prototype=default_buffer_prototype(),
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
+        # Because the shard index and inner chunks should be stored
+        # together, we detect missing data via the shard index.
+        # The inner chunks defined here are thus allowed to return
+        # None, even if fill_missing_chunks=False at the array level.
+        config = replace(shard_spec.config, fill_missing_chunks=True)
         return ArraySpec(
             shape=self.chunk_shape,
             dtype=shard_spec.dtype,
             fill_value=shard_spec.fill_value,
-            config=shard_spec.config,
+            config=config,
             prototype=shard_spec.prototype,
         )
 

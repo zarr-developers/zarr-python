@@ -158,12 +158,17 @@ print(f"Shape after second append: {z.shape}")
 
 Zarr arrays are parametrized with a configuration that determines certain aspects of array behavior.
 
-We currently support two configuration options for arrays: `write_empty_chunks` and `order`.
+We currently support three configuration options for arrays: `write_empty_chunks`, `fill_missing_chunks`, and `order`.
 
 | field | type | default | description |
 | - |     - | - | - |
 | `write_empty_chunks` | `bool` | `False` | Controls whether empty chunks are written to storage. See [Empty chunks](performance.md#empty-chunks).
+| `fill_missing_chunks` | `bool` | `True` | Controls whether missing chunks are filled with the array's fill value on read. If `False`, reading missing chunks raises a `MissingChunkError`.
 | `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
+
+!!! note
+    `write_empty_chunks=False` skips writing chunks that are entirely the array's fill value.
+    If `fill_missing_chunks=False`, attempting to read these missing chunks will raise an error.
 
 You can specify the configuration when you create an array with the `config` keyword argument.
 `config` can be passed as either a `dict` or an `ArrayConfig` object.
