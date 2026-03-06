@@ -105,11 +105,6 @@ def _collect_entrypoints() -> list[Registry[Any]]:
     data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr.data_type"))
     data_type_registry._lazy_load_list.extend(entry_points.select(group="zarr", name="data_type"))
 
-    __chunk_grid_registry.lazy_load_list.extend(entry_points.select(group="zarr.chunk_grid"))
-    __chunk_grid_registry.lazy_load_list.extend(
-        entry_points.select(group="zarr", name="chunk_grid")
-    )
-
     __chunk_key_encoding_registry.lazy_load_list.extend(
         entry_points.select(group="zarr.chunk_key_encoding")
     )
