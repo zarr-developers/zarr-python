@@ -19,47 +19,27 @@ PEP_723_REGEX: Final = r"(?m)^# /// (?P<type>[a-zA-Z0-9-]+)$\s(?P<content>(^#(| 
 ZARR_PROJECT_PATH = Path(".").absolute()
 
 
-def set_dep(script: str, dependency: str) -> str:
-    """
-    Set a dependency in a PEP-723 script header.
-    If the package is already in the list, it will be replaced.
-    If the package is not already in the list, it will be added.
+def _get_zarr_extras(script_path: Path) -> str:
+    """Extract extras from the zarr dependency in a script's PEP 723 header.
 
-    Source code modified from
-    https://packaging.python.org/en/latest/specifications/inline-script-metadata/#reference-implementation
+    For example, if the script declares ``zarr[server]``, this returns ``[server]``.
+    If the script declares ``zarr`` with no extras, this returns ``""``.
     """
-    match = re.search(PEP_723_REGEX, script)
-
+    source_text = script_path.read_text()
+    match = re.search(PEP_723_REGEX, source_text)
     if match is None:
-        raise ValueError(f"PEP-723 header not found in {script}")
+        return ""
 
     content = "".join(
         line[2:] if line.startswith("# ") else line[1:]
         for line in match.group("content").splitlines(keepends=True)
     )
-
     config = tomlkit.parse(content)
-    for idx, dep in enumerate(tuple(config["dependencies"])):
-        if Requirement(dep).name == Requirement(dependency).name:
-            config["dependencies"][idx] = dependency
-
-    new_content = "".join(
-        f"# {line}" if line.strip() else f"#{line}"
-        for line in tomlkit.dumps(config).splitlines(keepends=True)
-    )
-
-    start, end = match.span("content")
-    return script[:start] + new_content + script[end:]
-
-
-def resave_script(source_path: Path, dest_path: Path) -> None:
-    """
-    Read a script from source_path and save it to dest_path after inserting the absolute path to the
-    local Zarr project directory in the PEP-723 header.
-    """
-    source_text = source_path.read_text()
-    dest_text = set_dep(source_text, f"zarr @ file:///{ZARR_PROJECT_PATH}")
-    dest_path.write_text(dest_text)
+    for dep in config.get("dependencies", []):
+        req = Requirement(dep)
+        if req.name == "zarr" and req.extras:
+            return "[" + ",".join(sorted(req.extras)) + "]"
+    return ""
 
 
 def test_script_paths() -> None:
@@ -73,14 +53,15 @@ def test_script_paths() -> None:
     sys.platform == "win32", reason="This test fails for unknown reasons on Windows in CI."
 )
 @pytest.mark.parametrize("script_path", script_paths)
-def test_scripts_can_run(script_path: Path, tmp_path: Path) -> None:
-    dest_path = tmp_path / script_path.name
-    # We resave the script after inserting the absolute path to the local Zarr project directory,
-    # and then test its behavior.
-    # This allows the example to be useful to users who don't have Zarr installed, but also testable.
-    resave_script(script_path, dest_path)
+def test_scripts_can_run(script_path: Path) -> None:
+    # Override the zarr dependency with the local project, preserving any extras
+    # declared in the script's PEP 723 header (e.g. zarr[server]).
+    extras = _get_zarr_extras(script_path)
+    zarr_dep = f"zarr{extras} @ file:///{ZARR_PROJECT_PATH}"
     result = subprocess.run(
-        ["uv", "run", "--refresh", str(dest_path)], capture_output=True, text=True
+        ["uv", "run", "--with", zarr_dep, "--refresh", str(script_path)],
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, (
         f"Script at {script_path} failed to run. Output: {result.stdout} Error: {result.stderr}"

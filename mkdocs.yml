@@ -29,6 +29,7 @@ nav:
       - user-guide/experimental.md
   - Examples:
       - user-guide/examples/custom_dtype.md
+      - user-guide/examples/serve.md
   - API Reference:
       - api/zarr/index.md
       - api/zarr/array.md

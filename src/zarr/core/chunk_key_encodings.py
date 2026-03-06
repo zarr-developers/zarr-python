@@ -79,7 +79,11 @@ class DefaultChunkKeyEncoding(ChunkKeyEncoding):
     def decode_chunk_key(self, chunk_key: str) -> tuple[int, ...]:
         if chunk_key == "c":
             return ()
-        return tuple(map(int, chunk_key[1:].split(self.separator)))
+        # Strip the "c<sep>" prefix (e.g. "c/" or "c.") before splitting.
+        prefix = "c" + self.separator
+        if chunk_key.startswith(prefix):
+            return tuple(map(int, chunk_key[len(prefix) :].split(self.separator)))
+        raise ValueError(f"Invalid chunk key for default encoding: {chunk_key!r}")
 
     def encode_chunk_key(self, chunk_coords: tuple[int, ...]) -> str:
         return self.separator.join(map(str, ("c",) + chunk_coords))
