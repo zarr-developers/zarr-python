@@ -774,7 +774,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             fill_value_parsed = fill_value
 
-        chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape)
+        chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape, array_shape=shape)
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
@@ -4694,7 +4694,9 @@ async def init_array(
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=zdtype,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=RegularChunkGrid(
+                    chunk_shape=shard_shape_parsed, array_shape=chunk_shape_parsed
+                ),
             )
             codecs_out = (sharding_codec,)
             chunks_out = shard_shape_parsed
@@ -5995,8 +5997,8 @@ async def _resize(
 
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
-        old_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords(array.metadata.shape))
-        new_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords(new_shape))
+        old_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords())
+        new_chunk_coords = set(new_metadata.chunk_grid.all_chunk_coords())
 
         async def _delete_key(key: str) -> None:
             await (array.store_path / key).delete()

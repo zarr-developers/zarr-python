@@ -119,7 +119,7 @@ class ArrayV2Metadata(Metadata):
 
     @cached_property
     def chunk_grid(self) -> RegularChunkGrid:
-        return RegularChunkGrid(chunk_shape=self.chunks)
+        return RegularChunkGrid(chunk_shape=self.chunks, array_shape=self.shape)
 
     @property
     def shards(self) -> tuple[int, ...] | None:

@@ -63,7 +63,7 @@ def test_migrate_array(local_store: LocalStore) -> None:
     expected_metadata = ArrayV3Metadata(
         shape=shape,
         data_type=UInt16(endianness="little"),
-        chunk_grid=RegularChunkGrid(chunk_shape=chunks),
+        chunk_grid=RegularChunkGrid(chunk_shape=chunks, array_shape=shape),
         chunk_key_encoding=V2ChunkKeyEncoding(separator="."),
         fill_value=fill_value,
         codecs=(
