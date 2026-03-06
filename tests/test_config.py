@@ -55,7 +55,7 @@ def test_config_defaults_set() -> None:
                     "write_empty_chunks": False,
                     "target_shard_size_bytes": None,
                 },
-                "async": {"concurrency": 10, "timeout": None},
+                "async": {"timeout": None},
                 "threading": {"max_workers": None},
                 "json_indent": 2,
                 "codec_pipeline": {
@@ -101,7 +101,6 @@ def test_config_defaults_set() -> None:
         ]
     )
     assert config.get("array.order") == "C"
-    assert config.get("async.concurrency") == 10
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
@@ -109,7 +108,7 @@ def test_config_defaults_set() -> None:
 
 @pytest.mark.parametrize(
     ("key", "old_val", "new_val"),
-    [("array.order", "C", "F"), ("async.concurrency", 10, 128), ("json_indent", 2, 0)],
+    [("array.order", "C", "F"), ("json_indent", 2, 0)],
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
     assert config.get(key) == old_val
@@ -346,4 +345,16 @@ def test_deprecated_config(key: str) -> None:
 
     with pytest.raises(ValueError):
         with zarr.config.set({key: "foo"}):
+            pass
+
+
+def test_async_concurrency_config_warns() -> None:
+    """Test that setting async.concurrency emits a warning directing users to per-store config."""
+    with pytest.warns(UserWarning, match="async.concurrency.*no effect"):
+        with zarr.config.set({"async.concurrency": 20}):
+            pass
+
+    # Also test the kwarg form
+    with pytest.warns(UserWarning, match="async.concurrency.*no effect"):
+        with zarr.config.set(async__concurrency=20):
             pass

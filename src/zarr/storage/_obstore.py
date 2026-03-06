@@ -6,7 +6,7 @@ import pickle
 from collections import defaultdict
 from itertools import chain
 from operator import itemgetter
-from typing import TYPE_CHECKING, Generic, Self, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Generic, Self, TypeVar
 
 from zarr.abc.store import (
     ByteRequest,
@@ -15,15 +15,13 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
-from zarr.core.common import concurrent_map
-from zarr.core.config import config
-from zarr.storage._utils import _relativize_path
+from zarr.storage._utils import ConcurrencyLimiter, _relativize_path, with_concurrency_limit
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable, Sequence
     from typing import Any
 
-    from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
+    from obstore import ListResult, ListStream, ObjectMeta
     from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -40,7 +38,7 @@ _ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 T_Store = TypeVar("T_Store", bound="_UpstreamObjectStore")
 
 
-class ObjectStore(Store, Generic[T_Store]):
+class ObjectStore(Store, ConcurrencyLimiter, Generic[T_Store]):
     """
     Store that uses obstore for fast read/write from AWS, GCP, Azure.
 
@@ -50,6 +48,9 @@ class ObjectStore(Store, Generic[T_Store]):
         An obstore store instance that is set up with the proper credentials.
     read_only : bool
         Whether to open the store in read-only mode.
+    concurrency_limit : int, optional
+        Maximum number of concurrent I/O operations. Default is 50.
+        Set to None for unlimited concurrency.
 
     Warnings
     --------
@@ -69,10 +70,17 @@ class ObjectStore(Store, Generic[T_Store]):
 
         return self.store == value.store  # type: ignore[no-any-return]
 
-    def __init__(self, store: T_Store, *, read_only: bool = False) -> None:
+    def __init__(
+        self,
+        store: T_Store,
+        *,
+        read_only: bool = False,
+        concurrency_limit: int | None = 50,
+    ) -> None:
         if not store.__class__.__module__.startswith("obstore"):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
-        super().__init__(read_only=read_only)
+        Store.__init__(self, read_only=read_only)
+        ConcurrencyLimiter.__init__(self, concurrency_limit)
         self.store = store
 
     def with_read_only(self, read_only: bool = False) -> Self:
@@ -80,6 +88,7 @@ class ObjectStore(Store, Generic[T_Store]):
         return type(self)(
             store=self.store,
             read_only=read_only,
+            concurrency_limit=self.concurrency_limit,
         )
 
     def __str__(self) -> str:
@@ -97,6 +106,7 @@ class ObjectStore(Store, Generic[T_Store]):
         state["store"] = pickle.loads(state["store"])
         self.__dict__.update(state)
 
+    @with_concurrency_limit
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
@@ -104,41 +114,7 @@ class ObjectStore(Store, Generic[T_Store]):
         import obstore as obs
 
         try:
-            if byte_range is None:
-                resp = await obs.get_async(self.store, key)
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
-            elif isinstance(byte_range, RangeByteRequest):
-                bytes = await obs.get_range_async(
-                    self.store, key, start=byte_range.start, end=byte_range.end
-                )
-                return prototype.buffer.from_bytes(bytes)  # type: ignore[arg-type]
-            elif isinstance(byte_range, OffsetByteRequest):
-                resp = await obs.get_async(
-                    self.store, key, options={"range": {"offset": byte_range.offset}}
-                )
-                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
-            elif isinstance(byte_range, SuffixByteRequest):
-                # some object stores (Azure) don't support suffix requests. In this
-                # case, our workaround is to first get the length of the object and then
-                # manually request the byte range at the end.
-                try:
-                    resp = await obs.get_async(
-                        self.store, key, options={"range": {"suffix": byte_range.suffix}}
-                    )
-                    return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
-                except obs.exceptions.NotSupportedError:
-                    head_resp = await obs.head_async(self.store, key)
-                    file_size = head_resp["size"]
-                    suffix_len = byte_range.suffix
-                    buffer = await obs.get_range_async(
-                        self.store,
-                        key,
-                        start=file_size - suffix_len,
-                        length=suffix_len,
-                    )
-                    return prototype.buffer.from_bytes(buffer)  # type: ignore[arg-type]
-            else:
-                raise ValueError(f"Unexpected byte_range, got {byte_range}")
+            return await self._get_impl(key, prototype, byte_range, obs)
         except _ALLOWED_EXCEPTIONS:
             return None
 
@@ -148,7 +124,88 @@ class ObjectStore(Store, Generic[T_Store]):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        return await _get_partial_values(self.store, prototype=prototype, key_ranges=key_ranges)
+        # We override to:
+        # 1. Avoid deadlock from calling the decorated get() method
+        # 2. Batch RangeByteRequests per-file using get_ranges_async for performance
+        import obstore as obs
+
+        key_ranges = list(key_ranges)
+        # Group bounded range requests by path for batched fetching
+        per_file_bounded: dict[str, list[tuple[int, RangeByteRequest]]] = defaultdict(list)
+        other_requests: list[tuple[int, str, ByteRequest | None]] = []
+
+        for idx, (path, byte_range) in enumerate(key_ranges):
+            if isinstance(byte_range, RangeByteRequest):
+                per_file_bounded[path].append((idx, byte_range))
+            else:
+                other_requests.append((idx, path, byte_range))
+
+        buffers: list[Buffer | None] = [None] * len(key_ranges)
+
+        async def _fetch_ranges(path: str, requests: list[tuple[int, RangeByteRequest]]) -> None:
+            """Batch multiple range requests for the same file using get_ranges_async."""
+            starts = [r.start for _, r in requests]
+            ends = [r.end for _, r in requests]
+            async with self._limit():
+                responses = await obs.get_ranges_async(
+                    self.store, path=path, starts=starts, ends=ends
+                )
+            for (idx, _), response in zip(requests, responses, strict=True):
+                buffers[idx] = prototype.buffer.from_bytes(response)  # type: ignore[arg-type]
+
+        async def _fetch_one(idx: int, path: str, byte_range: ByteRequest | None) -> None:
+            """Fetch a single non-range request with semaphore limiting."""
+            try:
+                async with self._limit():
+                    buffers[idx] = await self._get_impl(path, prototype, byte_range, obs)
+            except _ALLOWED_EXCEPTIONS:
+                pass  # buffers[idx] stays None
+
+        futs: list[Coroutine[Any, Any, None]] = []
+        for path, requests in per_file_bounded.items():
+            futs.append(_fetch_ranges(path, requests))
+        for idx, path, byte_range in other_requests:
+            futs.append(_fetch_one(idx, path, byte_range))
+
+        await asyncio.gather(*futs)
+        return buffers
+
+    async def _get_impl(
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None, obs: Any
+    ) -> Buffer:
+        """Implementation of get without semaphore decoration."""
+        if byte_range is None:
+            resp = await obs.get_async(self.store, key)
+            return prototype.buffer.from_bytes(await resp.bytes_async())
+        elif isinstance(byte_range, RangeByteRequest):
+            bytes = await obs.get_range_async(
+                self.store, key, start=byte_range.start, end=byte_range.end
+            )
+            return prototype.buffer.from_bytes(bytes)
+        elif isinstance(byte_range, OffsetByteRequest):
+            resp = await obs.get_async(
+                self.store, key, options={"range": {"offset": byte_range.offset}}
+            )
+            return prototype.buffer.from_bytes(await resp.bytes_async())
+        elif isinstance(byte_range, SuffixByteRequest):
+            try:
+                resp = await obs.get_async(
+                    self.store, key, options={"range": {"suffix": byte_range.suffix}}
+                )
+                return prototype.buffer.from_bytes(await resp.bytes_async())
+            except obs.exceptions.NotSupportedError:
+                head_resp = await obs.head_async(self.store, key)
+                file_size = head_resp["size"]
+                suffix_len = byte_range.suffix
+                buffer = await obs.get_range_async(
+                    self.store,
+                    key,
+                    start=file_size - suffix_len,
+                    length=suffix_len,
+                )
+                return prototype.buffer.from_bytes(buffer)
+        else:
+            raise ValueError(f"Unexpected byte_range, got {byte_range}")
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
@@ -166,6 +223,7 @@ class ObjectStore(Store, Generic[T_Store]):
         # docstring inherited
         return True
 
+    @with_concurrency_limit
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
         import obstore as obs
@@ -175,20 +233,36 @@ class ObjectStore(Store, Generic[T_Store]):
         buf = value.as_buffer_like()
         await obs.put_async(self.store, key, buf)
 
+    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+        # Override to avoid deadlock from calling decorated set() method
+        import obstore as obs
+
+        self._check_writable()
+
+        async def _set_with_limit(key: str, value: Buffer) -> None:
+            buf = value.as_buffer_like()
+            async with self._limit():
+                await obs.put_async(self.store, key, buf)
+
+        await asyncio.gather(*[_set_with_limit(key, value) for key, value in values])
+
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
+        # Not decorated to avoid deadlock when called in batch via gather()
         import obstore as obs
 
         self._check_writable()
         buf = value.as_buffer_like()
-        with contextlib.suppress(obs.exceptions.AlreadyExistsError):
-            await obs.put_async(self.store, key, buf, mode="create")
+        async with self._limit():
+            with contextlib.suppress(obs.exceptions.AlreadyExistsError):
+                await obs.put_async(self.store, key, buf, mode="create")
 
     @property
     def supports_deletes(self) -> bool:
         # docstring inherited
         return True
 
+    @with_concurrency_limit
     async def delete(self, key: str) -> None:
         # docstring inherited
         import obstore as obs
@@ -211,8 +285,13 @@ class ObjectStore(Store, Generic[T_Store]):
             prefix += "/"
 
         metas = await obs.list(self.store, prefix).collect_async()
-        keys = [(m["path"],) for m in metas]
-        await concurrent_map(keys, self.delete, limit=config.get("async.concurrency"))
+
+        async def _delete_with_limit(path: str) -> None:
+            async with self._limit():
+                with contextlib.suppress(FileNotFoundError):
+                    await obs.delete_async(self.store, path)
+
+        await asyncio.gather(*[_delete_with_limit(m["path"]) for m in metas])
 
     @property
     def supports_listing(self) -> bool:
@@ -271,242 +350,3 @@ async def _transform_list_dir(
         list_result["common_prefixes"], map(itemgetter("path"), list_result["objects"])
     ):
         yield _relativize_path(path=path, prefix=prefix)
-
-
-class _BoundedRequest(TypedDict):
-    """Range request with a known start and end byte.
-
-    These requests can be multiplexed natively on the Rust side with
-    `obstore.get_ranges_async`.
-    """
-
-    original_request_index: int
-    """The positional index in the original key_ranges input"""
-
-    start: int
-    """Start byte offset."""
-
-    end: int
-    """End byte offset."""
-
-
-class _OtherRequest(TypedDict):
-    """Offset or suffix range requests.
-
-    These requests cannot be concurrent on the Rust side, and each need their own call
-    to `obstore.get_async`, passing in the `range` parameter.
-    """
-
-    original_request_index: int
-    """The positional index in the original key_ranges input"""
-
-    path: str
-    """The path to request from."""
-
-    range: OffsetRange | None
-    # Note: suffix requests are handled separately because some object stores (Azure)
-    # don't support them
-    """The range request type."""
-
-
-class _SuffixRequest(TypedDict):
-    """Offset or suffix range requests.
-
-    These requests cannot be concurrent on the Rust side, and each need their own call
-    to `obstore.get_async`, passing in the `range` parameter.
-    """
-
-    original_request_index: int
-    """The positional index in the original key_ranges input"""
-
-    path: str
-    """The path to request from."""
-
-    range: SuffixRange
-    """The suffix range."""
-
-
-class _Response(TypedDict):
-    """A response buffer associated with the original index that it should be restored to."""
-
-    original_request_index: int
-    """The positional index in the original key_ranges input"""
-
-    buffer: Buffer
-    """The buffer returned from obstore's range request."""
-
-
-async def _make_bounded_requests(
-    store: _UpstreamObjectStore,
-    path: str,
-    requests: list[_BoundedRequest],
-    prototype: BufferPrototype,
-    semaphore: asyncio.Semaphore,
-) -> list[_Response]:
-    """Make all bounded requests for a specific file.
-
-    `obstore.get_ranges_async` allows for making concurrent requests for multiple ranges
-    within a single file, and will e.g. merge concurrent requests. This only uses one
-    single Python coroutine.
-    """
-    import obstore as obs
-
-    starts = [r["start"] for r in requests]
-    ends = [r["end"] for r in requests]
-    async with semaphore:
-        responses = await obs.get_ranges_async(store, path=path, starts=starts, ends=ends)
-
-    buffer_responses: list[_Response] = []
-    for request, response in zip(requests, responses, strict=True):
-        buffer_responses.append(
-            {
-                "original_request_index": request["original_request_index"],
-                "buffer": prototype.buffer.from_bytes(response),  # type: ignore[arg-type]
-            }
-        )
-
-    return buffer_responses
-
-
-async def _make_other_request(
-    store: _UpstreamObjectStore,
-    request: _OtherRequest,
-    prototype: BufferPrototype,
-    semaphore: asyncio.Semaphore,
-) -> list[_Response]:
-    """Make offset or full-file requests.
-
-    We return a `list[_Response]` for symmetry with `_make_bounded_requests` so that all
-    futures can be gathered together.
-    """
-    import obstore as obs
-
-    async with semaphore:
-        if request["range"] is None:
-            resp = await obs.get_async(store, request["path"])
-        else:
-            resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
-        buffer = await resp.bytes_async()
-
-    return [
-        {
-            "original_request_index": request["original_request_index"],
-            "buffer": prototype.buffer.from_bytes(buffer),  # type: ignore[arg-type]
-        }
-    ]
-
-
-async def _make_suffix_request(
-    store: _UpstreamObjectStore,
-    request: _SuffixRequest,
-    prototype: BufferPrototype,
-    semaphore: asyncio.Semaphore,
-) -> list[_Response]:
-    """Make suffix requests.
-
-    This is separated out from `_make_other_request` because some object stores (Azure)
-    don't support suffix requests. In this case, our workaround is to first get the
-    length of the object and then manually request the byte range at the end.
-
-    We return a `list[_Response]` for symmetry with `_make_bounded_requests` so that all
-    futures can be gathered together.
-    """
-    import obstore as obs
-
-    async with semaphore:
-        try:
-            resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
-            buffer = await resp.bytes_async()
-        except obs.exceptions.NotSupportedError:
-            head_resp = await obs.head_async(store, request["path"])
-            file_size = head_resp["size"]
-            suffix_len = request["range"]["suffix"]
-            buffer = await obs.get_range_async(
-                store,
-                request["path"],
-                start=file_size - suffix_len,
-                length=suffix_len,
-            )
-
-    return [
-        {
-            "original_request_index": request["original_request_index"],
-            "buffer": prototype.buffer.from_bytes(buffer),  # type: ignore[arg-type]
-        }
-    ]
-
-
-async def _get_partial_values(
-    store: _UpstreamObjectStore,
-    prototype: BufferPrototype,
-    key_ranges: Iterable[tuple[str, ByteRequest | None]],
-) -> list[Buffer | None]:
-    """Make multiple range requests.
-
-    ObjectStore has a `get_ranges` method that will additionally merge nearby ranges,
-    but it's _per_ file. So we need to split these key_ranges into **per-file** key
-    ranges, and then reassemble the results in the original order.
-
-    We separate into different requests:
-
-    - One call to `obstore.get_ranges_async` **per target file**
-    - One call to `obstore.get_async` for each other request.
-    """
-    key_ranges = list(key_ranges)
-    per_file_bounded_requests: dict[str, list[_BoundedRequest]] = defaultdict(list)
-    other_requests: list[_OtherRequest] = []
-    suffix_requests: list[_SuffixRequest] = []
-
-    for idx, (path, byte_range) in enumerate(key_ranges):
-        if byte_range is None:
-            other_requests.append(
-                {
-                    "original_request_index": idx,
-                    "path": path,
-                    "range": None,
-                }
-            )
-        elif isinstance(byte_range, RangeByteRequest):
-            per_file_bounded_requests[path].append(
-                {"original_request_index": idx, "start": byte_range.start, "end": byte_range.end}
-            )
-        elif isinstance(byte_range, OffsetByteRequest):
-            other_requests.append(
-                {
-                    "original_request_index": idx,
-                    "path": path,
-                    "range": {"offset": byte_range.offset},
-                }
-            )
-        elif isinstance(byte_range, SuffixByteRequest):
-            suffix_requests.append(
-                {
-                    "original_request_index": idx,
-                    "path": path,
-                    "range": {"suffix": byte_range.suffix},
-                }
-            )
-        else:
-            raise ValueError(f"Unsupported range input: {byte_range}")
-
-    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
-
-    futs: list[Coroutine[Any, Any, list[_Response]]] = []
-    for path, bounded_ranges in per_file_bounded_requests.items():
-        futs.append(
-            _make_bounded_requests(store, path, bounded_ranges, prototype, semaphore=semaphore)
-        )
-
-    for request in other_requests:
-        futs.append(_make_other_request(store, request, prototype, semaphore=semaphore))  # noqa: PERF401
-
-    for suffix_request in suffix_requests:
-        futs.append(_make_suffix_request(store, suffix_request, prototype, semaphore=semaphore))  # noqa: PERF401
-
-    buffers: list[Buffer | None] = [None] * len(key_ranges)
-
-    for responses in await asyncio.gather(*futs):
-        for resp in responses:
-            buffers[resp["original_request_index"]] = resp["buffer"]
-
-    return buffers

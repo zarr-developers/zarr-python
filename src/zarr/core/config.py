@@ -29,12 +29,31 @@ For more information, see the Donfig documentation at https://github.com/pytroll
 
 from __future__ import annotations
 
+import os
+import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from donfig import Config as DConfig
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from donfig.config_obj import ConfigSet
+
+# Config keys that have been moved from global config to per-store parameters.
+# Maps old config key to a warning message.
+_warn_on_set: dict[str, str] = {
+    "async.concurrency": (
+        "The 'async.concurrency' configuration key has no effect. "
+        "Concurrency limits are now set per-store via the 'concurrency_limit' "
+        "parameter. For example: zarr.storage.LocalStore(..., concurrency_limit=10)."
+    ),
+}
+
+# Environment variable forms of the keys above (ZARR_ASYNC__CONCURRENCY -> async.concurrency)
+_warn_on_set_env: dict[str, str] = {
+    "ZARR_ASYNC__CONCURRENCY": _warn_on_set["async.concurrency"],
+}
 
 
 class BadConfigError(ValueError):
@@ -54,6 +73,25 @@ class Config(DConfig):  # type: ignore[misc]
     -  Calls ``ast.literal_eval`` on the value
 
     """
+
+    def set(self, arg: Mapping[str, Any] | None = None, **kwargs: Any) -> ConfigSet:
+        # Check for keys that now belong to per-store config
+        if arg is not None:
+            for key in arg:
+                if key in _warn_on_set:
+                    warnings.warn(_warn_on_set[key], UserWarning, stacklevel=2)
+        for key in kwargs:
+            normalized = key.replace("__", ".")
+            if normalized in _warn_on_set:
+                warnings.warn(_warn_on_set[normalized], UserWarning, stacklevel=2)
+        return super().set(arg, **kwargs)
+
+    def refresh(self, **kwargs: Any) -> None:
+        # Warn if env vars are being used for removed config keys
+        for env_key, message in _warn_on_set_env.items():
+            if env_key in os.environ:
+                warnings.warn(message, UserWarning, stacklevel=2)
+        super().refresh(**kwargs)
 
     def reset(self) -> None:
         self.clear()
@@ -98,7 +136,7 @@ config = Config(
                 "write_empty_chunks": False,
                 "target_shard_size_bytes": None,
             },
-            "async": {"concurrency": 10, "timeout": None},
+            "async": {"timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
