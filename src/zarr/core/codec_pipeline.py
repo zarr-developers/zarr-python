@@ -412,13 +412,12 @@ class BatchedCodecPipeline(CodecPipeline):
             ):
                 if chunk_array is None:
                     chunk_array_batch.append(None)  # type: ignore[unreachable]
+                elif not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
+                    fill_value_or_default(chunk_spec)
+                ):
+                    chunk_array_batch.append(None)
                 else:
-                    if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-                        fill_value_or_default(chunk_spec)
-                    ):
-                        chunk_array_batch.append(None)
-                    else:
-                        chunk_array_batch.append(chunk_array)
+                    chunk_array_batch.append(chunk_array)
 
             chunk_bytes_batch = await self.encode_batch(
                 [
