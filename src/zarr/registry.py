@@ -29,13 +29,11 @@ if TYPE_CHECKING:
 __all__ = [
     "Registry",
     "get_buffer_class",
-    "get_chunk_grid_class",
     "get_chunk_key_encoding_class",
     "get_codec_class",
     "get_ndbuffer_class",
     "get_pipeline_class",
     "register_buffer",
-    "register_chunk_grid",
     "register_chunk_key_encoding",
     "register_codec",
     "register_ndbuffer",
