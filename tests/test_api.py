@@ -599,7 +599,6 @@ def test_load_local(tmp_path: Path, path: str | None, load_read_only: bool) -> N
 
 
 def test_tree() -> None:
-    pytest.importorskip("rich")
     g1 = zarr.group()
     g1.create_group("foo")
     g3 = g1.create_group("bar")

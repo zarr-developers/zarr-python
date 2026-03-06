@@ -70,7 +70,7 @@ gpu = [
     "cupy-cuda12x",
 ]
 cli = ["typer"]
-optional = ["rich", "universal-pathlib"]
+optional = ["universal-pathlib"]
 
 [project.scripts]
 zarr = "zarr._cli.cli:app"
@@ -122,7 +122,6 @@ docs = [
     "towncrier",
     # Optional dependencies to run examples
     "numcodecs[msgpack]",
-    "rich",
     "s3fs>=2023.10.0",
     "astroid<4",
     "pytest",
@@ -131,7 +130,6 @@ dev = [
     {include-group = "test"},
     {include-group = "remote-tests"},
     {include-group = "docs"},
-    "rich",
     "universal-pathlib",
     "mypy",
 ]
