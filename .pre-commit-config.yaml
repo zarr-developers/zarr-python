@@ -37,8 +37,8 @@ repos:
           - packaging
           - donfig
           - numcodecs
-          - google-crc32c>=1.5
-          - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
+          - google-crc32c
+          - numpy
           - typing_extensions
           - universal-pathlib
           - obstore>=0.5.1
