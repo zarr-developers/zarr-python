@@ -2,7 +2,6 @@ from zarr.core.dtype import (
     Bool,
     Complex64,
     Complex128,
-    DataTypeValidationError,
     DateTime64,
     DateTime64JSON_V2,
     DateTime64JSON_V3,
@@ -43,6 +42,7 @@ from zarr.core.dtype import (
     parse_data_type,  # noqa: F401
     parse_dtype,
 )
+from zarr.errors import DataTypeValidationError
 
 __all__ = [
     "Bool",
