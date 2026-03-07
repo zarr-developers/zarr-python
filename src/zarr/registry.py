@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     )
     from zarr.abc.numcodec import Numcodec
     from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.chunk_grids.common import ChunkGrid
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.common import JSON
 
@@ -63,6 +64,7 @@ __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
 __pipeline_registry: Registry[CodecPipeline] = Registry()
 __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
+__chunk_grid_registry: Registry[ChunkGrid] = Registry()
 __chunk_key_encoding_registry: Registry[ChunkKeyEncoding] = Registry()
 
 """
@@ -125,6 +127,7 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         __pipeline_registry,
         __buffer_registry,
         __ndbuffer_registry,
+        __chunk_grid_registry,
         __chunk_key_encoding_registry,
     ]
 
@@ -154,6 +157,20 @@ def register_ndbuffer(cls: type[NDBuffer], qualname: str | None = None) -> None:
 
 def register_buffer(cls: type[Buffer], qualname: str | None = None) -> None:
     __buffer_registry.register(cls, qualname)
+
+
+def register_chunk_grid(key: str, cls: type[ChunkGrid]) -> None:
+    __chunk_grid_registry.register(cls, key)
+
+
+def get_chunk_grid_class(key: str) -> type[ChunkGrid]:
+    __chunk_grid_registry.lazy_load(use_entrypoint_name=True)
+    if key not in __chunk_grid_registry:
+        raise KeyError(
+            f"Chunk grid '{key}' not found in registered chunk grids: "
+            f"{list(__chunk_grid_registry)}."
+        )
+    return __chunk_grid_registry[key]
 
 
 def register_chunk_key_encoding(key: str, cls: type) -> None:
