@@ -427,6 +427,7 @@ markers = [
 [tool.repo-review]
 ignore = [
 	"PC111",  # fix Python code in documentation - enable later
+    "PC170",  # use PyGrep hooks - no *.rst files to check
 	"PC180",  # for JavaScript - not interested
 	"PC902",  # pre-commit.ci custom autofix message - not using autofix
 ]
