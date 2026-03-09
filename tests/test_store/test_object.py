@@ -86,6 +86,24 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         assert total_size == len(buf) * 2
 
 
+async def test_list_dir_with_nested_prefix(tmpdir):
+    """Regression test for https://github.com/zarr-developers/zarr-python/issues/3753.
+
+    list_dir must not corrupt directory names when prefix shares characters
+    with child names, which happened because lstrip strips characters not prefixes.
+    """
+    store = ObjectStore(LocalStore(prefix=str(tmpdir)))
+
+    buf = cpu.Buffer.from_bytes(b"\x01")
+    await store.set("subdir/data.zarr/zarr.json", buf)
+    await store.set("subdir/data.zarr/temp/zarr.json", buf)
+    await store.set("subdir/data.zarr/temp/c/0/0", buf)
+
+    results = sorted([item async for item in store.list_dir("subdir/data.zarr")])
+    assert "temp" in results, f"Expected 'temp' in {results}"
+    assert "zarr.json" in results
+
+
 @pytest.mark.slow_hypothesis
 def test_zarr_hierarchy():
     sync_store = ObjectStore(MemoryStore())
