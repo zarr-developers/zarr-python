@@ -40,7 +40,12 @@ from zarr.core.buffer import (
     default_buffer_prototype,
 )
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
-from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid, _auto_partition, normalize_chunks
+from zarr.core.chunk_grids import (
+    ChunkGrid,
+    _auto_partition,
+    normalize_chunks,
+    parse_chunk_grid,
+)
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -780,7 +785,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if chunk_grid is not None:
             chunk_grid_parsed: ChunkGrid = chunk_grid
         else:
-            chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape)
+            chunk_grid_parsed = ChunkGrid.from_regular(shape, chunk_shape)
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
@@ -4700,7 +4705,7 @@ async def init_array(
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=zdtype,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=ChunkGrid.from_regular(shape_parsed, shard_shape_parsed),
             )
             codecs_out = (sharding_codec,)
             chunks_out = shard_shape_parsed
@@ -6001,8 +6006,9 @@ async def _resize(
 
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
-        old_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords(array.metadata.shape))
-        new_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords(new_shape))
+        old_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords())
+        new_grid = parse_chunk_grid(array.metadata.chunk_grid, new_shape)
+        new_chunk_coords = set(new_grid.all_chunk_coords())
 
         async def _delete_key(key: str) -> None:
             await (array.store_path / key).delete()

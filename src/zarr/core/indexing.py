@@ -403,7 +403,7 @@ class IntDimIndexer:
             dim_offset = g.chunk_offset(dim_chunk_ix)
             dim_chunk_sel = self.dim_sel - dim_offset
             dim_out_sel = None
-            is_complete_chunk = g.chunk_size(dim_chunk_ix, self.dim_len) == 1
+            is_complete_chunk = g.data_size(dim_chunk_ix) == 1
         else:
             dim_chunk_ix = self.dim_sel // self.dim_chunk_len
             dim_offset = dim_chunk_ix * self.dim_chunk_len
@@ -447,7 +447,7 @@ class SliceDimIndexer:
         object.__setattr__(self, "nitems", max(0, ceildiv((stop - start), step)))
 
         if dim_grid is not None:
-            object.__setattr__(self, "nchunks", dim_grid.nchunks(dim_len))
+            object.__setattr__(self, "nchunks", dim_grid.nchunks)
         else:
             object.__setattr__(self, "nchunks", ceildiv(dim_len, dim_chunk_len))
 
@@ -460,7 +460,7 @@ class SliceDimIndexer:
 
             for dim_chunk_ix in range(dim_chunk_ix_from, dim_chunk_ix_to):
                 dim_offset = g.chunk_offset(dim_chunk_ix)
-                dim_chunk_len = g.chunk_size(dim_chunk_ix, self.dim_len)
+                dim_chunk_len = g.data_size(dim_chunk_ix)
                 dim_limit = dim_offset + dim_chunk_len
 
                 if self.start < dim_offset:
@@ -723,7 +723,7 @@ class BoolArrayDimIndexer:
         g = dim_grid
 
         if g is not None:
-            nchunks = g.nchunks(dim_len)
+            nchunks = g.nchunks
         else:
             nchunks = ceildiv(dim_len, dim_chunk_len)
 
@@ -732,7 +732,7 @@ class BoolArrayDimIndexer:
         for dim_chunk_ix in range(nchunks):
             if g is not None:
                 dim_offset = g.chunk_offset(dim_chunk_ix)
-                chunk_len = g.chunk_size(dim_chunk_ix, dim_len)
+                chunk_len = g.data_size(dim_chunk_ix)
             else:
                 dim_offset = dim_chunk_ix * dim_chunk_len
                 chunk_len = dim_chunk_len
@@ -762,7 +762,7 @@ class BoolArrayDimIndexer:
             # find region in chunk
             if g is not None:
                 dim_offset = g.chunk_offset(dim_chunk_ix)
-                chunk_len = g.chunk_size(dim_chunk_ix, self.dim_len)
+                chunk_len = g.data_size(dim_chunk_ix)
             else:
                 dim_offset = dim_chunk_ix * self.dim_chunk_len
                 chunk_len = self.dim_chunk_len
@@ -859,7 +859,7 @@ class IntArrayDimIndexer:
         g = dim_grid
 
         if g is not None:
-            nchunks = g.nchunks(dim_len)
+            nchunks = g.nchunks
         else:
             nchunks = ceildiv(dim_len, dim_chunk_len)
 
@@ -1280,7 +1280,7 @@ class CoordinateIndexer(Indexer):
         if shape == ():
             cdata_shape = (1,)
         else:
-            cdata_shape = tuple(g.nchunks(s) for g, s in zip(dim_grids, shape, strict=True))
+            cdata_shape = tuple(g.nchunks for g in dim_grids)
         nchunks = reduce(operator.mul, cdata_shape, 1)
 
         # some initial normalization

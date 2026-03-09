@@ -24,7 +24,7 @@ from typing import Any, Literal
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.chunk_grids import ChunkGrid, parse_chunk_grid
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -229,7 +229,7 @@ class ArrayV3Metadata(Metadata):
         """
 
         shape_parsed = parse_shapelike(shape)
-        chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
+        chunk_grid_parsed = parse_chunk_grid(chunk_grid, shape_parsed)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
@@ -262,14 +262,8 @@ class ArrayV3Metadata(Metadata):
         self._validate_metadata()
 
     def _validate_metadata(self) -> None:
-        if hasattr(self.chunk_grid, "ndim") and len(self.shape) != self.chunk_grid.ndim:
+        if len(self.shape) != self.chunk_grid.ndim:
             raise ValueError("`chunk_grid` and `shape` need to have the same number of dimensions.")
-        elif isinstance(self.chunk_grid, RegularChunkGrid) and len(self.shape) != len(
-            self.chunk_grid.chunk_shape
-        ):
-            raise ValueError(
-                "`chunk_shape` and `shape` need to have the same number of dimensions."
-            )
         if self.dimension_names is not None and len(self.shape) != len(self.dimension_names):
             raise ValueError(
                 "`dimension_names` and `shape` need to have the same number of dimensions."
@@ -332,21 +326,13 @@ class ArrayV3Metadata(Metadata):
     def get_chunk_spec(
         self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
-        if self.chunk_grid.is_regular:
-            # Regular grids: return the uniform chunk shape for all chunks,
-            # including boundary chunks. The codec pipeline expects full-sized
-            # buffers and handles boundary trimming separately.
-            chunk_shape = self.chunk_grid.chunk_shape
-        else:
-            # Rectilinear grids: each chunk may have a different shape.
-            chunk_shape_or_none = self.chunk_grid.get_chunk_shape(self.shape, _chunk_coords)
-            if chunk_shape_or_none is None:
-                raise ValueError(
-                    f"Chunk coordinates {_chunk_coords} are out of bounds for shape {self.shape}"
-                )
-            chunk_shape = chunk_shape_or_none
+        spec = self.chunk_grid[_chunk_coords]
+        if spec is None:
+            raise ValueError(
+                f"Chunk coordinates {_chunk_coords} are out of bounds for shape {self.shape}"
+            )
         return ArraySpec(
-            shape=chunk_shape,
+            shape=spec.codec_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
             config=array_config,

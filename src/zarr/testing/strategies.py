@@ -14,7 +14,7 @@ import zarr
 from zarr.abc.store import RangeByteRequest, Store
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import Array
-from zarr.core.chunk_grids import RegularChunkGrid
+from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
@@ -160,7 +160,7 @@ def array_metadata(
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            chunk_grid=ChunkGrid.from_regular(shape, chunk_shape),
             fill_value=fill_value,
             attributes=draw(attributes),  # type: ignore[arg-type]
             dimension_names=draw(dimension_names(ndim=ndim)),
