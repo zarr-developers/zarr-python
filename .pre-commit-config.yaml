@@ -59,6 +59,7 @@ repos:
       - id: ban-lstrip-rstrip
         name: ban lstrip/rstrip
         language: pygrep
+        # Matches .lstrip() or .rstrip() where the string argument is 2+ characters.
         entry: "\\.(lstrip|rstrip)\\([\"'][^\"']{2,}[\"']\\)"
         types: [python]
         files: ^(src|tests)/
