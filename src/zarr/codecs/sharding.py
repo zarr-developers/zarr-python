@@ -387,9 +387,10 @@ class ShardingCodec(
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
             )
-        if not isinstance(chunk_grid, RegularChunkGrid):
-            raise TypeError("Sharding is only compatible with regular chunk grids.")
-        if not all(
+        # Sharding works with both regular and rectilinear outer chunk grids.
+        # Each shard is self-contained — the ShardingCodec constructs an independent
+        # inner ChunkGrid per shard using the shard shape and subchunk shape.
+        if chunk_grid.is_regular and not all(
             s % c == 0
             for s, c in zip(
                 chunk_grid.chunk_shape,

@@ -40,7 +40,7 @@ from zarr.core.buffer import (
     default_buffer_prototype,
 )
 from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
-from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
+from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -744,9 +744,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: DimensionNames = None,
         attributes: dict[str, JSON] | None = None,
+        chunk_grid: ChunkGrid | None = None,
     ) -> ArrayV3Metadata:
         """
         Create an instance of ArrayV3Metadata.
+
+        If `chunk_grid` is provided, it takes precedence over `chunk_shape`.
         """
         filters: tuple[ArrayArrayCodec, ...]
         compressors: tuple[BytesBytesCodec, ...]
@@ -774,7 +777,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             fill_value_parsed = fill_value
 
-        chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape)
+        if chunk_grid is not None:
+            chunk_grid_parsed: ChunkGrid = chunk_grid
+        else:
+            chunk_grid_parsed = RegularChunkGrid(chunk_shape=chunk_shape)
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,

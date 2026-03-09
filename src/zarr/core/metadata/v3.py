@@ -262,7 +262,9 @@ class ArrayV3Metadata(Metadata):
         self._validate_metadata()
 
     def _validate_metadata(self) -> None:
-        if isinstance(self.chunk_grid, RegularChunkGrid) and len(self.shape) != len(
+        if hasattr(self.chunk_grid, "ndim") and len(self.shape) != self.chunk_grid.ndim:
+            raise ValueError("`chunk_grid` and `shape` need to have the same number of dimensions.")
+        elif isinstance(self.chunk_grid, RegularChunkGrid) and len(self.shape) != len(
             self.chunk_grid.chunk_shape
         ):
             raise ValueError(
@@ -287,7 +289,7 @@ class ArrayV3Metadata(Metadata):
 
     @property
     def chunks(self) -> tuple[int, ...]:
-        if isinstance(self.chunk_grid, RegularChunkGrid):
+        if self.chunk_grid.is_regular:
             from zarr.codecs.sharding import ShardingCodec
 
             if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
@@ -298,14 +300,14 @@ class ArrayV3Metadata(Metadata):
                 return self.chunk_grid.chunk_shape
 
         msg = (
-            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
-            f"This array has a {self.chunk_grid} instead."
+            "The `chunks` attribute is only defined for arrays using regular chunk grids. "
+            "This array has a rectilinear chunk grid. Use `chunk_grid` for general access."
         )
         raise NotImplementedError(msg)
 
     @property
     def shards(self) -> tuple[int, ...] | None:
-        if isinstance(self.chunk_grid, RegularChunkGrid):
+        if self.chunk_grid.is_regular:
             from zarr.codecs.sharding import ShardingCodec
 
             if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
@@ -314,28 +316,37 @@ class ArrayV3Metadata(Metadata):
                 return None
 
         msg = (
-            f"The `shards` attribute is only defined for arrays using `RegularChunkGrid`."
-            f"This array has a {self.chunk_grid} instead."
+            "The `shards` attribute is only defined for arrays using regular chunk grids. "
+            "This array has a rectilinear chunk grid. Use `chunk_grid` for general access."
         )
         raise NotImplementedError(msg)
 
     @property
     def inner_codecs(self) -> tuple[Codec, ...]:
-        if isinstance(self.chunk_grid, RegularChunkGrid):
-            from zarr.codecs.sharding import ShardingCodec
+        from zarr.codecs.sharding import ShardingCodec
 
-            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-                return self.codecs[0].codecs
+        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            return self.codecs[0].codecs
         return self.codecs
 
     def get_chunk_spec(
         self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
-        assert isinstance(self.chunk_grid, RegularChunkGrid), (
-            "Currently, only regular chunk grid is supported"
-        )
+        if self.chunk_grid.is_regular:
+            # Regular grids: return the uniform chunk shape for all chunks,
+            # including boundary chunks. The codec pipeline expects full-sized
+            # buffers and handles boundary trimming separately.
+            chunk_shape = self.chunk_grid.chunk_shape
+        else:
+            # Rectilinear grids: each chunk may have a different shape.
+            chunk_shape_or_none = self.chunk_grid.get_chunk_shape(self.shape, _chunk_coords)
+            if chunk_shape_or_none is None:
+                raise ValueError(
+                    f"Chunk coordinates {_chunk_coords} are out of bounds for shape {self.shape}"
+                )
+            chunk_shape = chunk_shape_or_none
         return ArraySpec(
-            shape=self.chunk_grid.chunk_shape,
+            shape=chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
             config=array_config,

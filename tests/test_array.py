@@ -786,8 +786,6 @@ def test_resize_growing_skips_chunk_enumeration(
     store: MemoryStore, zarr_format: ZarrFormat
 ) -> None:
     """Growing an array should not enumerate chunk coords for deletion (#3650 mitigation)."""
-    from zarr.core.chunk_grids import RegularChunkGrid
-
     z = zarr.create(
         shape=(10, 10),
         chunks=(5, 5),
@@ -798,9 +796,11 @@ def test_resize_growing_skips_chunk_enumeration(
     )
     z[:] = np.ones((10, 10), dtype="i4")
 
+    grid_cls = type(z.metadata.chunk_grid)
+
     # growth only - ensure no chunk coords are enumerated
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
         wraps=z.metadata.chunk_grid.all_chunk_coords,
     ) as mock_coords:
@@ -813,7 +813,7 @@ def test_resize_growing_skips_chunk_enumeration(
 
     # shrink - ensure no regression of behaviour
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
         wraps=z.metadata.chunk_grid.all_chunk_coords,
     ) as mock_coords:
@@ -836,7 +836,7 @@ def test_resize_growing_skips_chunk_enumeration(
     z2[:] = np.ones((10, 10), dtype="i4")
 
     with mock.patch.object(
-        RegularChunkGrid,
+        grid_cls,
         "all_chunk_coords",
         wraps=z2.metadata.chunk_grid.all_chunk_coords,
     ) as mock_coords:

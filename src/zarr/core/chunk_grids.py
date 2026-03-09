@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import bisect
 import itertools
 import math
 import numbers
 import operator
 import warnings
-from abc import abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
+import numpy.typing as npt
 
 import zarr
 from zarr.abc.metadata import Metadata
@@ -29,6 +31,338 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array import ShardsLike
+
+
+# ---------------------------------------------------------------------------
+# Per-dimension grid types
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class FixedDimension:
+    """All chunks on this axis have the same size."""
+
+    size: int  # chunk edge length (> 0)
+
+    def __post_init__(self) -> None:
+        if self.size < 0:
+            raise ValueError(f"FixedDimension size must be >= 0, got {self.size}")
+
+    def index_to_chunk(self, idx: int) -> int:
+        if self.size == 0:
+            return 0
+        return idx // self.size
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        return chunk_ix * self.size
+
+    def chunk_size(self, chunk_ix: int, dim_len: int) -> int:
+        if self.size == 0:
+            return 0
+        return min(self.size, dim_len - chunk_ix * self.size)
+
+    def nchunks(self, dim_len: int) -> int:
+        if self.size == 0:
+            return 1 if dim_len == 0 else 0
+        return ceildiv(dim_len, self.size)
+
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        if self.size == 0:
+            return np.zeros_like(indices)
+        return indices // self.size
+
+
+@dataclass(frozen=True)
+class VaryingDimension:
+    """Chunks on this axis have explicit per-chunk sizes."""
+
+    edges: tuple[int, ...]  # per-chunk edge lengths (all > 0)
+    cumulative: tuple[int, ...]  # prefix sums for O(log n) lookup
+
+    def __init__(self, edges: Sequence[int]) -> None:
+        edges_tuple = tuple(edges)
+        if not edges_tuple:
+            raise ValueError("VaryingDimension edges must not be empty")
+        if any(e <= 0 for e in edges_tuple):
+            raise ValueError(f"All edge lengths must be > 0, got {edges_tuple}")
+        cumulative = tuple(itertools.accumulate(edges_tuple))
+        object.__setattr__(self, "edges", edges_tuple)
+        object.__setattr__(self, "cumulative", cumulative)
+
+    def index_to_chunk(self, idx: int) -> int:
+        return bisect.bisect_right(self.cumulative, idx)
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        return self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
+
+    def chunk_size(self, chunk_ix: int, dim_len: int) -> int:
+        return self.edges[chunk_ix]
+
+    def nchunks(self, dim_len: int) -> int:
+        return len(self.edges)
+
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        return np.searchsorted(self.cumulative, indices, side="right")
+
+
+DimensionGrid = FixedDimension | VaryingDimension
+
+
+# ---------------------------------------------------------------------------
+# RLE helpers (ported from #3534)
+# ---------------------------------------------------------------------------
+
+
+def _expand_rle(data: list[list[int]]) -> list[int]:
+    """Expand run-length encoded chunk sizes: [[size, count], ...] -> [size, size, ...]"""
+    result: list[int] = []
+    for item in data:
+        if len(item) != 2:
+            raise ValueError(f"RLE entries must be [size, count], got {item}")
+        size, count = item
+        result.extend([size] * count)
+    return result
+
+
+def _compress_rle(sizes: Sequence[int]) -> list[list[int]]:
+    """Compress chunk sizes to RLE: [10,10,10,20,20] -> [[10,3],[20,2]]"""
+    if not sizes:
+        return []
+    result: list[list[int]] = []
+    current = sizes[0]
+    count = 1
+    for s in sizes[1:]:
+        if s == current:
+            count += 1
+        else:
+            result.append([current, count])
+            current = s
+            count = 1
+    result.append([current, count])
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Unified ChunkGrid
+# ---------------------------------------------------------------------------
+
+# Type alias for what users can pass as chunks to create_array
+ChunksLike = tuple[int, ...] | list[list[int] | int] | int
+
+
+@dataclass(frozen=True)
+class ChunkGrid(Metadata):
+    """
+    Unified chunk grid supporting both regular and rectilinear chunking.
+
+    Internally represents each dimension as either FixedDimension (uniform chunks)
+    or VaryingDimension (per-chunk edge lengths with prefix sums).
+    """
+
+    dimensions: tuple[DimensionGrid, ...]
+
+    def __init__(self, *, dimensions: tuple[DimensionGrid, ...]) -> None:
+        object.__setattr__(self, "dimensions", dimensions)
+
+    @classmethod
+    def from_regular(cls, chunk_shape: ShapeLike) -> ChunkGrid:
+        """Create a ChunkGrid where all dimensions are fixed (regular)."""
+        parsed = parse_shapelike(chunk_shape)
+        dims = tuple(FixedDimension(size=s) for s in parsed)
+        return cls(dimensions=dims)
+
+    @classmethod
+    def from_rectilinear(cls, chunk_shapes: Sequence[Sequence[int]]) -> ChunkGrid:
+        """Create a ChunkGrid with per-dimension edge lists.
+
+        Each element of chunk_shapes is a sequence of chunk sizes for that dimension.
+        If all sizes in a dimension are identical, it's stored as FixedDimension.
+        """
+        dims: list[DimensionGrid] = []
+        for edges in chunk_shapes:
+            edges_list = list(edges)
+            if not edges_list:
+                raise ValueError("Each dimension must have at least one chunk")
+            if all(e == edges_list[0] for e in edges_list):
+                dims.append(FixedDimension(size=edges_list[0]))
+            else:
+                dims.append(VaryingDimension(edges_list))
+        return cls(dimensions=tuple(dims))
+
+    # -- Properties --
+
+    @property
+    def ndim(self) -> int:
+        return len(self.dimensions)
+
+    @property
+    def is_regular(self) -> bool:
+        return all(isinstance(d, FixedDimension) for d in self.dimensions)
+
+    @property
+    def chunk_shape(self) -> tuple[int, ...]:
+        """Return the uniform chunk shape. Raises if grid is not regular."""
+        # Check for a stored _chunk_shape (set by RegularChunkGrid subclass)
+        try:
+            stored: tuple[int, ...] = object.__getattribute__(self, "_chunk_shape")
+        except AttributeError:
+            pass
+        else:
+            return stored
+        if not self.is_regular:
+            raise ValueError(
+                "chunk_shape is only available for regular chunk grids. "
+                "Use get_chunk_shape(array_shape, chunk_coords) for rectilinear grids."
+            )
+        return tuple(d.size for d in self.dimensions)  # type: ignore[union-attr]
+
+    # -- Chunk queries (shape-free where possible) --
+
+    def get_chunk_shape(
+        self, array_shape: tuple[int, ...], chunk_coords: tuple[int, ...]
+    ) -> tuple[int, ...] | None:
+        """Return the shape of a specific chunk, or None if out of bounds."""
+        result: list[int] = []
+        for dim, dim_len, chunk_ix in zip(self.dimensions, array_shape, chunk_coords, strict=True):
+            nch = dim.nchunks(dim_len)
+            if chunk_ix < 0 or chunk_ix >= nch:
+                return None
+            result.append(dim.chunk_size(chunk_ix, dim_len))
+        return tuple(result)
+
+    def get_chunk_origin(
+        self, array_shape: tuple[int, ...], chunk_coords: tuple[int, ...]
+    ) -> tuple[int, ...] | None:
+        """Return the origin (start indices) of a specific chunk, or None if OOB."""
+        result: list[int] = []
+        for dim, dim_len, chunk_ix in zip(self.dimensions, array_shape, chunk_coords, strict=True):
+            nch = dim.nchunks(dim_len)
+            if chunk_ix < 0 or chunk_ix >= nch:
+                return None
+            result.append(dim.chunk_offset(chunk_ix))
+        return tuple(result)
+
+    def grid_shape(self, array_shape: tuple[int, ...]) -> tuple[int, ...]:
+        """Return the number of chunks per dimension."""
+        return tuple(d.nchunks(s) for d, s in zip(self.dimensions, array_shape, strict=True))
+
+    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+        return itertools.product(
+            *(range(d.nchunks(s)) for d, s in zip(self.dimensions, array_shape, strict=True))
+        )
+
+    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
+        return reduce(
+            operator.mul,
+            (d.nchunks(s) for d, s in zip(self.dimensions, array_shape, strict=True)),
+            1,
+        )
+
+    # -- Serialization --
+
+    @classmethod
+    def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
+        if isinstance(data, ChunkGrid):
+            # Handle both ChunkGrid and legacy RegularChunkGrid
+            if isinstance(data, RegularChunkGrid):
+                return ChunkGrid.from_regular(data.chunk_shape)
+            return data
+
+        name_parsed, configuration_parsed = parse_named_configuration(data)
+
+        if name_parsed == "regular":
+            chunk_shape_raw = configuration_parsed.get("chunk_shape")
+            if chunk_shape_raw is None:
+                raise ValueError("Regular chunk grid requires 'chunk_shape' configuration")
+            if not isinstance(chunk_shape_raw, Sequence):
+                raise TypeError(f"chunk_shape must be a sequence, got {type(chunk_shape_raw)}")
+            return cls.from_regular(cast("Sequence[int]", chunk_shape_raw))
+
+        if name_parsed == "rectilinear":
+            chunk_shapes_raw = configuration_parsed.get("chunk_shapes")
+            if chunk_shapes_raw is None:
+                raise ValueError("Rectilinear chunk grid requires 'chunk_shapes' configuration")
+            if not isinstance(chunk_shapes_raw, Sequence):
+                raise TypeError(f"chunk_shapes must be a sequence, got {type(chunk_shapes_raw)}")
+            # Decode RLE if present
+            decoded: list[list[int]] = []
+            for dim_spec in chunk_shapes_raw:
+                if isinstance(dim_spec, list) and dim_spec and isinstance(dim_spec[0], list):
+                    decoded.append(_expand_rle(dim_spec))
+                elif isinstance(dim_spec, list):
+                    decoded.append(dim_spec)
+                else:
+                    raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
+            return cls.from_rectilinear(decoded)
+
+        raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
+
+    def to_dict(self) -> dict[str, JSON]:
+        if self.is_regular:
+            return {
+                "name": "regular",
+                "configuration": {"chunk_shape": tuple(self.chunk_shape)},
+            }
+        else:
+            chunk_shapes: list[Any] = []
+            for dim in self.dimensions:
+                if isinstance(dim, FixedDimension):
+                    # Single fixed size — store as RLE
+                    chunk_shapes.append([[dim.size, 1]])
+                else:
+                    edges = list(dim.edges)
+                    rle = _compress_rle(edges)
+                    # Use RLE only if it actually compresses
+                    if sum(count for _, count in rle) == len(edges) and len(rle) < len(edges):
+                        chunk_shapes.append(rle)
+                    else:
+                        chunk_shapes.append(edges)
+            return {
+                "name": "rectilinear",
+                "configuration": {"chunk_shapes": chunk_shapes},
+            }
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatible alias
+# ---------------------------------------------------------------------------
+
+
+class RegularChunkGrid(ChunkGrid):
+    """Backwards-compatible wrapper. Prefer ChunkGrid.from_regular() for new code."""
+
+    _chunk_shape: tuple[int, ...]
+
+    def __init__(self, *, chunk_shape: ShapeLike) -> None:
+        chunk_shape_parsed = parse_shapelike(chunk_shape)
+        dims = tuple(FixedDimension(size=s) for s in chunk_shape_parsed)
+        object.__setattr__(self, "dimensions", dims)
+        object.__setattr__(self, "_chunk_shape", chunk_shape_parsed)
+
+    @classmethod
+    def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
+        _, configuration_parsed = parse_named_configuration(data, "regular")
+        return cls(**configuration_parsed)  # type: ignore[arg-type]
+
+    def to_dict(self) -> dict[str, JSON]:
+        return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
+
+    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+        return itertools.product(
+            *(range(ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
+        )
+
+    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
+        return reduce(
+            operator.mul,
+            itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
+            1,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Chunk guessing / normalization (unchanged)
+# ---------------------------------------------------------------------------
 
 
 def _guess_chunks(
@@ -151,58 +485,6 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
         raise TypeError("non integer value in chunks")
 
     return tuple(int(c) for c in chunks)
-
-
-@dataclass(frozen=True)
-class ChunkGrid(Metadata):
-    @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
-        if isinstance(data, ChunkGrid):
-            return data
-
-        name_parsed, _ = parse_named_configuration(data)
-        if name_parsed == "regular":
-            return RegularChunkGrid._from_dict(data)
-        raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
-
-    @abstractmethod
-    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-        pass
-
-    @abstractmethod
-    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
-        pass
-
-
-@dataclass(frozen=True)
-class RegularChunkGrid(ChunkGrid):
-    chunk_shape: tuple[int, ...]
-
-    def __init__(self, *, chunk_shape: ShapeLike) -> None:
-        chunk_shape_parsed = parse_shapelike(chunk_shape)
-
-        object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
-
-    @classmethod
-    def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "regular")
-
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
-
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
-
-    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-        return itertools.product(
-            *(range(ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
-        )
-
-    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
-        return reduce(
-            operator.mul,
-            itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
-            1,
-        )
 
 
 def _guess_num_chunks_per_axis_shard(
