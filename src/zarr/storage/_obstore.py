@@ -260,7 +260,7 @@ async def _transform_list_dir(
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefixes = [obj.lstrip(prefix).lstrip("/") for obj in list_result["common_prefixes"]]
+    prefixes = [obj.removeprefix(prefix).lstrip("/") for obj in list_result["common_prefixes"]]
     objects = [obj["path"].removeprefix(prefix).lstrip("/") for obj in list_result["objects"]]
     for item in prefixes + objects:
         yield item
