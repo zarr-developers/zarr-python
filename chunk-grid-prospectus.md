@@ -1,6 +1,6 @@
 # Prospectus: Unified Chunk Grid Design for zarr-python
 
-Version: 2
+Version: 3
 
 **Related:**
 - [#3750](https://github.com/zarr-developers/zarr-python/issues/3750) (single ChunkGrid proposal)
@@ -31,7 +31,7 @@ A registry-based plugin system adds complexity without clear benefit.
 ### Principles
 
 1. **A chunk grid is a concrete arrangement of chunks.** Not an abstract tiling pattern — the specific partition of a specific array. The grid stores enough information to answer any question about any chunk without external parameters.
-2. **One implementation, multiple serialization forms.** A single `ChunkGrid` class serializes as `"regular"` when all chunks are uniform, `"rectilinear"` otherwise.
+2. **One implementation, multiple serialization forms.** A single `ChunkGrid` class handles all chunking logic. The serialization format (`"regular"` vs `"rectilinear"`) is chosen by the metadata layer, not the grid.
 3. **No chunk grid registry.** Simple name-based dispatch in `parse_chunk_grid()`.
 4. **Fixed vs Varying per dimension.** `FixedDimension(size, extent)` for uniform chunks; `VaryingDimension(edges, cumulative)` for per-chunk edge lengths with precomputed prefix sums. Avoids expanding regular dimensions into lists of identical values.
 5. **Transparent transitions.** Operations like `resize()` can move an array from regular to rectilinear chunking.
@@ -174,17 +174,34 @@ def __getitem__(self, coords: tuple[int, ...]) -> ChunkSpec | None:
 {"name": "rectilinear", "configuration": {"chunk_shapes": [[10, 20, 30], [[25, 4]]]}}
 ```
 
-Both names produce the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is passed to `parse_chunk_grid()` at construction time. For rectilinear grids, the extent is redundant (`sum(edges)`) and is validated for consistency.
+Both names deserialize to the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is passed to `parse_chunk_grid()` at construction time. For rectilinear grids, the extent is redundant (`sum(edges)`) and is validated for consistency.
+
+**The `ChunkGrid` does not serialize itself.** The format choice (`"regular"` vs `"rectilinear"`) belongs to `ArrayV3Metadata`, which already knows how to produce its JSON document. The flow is always: metadata document → `ChunkGrid` (via `parse_chunk_grid`), never the reverse. The grid is a pure runtime computation object.
+
+`ArrayV3Metadata` stores the chunk grid's JSON `name` from the original metadata document and uses it when serializing back. This gives round-trip fidelity for free — a store written as rectilinear with uniform edges stays rectilinear.
+
+The only place where a user needs to choose the format is when creating new metadata. For `create_array`, the format is inferred from the `chunks` argument: a flat tuple produces `"regular"`, a nested list produces `"rectilinear"`. For `resize`, the format can be specified explicitly via `chunk_grid_metadata`:
+
+```python
+arr.resize(
+    (80, 100),
+    chunks=[[10, 20, 30, 20], [25, 25, 25, 25]],
+    chunk_grid_metadata="rectilinear",
+)
+```
+
+`chunk_grid_metadata` is typed as `str`, not a closed literal — the Zarr V3 spec allows any registered chunk grid name. zarr-python supports `"regular"` and `"rectilinear"` natively; other names (e.g., zarrs' `"regular_bounded"`) would raise unless a handler is registered. If omitted, the format is inferred: `"rectilinear"` when chunks are non-uniform or explicitly nested, `"regular"` when chunks are a flat tuple and evenly divide the shape. Specifying `"regular"` when the chunks are non-uniform raises an error.
 
 #### Resize
 
 ```python
-arr.resize((80, 100))  # becomes rectilinear if not evenly divisible
+arr.resize((80, 100))                                                # inferred rectilinear if not evenly divisible
 arr.resize((80, 100), chunks=[[10, 20, 30, 20], [25, 25, 25, 25]])  # explicit chunks
-arr.resize((70, 100))  # stays regular if divisible
+arr.resize((70, 100))                                                # stays regular if divisible
+arr.resize((100, 100), chunk_grid_metadata="rectilinear")            # force rectilinear metadata
 ```
 
-Resize constructs a new frozen `ChunkGrid`, replacing the old one.
+Resize creates new `ArrayV3Metadata` (and thus a new `ChunkGrid`). Since resize always creates new metadata, `chunk_grid_metadata` is the natural place to choose the serialization format.
 
 ### Indexing
 
@@ -251,7 +268,7 @@ The `ShardingCodec` constructs a `ChunkGrid` per shard using the shard shape as 
 
 The chunk grid is a concrete arrangement, not an abstract tiling pattern. A finite collection naturally has an extent. Storing it enables `__getitem__`, eliminates `dim_len` parameters from every method, and makes the grid self-describing.
 
-This does *not* mean `ArrayV3Metadata.shape` should delegate to the grid. The array shape remains an independent field in metadata. The extent is passed into the grid at construction time so it can answer boundary questions without external parameters. It is **not** included in `to_dict()` — it comes from the `shape` field in array metadata and is passed to `parse_chunk_grid()`.
+This does *not* mean `ArrayV3Metadata.shape` should delegate to the grid. The array shape remains an independent field in metadata. The extent is passed into the grid at construction time so it can answer boundary questions without external parameters. It is **not** serialized as part of the chunk grid JSON — it comes from the `shape` field in array metadata and is passed to `parse_chunk_grid()`.
 
 ### Why distinguish chunk_size from data_size?
 
