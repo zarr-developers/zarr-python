@@ -244,9 +244,13 @@ class ChunkGrid(Metadata):
     """
 
     dimensions: tuple[DimensionGrid, ...]
+    _is_regular: bool
 
     def __init__(self, *, dimensions: tuple[DimensionGrid, ...]) -> None:
         object.__setattr__(self, "dimensions", dimensions)
+        object.__setattr__(
+            self, "_is_regular", all(isinstance(d, FixedDimension) for d in dimensions)
+        )
 
     @classmethod
     def from_regular(cls, array_shape: ShapeLike, chunk_shape: ShapeLike) -> ChunkGrid:
@@ -292,7 +296,7 @@ class ChunkGrid(Metadata):
 
     @property
     def is_regular(self) -> bool:
-        return all(isinstance(d, FixedDimension) for d in self.dimensions)
+        return self._is_regular
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -492,7 +496,7 @@ class RegularChunkGrid(ChunkGrid):
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         # Without array shape, use extent=0 as placeholder
         dims = tuple(FixedDimension(size=s, extent=0) for s in chunk_shape_parsed)
-        object.__setattr__(self, "dimensions", dims)
+        super().__init__(dimensions=dims)
         object.__setattr__(self, "_chunk_shape", chunk_shape_parsed)
 
     @property
