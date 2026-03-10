@@ -74,7 +74,7 @@ def test_sharded_morton_indexing(
     The Morton order cache is cleared before each iteration to measure the
     full computation cost.
     """
-    from zarr.core.indexing import _morton_order
+    from zarr.core.indexing import _morton_order, _morton_order_keys
 
     # Create array where each shard contains many small chunks
     # e.g., shards=(32,32,32) with chunks=(2,2,2) means 16x16x16 = 4096 chunks per shard
@@ -98,6 +98,7 @@ def test_sharded_morton_indexing(
 
     def read_with_cache_clear() -> None:
         _morton_order.cache_clear()
+        _morton_order_keys.cache_clear()
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
@@ -105,7 +106,10 @@ def test_sharded_morton_indexing(
 
 # Benchmark with larger chunks_per_shard to make Morton order impact more visible
 large_morton_shards = (
-    (32,) * 3,  # With 1x1x1 chunks: 32x32x32 = 32768 chunks per shard
+    (32,) * 3,  # With 1x1x1 chunks: 32x32x32 = 32768 chunks per shard (power-of-2)
+    (30,) * 3,  # With 1x1x1 chunks: 30x30x30 = 27000 chunks per shard (non-power-of-2)
+    (33,)
+    * 3,  # With 1x1x1 chunks: 33x33x33 = 35937 chunks per shard (near-miss: just above power-of-2)
 )
 
 
@@ -122,7 +126,7 @@ def test_sharded_morton_indexing_large(
     the Morton order computation a more significant portion of total time.
     The Morton order cache is cleared before each iteration.
     """
-    from zarr.core.indexing import _morton_order
+    from zarr.core.indexing import _morton_order, _morton_order_keys
 
     # 1x1x1 chunks means chunks_per_shard equals shard shape
     shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
@@ -145,6 +149,7 @@ def test_sharded_morton_indexing_large(
 
     def read_with_cache_clear() -> None:
         _morton_order.cache_clear()
+        _morton_order_keys.cache_clear()
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
@@ -164,7 +169,7 @@ def test_sharded_morton_single_chunk(
     computing the full Morton order, making the optimization impact clear.
     The Morton order cache is cleared before each iteration.
     """
-    from zarr.core.indexing import _morton_order
+    from zarr.core.indexing import _morton_order, _morton_order_keys
 
     # 1x1x1 chunks means chunks_per_shard equals shard shape
     shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
@@ -187,6 +192,7 @@ def test_sharded_morton_single_chunk(
 
     def read_with_cache_clear() -> None:
         _morton_order.cache_clear()
+        _morton_order_keys.cache_clear()
         getitem(data, indexer)
 
     benchmark(read_with_cache_clear)
@@ -194,9 +200,13 @@ def test_sharded_morton_single_chunk(
 
 # Benchmark for morton_order_iter directly (no I/O)
 morton_iter_shapes = (
-    (8, 8, 8),  # 512 elements
-    (16, 16, 16),  # 4096 elements
-    (32, 32, 32),  # 32768 elements
+    (8, 8, 8),  # 512 elements    (power-of-2)
+    (10, 10, 10),  # 1000 elements   (non-power-of-2)
+    (16, 16, 16),  # 4096 elements   (power-of-2)
+    (20, 20, 20),  # 8000 elements   (non-power-of-2)
+    (32, 32, 32),  # 32768 elements  (power-of-2)
+    (30, 30, 30),  # 27000 elements  (non-power-of-2)
+    (33, 33, 33),  # 35937 elements  (near-miss: just above power-of-2, n_z=262144)
 )
 
 
@@ -211,10 +221,11 @@ def test_morton_order_iter(
     optimization impact without array read/write overhead.
     The cache is cleared before each iteration.
     """
-    from zarr.core.indexing import _morton_order, morton_order_iter
+    from zarr.core.indexing import _morton_order, _morton_order_keys, morton_order_iter
 
     def compute_morton_order() -> None:
         _morton_order.cache_clear()
+        _morton_order_keys.cache_clear()
         # Consume the iterator to force computation
         list(morton_order_iter(shape))
 
@@ -239,7 +250,7 @@ def test_sharded_morton_write_single_chunk(
     """
     import numpy as np
 
-    from zarr.core.indexing import _morton_order
+    from zarr.core.indexing import _morton_order, _morton_order_keys
 
     # 1x1x1 chunks means chunks_per_shard equals shard shape
     shape = tuple(s * 2 for s in shards)  # 2 shards per dimension
@@ -262,6 +273,7 @@ def test_sharded_morton_write_single_chunk(
 
     def write_with_cache_clear() -> None:
         _morton_order.cache_clear()
+        _morton_order_keys.cache_clear()
         data[indexer] = write_data
 
     benchmark(write_with_cache_clear)
