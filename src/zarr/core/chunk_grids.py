@@ -364,12 +364,10 @@ class ChunkGrid(Metadata):
                 raise ValueError("Regular chunk grid requires 'chunk_shape' configuration")
             if not isinstance(chunk_shape_raw, Sequence):
                 raise TypeError(f"chunk_shape must be a sequence, got {type(chunk_shape_raw)}")
-            # Without array shape, create with extent=0 as placeholder.
-            # parse_chunk_grid() should be used when array shape is available.
-            dims = tuple(
-                FixedDimension(size=int(cast("int", s)), extent=0) for s in chunk_shape_raw
-            )
-            return cls(dimensions=dims)
+            # Without array shape, return a RegularChunkGrid that preserves
+            # chunk_shape but raises on extent-dependent operations.
+            # Use parse_chunk_grid() when array shape is available.
+            return RegularChunkGrid(chunk_shape=tuple(int(cast("int", s)) for s in chunk_shape_raw))
 
         if name_parsed == "rectilinear":
             chunk_shapes_raw = configuration_parsed.get("chunk_shapes")
@@ -513,15 +511,25 @@ class RegularChunkGrid(ChunkGrid):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
 
+    def _raise_no_extent(self) -> None:
+        raise ValueError(
+            "RegularChunkGrid does not have array shape information. "
+            "Use ChunkGrid.from_regular(array_shape, chunk_shape) or "
+            "parse_chunk_grid() to create a grid with extent."
+        )
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        self._raise_no_extent()
+        raise AssertionError  # unreachable, for mypy
+
     def all_chunk_coords(self) -> Iterator[tuple[int, ...]]:
-        return itertools.product(*(range(d.nchunks) for d in self.dimensions))
+        self._raise_no_extent()
+        raise AssertionError  # unreachable, for mypy
 
     def get_nchunks(self) -> int:
-        return reduce(
-            operator.mul,
-            (d.nchunks for d in self.dimensions),
-            1,
-        )
+        self._raise_no_extent()
+        raise AssertionError  # unreachable, for mypy
 
 
 # ---------------------------------------------------------------------------

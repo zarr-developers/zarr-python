@@ -428,7 +428,8 @@ class ArrayV3Metadata(Metadata):
         return out_dict
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
-        return replace(self, shape=shape)
+        new_grid = parse_chunk_grid(self.chunk_grid, shape)
+        return replace(self, shape=shape, chunk_grid=new_grid)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)

@@ -1290,3 +1290,78 @@ def test_property_roundtrip_rectilinear(data: st.DataObject) -> None:
     """Property test: write then read matches original data."""
     z, a = data.draw(rectilinear_arrays_st())
     np.testing.assert_array_equal(z[:], a)
+
+
+# ---------------------------------------------------------------------------
+# Bug #3: _resize with rectilinear grids
+# ---------------------------------------------------------------------------
+
+
+class TestResizeRectilinear:
+    def test_resize_regular_preserves_chunk_grid(self, tmp_path: Path) -> None:
+        """Resize a regular array — chunk_grid extents must match new shape."""
+        z = zarr.create_array(
+            store=tmp_path / "regular.zarr",
+            shape=(100,),
+            chunks=(10,),
+            dtype="int32",
+        )
+        z[:] = np.arange(100, dtype="int32")
+        z.resize(50)
+        assert z.shape == (50,)
+        # The chunk grid's extent must agree with the new shape
+        assert z.metadata.chunk_grid.dimensions[0].extent == 50
+
+    def test_resize_rectilinear_raises(self, tmp_path: Path) -> None:
+        """Resize should raise for rectilinear grids (not yet supported)."""
+        z = zarr.create_array(
+            store=tmp_path / "rect.zarr",
+            shape=(30,),
+            chunks=[[5, 10, 15]],
+            dtype="int32",
+        )
+        z[:] = np.arange(30, dtype="int32")
+        with pytest.raises((ValueError, NotImplementedError)):
+            z.resize(20)
+
+
+# ---------------------------------------------------------------------------
+# Bug #4: extent=0 placeholder in RegularChunkGrid / from_dict
+# ---------------------------------------------------------------------------
+
+
+class TestExtentPlaceholder:
+    def test_regular_chunk_grid_chunk_shape_preserved(self) -> None:
+        """RegularChunkGrid preserves chunk_shape."""
+        g = RegularChunkGrid(chunk_shape=(10, 20))
+        assert g.chunk_shape == (10, 20)
+
+    def test_regular_chunk_grid_nchunks_raises(self) -> None:
+        """RegularChunkGrid raises on get_nchunks() (no extent info)."""
+        g = RegularChunkGrid(chunk_shape=(10, 20))
+        with pytest.raises(ValueError, match="array shape"):
+            g.get_nchunks()
+
+    def test_regular_chunk_grid_shape_raises(self) -> None:
+        """RegularChunkGrid raises on .shape (no extent info)."""
+        g = RegularChunkGrid(chunk_shape=(10, 20))
+        with pytest.raises(ValueError, match="array shape"):
+            _ = g.shape
+
+    def test_regular_chunk_grid_all_chunk_coords_raises(self) -> None:
+        """RegularChunkGrid raises on all_chunk_coords() (no extent info)."""
+        g = RegularChunkGrid(chunk_shape=(10, 20))
+        with pytest.raises(ValueError, match="array shape"):
+            list(g.all_chunk_coords())
+
+    def test_from_dict_regular_raises_on_extent_ops(self) -> None:
+        """ChunkGrid.from_dict for regular grids raises on extent-dependent ops."""
+        g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
+        assert g.chunk_shape == (10, 20)
+        with pytest.raises(ValueError, match="array shape"):
+            g.get_nchunks()
+
+    def test_from_dict_regular_is_regular_chunk_grid(self) -> None:
+        """ChunkGrid.from_dict for regular grids returns a RegularChunkGrid."""
+        g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
+        assert isinstance(g, RegularChunkGrid)

@@ -6018,6 +6018,10 @@ async def _resize(
     """
     new_shape = parse_shapelike(new_shape)
     assert len(new_shape) == len(array.metadata.shape)
+
+    if not array.metadata.chunk_grid.is_regular:
+        raise ValueError("Resize is not supported for arrays with rectilinear chunk grids.")
+
     new_metadata = array.metadata.update_shape(new_shape)
 
     # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
