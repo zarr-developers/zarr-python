@@ -816,3 +816,131 @@ class TestEdgeCases:
         d = VaryingDimension([10, 20, 5])
         for i in range(3):
             assert d.data_size(i) == d.chunk_size(i)
+
+
+# ---------------------------------------------------------------------------
+# Bug: OrthogonalIndexer chunk_shape=1 for VaryingDimension
+# ---------------------------------------------------------------------------
+
+
+class TestOrthogonalIndexerRectilinear:
+    """OrthogonalIndexer must use correct per-chunk sizes for VaryingDimension,
+    not a hardcoded 1. The chunk_shape field is used by ix_() to convert slices
+    to ranges for advanced indexing."""
+
+    def test_orthogonal_int_array_selection_rectilinear(self) -> None:
+        """Integer array selection with rectilinear grid must produce correct
+        chunk-local selections."""
+        from zarr.core.indexing import OrthogonalIndexer
+
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
+        indexer = OrthogonalIndexer(
+            selection=(np.array([5, 15, 35]), slice(None)),
+            shape=(60, 100),
+            chunk_grid=g,
+        )
+        projections = list(indexer)
+        # Grid: dim0 chunks [0..10), [10..30), [30..60); dim1 chunks [0..50), [50..100)
+        # Indices 5, 15, 35 land in chunks 0, 1, 2 respectively.
+        # Combined with slice(None) over 2 dim1 chunks, we get 6 projections.
+        chunk_coords = [p.chunk_coords for p in projections]
+        assert chunk_coords == [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
+
+    def test_orthogonal_bool_array_selection_rectilinear(self) -> None:
+        """Boolean array selection with rectilinear grid."""
+        from zarr.core.indexing import OrthogonalIndexer
+
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
+        mask = np.zeros(60, dtype=bool)
+        mask[5] = True
+        mask[15] = True
+        mask[35] = True
+        indexer = OrthogonalIndexer(
+            selection=(mask, slice(None)),
+            shape=(60, 100),
+            chunk_grid=g,
+        )
+        projections = list(indexer)
+        assert len(projections) > 0
+
+    def test_orthogonal_advanced_indexing_chunk_shape_not_one(self) -> None:
+        """Verify OrthogonalIndexer.chunk_shape reflects actual chunk sizes,
+        not a hardcoded 1 for VaryingDimension."""
+        from zarr.core.indexing import OrthogonalIndexer
+
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
+        indexer = OrthogonalIndexer(
+            selection=(np.array([5, 15]), slice(None)),
+            shape=(60, 100),
+            chunk_grid=g,
+        )
+        # chunk_shape should NOT have 1 for the VaryingDimension
+        # The first dim has varying chunks [10, 20, 30] — we need a
+        # representative size for ix_() to work. Using the max is safe.
+        assert indexer.chunk_shape[0] > 1  # was incorrectly 1 before fix
+        assert indexer.chunk_shape[1] == 50
+
+
+# ---------------------------------------------------------------------------
+# Bug: Sharding validation skipped for rectilinear grids
+# ---------------------------------------------------------------------------
+
+
+class TestShardingValidationRectilinear:
+    """ShardingCodec.validate must check divisibility for rectilinear grids too."""
+
+    def test_sharding_rejects_non_divisible_rectilinear(self) -> None:
+        """Rectilinear shard sizes not divisible by inner chunk_shape should raise."""
+        from zarr.codecs.sharding import ShardingCodec
+        from zarr.core.dtype import Float32
+
+        codec = ShardingCodec(chunk_shape=(5, 5))
+        # 17 is not divisible by 5
+        g = ChunkGrid.from_rectilinear([[10, 20, 17], [50, 50]])
+
+        with pytest.raises(ValueError, match="divisible"):
+            codec.validate(
+                shape=(47, 100),
+                dtype=Float32(),
+                chunk_grid=g,
+            )
+
+    def test_sharding_accepts_divisible_rectilinear(self) -> None:
+        """Rectilinear shard sizes all divisible by inner chunk_shape should pass."""
+        from zarr.codecs.sharding import ShardingCodec
+        from zarr.core.dtype import Float32
+
+        codec = ShardingCodec(chunk_shape=(5, 5))
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
+
+        # Should not raise
+        codec.validate(
+            shape=(60, 100),
+            dtype=Float32(),
+            chunk_grid=g,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Bug: parse_chunk_grid doesn't validate VaryingDimension extent vs array_shape
+# ---------------------------------------------------------------------------
+
+
+class TestParseChunkGridValidation:
+    """parse_chunk_grid should raise when VaryingDimension extent != array_shape."""
+
+    def test_varying_extent_mismatch_raises(self) -> None:
+        from zarr.core.chunk_grids import parse_chunk_grid
+
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
+        # VaryingDimension extent is 60, but array_shape says 100
+        with pytest.raises(ValueError, match="extent"):
+            parse_chunk_grid(g, (100, 100))
+
+    def test_varying_extent_match_ok(self) -> None:
+        from zarr.core.chunk_grids import parse_chunk_grid
+
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
+        # Matching extents should work fine
+        g2 = parse_chunk_grid(g, (60, 100))
+        assert g2.dimensions[0].extent == 60

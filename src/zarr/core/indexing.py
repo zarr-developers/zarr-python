@@ -1051,10 +1051,14 @@ class OrthogonalIndexer(Indexer):
         else:
             drop_axes = ()
 
-        # Compute chunk_shape for ix_() compatibility in __iter__
+        # Compute chunk_shape for ix_() compatibility in __iter__.
+        # For VaryingDimension, use the max edge length so that
+        # slice_to_range produces correct ranges for the largest chunk.
         from zarr.core.chunk_grids import FixedDimension
 
-        chunk_shape = tuple(g.size if isinstance(g, FixedDimension) else 1 for g in dim_grids)
+        chunk_shape = tuple(
+            g.size if isinstance(g, FixedDimension) else max(g.edges) for g in dim_grids
+        )
 
         object.__setattr__(self, "dim_indexers", dim_indexers)
         object.__setattr__(self, "shape", shape)

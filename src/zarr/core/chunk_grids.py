@@ -412,7 +412,13 @@ def parse_chunk_grid(
             if isinstance(dim, FixedDimension):
                 dims.append(FixedDimension(size=dim.size, extent=extent))
             else:
-                dims.append(dim)  # VaryingDimension has intrinsic extent
+                # VaryingDimension has intrinsic extent — validate it matches
+                if dim.extent != extent:
+                    raise ValueError(
+                        f"VaryingDimension extent {dim.extent} does not match "
+                        f"array shape extent {extent} for dimension {len(dims)}"
+                    )
+                dims.append(dim)
         return ChunkGrid(dimensions=tuple(dims))
 
     name_parsed, configuration_parsed = parse_named_configuration(data)
