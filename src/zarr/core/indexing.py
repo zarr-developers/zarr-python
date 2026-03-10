@@ -384,42 +384,30 @@ class ChunkDimProjection(NamedTuple):
 class IntDimIndexer:
     dim_sel: int
     dim_len: int
-    dim_chunk_len: int  # kept for backwards compat; unused if dim_grid is set
-    dim_grid: DimensionGrid | None
+    dim_grid: DimensionGrid
     nitems: int = 1
 
-    def __init__(
-        self, dim_sel: int, dim_len: int, dim_chunk_len: int, dim_grid: DimensionGrid | None = None
-    ) -> None:
+    def __init__(self, dim_sel: int, dim_len: int, dim_grid: DimensionGrid) -> None:
         object.__setattr__(self, "dim_sel", normalize_integer_selection(dim_sel, dim_len))
         object.__setattr__(self, "dim_len", dim_len)
-        object.__setattr__(self, "dim_chunk_len", dim_chunk_len)
         object.__setattr__(self, "dim_grid", dim_grid)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         g = self.dim_grid
-        if g is not None:
-            dim_chunk_ix = g.index_to_chunk(self.dim_sel)
-            dim_offset = g.chunk_offset(dim_chunk_ix)
-            dim_chunk_sel = self.dim_sel - dim_offset
-            dim_out_sel = None
-            is_complete_chunk = g.data_size(dim_chunk_ix) == 1
-        else:
-            dim_chunk_ix = self.dim_sel // self.dim_chunk_len
-            dim_offset = dim_chunk_ix * self.dim_chunk_len
-            dim_chunk_sel = self.dim_sel - dim_offset
-            dim_out_sel = None
-            is_complete_chunk = self.dim_chunk_len == 1
+        dim_chunk_ix = g.index_to_chunk(self.dim_sel)
+        dim_offset = g.chunk_offset(dim_chunk_ix)
+        dim_chunk_sel = self.dim_sel - dim_offset
+        dim_out_sel = None
+        is_complete_chunk = g.data_size(dim_chunk_ix) == 1
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 @dataclass(frozen=True)
 class SliceDimIndexer:
     dim_len: int
-    dim_chunk_len: int
     nitems: int
     nchunks: int
-    dim_grid: DimensionGrid | None
+    dim_grid: DimensionGrid
 
     start: int
     stop: int
@@ -429,8 +417,7 @@ class SliceDimIndexer:
         self,
         dim_sel: slice,
         dim_len: int,
-        dim_chunk_len: int,
-        dim_grid: DimensionGrid | None = None,
+        dim_grid: DimensionGrid,
     ) -> None:
         # normalize
         start, stop, step = dim_sel.indices(dim_len)
@@ -442,93 +429,46 @@ class SliceDimIndexer:
         object.__setattr__(self, "step", step)
 
         object.__setattr__(self, "dim_len", dim_len)
-        object.__setattr__(self, "dim_chunk_len", dim_chunk_len)
         object.__setattr__(self, "dim_grid", dim_grid)
         object.__setattr__(self, "nitems", max(0, ceildiv((stop - start), step)))
-
-        if dim_grid is not None:
-            object.__setattr__(self, "nchunks", dim_grid.nchunks)
-        else:
-            object.__setattr__(self, "nchunks", ceildiv(dim_len, dim_chunk_len))
+        object.__setattr__(self, "nchunks", dim_grid.nchunks)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         g = self.dim_grid
-        if g is not None:
-            # Use the dimension grid for chunk boundary lookups
-            dim_chunk_ix_from = g.index_to_chunk(self.start) if self.start > 0 else 0
-            dim_chunk_ix_to = g.index_to_chunk(self.stop - 1) + 1 if self.stop > 0 else 0
+        dim_chunk_ix_from = g.index_to_chunk(self.start) if self.start > 0 else 0
+        dim_chunk_ix_to = g.index_to_chunk(self.stop - 1) + 1 if self.stop > 0 else 0
 
-            for dim_chunk_ix in range(dim_chunk_ix_from, dim_chunk_ix_to):
-                dim_offset = g.chunk_offset(dim_chunk_ix)
-                dim_chunk_len = g.data_size(dim_chunk_ix)
-                dim_limit = dim_offset + dim_chunk_len
+        for dim_chunk_ix in range(dim_chunk_ix_from, dim_chunk_ix_to):
+            dim_offset = g.chunk_offset(dim_chunk_ix)
+            dim_chunk_len = g.data_size(dim_chunk_ix)
+            dim_limit = dim_offset + dim_chunk_len
 
-                if self.start < dim_offset:
-                    dim_chunk_sel_start = 0
-                    remainder = (dim_offset - self.start) % self.step
-                    if remainder:
-                        dim_chunk_sel_start += self.step - remainder
-                    dim_out_offset = ceildiv((dim_offset - self.start), self.step)
-                else:
-                    dim_chunk_sel_start = self.start - dim_offset
-                    dim_out_offset = 0
+            if self.start < dim_offset:
+                dim_chunk_sel_start = 0
+                remainder = (dim_offset - self.start) % self.step
+                if remainder:
+                    dim_chunk_sel_start += self.step - remainder
+                dim_out_offset = ceildiv((dim_offset - self.start), self.step)
+            else:
+                dim_chunk_sel_start = self.start - dim_offset
+                dim_out_offset = 0
 
-                if self.stop > dim_limit:
-                    dim_chunk_sel_stop = dim_chunk_len
-                else:
-                    dim_chunk_sel_stop = self.stop - dim_offset
+            if self.stop > dim_limit:
+                dim_chunk_sel_stop = dim_chunk_len
+            else:
+                dim_chunk_sel_stop = self.stop - dim_offset
 
-                dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
-                dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
+            dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
+            dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
 
-                if dim_chunk_nitems == 0:
-                    continue
+            if dim_chunk_nitems == 0:
+                continue
 
-                dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
-                is_complete_chunk = (
-                    dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
-                )
-                yield ChunkDimProjection(
-                    dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk
-                )
-        else:
-            # Legacy path: scalar dim_chunk_len
-            dim_chunk_ix_from = 0 if self.start == 0 else self.start // self.dim_chunk_len
-            dim_chunk_ix_to = ceildiv(self.stop, self.dim_chunk_len)
-
-            for dim_chunk_ix in range(dim_chunk_ix_from, dim_chunk_ix_to):
-                dim_offset = dim_chunk_ix * self.dim_chunk_len
-                dim_limit = min(self.dim_len, (dim_chunk_ix + 1) * self.dim_chunk_len)
-                dim_chunk_len = dim_limit - dim_offset
-
-                if self.start < dim_offset:
-                    dim_chunk_sel_start = 0
-                    remainder = (dim_offset - self.start) % self.step
-                    if remainder:
-                        dim_chunk_sel_start += self.step - remainder
-                    dim_out_offset = ceildiv((dim_offset - self.start), self.step)
-                else:
-                    dim_chunk_sel_start = self.start - dim_offset
-                    dim_out_offset = 0
-
-                if self.stop > dim_limit:
-                    dim_chunk_sel_stop = dim_chunk_len
-                else:
-                    dim_chunk_sel_stop = self.stop - dim_offset
-
-                dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
-                dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
-
-                if dim_chunk_nitems == 0:
-                    continue
-
-                dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
-                is_complete_chunk = (
-                    dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
-                )
-                yield ChunkDimProjection(
-                    dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk
-                )
+            dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
+            is_complete_chunk = (
+                dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
+            )
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 def check_selection_length(selection: SelectionNormalized, shape: tuple[int, ...]) -> None:
@@ -652,16 +592,12 @@ class BasicIndexer(Indexer):
         # setup per-dimension indexers
         dim_indexers: list[IntDimIndexer | SliceDimIndexer] = []
         for dim_sel, dim_len, dim_grid in zip(selection_normalized, shape, dim_grids, strict=True):
-            from zarr.core.chunk_grids import FixedDimension
-
-            dim_chunk_len = dim_grid.size if isinstance(dim_grid, FixedDimension) else 1
-
             dim_indexer: IntDimIndexer | SliceDimIndexer
             if is_integer(dim_sel):
-                dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len, dim_grid=dim_grid)
+                dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_grid)
 
             elif is_slice(dim_sel):
-                dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len, dim_grid=dim_grid)
+                dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_grid)
 
             else:
                 raise IndexError(
@@ -694,8 +630,7 @@ class BasicIndexer(Indexer):
 class BoolArrayDimIndexer:
     dim_sel: npt.NDArray[np.bool_]
     dim_len: int
-    dim_chunk_len: int
-    dim_grid: DimensionGrid | None
+    dim_grid: DimensionGrid
     nchunks: int
 
     chunk_nitems: npt.NDArray[Any]
@@ -707,8 +642,7 @@ class BoolArrayDimIndexer:
         self,
         dim_sel: npt.NDArray[np.bool_],
         dim_len: int,
-        dim_chunk_len: int,
-        dim_grid: DimensionGrid | None = None,
+        dim_grid: DimensionGrid,
     ) -> None:
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
@@ -721,21 +655,13 @@ class BoolArrayDimIndexer:
             )
 
         g = dim_grid
-
-        if g is not None:
-            nchunks = g.nchunks
-        else:
-            nchunks = ceildiv(dim_len, dim_chunk_len)
+        nchunks = g.nchunks
 
         # precompute number of selected items for each chunk
         chunk_nitems = np.zeros(nchunks, dtype="i8")
         for dim_chunk_ix in range(nchunks):
-            if g is not None:
-                dim_offset = g.chunk_offset(dim_chunk_ix)
-                chunk_len = g.data_size(dim_chunk_ix)
-            else:
-                dim_offset = dim_chunk_ix * dim_chunk_len
-                chunk_len = dim_chunk_len
+            dim_offset = g.chunk_offset(dim_chunk_ix)
+            chunk_len = g.data_size(dim_chunk_ix)
             chunk_nitems[dim_chunk_ix] = np.count_nonzero(
                 dim_sel[dim_offset : dim_offset + chunk_len]
             )
@@ -746,7 +672,6 @@ class BoolArrayDimIndexer:
         # store attributes
         object.__setattr__(self, "dim_sel", dim_sel)
         object.__setattr__(self, "dim_len", dim_len)
-        object.__setattr__(self, "dim_chunk_len", dim_chunk_len)
         object.__setattr__(self, "dim_grid", dim_grid)
         object.__setattr__(self, "nchunks", nchunks)
         object.__setattr__(self, "chunk_nitems", chunk_nitems)
@@ -755,22 +680,20 @@ class BoolArrayDimIndexer:
         object.__setattr__(self, "dim_chunk_ixs", dim_chunk_ixs)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
+        from zarr.core.chunk_grids import FixedDimension
+
         g = self.dim_grid
 
         # iterate over chunks with at least one item
         for dim_chunk_ix in self.dim_chunk_ixs:
             # find region in chunk
-            if g is not None:
-                dim_offset = g.chunk_offset(dim_chunk_ix)
-                chunk_len = g.data_size(dim_chunk_ix)
-            else:
-                dim_offset = dim_chunk_ix * self.dim_chunk_len
-                chunk_len = self.dim_chunk_len
+            dim_offset = g.chunk_offset(dim_chunk_ix)
+            chunk_len = g.data_size(dim_chunk_ix)
             dim_chunk_sel = self.dim_sel[dim_offset : dim_offset + chunk_len]
 
-            # pad out if final chunk (for fixed grids, actual chunk may be smaller than dim_chunk_len)
-            if g is None and dim_chunk_sel.shape[0] < self.dim_chunk_len:
-                tmp = np.zeros(self.dim_chunk_len, dtype=bool)
+            # pad out if final chunk (for fixed grids, actual chunk may be smaller than declared size)
+            if isinstance(g, FixedDimension) and dim_chunk_sel.shape[0] < g.size:
+                tmp = np.zeros(g.size, dtype=bool)
                 tmp[: dim_chunk_sel.shape[0]] = dim_chunk_sel
                 dim_chunk_sel = tmp
 
@@ -829,8 +752,7 @@ class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
 
     dim_len: int
-    dim_chunk_len: int
-    dim_grid: DimensionGrid | None
+    dim_grid: DimensionGrid
     nchunks: int
     nitems: int
     order: Order
@@ -844,11 +766,10 @@ class IntArrayDimIndexer:
         self,
         dim_sel: npt.NDArray[np.intp],
         dim_len: int,
-        dim_chunk_len: int,
+        dim_grid: DimensionGrid,
         wraparound: bool = True,
         boundscheck: bool = True,
         order: Order = Order.UNKNOWN,
-        dim_grid: DimensionGrid | None = None,
     ) -> None:
         # ensure 1d array
         dim_sel = np.asanyarray(dim_sel)
@@ -857,11 +778,7 @@ class IntArrayDimIndexer:
 
         nitems = len(dim_sel)
         g = dim_grid
-
-        if g is not None:
-            nchunks = g.nchunks
-        else:
-            nchunks = ceildiv(dim_len, dim_chunk_len)
+        nchunks = g.nchunks
 
         # handle wraparound
         if wraparound:
@@ -872,10 +789,7 @@ class IntArrayDimIndexer:
             boundscheck_indices(dim_sel, dim_len)
 
         # determine which chunk is needed for each selection item
-        if g is not None:
-            dim_sel_chunk = g.indices_to_chunks(dim_sel)
-        else:
-            dim_sel_chunk = dim_sel // dim_chunk_len
+        dim_sel_chunk = g.indices_to_chunks(dim_sel)
 
         # determine order of indices
         if order == Order.UNKNOWN:
@@ -903,7 +817,6 @@ class IntArrayDimIndexer:
 
         # store attributes
         object.__setattr__(self, "dim_len", dim_len)
-        object.__setattr__(self, "dim_chunk_len", dim_chunk_len)
         object.__setattr__(self, "dim_grid", dim_grid)
         object.__setattr__(self, "nchunks", nchunks)
         object.__setattr__(self, "nitems", nitems)
@@ -931,10 +844,7 @@ class IntArrayDimIndexer:
                 dim_out_sel = self.dim_out_sel[start:stop]
 
             # find region in chunk
-            if g is not None:
-                dim_offset = g.chunk_offset(dim_chunk_ix)
-            else:
-                dim_offset = dim_chunk_ix * self.dim_chunk_len
+            dim_offset = g.chunk_offset(dim_chunk_ix)
             dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
             is_complete_chunk = False  # TODO
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
@@ -1013,23 +923,18 @@ class OrthogonalIndexer(Indexer):
             IntDimIndexer | SliceDimIndexer | IntArrayDimIndexer | BoolArrayDimIndexer
         ] = []
         for dim_sel, dim_len, dim_grid in zip(selection, shape, dim_grids, strict=True):
-            from zarr.core.chunk_grids import FixedDimension
-
-            dim_chunk_len = dim_grid.size if isinstance(dim_grid, FixedDimension) else 1
             dim_indexer: IntDimIndexer | SliceDimIndexer | IntArrayDimIndexer | BoolArrayDimIndexer
             if is_integer(dim_sel):
-                dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len, dim_grid=dim_grid)
+                dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_grid)
 
             elif isinstance(dim_sel, slice):
-                dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_chunk_len, dim_grid=dim_grid)
+                dim_indexer = SliceDimIndexer(dim_sel, dim_len, dim_grid)
 
             elif is_integer_array(dim_sel):
-                dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_chunk_len, dim_grid=dim_grid)
+                dim_indexer = IntArrayDimIndexer(dim_sel, dim_len, dim_grid)
 
             elif is_bool_array(dim_sel):
-                dim_indexer = BoolArrayDimIndexer(
-                    dim_sel, dim_len, dim_chunk_len, dim_grid=dim_grid
-                )
+                dim_indexer = BoolArrayDimIndexer(dim_sel, dim_len, dim_grid)
 
             else:
                 raise IndexError(
@@ -1199,7 +1104,7 @@ class BlockIndexer(Indexer):
                     f"expected integer or slice, got {type(dim_sel)!r}"
                 )
 
-            dim_indexer = SliceDimIndexer(slice_, dim_len, dim_chunk_size, dim_grid=dim_grid)
+            dim_indexer = SliceDimIndexer(slice_, dim_len, dim_grid)
             dim_indexers.append(dim_indexer)
 
             if start >= dim_len or start < 0:
