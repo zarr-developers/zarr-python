@@ -399,21 +399,22 @@ class ChunkGrid(Metadata):
             chunk_shapes: list[Any] = []
             for dim in self.dimensions:
                 if isinstance(dim, FixedDimension):
-                    # Serialize as uniform edges. The extent is reconstructed
-                    # from sum(edges) on deserialization, so we use the actual
-                    # data sizes to preserve the true extent (which may not be
-                    # a multiple of chunk size at the boundary).
+                    # Produce RLE directly without allocating a full edge list.
                     n = dim.nchunks
                     if n == 0:
                         chunk_shapes.append([])
                     else:
                         last_data = dim.extent - (n - 1) * dim.size
                         if last_data == dim.size:
-                            edges = [dim.size] * n
+                            # All chunks uniform
+                            chunk_shapes.append([[dim.size, n]])
                         else:
-                            edges = [dim.size] * (n - 1) + [last_data]
-                        rle = _compress_rle(edges)
-                        chunk_shapes.append(rle)
+                            # n-1 full chunks + 1 boundary chunk
+                            rle: list[list[int]] = []
+                            if n > 1:
+                                rle.append([dim.size, n - 1])
+                            rle.append([last_data, 1])
+                            chunk_shapes.append(rle)
                 elif isinstance(dim, VaryingDimension):
                     edges = list(dim.edges)
                     rle = _compress_rle(edges)
