@@ -9,7 +9,7 @@ import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
 
 import numpy as np
 import numpy.typing as npt
@@ -126,7 +126,19 @@ class VaryingDimension:
         return np.searchsorted(self.cumulative, indices, side="right")
 
 
-DimensionGrid = FixedDimension | VaryingDimension
+@runtime_checkable
+class DimensionGrid(Protocol):
+    """Structural interface shared by FixedDimension and VaryingDimension."""
+
+    @property
+    def nchunks(self) -> int: ...
+    @property
+    def extent(self) -> int: ...
+    def index_to_chunk(self, idx: int) -> int: ...
+    def chunk_offset(self, chunk_ix: int) -> int: ...
+    def chunk_size(self, chunk_ix: int) -> int: ...
+    def data_size(self, chunk_ix: int) -> int: ...
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
 
 
 # ---------------------------------------------------------------------------
@@ -302,7 +314,11 @@ class ChunkGrid(Metadata):
                 "chunk_shape is only available for regular chunk grids. "
                 "Use grid[coords] for per-chunk sizes."
             )
-        return tuple(d.size for d in self.dimensions)  # type: ignore[union-attr]
+        return tuple(
+            d.size
+            for d in self.dimensions
+            if isinstance(d, FixedDimension)  # guaranteed by is_regular
+        )
 
     # -- Collection interface --
 
@@ -401,7 +417,7 @@ class ChunkGrid(Metadata):
                             edges = [dim.size] * (n - 1) + [last_data]
                         rle = _compress_rle(edges)
                         chunk_shapes.append(rle)
-                else:
+                elif isinstance(dim, VaryingDimension):
                     edges = list(dim.edges)
                     rle = _compress_rle(edges)
                     if sum(count for _, count in rle) == len(edges) and len(rle) < len(edges):
