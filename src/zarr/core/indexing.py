@@ -434,33 +434,43 @@ class SliceDimIndexer:
         object.__setattr__(self, "nchunks", dim_grid.nchunks)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
+        # figure out the range of chunks we need to visit
         g = self.dim_grid
         dim_chunk_ix_from = g.index_to_chunk(self.start) if self.start > 0 else 0
         dim_chunk_ix_to = g.index_to_chunk(self.stop - 1) + 1 if self.stop > 0 else 0
 
+        # iterate over chunks in range
         for dim_chunk_ix in range(dim_chunk_ix_from, dim_chunk_ix_to):
+            # compute offsets for chunk within overall array
             dim_offset = g.chunk_offset(dim_chunk_ix)
+            # determine chunk length, accounting for trailing chunk
             dim_chunk_len = g.data_size(dim_chunk_ix)
             dim_limit = dim_offset + dim_chunk_len
 
             if self.start < dim_offset:
+                # selection starts before current chunk
                 dim_chunk_sel_start = 0
                 remainder = (dim_offset - self.start) % self.step
                 if remainder:
                     dim_chunk_sel_start += self.step - remainder
+                # compute number of previous items, provides offset into output array
                 dim_out_offset = ceildiv((dim_offset - self.start), self.step)
             else:
+                # selection starts within current chunk
                 dim_chunk_sel_start = self.start - dim_offset
                 dim_out_offset = 0
 
             if self.stop > dim_limit:
+                # selection ends after current chunk
                 dim_chunk_sel_stop = dim_chunk_len
             else:
+                # selection ends within current chunk
                 dim_chunk_sel_stop = self.stop - dim_offset
 
             dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
             dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
 
+            # If there are no elements on the selection within this chunk, then skip
             if dim_chunk_nitems == 0:
                 continue
 
@@ -789,6 +799,8 @@ class IntArrayDimIndexer:
             boundscheck_indices(dim_sel, dim_len)
 
         # determine which chunk is needed for each selection item
+        # note: for dense integer selections, the division operation here is the
+        # bottleneck
         dim_sel_chunk = g.indices_to_chunks(dim_sel)
 
         # determine order of indices
@@ -800,6 +812,7 @@ class IntArrayDimIndexer:
             dim_out_sel = None
         elif order == Order.DECREASING:
             dim_sel = dim_sel[::-1]
+            # TODO should be possible to do this without creating an arange
             dim_out_sel = np.arange(nitems - 1, -1, -1)
         else:
             # sort indices to group by chunk
