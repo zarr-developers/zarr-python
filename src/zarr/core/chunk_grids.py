@@ -302,13 +302,6 @@ class ChunkGrid(Metadata):
     @property
     def chunk_shape(self) -> tuple[int, ...]:
         """Return the uniform chunk shape. Raises if grid is not regular."""
-        # Check for a stored _chunk_shape (set by RegularChunkGrid subclass)
-        try:
-            stored: tuple[int, ...] = object.__getattribute__(self, "_chunk_shape")
-        except AttributeError:
-            pass
-        else:
-            return stored
         if not self.is_regular:
             raise ValueError(
                 "chunk_shape is only available for regular chunk grids. "
@@ -501,6 +494,11 @@ class RegularChunkGrid(ChunkGrid):
         dims = tuple(FixedDimension(size=s, extent=0) for s in chunk_shape_parsed)
         object.__setattr__(self, "dimensions", dims)
         object.__setattr__(self, "_chunk_shape", chunk_shape_parsed)
+
+    @property
+    def chunk_shape(self) -> tuple[int, ...]:
+        """Return the stored chunk shape (extent may be 0 as placeholder)."""
+        return self._chunk_shape
 
     @classmethod
     def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
