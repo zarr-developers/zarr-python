@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ByteGetter",
+    "ByteRangeSetter",
     "ByteSetter",
     "Store",
     "set_or_delete",
@@ -471,21 +472,6 @@ class Store(ABC):
         """
         ...
 
-    async def set_range(self, key: str, value: Buffer, start: int) -> None:
-        """Write ``value`` into an existing key beginning at byte offset ``start``.
-
-        The key must already exist and ``start + len(value)`` must not exceed
-        the current size of the stored value.
-
-        Parameters
-        ----------
-        key : str
-        value : Buffer
-        start : int
-            Byte offset at which to begin writing.
-        """
-        raise NotImplementedError(f"{type(self).__name__} does not support set_range")
-
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         """
         Store a key to ``value`` if the key is not already present.
@@ -715,11 +701,18 @@ class ByteSetter(Protocol):
 
     async def set(self, value: Buffer) -> None: ...
 
-    async def set_range(self, value: Buffer, start: int) -> None: ...
-
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+@runtime_checkable
+class ByteRangeSetter(Protocol):
+    """Protocol for stores that support writing to a byte range within an existing value."""
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None: ...
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None: ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

@@ -259,7 +259,7 @@ class StorePath:
 
     async def set_range(self, value: Buffer, start: int) -> None:
         """Write ``value`` at byte offset ``start`` within the existing key."""
-        await self.store.set_range(self.path, value, start)
+        await self.store.set_range(self.path, value, start)  # type: ignore[attr-defined]
 
     def set_range_sync(self, value: Buffer, start: int) -> None:
         """Synchronous byte-range write."""

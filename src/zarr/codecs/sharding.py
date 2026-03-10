@@ -17,6 +17,7 @@ from zarr.abc.codec import (
 )
 from zarr.abc.store import (
     ByteGetter,
+    ByteRangeSetter,
     RangeByteRequest,
     SuffixByteRequest,
 )
@@ -1531,20 +1532,16 @@ class ShardingCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
                     byte_setter.set_sync(blob)
             return
 
-        try:
+        if isinstance(byte_setter.store, ByteRangeSetter):
             for coords, _, _, _ in prepared.indexer:
                 chunk_bytes = prepared.chunk_dict.get(coords)
                 if chunk_bytes is not None:
                     offset = self._chunk_byte_offset(coords, chunks_per_shard, chunk_byte_length)
-                    byte_setter.set_range_sync(chunk_bytes, offset)
-
-            # The shard index is NOT rewritten here: chunk offsets are
-            # deterministic (Morton rank x chunk_byte_length + data_offset),
-            # so overwriting chunk data at its fixed offset does not change
-            # the index.  The index was already written when the shard was
-            # first created.
-        except NotImplementedError:
-            # Store doesn't support set_range — fall back to full serialize + set.
+                    byte_setter.store.set_range_sync(byte_setter.path, chunk_bytes, offset)
+            # The shard index is NOT rewritten: chunk offsets are deterministic
+            # (Morton rank * chunk_byte_length + data_offset), so overwriting
+            # chunk data at its fixed offset does not change the index.
+        else:
             blob = self.serialize(prepared.chunk_dict, chunk_spec)
             if blob is None:
                 byte_setter.delete_sync()
@@ -1638,19 +1635,17 @@ class ShardingCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
                     await byte_setter.set(blob)
             return
 
-        try:
+        if isinstance(byte_setter.store, ByteRangeSetter):
             for coords, _, _, _ in prepared.indexer:
                 chunk_bytes = prepared.chunk_dict.get(coords)
                 if chunk_bytes is not None:
                     offset = self._chunk_byte_offset(coords, chunks_per_shard, chunk_byte_length)
-                    await byte_setter.set_range(chunk_bytes, offset)
-
-            # The shard index is NOT rewritten here: chunk offsets are
-            # deterministic (Morton rank x chunk_byte_length + data_offset),
-            # so overwriting chunk data at its fixed offset does not change
-            # the index.  The index was already written when the shard was
-            # first created.
-        except NotImplementedError:
+                    await byte_setter.store.set_range(byte_setter.path, chunk_bytes, offset)
+            # The shard index is NOT rewritten: chunk offsets are deterministic
+            # (Morton rank * chunk_byte_length + data_offset), so overwriting
+            # chunk data at its fixed offset does not change the index.
+        else:
+            # Store doesn't support set_range -- fall back to full serialize + set.
             blob = self.serialize(prepared.chunk_dict, chunk_spec)
             if blob is None:
                 await byte_setter.delete()
