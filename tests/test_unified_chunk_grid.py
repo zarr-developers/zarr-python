@@ -1352,13 +1352,58 @@ class TestFullPipelineRectilinear:
                 zarr_format=2,
             )
 
-    def test_sharding_rejects_rectilinear(self, tmp_path: Path) -> None:
-        with pytest.raises(ValueError, match="sharding"):
+    def test_sharding_rejects_rectilinear_chunks_with_shards(self, tmp_path: Path) -> None:
+        """Rectilinear chunks (inner) with sharding is not supported."""
+        with pytest.raises(ValueError, match="Rectilinear chunks with sharding"):
             zarr.create_array(
                 store=tmp_path / "shard.zarr",
                 shape=(60, 100),
                 chunks=[[10, 20, 30], [25, 25, 25, 25]],
                 shards=(30, 50),
+                dtype="int32",
+            )
+
+    def test_rectilinear_shards_roundtrip(self, tmp_path: Path) -> None:
+        """Rectilinear shards with uniform inner chunks: full write/read roundtrip."""
+        import numpy as np
+
+        data = np.arange(120 * 100, dtype="int32").reshape(120, 100)
+        arr = zarr.create_array(
+            store=tmp_path / "rect_shards.zarr",
+            shape=(120, 100),
+            chunks=(10, 10),  # uniform inner chunks
+            shards=[[60, 40, 20], [50, 50]],  # rectilinear shard boundaries
+            dtype="int32",
+        )
+        arr[:] = data
+        result = arr[:]
+        np.testing.assert_array_equal(result, data)
+
+    def test_rectilinear_shards_partial_read(self, tmp_path: Path) -> None:
+        """Partial reads across rectilinear shard boundaries."""
+        import numpy as np
+
+        data = np.arange(120 * 100, dtype="float64").reshape(120, 100)
+        arr = zarr.create_array(
+            store=tmp_path / "rect_shards.zarr",
+            shape=(120, 100),
+            chunks=(10, 10),
+            shards=[[60, 40, 20], [50, 50]],
+            dtype="float64",
+        )
+        arr[:] = data
+        # Read a slice crossing shard boundaries
+        result = arr[50:70, 40:60]
+        np.testing.assert_array_equal(result, data[50:70, 40:60])
+
+    def test_rectilinear_shards_validates_divisibility(self, tmp_path: Path) -> None:
+        """Inner chunk_shape must divide every shard's dimensions."""
+        with pytest.raises(ValueError, match="divisible"):
+            zarr.create_array(
+                store=tmp_path / "bad.zarr",
+                shape=(120, 100),
+                chunks=(10, 10),
+                shards=[[60, 45, 15], [50, 50]],  # 45 not divisible by 10
                 dtype="int32",
             )
 

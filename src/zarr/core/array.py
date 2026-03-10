@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
@@ -139,7 +139,7 @@ from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_
 from zarr.storage._utils import _relativize_path
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator, Sequence
+    from collections.abc import Iterator
     from typing import Self
 
     import numpy.typing as npt
@@ -4245,7 +4245,9 @@ class ShardsConfigParam(TypedDict):
     index_location: ShardingCodecIndexLocation | None
 
 
-ShardsLike: TypeAlias = tuple[int, ...] | ShardsConfigParam | Literal["auto"]
+ShardsLike: TypeAlias = (
+    tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]
+)
 
 
 async def from_array(
@@ -4639,15 +4641,22 @@ async def init_array(
     else:
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
-    # Detect rectilinear (nested list) chunks, e.g. [[10, 20, 30], [25, 25]]
+    # Detect rectilinear (nested list) chunks or shards, e.g. [[10, 20, 30], [25, 25]]
     from zarr.core.chunk_grids import _is_rectilinear_chunks
 
     rectilinear_grid: ChunkGrid | None = None
-    if _is_rectilinear_chunks(chunks):
+    rectilinear_shards = _is_rectilinear_chunks(shards)
+    rectilinear_chunks = _is_rectilinear_chunks(chunks)
+
+    if rectilinear_chunks:
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
         if shards is not None:
-            raise ValueError("Rectilinear chunk grids do not support sharding.")
+            raise ValueError(
+                "Rectilinear chunks with sharding is not supported. "
+                "Use rectilinear shards instead: "
+                "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
+            )
         rect_chunks = cast("Sequence[Sequence[int]]", chunks)
         rectilinear_grid = ChunkGrid.from_rectilinear(rect_chunks)
         # Use first chunk size per dim as placeholder for _auto_partition
@@ -4657,13 +4666,24 @@ async def init_array(
     else:
         chunks_flat = cast("tuple[int, ...] | Literal['auto']", chunks)
 
+    # Handle rectilinear shards: shards=[[60, 40, 20], [50, 50]]
+    # means variable-sized shard boundaries with uniform inner chunks
+    shards_for_partition: ShardsLike | None = shards
+    if rectilinear_shards:
+        if zarr_format == 2:
+            raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
+        rect_shards = cast("Sequence[Sequence[int]]", shards)
+        rectilinear_grid = ChunkGrid.from_rectilinear(rect_shards)
+        # Use first shard size per dim as placeholder for _auto_partition
+        shards_for_partition = tuple(dim_edges[0] for dim_edges in rect_shards)
+
     item_size = 1
     if isinstance(zdtype, HasItemSize):
         item_size = zdtype.item_size
 
     shard_shape_parsed, chunk_shape_parsed = _auto_partition(
         array_shape=shape_parsed,
-        shard_shape=shards,
+        shard_shape=shards_for_partition,
         chunk_shape=chunks_flat,
         item_size=item_size,
     )
@@ -4720,10 +4740,15 @@ async def init_array(
             sharding_codec = ShardingCodec(
                 chunk_shape=chunk_shape_parsed, codecs=sub_codecs, index_location=index_location
             )
+            # Use rectilinear grid for validation when shards are rectilinear
+            if rectilinear_shards and rectilinear_grid is not None:
+                validation_grid = rectilinear_grid
+            else:
+                validation_grid = ChunkGrid.from_regular(shape_parsed, shard_shape_parsed)
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=zdtype,
-                chunk_grid=ChunkGrid.from_regular(shape_parsed, shard_shape_parsed),
+                chunk_grid=validation_grid,
             )
             codecs_out = (sharding_codec,)
             chunks_out = shard_shape_parsed

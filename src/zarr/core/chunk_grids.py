@@ -998,6 +998,6 @@ def _auto_partition(
         elif isinstance(shard_shape, dict):
             _shards_out = tuple(shard_shape["shape"])
         else:
-            _shards_out = shard_shape
+            _shards_out = cast("tuple[int, ...]", shard_shape)
 
     return _shards_out, _chunks_out
