@@ -9,10 +9,12 @@ and end-to-end array creation + read/write.
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
+
+import zarr
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -944,3 +946,347 @@ class TestParseChunkGridValidation:
         # Matching extents should work fine
         g2 = parse_chunk_grid(g, (60, 100))
         assert g2.dimensions[0].extent == 60
+
+
+# ---------------------------------------------------------------------------
+# Full-pipeline read/write tests with rectilinear grids
+# ---------------------------------------------------------------------------
+
+
+class TestFullPipelineRectilinear:
+    """End-to-end read/write tests through the full Array pipeline."""
+
+    @staticmethod
+    def _make_1d(tmp_path: Path) -> tuple[zarr.Array[Any], np.ndarray[Any, Any]]:
+        a = np.arange(30, dtype="int32")
+        z = zarr.create_array(
+            store=tmp_path / "arr1d.zarr",
+            shape=(30,),
+            chunks=[[5, 10, 15]],
+            dtype="int32",
+        )
+        z[:] = a
+        return z, a
+
+    @staticmethod
+    def _make_2d(tmp_path: Path) -> tuple[zarr.Array[Any], np.ndarray[Any, Any]]:
+        a = np.arange(6000, dtype="int32").reshape(60, 100)
+        z = zarr.create_array(
+            store=tmp_path / "arr2d.zarr",
+            shape=(60, 100),
+            chunks=[[10, 20, 30], [25, 25, 25, 25]],
+            dtype="int32",
+        )
+        z[:] = a
+        return z, a
+
+    # --- Basic selection ---
+
+    def test_basic_selection_1d(self, tmp_path: Path) -> None:
+        z, a = self._make_1d(tmp_path)
+        sels: list[Any] = [0, 4, 5, 14, 15, 29, -1, slice(None), slice(3, 18), slice(0, 0)]
+        for sel in sels:
+            np.testing.assert_array_equal(z[sel], a[sel], err_msg=f"sel={sel}")
+
+    def test_basic_selection_1d_strided(self, tmp_path: Path) -> None:
+        z, a = self._make_1d(tmp_path)
+        for sel in [slice(None, None, 2), slice(1, 25, 3), slice(0, 30, 7)]:
+            np.testing.assert_array_equal(z[sel], a[sel], err_msg=f"sel={sel}")
+
+    def test_basic_selection_2d(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        selections: list[Any] = [
+            42,
+            -1,
+            (9, 24),
+            (10, 25),
+            (30, 50),
+            (59, 99),
+            slice(None),
+            (slice(5, 35), slice(20, 80)),
+            (slice(0, 10), slice(0, 25)),  # within one chunk
+            (slice(10, 10), slice(None)),  # empty
+            (slice(None, None, 3), slice(None, None, 7)),  # strided
+        ]
+        for sel in selections:
+            np.testing.assert_array_equal(z[sel], a[sel], err_msg=f"sel={sel}")
+
+    # --- Orthogonal selection ---
+
+    def test_orthogonal_selection_1d_bool(self, tmp_path: Path) -> None:
+        z, a = self._make_1d(tmp_path)
+        ix = np.zeros(30, dtype=bool)
+        ix[[0, 4, 5, 14, 15, 29]] = True
+        np.testing.assert_array_equal(z.oindex[ix], a[ix])
+
+    def test_orthogonal_selection_1d_int(self, tmp_path: Path) -> None:
+        z, a = self._make_1d(tmp_path)
+        ix = np.array([0, 4, 5, 14, 15, 29])
+        np.testing.assert_array_equal(z.oindex[ix], a[ix])
+        ix_neg = np.array([0, -1, -15, -25])
+        np.testing.assert_array_equal(z.oindex[ix_neg], a[ix_neg])
+
+    def test_orthogonal_selection_2d_bool(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        ix0 = np.zeros(60, dtype=bool)
+        ix0[[0, 9, 10, 29, 30, 59]] = True
+        ix1 = np.zeros(100, dtype=bool)
+        ix1[[0, 24, 25, 49, 50, 99]] = True
+        np.testing.assert_array_equal(z.oindex[ix0, ix1], a[np.ix_(ix0, ix1)])
+
+    def test_orthogonal_selection_2d_int(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        ix0 = np.array([0, 9, 10, 29, 30, 59])
+        ix1 = np.array([0, 24, 25, 49, 50, 99])
+        np.testing.assert_array_equal(z.oindex[ix0, ix1], a[np.ix_(ix0, ix1)])
+
+    def test_orthogonal_selection_2d_mixed(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        ix = np.array([0, 9, 10, 29, 30, 59])
+        np.testing.assert_array_equal(z.oindex[ix, slice(25, 75)], a[np.ix_(ix, np.arange(25, 75))])
+        np.testing.assert_array_equal(
+            z.oindex[slice(10, 30), ix[:4]], a[np.ix_(np.arange(10, 30), ix[:4])]
+        )
+
+    # --- Coordinate (vindex) selection ---
+
+    def test_coordinate_selection_1d(self, tmp_path: Path) -> None:
+        z, a = self._make_1d(tmp_path)
+        ix = np.array([0, 4, 5, 14, 15, 29])
+        np.testing.assert_array_equal(z.vindex[ix], a[ix])
+
+    def test_coordinate_selection_2d(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        r = np.array([0, 9, 10, 29, 30, 59])
+        c = np.array([0, 24, 25, 49, 50, 99])
+        np.testing.assert_array_equal(z.vindex[r, c], a[r, c])
+
+    def test_coordinate_selection_2d_bool_mask(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        mask = a > 3000
+        np.testing.assert_array_equal(z.vindex[mask], a[mask])
+
+    # --- Set selection ---
+
+    def test_set_basic_selection(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        new_data = np.full((20, 50), -1, dtype="int32")
+        z[5:25, 10:60] = new_data
+        a[5:25, 10:60] = new_data
+        np.testing.assert_array_equal(z[:], a)
+
+    def test_set_orthogonal_selection(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        rows = np.array([0, 10, 30])
+        cols = np.array([0, 25, 50, 75])
+        val = np.full((3, 4), -99, dtype="int32")
+        z.oindex[rows, cols] = val
+        a[np.ix_(rows, cols)] = val
+        np.testing.assert_array_equal(z[:], a)
+
+    # --- Higher dimensions ---
+
+    def test_3d_array(self, tmp_path: Path) -> None:
+        shape = (12, 20, 15)
+        chunk_shapes = [[4, 8], [5, 5, 10], [5, 10]]
+        a = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
+        z = zarr.create_array(
+            store=tmp_path / "arr3d.zarr",
+            shape=shape,
+            chunks=chunk_shapes,
+            dtype="int32",
+        )
+        z[:] = a
+        np.testing.assert_array_equal(z[:], a)
+        np.testing.assert_array_equal(z[2:10, 3:18, 4:14], a[2:10, 3:18, 4:14])
+
+    def test_1d_single_chunk(self, tmp_path: Path) -> None:
+        a = np.arange(20, dtype="int32")
+        z = zarr.create_array(
+            store=tmp_path / "arr1c.zarr",
+            shape=(20,),
+            chunks=[[20]],
+            dtype="int32",
+        )
+        z[:] = a
+        np.testing.assert_array_equal(z[:], a)
+
+    # --- Persistence roundtrip ---
+
+    def test_persistence_roundtrip(self, tmp_path: Path) -> None:
+        _, a = self._make_2d(tmp_path)
+        z2 = zarr.open_array(store=tmp_path / "arr2d.zarr", mode="r")
+        assert not z2.metadata.chunk_grid.is_regular
+        np.testing.assert_array_equal(z2[:], a)
+
+    # --- Highly irregular chunks ---
+
+    def test_highly_irregular_chunks(self, tmp_path: Path) -> None:
+        shape = (100, 100)
+        chunk_shapes = [[5, 10, 15, 20, 50], [100]]
+        a = np.arange(10000, dtype="int32").reshape(shape)
+        z = zarr.create_array(
+            store=tmp_path / "irreg.zarr",
+            shape=shape,
+            chunks=chunk_shapes,
+            dtype="int32",
+        )
+        z[:] = a
+        np.testing.assert_array_equal(z[:], a)
+        np.testing.assert_array_equal(z[3:97, 10:90], a[3:97, 10:90])
+
+    # --- API validation ---
+
+    def test_v2_rejects_rectilinear(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="Zarr format 2"):
+            zarr.create_array(
+                store=tmp_path / "v2.zarr",
+                shape=(30,),
+                chunks=[[10, 20]],
+                dtype="int32",
+                zarr_format=2,
+            )
+
+    def test_sharding_rejects_rectilinear(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="sharding"):
+            zarr.create_array(
+                store=tmp_path / "shard.zarr",
+                shape=(60, 100),
+                chunks=[[10, 20, 30], [25, 25, 25, 25]],
+                shards=(30, 50),
+                dtype="int32",
+            )
+
+    def test_nchunks(self, tmp_path: Path) -> None:
+        z, _ = self._make_2d(tmp_path)
+        assert z.metadata.chunk_grid.get_nchunks() == 12
+
+
+# ---------------------------------------------------------------------------
+# Hypothesis property-based tests
+# ---------------------------------------------------------------------------
+
+pytest.importorskip("hypothesis")
+
+import hypothesis.strategies as st  # noqa: E402
+from hypothesis import event, given, settings  # noqa: E402
+
+
+@st.composite
+def rectilinear_chunks_st(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
+    """Generate valid rectilinear chunk shapes for a given array shape."""
+    chunk_shapes: list[list[int]] = []
+    for size in shape:
+        assert size > 0
+        max_chunks = min(size, 10)
+        nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
+        if nchunks == 1:
+            chunk_shapes.append([size])
+        else:
+            dividers = sorted(
+                draw(
+                    st.lists(
+                        st.integers(min_value=1, max_value=size - 1),
+                        min_size=nchunks - 1,
+                        max_size=nchunks - 1,
+                        unique=True,
+                    )
+                )
+            )
+            chunk_shapes.append(
+                [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
+            )
+    return chunk_shapes
+
+
+@st.composite
+def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[Any, Any]]:
+    """Generate a rectilinear zarr array with random data, shape, and chunks."""
+    from zarr.storage import MemoryStore
+
+    ndim = draw(st.integers(min_value=1, max_value=3))
+    shape = draw(st.tuples(*[st.integers(min_value=2, max_value=20) for _ in range(ndim)]))
+    chunk_shapes = draw(rectilinear_chunks_st(shape=shape))
+    event(f"ndim={ndim}, shape={shape}")
+
+    a = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
+    store = MemoryStore()
+    z = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype="int32")
+    z[:] = a
+    return z, a
+
+
+@settings(deadline=None, max_examples=50)
+@given(data=st.data())
+def test_property_basic_indexing_rectilinear(data: st.DataObject) -> None:
+    """Property test: basic indexing on rectilinear arrays matches numpy."""
+    z, a = data.draw(rectilinear_arrays_st())
+    np.testing.assert_array_equal(z[:], a)
+
+    slicers = []
+    for size in a.shape:
+        start = data.draw(st.integers(min_value=0, max_value=size - 1))
+        stop = data.draw(st.integers(min_value=start, max_value=size))
+        slicers.append(slice(start, stop))
+    sel = tuple(slicers)
+    np.testing.assert_array_equal(z[sel], a[sel], err_msg=f"sel={sel}")
+
+
+@settings(deadline=None, max_examples=50)
+@given(data=st.data())
+def test_property_oindex_rectilinear(data: st.DataObject) -> None:
+    """Property test: orthogonal int-array indexing matches numpy."""
+    z, a = data.draw(rectilinear_arrays_st())
+
+    indexers_z = []
+    indexers_np = []
+    for size in a.shape:
+        n = data.draw(st.integers(min_value=1, max_value=min(size, 5)))
+        ix = np.array(
+            sorted(
+                data.draw(
+                    st.lists(
+                        st.integers(min_value=0, max_value=size - 1),
+                        min_size=n,
+                        max_size=n,
+                        unique=True,
+                    )
+                )
+            )
+        )
+        indexers_z.append(ix)
+        indexers_np.append(ix)
+
+    result = z.oindex[tuple(indexers_z)]
+    expected = a[np.ix_(*indexers_np)]
+    np.testing.assert_array_equal(result, expected)
+
+
+@settings(deadline=None, max_examples=50)
+@given(data=st.data())
+def test_property_vindex_rectilinear(data: st.DataObject) -> None:
+    """Property test: vindex on rectilinear arrays matches numpy."""
+    z, a = data.draw(rectilinear_arrays_st())
+
+    n = data.draw(st.integers(min_value=1, max_value=min(min(a.shape), 5)))
+    indexers = tuple(
+        np.array(
+            data.draw(
+                st.lists(
+                    st.integers(min_value=0, max_value=size - 1),
+                    min_size=n,
+                    max_size=n,
+                )
+            )
+        )
+        for size in a.shape
+    )
+    np.testing.assert_array_equal(z.vindex[indexers], a[indexers])
+
+
+@settings(deadline=None, max_examples=50)
+@given(data=st.data())
+def test_property_roundtrip_rectilinear(data: st.DataObject) -> None:
+    """Property test: write then read matches original data."""
+    z, a = data.draw(rectilinear_arrays_st())
+    np.testing.assert_array_equal(z[:], a)
