@@ -31,7 +31,11 @@ class Crc32cCodec(BytesBytesCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "crc32c"}
 
-    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer:
+    def _decode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
         data = chunk_bytes.as_numpy_array()
         crc32_bytes = data[-4:]
         inner_bytes = data[:-4]
@@ -47,7 +51,11 @@ class Crc32cCodec(BytesBytesCodec):
             )
         return chunk_spec.prototype.buffer.from_array_like(inner_bytes)
 
-    def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+    def _encode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
         data = chunk_bytes.as_numpy_array()
         # Calculate the checksum and "cast" it to a numpy array
         checksum = np.array(

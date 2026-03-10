@@ -98,10 +98,18 @@ class TransposeCodec(ArrayArrayCodec):
             prototype=chunk_spec.prototype,
         )
 
-    def _decode_sync(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer:
+    def _decode_sync(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
         return chunk_array.transpose(self._inverse_order)
 
-    def _encode_sync(self, chunk_array: NDBuffer, _chunk_spec: ArraySpec) -> NDBuffer | None:
+    def _encode_sync(
+        self,
+        chunk_array: NDBuffer,
+        _chunk_spec: ArraySpec,
+    ) -> NDBuffer | None:
         return chunk_array.transpose(self.order)
 
     async def _decode_single(

@@ -58,13 +58,21 @@ class GzipCodec(BytesBytesCodec):
     def _gzip_codec(self) -> GZip:
         return GZip(self.level)
 
-    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer:
+    def _decode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
         # Use the cached codec instance instead of creating GZip(self.level)
         # each time. The async _decode_single delegates to this method via
         # asyncio.to_thread, so both paths benefit from the cache.
         return as_numpy_array_wrapper(self._gzip_codec.decode, chunk_bytes, chunk_spec.prototype)
 
-    def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+    def _encode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
         return as_numpy_array_wrapper(self._gzip_codec.encode, chunk_bytes, chunk_spec.prototype)
 
     async def _decode_single(

@@ -71,10 +71,18 @@ class ZstdCodec(BytesBytesCodec):
         config_dict = {"level": self.level, "checksum": self.checksum}
         return Zstd.from_config(config_dict)
 
-    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer:
+    def _decode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
         return as_numpy_array_wrapper(self._zstd_codec.decode, chunk_bytes, chunk_spec.prototype)
 
-    def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+    def _encode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
         return as_numpy_array_wrapper(self._zstd_codec.encode, chunk_bytes, chunk_spec.prototype)
 
     async def _decode_single(

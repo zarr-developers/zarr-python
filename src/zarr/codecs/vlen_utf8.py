@@ -40,7 +40,11 @@ class VLenUTF8Codec(ArrayBytesCodec):
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self
 
-    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+    def _decode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
         assert isinstance(chunk_bytes, Buffer)
 
         raw_bytes = chunk_bytes.as_array_like()
@@ -50,7 +54,11 @@ class VLenUTF8Codec(ArrayBytesCodec):
         as_string_dtype = decoded.astype(chunk_spec.dtype.to_native_dtype(), copy=False)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(as_string_dtype)
 
-    def _encode_sync(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer | None:
+    def _encode_sync(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
         return chunk_spec.prototype.buffer.from_bytes(
             _vlen_utf8_codec.encode(chunk_array.as_numpy_array())
@@ -91,7 +99,11 @@ class VLenBytesCodec(ArrayBytesCodec):
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self
 
-    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+    def _decode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer:
         assert isinstance(chunk_bytes, Buffer)
 
         raw_bytes = chunk_bytes.as_array_like()
@@ -100,7 +112,11 @@ class VLenBytesCodec(ArrayBytesCodec):
         decoded = _reshape_view(decoded, chunk_spec.shape)
         return chunk_spec.prototype.nd_buffer.from_numpy_array(decoded)
 
-    def _encode_sync(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> Buffer | None:
+    def _encode_sync(
+        self,
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
         return chunk_spec.prototype.buffer.from_bytes(
             _vlen_bytes_codec.encode(chunk_array.as_numpy_array())

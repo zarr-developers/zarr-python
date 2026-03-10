@@ -64,7 +64,11 @@ CodecJSON = str | Mapping[str, object]
 
 @runtime_checkable
 class SupportsSyncCodec(Protocol):
-    """Protocol for codecs that support synchronous encode/decode."""
+    """Protocol for codecs that support synchronous encode/decode.
+
+    Codecs implementing this protocol provide ``_decode_sync`` and ``_encode_sync``
+    methods that perform encoding/decoding without requiring an async event loop.
+    """
 
     def _decode_sync(
         self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec

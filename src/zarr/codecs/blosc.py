@@ -299,10 +299,18 @@ class BloscCodec(BytesBytesCodec):
             config_dict["typesize"] = self.typesize
         return Blosc.from_config(config_dict)
 
-    def _decode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer:
+    def _decode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
         return as_numpy_array_wrapper(self._blosc_codec.decode, chunk_bytes, chunk_spec.prototype)
 
-    def _encode_sync(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> Buffer | None:
+    def _encode_sync(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
         # Since blosc only support host memory, we convert the input and output of the encoding
         # between numpy array and buffer
         return chunk_spec.prototype.buffer.from_bytes(
