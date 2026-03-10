@@ -1071,7 +1071,6 @@ class BlockIndexer(Indexer):
     def __init__(
         self, selection: BasicSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
-        chunk_shape = get_chunk_shape(chunk_grid)
         dim_grids = _get_dim_grids(chunk_grid)
 
         # handle ellipsis
@@ -1082,17 +1081,15 @@ class BlockIndexer(Indexer):
 
         # setup per-dimension indexers
         dim_indexers = []
-        for dim_sel, dim_len, dim_chunk_size, dim_grid in zip(
-            selection_normalized, shape, chunk_shape, dim_grids, strict=True
-        ):
-            dim_numchunks = int(np.ceil(dim_len / dim_chunk_size))
+        for dim_sel, dim_len, dim_grid in zip(selection_normalized, shape, dim_grids, strict=True):
+            dim_numchunks = dim_grid.nchunks
 
             if is_integer(dim_sel):
                 if dim_sel < 0:
                     dim_sel = dim_numchunks + dim_sel
 
-                start = dim_sel * dim_chunk_size
-                stop = start + dim_chunk_size
+                start = dim_grid.chunk_offset(dim_sel)
+                stop = start + dim_grid.chunk_size(dim_sel)
                 slice_ = slice(start, stop)
 
             elif is_slice(dim_sel):
@@ -1112,8 +1109,8 @@ class BlockIndexer(Indexer):
                 if stop < 0:
                     stop = dim_numchunks + stop
 
-                start *= dim_chunk_size
-                stop *= dim_chunk_size
+                start = dim_grid.chunk_offset(start) if start < dim_numchunks else dim_len
+                stop = dim_grid.chunk_offset(stop) if stop < dim_numchunks else dim_len
                 slice_ = slice(start, stop)
 
             else:
@@ -1125,7 +1122,7 @@ class BlockIndexer(Indexer):
             dim_indexer = SliceDimIndexer(slice_, dim_len, dim_grid)
             dim_indexers.append(dim_indexer)
 
-            if start >= dim_len or start < 0:
+            if slice_.start >= dim_len or slice_.start < 0:
                 msg = f"index out of bounds for dimension with length {dim_len}"
                 raise BoundsCheckError(msg)
 
@@ -1193,7 +1190,6 @@ class CoordinateIndexer(Indexer):
     chunk_rixs: npt.NDArray[np.intp]
     chunk_mixs: tuple[npt.NDArray[np.intp], ...]
     shape: tuple[int, ...]
-    chunk_shape: tuple[int, ...]
     dim_grids: tuple[DimensionGrid, ...]
     drop_axes: tuple[int, ...]
 
@@ -1201,7 +1197,6 @@ class CoordinateIndexer(Indexer):
         self, selection: CoordinateSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
         dim_grids = _get_dim_grids(chunk_grid)
-        chunk_shape = tuple(g.size if hasattr(g, "size") else 1 for g in dim_grids)
 
         cdata_shape: tuple[int, ...]
         if shape == ():
@@ -1284,7 +1279,6 @@ class CoordinateIndexer(Indexer):
         object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
         object.__setattr__(self, "chunk_rixs", chunk_rixs)
         object.__setattr__(self, "chunk_mixs", chunk_mixs)
-        object.__setattr__(self, "chunk_shape", chunk_shape)
         object.__setattr__(self, "dim_grids", dim_grids)
         object.__setattr__(self, "shape", shape)
         object.__setattr__(self, "drop_axes", ())

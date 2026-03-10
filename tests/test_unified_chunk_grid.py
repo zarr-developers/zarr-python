@@ -1207,6 +1207,68 @@ class TestFullPipelineRectilinear:
         mask = a > 3000
         np.testing.assert_array_equal(z.vindex[mask], a[mask])
 
+    # --- Block selection ---
+
+    def test_block_selection_1d(self, tmp_path: Path) -> None:
+        z, a = self._make_1d(tmp_path)
+        # chunks: [5, 10, 15] -> offsets 0, 5, 15
+        # block 0: a[0:5], block 1: a[5:15], block 2: a[15:30]
+        np.testing.assert_array_equal(z.blocks[0], a[0:5])
+        np.testing.assert_array_equal(z.blocks[1], a[5:15])
+        np.testing.assert_array_equal(z.blocks[2], a[15:30])
+        np.testing.assert_array_equal(z.blocks[-1], a[15:30])
+        # slice of blocks
+        np.testing.assert_array_equal(z.blocks[0:2], a[0:15])
+        np.testing.assert_array_equal(z.blocks[1:3], a[5:30])
+        np.testing.assert_array_equal(z.blocks[:], a[:])
+
+    def test_block_selection_2d(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        # dim0 chunks: [10, 20, 30] -> offsets 0, 10, 30
+        # dim1 chunks: [25, 25, 25, 25] -> offsets 0, 25, 50, 75
+        np.testing.assert_array_equal(z.blocks[0, 0], a[0:10, 0:25])
+        np.testing.assert_array_equal(z.blocks[1, 2], a[10:30, 50:75])
+        np.testing.assert_array_equal(z.blocks[2, 3], a[30:60, 75:100])
+        np.testing.assert_array_equal(z.blocks[-1, -1], a[30:60, 75:100])
+        # slice of blocks
+        np.testing.assert_array_equal(z.blocks[0:2, 1:3], a[0:30, 25:75])
+        np.testing.assert_array_equal(z.blocks[:, :], a[:, :])
+
+    def test_set_block_selection_1d(self, tmp_path: Path) -> None:
+        z, a = self._make_1d(tmp_path)
+        # overwrite block 1 (a[5:15])
+        val = np.full(10, -1, dtype="int32")
+        z.blocks[1] = val
+        a[5:15] = val
+        np.testing.assert_array_equal(z[:], a)
+
+    def test_set_block_selection_2d(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        # overwrite blocks [0:2, 1:3] -> a[0:30, 25:75]
+        val = np.full((30, 50), -99, dtype="int32")
+        z.blocks[0:2, 1:3] = val
+        a[0:30, 25:75] = val
+        np.testing.assert_array_equal(z[:], a)
+
+    # --- Set coordinate selection ---
+
+    def test_set_coordinate_selection_1d(self, tmp_path: Path) -> None:
+        z, a = self._make_1d(tmp_path)
+        ix = np.array([0, 4, 5, 14, 15, 29])
+        val = np.full(len(ix), -7, dtype="int32")
+        z.vindex[ix] = val
+        a[ix] = val
+        np.testing.assert_array_equal(z[:], a)
+
+    def test_set_coordinate_selection_2d(self, tmp_path: Path) -> None:
+        z, a = self._make_2d(tmp_path)
+        r = np.array([0, 9, 10, 29, 30, 59])
+        c = np.array([0, 24, 25, 49, 50, 99])
+        val = np.full(len(r), -42, dtype="int32")
+        z.vindex[r, c] = val
+        a[r, c] = val
+        np.testing.assert_array_equal(z[:], a)
+
     # --- Set selection ---
 
     def test_set_basic_selection(self, tmp_path: Path) -> None:
@@ -1423,6 +1485,30 @@ def test_property_vindex_rectilinear(data: st.DataObject) -> None:
         for size in a.shape
     )
     np.testing.assert_array_equal(z.vindex[indexers], a[indexers])
+
+
+@settings(deadline=None, max_examples=50)
+@given(data=st.data())
+def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
+    """Property test: block indexing on rectilinear arrays matches numpy."""
+    z, a = data.draw(rectilinear_arrays_st())
+    grid = z.metadata.chunk_grid
+
+    # Pick a random block per dimension and verify it matches the expected slice
+    for dim in range(a.ndim):
+        dim_grid = grid.dimensions[dim]
+        block_ix = data.draw(st.integers(min_value=0, max_value=dim_grid.nchunks - 1))
+        sel = [slice(None)] * a.ndim
+        start = dim_grid.chunk_offset(block_ix)
+        stop = start + dim_grid.data_size(block_ix)
+        sel[dim] = slice(start, stop)
+        block_sel: list[slice | int] = [slice(None)] * a.ndim
+        block_sel[dim] = block_ix
+        np.testing.assert_array_equal(
+            z.blocks[tuple(block_sel)],
+            a[tuple(sel)],
+            err_msg=f"dim={dim}, block={block_ix}",
+        )
 
 
 @settings(deadline=None, max_examples=50)
