@@ -71,6 +71,7 @@ if TYPE_CHECKING:
         Iterable,
         Iterator,
         Mapping,
+        Sequence,
     )
     from typing import Any
 
@@ -1022,7 +1023,7 @@ class AsyncGroup:
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -2449,7 +2450,7 @@ class Group(SyncMixin):
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -2593,7 +2594,7 @@ class Group(SyncMixin):
         shape: ShapeLike | None = None,
         dtype: ZDTypeLike | None = None,
         data: np.ndarray[Any, np.dtype[Any]] | None = None,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
@@ -2991,7 +2992,7 @@ class Group(SyncMixin):
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunks: tuple[int, ...] | Literal["auto"] = "auto",
+        chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
         shards: tuple[int, ...] | Literal["auto"] | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",

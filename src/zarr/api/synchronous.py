@@ -13,7 +13,7 @@ from zarr.core.sync_group import create_hierarchy
 from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Sequence
 
     import numpy as np
     import numpy.typing as npt
@@ -822,7 +822,7 @@ def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",

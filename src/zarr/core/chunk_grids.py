@@ -199,6 +199,25 @@ def _compress_rle(sizes: Sequence[int]) -> list[list[int]]:
 ChunksLike = tuple[int, ...] | list[list[int] | int] | int
 
 
+def _is_rectilinear_chunks(chunks: Any) -> bool:
+    """Check if chunks is a nested sequence (e.g. [[10, 20], [5, 5]]).
+
+    Returns True for inputs like [[10, 20], [5, 5]] or [(10, 20), (5, 5)].
+    Returns False for flat sequences like (10, 10) or [10, 10].
+    """
+    if isinstance(chunks, (str, int, ChunkGrid)):
+        return False
+    if not hasattr(chunks, "__iter__"):
+        return False
+    try:
+        first_elem = next(iter(chunks), None)
+        if first_elem is None:
+            return False
+        return hasattr(first_elem, "__iter__") and not isinstance(first_elem, (str, bytes, int))
+    except (TypeError, StopIteration):
+        return False
+
+
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
     """

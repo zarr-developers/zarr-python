@@ -4523,7 +4523,7 @@ async def init_array(
     store_path: StorePath,
     shape: ShapeLike,
     dtype: ZDTypeLike,
-    chunks: tuple[int, ...] | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -4639,6 +4639,24 @@ async def init_array(
     else:
         await ensure_no_existing_node(store_path, zarr_format=zarr_format)
 
+    # Detect rectilinear (nested list) chunks, e.g. [[10, 20, 30], [25, 25]]
+    from zarr.core.chunk_grids import _is_rectilinear_chunks
+
+    rectilinear_grid: ChunkGrid | None = None
+    if _is_rectilinear_chunks(chunks):
+        if zarr_format == 2:
+            raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
+        if shards is not None:
+            raise ValueError("Rectilinear chunk grids do not support sharding.")
+        rect_chunks = cast("Sequence[Sequence[int]]", chunks)
+        rectilinear_grid = ChunkGrid.from_rectilinear(rect_chunks)
+        # Use first chunk size per dim as placeholder for _auto_partition
+        chunks_flat: tuple[int, ...] | Literal["auto"] = tuple(
+            dim_edges[0] for dim_edges in rect_chunks
+        )
+    else:
+        chunks_flat = cast("tuple[int, ...] | Literal['auto']", chunks)
+
     item_size = 1
     if isinstance(zdtype, HasItemSize):
         item_size = zdtype.item_size
@@ -4646,7 +4664,7 @@ async def init_array(
     shard_shape_parsed, chunk_shape_parsed = _auto_partition(
         array_shape=shape_parsed,
         shard_shape=shards,
-        chunk_shape=chunks,
+        chunk_shape=chunks_flat,
         item_size=item_size,
     )
     chunks_out: tuple[int, ...]
@@ -4725,6 +4743,7 @@ async def init_array(
             codecs=codecs_out,
             dimension_names=dimension_names,
             attributes=attributes,
+            chunk_grid=rectilinear_grid,
         )
 
     arr = AsyncArray(metadata=meta, store_path=store_path, config=config)
@@ -4739,7 +4758,7 @@ async def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Literal["auto"] = "auto",
+    chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -4881,7 +4900,7 @@ async def create_array(
             data=data_parsed,
             write_data=write_data,
             name=name,
-            chunks=chunks,
+            chunks=cast("Literal['auto', 'keep'] | tuple[int, ...]", chunks),
             shards=shards,
             filters=filters,
             compressors=compressors,
