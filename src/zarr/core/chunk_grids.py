@@ -15,7 +15,6 @@ import numpy as np
 import numpy.typing as npt
 
 import zarr
-from zarr.abc.metadata import Metadata
 from zarr.core.common import (
     JSON,
     NamedConfig,
@@ -231,7 +230,7 @@ def _is_rectilinear_chunks(chunks: Any) -> bool:
 
 
 @dataclass(frozen=True)
-class ChunkGrid(Metadata):
+class ChunkGrid:
     """
     Unified chunk grid supporting both regular and rectilinear chunking.
 
@@ -387,43 +386,8 @@ class ChunkGrid(Metadata):
 
         raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
 
-    def to_dict(self) -> dict[str, JSON]:
-        if self.is_regular:
-            return {
-                "name": "regular",
-                "configuration": {"chunk_shape": tuple(self.chunk_shape)},
-            }
-        else:
-            chunk_shapes: list[Any] = []
-            for dim in self.dimensions:
-                if isinstance(dim, FixedDimension):
-                    # Produce RLE directly without allocating a full edge list.
-                    n = dim.nchunks
-                    if n == 0:
-                        chunk_shapes.append([])
-                    else:
-                        last_data = dim.extent - (n - 1) * dim.size
-                        if last_data == dim.size:
-                            # All chunks uniform
-                            chunk_shapes.append([[dim.size, n]])
-                        else:
-                            # n-1 full chunks + 1 boundary chunk
-                            rle: list[list[int]] = []
-                            if n > 1:
-                                rle.append([dim.size, n - 1])
-                            rle.append([last_data, 1])
-                            chunk_shapes.append(rle)
-                elif isinstance(dim, VaryingDimension):
-                    edges = list(dim.edges)
-                    rle = _compress_rle(edges)
-                    if sum(count for _, count in rle) == len(edges) and len(rle) < len(edges):
-                        chunk_shapes.append(rle)
-                    else:
-                        chunk_shapes.append(edges)
-            return {
-                "name": "rectilinear",
-                "configuration": {"chunk_shapes": chunk_shapes},
-            }
+    # ChunkGrid does not serialize itself. The format choice ("regular" vs
+    # "rectilinear") belongs to the metadata layer. Use serialize_chunk_grid().
 
 
 def parse_chunk_grid(
@@ -476,9 +440,82 @@ def parse_chunk_grid(
                 decoded.append(dim_spec)
             else:
                 raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
+        if len(decoded) != len(array_shape):
+            raise ValueError(
+                f"chunk_shapes has {len(decoded)} dimensions but array shape "
+                f"has {len(array_shape)} dimensions"
+            )
+        for i, (edges, extent) in enumerate(zip(decoded, array_shape, strict=True)):
+            edge_sum = sum(edges)
+            if edge_sum != extent:
+                raise ValueError(
+                    f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
+                    f"but array shape extent is {extent}"
+                )
         return ChunkGrid.from_rectilinear(decoded)
 
     raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
+
+
+def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
+    """Serialize a ChunkGrid to a metadata dict using the given format name.
+
+    The format choice ("regular" vs "rectilinear") belongs to the metadata layer,
+    not the grid itself. This function is called by ArrayV3Metadata.to_dict().
+    """
+    if name == "regular":
+        if not grid.is_regular:
+            raise ValueError(
+                "Cannot serialize a non-regular chunk grid as 'regular'. Use 'rectilinear' instead."
+            )
+        return {
+            "name": "regular",
+            "configuration": {"chunk_shape": tuple(grid.chunk_shape)},
+        }
+
+    if name == "rectilinear":
+        chunk_shapes: list[Any] = []
+        for dim in grid.dimensions:
+            if isinstance(dim, FixedDimension):
+                # Produce RLE directly without allocating a full edge list.
+                n = dim.nchunks
+                if n == 0:
+                    chunk_shapes.append([])
+                else:
+                    last_data = dim.extent - (n - 1) * dim.size
+                    if last_data == dim.size:
+                        chunk_shapes.append([[dim.size, n]])
+                    else:
+                        rle: list[list[int]] = []
+                        if n > 1:
+                            rle.append([dim.size, n - 1])
+                        rle.append([last_data, 1])
+                        chunk_shapes.append(rle)
+            elif isinstance(dim, VaryingDimension):
+                edges = list(dim.edges)
+                rle = _compress_rle(edges)
+                if sum(count for _, count in rle) == len(edges) and len(rle) < len(edges):
+                    chunk_shapes.append(rle)
+                else:
+                    chunk_shapes.append(edges)
+        return {
+            "name": "rectilinear",
+            "configuration": {"chunk_shapes": chunk_shapes},
+        }
+
+    raise ValueError(f"Unknown chunk grid name for serialization: {name!r}")
+
+
+def _infer_chunk_grid_name(
+    data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any],
+    grid: ChunkGrid,
+) -> str:
+    """Extract or infer the chunk grid serialization name from the input."""
+    if isinstance(data, dict):
+        name, _ = parse_named_configuration(data)
+        return name
+    # ChunkGrid passed directly — infer from structure
+    return "regular" if grid.is_regular else "rectilinear"
 
 
 # ---------------------------------------------------------------------------
@@ -507,9 +544,6 @@ class RegularChunkGrid(ChunkGrid):
     def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "regular")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
-
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
 
     def _raise_no_extent(self) -> None:
         raise ValueError(

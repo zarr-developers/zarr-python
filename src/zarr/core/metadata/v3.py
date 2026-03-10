@@ -24,7 +24,12 @@ from typing import Any, Literal
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.chunk_grids import ChunkGrid, parse_chunk_grid
+from zarr.core.chunk_grids import (
+    ChunkGrid,
+    _infer_chunk_grid_name,
+    parse_chunk_grid,
+    serialize_chunk_grid,
+)
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     ChunkKeyEncodingLike,
@@ -200,6 +205,7 @@ class ArrayV3Metadata(Metadata):
     shape: tuple[int, ...]
     data_type: ZDType[TBaseDType, TBaseScalar]
     chunk_grid: ChunkGrid
+    chunk_grid_name: str
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
     codecs: tuple[Codec, ...]
@@ -221,6 +227,7 @@ class ArrayV3Metadata(Metadata):
         codecs: Iterable[Codec | dict[str, JSON] | NamedConfig[str, Any] | str],
         attributes: dict[str, JSON] | None,
         dimension_names: DimensionNames,
+        chunk_grid_name: str | None = None,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
         extra_fields: Mapping[str, AllowedExtraField] | None = None,
     ) -> None:
@@ -230,6 +237,11 @@ class ArrayV3Metadata(Metadata):
 
         shape_parsed = parse_shapelike(shape)
         chunk_grid_parsed = parse_chunk_grid(chunk_grid, shape_parsed)
+        chunk_grid_name_parsed = (
+            chunk_grid_name
+            if chunk_grid_name is not None
+            else _infer_chunk_grid_name(chunk_grid, chunk_grid_parsed)
+        )
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         # Note: relying on a type method is numpy-specific
@@ -251,6 +263,7 @@ class ArrayV3Metadata(Metadata):
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type)
         object.__setattr__(self, "chunk_grid", chunk_grid_parsed)
+        object.__setattr__(self, "chunk_grid_name", chunk_grid_name_parsed)
         object.__setattr__(self, "chunk_key_encoding", chunk_key_encoding_parsed)
         object.__setattr__(self, "codecs", codecs_parsed)
         object.__setattr__(self, "dimension_names", dimension_names_parsed)
@@ -406,6 +419,14 @@ class ArrayV3Metadata(Metadata):
         out_dict = super().to_dict()
         extra_fields = out_dict.pop("extra_fields")
         out_dict = out_dict | extra_fields  # type: ignore[operator]
+
+        # Serialize chunk_grid using the stored name (not the grid's own logic).
+        # This gives round-trip fidelity: a store written as "rectilinear" with
+        # uniform edges stays "rectilinear".
+        out_dict["chunk_grid"] = serialize_chunk_grid(self.chunk_grid, self.chunk_grid_name)
+
+        # chunk_grid_name is internal — not part of the Zarr metadata document
+        out_dict.pop("chunk_grid_name", None)
 
         out_dict["fill_value"] = self.data_type.to_json_scalar(
             self.fill_value, zarr_format=self.zarr_format
