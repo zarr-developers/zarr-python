@@ -1538,12 +1538,11 @@ class ShardingCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
                     offset = self._chunk_byte_offset(coords, chunks_per_shard, chunk_byte_length)
                     byte_setter.set_range_sync(chunk_bytes, offset)
 
-            # Update the shard index (unchanged for dense layout but must be rewritten
-            # because the index is part of the blob).
-            index = self._build_dense_shard_index(chunks_per_shard, chunk_byte_length)
-            index_bytes = self._encode_shard_index_sync(index)
-            index_offset = self._shard_index_byte_offset(chunks_per_shard, chunk_byte_length)
-            byte_setter.set_range_sync(index_bytes, index_offset)
+            # The shard index is NOT rewritten here: chunk offsets are
+            # deterministic (Morton rank x chunk_byte_length + data_offset),
+            # so overwriting chunk data at its fixed offset does not change
+            # the index.  The index was already written when the shard was
+            # first created.
         except NotImplementedError:
             # Store doesn't support set_range — fall back to full serialize + set.
             blob = self.serialize(prepared.chunk_dict, chunk_spec)
@@ -1646,10 +1645,11 @@ class ShardingCodec(ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin):
                     offset = self._chunk_byte_offset(coords, chunks_per_shard, chunk_byte_length)
                     await byte_setter.set_range(chunk_bytes, offset)
 
-            index = self._build_dense_shard_index(chunks_per_shard, chunk_byte_length)
-            index_bytes = self._encode_shard_index_sync(index)
-            index_offset = self._shard_index_byte_offset(chunks_per_shard, chunk_byte_length)
-            await byte_setter.set_range(index_bytes, index_offset)
+            # The shard index is NOT rewritten here: chunk offsets are
+            # deterministic (Morton rank x chunk_byte_length + data_offset),
+            # so overwriting chunk data at its fixed offset does not change
+            # the index.  The index was already written when the shard was
+            # first created.
         except NotImplementedError:
             blob = self.serialize(prepared.chunk_dict, chunk_spec)
             if blob is None:
