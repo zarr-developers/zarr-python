@@ -301,19 +301,14 @@ class ArrayV3Metadata(Metadata):
 
     @property
     def shards(self) -> tuple[int, ...] | None:
-        if self.chunk_grid.is_regular:
-            from zarr.codecs.sharding import ShardingCodec
+        if not self.chunk_grid.is_regular:
+            return None
 
-            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
-                return self.chunk_grid.chunk_shape
-            else:
-                return None
+        from zarr.codecs.sharding import ShardingCodec
 
-        msg = (
-            "The `shards` attribute is only defined for arrays using regular chunk grids. "
-            "This array has a rectilinear chunk grid. Use `chunk_grid` for general access."
-        )
-        raise NotImplementedError(msg)
+        if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            return self.chunk_grid.chunk_shape
+        return None
 
     @property
     def inner_codecs(self) -> tuple[Codec, ...]:
