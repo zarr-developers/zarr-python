@@ -125,9 +125,131 @@ class VaryingDimension:
         return np.searchsorted(self.cumulative, indices, side="right")
 
 
+@dataclass(frozen=True)
+class TiledDimension:
+    """Periodic chunk pattern repeated N times, with an optional trailing remainder.
+
+    Exploits periodicity for O(1) chunk_offset/chunk_size and O(log pattern_len)
+    index_to_chunk, regardless of total chunk count. Memory is O(pattern_len)
+    instead of O(n_chunks).
+
+    Example: 30 years of monthly chunks (days per month):
+        TiledDimension(pattern=(31,28,31,30,31,30,31,31,30,31,30,31), repeats=30)
+    """
+
+    pattern: tuple[int, ...]  # one period's edge lengths (all > 0)
+    repeats: int  # number of full repetitions (>= 1)
+    remainder: tuple[int, ...]  # trailing partial period (all > 0, may be empty)
+
+    # Precomputed
+    _pattern_cumulative: tuple[int, ...]  # prefix sums within one period
+    _period_extent: int  # sum(pattern)
+    _pattern_nchunks: int  # len(pattern)
+    _remainder_cumulative: tuple[int, ...]  # prefix sums of remainder
+    _total_nchunks: int
+    _total_extent: int
+
+    def __init__(
+        self,
+        pattern: Sequence[int],
+        repeats: int = 1,
+        remainder: Sequence[int] = (),
+    ) -> None:
+        pattern_t = tuple(pattern)
+        remainder_t = tuple(remainder)
+        if not pattern_t:
+            raise ValueError("TiledDimension pattern must not be empty")
+        if repeats < 1:
+            raise ValueError(f"TiledDimension repeats must be >= 1, got {repeats}")
+        if any(e <= 0 for e in pattern_t):
+            raise ValueError(f"All pattern edge lengths must be > 0, got {pattern_t}")
+        if any(e <= 0 for e in remainder_t):
+            raise ValueError(f"All remainder edge lengths must be > 0, got {remainder_t}")
+
+        pattern_cum = tuple(itertools.accumulate(pattern_t))
+        period_extent = pattern_cum[-1]
+        remainder_cum = tuple(itertools.accumulate(remainder_t)) if remainder_t else ()
+        total_nchunks = len(pattern_t) * repeats + len(remainder_t)
+        total_extent = period_extent * repeats + (remainder_cum[-1] if remainder_cum else 0)
+
+        object.__setattr__(self, "pattern", pattern_t)
+        object.__setattr__(self, "repeats", repeats)
+        object.__setattr__(self, "remainder", remainder_t)
+        object.__setattr__(self, "_pattern_cumulative", pattern_cum)
+        object.__setattr__(self, "_period_extent", period_extent)
+        object.__setattr__(self, "_pattern_nchunks", len(pattern_t))
+        object.__setattr__(self, "_remainder_cumulative", remainder_cum)
+        object.__setattr__(self, "_total_nchunks", total_nchunks)
+        object.__setattr__(self, "_total_extent", total_extent)
+
+    @property
+    def nchunks(self) -> int:
+        return self._total_nchunks
+
+    @property
+    def extent(self) -> int:
+        return self._total_extent
+
+    def chunk_offset(self, chunk_ix: int) -> int:
+        period, offset = divmod(chunk_ix, self._pattern_nchunks)
+        if period < self.repeats:
+            base = period * self._period_extent
+            return base + (self._pattern_cumulative[offset - 1] if offset > 0 else 0)
+        # In the remainder
+        rem_ix = chunk_ix - self.repeats * self._pattern_nchunks
+        return self.repeats * self._period_extent + (
+            self._remainder_cumulative[rem_ix - 1] if rem_ix > 0 else 0
+        )
+
+    def chunk_size(self, chunk_ix: int) -> int:
+        """Buffer size for codec processing."""
+        period, offset = divmod(chunk_ix, self._pattern_nchunks)
+        if period < self.repeats:
+            return self.pattern[offset]
+        return self.remainder[chunk_ix - self.repeats * self._pattern_nchunks]
+
+    def data_size(self, chunk_ix: int) -> int:
+        """Valid data region — same as chunk_size for tiled dims."""
+        return self.chunk_size(chunk_ix)
+
+    def index_to_chunk(self, idx: int) -> int:
+        period, within = divmod(idx, self._period_extent)
+        if period < self.repeats:
+            local = bisect.bisect_right(self._pattern_cumulative, within)
+            return period * self._pattern_nchunks + local
+        # In the remainder region
+        rem_idx = idx - self.repeats * self._period_extent
+        local = bisect.bisect_right(self._remainder_cumulative, rem_idx)
+        return self.repeats * self._pattern_nchunks + local
+
+    def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
+        periods, withins = np.divmod(indices, self._period_extent)
+        result = np.empty_like(indices)
+
+        # Chunks in the repeating region
+        in_repeat = periods < self.repeats
+        if np.any(in_repeat):
+            local = np.searchsorted(self._pattern_cumulative, withins[in_repeat], side="right")
+            result[in_repeat] = periods[in_repeat] * self._pattern_nchunks + local
+
+        # Chunks in the remainder region
+        in_remainder = ~in_repeat
+        if np.any(in_remainder) and self._remainder_cumulative:
+            rem_indices = indices[in_remainder] - self.repeats * self._period_extent
+            local = np.searchsorted(self._remainder_cumulative, rem_indices, side="right")
+            result[in_remainder] = self.repeats * self._pattern_nchunks + local
+
+        return result
+
+    @property
+    def edges(self) -> tuple[int, ...]:
+        """Expand to full edge list (for compatibility with VaryingDimension)."""
+        return self.pattern * self.repeats + self.remainder
+
+
 @runtime_checkable
 class DimensionGrid(Protocol):
-    """Structural interface shared by FixedDimension and VaryingDimension."""
+    """Structural interface shared by FixedDimension, VaryingDimension, and TiledDimension."""
 
     @property
     def nchunks(self) -> int: ...
@@ -203,6 +325,48 @@ def _compress_rle(sizes: Sequence[int]) -> list[list[int]]:
 
 
 # ---------------------------------------------------------------------------
+# Tile helpers
+# ---------------------------------------------------------------------------
+
+
+def _detect_tile_pattern(
+    edges: Sequence[int],
+) -> tuple[tuple[int, ...], int, tuple[int, ...]] | None:
+    """Detect the shortest repeating tile pattern in an edge list.
+
+    Returns (pattern, repeats, remainder) if a tile pattern saves space over
+    the flat representation, otherwise None.
+
+    A pattern must repeat at least 2 times to qualify.
+    """
+    n = len(edges)
+    if n < 4:
+        return None
+
+    # Try pattern lengths from 2 up to n//2
+    for plen in range(2, n // 2 + 1):
+        pattern = tuple(edges[:plen])
+        full_repeats = n // plen
+        if full_repeats < 2:
+            break
+        # Check all full repetitions match
+        match = True
+        for r in range(1, full_repeats):
+            start = r * plen
+            if tuple(edges[start : start + plen]) != pattern:
+                match = False
+                break
+        if not match:
+            continue
+        remainder = tuple(edges[full_repeats * plen :])
+        # Only use tile if it's more compact: pattern + remainder < flat list
+        tile_cost = plen + len(remainder) + 2  # +2 for repeats field + overhead
+        if tile_cost < n:
+            return pattern, full_repeats, remainder
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Unified ChunkGrid
 # ---------------------------------------------------------------------------
 
@@ -238,8 +402,9 @@ class ChunkGrid:
     It stores the extent (array dimension length) per dimension, enabling
     ``grid[coords]`` to return a ``ChunkSpec`` without external parameters.
 
-    Internally represents each dimension as either FixedDimension (uniform chunks)
-    or VaryingDimension (per-chunk edge lengths with prefix sums).
+    Internally represents each dimension as FixedDimension (uniform chunks),
+    VaryingDimension (per-chunk edge lengths with prefix sums), or
+    TiledDimension (periodic pattern repeated N times).
     """
 
     dimensions: tuple[DimensionGrid, ...]
@@ -374,20 +539,51 @@ class ChunkGrid:
                 raise ValueError("Rectilinear chunk grid requires 'chunk_shapes' configuration")
             if not isinstance(chunk_shapes_raw, Sequence):
                 raise TypeError(f"chunk_shapes must be a sequence, got {type(chunk_shapes_raw)}")
-            decoded: list[list[int]] = []
+            dims_list: list[DimensionGrid] = []
             for dim_spec in chunk_shapes_raw:
-                if isinstance(dim_spec, list) and dim_spec and isinstance(dim_spec[0], list):
-                    decoded.append(_expand_rle(dim_spec))
-                elif isinstance(dim_spec, list):
-                    decoded.append(dim_spec)
-                else:
-                    raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
-            return cls.from_rectilinear(decoded)
+                parsed = _parse_dim_spec(dim_spec)
+                dims_list.append(_build_dimension(parsed))
+            return cls(dimensions=tuple(dims_list))
 
         raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
 
     # ChunkGrid does not serialize itself. The format choice ("regular" vs
     # "rectilinear") belongs to the metadata layer. Use serialize_chunk_grid().
+
+
+def _parse_dim_spec(dim_spec: Any) -> list[int] | TiledDimension:
+    """Parse a single dimension's chunk_shapes entry.
+
+    Returns either a flat edge list or a TiledDimension (for tile-encoded entries).
+    Handles: flat list of ints, RLE ([[size, count], ...]), and tile dicts.
+    """
+    if isinstance(dim_spec, dict):
+        # Tile encoding: {"tile": [...], "repeat": N, "remainder": [...]}
+        tile_pattern = dim_spec.get("tile")
+        if tile_pattern is None:
+            raise ValueError(f"Tile-encoded dim_spec must have 'tile' key, got {dim_spec}")
+        repeat = dim_spec.get("repeat", 1)
+        remainder = dim_spec.get("remainder", [])
+        return TiledDimension(
+            pattern=tile_pattern,
+            repeats=repeat,
+            remainder=remainder,
+        )
+    if isinstance(dim_spec, list) and dim_spec and isinstance(dim_spec[0], list):
+        return _expand_rle(dim_spec)
+    if isinstance(dim_spec, list):
+        return dim_spec
+    raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
+
+
+def _build_dimension(dim_spec_parsed: list[int] | TiledDimension) -> DimensionGrid:
+    """Build a DimensionGrid from a parsed dim spec."""
+    if isinstance(dim_spec_parsed, TiledDimension):
+        return dim_spec_parsed
+    edges = dim_spec_parsed
+    if all(e == edges[0] for e in edges):
+        return FixedDimension(size=edges[0], extent=sum(edges))
+    return VaryingDimension(edges)
 
 
 def parse_chunk_grid(
@@ -407,10 +603,11 @@ def parse_chunk_grid(
             if isinstance(dim, FixedDimension):
                 dims.append(FixedDimension(size=dim.size, extent=extent))
             else:
-                # VaryingDimension has intrinsic extent — validate it matches
+                # VaryingDimension/TiledDimension have intrinsic extent — validate
                 if dim.extent != extent:
+                    dim_type = type(dim).__name__
                     raise ValueError(
-                        f"VaryingDimension extent {dim.extent} does not match "
+                        f"{dim_type} extent {dim.extent} does not match "
                         f"array shape extent {extent} for dimension {len(dims)}"
                     )
                 dims.append(dim)
@@ -432,27 +629,22 @@ def parse_chunk_grid(
             raise ValueError("Rectilinear chunk grid requires 'chunk_shapes' configuration")
         if not isinstance(chunk_shapes_raw, Sequence):
             raise TypeError(f"chunk_shapes must be a sequence, got {type(chunk_shapes_raw)}")
-        decoded: list[list[int]] = []
-        for dim_spec in chunk_shapes_raw:
-            if isinstance(dim_spec, list) and dim_spec and isinstance(dim_spec[0], list):
-                decoded.append(_expand_rle(dim_spec))
-            elif isinstance(dim_spec, list):
-                decoded.append(dim_spec)
-            else:
-                raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
-        if len(decoded) != len(array_shape):
+        if len(chunk_shapes_raw) != len(array_shape):
             raise ValueError(
-                f"chunk_shapes has {len(decoded)} dimensions but array shape "
+                f"chunk_shapes has {len(chunk_shapes_raw)} dimensions but array shape "
                 f"has {len(array_shape)} dimensions"
             )
-        for i, (edges, extent) in enumerate(zip(decoded, array_shape, strict=True)):
-            edge_sum = sum(edges)
-            if edge_sum != extent:
+        dims_built: list[DimensionGrid] = []
+        for i, dim_spec in enumerate(chunk_shapes_raw):
+            parsed = _parse_dim_spec(dim_spec)
+            dim = _build_dimension(parsed)
+            if dim.extent != array_shape[i]:
                 raise ValueError(
-                    f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
-                    f"but array shape extent is {extent}"
+                    f"Rectilinear chunk edges for dimension {i} sum to {dim.extent} "
+                    f"but array shape extent is {array_shape[i]}"
                 )
-        return ChunkGrid.from_rectilinear(decoded)
+            dims_built.append(dim)
+        return ChunkGrid(dimensions=tuple(dims_built))
 
     raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
 
@@ -491,13 +683,33 @@ def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
                             rle.append([dim.size, n - 1])
                         rle.append([last_data, 1])
                         chunk_shapes.append(rle)
+            elif isinstance(dim, TiledDimension):
+                tile_dict: dict[str, Any] = {
+                    "tile": list(dim.pattern),
+                    "repeat": dim.repeats,
+                }
+                if dim.remainder:
+                    tile_dict["remainder"] = list(dim.remainder)
+                chunk_shapes.append(tile_dict)
             elif isinstance(dim, VaryingDimension):
                 edges = list(dim.edges)
-                rle = _compress_rle(edges)
-                if sum(count for _, count in rle) == len(edges) and len(rle) < len(edges):
-                    chunk_shapes.append(rle)
+                # Try tile compression first (more compact for periodic patterns)
+                tile_result = _detect_tile_pattern(edges)
+                if tile_result is not None:
+                    pattern, repeats, remainder = tile_result
+                    tile_dict_v: dict[str, Any] = {
+                        "tile": list(pattern),
+                        "repeat": repeats,
+                    }
+                    if remainder:
+                        tile_dict_v["remainder"] = list(remainder)
+                    chunk_shapes.append(tile_dict_v)
                 else:
-                    chunk_shapes.append(edges)
+                    rle = _compress_rle(edges)
+                    if sum(count for _, count in rle) == len(edges) and len(rle) < len(edges):
+                        chunk_shapes.append(rle)
+                    else:
+                        chunk_shapes.append(edges)
         return {
             "name": "rectilinear",
             "configuration": {"chunk_shapes": chunk_shapes},
