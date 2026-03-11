@@ -21,7 +21,7 @@ from zarr.core.chunk_grids import (
     _expand_run_length_encoding,
 )
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
-from zarr.core.common import JSON, ZarrFormat
+from zarr.core.common import JSON, AccessModeLiteral, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
@@ -331,6 +331,7 @@ def arrays(
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
     zarr_formats: st.SearchStrategy = zarr_formats,
+    open_mode: AccessModeLiteral = "w",
 ) -> AnyArray:
     store = draw(stores, label="store")
     path = draw(paths, label="array parent")
@@ -376,7 +377,7 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = _dereference_path(path, name)
-    root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
+    root = zarr.open_group(store, mode=open_mode, zarr_format=zarr_format)
 
     # For v3 with chunk_grid_param, pass it via chunks parameter (which now accepts ChunkGrid)
     # For v2 or v3 with RegularChunkGrid, pass chunk_shape
@@ -451,6 +452,17 @@ def simple_arrays(
             # - RectilinearChunkGrid never has sharding
         )
     )
+
+
+@st.composite
+def simple_complex_chunked_arrays(draw: st.DrawFn) -> AnyArray:
+    return draw(
+        complex_chunked_arrays(
+            paths=paths(max_num_nodes=2),
+            array_names=short_node_names,
+            attrs=st.none(),
+        )
+    )[1]
 
 
 def is_negative_slice(idx: Any) -> bool:
@@ -614,29 +626,54 @@ def complex_chunk_grids(draw: st.DrawFn) -> RectilinearChunkGrid:
 def complex_chunked_arrays(
     draw: st.DrawFn,
     *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
+    compressors: st.SearchStrategy = compressors,
     stores: st.SearchStrategy[StoreLike] = stores,
-) -> tuple[np.ndarray, AnyArray]:
+    paths: st.SearchStrategy[str] = paths(),  # noqa: B008
+    array_names: st.SearchStrategy = array_names,
+    arrays: st.SearchStrategy | None = None,
+    attrs: st.SearchStrategy = attrs,
+    zarr_formats: st.SearchStrategy = zarr_formats,
+    open_mode: AccessModeLiteral = "w",
+) -> tuple[np.ndarray[Any, Any], AnyArray]:
     store = draw(stores, label="store")
+    path = draw(paths, label="array parent")
+    name = draw(array_names, label="array name")
+    attributes = draw(attrs, label="attributes")
+
     chunks = draw(complex_chunk_grids(), label="chunk grid")
     assert isinstance(chunks, RectilinearChunkGrid)
+
     shape = tuple(x[-1] for x in chunks._cumulative_sizes)
-    nparray = draw(numpy_arrays(shapes=st.just(shape)), label="array data")
-    root = zarr.open_group(store, mode="w")
+    if arrays is None:
+        arrays = numpy_arrays(shapes=st.just(shape))
+    nparray = draw(arrays, label="array data")
+    dim_names = draw(dimension_names(ndim=len(shape)), label="dimension names")
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
+
+    expected_attrs = {} if attributes is None else attributes
+
+    array_path = _dereference_path(path, name)
+    root = zarr.open_group(store, mode=open_mode, zarr_format=3)
 
     a = root.create_array(
-        "/foo",
+        array_path,
         shape=nparray.shape,
         chunks=chunks,
         shards=None,
         dtype=nparray.dtype,
-        attributes={},
-        fill_value=None,
-        dimension_names=None,
+        attributes=attributes,
+        fill_value=fill_value,
+        dimension_names=dim_names,
     )
 
     assert isinstance(a, Array)
     if a.metadata.zarr_format == 3:
         assert a.fill_value is not None
+    assert a.name is not None
+    assert a.path == normalize_path(array_path)
+    assert a.name == "/" + a.path
+    assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
 
     # Verify chunks - for RegularChunkGrid check exact match
@@ -648,7 +685,6 @@ def complex_chunked_arrays(
     else:
         # For RegularChunkGrid, the chunks property returns the normalized chunk_shape
         # which may differ from the input (e.g., (0,) becomes (1,) after normalization)
-        # We should compare against the actual chunk_grid's chunk_shape
         from zarr.core.chunk_grids import RegularChunkGrid
 
         assert isinstance(a.metadata.chunk_grid, RegularChunkGrid)
@@ -656,6 +692,8 @@ def complex_chunked_arrays(
         assert expected_chunks == a.chunks
 
     assert a.shards is None  # We don't use sharding with RectilinearChunkGrid
+    assert a.basename == name, (a.basename, name)
+    assert dict(a.attrs) == expected_attrs
 
     a[:] = nparray
     return nparray, a
