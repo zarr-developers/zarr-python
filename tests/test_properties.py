@@ -25,6 +25,7 @@ from zarr.testing.strategies import (
     basic_indices,
     numpy_arrays,
     orthogonal_indices,
+    rectilinear_arrays,
     simple_arrays,
     stores,
     zarr_formats,
@@ -111,7 +112,7 @@ def test_array_creates_implicit_groups(array):
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @given(data=st.data())
 async def test_basic_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(simple_arrays())
+    zarray = data.draw(st.one_of(simple_arrays(), rectilinear_arrays()))
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
 
@@ -138,7 +139,12 @@ async def test_basic_indexing(data: st.DataObject) -> None:
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(
+        st.one_of(
+            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=2, max_side=20)),
+        )
+    )
     nparray = zarray[:]
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
 
@@ -170,7 +176,12 @@ async def test_oindex(data: st.DataObject) -> None:
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 async def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray = data.draw(
+        st.one_of(
+            simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
+            rectilinear_arrays(shapes=npst.array_shapes(max_dims=3, min_side=2, max_side=20)),
+        )
+    )
     nparray = zarray[:]
     indexer = data.draw(
         npst.integer_array_indices(

@@ -228,7 +228,7 @@ def np_array_and_chunks(
     draw: st.DrawFn,
     *,
     arrays: st.SearchStrategy[npt.NDArray[Any]] = numpy_arrays(),  # noqa: B008
-) -> tuple[np.ndarray, tuple[int, ...]]:  # type: ignore[type-arg]
+) -> tuple[np.ndarray[Any, Any], tuple[int, ...]]:
     """A hypothesis strategy to generate small sized random arrays.
 
     Returns: a tuple of the array and a suitable random chunking for it.
@@ -322,6 +322,59 @@ def simple_arrays(
             compressors=st.sampled_from([None, "default"]),
         )
     )
+
+
+@st.composite
+def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[int]]:
+    """Generate valid rectilinear chunk shapes for a given array shape.
+
+    Each dimension is partitioned into 1..min(size, 10) chunks by drawing
+    unique divider points within [1, size-1].
+    """
+    chunk_shapes: list[list[int]] = []
+    for size in shape:
+        assert size > 0
+        max_chunks = min(size, 10)
+        nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
+        if nchunks == 1:
+            chunk_shapes.append([size])
+        else:
+            dividers = sorted(
+                draw(
+                    st.lists(
+                        st.integers(min_value=1, max_value=size - 1),
+                        min_size=nchunks - 1,
+                        max_size=nchunks - 1,
+                        unique=True,
+                    )
+                )
+            )
+            chunk_shapes.append(
+                [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
+            )
+    return chunk_shapes
+
+
+# Rectilinear arrays need min_side >= 2 so divider generation works
+_rectilinear_shapes = npst.array_shapes(max_dims=3, min_side=2, max_side=20)
+
+
+@st.composite
+def rectilinear_arrays(
+    draw: st.DrawFn,
+    *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = _rectilinear_shapes,
+) -> Any:
+    """Generate a zarr v3 array with rectilinear (variable) chunk grid."""
+    shape = draw(shapes)
+    chunk_shapes = draw(rectilinear_chunks(shape=shape))
+
+    nparray = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
+    store = MemoryStore()
+    a = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype="int32")
+    a[:] = nparray
+
+    return a
 
 
 def is_negative_slice(idx: Any) -> bool:

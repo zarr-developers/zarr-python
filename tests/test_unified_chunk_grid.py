@@ -1607,74 +1607,6 @@ def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[
 
 @settings(deadline=None, max_examples=50)
 @given(data=st.data())
-def test_property_basic_indexing_rectilinear(data: st.DataObject) -> None:
-    """Property test: basic indexing on rectilinear arrays matches numpy."""
-    z, a = data.draw(rectilinear_arrays_st())
-    np.testing.assert_array_equal(z[:], a)
-
-    slicers = []
-    for size in a.shape:
-        start = data.draw(st.integers(min_value=0, max_value=size - 1))
-        stop = data.draw(st.integers(min_value=start, max_value=size))
-        slicers.append(slice(start, stop))
-    sel = tuple(slicers)
-    np.testing.assert_array_equal(z[sel], a[sel], err_msg=f"sel={sel}")
-
-
-@settings(deadline=None, max_examples=50)
-@given(data=st.data())
-def test_property_oindex_rectilinear(data: st.DataObject) -> None:
-    """Property test: orthogonal int-array indexing matches numpy."""
-    z, a = data.draw(rectilinear_arrays_st())
-
-    indexers_z = []
-    indexers_np = []
-    for size in a.shape:
-        n = data.draw(st.integers(min_value=1, max_value=min(size, 5)))
-        ix = np.array(
-            sorted(
-                data.draw(
-                    st.lists(
-                        st.integers(min_value=0, max_value=size - 1),
-                        min_size=n,
-                        max_size=n,
-                        unique=True,
-                    )
-                )
-            )
-        )
-        indexers_z.append(ix)
-        indexers_np.append(ix)
-
-    result = z.oindex[tuple(indexers_z)]
-    expected = a[np.ix_(*indexers_np)]
-    np.testing.assert_array_equal(result, expected)
-
-
-@settings(deadline=None, max_examples=50)
-@given(data=st.data())
-def test_property_vindex_rectilinear(data: st.DataObject) -> None:
-    """Property test: vindex on rectilinear arrays matches numpy."""
-    z, a = data.draw(rectilinear_arrays_st())
-
-    n = data.draw(st.integers(min_value=1, max_value=min(min(a.shape), 5)))
-    indexers = tuple(
-        np.array(
-            data.draw(
-                st.lists(
-                    st.integers(min_value=0, max_value=size - 1),
-                    min_size=n,
-                    max_size=n,
-                )
-            )
-        )
-        for size in a.shape
-    )
-    np.testing.assert_array_equal(z.vindex[indexers], a[indexers])
-
-
-@settings(deadline=None, max_examples=50)
-@given(data=st.data())
 def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
     """Property test: block indexing on rectilinear arrays matches numpy."""
     z, a = data.draw(rectilinear_arrays_st())
@@ -1695,14 +1627,6 @@ def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
             a[tuple(sel)],
             err_msg=f"dim={dim}, block={block_ix}",
         )
-
-
-@settings(deadline=None, max_examples=50)
-@given(data=st.data())
-def test_property_roundtrip_rectilinear(data: st.DataObject) -> None:
-    """Property test: write then read matches original data."""
-    z, a = data.draw(rectilinear_arrays_st())
-    np.testing.assert_array_equal(z[:], a)
 
 
 # ---------------------------------------------------------------------------
