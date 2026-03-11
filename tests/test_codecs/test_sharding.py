@@ -537,21 +537,21 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     sharded[:, :, :] = data
 
     # Mixed integer + list indexing
-    c = chunked[0:10, 0, [0, 1]]
-    s = sharded[0:10, 0, [0, 1]]
-    assert c.shape == s.shape == (10, 2), (
-        f"Expected (10, 2), got chunked={c.shape}, sharded={s.shape}"
+    c = chunked[0:10, 0, [0, 1]]  # type: ignore[index]
+    s = sharded[0:10, 0, [0, 1]]  # type: ignore[index]
+    assert c.shape == s.shape == (10, 2), (  # type: ignore[index]
+        f"Expected (10, 2), got chunked={c.shape}, sharded={s.shape}"  # type: ignore[union-attr]
     )
     np.testing.assert_array_equal(c, s)
 
     # Multiple integer axes
-    c2 = chunked[0, 0, [0, 1, 2]]
-    s2 = sharded[0, 0, [0, 1, 2]]
-    assert c2.shape == s2.shape == (3,)
+    c2 = chunked[0, 0, [0, 1, 2]]  # type: ignore[index]
+    s2 = sharded[0, 0, [0, 1, 2]]  # type: ignore[index]
+    assert c2.shape == s2.shape == (3,)  # type: ignore[union-attr]
     np.testing.assert_array_equal(c2, s2)
 
     # Slice + integer + slice
-    c3 = chunked[0:5, 1, 0:3]
-    s3 = sharded[0:5, 1, 0:3]
-    assert c3.shape == s3.shape == (5, 3)
+    c3 = chunked[0:5, 1, 0:3]  # type: ignore[index]
+    s3 = sharded[0:5, 1, 0:3]  # type: ignore[index]
+    assert c3.shape == s3.shape == (5, 3)  # type: ignore[union-attr]
     np.testing.assert_array_equal(c3, s3)
