@@ -1532,6 +1532,7 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
     array = np.zeros(shape, dtype=dtype)
     store = zarr.storage.MemoryStore()
 
+    # ruff: disable[FURB171]
     if f in [zarr.full, zarr.full_like]:
         kwargs["fill_value"] = 0
     if f in [zarr.array]:
@@ -1540,6 +1541,7 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
         kwargs["a"] = array
     if f in [zarr.create_array]:
         kwargs["store"] = store
+    # ruff: enable[FURB171]
 
     a = f(**kwargs)
     assert a.chunks == (500, 500)

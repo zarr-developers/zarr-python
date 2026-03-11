@@ -6,7 +6,7 @@ import multiprocessing as mp
 import pickle
 import re
 import sys
-from itertools import accumulate
+from itertools import accumulate, starmap
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
@@ -2132,12 +2132,12 @@ def test_chunk_grid_shape(
             zarr_format=zarr_format,
         )
 
-    chunk_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, chunk_shape, strict=True))
+    chunk_grid_shape = tuple(starmap(ceildiv, zip(array_shape, chunk_shape, strict=True)))
     if shard_shape is None:
         _shard_shape = chunk_shape
     else:
         _shard_shape = shard_shape
-    shard_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, _shard_shape, strict=True))
+    shard_grid_shape = tuple(starmap(ceildiv, zip(array_shape, _shard_shape, strict=True)))
     assert arr._chunk_grid_shape == chunk_grid_shape
     assert arr.cdata_shape == chunk_grid_shape
     assert arr.async_array.cdata_shape == chunk_grid_shape

@@ -208,7 +208,7 @@ def _iter_regions(
     # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
     ```
     """
-    grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
+    grid_shape = tuple(itertools.starmap(ceildiv, zip(domain_shape, region_shape, strict=True)))
     for grid_position in _iter_grid(
         grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
     ):
