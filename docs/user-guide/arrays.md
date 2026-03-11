@@ -236,6 +236,13 @@ print(z.info_complete())
 If you don't specify a compressor, by default Zarr uses the Zstandard
 compressor.
 
+To create an array without any compression, set `compressors=None`:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z_no_compress = zarr.create_array(store='data/example-uncompressed.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None)
+print(f"Compressors: {z_no_compress.compressors}")
+```
+
 In addition to Blosc and Zstandard, other compression libraries can also be used. For example,
 here is an array using Gzip compression, level 1:
 
