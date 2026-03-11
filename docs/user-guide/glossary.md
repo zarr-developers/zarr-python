@@ -20,6 +20,13 @@ When [sharding](#shard) is used, "chunk" refers to the inner chunks within each
 shard, because those are the compressible units. The chunks are the smallest units
 that can be read independently.
 
+!!! warning "Convention specific to zarr-python"
+    The use of "chunk" to mean the inner sub-chunk within a shard is a convention
+    adopted by zarr-python's `Array` API. In the Zarr V3 specification and in other
+    Zarr implementations, "chunk" may refer to the top-level grid cells (which
+    zarr-python calls "shards" when the sharding codec is used). Be aware of this
+    distinction when working across libraries.
+
 **API**: [`Array.chunks`][zarr.Array.chunks] returns the chunk shape. When
 sharding is used, this is the inner chunk shape.
 
