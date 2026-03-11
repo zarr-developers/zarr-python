@@ -44,7 +44,6 @@ from zarr.core.chunk_grids import (
     ChunkGrid,
     _auto_partition,
     normalize_chunks,
-    parse_chunk_grid,
 )
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -6044,9 +6043,6 @@ async def _resize(
     new_shape = parse_shapelike(new_shape)
     assert len(new_shape) == len(array.metadata.shape)
 
-    if not array.metadata.chunk_grid.is_regular:
-        raise ValueError("Resize is not supported for arrays with rectilinear chunk grids.")
-
     new_metadata = array.metadata.update_shape(new_shape)
 
     # ensure deletion is only run if array is shrinking as the delete_outside_chunks path is unbounded in memory
@@ -6055,8 +6051,7 @@ async def _resize(
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
         old_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords())
-        new_grid = parse_chunk_grid(array.metadata.chunk_grid, new_shape)
-        new_chunk_coords = set(new_grid.all_chunk_coords())
+        new_chunk_coords = set(new_metadata.chunk_grid.all_chunk_coords())
 
         async def _delete_key(key: str) -> None:
             await (array.store_path / key).delete()

@@ -33,6 +33,17 @@ from zarr.core.chunk_grids import (
     serialize_chunk_grid,
 )
 
+
+def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
+    """Extract the per-chunk edge lengths for *dim* from a ChunkGrid."""
+    d = grid.dimensions[dim]
+    if isinstance(d, FixedDimension):
+        return (d.size,) * d.nchunks
+    if isinstance(d, VaryingDimension):
+        return d.edges
+    raise TypeError(f"Unexpected dimension type: {type(d)}")
+
+
 # ---------------------------------------------------------------------------
 # FixedDimension
 # ---------------------------------------------------------------------------
@@ -444,9 +455,13 @@ class TestParseChunkGridValidation:
             parse_chunk_grid(data, (100, 50))
 
     def test_varying_dimension_extent_mismatch_on_chunkgrid_input(self) -> None:
-        """When passing a ChunkGrid directly, VaryingDimension extent is validated."""
+        """When passing a ChunkGrid directly, VaryingDimension extent is validated.
+
+        After resize, extent >= array_shape is allowed (last chunk extends past
+        boundary). But extent < array_shape is still an error.
+        """
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25]])
-        with pytest.raises(ValueError, match="does not match"):
+        with pytest.raises(ValueError, match="less than"):
             parse_chunk_grid(g, (100, 50))
 
 
@@ -1608,12 +1623,75 @@ def test_property_roundtrip_rectilinear(data: st.DataObject) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Bug #3: _resize with rectilinear grids
+# Resize / append for rectilinear grids
 # ---------------------------------------------------------------------------
 
 
-class TestResizeRectilinear:
-    def test_resize_regular_preserves_chunk_grid(self, tmp_path: Path) -> None:
+class TestUpdateShape:
+    """Unit tests for ChunkGrid.update_shape()."""
+
+    def test_no_change(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25]])
+        new_grid = grid.update_shape((60, 50))
+        assert _edges(new_grid, 0) == (10, 20, 30)
+        assert _edges(new_grid, 1) == (25, 25)
+
+    def test_grow_single_dim(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25]])
+        new_grid = grid.update_shape((80, 50))
+        assert _edges(new_grid, 0) == (10, 20, 30, 20)
+        assert _edges(new_grid, 1) == (25, 25)
+
+    def test_grow_multiple_dims(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20], [20, 30]])
+        # from (30, 50) to (45, 65)
+        new_grid = grid.update_shape((45, 65))
+        assert _edges(new_grid, 0) == (10, 20, 15)
+        assert _edges(new_grid, 1) == (20, 30, 15)
+
+    def test_shrink_single_dim(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30, 40], [25, 25]])
+        new_grid = grid.update_shape((35, 50))
+        # 10+20=30 < 35, 10+20+30=60 >= 35 → keep (10, 20, 30)
+        assert _edges(new_grid, 0) == (10, 20, 30)
+        assert _edges(new_grid, 1) == (25, 25)
+
+    def test_shrink_to_single_chunk(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25]])
+        new_grid = grid.update_shape((5, 50))
+        assert _edges(new_grid, 0) == (10,)
+        assert _edges(new_grid, 1) == (25, 25)
+
+    def test_shrink_multiple_dims(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 10, 15, 5], [20, 25, 15]])
+        # from (40, 60) to (25, 35)
+        new_grid = grid.update_shape((25, 35))
+        # dim 0: 10+10=20 < 25, 10+10+15=35 >= 25 → keep (10, 10, 15)
+        assert _edges(new_grid, 0) == (10, 10, 15)
+        # dim 1: 20 < 35, 20+25=45 >= 35 → keep (20, 25)
+        assert _edges(new_grid, 1) == (20, 25)
+
+    def test_dimension_mismatch_error(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20], [30, 40]])
+        with pytest.raises(ValueError, match="dimensions"):
+            grid.update_shape((30, 70, 100))
+
+    def test_boundary_cases(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30], [15, 25]])
+        # Grow to exact chunk boundary on dim 0, add 25 to dim 1
+        new_grid = grid.update_shape((60, 65))
+        assert _edges(new_grid, 0) == (10, 20, 30)  # no change (60 == sum)
+        assert _edges(new_grid, 1) == (15, 25, 25)  # added chunk of 25
+
+        # Shrink to exact chunk boundary
+        grid2 = ChunkGrid.from_rectilinear([[10, 20, 30], [15, 25, 10]])
+        new_grid2 = grid2.update_shape((30, 40))
+        # dim 0: 10+20=30 >= 30 → keep (10, 20)
+        assert _edges(new_grid2, 0) == (10, 20)
+        # dim 1: 15+25=40 >= 40 → keep (15, 25)
+        assert _edges(new_grid2, 1) == (15, 25)
+
+    def test_regular_preserves_extents(self, tmp_path: Path) -> None:
         """Resize a regular array — chunk_grid extents must match new shape."""
         z = zarr.create_array(
             store=tmp_path / "regular.zarr",
@@ -1624,20 +1702,196 @@ class TestResizeRectilinear:
         z[:] = np.arange(100, dtype="int32")
         z.resize(50)
         assert z.shape == (50,)
-        # The chunk grid's extent must agree with the new shape
         assert z.metadata.chunk_grid.dimensions[0].extent == 50
 
-    def test_resize_rectilinear_raises(self, tmp_path: Path) -> None:
-        """Resize should raise for rectilinear grids (not yet supported)."""
-        z = zarr.create_array(
-            store=tmp_path / "rect.zarr",
-            shape=(30,),
-            chunks=[[5, 10, 15]],
-            dtype="int32",
+
+class TestResizeRectilinear:
+    """End-to-end resize tests on rectilinear arrays."""
+
+    async def test_async_resize_grow(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = await zarr.api.asynchronous.create_array(
+            store=store,
+            shape=(30, 40),
+            chunks=[[10, 20], [20, 20]],
+            dtype="i4",
+            zarr_format=3,
         )
-        z[:] = np.arange(30, dtype="int32")
-        with pytest.raises((ValueError, NotImplementedError)):
-            z.resize(20)
+        data = np.arange(30 * 40, dtype="i4").reshape(30, 40)
+        await arr.setitem(slice(None), data)
+
+        await arr.resize((50, 60))
+        assert arr.shape == (50, 60)
+        assert _edges(arr.metadata.chunk_grid, 0) == (10, 20, 20)
+        assert _edges(arr.metadata.chunk_grid, 1) == (20, 20, 20)
+        result = await arr.getitem((slice(0, 30), slice(0, 40)))
+        np.testing.assert_array_equal(result, data)
+
+    async def test_async_resize_shrink(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = await zarr.api.asynchronous.create_array(
+            store=store,
+            shape=(60, 50),
+            chunks=[[10, 20, 30], [25, 25]],
+            dtype="f4",
+            zarr_format=3,
+        )
+        data = np.arange(60 * 50, dtype="f4").reshape(60, 50)
+        await arr.setitem(slice(None), data)
+
+        await arr.resize((25, 30))
+        assert arr.shape == (25, 30)
+        result = await arr.getitem(slice(None))
+        np.testing.assert_array_equal(result, data[:25, :30])
+
+    def test_sync_resize_grow(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = zarr.create_array(
+            store=store,
+            shape=(20, 30),
+            chunks=[[8, 12], [10, 20]],
+            dtype="u1",
+            zarr_format=3,
+        )
+        data = np.arange(20 * 30, dtype="u1").reshape(20, 30)
+        arr[:] = data
+        arr.resize((35, 45))
+        assert arr.shape == (35, 45)
+        np.testing.assert_array_equal(arr[:20, :30], data)
+
+    def test_sync_resize_shrink(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = zarr.create_array(
+            store=store,
+            shape=(40, 50),
+            chunks=[[10, 15, 15], [20, 30]],
+            dtype="i2",
+            zarr_format=3,
+        )
+        data = np.arange(40 * 50, dtype="i2").reshape(40, 50)
+        arr[:] = data
+        arr.resize((15, 30))
+        assert arr.shape == (15, 30)
+        np.testing.assert_array_equal(arr[:], data[:15, :30])
+
+
+class TestAppendRectilinear:
+    """End-to-end append tests on rectilinear arrays."""
+
+    async def test_append_first_axis(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = await zarr.api.asynchronous.create_array(
+            store=store,
+            shape=(30, 20),
+            chunks=[[10, 20], [10, 10]],
+            dtype="i4",
+            zarr_format=3,
+        )
+        initial = np.arange(30 * 20, dtype="i4").reshape(30, 20)
+        await arr.setitem(slice(None), initial)
+
+        append_data = np.arange(30 * 20, 45 * 20, dtype="i4").reshape(15, 20)
+        await arr.append(append_data, axis=0)
+        assert arr.shape == (45, 20)
+
+        result = await arr.getitem(slice(None))
+        np.testing.assert_array_equal(result, np.vstack([initial, append_data]))
+
+    async def test_append_second_axis(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = await zarr.api.asynchronous.create_array(
+            store=store,
+            shape=(20, 30),
+            chunks=[[10, 10], [10, 20]],
+            dtype="f4",
+            zarr_format=3,
+        )
+        initial = np.arange(20 * 30, dtype="f4").reshape(20, 30)
+        await arr.setitem(slice(None), initial)
+
+        append_data = np.arange(20 * 30, 20 * 45, dtype="f4").reshape(20, 15)
+        await arr.append(append_data, axis=1)
+        assert arr.shape == (20, 45)
+
+        result = await arr.getitem(slice(None))
+        np.testing.assert_array_equal(result, np.hstack([initial, append_data]))
+
+    def test_sync_append(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = zarr.create_array(
+            store=store,
+            shape=(20, 20),
+            chunks=[[8, 12], [7, 13]],
+            dtype="u2",
+            zarr_format=3,
+        )
+        initial = np.arange(20 * 20, dtype="u2").reshape(20, 20)
+        arr[:] = initial
+
+        append_data = np.arange(20 * 20, 25 * 20, dtype="u2").reshape(5, 20)
+        arr.append(append_data, axis=0)
+        assert arr.shape == (25, 20)
+        np.testing.assert_array_equal(arr[:20, :], initial)
+        np.testing.assert_array_equal(arr[20:, :], append_data)
+
+    async def test_multiple_appends(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = await zarr.api.asynchronous.create_array(
+            store=store,
+            shape=(10, 10),
+            chunks=[[3, 7], [4, 6]],
+            dtype="i4",
+            zarr_format=3,
+        )
+        initial = np.arange(10 * 10, dtype="i4").reshape(10, 10)
+        await arr.setitem(slice(None), initial)
+
+        all_data = [initial]
+        for i in range(3):
+            chunk = np.full((5, 10), i + 100, dtype="i4")
+            await arr.append(chunk, axis=0)
+            all_data.append(chunk)
+
+        assert arr.shape == (25, 10)
+        result = await arr.getitem(slice(None))
+        np.testing.assert_array_equal(result, np.vstack(all_data))
+
+    async def test_append_with_partial_edge_chunks(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = await zarr.api.asynchronous.create_array(
+            store=store,
+            shape=(25, 30),
+            chunks=[[10, 15], [12, 18]],
+            dtype="f8",
+            zarr_format=3,
+        )
+        initial = np.random.default_rng(42).random((25, 30))
+        await arr.setitem(slice(None), initial)
+
+        append_data = np.random.default_rng(43).random((10, 30))
+        await arr.append(append_data, axis=0)
+        assert arr.shape == (35, 30)
+
+        result = await arr.getitem(slice(None))
+        np.testing.assert_array_almost_equal(result, np.vstack([initial, append_data]))  # type: ignore[arg-type]
+
+    async def test_append_small_data(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = await zarr.api.asynchronous.create_array(
+            store=store,
+            shape=(20, 20),
+            chunks=[[8, 12], [7, 13]],
+            dtype="i4",
+            zarr_format=3,
+        )
+        data = np.arange(20 * 20, dtype="i4").reshape(20, 20)
+        await arr.setitem(slice(None), data)
+
+        small = np.full((3, 20), 999, dtype="i4")
+        await arr.append(small, axis=0)
+        assert arr.shape == (23, 20)
+        result = await arr.getitem((slice(20, 23), slice(None)))
+        np.testing.assert_array_equal(result, small)
 
 
 # ---------------------------------------------------------------------------

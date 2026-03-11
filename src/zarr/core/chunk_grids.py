@@ -350,6 +350,54 @@ class ChunkGrid:
     def get_nchunks(self) -> int:
         return reduce(operator.mul, (d.nchunks for d in self.dimensions), 1)
 
+    # -- Resize --
+
+    def update_shape(self, new_shape: tuple[int, ...]) -> ChunkGrid:
+        """Return a new ChunkGrid adjusted for *new_shape*.
+
+        For regular (FixedDimension) axes the extent is simply re-bound.
+        For varying (VaryingDimension) axes:
+        * **grow**: a new chunk whose size equals the growth is appended.
+        * **shrink**: trailing chunks that lie entirely beyond *new_shape* are
+          dropped; the last retained chunk is the one whose cumulative offset
+          first reaches or exceeds the new extent.
+        * **no change**: the dimension is kept as-is.
+
+        Raises
+        ------
+        ValueError
+            If *new_shape* has the wrong number of dimensions.
+        """
+        if len(new_shape) != self.ndim:
+            raise ValueError(
+                f"new_shape has {len(new_shape)} dimensions but "
+                f"chunk grid has {self.ndim} dimensions"
+            )
+        dims: list[DimensionGrid] = []
+        for dim, new_extent in zip(self.dimensions, new_shape, strict=True):
+            if isinstance(dim, FixedDimension):
+                dims.append(FixedDimension(size=dim.size, extent=new_extent))
+            elif isinstance(dim, VaryingDimension):
+                old_extent = dim.extent
+                if new_extent == old_extent:
+                    dims.append(dim)
+                elif new_extent > old_extent:
+                    expanded_edges = list(dim.edges) + [new_extent - old_extent]
+                    dims.append(VaryingDimension(expanded_edges))
+                else:
+                    # Shrink: keep chunks whose cumulative offset covers new_extent
+                    shrunk_edges: list[int] = []
+                    total = 0
+                    for edge in dim.edges:
+                        shrunk_edges.append(edge)
+                        total += edge
+                        if total >= new_extent:
+                            break
+                    dims.append(VaryingDimension(shrunk_edges))
+            else:
+                raise TypeError(f"Unexpected dimension type: {type(dim)}")
+        return ChunkGrid(dimensions=tuple(dims))
+
     # -- Serialization --
 
     @classmethod
@@ -414,10 +462,12 @@ def parse_chunk_grid(
             if isinstance(dim, FixedDimension):
                 dims.append(FixedDimension(size=dim.size, extent=extent))
             else:
-                # VaryingDimension has intrinsic extent — validate it matches
-                if dim.extent != extent:
+                # VaryingDimension has intrinsic extent (sum of edges).
+                # After resize/shrink the last chunk may extend past the array
+                # boundary, so extent >= array_shape is valid (like regular grids).
+                if dim.extent < extent:
                     raise ValueError(
-                        f"VaryingDimension extent {dim.extent} does not match "
+                        f"VaryingDimension extent {dim.extent} is less than "
                         f"array shape extent {extent} for dimension {len(dims)}"
                     )
                 dims.append(dim)
