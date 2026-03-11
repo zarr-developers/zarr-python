@@ -163,12 +163,19 @@ We currently support three configuration options for arrays: `write_empty_chunks
 | field | type | default | description |
 | - |     - | - | - |
 | `write_empty_chunks` | `bool` | `False` | Controls whether empty chunks are written to storage. See [Empty chunks](performance.md#empty-chunks).
-| `fill_missing_chunks` | `bool` | `True` | Controls whether missing chunks are filled with the array's fill value on read. If `False`, reading missing chunks raises a `MissingChunkError`.
+| `fill_missing_chunks` | `bool` | `True` | Controls whether missing chunks are filled with the array's fill value on read. If `False`, reading missing chunks raises a [`ChunkNotFoundError`][].
 | `order` | `Literal["C", "F"]` | `"C"` | The memory layout of arrays returned when reading data from the store.
+
+!!! info
+    The Zarr V3 spec states that readers should interpret an uninitialized chunk as containing the
+    array's `fill_value`. By default, Zarr-Python follows this behavior: a missing chunk is treated
+    as uninitialized and filled with the array's `fill_value`. However, if you know that all chunks
+    have been written (i.e., are initialized), you may want to treat a missing chunk as an error. Set
+    `fill_missing_chunks=False` to raise a [`ChunkNotFoundError`][] instead.
 
 !!! note
     `write_empty_chunks=False` skips writing chunks that are entirely the array's fill value.
-    If `fill_missing_chunks=False`, attempting to read these missing chunks will raise an error.
+    If `fill_missing_chunks=False`, attempting to read these missing chunks will raise a [`ChunkNotFoundError`][].
 
 You can specify the configuration when you create an array with the `config` keyword argument.
 `config` can be passed as either a `dict` or an `ArrayConfig` object.
