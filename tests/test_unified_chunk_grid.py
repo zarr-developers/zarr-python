@@ -560,11 +560,10 @@ class TestBackwardsCompat:
         assert g.is_regular
         assert g.chunk_shape == (10, 20)
 
-    def test_from_dict_regular_extent_zero(self) -> None:
-        """from_dict without array shape produces extent=0 sentinel."""
+    def test_from_dict_regular_extent_none(self) -> None:
+        """from_dict without array shape produces extent=None."""
         g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
-        # Extent is 0 (unknown) — use parse_chunk_grid() to bind real extents
-        assert all(d.extent == 0 for d in g.dimensions)
+        assert all(d.extent is None for d in g.dimensions)
 
 
 # ---------------------------------------------------------------------------
@@ -1919,20 +1918,25 @@ class TestAppendRectilinear:
 # ---------------------------------------------------------------------------
 
 
-class TestFromDictExtentSentinel:
+class TestFromDictExtentNone:
     def test_from_dict_regular_chunk_shape_preserved(self) -> None:
-        """from_dict preserves chunk_shape even with extent=0 sentinel."""
+        """from_dict preserves chunk_shape even without extent."""
         g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
         assert g.chunk_shape == (10, 20)
 
-    def test_from_dict_regular_is_chunk_grid(self) -> None:
-        """from_dict for regular grids returns a ChunkGrid."""
+    def test_from_dict_regular_extent_is_none(self) -> None:
+        """from_dict without array shape sets extent=None."""
         g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
-        assert isinstance(g, ChunkGrid)
-        assert g.is_regular
+        assert all(d.extent is None for d in g.dimensions)
+
+    def test_from_dict_regular_nchunks_raises(self) -> None:
+        """Extent-dependent operations raise on shapeless grids."""
+        g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
+        with pytest.raises(ValueError, match="extent is unknown"):
+            g.get_nchunks()
 
     def test_parse_chunk_grid_binds_extent(self) -> None:
-        """parse_chunk_grid resolves extent=0 from from_dict."""
+        """parse_chunk_grid resolves extent=None from from_dict."""
         g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
         resolved = parse_chunk_grid(g, (100, 200))
         assert resolved.shape == (10, 10)
