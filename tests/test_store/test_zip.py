@@ -152,3 +152,15 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert destination.exists()
         assert not origin.exists()
         assert np.array_equal(array[...], np.arange(10))
+
+    def test_lock_initialized_before_open(self, store_kwargs: dict[str, Any]) -> None:
+        """Regression test for https://github.com/zarr-developers/zarr-python/issues/3588.
+
+        ZipStore._lock must be available immediately after __init__, before _open() is called,
+        so that operations like get/set/exists can use it even on non-opened stores.
+        """
+        import threading
+
+        store = self.store_cls(**store_kwargs)
+        assert hasattr(store, "_lock"), "ZipStore._lock must be initialized in __init__"
+        assert isinstance(store._lock, type(threading.RLock())), "_lock must be an RLock"

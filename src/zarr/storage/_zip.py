@@ -87,12 +87,11 @@ class ZipStore(Store):
         self._zmode = mode
         self.compression = compression
         self.allowZip64 = allowZip64
+        self._lock = threading.RLock()
 
     def _sync_open(self) -> None:
         if self._is_open:
             raise ValueError("store is already open")
-
-        self._lock = threading.RLock()
 
         self._zf = zipfile.ZipFile(
             self.path,
