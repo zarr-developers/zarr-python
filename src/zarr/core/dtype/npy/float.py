@@ -207,9 +207,10 @@ class BaseFloat(ZDType[TFloatDType_co, TFloatScalar_co], HasEndianness, HasItemS
             # raises TypeError rather than a confusing ValueError.
             try:
                 self.to_native_dtype().type(data)
-                return True
             except (ValueError, OverflowError):
                 return False
+            else:
+                return True
         return isinstance(data, FloatLike)
 
     def _cast_scalar_unchecked(self, data: FloatLike) -> TFloatScalar_co:
