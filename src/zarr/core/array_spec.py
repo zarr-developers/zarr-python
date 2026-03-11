@@ -44,7 +44,7 @@ class ArrayConfig:
         If True, empty chunks will be written to the store.
     fill_missing_chunks : bool
         If True, missing chunks will be filled with the array's fill value on read.
-        If False, reading missing chunks will raise a ``MissingChunkError``.
+        If False, reading missing chunks will raise a ``ChunkNotFoundError``.
     """
 
     order: MemoryOrder

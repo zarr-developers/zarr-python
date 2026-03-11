@@ -270,7 +270,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     out[out_selection] = fill_value_or_default(chunk_spec)
                 else:
                     raise ChunkNotFoundError(
-                        f"chunk '{chunk_key}' at grid position {chunk_coords} not found in store."
+                        f"chunk '{chunk_key}' at grid position {chunk_coords} not found in store"
                     )
         else:
             chunk_bytes_batch = await concurrent_map(
