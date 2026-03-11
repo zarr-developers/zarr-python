@@ -419,7 +419,9 @@ class RectilinearChunkGrid(ChunkGrid):
         for dim in range(len(new_shape)):
             old_dim_length = sum(self.chunk_shapes[dim])
             new_dim_chunks: tuple[int, ...]
-            if new_shape[dim] == old_dim_length:
+            if new_shape[dim] == 0:
+                new_dim_chunks = ()
+            elif new_shape[dim] == old_dim_length:
                 new_dim_chunks = self.chunk_shapes[dim]  # no changes
 
             elif new_shape[dim] > old_dim_length:
@@ -589,13 +591,18 @@ class RectilinearChunkGrid(ChunkGrid):
         for axis, (coord, axis_chunks) in enumerate(
             zip(chunk_coord, self.chunk_shapes, strict=False)
         ):
+            if len(axis_chunks) == 0:
+                continue  # skip validation for zero-size dimensions
             if not (0 <= coord < len(axis_chunks)):
                 raise IndexError(
                     f"chunk_coord[{axis}] = {coord} is out of bounds [0, {len(axis_chunks)})"
                 )
 
         # Use cumulative sizes to get start position
-        return tuple(self._cumulative_sizes[axis][coord] for axis, coord in enumerate(chunk_coord))
+        return tuple(
+            0 if len(self.chunk_shapes[axis]) == 0 else self._cumulative_sizes[axis][coord]
+            for axis, coord in enumerate(chunk_coord)
+        )
 
     def get_chunk_shape(
         self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
@@ -636,6 +643,8 @@ class RectilinearChunkGrid(ChunkGrid):
         for axis, (coord, axis_chunks) in enumerate(
             zip(chunk_coord, self.chunk_shapes, strict=False)
         ):
+            if len(axis_chunks) == 0:
+                continue  # skip validation for zero-size dimensions
             if not (0 <= coord < len(axis_chunks)):
                 raise IndexError(
                     f"chunk_coord[{axis}] = {coord} is out of bounds [0, {len(axis_chunks)})"
@@ -643,7 +652,7 @@ class RectilinearChunkGrid(ChunkGrid):
 
         # Get shape directly from chunk_shapes
         return tuple(
-            axis_chunks[coord]
+            0 if len(axis_chunks) == 0 else axis_chunks[coord]
             for axis_chunks, coord in zip(self.chunk_shapes, chunk_coord, strict=False)
         )
 
@@ -753,12 +762,17 @@ class RectilinearChunkGrid(ChunkGrid):
 
         # Validate array index is in bounds
         for axis, (idx, size) in enumerate(zip(array_index, array_shape, strict=False)):
+            if size == 0:
+                continue  # skip validation for zero-size dimensions
             if not (0 <= idx < size):
                 raise IndexError(f"array_index[{axis}] = {idx} is out of bounds [0, {size})")
 
         # Use binary search in cumulative sizes to find chunk coordinate
         result = []
         for axis, idx in enumerate(array_index):
+            if array_shape[axis] == 0:
+                result.append(0)  # no chunks along zero-size dimensions
+                continue
             cumsum = self._cumulative_sizes[axis]
             # bisect_right gives us the chunk index + 1, so subtract 1
             chunk_idx = bisect.bisect_right(cumsum, idx) - 1
