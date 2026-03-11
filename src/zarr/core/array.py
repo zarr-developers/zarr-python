@@ -6242,7 +6242,7 @@ async def _resize(
     if delete_outside_chunks and not only_growing:
         # Remove all chunks outside of the new shape
         old_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords(array.metadata.shape))
-        new_chunk_coords = set(array.metadata.chunk_grid.all_chunk_coords(new_shape))
+        new_chunk_coords = set(new_metadata.chunk_grid.all_chunk_coords(new_shape))
 
         async def _delete_key(key: str) -> None:
             await (array.store_path / key).delete()
