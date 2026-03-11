@@ -947,6 +947,49 @@ class TestEdgeCases:
 
     # -- ChunkGrid.__getitem__ validation --
 
+    def test_getitem_int_1d_regular(self) -> None:
+        """Integer indexing works for 1-d regular grids."""
+        g = ChunkGrid.from_regular((100,), (10,))
+        spec = g[0]
+        assert spec is not None
+        assert spec.shape == (10,)
+        assert spec.slices == (slice(0, 10),)
+        # Boundary chunk
+        spec = g[9]
+        assert spec is not None
+        assert spec.shape == (10,)
+
+    def test_getitem_int_1d_rectilinear(self) -> None:
+        """Integer indexing works for 1-d rectilinear grids."""
+        g = ChunkGrid.from_rectilinear([[20, 30, 50]])
+        spec = g[0]
+        assert spec is not None
+        assert spec.shape == (20,)
+        spec = g[1]
+        assert spec is not None
+        assert spec.shape == (30,)
+        spec = g[2]
+        assert spec is not None
+        assert spec.shape == (50,)
+
+    def test_getitem_int_0d_raises(self) -> None:
+        """Integer indexing raises ValueError for 0-d grids (ndim mismatch)."""
+        g = ChunkGrid.from_regular((), ())
+        with pytest.raises(ValueError, match="Expected 0 coordinate.*got 1"):
+            g[0]
+
+    def test_getitem_int_2d_raises(self) -> None:
+        """Integer indexing raises ValueError for 2-d grids (ndim mismatch)."""
+        g = ChunkGrid.from_regular((100, 200), (10, 20))
+        with pytest.raises(ValueError, match="Expected 2 coordinate.*got 1"):
+            g[0]
+
+    def test_getitem_int_oob_returns_none(self) -> None:
+        """Integer OOB returns None for 1-d grid."""
+        g = ChunkGrid.from_regular((100,), (10,))
+        assert g[10] is None
+        assert g[99] is None
+
     def test_getitem_negative_index_returns_none(self) -> None:
         g = ChunkGrid.from_regular((100,), (10,))
         assert g[(-1,)] is None

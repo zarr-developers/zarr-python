@@ -318,8 +318,15 @@ class ChunkGrid:
 
     # -- Collection interface --
 
-    def __getitem__(self, coords: tuple[int, ...]) -> ChunkSpec | None:
+    def __getitem__(self, coords: int | tuple[int, ...]) -> ChunkSpec | None:
         """Return the ChunkSpec for a chunk at the given grid position, or None if OOB."""
+        if isinstance(coords, int):
+            coords = (coords,)
+        if len(coords) != self.ndim:
+            raise ValueError(
+                f"Expected {self.ndim} coordinate(s) for a {self.ndim}-d chunk grid, "
+                f"got {len(coords)}."
+            )
         slices: list[slice] = []
         codec_shape: list[int] = []
         for dim, ix in zip(self.dimensions, coords, strict=True):
