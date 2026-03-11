@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
+import sys
+from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING, NamedTuple, TypeVar
 from urllib.parse import urlparse
 
@@ -65,6 +66,12 @@ def parse_store_url(url: str) -> ParsedStoreUrl:
     >>> parse_store_url("/local/path")
     ParsedStoreUrl(scheme='', name=None, path='/local/path', raw='/local/path')
     """
+    # On Windows, bare paths like "C:\foo" or "C:/foo" cause urlparse to
+    # misinterpret the drive letter as a URL scheme.  Detect this early and
+    # return a local-path result without going through urlparse.
+    if sys.platform == "win32" and PureWindowsPath(url).drive:
+        return ParsedStoreUrl(scheme="", name=None, path=url, raw=url)
+
     parsed = urlparse(url)
 
     # netloc is the "host" part (store name for memory://, bucket for s3://, etc.)
