@@ -233,22 +233,41 @@ def rectilinear_chunks(draw: st.DrawFn, *, shape: tuple[int, ...]) -> list[list[
     for size in shape:
         assert size > 0
         if size > 1:
-            # Limit max chunks to 20 to avoid performance issues with large chunk grids
-            max_chunks = min(size - 1, 20)
-            nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
-            dividers = sorted(
-                draw(
-                    st.lists(
-                        st.integers(min_value=1, max_value=size - 1),
-                        min_size=nchunks - 1,
-                        max_size=nchunks - 1,
-                        unique=True,
+            mode = draw(st.sampled_from(["expanded", "rle"]))
+            if mode == "expanded":
+                event("rectilinear expanded")
+                # Limit max chunks to 20 to avoid performance issues with large chunk grids
+                max_chunks = min(size - 1, 20)
+                nchunks = draw(st.integers(min_value=1, max_value=max_chunks))
+                dividers = sorted(
+                    draw(
+                        st.lists(
+                            st.integers(min_value=1, max_value=size - 1),
+                            min_size=nchunks - 1,
+                            max_size=nchunks - 1,
+                            unique=True,
+                        )
                     )
                 )
-            )
-            chunk_shapes.append(
-                [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
-            )
+                chunk_shapes.append(
+                    [a - b for a, b in zip(dividers + [size], [0] + dividers, strict=False)]
+                )
+            else:
+                # RLE mode: uniform chunks with optional remainder
+                max_chunk_size = min(size, 20)
+                chunk_size = draw(st.integers(min_value=1, max_value=max_chunk_size))
+                n_full = size // chunk_size
+                remainder = size % chunk_size
+                chunks_list = [chunk_size] * n_full
+                if remainder > 0:
+                    chunks_list.append(remainder)
+                # Optionally shuffle to create non-contiguous duplicate patterns
+                if draw(st.booleans()):
+                    event("rectilinear rle shuffled")
+                    chunks_list = draw(st.permutations(chunks_list))
+                else:
+                    event("rectilinear rle")
+                chunk_shapes.append(list(chunks_list))
         else:
             chunk_shapes.append([1])
     return chunk_shapes

@@ -24,6 +24,7 @@ from zarr.testing.strategies import (
     array_metadata,
     arrays,
     basic_indices,
+    chunk_grids,
     numpy_arrays,
     orthogonal_indices,
     simple_arrays,
@@ -373,3 +374,14 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
     elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
         assert asdict_dict["fill_value"] == -9223372036854775808
+
+
+@given(
+    shape=npst.array_shapes(min_dims=1, max_dims=4, min_side=1, max_side=100),
+    data=st.data(),
+)
+@settings(max_examples=200)
+def test_chunk_grid_roundtrip(shape: tuple[int, ...], data: st.DataObject) -> None:
+    grid = data.draw(chunk_grids(shape=shape))
+    roundtripped = type(grid).from_dict(grid.to_dict())
+    assert roundtripped == grid
