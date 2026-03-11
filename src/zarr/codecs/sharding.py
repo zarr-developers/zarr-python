@@ -439,6 +439,8 @@ class ShardingCodec(
                     chunk_selection,
                     out_selection,
                     is_complete_shard,
+                    "/".join(str(c) for c in chunk_coords),
+                    chunk_coords,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
@@ -511,6 +513,8 @@ class ShardingCodec(
                     chunk_selection,
                     out_selection,
                     is_complete_shard,
+                    "/".join(str(c) for c in chunk_coords),
+                    chunk_coords,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],

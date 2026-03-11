@@ -5608,6 +5608,8 @@ async def _get_selection(
                     chunk_selection,
                     out_selection,
                     is_complete_chunk,
+                    metadata.encode_chunk_key(chunk_coords),
+                    chunk_coords,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
             ],

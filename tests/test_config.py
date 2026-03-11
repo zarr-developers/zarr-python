@@ -23,7 +23,7 @@ from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
-from zarr.errors import MissingChunkError, ZarrUserWarning
+from zarr.errors import ChunkNotFoundError, ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -345,7 +345,7 @@ def test_config_fill_missing_chunks(store: Store, kwargs: dict[str, Any]) -> Non
 
     # with fill_missing_chunks=False, reading missing chunks raises an error
     with config.set({"array.fill_missing_chunks": False}):
-        with pytest.raises(MissingChunkError):
+        with pytest.raises(ChunkNotFoundError):
             zarr.open_array(store)[:]
 
     # after writing data, all chunks exist and no error is raised
@@ -381,7 +381,7 @@ def test_config_fill_missing_chunks_sharded_inner(store: Store) -> None:
         assert np.array_equal(result, expected)
 
         # second shard is entirely missing: raises an error
-        with pytest.raises(MissingChunkError):
+        with pytest.raises(ChunkNotFoundError):
             a[4:]
 
 
@@ -404,7 +404,7 @@ def test_config_fill_missing_chunks_write_empty_chunks(store: Store) -> None:
 
     # overwrite with fill_value: chunks are dropped by write_empty_chunks=False
     arr[:] = 0
-    with pytest.raises(MissingChunkError):
+    with pytest.raises(ChunkNotFoundError):
         arr[:]
 
     # with write_empty_chunks=True, chunks are kept and no error is raised
