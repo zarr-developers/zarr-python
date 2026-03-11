@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, TypeGuard, TypeVar
+from typing import TYPE_CHECKING, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -32,6 +32,7 @@ __all__ = [
     "CodecInput",
     "CodecOutput",
     "CodecPipeline",
+    "SupportsSyncCodec",
 ]
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
@@ -57,6 +58,23 @@ CodecJSON_V3 = str | NamedConfig[str, Mapping[str, object]]
 # This covers v2 and v3
 CodecJSON = str | Mapping[str, object]
 """The widest type of JSON-like input that could specify a codec."""
+
+
+@runtime_checkable
+class SupportsSyncCodec(Protocol):
+    """Protocol for codecs that support synchronous encode/decode.
+
+    Codecs implementing this protocol provide ``_decode_sync`` and ``_encode_sync``
+    methods that perform encoding/decoding without requiring an async event loop.
+    """
+
+    def _decode_sync(
+        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
+    ) -> NDBuffer | Buffer: ...
+
+    def _encode_sync(
+        self, chunk_data: NDBuffer | Buffer, chunk_spec: ArraySpec
+    ) -> NDBuffer | Buffer | None: ...
 
 
 class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):

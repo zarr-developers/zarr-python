@@ -40,6 +40,7 @@ from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
+from zarr.testing.store import LatencyStore
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -58,8 +59,8 @@ if TYPE_CHECKING:
 
 
 async def parse_store(
-    store: Literal["local", "memory", "fsspec", "zip"], path: str
-) -> LocalStore | MemoryStore | FsspecStore | ZipStore:
+    store: Literal["local", "memory", "fsspec", "zip", "memory_get_latency"], path: str
+) -> LocalStore | MemoryStore | FsspecStore | ZipStore | LatencyStore:
     if store == "local":
         return await LocalStore.open(path)
     if store == "memory":
@@ -68,6 +69,8 @@ async def parse_store(
         return await FsspecStore.open(url=path)
     if store == "zip":
         return await ZipStore.open(path + "/zarr.zip", mode="w")
+    if store == "memory_get_latency":
+        return LatencyStore(MemoryStore(), get_latency=0.0001, set_latency=0)
     raise AssertionError
 
 

@@ -161,6 +161,10 @@ class DataTypeRegistry:
             raise ValueError(msg)
         matched: list[ZDType[TBaseDType, TBaseScalar]] = []
         for val in self.contents.values():
+            # DataTypeValidationError means "this dtype doesn't match me", which is
+            # expected and suppressed. Other exceptions (e.g. ValueError for a dtype
+            # that matches the type but has an invalid configuration) are propagated
+            # to the caller.
             with contextlib.suppress(DataTypeValidationError):
                 matched.append(val.from_native_dtype(dtype))
         if len(matched) == 1:

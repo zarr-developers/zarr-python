@@ -91,8 +91,8 @@ print(group)
 
 ## Explicit Store Creation
 
-In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
-built-in store: [`zarr.storage.LocalStore`][], [`zarr.storage.FsspecStore`][],
+In some cases, it may be helpful to create a store instance directly. Zarr-Python offers
+built-in stores: [`zarr.storage.LocalStore`][], [`zarr.storage.FsspecStore`][],
 [`zarr.storage.ZipStore`][], [`zarr.storage.MemoryStore`][], and [`zarr.storage.ObjectStore`][].
 
 ### Local Store
@@ -138,7 +138,7 @@ print(group)
 ```
 
 The type of filesystem (e.g. S3, https, etc..) is inferred from the scheme of the url (e.g. s3 for "**s3**://noaa-nwm-retro-v2-zarr-pds").
-In case a specific filesystem is needed, one can explicitly create it. For example to create a S3 filesystem:
+In case a specific filesystem is needed, one can explicitly create it. For example to create an S3 filesystem:
 
 ```python exec="true" session="storage" source="above" result="ansi"
 # Note: requires s3fs to be installed

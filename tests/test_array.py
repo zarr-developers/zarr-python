@@ -6,7 +6,7 @@ import multiprocessing as mp
 import pickle
 import re
 import sys
-from itertools import accumulate
+from itertools import accumulate, starmap
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
@@ -44,6 +44,7 @@ from zarr.core.array import (
     default_filters_v2,
     default_serializer_v3,
 )
+from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar, default_buffer_prototype
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.chunk_key_encodings import ChunkKeyEncodingParams
@@ -781,6 +782,73 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_resize_growing_skips_chunk_enumeration(
+    store: MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    """Growing an array should not enumerate chunk coords for deletion (#3650 mitigation)."""
+    from zarr.core.chunk_grids import RegularChunkGrid
+
+    z = zarr.create(
+        shape=(10, 10),
+        chunks=(5, 5),
+        dtype="i4",
+        fill_value=0,
+        store=store,
+        zarr_format=zarr_format,
+    )
+    z[:] = np.ones((10, 10), dtype="i4")
+
+    # growth only - ensure no chunk coords are enumerated
+    with mock.patch.object(
+        RegularChunkGrid,
+        "all_chunk_coords",
+        wraps=z.metadata.chunk_grid.all_chunk_coords,
+    ) as mock_coords:
+        z.resize((20, 20))
+        mock_coords.assert_not_called()
+
+    assert z.shape == (20, 20)
+    np.testing.assert_array_equal(np.ones((10, 10), dtype="i4"), z[:10, :10])
+    np.testing.assert_array_equal(np.zeros((10, 10), dtype="i4"), z[10:, 10:])
+
+    # shrink - ensure no regression of behaviour
+    with mock.patch.object(
+        RegularChunkGrid,
+        "all_chunk_coords",
+        wraps=z.metadata.chunk_grid.all_chunk_coords,
+    ) as mock_coords:
+        z.resize((5, 5))
+        assert mock_coords.call_count > 0
+
+    assert z.shape == (5, 5)
+    np.testing.assert_array_equal(np.ones((5, 5), dtype="i4"), z[:])
+
+    # mixed: grow dim 0, shrink dim 1 - ensure deletion path runs
+    z2 = zarr.create(
+        shape=(10, 10),
+        chunks=(5, 5),
+        dtype="i4",
+        fill_value=0,
+        store=store,
+        zarr_format=zarr_format,
+        overwrite=True,
+    )
+    z2[:] = np.ones((10, 10), dtype="i4")
+
+    with mock.patch.object(
+        RegularChunkGrid,
+        "all_chunk_coords",
+        wraps=z2.metadata.chunk_grid.all_chunk_coords,
+    ) as mock_coords:
+        z2.resize((20, 5))
+        assert mock_coords.call_count > 0
+
+    assert z2.shape == (20, 5)
+    np.testing.assert_array_equal(np.ones((10, 5), dtype="i4"), z2[:10, :])
+    np.testing.assert_array_equal(np.zeros((10, 5), dtype="i4"), z2[10:, :])
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_append_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105)
     z = zarr.create(shape=a.shape, chunks=10, dtype=a.dtype, store=store, zarr_format=zarr_format)
@@ -889,7 +957,7 @@ def test_write_empty_chunks_behavior(
         config={"write_empty_chunks": write_empty_chunks},
     )
 
-    assert arr.async_array._config.write_empty_chunks == write_empty_chunks
+    assert arr.async_array.config.write_empty_chunks == write_empty_chunks
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
@@ -1562,7 +1630,7 @@ class TestCreateArray:
         """
         with zarr.config.set({"array.write_empty_chunks": write_empty_chunks}):
             arr = await create_array(store, shape=(2, 2), dtype="i4")
-            assert arr._config.write_empty_chunks == write_empty_chunks
+            assert arr.config.write_empty_chunks == write_empty_chunks
 
     @staticmethod
     @pytest.mark.parametrize("path", [None, "", "/", "/foo", "foo", "foo/bar"])
@@ -1996,12 +2064,12 @@ def test_chunk_grid_shape(
             zarr_format=zarr_format,
         )
 
-    chunk_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, chunk_shape, strict=True))
+    chunk_grid_shape = tuple(starmap(ceildiv, zip(array_shape, chunk_shape, strict=True)))
     if shard_shape is None:
         _shard_shape = chunk_shape
     else:
         _shard_shape = shard_shape
-    shard_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, _shard_shape, strict=True))
+    shard_grid_shape = tuple(starmap(ceildiv, zip(array_shape, _shard_shape, strict=True)))
     assert arr._chunk_grid_shape == chunk_grid_shape
     assert arr.cdata_shape == chunk_grid_shape
     assert arr.async_array.cdata_shape == chunk_grid_shape
@@ -2194,3 +2262,40 @@ def test_create_array_with_data_num_gets(
     # one get for the metadata and one per shard.
     # Note: we don't actually need one get per shard, but this is the current behavior
     assert store.counter["get"] == 1 + num_shards
+
+
+@pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])
+def test_with_config(config: ArrayConfigParams) -> None:
+    """
+    Test that `AsyncArray.with_config` and `Array.with_config` create a copy of the source
+    array with a new runtime configuration.
+    """
+    # the config we start with
+    source_config: ArrayConfigParams = {"write_empty_chunks": False, "order": "F"}
+    source_array = zarr.create_array({}, shape=(1,), dtype="uint8", config=source_config)
+
+    new_async_array_config_dict = source_array._async_array.with_config(config).config.to_dict()
+    new_array_config_dict = source_array.with_config(config).config.to_dict()
+
+    for key in source_config:
+        if key in config:
+            assert new_async_array_config_dict[key] == config[key]  # type: ignore[literal-required]
+            assert new_array_config_dict[key] == config[key]  # type: ignore[literal-required]
+        else:
+            assert new_async_array_config_dict[key] == source_config[key]  # type: ignore[literal-required]
+            assert new_array_config_dict[key] == source_config[key]  # type: ignore[literal-required]
+
+
+def test_with_config_polymorphism() -> None:
+    """
+    Test that `AsyncArray.with_config` and `Array.with_config` accept dicts and full array config
+    objects.
+    """
+    source_config: ArrayConfig = ArrayConfig.from_dict({"write_empty_chunks": False, "order": "F"})
+    source_config_dict = source_config.to_dict()
+
+    arr = zarr.create_array({}, shape=(1,), dtype="uint8")
+    arr_source_config = arr.with_config(source_config)
+    arr_source_config_dict = arr.with_config(source_config_dict)
+
+    assert arr_source_config.config == arr_source_config_dict.config
