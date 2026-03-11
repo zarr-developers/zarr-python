@@ -389,6 +389,89 @@ class TestSerialization:
             serialize_chunk_grid(g, "hexagonal")
 
 
+class TestSpecCompliance:
+    """Tests for compliance with the rectilinear chunk grid extension spec
+    (zarr-extensions PR #25)."""
+
+    def test_kind_inline_required_on_deserialize(self) -> None:
+        """Deserialization requires kind: 'inline'."""
+        data: dict[str, Any] = {
+            "name": "rectilinear",
+            "configuration": {"chunk_shapes": [[10, 20], [15, 15]]},
+        }
+        with pytest.raises(ValueError, match="requires a 'kind' field"):
+            ChunkGrid.from_dict(data)
+
+    def test_kind_unknown_rejected(self) -> None:
+        data: dict[str, Any] = {
+            "name": "rectilinear",
+            "configuration": {"kind": "reference", "chunk_shapes": [[10, 20], [15, 15]]},
+        }
+        with pytest.raises(ValueError, match="Unsupported rectilinear chunk grid kind"):
+            ChunkGrid.from_dict(data)
+
+    def test_kind_inline_in_serialized_output(self) -> None:
+        """Serialization includes kind: 'inline'."""
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25]])
+        d = serialize_chunk_grid(g, "rectilinear")
+        config = d["configuration"]
+        assert isinstance(config, dict)
+        assert config["kind"] == "inline"
+
+    def test_integer_shorthand_per_dimension(self) -> None:
+        """A bare integer in chunk_shapes means repeat until >= extent."""
+        data: dict[str, Any] = {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [4, [1, 2, 3]]},
+        }
+        g = parse_chunk_grid(data, (6, 6))
+        # 4 repeated: ceildiv(6, 4) = 2 → [4, 4]
+        assert _edges(g, 0) == (4, 4)
+        assert _edges(g, 1) == (1, 2, 3)
+
+    def test_mixed_rle_and_bare_integers(self) -> None:
+        """An array can mix bare integers and [value, count] RLE pairs."""
+        data: dict[str, Any] = {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [[[1, 3], 3]]},
+        }
+        # [[1, 3], 3] → [1, 1, 1, 3] → sum = 6
+        g = parse_chunk_grid(data, (6,))
+        assert _edges(g, 0) == (1, 1, 1, 3)
+
+    def test_overflow_chunks_allowed(self) -> None:
+        """Edge sum >= extent is valid (overflow chunks permitted)."""
+        data: dict[str, Any] = {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [[4, 4, 4]]},
+        }
+        # sum = 12 > extent = 6 — allowed per spec
+        g = parse_chunk_grid(data, (6,))
+        assert _edges(g, 0) == (4, 4, 4)
+
+    def test_spec_example(self) -> None:
+        """The full example from the spec README."""
+        data: dict[str, Any] = {
+            "name": "rectilinear",
+            "configuration": {
+                "kind": "inline",
+                "chunk_shapes": [
+                    4,  # integer shorthand → [4, 4]
+                    [1, 2, 3],  # explicit list
+                    [[4, 2]],  # pure RLE → [4, 4]
+                    [[1, 3], 3],  # mixed RLE + bare → [1, 1, 1, 3]
+                    [4, 4, 4],  # explicit list with overflow
+                ],
+            },
+        }
+        g = parse_chunk_grid(data, (6, 6, 6, 6, 6))
+        assert _edges(g, 0) == (4, 4)
+        assert _edges(g, 1) == (1, 2, 3)
+        assert _edges(g, 2) == (4, 4)
+        assert _edges(g, 3) == (1, 1, 1, 3)
+        assert _edges(g, 4) == (4, 4, 4)
+
+
 class TestParseChunkGridValidation:
     def test_varying_extent_mismatch_raises(self) -> None:
         from zarr.core.chunk_grids import parse_chunk_grid
@@ -410,7 +493,7 @@ class TestParseChunkGridValidation:
         """sum(edges) must match the array shape for each dimension."""
         data: dict[str, Any] = {
             "name": "rectilinear",
-            "configuration": {"chunk_shapes": [[10, 20, 30], [25, 25]]},
+            "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [25, 25]]},
         }
         # sum([10,20,30])=60, sum([25,25])=50 — array shape (100, 50) mismatches dim 0
         with pytest.raises(ValueError, match="sum to 60 but array shape extent is 100"):
@@ -419,7 +502,7 @@ class TestParseChunkGridValidation:
     def test_rectilinear_extent_mismatch_second_dim(self) -> None:
         data: dict[str, Any] = {
             "name": "rectilinear",
-            "configuration": {"chunk_shapes": [[50, 50], [10, 20]]},
+            "configuration": {"kind": "inline", "chunk_shapes": [[50, 50], [10, 20]]},
         }
         # dim 0 OK (100), dim 1: sum([10,20])=30 != 50
         with pytest.raises(ValueError, match="dimension 1 sum to 30 but array shape extent is 50"):
@@ -428,7 +511,7 @@ class TestParseChunkGridValidation:
     def test_rectilinear_extent_match_passes(self) -> None:
         data: dict[str, Any] = {
             "name": "rectilinear",
-            "configuration": {"chunk_shapes": [[10, 20, 30], [25, 25]]},
+            "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [25, 25]]},
         }
         g = parse_chunk_grid(data, (60, 50))
         assert g.shape == (3, 2)
@@ -436,7 +519,7 @@ class TestParseChunkGridValidation:
     def test_rectilinear_ndim_mismatch_raises(self) -> None:
         data: dict[str, Any] = {
             "name": "rectilinear",
-            "configuration": {"chunk_shapes": [[10, 20], [25, 25]]},
+            "configuration": {"kind": "inline", "chunk_shapes": [[10, 20], [25, 25]]},
         }
         with pytest.raises(ValueError, match="2 dimensions but array shape has 3"):
             parse_chunk_grid(data, (30, 50, 100))
@@ -445,7 +528,7 @@ class TestParseChunkGridValidation:
         """RLE-encoded edges are expanded before validation."""
         data: dict[str, Any] = {
             "name": "rectilinear",
-            "configuration": {"chunk_shapes": [[[10, 5]], [[25, 2]]]},
+            "configuration": {"kind": "inline", "chunk_shapes": [[[10, 5]], [[25, 2]]]},
         }
         # sum = 50 and 50 — match (50, 50)
         g = parse_chunk_grid(data, (50, 50))
@@ -655,7 +738,7 @@ class TestEndToEnd:
             "shape": [100, 100],
             "chunk_grid": {
                 "name": "rectilinear",
-                "configuration": {"chunk_shapes": [[[50, 2]], [[25, 4]]]},
+                "configuration": {"kind": "inline", "chunk_shapes": [[[50, 2]], [[25, 4]]]},
             },
             "chunk_key_encoding": {"name": "default"},
             "data_type": "float32",

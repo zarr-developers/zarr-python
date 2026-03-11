@@ -173,14 +173,22 @@ class ChunkSpec:
 # ---------------------------------------------------------------------------
 
 
-def _expand_rle(data: list[list[int]]) -> list[int]:
-    """Expand run-length encoded chunk sizes: [[size, count], ...] -> [size, size, ...]"""
+def _expand_rle(data: Sequence[list[int] | int]) -> list[int]:
+    """Expand a mixed array of bare integers and RLE pairs.
+
+    Per the rectilinear chunk grid spec, each element can be:
+    - a bare integer (an explicit edge length)
+    - a two-element array ``[value, count]`` (run-length encoded)
+    """
     result: list[int] = []
     for item in data:
-        if len(item) != 2:
-            raise ValueError(f"RLE entries must be [size, count], got {item}")
-        size, count = item
-        result.extend([size] * count)
+        if isinstance(item, int):
+            result.append(item)
+        elif len(item) == 2:
+            size, count = item
+            result.extend([size] * count)
+        else:
+            raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
     return result
 
 
@@ -200,6 +208,61 @@ def _compress_rle(sizes: Sequence[int]) -> list[list[int]]:
             count = 1
     result.append([current, count])
     return result
+
+
+def _validate_rectilinear_kind(configuration: dict[str, JSON]) -> None:
+    """Validate the ``kind`` field of a rectilinear chunk grid configuration.
+
+    The spec requires ``kind: "inline"``.
+    """
+    kind = configuration.get("kind")
+    if kind is None:
+        raise ValueError(
+            "Rectilinear chunk grid configuration requires a 'kind' field. "
+            "Only 'inline' is currently supported."
+        )
+    if kind != "inline":
+        raise ValueError(
+            f"Unsupported rectilinear chunk grid kind: {kind!r}. "
+            f"Only 'inline' is currently supported."
+        )
+
+
+def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[int]:
+    """Decode a single dimension's chunk edge specification per the rectilinear spec.
+
+    Per the spec, each element of ``chunk_shapes`` can be:
+    - a bare integer ``m``: repeat ``m`` until the sum >= array extent
+    - an array of bare integers and/or ``[value, count]`` RLE pairs
+
+    Parameters
+    ----------
+    dim_spec
+        The raw JSON value for one dimension's chunk edges.
+    array_extent
+        Array length along this dimension. Required when *dim_spec* is a bare
+        integer (to know how many repetitions). May be ``None`` when the extent
+        is not yet known (e.g. ``from_dict`` without array shape).
+    """
+    if isinstance(dim_spec, int):
+        if array_extent is None:
+            raise ValueError(
+                "Integer chunk_shapes shorthand requires array shape to expand. "
+                "Use parse_chunk_grid() instead of ChunkGrid.from_dict()."
+            )
+        if dim_spec <= 0:
+            raise ValueError(f"Integer chunk edge length must be > 0, got {dim_spec}")
+        n = ceildiv(array_extent, dim_spec)
+        return [dim_spec] * n
+    if isinstance(dim_spec, list):
+        # Check if the list contains any sub-lists (RLE pairs) or is all bare ints
+        has_sublists = any(isinstance(e, list) for e in dim_spec)
+        if has_sublists:
+            return _expand_rle(dim_spec)
+        else:
+            # All bare integers — explicit edge lengths
+            return [int(e) for e in dim_spec]
+    raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
 
 
 # ---------------------------------------------------------------------------
@@ -424,19 +487,13 @@ class ChunkGrid:
             return RegularChunkGrid(chunk_shape=tuple(int(cast("int", s)) for s in chunk_shape_raw))
 
         if name_parsed == "rectilinear":
+            _validate_rectilinear_kind(configuration_parsed)
             chunk_shapes_raw = configuration_parsed.get("chunk_shapes")
             if chunk_shapes_raw is None:
                 raise ValueError("Rectilinear chunk grid requires 'chunk_shapes' configuration")
             if not isinstance(chunk_shapes_raw, Sequence):
                 raise TypeError(f"chunk_shapes must be a sequence, got {type(chunk_shapes_raw)}")
-            decoded: list[list[int]] = []
-            for dim_spec in chunk_shapes_raw:
-                if isinstance(dim_spec, list) and dim_spec and isinstance(dim_spec[0], list):
-                    decoded.append(_expand_rle(dim_spec))
-                elif isinstance(dim_spec, list):
-                    decoded.append(dim_spec)
-                else:
-                    raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
+            decoded = [_decode_dim_spec(dim_spec) for dim_spec in chunk_shapes_raw]
             return cls.from_rectilinear(decoded)
 
         raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
@@ -484,30 +541,26 @@ def parse_chunk_grid(
         return ChunkGrid.from_regular(array_shape, cast("Sequence[int]", chunk_shape_raw))
 
     if name_parsed == "rectilinear":
+        _validate_rectilinear_kind(configuration_parsed)
         chunk_shapes_raw = configuration_parsed.get("chunk_shapes")
         if chunk_shapes_raw is None:
             raise ValueError("Rectilinear chunk grid requires 'chunk_shapes' configuration")
         if not isinstance(chunk_shapes_raw, Sequence):
             raise TypeError(f"chunk_shapes must be a sequence, got {type(chunk_shapes_raw)}")
-        decoded: list[list[int]] = []
-        for dim_spec in chunk_shapes_raw:
-            if isinstance(dim_spec, list) and dim_spec and isinstance(dim_spec[0], list):
-                decoded.append(_expand_rle(dim_spec))
-            elif isinstance(dim_spec, list):
-                decoded.append(dim_spec)
-            else:
-                raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
-        if len(decoded) != len(array_shape):
+        if len(chunk_shapes_raw) != len(array_shape):
             raise ValueError(
-                f"chunk_shapes has {len(decoded)} dimensions but array shape "
+                f"chunk_shapes has {len(chunk_shapes_raw)} dimensions but array shape "
                 f"has {len(array_shape)} dimensions"
             )
+        decoded: list[list[int]] = []
+        for dim_spec, extent in zip(chunk_shapes_raw, array_shape, strict=True):
+            decoded.append(_decode_dim_spec(dim_spec, array_extent=extent))
         for i, (edges, extent) in enumerate(zip(decoded, array_shape, strict=True)):
             edge_sum = sum(edges)
-            if edge_sum != extent:
+            if edge_sum < extent:
                 raise ValueError(
                     f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
-                    f"but array shape extent is {extent}"
+                    f"but array shape extent is {extent} (edge sum must be >= extent)"
                 )
         return ChunkGrid.from_rectilinear(decoded)
 
@@ -557,7 +610,7 @@ def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
                     chunk_shapes.append(edges)
         return {
             "name": "rectilinear",
-            "configuration": {"chunk_shapes": chunk_shapes},
+            "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
         }
 
     raise ValueError(f"Unknown chunk grid name for serialization: {name!r}")
