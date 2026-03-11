@@ -39,36 +39,22 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class FixedDimension:
     """Uniform chunk size. Boundary chunks contain less data but are
-    encoded at full size by the codec pipeline.
-
-    ``extent`` is ``None`` when the array shape is not yet known (e.g. when
-    constructed via ``ChunkGrid.from_dict`` without array shape).  Calling any
-    method that depends on extent will raise ``ValueError`` in that case.
-    """
+    encoded at full size by the codec pipeline."""
 
     size: int  # chunk edge length (>= 0)
-    extent: int | None  # array dimension length, or None if unknown
+    extent: int  # array dimension length
 
     def __post_init__(self) -> None:
         if self.size < 0:
             raise ValueError(f"FixedDimension size must be >= 0, got {self.size}")
-        if self.extent is not None and self.extent < 0:
+        if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
-
-    def _require_extent(self) -> int:
-        if self.extent is None:
-            raise ValueError(
-                "FixedDimension extent is unknown. "
-                "Use parse_chunk_grid() to bind array shape before calling this method."
-            )
-        return self.extent
 
     @property
     def nchunks(self) -> int:
-        extent = self._require_extent()
         if self.size == 0:
-            return 1 if extent == 0 else 0
-        return ceildiv(extent, self.size)
+            return 1 if self.extent == 0 else 0
+        return ceildiv(self.extent, self.size)
 
     def index_to_chunk(self, idx: int) -> int:
         if self.size == 0:
@@ -84,10 +70,9 @@ class FixedDimension:
 
     def data_size(self, chunk_ix: int) -> int:
         """Valid data region within the buffer — clipped at extent."""
-        extent = self._require_extent()
         if self.size == 0:
             return 0
-        return max(0, min(self.size, extent - chunk_ix * self.size))
+        return max(0, min(self.size, self.extent - chunk_ix * self.size))
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
         if self.size == 0:
@@ -146,7 +131,7 @@ class DimensionGrid(Protocol):
     @property
     def nchunks(self) -> int: ...
     @property
-    def extent(self) -> int | None: ...
+    def extent(self) -> int: ...
     def index_to_chunk(self, idx: int) -> int: ...
     def chunk_offset(self, chunk_ix: int) -> int: ...
     def chunk_size(self, chunk_ix: int) -> int: ...
@@ -206,21 +191,27 @@ def _expand_rle(data: Sequence[list[int] | int]) -> list[int]:
     return result
 
 
-def _compress_rle(sizes: Sequence[int]) -> list[list[int]]:
-    """Compress chunk sizes to RLE: [10,10,10,20,20] -> [[10,3],[20,2]]"""
+def _compress_rle(sizes: Sequence[int]) -> list[list[int] | int]:
+    """Compress chunk sizes to mixed RLE format per the rectilinear spec.
+
+    Runs of length > 1 are emitted as ``[value, count]`` pairs; runs of
+    length 1 are emitted as bare integers::
+
+        [10, 10, 10, 5] -> [[10, 3], 5]
+    """
     if not sizes:
         return []
-    result: list[list[int]] = []
+    result: list[list[int] | int] = []
     current = sizes[0]
     count = 1
     for s in sizes[1:]:
         if s == current:
             count += 1
         else:
-            result.append([current, count])
+            result.append([current, count] if count > 1 else current)
             current = s
             count = 1
-    result.append([current, count])
+    result.append([current, count] if count > 1 else current)
     return result
 
 
@@ -255,15 +246,11 @@ def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[in
         The raw JSON value for one dimension's chunk edges.
     array_extent
         Array length along this dimension. Required when *dim_spec* is a bare
-        integer (to know how many repetitions). May be ``None`` when the extent
-        is not yet known (e.g. ``from_dict`` without array shape).
+        integer (to know how many repetitions).
     """
     if isinstance(dim_spec, int):
         if array_extent is None:
-            raise ValueError(
-                "Integer chunk_shapes shorthand requires array shape to expand. "
-                "Use parse_chunk_grid() instead of ChunkGrid.from_dict()."
-            )
+            raise ValueError("Integer chunk_shapes shorthand requires array shape to expand.")
         if dim_spec <= 0:
             raise ValueError(f"Integer chunk edge length must be > 0, got {dim_spec}")
         n = ceildiv(array_extent, dim_spec)
@@ -475,51 +462,19 @@ class ChunkGrid:
                 raise TypeError(f"Unexpected dimension type: {type(dim)}")
         return ChunkGrid(dimensions=tuple(dims))
 
-    # -- Serialization --
-
-    @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
-        if isinstance(data, ChunkGrid):
-            return data
-
-        name_parsed, configuration_parsed = parse_named_configuration(data)
-
-        if name_parsed == "regular":
-            chunk_shape_raw = configuration_parsed.get("chunk_shape")
-            if chunk_shape_raw is None:
-                raise ValueError("Regular chunk grid requires 'chunk_shape' configuration")
-            if not isinstance(chunk_shape_raw, Sequence):
-                raise TypeError(f"chunk_shape must be a sequence, got {type(chunk_shape_raw)}")
-            chunk_shape = tuple(int(cast("int", s)) for s in chunk_shape_raw)
-            # Without array shape we cannot compute extents; use extent=None.
-            # Callers that need extent should use parse_chunk_grid().
-            return cls(dimensions=tuple(FixedDimension(size=s, extent=None) for s in chunk_shape))
-
-        if name_parsed == "rectilinear":
-            _validate_rectilinear_kind(configuration_parsed)
-            chunk_shapes_raw = configuration_parsed.get("chunk_shapes")
-            if chunk_shapes_raw is None:
-                raise ValueError("Rectilinear chunk grid requires 'chunk_shapes' configuration")
-            if not isinstance(chunk_shapes_raw, Sequence):
-                raise TypeError(f"chunk_shapes must be a sequence, got {type(chunk_shapes_raw)}")
-            decoded = [_decode_dim_spec(dim_spec) for dim_spec in chunk_shapes_raw]
-            return cls.from_rectilinear(decoded)
-
-        raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
-
     # ChunkGrid does not serialize itself. The format choice ("regular" vs
-    # "rectilinear") belongs to the metadata layer. Use serialize_chunk_grid().
+    # "rectilinear") belongs to the metadata layer. Use serialize_chunk_grid()
+    # for output and parse_chunk_grid() for input.
 
 
 def parse_chunk_grid(
     data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any],
     array_shape: tuple[int, ...],
 ) -> ChunkGrid:
-    """Create a ChunkGrid from a metadata dict, injecting array shape as extent.
+    """Create a ChunkGrid from a metadata dict or existing grid, binding array shape.
 
     This is the primary entry point for constructing a ChunkGrid from serialized
-    metadata. Unlike ``ChunkGrid.from_dict``, this always produces a grid with
-    correct extent values.
+    metadata. It always produces a grid with correct extent values.
     """
     if isinstance(data, ChunkGrid):
         # Re-bind extent if array_shape differs from what's stored
@@ -598,25 +553,28 @@ def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
         chunk_shapes: list[Any] = []
         for dim in grid.dimensions:
             if isinstance(dim, FixedDimension):
-                # Produce RLE directly without allocating a full edge list.
-                extent = dim._require_extent()
+                # Produce the most compact spec representation.
                 n = dim.nchunks
                 if n == 0:
                     chunk_shapes.append([])
                 else:
-                    last_data = extent - (n - 1) * dim.size
+                    last_data = dim.extent - (n - 1) * dim.size
                     if last_data == dim.size:
-                        chunk_shapes.append([[dim.size, n]])
+                        # All chunks uniform → integer shorthand
+                        chunk_shapes.append(dim.size)
+                    elif n == 1:
+                        # Single boundary chunk → bare integer
+                        chunk_shapes.append([last_data])
+                    elif n == 2:
+                        # One full chunk + one boundary → bare integers
+                        chunk_shapes.append([dim.size, last_data])
                     else:
-                        rle: list[list[int]] = []
-                        if n > 1:
-                            rle.append([dim.size, n - 1])
-                        rle.append([last_data, 1])
-                        chunk_shapes.append(rle)
+                        # RLE for the uniform run + bare int for boundary
+                        chunk_shapes.append([[dim.size, n - 1], last_data])
             elif isinstance(dim, VaryingDimension):
                 edges = list(dim.edges)
                 rle = _compress_rle(edges)
-                if sum(count for _, count in rle) == len(edges) and len(rle) < len(edges):
+                if len(rle) < len(edges):
                     chunk_shapes.append(rle)
                 else:
                     chunk_shapes.append(edges)

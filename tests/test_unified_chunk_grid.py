@@ -19,8 +19,6 @@ import zarr
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from zarr.core.common import JSON
-
 from zarr.core.chunk_grids import (
     ChunkGrid,
     ChunkSpec,
@@ -302,7 +300,9 @@ class TestRLE:
 
     def test_compress(self) -> None:
         assert _compress_rle([10, 10, 10]) == [[10, 3]]
-        assert _compress_rle([10, 10, 20]) == [[10, 2], [20, 1]]
+        assert _compress_rle([10, 10, 20]) == [[10, 2], 20]
+        assert _compress_rle([5]) == [5]
+        assert _compress_rle([10, 20, 30]) == [10, 20, 30]
 
     def test_roundtrip(self) -> None:
         original = [10, 10, 10, 20, 20, 30]
@@ -323,7 +323,7 @@ class TestSerialization:
         config = d["configuration"]
         assert isinstance(config, dict)
         assert tuple(config["chunk_shape"]) == (10, 20)
-        g2 = ChunkGrid.from_dict(d)
+        g2 = parse_chunk_grid(d, (100, 200))
         assert g2.is_regular
         assert g2.chunk_shape == (10, 20)
 
@@ -331,7 +331,7 @@ class TestSerialization:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]])
         d = serialize_chunk_grid(g, "rectilinear")
         assert d["name"] == "rectilinear"
-        g2 = ChunkGrid.from_dict(d)
+        g2 = parse_chunk_grid(d, (60, 100))
         assert not g2.is_regular
         # Verify the reconstructed grid has same dimensions
         spec0 = g2[(0, 0)]
@@ -363,19 +363,19 @@ class TestSerialization:
         assert isinstance(config, dict)
         chunk_shapes = config["chunk_shapes"]
         assert isinstance(chunk_shapes, list)
-        assert chunk_shapes[0] == [[100, 3], [50, 1]]
+        assert chunk_shapes[0] == [[100, 3], 50]
 
     def test_json_roundtrip(self) -> None:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
         d = serialize_chunk_grid(g, "rectilinear")
         json_str = json.dumps(d)
         d2 = json.loads(json_str)
-        g2 = ChunkGrid.from_dict(d2)
+        g2 = parse_chunk_grid(d2, (60, 100))
         assert g2.shape == (3, 2)
 
     def test_unknown_name_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown chunk grid"):
-            ChunkGrid.from_dict({"name": "hexagonal", "configuration": {}})
+            parse_chunk_grid({"name": "hexagonal", "configuration": {}}, (10,))
 
     def test_serialize_non_regular_as_regular_raises(self) -> None:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]])
@@ -399,7 +399,7 @@ class TestSpecCompliance:
             "configuration": {"chunk_shapes": [[10, 20], [15, 15]]},
         }
         with pytest.raises(ValueError, match="requires a 'kind' field"):
-            ChunkGrid.from_dict(data)
+            parse_chunk_grid(data, (30, 30))
 
     def test_kind_unknown_rejected(self) -> None:
         data: dict[str, Any] = {
@@ -407,7 +407,7 @@ class TestSpecCompliance:
             "configuration": {"kind": "reference", "chunk_shapes": [[10, 20], [15, 15]]},
         }
         with pytest.raises(ValueError, match="Unsupported rectilinear chunk grid kind"):
-            ChunkGrid.from_dict(data)
+            parse_chunk_grid(data, (30, 30))
 
     def test_kind_inline_in_serialized_output(self) -> None:
         """Serialization includes kind: 'inline'."""
@@ -548,25 +548,6 @@ class TestParseChunkGridValidation:
 
 
 # ---------------------------------------------------------------------------
-# Backwards compatibility
-# ---------------------------------------------------------------------------
-
-
-class TestBackwardsCompat:
-    def test_from_dict_regular(self) -> None:
-        d: dict[str, JSON] = {"name": "regular", "configuration": {"chunk_shape": [10, 20]}}
-        g = ChunkGrid.from_dict(d)
-        assert isinstance(g, ChunkGrid)
-        assert g.is_regular
-        assert g.chunk_shape == (10, 20)
-
-    def test_from_dict_regular_extent_none(self) -> None:
-        """from_dict without array shape produces extent=None."""
-        g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
-        assert all(d.extent is None for d in g.dimensions)
-
-
-# ---------------------------------------------------------------------------
 # Indexing with rectilinear grids
 # ---------------------------------------------------------------------------
 
@@ -676,7 +657,7 @@ class TestEndToEnd:
         """Verify metadata round-trips through JSON."""
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
         d = serialize_chunk_grid(g, "rectilinear")
-        g2 = ChunkGrid.from_dict(d)
+        g2 = parse_chunk_grid(d, (60, 100))
         assert g2.shape == g.shape
         for coord in g.all_chunk_coords():
             orig_spec = g[coord]
@@ -928,7 +909,7 @@ class TestEdgeCases:
         assert sum(expanded) == 95  # extent preserved
         assert expanded[-1] == 5  # boundary chunk
 
-        g2 = ChunkGrid.from_dict(d)
+        g2 = parse_chunk_grid(d, (60, 95))
         assert g2.shape == g.shape
         # Round-tripped grid should have correct extent
         for coord in g.all_chunk_coords():
@@ -947,7 +928,7 @@ class TestEdgeCases:
             )
         )
         d = serialize_chunk_grid(g, "rectilinear")
-        g2 = ChunkGrid.from_dict(d)
+        g2 = parse_chunk_grid(d, (30, 100))
         assert g2.shape == g.shape
         # All chunks should be uniform
         for coord in g.all_chunk_coords():
@@ -1912,32 +1893,11 @@ class TestAppendRectilinear:
         result = await arr.getitem((slice(20, 23), slice(None)))
         np.testing.assert_array_equal(result, small)
 
-
-# ---------------------------------------------------------------------------
-# from_dict extent=0 sentinel
-# ---------------------------------------------------------------------------
-
-
-class TestFromDictExtentNone:
-    def test_from_dict_regular_chunk_shape_preserved(self) -> None:
-        """from_dict preserves chunk_shape even without extent."""
-        g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
+    def test_parse_chunk_grid_regular_from_dict(self) -> None:
+        """parse_chunk_grid constructs a regular grid from a metadata dict."""
+        d: dict[str, Any] = {"name": "regular", "configuration": {"chunk_shape": [10, 20]}}
+        g = parse_chunk_grid(d, (100, 200))
+        assert g.is_regular
         assert g.chunk_shape == (10, 20)
-
-    def test_from_dict_regular_extent_is_none(self) -> None:
-        """from_dict without array shape sets extent=None."""
-        g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
-        assert all(d.extent is None for d in g.dimensions)
-
-    def test_from_dict_regular_nchunks_raises(self) -> None:
-        """Extent-dependent operations raise on shapeless grids."""
-        g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
-        with pytest.raises(ValueError, match="extent is unknown"):
-            g.get_nchunks()
-
-    def test_parse_chunk_grid_binds_extent(self) -> None:
-        """parse_chunk_grid resolves extent=None from from_dict."""
-        g = ChunkGrid.from_dict({"name": "regular", "configuration": {"chunk_shape": [10, 20]}})
-        resolved = parse_chunk_grid(g, (100, 200))
-        assert resolved.shape == (10, 10)
-        assert resolved.get_nchunks() == 100
+        assert g.shape == (10, 10)
+        assert g.get_nchunks() == 100
