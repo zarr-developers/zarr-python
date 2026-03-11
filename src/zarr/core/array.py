@@ -1235,12 +1235,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def cdata_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of independently compressible units along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
 
         Returns
         -------
         tuple[int, ...]
-            The shape of the chunk grid for this array.
+            The number of independently compressible units along each dimension.
         """
         return self._chunk_grid_shape
 
@@ -2399,7 +2401,9 @@ class Array(Generic[T_ArrayMetadata]):
     @property
     def cdata_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of independently compressible units along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
         """
         return self.async_array._chunk_grid_shape
 
