@@ -615,7 +615,7 @@ def complex_chunked_arrays(
     draw: st.DrawFn,
     *,
     stores: st.SearchStrategy[StoreLike] = stores,
-) -> AnyArray:
+) -> tuple[np.ndarray, AnyArray]:
     store = draw(stores, label="store")
     chunks = draw(complex_chunk_grids(), label="chunk grid")
     assert isinstance(chunks, RectilinearChunkGrid)
@@ -658,4 +658,4 @@ def complex_chunked_arrays(
     assert a.shards is None  # We don't use sharding with RectilinearChunkGrid
 
     a[:] = nparray
-    return a
+    return nparray, a
