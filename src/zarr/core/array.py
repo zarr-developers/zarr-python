@@ -1932,6 +1932,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
+        chunk_shape = self.chunks if self.metadata.chunk_grid.is_regular else None
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=self._zdtype,
@@ -1939,7 +1940,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _shape=self.shape,
             _order=self.order,
             _shard_shape=self.shards,
-            _chunk_shape=self.chunks,
+            _chunk_shape=chunk_shape,
             _read_only=self.read_only,
             _compressors=self.compressors,
             _filters=self.filters,

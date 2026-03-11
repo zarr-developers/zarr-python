@@ -1706,6 +1706,27 @@ def test_property_roundtrip_rectilinear(data: st.DataObject) -> None:
 
 
 # ---------------------------------------------------------------------------
+# .info display for rectilinear grids
+# ---------------------------------------------------------------------------
+
+
+def test_info_display_rectilinear() -> None:
+    """Array.info should not crash for rectilinear grids."""
+    store = zarr.storage.MemoryStore()
+    arr = zarr.create_array(
+        store=store,
+        shape=(30,),
+        chunks=[[10, 20]],
+        dtype="i4",
+        zarr_format=3,
+    )
+    info = arr.info
+    text = repr(info)
+    assert "<variable>" in text
+    assert "Array" in text
+
+
+# ---------------------------------------------------------------------------
 # Resize / append for rectilinear grids
 # ---------------------------------------------------------------------------
 
