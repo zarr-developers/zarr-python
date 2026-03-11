@@ -38,7 +38,7 @@ grid.
 
 ### Shard
 
-A storage object that contains multiple [chunks](#chunk). Sharding reduces the
+A storage object that contains one or more [chunks](#chunk). Sharding reduces the
 number of objects in a [store](#store) by grouping chunks together, which
 improves performance on file systems and object storage.
 
