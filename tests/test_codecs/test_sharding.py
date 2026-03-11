@@ -539,7 +539,7 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     # Mixed integer + list indexing
     c = chunked[0:10, 0, [0, 1]]  # type: ignore[index]
     s = sharded[0:10, 0, [0, 1]]  # type: ignore[index]
-    assert c.shape == s.shape == (10, 2), (  # type: ignore[index]
+    assert c.shape == s.shape == (10, 2), (  # type: ignore[union-attr]
         f"Expected (10, 2), got chunked={c.shape}, sharded={s.shape}"  # type: ignore[union-attr]
     )
     np.testing.assert_array_equal(c, s)
@@ -551,7 +551,7 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     np.testing.assert_array_equal(c2, s2)
 
     # Slice + integer + slice
-    c3 = chunked[0:5, 1, 0:3]  # type: ignore[index]
-    s3 = sharded[0:5, 1, 0:3]  # type: ignore[index]
+    c3 = chunked[0:5, 1, 0:3]
+    s3 = sharded[0:5, 1, 0:3]
     assert c3.shape == s3.shape == (5, 3)  # type: ignore[union-attr]
     np.testing.assert_array_equal(c3, s3)
