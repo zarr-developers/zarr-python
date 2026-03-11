@@ -1054,8 +1054,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """Returns the chunk shape of the Array.
         If sharding is used the inner chunk shape is returned.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Only defined for arrays using a regular chunk grid.
+        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
 
         Returns
         -------
@@ -1069,8 +1069,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """Returns the shard shape of the Array.
         Returns None if sharding is not used.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Only defined for arrays using a regular chunk grid.
+        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
 
         Returns
         -------
@@ -2275,8 +2275,8 @@ class Array(Generic[T_ArrayMetadata]):
         """Returns a tuple of integers describing the length of each dimension of a chunk of the array.
         If sharding is used the inner chunk shape is returned.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Only defined for arrays using a regular chunk grid.
+        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
 
         Returns
         -------
@@ -2290,8 +2290,8 @@ class Array(Generic[T_ArrayMetadata]):
         """Returns a tuple of integers describing the length of each dimension of a shard of the array.
         Returns None if sharding is not used.
 
-        Only defined for arrays using using `RegularChunkGrid`.
-        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+        Only defined for arrays using a regular chunk grid.
+        If array uses a rectilinear chunk grid, `NotImplementedError` is raised.
 
         Returns
         -------

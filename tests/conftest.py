@@ -22,7 +22,7 @@ from zarr.core.array import (
     _parse_chunk_encoding_v3,
     _parse_chunk_key_encoding,
 )
-from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
+from zarr.core.chunk_grids import ChunkGrid, _auto_partition
 from zarr.core.common import (
     JSON,
     DimensionNames,
@@ -379,7 +379,7 @@ def create_array_metadata(
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=dtype_parsed,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=ChunkGrid.from_regular(chunk_shape_parsed, shard_shape_parsed),
             )
             codecs_out = (sharding_codec,)
             chunks_out = shard_shape_parsed
@@ -390,7 +390,7 @@ def create_array_metadata(
         return ArrayV3Metadata(
             shape=shape_parsed,
             data_type=dtype_parsed,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunks_out),
+            chunk_grid={"name": "regular", "configuration": {"chunk_shape": chunks_out}},
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value,
             codecs=codecs_out,

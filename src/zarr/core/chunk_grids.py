@@ -27,7 +27,6 @@ from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import Self
 
     from zarr.core.array import ShardsLike
 
@@ -466,11 +465,6 @@ class ChunkGrid:
     @classmethod
     def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
         if isinstance(data, ChunkGrid):
-            if isinstance(data, RegularChunkGrid):
-                return ChunkGrid.from_regular(
-                    tuple(d.extent for d in data.dimensions),
-                    data.chunk_shape,
-                )
             return data
 
         name_parsed, configuration_parsed = parse_named_configuration(data)
@@ -481,10 +475,10 @@ class ChunkGrid:
                 raise ValueError("Regular chunk grid requires 'chunk_shape' configuration")
             if not isinstance(chunk_shape_raw, Sequence):
                 raise TypeError(f"chunk_shape must be a sequence, got {type(chunk_shape_raw)}")
-            # Without array shape, return a RegularChunkGrid that preserves
-            # chunk_shape but raises on extent-dependent operations.
-            # Use parse_chunk_grid() when array shape is available.
-            return RegularChunkGrid(chunk_shape=tuple(int(cast("int", s)) for s in chunk_shape_raw))
+            chunk_shape = tuple(int(cast("int", s)) for s in chunk_shape_raw)
+            # Without array shape we cannot compute extents. Use a sentinel
+            # extent of 0; callers that need extent should use parse_chunk_grid().
+            return cls(dimensions=tuple(FixedDimension(size=s, extent=0) for s in chunk_shape))
 
         if name_parsed == "rectilinear":
             _validate_rectilinear_kind(configuration_parsed)
@@ -626,54 +620,6 @@ def _infer_chunk_grid_name(
         return name
     # ChunkGrid passed directly — infer from structure
     return "regular" if grid.is_regular else "rectilinear"
-
-
-# ---------------------------------------------------------------------------
-# Backwards-compatible alias
-# ---------------------------------------------------------------------------
-
-
-class RegularChunkGrid(ChunkGrid):
-    """Backwards-compatible wrapper. Prefer ChunkGrid.from_regular() for new code."""
-
-    _chunk_shape: tuple[int, ...]
-
-    def __init__(self, *, chunk_shape: ShapeLike) -> None:
-        chunk_shape_parsed = parse_shapelike(chunk_shape)
-        # Without array shape, use extent=0 as placeholder
-        dims = tuple(FixedDimension(size=s, extent=0) for s in chunk_shape_parsed)
-        super().__init__(dimensions=dims)
-        object.__setattr__(self, "_chunk_shape", chunk_shape_parsed)
-
-    @property
-    def chunk_shape(self) -> tuple[int, ...]:
-        """Return the stored chunk shape (extent may be 0 as placeholder)."""
-        return self._chunk_shape
-
-    @classmethod
-    def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "regular")
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
-
-    def _raise_no_extent(self) -> None:
-        raise ValueError(
-            "RegularChunkGrid does not have array shape information. "
-            "Use ChunkGrid.from_regular(array_shape, chunk_shape) or "
-            "parse_chunk_grid() to create a grid with extent."
-        )
-
-    @property
-    def shape(self) -> tuple[int, ...]:
-        self._raise_no_extent()
-        raise AssertionError  # unreachable, for mypy
-
-    def all_chunk_coords(self) -> Iterator[tuple[int, ...]]:
-        self._raise_no_extent()
-        raise AssertionError  # unreachable, for mypy
-
-    def get_nchunks(self) -> int:
-        self._raise_no_extent()
-        raise AssertionError  # unreachable, for mypy
 
 
 # ---------------------------------------------------------------------------
