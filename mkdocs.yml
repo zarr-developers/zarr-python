@@ -75,6 +75,8 @@ nav:
         - Creation sub-module: api/zarr/deprecated/creation.md
   - release-notes.md
   - contributing.md
+  - Design documents:
+    - design/chunk-grid.md
 watch:
   - src/zarr
   - docs

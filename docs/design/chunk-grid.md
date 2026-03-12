@@ -1,8 +1,9 @@
-# Prospectus: Unified Chunk Grid Design for zarr-python
+# Unified Chunk Grid
 
-Version: 3
+Version: 4
 
 **Related:**
+
 - [#3750](https://github.com/zarr-developers/zarr-python/issues/3750) (single ChunkGrid proposal)
 - [#3534](https://github.com/zarr-developers/zarr-python/pull/3534) (rectilinear implementation)
 - [#3735](https://github.com/zarr-developers/zarr-python/pull/3735) (chunk grid module/registry)
@@ -33,7 +34,7 @@ A registry-based plugin system adds complexity without clear benefit.
 1. **A chunk grid is a concrete arrangement of chunks.** Not an abstract tiling pattern — the specific partition of a specific array. The grid stores enough information to answer any question about any chunk without external parameters.
 2. **One implementation, multiple serialization forms.** A single `ChunkGrid` class handles all chunking logic. The serialization format (`"regular"` vs `"rectilinear"`) is chosen by the metadata layer, not the grid.
 3. **No chunk grid registry.** Simple name-based dispatch in `parse_chunk_grid()`.
-4. **Fixed vs Varying per dimension.** `FixedDimension(size, extent)` for uniform chunks; `VaryingDimension(edges, cumulative)` for per-chunk edge lengths with precomputed prefix sums. Avoids expanding regular dimensions into lists of identical values.
+4. **Fixed vs Varying per dimension.** `FixedDimension(size, extent)` for uniform chunks; `VaryingDimension(edges, extent)` for per-chunk edge lengths with precomputed prefix sums. Avoids expanding regular dimensions into lists of identical values.
 5. **Transparent transitions.** Operations like `resize()` can move an array from regular to rectilinear chunking.
 
 ### Internal representation
@@ -43,11 +44,16 @@ A registry-based plugin system adds complexity without clear benefit.
 class FixedDimension:
     """Uniform chunk size. Boundary chunks contain less data but are
     encoded at full size by the codec pipeline."""
-    size: int            # chunk edge length (> 0)
+    size: int            # chunk edge length (>= 0)
     extent: int          # array dimension length
+
+    def __post_init__(self) -> None:
+        # validates size >= 0 and extent >= 0
 
     @property
     def nchunks(self) -> int:
+        if self.size == 0:
+            return 1 if self.extent == 0 else 0
         return ceildiv(self.extent, self.size)
 
     def index_to_chunk(self, idx: int) -> int:
@@ -57,23 +63,31 @@ class FixedDimension:
     def chunk_size(self, chunk_ix: int) -> int:
         return self.size                                       # always uniform
     def data_size(self, chunk_ix: int) -> int:
-        return min(self.size, self.extent - chunk_ix * self.size)  # clipped at extent
+        return max(0, min(self.size, self.extent - chunk_ix * self.size))
     def indices_to_chunks(self, indices: NDArray) -> NDArray:
         return indices // self.size
+    def with_extent(self, new_extent: int) -> FixedDimension:
+        return FixedDimension(size=self.size, extent=new_extent)
+    def resize(self, new_extent: int) -> FixedDimension:
+        return FixedDimension(size=self.size, extent=new_extent)
 
 @dataclass(frozen=True)
 class VaryingDimension:
-    """Explicit per-chunk sizes. No padding — each edge length is
-    both the codec size and the data size."""
+    """Explicit per-chunk sizes. The last chunk may extend past the array
+    extent, in which case data_size clips to the valid region while
+    chunk_size returns the full edge length for codec processing."""
     edges: tuple[int, ...]           # per-chunk edge lengths (all > 0)
     cumulative: tuple[int, ...]      # prefix sums for O(log n) lookup
+    extent: int                      # array dimension length (may be < sum(edges))
+
+    def __init__(self, edges: Sequence[int], extent: int) -> None:
+        # validates edges non-empty, all > 0, extent >= 0, extent <= sum(edges)
+        # computes cumulative via itertools.accumulate
+        # uses object.__setattr__ for frozen dataclass
 
     @property
     def nchunks(self) -> int:
         return len(self.edges)
-    @property
-    def extent(self) -> int:
-        return self.cumulative[-1]
 
     def index_to_chunk(self, idx: int) -> int:
         return bisect.bisect_right(self.cumulative, idx)
@@ -82,12 +96,19 @@ class VaryingDimension:
     def chunk_size(self, chunk_ix: int) -> int:
         return self.edges[chunk_ix]
     def data_size(self, chunk_ix: int) -> int:
-        return self.edges[chunk_ix]                            # same as chunk_size
+        offset = self.chunk_offset(chunk_ix)
+        return max(0, min(self.edges[chunk_ix], self.extent - offset))
     def indices_to_chunks(self, indices: NDArray) -> NDArray:
         return np.searchsorted(self.cumulative, indices, side='right')
+    def with_extent(self, new_extent: int) -> VaryingDimension:
+        # validates edge_sum >= new_extent, re-binds extent
+        return VaryingDimension(self.edges, extent=new_extent)
+    def resize(self, new_extent: int) -> VaryingDimension:
+        # grow: append chunk of size (new_extent - old_extent)
+        # shrink: drop trailing chunks, keep those up to new_extent
 ```
 
-Both types share a common interface: `nchunks`, `extent`, `index_to_chunk`, `chunk_offset`, `chunk_size`, `data_size`, `indices_to_chunks`. Memory usage scales with the number of *varying* dimensions, not total chunks.
+Both types implement the `DimensionGrid` protocol: `nchunks`, `extent`, `index_to_chunk`, `chunk_offset`, `chunk_size`, `data_size`, `indices_to_chunks`, `with_extent`, `resize`. Memory usage scales with the number of *varying* dimensions, not total chunks.
 
 The two size methods serve different consumers:
 
@@ -96,7 +117,29 @@ The two size methods serve different consumers:
 | `chunk_size` | Buffer size for codec processing | Codec pipeline (`ArraySpec.shape`) |
 | `data_size` | Valid data region within the buffer | Indexing pipeline (`chunk_selection` slicing) |
 
-For `FixedDimension`, these differ only at the boundary. For `VaryingDimension`, they are identical. This matches current zarr-python behavior: `get_chunk_spec` passes the full `chunk_shape` to the codec for all chunks, and the indexer generates a `chunk_selection` that clips the decoded buffer.
+For `FixedDimension`, these differ only at the boundary. For `VaryingDimension`, these differ only when the last chunk extends past the extent (i.e., `extent < sum(edges)`). This matches current zarr-python behavior: `get_chunk_spec` passes the full `chunk_shape` to the codec for all chunks, and the indexer generates a `chunk_selection` that clips the decoded buffer.
+
+### DimensionGrid Protocol
+
+```python
+@runtime_checkable
+class DimensionGrid(Protocol):
+    """Structural interface shared by FixedDimension and VaryingDimension."""
+
+    @property
+    def nchunks(self) -> int: ...
+    @property
+    def extent(self) -> int: ...
+    def index_to_chunk(self, idx: int) -> int: ...
+    def chunk_offset(self, chunk_ix: int) -> int: ...
+    def chunk_size(self, chunk_ix: int) -> int: ...
+    def data_size(self, chunk_ix: int) -> int: ...
+    def indices_to_chunks(self, indices: NDArray[np.intp]) -> NDArray[np.intp]: ...
+    def with_extent(self, new_extent: int) -> DimensionGrid: ...
+    def resize(self, new_extent: int) -> DimensionGrid: ...
+```
+
+The protocol is `@runtime_checkable`, enabling polymorphic handling of both dimension types without `isinstance` checks.
 
 ### ChunkSpec
 
@@ -115,7 +158,7 @@ class ChunkSpec:
         return self.shape != self.codec_shape
 ```
 
-For interior chunks, `shape == codec_shape`. For boundary chunks of a regular grid, `codec_shape` is the full declared chunk size while `shape` is clipped. For rectilinear grids, `shape == codec_shape` always.
+For interior chunks, `shape == codec_shape`. For boundary chunks of a regular grid, `codec_shape` is the full declared chunk size while `shape` is clipped. For rectilinear grids, `shape == codec_shape` unless the last chunk extends past the extent.
 
 ### API
 
@@ -123,36 +166,40 @@ For interior chunks, `shape == codec_shape`. For boundary chunks of a regular gr
 # Creating arrays
 arr = zarr.create_array(shape=(100, 200), chunks=(10, 20))                          # regular
 arr = zarr.create_array(shape=(60, 100), chunks=[[10, 20, 30], [25, 25, 25, 25]])   # rectilinear
-arr = zarr.create_array(shape=(1000,), chunks=[[[100, 10]]])                        # RLE shorthand
 
 # ChunkGrid as a collection
-grid = arr.chunk_grid              # ChunkGrid instance
-grid.shape                         # (10, 8) — number of chunks per dimension
-grid.ndim                          # 2
-grid.is_regular                    # True if all dimensions are Fixed
+grid = arr.metadata.chunk_grid    # ChunkGrid instance
+grid.shape                        # (10, 10) — number of chunks per dimension
+grid.ndim                         # 2
+grid.is_regular                   # True if all dimensions are Fixed
 
-spec = grid[0, 1]                  # ChunkSpec for chunk at grid position (0, 1)
-spec.slices                        # (slice(0, 10), slice(25, 50))
-spec.shape                         # (10, 25) — data shape
-spec.codec_shape                   # (10, 25) — same for interior chunks
+spec = grid[0, 1]                 # ChunkSpec for chunk at grid position (0, 1)
+spec.slices                       # (slice(0, 10), slice(20, 40))
+spec.shape                        # (10, 20) — data shape
+spec.codec_shape                  # (10, 20) — same for interior chunks
 
-boundary = grid[9, 0]             # boundary chunk (extent=95, size=10)
-boundary.shape                     # (5, 25) — 5 elements of real data
-boundary.codec_shape               # (10, 25) — codec sees full buffer
+boundary = grid[9, 0]             # boundary chunk (extent=100, size=10)
+boundary.shape                    # (10, 20) — data shape
+boundary.codec_shape              # (10, 20) — codec sees full buffer
 
-grid[99, 99]                       # None — out of bounds
+grid[99, 99]                      # None — out of bounds
 
-for spec in grid:                  # iterate all chunks
+for spec in grid:                 # iterate all chunks
     ...
 
-# .chunks property: retained for regular grids, raises for rectilinear
-arr.chunks                         # (10, 25)
+# .chunks property: retained for regular grids, raises NotImplementedError for rectilinear
+arr.chunks                         # (10, 20)
+
+# .chunk_sizes property: works for all grids (dask-style)
+arr.chunk_sizes                    # ((10, 10, ..., 10), (20, 20, ..., 20))
 ```
 
 `ChunkGrid.__getitem__` constructs `ChunkSpec` using `chunk_size` for `codec_shape` and `data_size` for `slices`:
 
 ```python
-def __getitem__(self, coords: tuple[int, ...]) -> ChunkSpec | None:
+def __getitem__(self, coords: int | tuple[int, ...]) -> ChunkSpec | None:
+    if isinstance(coords, int):
+        coords = (coords,)
     slices = []
     codec_shape = []
     for dim, ix in zip(self.dimensions, coords):
@@ -164,44 +211,92 @@ def __getitem__(self, coords: tuple[int, ...]) -> ChunkSpec | None:
     return ChunkSpec(tuple(slices), tuple(codec_shape))
 ```
 
+#### Construction
+
+```python
+# Regular grid — all FixedDimension
+grid = ChunkGrid.from_regular(array_shape=(100, 200), chunk_shape=(10, 20))
+
+# Rectilinear grid — per-dimension edge lists
+# Dims with all-identical edges are stored as FixedDimension (optimization)
+grid = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]])
+
+# Direct construction
+grid = ChunkGrid(dimensions=(FixedDimension(10, 100), VaryingDimension([10, 20, 30], 60)))
+```
+
 #### Serialization
 
 ```python
 # Regular grid:
 {"name": "regular", "configuration": {"chunk_shape": [10, 20]}}
 
-# Rectilinear grid (with RLE compression):
-{"name": "rectilinear", "configuration": {"chunk_shapes": [[10, 20, 30], [[25, 4]]]}}
+# Rectilinear grid (with RLE compression and "kind" field):
+{"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [[25, 4]]]}}
 ```
 
-Both names deserialize to the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is passed to `parse_chunk_grid()` at construction time. For rectilinear grids, the extent is redundant (`sum(edges)`) and is validated for consistency.
+Both names deserialize to the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is passed to `parse_chunk_grid()` at construction time.
 
-**The `ChunkGrid` does not serialize itself.** The format choice (`"regular"` vs `"rectilinear"`) belongs to `ArrayV3Metadata`, which already knows how to produce its JSON document. The flow is always: metadata document → `ChunkGrid` (via `parse_chunk_grid`), never the reverse. The grid is a pure runtime computation object.
+**The `ChunkGrid` does not serialize itself.** The format choice (`"regular"` vs `"rectilinear"`) belongs to `ArrayV3Metadata`, which stores the chunk grid's JSON `name` in the `chunk_grid_name` field. `serialize_chunk_grid(grid, name)` is called by `ArrayV3Metadata.to_dict()`. This gives round-trip fidelity — a store written as rectilinear with uniform edges stays rectilinear.
 
-`ArrayV3Metadata` stores the chunk grid's JSON `name` from the original metadata document and uses it when serializing back. This gives round-trip fidelity for free — a store written as rectilinear with uniform edges stays rectilinear.
+For `create_array`, the format is inferred from the `chunks` argument: a flat tuple produces `"regular"`, a nested list produces `"rectilinear"`. The `_is_rectilinear_chunks()` helper detects nested sequences like `[[10, 20], [5, 5]]`.
 
-The only place where a user needs to choose the format is when creating new metadata. For `create_array`, the format is inferred from the `chunks` argument: a flat tuple produces `"regular"`, a nested list produces `"rectilinear"`. For `resize`, the format can be specified explicitly via `chunk_grid_metadata`:
+##### Rectilinear spec compliance
+
+The rectilinear format requires `"kind": "inline"` (validated by `_validate_rectilinear_kind()`). Per the spec, each element of `chunk_shapes` can be:
+
+- A bare integer `m`: repeated until `sum >= array_extent`
+- A list of bare integers: explicit per-chunk sizes
+- A mixed array of bare integers and `[value, count]` RLE pairs
+
+RLE compression is used when serializing: runs of identical sizes become `[value, count]` pairs, singletons stay as bare integers.
 
 ```python
-arr.resize(
-    (80, 100),
-    chunks=[[10, 20, 30, 20], [25, 25, 25, 25]],
-    chunk_grid_metadata="rectilinear",
-)
+# _compress_rle([10, 10, 10, 5]) -> [[10, 3], 5]
+# _expand_rle([[10, 3], 5])      -> [10, 10, 10, 5]
 ```
 
-`chunk_grid_metadata` is typed as `str`, not a closed literal — the Zarr V3 spec allows any registered chunk grid name. zarr-python supports `"regular"` and `"rectilinear"` natively; other names (e.g., zarrs' `"regular_bounded"`) would raise unless a handler is registered. If omitted, the format is inferred: `"rectilinear"` when chunks are non-uniform or explicitly nested, `"regular"` when chunks are a flat tuple and evenly divide the shape. Specifying `"regular"` when the chunks are non-uniform raises an error.
+For `FixedDimension` serialized as rectilinear, `_serialize_fixed_dim()` produces a compact representation: bare integer when evenly divisible, `[size, last_data]` for two chunks, `[[size, n-1], last_data]` for more.
+
+#### chunk_sizes
+
+The `chunk_sizes` property provides universal access to per-dimension chunk data sizes, matching the dask `Array.chunks` convention. It works for both regular and rectilinear grids:
+
+```python
+>>> arr = zarr.create_array(store, shape=(100, 80), chunks=(30, 40))
+>>> arr.chunk_sizes
+((30, 30, 30, 10), (40, 40))
+
+>>> arr = zarr.create_array(store, shape=(60, 100), chunks=[[10, 20, 30], [50, 50]])
+>>> arr.chunk_sizes
+((10, 20, 30), (50, 50))
+```
 
 #### Resize
 
 ```python
-arr.resize((80, 100))                                                # inferred rectilinear if not evenly divisible
-arr.resize((80, 100), chunks=[[10, 20, 30, 20], [25, 25, 25, 25]])  # explicit chunks
-arr.resize((70, 100))                                                # stays regular if divisible
-arr.resize((100, 100), chunk_grid_metadata="rectilinear")            # force rectilinear metadata
+arr.resize((80, 100))       # re-binds extent; FixedDimension stays fixed
+arr.resize((200, 100))      # VaryingDimension grows by appending a new chunk
+arr.resize((30, 100))       # VaryingDimension shrinks by dropping trailing chunks
 ```
 
-Resize creates new `ArrayV3Metadata` (and thus a new `ChunkGrid`). Since resize always creates new metadata, `chunk_grid_metadata` is the natural place to choose the serialization format.
+Resize uses `ChunkGrid.update_shape(new_shape)`, which delegates to each dimension's `.resize()` method:
+- `FixedDimension.resize()`: simply re-binds the extent (identical to `with_extent`)
+- `VaryingDimension.resize()`: grow appends a chunk of size `new_extent - old_extent`; shrink drops trailing chunks whose cumulative offset lies beyond the new extent
+
+#### from_array
+
+The `from_array()` function handles both regular and rectilinear source arrays:
+
+```python
+src = zarr.create_array(store, shape=(60, 100), chunks=[[10, 20, 30], [50, 50]])
+new = zarr.from_array(data=src, store=new_store, chunks="keep")
+# Preserves rectilinear structure: new.chunk_sizes == ((10, 20, 30), (50, 50))
+```
+
+When `chunks="keep"`, the logic checks `data.metadata.chunk_grid.is_regular`:
+- Regular: extracts `data.chunks` (flat tuple) and preserves shards
+- Rectilinear: extracts `data.chunk_sizes` (nested tuples) and forces shards to None
 
 ### Indexing
 
@@ -233,15 +328,13 @@ Read:  store → decode to codec_shape → slice via chunk_selection → user da
 
 ### Sharding
 
-PR #3534 marks sharding as incompatible with rectilinear grids. This is unnecessary — sharding has three independent grid levels:
+The `ShardingCodec` constructs a `ChunkGrid` per shard using the shard shape as extent and the subchunk shape as `FixedDimension`. Each shard is self-contained — it doesn't need to know whether the outer grid is regular or rectilinear. Rectilinear chunks with sharding currently raises `ValueError` pending further validation work.
 
 ```
 Level 1 — Outer chunk grid (shard boundaries): regular or rectilinear
 Level 2 — Inner subchunk grid (within each shard): always regular
 Level 3 — Shard index: ceil(shard_dim / subchunk_dim) entries per dimension
 ```
-
-The `ShardingCodec` constructs a `ChunkGrid` per shard using the shard shape as extent and the subchunk shape as `FixedDimension`. Each shard is self-contained — it doesn't need to know whether the outer grid is regular or rectilinear.
 
 [zarr-specs#370](https://github.com/zarr-developers/zarr-specs/pull/370) lifts the requirement that subchunk shapes evenly divide the shard shape. With the proposed `ChunkGrid`, this just means removing the `shard_shape % subchunk_shape == 0` validation — `FixedDimension` already handles boundary clipping via `data_size`.
 
@@ -259,7 +352,7 @@ The `ShardingCodec` constructs a `ChunkGrid` per shard using the shard shape as 
 | `ChunkGrid` ABC + `RegularChunkGrid` subclass | Single concrete `ChunkGrid` with `is_regular` |
 | `RectilinearChunkGrid` (#3534) | Same `ChunkGrid` class |
 | Chunk grid registry + entrypoints (#3735) | Direct name dispatch |
-| `arr.chunks` | Retained for regular; `arr.chunk_grid` for general use |
+| `arr.chunks` | Retained for regular; `arr.chunk_sizes` for general use |
 | `get_chunk_shape(shape, coord)` | `grid[coord].codec_shape` or `grid[coord].shape` |
 
 ## Design decisions
@@ -279,7 +372,7 @@ This matches current zarr-python behavior and matters for:
 2. **Codec simplicity.** Codecs assume uniform input shapes for regular grids.
 3. **Shard index correctness.** The index assumes `subchunk_dim`-sized entries.
 
-For `VaryingDimension`, `chunk_size == data_size` — no padding. This is the fundamental difference: `FixedDimension` has a declared size plus an extent that clips data; `VaryingDimension` has explicit sizes that *are* the extent.
+For `VaryingDimension`, `chunk_size == data_size` when `extent == sum(edges)`. When `extent < sum(edges)` (e.g., after a resize that keeps the last chunk oversized), `data_size` clips the last chunk. This is the fundamental difference: `FixedDimension` has a declared size plus an extent that clips data; `VaryingDimension` has explicit sizes that normally *are* the extent but can also extend past it.
 
 ### Why not a chunk grid registry?
 
@@ -301,12 +394,12 @@ All known grids are special cases of rectilinear. A Protocol-based approach mean
 
 1. **Amend and merge #3735.** Keep the `chunk_grids/` module layout. Replace the registry with direct name dispatch. Remove `register_chunk_grid` / `get_chunk_grid_class` and the entrypoint.
 2. **Open a new PR** implementing this prospectus:
-   - `FixedDimension`, `VaryingDimension`, `ChunkSpec`, and `ChunkGrid` classes.
+   - `FixedDimension`, `VaryingDimension`, `DimensionGrid` protocol, `ChunkSpec`, and `ChunkGrid` classes.
    - `parse_chunk_grid(metadata, array_shape)` with `"regular"` and `"rectilinear"` dispatch.
    - Port RLE helpers, `resolve_chunk_spec`, `ChunksLike`, and validation functions from #3534.
    - Refactor per-dimension indexers to accept `FixedDimension | VaryingDimension`.
    - Update `get_chunk_spec` to use `grid[chunk_coords].codec_shape`.
-   - Add `arr.chunk_grid`. Keep `.chunks` for regular, raise for rectilinear.
+   - Add `arr.chunk_sizes`. Keep `.chunks` for regular, raise for rectilinear.
    - Remove the "sharding incompatible with rectilinear" guard.
    - Adapt tests from #3534.
 3. **Close trial PRs** with credits:
@@ -354,10 +447,10 @@ All four downstream PRs/issues follow the same pattern:
 
 ## Open questions
 
-1. **RLE in the Python API:** Should users pass RLE-encoded chunk specs directly, or only expanded lists?
-2. **Resize defaults:** When growing a regular array, should the default preserve regularity or transition to rectilinear?
-3. **`ChunkSpec` complexity:** `ChunkSpec` carries both `slices` and `codec_shape`. Should the grid expose separate methods for codec vs data queries instead?
-4. **`__getitem__` with slices:** Should `grid[0, :]` or `grid[0:3, :]` return a sub-grid or an iterator of `ChunkSpec`s?
+1. **Resize defaults:** When growing a regular array, should the default preserve regularity or transition to rectilinear?
+2. **`ChunkSpec` complexity:** `ChunkSpec` carries both `slices` and `codec_shape`. Should the grid expose separate methods for codec vs data queries instead?
+3. **`__getitem__` with slices:** Should `grid[0, :]` or `grid[0:3, :]` return a sub-grid or an iterator of `ChunkSpec`s?
+4. **Rectilinear + sharding:** The current POC raises `ValueError` for rectilinear chunks with sharding. When should this be relaxed?
 
 ## Proofs of concepts
 
@@ -385,7 +478,7 @@ All four downstream PRs/issues follow the same pattern:
 ### PR 2: Unified `ChunkGrid` class (replaces old hierarchy)
 
 **Files**: `chunk_grids.py` (new `ChunkGrid` class + `RegularChunkGrid` compat wrapper)
-**Scope**: New `ChunkGrid` with `from_regular`, `from_rectilinear`, `__getitem__`, `all_chunk_coords()` (no shape arg), `is_regular`, `chunk_shape`. Keep `RegularChunkGrid` as backwards-compat subclass. Add `parse_chunk_grid()`, `serialize_chunk_grid()`, `_infer_chunk_grid_name()`. Tests for the grid class itself.
+**Scope**: New `ChunkGrid` with `from_regular`, `from_rectilinear`, `__getitem__`, `all_chunk_coords()` (no shape arg), `is_regular`, `chunk_shape`, `chunk_sizes`. Keep `RegularChunkGrid` as backwards-compat subclass. Add `parse_chunk_grid()`, `serialize_chunk_grid()`, `_infer_chunk_grid_name()`. Tests for the grid class itself.
 
 ### PR 3: Indexing generalization
 
