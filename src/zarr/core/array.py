@@ -1065,6 +1065,31 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.metadata.chunks
 
     @property
+    def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension chunk sizes for the array.
+
+        Returns the data size of each chunk along every dimension,
+        including the final boundary chunk. Works for both regular
+        and rectilinear chunk grids.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension containing chunk sizes.
+
+        Examples
+        --------
+        >>> arr = zarr.create_array(store, shape=(100, 80), chunks=(30, 40))
+        >>> arr.chunk_sizes
+        ((30, 30, 30, 10), (40, 40))
+
+        >>> arr = zarr.create_array(store, shape=(60, 100), chunks=[[10, 20, 30], [50, 50]])
+        >>> arr.chunk_sizes
+        ((10, 20, 30), (50, 50))
+        """
+        return self.metadata.chunk_grid.chunk_sizes
+
+    @property
     def shards(self) -> tuple[int, ...] | None:
         """Returns the shard shape of the Array.
         Returns None if sharding is not used.
@@ -2284,6 +2309,27 @@ class Array(Generic[T_ArrayMetadata]):
             A tuple of integers representing the length of each dimension of a chunk.
         """
         return self.async_array.chunks
+
+    @property
+    def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension chunk sizes for the array.
+
+        Returns the data size of each chunk along every dimension,
+        including the final boundary chunk. Works for both regular
+        and rectilinear chunk grids.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension containing chunk sizes.
+
+        Examples
+        --------
+        >>> arr = zarr.open_array(store)
+        >>> arr.chunk_sizes
+        ((30, 30, 30, 10), (40, 40))
+        """
+        return self.async_array.chunk_sizes
 
     @property
     def shards(self) -> tuple[int, ...] | None:

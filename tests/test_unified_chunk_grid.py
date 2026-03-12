@@ -1607,6 +1607,45 @@ def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
 
 
 # ---------------------------------------------------------------------------
+# .chunk_sizes property
+# ---------------------------------------------------------------------------
+
+
+class TestChunkSizes:
+    """Tests for ChunkGrid.chunk_sizes and Array.chunk_sizes."""
+
+    def test_regular_grid(self) -> None:
+        grid = ChunkGrid.from_regular((100, 80), (30, 40))
+        assert grid.chunk_sizes == ((30, 30, 30, 10), (40, 40))
+
+    def test_regular_grid_exact(self) -> None:
+        grid = ChunkGrid.from_regular((90, 80), (30, 40))
+        assert grid.chunk_sizes == ((30, 30, 30), (40, 40))
+
+    def test_rectilinear_grid(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
+        assert grid.chunk_sizes == ((10, 20, 30), (50, 50))
+
+    def test_single_chunk(self) -> None:
+        grid = ChunkGrid.from_regular((10,), (10,))
+        assert grid.chunk_sizes == ((10,),)
+
+    def test_array_property_regular(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = zarr.create_array(
+            store=store, shape=(100, 80), chunks=(30, 40), dtype="i4", zarr_format=3
+        )
+        assert arr.chunk_sizes == ((30, 30, 30, 10), (40, 40))
+
+    def test_array_property_rectilinear(self) -> None:
+        store = zarr.storage.MemoryStore()
+        arr = zarr.create_array(
+            store=store, shape=(60, 100), chunks=[[10, 20, 30], [50, 50]], dtype="i4", zarr_format=3
+        )
+        assert arr.chunk_sizes == ((10, 20, 30), (50, 50))
+
+
+# ---------------------------------------------------------------------------
 # .info display for rectilinear grids
 # ---------------------------------------------------------------------------
 

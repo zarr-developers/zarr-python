@@ -386,6 +386,22 @@ class ChunkGrid:
             if isinstance(d, FixedDimension)  # guaranteed by is_regular
         )
 
+    @property
+    def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension chunk sizes, including the final boundary chunk.
+
+        Returns the actual data size of each chunk (clipped at the array
+        extent), matching the dask ``Array.chunks`` convention.  Works for
+        both regular and rectilinear grids.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension, each containing the data size
+            of every chunk along that dimension.
+        """
+        return tuple(tuple(d.data_size(i) for i in range(d.nchunks)) for d in self.dimensions)
+
     # -- Collection interface --
 
     def __getitem__(self, coords: int | tuple[int, ...]) -> ChunkSpec | None:
