@@ -308,7 +308,7 @@ class ArrayV3Metadata(Metadata):
 
         msg = (
             "The `chunks` attribute is only defined for arrays using regular chunk grids. "
-            "This array has a rectilinear chunk grid. Use `chunk_grid` for general access."
+            "This array has a rectilinear chunk grid. Use `chunk_sizes` for general access."
         )
         raise NotImplementedError(msg)
 

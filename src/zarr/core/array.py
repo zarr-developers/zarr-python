@@ -1293,7 +1293,18 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         tuple[int, ...]
             The number of chunks along each dimension.
         """
-        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
+        # TODO: refactor — extract a sharding_codec property on ArrayV3Metadata
+        # to replace the repeated `len == 1 and isinstance` pattern.
+        from zarr.codecs.sharding import ShardingCodec
+
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+            chunk_shape = codecs[0].chunk_shape
+        elif self.metadata.chunk_grid.is_regular:
+            chunk_shape = self.metadata.chunk_grid.chunk_shape
+        else:
+            return self.metadata.chunk_grid.shape
+        return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
 
     @property
     def _shard_grid_shape(self) -> tuple[int, ...]:
@@ -5562,8 +5573,16 @@ def _iter_chunk_regions(
         A tuple of slice objects representing the region spanned by each shard in the selection.
     """
 
-    return _iter_regions(
-        array.shape, array.chunks, origin=origin, selection_shape=selection_shape, trim_excess=True
+    if array.metadata.chunk_grid.is_regular:
+        return _iter_regions(
+            array.shape,
+            array.chunks,
+            origin=origin,
+            selection_shape=selection_shape,
+            trim_excess=True,
+        )
+    return array.metadata.chunk_grid.iter_chunk_regions(
+        origin=origin, selection_shape=selection_shape
     )
 
 

@@ -15,10 +15,6 @@ import numpy as np
 import pytest
 
 import zarr
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 from zarr.core.chunk_grids import (
     ChunkGrid,
     ChunkSpec,
@@ -29,6 +25,10 @@ from zarr.core.chunk_grids import (
     parse_chunk_grid,
     serialize_chunk_grid,
 )
+from zarr.storage import MemoryStore
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
@@ -2161,3 +2161,29 @@ class TestUpdateShapeBoundary:
         assert isinstance(dim, VaryingDimension)
         assert dim.extent == 50
         assert dim.data_size(2) == 20  # 50 - 30 = 20
+
+
+class TestNchunksWorksForRectilinear:
+    def test_nchunks_returns_correct_count(self) -> None:
+        """nchunks should work for rectilinear arrays."""
+        store = MemoryStore()
+        a = zarr.create_array(store, shape=(30,), chunks=[[10, 20]], dtype="int32")
+        assert a.nchunks == 2
+
+    def test_nchunks_2d_rectilinear(self) -> None:
+        store = MemoryStore()
+        a = zarr.create_array(store, shape=(30, 40), chunks=[[10, 20], [15, 25]], dtype="int32")
+        assert a.nchunks == 4  # 2 chunks x 2 chunks
+
+
+class TestIterChunkRegionsWorksForRectilinear:
+    def test_iter_chunk_regions_rectilinear(self) -> None:
+        """_iter_chunk_regions should work for rectilinear arrays."""
+        from zarr.core.array import _iter_chunk_regions
+
+        store = MemoryStore()
+        a = zarr.create_array(store, shape=(30,), chunks=[[10, 20]], dtype="int32")
+        regions = list(_iter_chunk_regions(a))
+        assert len(regions) == 2
+        assert regions[0] == (slice(0, 10),)
+        assert regions[1] == (slice(10, 30),)
