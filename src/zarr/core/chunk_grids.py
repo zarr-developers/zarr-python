@@ -82,29 +82,34 @@ class FixedDimension:
 
 @dataclass(frozen=True)
 class VaryingDimension:
-    """Explicit per-chunk sizes. No padding — each edge length is
-    both the codec size and the data size."""
+    """Explicit per-chunk sizes. The last chunk may extend past the array
+    extent, in which case ``data_size`` clips to the valid region while
+    ``chunk_size`` returns the full edge length for codec processing."""
 
     edges: tuple[int, ...]  # per-chunk edge lengths (all > 0)
     cumulative: tuple[int, ...]  # prefix sums for O(log n) lookup
+    extent: int  # array dimension length (may be < sum(edges) after resize)
 
-    def __init__(self, edges: Sequence[int]) -> None:
+    def __init__(self, edges: Sequence[int], extent: int) -> None:
         edges_tuple = tuple(edges)
         if not edges_tuple:
             raise ValueError("VaryingDimension edges must not be empty")
         if any(e <= 0 for e in edges_tuple):
             raise ValueError(f"All edge lengths must be > 0, got {edges_tuple}")
         cumulative = tuple(itertools.accumulate(edges_tuple))
+        if extent < 0:
+            raise ValueError(f"VaryingDimension extent must be >= 0, got {extent}")
+        if extent > cumulative[-1]:
+            raise ValueError(
+                f"VaryingDimension extent {extent} exceeds sum of edges {cumulative[-1]}"
+            )
         object.__setattr__(self, "edges", edges_tuple)
         object.__setattr__(self, "cumulative", cumulative)
+        object.__setattr__(self, "extent", extent)
 
     @property
     def nchunks(self) -> int:
         return len(self.edges)
-
-    @property
-    def extent(self) -> int:
-        return self.cumulative[-1]
 
     def index_to_chunk(self, idx: int) -> int:
         return bisect.bisect_right(self.cumulative, idx)
@@ -117,8 +122,9 @@ class VaryingDimension:
         return self.edges[chunk_ix]
 
     def data_size(self, chunk_ix: int) -> int:
-        """Valid data region — same as chunk_size for varying dims."""
-        return self.edges[chunk_ix]
+        """Valid data region within the buffer — clipped at extent."""
+        offset = self.chunk_offset(chunk_ix)
+        return max(0, min(self.edges[chunk_ix], self.extent - offset))
 
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
         return np.searchsorted(self.cumulative, indices, side="right")
@@ -348,7 +354,7 @@ class ChunkGrid:
             if all(e == edges_list[0] for e in edges_list):
                 dims.append(FixedDimension(size=edges_list[0], extent=extent))
             else:
-                dims.append(VaryingDimension(edges_list))
+                dims.append(VaryingDimension(edges_list, extent=extent))
         return cls(dimensions=tuple(dims))
 
     # -- Properties --
@@ -408,8 +414,57 @@ class ChunkGrid:
             if spec is not None:
                 yield spec
 
-    def all_chunk_coords(self) -> Iterator[tuple[int, ...]]:
-        return itertools.product(*(range(d.nchunks) for d in self.dimensions))
+    def all_chunk_coords(
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
+    ) -> Iterator[tuple[int, ...]]:
+        """Iterate over chunk coordinates, optionally restricted to a subregion.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None
+            The first chunk coordinate to return. Defaults to the grid origin.
+        selection_shape : Sequence[int] | None
+            The number of chunks per dimension to iterate. Defaults to the
+            remaining extent from origin.
+        """
+        if origin is None:
+            origin_parsed = (0,) * self.ndim
+        else:
+            origin_parsed = tuple(origin)
+        if selection_shape is None:
+            selection_shape_parsed = tuple(
+                g - o for o, g in zip(origin_parsed, self.shape, strict=True)
+            )
+        else:
+            selection_shape_parsed = tuple(selection_shape)
+        ranges = tuple(
+            range(o, o + s) for o, s in zip(origin_parsed, selection_shape_parsed, strict=True)
+        )
+        return itertools.product(*ranges)
+
+    def iter_chunk_regions(
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
+    ) -> Iterator[tuple[slice, ...]]:
+        """Iterate over the data regions (slices) spanned by each chunk.
+
+        Parameters
+        ----------
+        origin : Sequence[int] | None
+            The first chunk coordinate to return. Defaults to the grid origin.
+        selection_shape : Sequence[int] | None
+            The number of chunks per dimension to iterate. Defaults to the
+            remaining extent from origin.
+        """
+        for coords in self.all_chunk_coords(origin=origin, selection_shape=selection_shape):
+            spec = self[coords]
+            if spec is not None:
+                yield spec.slices
 
     def get_nchunks(self) -> int:
         return reduce(operator.mul, (d.nchunks for d in self.dimensions), 1)
@@ -447,7 +502,7 @@ class ChunkGrid:
                     dims.append(dim)
                 elif new_extent > old_extent:
                     expanded_edges = list(dim.edges) + [new_extent - old_extent]
-                    dims.append(VaryingDimension(expanded_edges))
+                    dims.append(VaryingDimension(expanded_edges, extent=new_extent))
                 else:
                     # Shrink: keep chunks whose cumulative offset covers new_extent
                     shrunk_edges: list[int] = []
@@ -457,7 +512,7 @@ class ChunkGrid:
                         total += edge
                         if total >= new_extent:
                             break
-                    dims.append(VaryingDimension(shrunk_edges))
+                    dims.append(VaryingDimension(shrunk_edges, extent=new_extent))
             else:
                 raise TypeError(f"Unexpected dimension type: {type(dim)}")
         return ChunkGrid(dimensions=tuple(dims))
@@ -483,15 +538,16 @@ def parse_chunk_grid(
             if isinstance(dim, FixedDimension):
                 dims.append(FixedDimension(size=dim.size, extent=extent))
             elif isinstance(dim, VaryingDimension):
-                # VaryingDimension has intrinsic extent (sum of edges).
                 # After resize/shrink the last chunk may extend past the array
-                # boundary, so extent >= array_shape is valid (like regular grids).
-                if dim.extent < extent:
+                # boundary, so sum(edges) >= array_shape is valid (like regular grids).
+                edge_sum = sum(dim.edges)
+                if edge_sum < extent:
                     raise ValueError(
-                        f"VaryingDimension extent {dim.extent} is less than "
+                        f"VaryingDimension edge sum {edge_sum} is less than "
                         f"array shape extent {extent} for dimension {len(dims)}"
                     )
-                dims.append(dim)
+                # Re-bind extent to the actual array shape
+                dims.append(VaryingDimension(dim.edges, extent=extent))
             else:
                 raise TypeError(f"Unexpected dimension type: {type(dim)}")
         return ChunkGrid(dimensions=tuple(dims))

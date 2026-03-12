@@ -690,8 +690,6 @@ class BoolArrayDimIndexer:
         object.__setattr__(self, "dim_chunk_ixs", dim_chunk_ixs)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
-        from zarr.core.chunk_grids import FixedDimension
-
         g = self.dim_grid
 
         # iterate over chunks with at least one item
@@ -701,9 +699,10 @@ class BoolArrayDimIndexer:
             chunk_len = g.data_size(dim_chunk_ix)
             dim_chunk_sel = self.dim_sel[dim_offset : dim_offset + chunk_len]
 
-            # pad out if final chunk (for fixed grids, actual chunk may be smaller than declared size)
-            if isinstance(g, FixedDimension) and dim_chunk_sel.shape[0] < g.size:
-                tmp = np.zeros(g.size, dtype=bool)
+            # pad out if boundary chunk (codec buffer may be larger than valid data region)
+            codec_size = g.chunk_size(dim_chunk_ix)
+            if dim_chunk_sel.shape[0] < codec_size:
+                tmp = np.zeros(codec_size, dtype=bool)
                 tmp[: dim_chunk_sel.shape[0]] = dim_chunk_sel
                 dim_chunk_sel = tmp
 
@@ -917,8 +916,8 @@ def oindex_set(a: npt.NDArray[Any], selection: Selection, value: Any) -> None:
 @dataclass(frozen=True)
 class OrthogonalIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer | IntArrayDimIndexer | BoolArrayDimIndexer]
+    dim_grids: tuple[DimensionGrid, ...]
     shape: tuple[int, ...]
-    chunk_shape: tuple[int, ...]
     is_advanced: bool
     drop_axes: tuple[int, ...]
 
@@ -969,23 +968,9 @@ class OrthogonalIndexer(Indexer):
         else:
             drop_axes = ()
 
-        # Compute chunk_shape for ix_() compatibility in __iter__.
-        # For VaryingDimension, use the max edge length so that
-        # slice_to_range produces correct ranges for the largest chunk.
-        from zarr.core.chunk_grids import FixedDimension, VaryingDimension
-
-        chunk_shape = tuple(
-            g.size
-            if isinstance(g, FixedDimension)
-            else max(g.edges)
-            if isinstance(g, VaryingDimension)
-            else g.chunk_size(0)
-            for g in dim_grids
-        )
-
         object.__setattr__(self, "dim_indexers", dim_indexers)
+        object.__setattr__(self, "dim_grids", dim_grids)
         object.__setattr__(self, "shape", shape)
-        object.__setattr__(self, "chunk_shape", chunk_shape)
         object.__setattr__(self, "is_advanced", is_advanced)
         object.__setattr__(self, "drop_axes", drop_axes)
 
@@ -1005,7 +990,11 @@ class OrthogonalIndexer(Indexer):
                 # so need to work around via np.ix_. Also np.ix_ does not support a
                 # mixture of arrays and slices or integers, so need to convert slices
                 # and integers into ranges.
-                chunk_selection = ix_(chunk_selection, self.chunk_shape)
+                chunk_shape = tuple(
+                    g.chunk_size(p.dim_chunk_ix)
+                    for g, p in zip(self.dim_grids, dim_projections, strict=True)
+                )
+                chunk_selection = ix_(chunk_selection, chunk_shape)
 
                 # special case for non-monotonic indices
                 if not is_basic_selection(out_selection):

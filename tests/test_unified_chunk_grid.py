@@ -99,14 +99,14 @@ class TestFixedDimension:
 
 class TestVaryingDimension:
     def test_basic(self) -> None:
-        d = VaryingDimension([10, 20, 30])
+        d = VaryingDimension([10, 20, 30], extent=60)
         assert d.edges == (10, 20, 30)
         assert d.cumulative == (10, 30, 60)
         assert d.nchunks == 3
         assert d.extent == 60
 
     def test_index_to_chunk(self) -> None:
-        d = VaryingDimension([10, 20, 30])
+        d = VaryingDimension([10, 20, 30], extent=60)
         assert d.index_to_chunk(0) == 0
         assert d.index_to_chunk(9) == 0
         assert d.index_to_chunk(10) == 1
@@ -115,37 +115,37 @@ class TestVaryingDimension:
         assert d.index_to_chunk(59) == 2
 
     def test_chunk_offset(self) -> None:
-        d = VaryingDimension([10, 20, 30])
+        d = VaryingDimension([10, 20, 30], extent=60)
         assert d.chunk_offset(0) == 0
         assert d.chunk_offset(1) == 10
         assert d.chunk_offset(2) == 30
 
     def test_chunk_size(self) -> None:
-        d = VaryingDimension([10, 20, 30])
+        d = VaryingDimension([10, 20, 30], extent=60)
         assert d.chunk_size(0) == 10
         assert d.chunk_size(1) == 20
         assert d.chunk_size(2) == 30
 
     def test_data_size(self) -> None:
-        d = VaryingDimension([10, 20, 30])
-        # data_size == chunk_size for varying dims
+        d = VaryingDimension([10, 20, 30], extent=60)
+        # data_size == chunk_size when extent == sum(edges) (no boundary)
         assert d.data_size(0) == 10
         assert d.data_size(1) == 20
         assert d.data_size(2) == 30
 
     def test_vectorized(self) -> None:
-        d = VaryingDimension([10, 20, 30])
+        d = VaryingDimension([10, 20, 30], extent=60)
         indices = np.array([0, 9, 10, 29, 30, 59])
         chunks = d.indices_to_chunks(indices)
         np.testing.assert_array_equal(chunks, [0, 0, 1, 1, 2, 2])
 
     def test_empty_rejected(self) -> None:
         with pytest.raises(ValueError, match="must not be empty"):
-            VaryingDimension([])
+            VaryingDimension([], extent=0)
 
     def test_zero_edge_rejected(self) -> None:
         with pytest.raises(ValueError, match="must be > 0"):
-            VaryingDimension([10, 0, 5])
+            VaryingDimension([10, 0, 5], extent=15)
 
 
 # ---------------------------------------------------------------------------
@@ -886,7 +886,7 @@ class TestEdgeCases:
         """A rectilinear grid with a boundary FixedDimension preserves extent."""
         g = ChunkGrid(
             dimensions=(
-                VaryingDimension([10, 20, 30]),
+                VaryingDimension([10, 20, 30], extent=60),
                 FixedDimension(size=10, extent=95),
             )
         )
@@ -923,7 +923,7 @@ class TestEdgeCases:
         """No boundary: extent == size * nchunks round-trips cleanly."""
         g = ChunkGrid(
             dimensions=(
-                VaryingDimension([10, 20]),
+                VaryingDimension([10, 20], extent=30),
                 FixedDimension(size=25, extent=100),
             )
         )
@@ -1092,7 +1092,7 @@ class TestEdgeCases:
         """A rectilinear grid with a 0-nchunks FixedDimension serializes."""
         g = ChunkGrid(
             dimensions=(
-                VaryingDimension([10, 20]),
+                VaryingDimension([10, 20], extent=30),
                 FixedDimension(size=10, extent=0),
             )
         )
@@ -1104,7 +1104,7 @@ class TestEdgeCases:
 
     def test_varying_dim_data_size_equals_chunk_size(self) -> None:
         """For VaryingDimension, data_size == chunk_size (no padding)."""
-        d = VaryingDimension([10, 20, 5])
+        d = VaryingDimension([10, 20, 5], extent=35)
         for i in range(3):
             assert d.data_size(i) == d.chunk_size(i)
 
@@ -1149,9 +1149,9 @@ class TestOrthogonalIndexerRectilinear:
         projections = list(indexer)
         assert len(projections) > 0
 
-    def test_orthogonal_advanced_indexing_chunk_shape_not_one(self) -> None:
-        """Verify OrthogonalIndexer.chunk_shape reflects actual chunk sizes,
-        not a hardcoded 1 for VaryingDimension."""
+    def test_orthogonal_advanced_indexing_produces_correct_projections(self) -> None:
+        """Verify OrthogonalIndexer produces correct chunk projections
+        for advanced indexing with VaryingDimension."""
         from zarr.core.indexing import OrthogonalIndexer
 
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]])
@@ -1160,11 +1160,16 @@ class TestOrthogonalIndexerRectilinear:
             shape=(60, 100),
             chunk_grid=g,
         )
-        # chunk_shape should NOT have 1 for the VaryingDimension
-        # The first dim has varying chunks [10, 20, 30] — we need a
-        # representative size for ix_() to work. Using the max is safe.
-        assert indexer.chunk_shape[0] > 1  # was incorrectly 1 before fix
-        assert indexer.chunk_shape[1] == 50
+        projections = list(indexer)
+        # index 5 is in chunk 0 (edges [10,...]), index 15 is in chunk 1 (edges [...,20,...])
+        # dim 1 slice(None) covers both chunks [50, 50]
+        # cartesian product: 2 chunks in dim 0 x 2 chunks in dim 1 = 4 projections
+        assert len(projections) == 4
+        coords = [p.chunk_coords for p in projections]
+        assert (0, 0) in coords
+        assert (0, 1) in coords
+        assert (1, 0) in coords
+        assert (1, 1) in coords
 
 
 class TestShardingValidationRectilinear:
@@ -1901,3 +1906,219 @@ class TestAppendRectilinear:
         assert g.chunk_shape == (10, 20)
         assert g.shape == (10, 10)
         assert g.get_nchunks() == 100
+
+
+# ---------------------------------------------------------------------------
+# Boundary chunk tests
+# ---------------------------------------------------------------------------
+
+
+class TestVaryingDimensionBoundary:
+    """VaryingDimension with extent < sum(edges), mirroring how FixedDimension
+    handles boundary chunks."""
+
+    def test_extent_parameter(self) -> None:
+        d = VaryingDimension([10, 20, 30], extent=50)
+        assert d.extent == 50
+        assert d.chunk_size(2) == 30  # codec buffer: full edge
+        assert d.data_size(2) == 20  # valid data: clipped to extent
+
+    def test_extent_equals_sum_no_clipping(self) -> None:
+        d = VaryingDimension([10, 20, 30], extent=60)
+        assert d.extent == 60
+        assert d.data_size(2) == 30  # no clipping when extent == sum(edges)
+
+    def test_data_size_interior_chunks_unaffected(self) -> None:
+        d = VaryingDimension([10, 20, 30], extent=50)
+        assert d.data_size(0) == 10  # fully within extent
+        assert d.data_size(1) == 20  # fully within extent (offset 10, ends at 30)
+
+    def test_data_size_at_exact_boundary(self) -> None:
+        d = VaryingDimension([10, 20, 30], extent=60)
+        # extent == sum(edges), so no clipping
+        assert d.data_size(2) == 30
+
+    def test_data_size_single_element_boundary(self) -> None:
+        d = VaryingDimension([10, 20, 30], extent=31)
+        assert d.data_size(0) == 10
+        assert d.data_size(1) == 20
+        assert d.data_size(2) == 1  # only 1 element in last chunk
+
+    def test_extent_exceeds_sum_rejected(self) -> None:
+        with pytest.raises(ValueError, match="exceeds sum of edges"):
+            VaryingDimension([10, 20], extent=50)
+
+    def test_negative_extent_rejected(self) -> None:
+        with pytest.raises(ValueError, match="must be >= 0"):
+            VaryingDimension([10, 20], extent=-1)
+
+    def test_chunk_spec_boundary_varying(self) -> None:
+        """ChunkGrid with a boundary VaryingDimension produces correct ChunkSpec."""
+        g = ChunkGrid(dimensions=(VaryingDimension([10, 20, 30], extent=50),))
+        spec = g[(2,)]
+        assert spec is not None
+        assert spec.codec_shape == (30,)  # full edge
+        assert spec.shape == (20,)  # clipped to extent
+        assert spec.is_boundary is True
+
+    def test_chunk_spec_interior_varying(self) -> None:
+        g = ChunkGrid(dimensions=(VaryingDimension([10, 20, 30], extent=50),))
+        spec = g[(0,)]
+        assert spec is not None
+        assert spec.codec_shape == (10,)
+        assert spec.shape == (10,)
+        assert spec.is_boundary is False
+
+
+class TestBoundaryIndexing:
+    """Indexing operations on boundary chunks for both FixedDimension and
+    VaryingDimension, ensuring the isinstance cleanup works correctly."""
+
+    def test_bool_indexer_fixed_boundary(self) -> None:
+        """BoolArrayDimIndexer pads to codec size for FixedDimension boundary."""
+        from zarr.core.indexing import BoolArrayDimIndexer
+
+        # array extent 7, chunk size 5 → 2 chunks, last has data_size=2
+        dim = FixedDimension(size=5, extent=7)
+        mask = np.array([False, False, False, False, False, True, True])
+        indexer = BoolArrayDimIndexer(mask, 7, dim)
+        projections = list(indexer)
+        assert len(projections) == 1
+        p = projections[0]
+        assert p.dim_chunk_ix == 1
+        # boolean selection should be padded to chunk_size (5)
+        sel = p.dim_chunk_sel
+        assert isinstance(sel, np.ndarray)
+        assert sel.shape[0] == 5
+        assert sel[0] is np.True_
+        assert sel[1] is np.True_
+        assert sel[2] is np.False_  # padding
+
+    def test_bool_indexer_varying_boundary(self) -> None:
+        """BoolArrayDimIndexer pads to codec size for VaryingDimension boundary."""
+        from zarr.core.indexing import BoolArrayDimIndexer
+
+        # edges [5, 10], extent=7 -> last chunk has data_size=2, chunk_size=10
+        dim = VaryingDimension([5, 10], extent=7)
+        mask = np.array([False, False, False, False, False, True, True])
+        indexer = BoolArrayDimIndexer(mask, 7, dim)
+        projections = list(indexer)
+        assert len(projections) == 1
+        p = projections[0]
+        assert p.dim_chunk_ix == 1
+        # boolean selection should be padded to chunk_size (10)
+        sel = p.dim_chunk_sel
+        assert isinstance(sel, np.ndarray)
+        assert sel.shape[0] == 10
+        assert sel[0] is np.True_
+        assert sel[1] is np.True_
+        assert sel[2] is np.False_  # padding
+
+    def test_bool_indexer_no_padding_interior(self) -> None:
+        """No padding needed for interior chunks."""
+        from zarr.core.indexing import BoolArrayDimIndexer
+
+        dim = FixedDimension(size=5, extent=10)
+        mask = np.array([True, False, False, False, False, False, False, False, False, False])
+        indexer = BoolArrayDimIndexer(mask, 10, dim)
+        projections = list(indexer)
+        assert len(projections) == 1
+        p = projections[0]
+        assert p.dim_chunk_ix == 0
+        sel = p.dim_chunk_sel
+        assert isinstance(sel, np.ndarray)
+        assert sel.shape[0] == 5  # equals chunk_size, no padding needed
+
+    def test_slice_indexer_varying_boundary(self) -> None:
+        """SliceDimIndexer clips to data_size at boundary for VaryingDimension."""
+        from zarr.core.indexing import SliceDimIndexer
+
+        dim = VaryingDimension([5, 10], extent=7)
+        # select all elements
+        indexer = SliceDimIndexer(slice(None), 7, dim)
+        projections = list(indexer)
+        assert len(projections) == 2
+        # chunk 0: full chunk
+        assert projections[0].dim_chunk_sel == slice(0, 5, 1)
+        # chunk 1: clipped to data_size (2), not chunk_size (10)
+        assert projections[1].dim_chunk_sel == slice(0, 2, 1)
+
+    def test_int_array_indexer_varying_boundary(self) -> None:
+        """IntArrayDimIndexer handles indices near boundary correctly."""
+        from zarr.core.indexing import IntArrayDimIndexer
+
+        dim = VaryingDimension([5, 10], extent=7)
+        indices = np.array([6])  # in chunk 1, offset 5, so chunk-local = 1
+        indexer = IntArrayDimIndexer(indices, 7, dim)
+        projections = list(indexer)
+        assert len(projections) == 1
+        assert projections[0].dim_chunk_ix == 1
+        sel = projections[0].dim_chunk_sel
+        assert isinstance(sel, np.ndarray)
+        np.testing.assert_array_equal(sel, [1])
+
+    def test_orthogonal_indexer_varying_boundary_advanced(self) -> None:
+        """OrthogonalIndexer with advanced indexing uses per-chunk chunk_size
+        for ix_() conversion, not a precomputed max."""
+        from zarr.core.indexing import OrthogonalIndexer
+
+        # 2D: dim 0 has boundary chunk, dim 1 is regular
+        g = ChunkGrid(
+            dimensions=(
+                VaryingDimension([5, 10], extent=7),
+                FixedDimension(size=4, extent=8),
+            )
+        )
+        indexer = OrthogonalIndexer(
+            selection=(np.array([0, 6]), slice(None)),
+            shape=(7, 8),
+            chunk_grid=g,
+        )
+        projections = list(indexer)
+        # index 0 → chunk 0, index 6 → chunk 1; dim 1 has 2 chunks
+        assert len(projections) == 4
+        coords = {p.chunk_coords for p in projections}
+        assert coords == {(0, 0), (0, 1), (1, 0), (1, 1)}
+
+
+class TestUpdateShapeBoundary:
+    """Resize creates boundary VaryingDimensions with correct extent."""
+
+    def test_shrink_creates_boundary(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30]])
+        new_grid = grid.update_shape((45,))
+        dim = new_grid.dimensions[0]
+        assert isinstance(dim, VaryingDimension)
+        assert dim.edges == (10, 20, 30)  # last chunk kept (cumulative 60 >= 45)
+        assert dim.extent == 45
+        assert dim.chunk_size(2) == 30  # codec buffer
+        assert dim.data_size(2) == 15  # clipped: 45 - 30 = 15
+
+    def test_shrink_to_exact_boundary(self) -> None:
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30]])
+        new_grid = grid.update_shape((30,))
+        dim = new_grid.dimensions[0]
+        assert isinstance(dim, VaryingDimension)
+        assert dim.edges == (10, 20)  # chunk 2 dropped entirely
+        assert dim.extent == 30
+        assert dim.data_size(1) == 20  # no clipping needed
+
+    def test_shrink_chunk_spec(self) -> None:
+        """After shrink, ChunkSpec reflects boundary correctly."""
+        grid = ChunkGrid.from_rectilinear([[10, 20, 30]])
+        new_grid = grid.update_shape((45,))
+        spec = new_grid[(2,)]
+        assert spec is not None
+        assert spec.codec_shape == (30,)
+        assert spec.shape == (15,)
+        assert spec.is_boundary is True
+
+    def test_parse_chunk_grid_rebinds_extent(self) -> None:
+        """parse_chunk_grid re-binds VaryingDimension extent to array shape."""
+        g = ChunkGrid.from_rectilinear([[10, 20, 30]])
+        # sum(edges)=60, array_shape=50 → re-bind extent
+        g2 = parse_chunk_grid(g, (50,))
+        dim = g2.dimensions[0]
+        assert isinstance(dim, VaryingDimension)
+        assert dim.extent == 50
+        assert dim.data_size(2) == 20  # 50 - 30 = 20
