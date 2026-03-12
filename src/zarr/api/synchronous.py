@@ -993,7 +993,7 @@ def from_array(
     data: AnyArray | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
-    chunks: Literal["auto", "keep"] | tuple[int, ...] = "keep",
+    chunks: Literal["auto", "keep"] | tuple[int, ...] | Sequence[Sequence[int]] = "keep",
     shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
@@ -1025,13 +1025,14 @@ def from_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    chunks : tuple[int, ...] or "auto" or "keep", optional
+    chunks : tuple[int, ...] or Sequence[Sequence[int]] or "auto" or "keep", optional
         Chunk shape of the array.
         Following values are supported:
 
         - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
-        - "keep": Retain the chunk shape of the data array if it is a zarr Array.
-        - tuple[int, ...]: A tuple of integers representing the chunk shape.
+        - "keep": Retain the chunk grid of the data array if it is a zarr Array.
+        - tuple[int, ...]: A tuple of integers representing the chunk shape (regular grid).
+        - Sequence[Sequence[int]]: Per-dimension chunk edge lists (rectilinear grid).
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : tuple[int, ...], optional
