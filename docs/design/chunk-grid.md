@@ -213,17 +213,24 @@ def __getitem__(self, coords: int | tuple[int, ...]) -> ChunkSpec | None:
 
 #### Construction
 
+Both `from_regular` and `from_rectilinear` require `array_shape`, binding the extent per dimension at construction time. This is a core design choice: a chunk grid is a concrete arrangement for a specific array, not an abstract tiling pattern.
+
 ```python
 # Regular grid — all FixedDimension
 grid = ChunkGrid.from_regular(array_shape=(100, 200), chunk_shape=(10, 20))
 
-# Rectilinear grid — per-dimension edge lists
-# Dims with all-identical edges are stored as FixedDimension (optimization)
-grid = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]])
+# Rectilinear grid — extent = sum(edges) when shape matches
+grid = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]], array_shape=(60, 100))
+
+# Rectilinear grid with boundary clipping — last chunk extends past array extent
+# e.g., shape=(55, 90) but edges sum to (60, 100): data_size clips at extent
+grid = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]], array_shape=(55, 90))
 
 # Direct construction
-grid = ChunkGrid(dimensions=(FixedDimension(10, 100), VaryingDimension([10, 20, 30], 60)))
+grid = ChunkGrid(dimensions=(FixedDimension(10, 100), VaryingDimension([10, 20, 30], 55)))
 ```
+
+When `extent < sum(edges)`, the dimension is always stored as `VaryingDimension` (even if all edges are identical) to preserve the explicit edge count. The last chunk's `chunk_size` returns the full declared edge (codec buffer) while `data_size` clips to the extent. This mirrors how `FixedDimension` handles boundary chunks in regular grids.
 
 #### Serialization
 
@@ -434,7 +441,7 @@ All four downstream PRs/issues follow the same pattern:
 | `cg.chunk_shape` | `cg.dimensions[i].size` or `cg[coord].shape` |
 | `cg.chunk_shapes` | `tuple(d.edges for d in cg.dimensions)` |
 | `RegularChunkGrid(chunk_shape=...)` | `ChunkGrid.from_regular(shape, chunks)` |
-| `RectilinearChunkGrid(chunk_shapes=...)` | `ChunkGrid.from_rectilinear(edges)` |
+| `RectilinearChunkGrid(chunk_shapes=...)` | `ChunkGrid.from_rectilinear(edges, shape)` |
 | Feature detection via class import | Version check or `hasattr(ChunkGrid, 'is_regular')` |
 
 **[xarray#10880](https://github.com/pydata/xarray/pull/10880):** Replace `isinstance` checks with `.is_regular`. Write path simplifies with `chunks=[[...]]` API. ~1–2 days.

@@ -4729,7 +4729,7 @@ async def init_array(
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
         rect_chunks = cast("Sequence[Sequence[int]]", chunks)
-        rectilinear_grid = ChunkGrid.from_rectilinear(rect_chunks)
+        rectilinear_grid = ChunkGrid.from_rectilinear(rect_chunks, array_shape=shape_parsed)
         # Use first chunk size per dim as placeholder for _auto_partition
         chunks_flat: tuple[int, ...] | Literal["auto"] = tuple(
             dim_edges[0] for dim_edges in rect_chunks
@@ -4744,7 +4744,7 @@ async def init_array(
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
         rect_shards = cast("Sequence[Sequence[int]]", shards)
-        rectilinear_grid = ChunkGrid.from_rectilinear(rect_shards)
+        rectilinear_grid = ChunkGrid.from_rectilinear(rect_shards, array_shape=shape_parsed)
         # Use first shard size per dim as placeholder for _auto_partition
         shards_for_partition = tuple(dim_edges[0] for dim_edges in rect_shards)
 

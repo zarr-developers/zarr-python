@@ -196,7 +196,8 @@ class ChunkSpec:
     ``codec_shape`` gives the buffer shape for codec processing.
     For interior chunks these are equal. For boundary chunks of a regular
     grid, ``codec_shape`` is the full declared chunk size while ``shape``
-    is clipped. For rectilinear grids, ``shape == codec_shape`` always.
+    is clipped. For rectilinear grids, ``shape == codec_shape`` unless the
+    last chunk extends past the array extent.
     """
 
     slices: tuple[slice, ...]
@@ -407,20 +408,46 @@ class ChunkGrid:
         return cls(dimensions=dims)
 
     @classmethod
-    def from_rectilinear(cls, chunk_shapes: Sequence[Sequence[int]]) -> ChunkGrid:
+    def from_rectilinear(
+        cls,
+        chunk_shapes: Sequence[Sequence[int]],
+        array_shape: ShapeLike,
+    ) -> ChunkGrid:
         """Create a ChunkGrid with per-dimension edge lists.
 
         Each element of chunk_shapes is a sequence of chunk sizes for that dimension.
-        If all sizes in a dimension are identical, it's stored as FixedDimension.
-        The extent of each dimension is ``sum(edges)``.
+        If all sizes in a dimension are identical *and* the extent equals
+        ``sum(edges)``, the dimension is stored as ``FixedDimension``.
+        Otherwise it is stored as ``VaryingDimension``, preserving the
+        explicit edge count (important when the last chunk extends past
+        the array boundary).
+
+        Parameters
+        ----------
+        chunk_shapes
+            Per-dimension sequences of chunk edge lengths.
+        array_shape
+            The array shape to bind as the extent per dimension. The last
+            chunk along each dimension may extend past the array boundary
+            (the edge is the codec buffer size; ``data_size`` clips to the
+            extent).
         """
+        extents = parse_shapelike(array_shape)
+        if len(extents) != len(chunk_shapes):
+            raise ValueError(
+                f"array_shape has {len(extents)} dimensions but chunk_shapes "
+                f"has {len(chunk_shapes)} dimensions"
+            )
         dims: list[DimensionGrid] = []
-        for edges in chunk_shapes:
+        for edges, extent in zip(chunk_shapes, extents, strict=True):
             edges_list = list(edges)
             if not edges_list:
                 raise ValueError("Each dimension must have at least one chunk")
-            extent = sum(edges_list)
-            if all(e == edges_list[0] for e in edges_list):
+            edge_sum = sum(edges_list)
+            # Only collapse to FixedDimension when edges are uniform AND
+            # extent equals edge_sum. When extent < edge_sum the explicit
+            # edge count matters (overflow chunks), so use VaryingDimension.
+            if all(e == edges_list[0] for e in edges_list) and extent == edge_sum:
                 dims.append(FixedDimension(size=edges_list[0], extent=extent))
             else:
                 dims.append(VaryingDimension(edges_list, extent=extent))
@@ -637,7 +664,7 @@ def parse_chunk_grid(
                     f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
                     f"but array shape extent is {extent} (edge sum must be >= extent)"
                 )
-        return ChunkGrid.from_rectilinear(decoded)
+        return ChunkGrid.from_rectilinear(decoded, array_shape=array_shape)
 
     raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
 
