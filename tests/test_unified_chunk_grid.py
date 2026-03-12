@@ -268,7 +268,7 @@ class TestChunkGridQueries:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]], array_shape=(60, 100))
         spec = g[(1, 2)]
         assert spec is not None
-        assert spec.slices == (slice(10, 30), slice(50, 75))
+        assert spec.slices == (slice(10, 30, 1), slice(50, 75, 1))
 
     def test_all_chunk_coords(self) -> None:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
@@ -1025,7 +1025,7 @@ class TestEdgeCases:
         spec = g[0]
         assert spec is not None
         assert spec.shape == (10,)
-        assert spec.slices == (slice(0, 10),)
+        assert spec.slices == (slice(0, 10, 1),)
         # Boundary chunk
         spec = g[9]
         assert spec is not None
@@ -1918,7 +1918,7 @@ class TestAppendRectilinear:
         await arr.append(append_data, axis=0)
         assert arr.shape == (35, 30)
 
-        result = await arr.getitem(slice(None))
+        result = np.asarray(await arr.getitem(slice(None)))
         np.testing.assert_array_almost_equal(result, np.vstack([initial, append_data]))
 
     async def test_append_small_data(self) -> None:
@@ -2043,7 +2043,7 @@ class TestMultipleOverflowChunks:
         assert spec.shape == (20,)
         assert spec.codec_shape == (30,)
         assert spec.is_boundary is True
-        assert spec.slices == (slice(30, 50),)
+        assert spec.slices == (slice(30, 50, 1),)
 
     def test_chunk_sizes_with_overflow(self) -> None:
         """chunk_sizes returns clipped data sizes including zero for past-extent chunks."""
@@ -2265,5 +2265,5 @@ class TestIterChunkRegionsWorksForRectilinear:
         a = zarr.create_array(store, shape=(30,), chunks=[[10, 20]], dtype="int32")
         regions = list(_iter_chunk_regions(a))
         assert len(regions) == 2
-        assert regions[0] == (slice(0, 10),)
-        assert regions[1] == (slice(10, 30),)
+        assert regions[0] == (slice(0, 10, 1),)
+        assert regions[1] == (slice(10, 30, 1),)

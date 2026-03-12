@@ -515,7 +515,7 @@ class ChunkGrid:
             if ix < 0 or ix >= dim.nchunks:
                 return None
             offset = dim.chunk_offset(ix)
-            slices.append(slice(offset, offset + dim.data_size(ix)))
+            slices.append(slice(offset, offset + dim.data_size(ix), 1))
             codec_shape.append(dim.chunk_size(ix))
         return ChunkSpec(tuple(slices), tuple(codec_shape))
 
