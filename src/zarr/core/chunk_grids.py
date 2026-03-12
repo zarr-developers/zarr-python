@@ -79,6 +79,14 @@ class FixedDimension:
             return np.zeros_like(indices)
         return indices // self.size
 
+    def with_extent(self, new_extent: int) -> FixedDimension:
+        """Return a copy re-bound to *new_extent*."""
+        return FixedDimension(size=self.size, extent=new_extent)
+
+    def resize(self, new_extent: int) -> FixedDimension:
+        """Return a copy adjusted for a new array extent (same as with_extent for fixed)."""
+        return FixedDimension(size=self.size, extent=new_extent)
+
 
 @dataclass(frozen=True)
 class VaryingDimension:
@@ -129,6 +137,34 @@ class VaryingDimension:
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
         return np.searchsorted(self.cumulative, indices, side="right")
 
+    def with_extent(self, new_extent: int) -> VaryingDimension:
+        """Return a copy re-bound to *new_extent*, validating edge coverage."""
+        edge_sum = sum(self.edges)
+        if edge_sum < new_extent:
+            raise ValueError(
+                f"VaryingDimension edge sum {edge_sum} is less than new extent {new_extent}"
+            )
+        return VaryingDimension(self.edges, extent=new_extent)
+
+    def resize(self, new_extent: int) -> VaryingDimension:
+        """Return a copy adjusted for a new array extent (grow/shrink)."""
+        old_extent = self.extent
+        if new_extent == old_extent:
+            return self
+        elif new_extent > old_extent:
+            expanded_edges = list(self.edges) + [new_extent - old_extent]
+            return VaryingDimension(expanded_edges, extent=new_extent)
+        else:
+            # Shrink: keep chunks whose cumulative offset covers new_extent
+            shrunk_edges: list[int] = []
+            total = 0
+            for edge in self.edges:
+                shrunk_edges.append(edge)
+                total += edge
+                if total >= new_extent:
+                    break
+            return VaryingDimension(shrunk_edges, extent=new_extent)
+
 
 @runtime_checkable
 class DimensionGrid(Protocol):
@@ -143,6 +179,8 @@ class DimensionGrid(Protocol):
     def chunk_size(self, chunk_ix: int) -> int: ...
     def data_size(self, chunk_ix: int) -> int: ...
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
+    def with_extent(self, new_extent: int) -> DimensionGrid: ...
+    def resize(self, new_extent: int) -> DimensionGrid: ...
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +235,7 @@ def _expand_rle(data: Sequence[list[int] | int]) -> list[int]:
     return result
 
 
-def _compress_rle(sizes: Sequence[int]) -> list[list[int] | int]:
+def _compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
     """Compress chunk sizes to mixed RLE format per the rectilinear spec.
 
     Runs of length > 1 are emitted as ``[value, count]`` pairs; runs of
@@ -207,7 +245,7 @@ def _compress_rle(sizes: Sequence[int]) -> list[list[int] | int]:
     """
     if not sizes:
         return []
-    result: list[list[int] | int] = []
+    result: list[int | list[int]] = []
     current = sizes[0]
     count = 1
     for s in sizes[1:]:
@@ -219,6 +257,37 @@ def _compress_rle(sizes: Sequence[int]) -> list[list[int] | int]:
             count = 1
     result.append([current, count] if count > 1 else current)
     return result
+
+
+# A single dimension's rectilinear chunk spec: bare int (uniform shorthand),
+# list of ints (explicit edges), or mixed RLE (e.g. [[10, 3], 5]).
+RectilinearDimSpec = int | list[int | list[int]]
+
+
+def _serialize_fixed_dim(dim: FixedDimension) -> RectilinearDimSpec:
+    """Compact rectilinear representation for a fixed-size dimension."""
+    n = dim.nchunks
+    if n == 0:
+        return []
+    last_data = dim.extent - (n - 1) * dim.size
+    if last_data == dim.size:
+        return dim.size
+    elif n == 1:
+        return [last_data]
+    elif n == 2:
+        return [dim.size, last_data]
+    else:
+        return [[dim.size, n - 1], last_data]
+
+
+def _serialize_varying_dim(dim: VaryingDimension) -> RectilinearDimSpec:
+    """RLE-compressed rectilinear representation for a varying dimension."""
+    edges = list(dim.edges)
+    rle = _compress_rle(edges)
+    if len(rle) < len(edges):
+        return rle
+    # mypy: list[int] is invariant, so it won't widen to list[int | list[int]]
+    return cast("RectilinearDimSpec", edges)
 
 
 def _validate_rectilinear_kind(configuration: dict[str, JSON]) -> None:
@@ -508,30 +577,11 @@ class ChunkGrid:
                 f"new_shape has {len(new_shape)} dimensions but "
                 f"chunk grid has {self.ndim} dimensions"
             )
-        dims: list[DimensionGrid] = []
-        for dim, new_extent in zip(self.dimensions, new_shape, strict=True):
-            if isinstance(dim, FixedDimension):
-                dims.append(FixedDimension(size=dim.size, extent=new_extent))
-            elif isinstance(dim, VaryingDimension):
-                old_extent = dim.extent
-                if new_extent == old_extent:
-                    dims.append(dim)
-                elif new_extent > old_extent:
-                    expanded_edges = list(dim.edges) + [new_extent - old_extent]
-                    dims.append(VaryingDimension(expanded_edges, extent=new_extent))
-                else:
-                    # Shrink: keep chunks whose cumulative offset covers new_extent
-                    shrunk_edges: list[int] = []
-                    total = 0
-                    for edge in dim.edges:
-                        shrunk_edges.append(edge)
-                        total += edge
-                        if total >= new_extent:
-                            break
-                    dims.append(VaryingDimension(shrunk_edges, extent=new_extent))
-            else:
-                raise TypeError(f"Unexpected dimension type: {type(dim)}")
-        return ChunkGrid(dimensions=tuple(dims))
+        dims = tuple(
+            dim.resize(new_extent)
+            for dim, new_extent in zip(self.dimensions, new_shape, strict=True)
+        )
+        return ChunkGrid(dimensions=dims)
 
     # ChunkGrid does not serialize itself. The format choice ("regular" vs
     # "rectilinear") belongs to the metadata layer. Use serialize_chunk_grid()
@@ -549,24 +599,11 @@ def parse_chunk_grid(
     """
     if isinstance(data, ChunkGrid):
         # Re-bind extent if array_shape differs from what's stored
-        dims: list[DimensionGrid] = []
-        for dim, extent in zip(data.dimensions, array_shape, strict=True):
-            if isinstance(dim, FixedDimension):
-                dims.append(FixedDimension(size=dim.size, extent=extent))
-            elif isinstance(dim, VaryingDimension):
-                # After resize/shrink the last chunk may extend past the array
-                # boundary, so sum(edges) >= array_shape is valid (like regular grids).
-                edge_sum = sum(dim.edges)
-                if edge_sum < extent:
-                    raise ValueError(
-                        f"VaryingDimension edge sum {edge_sum} is less than "
-                        f"array shape extent {extent} for dimension {len(dims)}"
-                    )
-                # Re-bind extent to the actual array shape
-                dims.append(VaryingDimension(dim.edges, extent=extent))
-            else:
-                raise TypeError(f"Unexpected dimension type: {type(dim)}")
-        return ChunkGrid(dimensions=tuple(dims))
+        dims = tuple(
+            dim.with_extent(extent)
+            for dim, extent in zip(data.dimensions, array_shape, strict=True)
+        )
+        return ChunkGrid(dimensions=dims)
 
     name_parsed, configuration_parsed = parse_named_configuration(data)
 
@@ -622,34 +659,14 @@ def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
         }
 
     if name == "rectilinear":
-        chunk_shapes: list[Any] = []
+        chunk_shapes: list[RectilinearDimSpec] = []
         for dim in grid.dimensions:
             if isinstance(dim, FixedDimension):
-                # Produce the most compact spec representation.
-                n = dim.nchunks
-                if n == 0:
-                    chunk_shapes.append([])
-                else:
-                    last_data = dim.extent - (n - 1) * dim.size
-                    if last_data == dim.size:
-                        # All chunks uniform → integer shorthand
-                        chunk_shapes.append(dim.size)
-                    elif n == 1:
-                        # Single boundary chunk → bare integer
-                        chunk_shapes.append([last_data])
-                    elif n == 2:
-                        # One full chunk + one boundary → bare integers
-                        chunk_shapes.append([dim.size, last_data])
-                    else:
-                        # RLE for the uniform run + bare int for boundary
-                        chunk_shapes.append([[dim.size, n - 1], last_data])
+                chunk_shapes.append(_serialize_fixed_dim(dim))
             elif isinstance(dim, VaryingDimension):
-                edges = list(dim.edges)
-                rle = _compress_rle(edges)
-                if len(rle) < len(edges):
-                    chunk_shapes.append(rle)
-                else:
-                    chunk_shapes.append(edges)
+                chunk_shapes.append(_serialize_varying_dim(dim))
+            else:
+                raise TypeError(f"Unexpected dimension type: {type(dim)}")
         return {
             "name": "rectilinear",
             "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
