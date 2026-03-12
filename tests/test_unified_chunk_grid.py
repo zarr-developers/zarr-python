@@ -35,9 +35,9 @@ def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
     """Extract the per-chunk edge lengths for *dim* from a ChunkGrid."""
     d = grid.dimensions[dim]
     if isinstance(d, FixedDimension):
-        return (d.size,) * d.nchunks
+        return tuple(d.size for _ in range(d.nchunks))
     if isinstance(d, VaryingDimension):
-        return d.edges
+        return tuple(d.edges)
     raise TypeError(f"Unexpected dimension type: {type(d)}")
 
 
@@ -1919,7 +1919,7 @@ class TestAppendRectilinear:
         assert arr.shape == (35, 30)
 
         result = await arr.getitem(slice(None))
-        np.testing.assert_array_almost_equal(result, np.vstack([initial, append_data]))  # type: ignore[arg-type]
+        np.testing.assert_array_almost_equal(result, np.vstack([initial, append_data]))
 
     async def test_append_small_data(self) -> None:
         store = zarr.storage.MemoryStore()
@@ -2009,6 +2009,84 @@ class TestVaryingDimensionBoundary:
         assert spec.codec_shape == (10,)
         assert spec.shape == (10,)
         assert spec.is_boundary is False
+
+
+class TestMultipleOverflowChunks:
+    """Rectilinear grids where multiple chunks extend past the array extent."""
+
+    def test_multiple_chunks_past_extent(self) -> None:
+        """Chunks 2 is partial, chunk 3 is entirely past the extent."""
+        g = ChunkGrid.from_rectilinear([[10, 20, 30, 40]], array_shape=(50,))
+        d = g.dimensions[0]
+        assert d.nchunks == 4
+        assert d.data_size(0) == 10  # fully within
+        assert d.data_size(1) == 20  # fully within
+        assert d.data_size(2) == 20  # partial: 50 - 30 = 20
+        assert d.data_size(3) == 0  # entirely past
+        assert d.chunk_size(2) == 30  # codec buffer: full edge
+        assert d.chunk_size(3) == 40  # codec buffer: full edge
+
+    def test_chunk_spec_entirely_past_extent(self) -> None:
+        """ChunkSpec for a chunk entirely past the extent has zero-size shape."""
+        g = ChunkGrid.from_rectilinear([[10, 20, 30, 40]], array_shape=(50,))
+        spec = g[(3,)]
+        assert spec is not None
+        assert spec.shape == (0,)
+        assert spec.codec_shape == (40,)
+        assert spec.is_boundary is True
+
+    def test_chunk_spec_partial_overflow(self) -> None:
+        """ChunkSpec for a partially-overflowing chunk clips correctly."""
+        g = ChunkGrid.from_rectilinear([[10, 20, 30, 40]], array_shape=(50,))
+        spec = g[(2,)]
+        assert spec is not None
+        assert spec.shape == (20,)
+        assert spec.codec_shape == (30,)
+        assert spec.is_boundary is True
+        assert spec.slices == (slice(30, 50),)
+
+    def test_chunk_sizes_with_overflow(self) -> None:
+        """chunk_sizes returns clipped data sizes including zero for past-extent chunks."""
+        g = ChunkGrid.from_rectilinear([[10, 20, 30, 40]], array_shape=(50,))
+        assert g.chunk_sizes == ((10, 20, 20, 0),)
+
+    def test_multidim_overflow(self) -> None:
+        """Overflow in multiple dimensions simultaneously."""
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [40, 40, 40]], array_shape=(45, 100))
+        # dim 0: edges sum to 60, extent 45 → chunk 2 partial (45-30=15)
+        # dim 1: edges sum to 120, extent 100 → chunk 2 partial (100-80=20)
+        assert g.chunk_sizes == ((10, 20, 15), (40, 40, 20))
+        spec = g[(2, 2)]
+        assert spec is not None
+        assert spec.shape == (15, 20)
+        assert spec.codec_shape == (30, 40)
+
+    def test_uniform_edges_with_overflow_stays_varying(self) -> None:
+        """Uniform edges with extent < sum(edges) must stay VaryingDimension."""
+        g = ChunkGrid.from_rectilinear([[10, 10, 10, 10]], array_shape=(35,))
+        assert isinstance(g.dimensions[0], VaryingDimension)
+        assert not g.is_regular  # can't collapse to FixedDimension
+        assert g.chunk_sizes == ((10, 10, 10, 5),)
+        assert g.dimensions[0].nchunks == 4
+
+    def test_serialization_roundtrip_overflow(self) -> None:
+        """Overflow chunks survive serialization round-trip."""
+        g = ChunkGrid.from_rectilinear([[10, 20, 30, 40]], array_shape=(50,))
+        serialized = serialize_chunk_grid(g, "rectilinear")
+        assert serialized == {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30, 40]]},
+        }
+        g2 = parse_chunk_grid(serialized, (50,))
+        assert g2.dimensions[0].nchunks == 4
+        assert g2.chunk_sizes == ((10, 20, 20, 0),)
+
+    def test_index_to_chunk_near_extent(self) -> None:
+        """Index lookup near and at the extent boundary."""
+        d = VaryingDimension([10, 20, 30, 40], extent=50)
+        assert d.index_to_chunk(29) == 1  # last index in chunk 1
+        assert d.index_to_chunk(30) == 2  # first index in chunk 2
+        assert d.index_to_chunk(49) == 2  # last valid index
 
 
 class TestBoundaryIndexing:
