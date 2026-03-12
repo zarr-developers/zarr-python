@@ -1270,24 +1270,28 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def cdata_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
 
         Returns
         -------
         tuple[int, ...]
-            The shape of the chunk grid for this array.
+            The number of chunks along each dimension.
         """
         return self._chunk_grid_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
 
         Returns
         -------
         tuple[int, ...]
-            The shape of the chunk grid for this array.
+            The number of chunks along each dimension.
         """
         return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=True)))
 
@@ -2456,14 +2460,23 @@ class Array(Generic[T_ArrayMetadata]):
     @property
     def cdata_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
         """
         return self.async_array._chunk_grid_shape
 
     @property
     def _chunk_grid_shape(self) -> tuple[int, ...]:
         """
-        The shape of the chunk grid for this array.
+        The number of chunks along each dimension.
+
+        When sharding is used, this counts inner chunks (not shards) per dimension.
+
+        Returns
+        -------
+        tuple[int, ...]
+            The number of chunks along each dimension.
         """
         return self.async_array._chunk_grid_shape
 

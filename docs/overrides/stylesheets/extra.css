@@ -52,14 +52,14 @@
   color: white;
 }
 
-/* Search box styling */
-.md-search__input {
+/* Search box styling in the header */
+.md-header .md-search__input {
   background-color: rgba(255, 255, 255, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: white;
 }
 
-.md-search__input::placeholder {
+.md-header .md-search__input::placeholder {
   color: rgba(255, 255, 255, 0.7);
 }
 
