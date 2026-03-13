@@ -84,8 +84,8 @@ class StoreConcurrencyTests(Generic[S, B]):
         if not issubclass(self.store_cls, ConcurrencyLimiter):
             pytest.skip("Store does not support concurrency limits")
 
-        limit = 3
-        store = self.store_cls(**{**store_kwargs, "concurrency_limit": limit})  # type: ignore[unreachable]
+        limit = 3  # type: ignore[unreachable]
+        store = self.store_cls(**{**store_kwargs, "concurrency_limit": limit})
         await store._ensure_open()
 
         sem = store._semaphore
@@ -94,7 +94,7 @@ class StoreConcurrencyTests(Generic[S, B]):
         # Exhaust all slots
         for _ in range(limit):
             await sem.acquire()
-        assert sem._value == 0  # type: ignore[attr-defined]
+        assert sem._value == 0
 
         # A store operation should block because no slots are available
         buf = self.buffer_cls.from_bytes(b"x")

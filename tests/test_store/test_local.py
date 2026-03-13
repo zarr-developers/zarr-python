@@ -204,4 +204,3 @@ def test_atomic_write_exclusive_preexisting(tmp_path: pathlib.Path) -> None:
             f.write(b"abc")
     assert path.read_bytes() == b"xyz"
     assert list(path.parent.iterdir()) == [path]  # no temp files
-
