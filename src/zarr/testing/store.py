@@ -458,23 +458,17 @@ class StoreTests(Generic[S, B]):
         a_keys = ["a/b/c/zarr.json", "a/b/zarr.json", "a/zarr.json"]
         ab_keys = ["a/b/c/zarr.json", "a/b/zarr.json"]
 
-        # query prefix -> expected keys
         test_cases: dict[str, list[str]] = {
-            # empty prefix returns everything
             "": all_keys,
-            # with trailing /
             "a/": a_keys,
             "a/b/": ab_keys,
             "a/b/c/": ["a/b/c/zarr.json"],
             "a_extra/": ["a_extra/zarr.json"],
-            # without trailing / should behave the same as with /
             "a": a_keys,
             "a/b": ab_keys,
             "a/b/c": ["a/b/c/zarr.json"],
             "a_extra": ["a_extra/zarr.json"],
-            # partial prefix that doesn't match any directory
             "a_e": [],
-            # prefix that doesn't match anything
             "b": [],
             "b/": [],
         }
