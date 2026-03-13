@@ -636,6 +636,33 @@ class TestParseChunkGridValidation:
             parse_chunk_grid(g, (100, 50))
 
 
+class TestRectilinearRoundTripPreservesCodecShape:
+    def test_boundary_chunk_codec_size_preserved(self) -> None:
+        """Round-tripping through rectilinear should not change codec buffer sizes."""
+        grid = ChunkGrid.from_regular((95,), (10,))
+        original_codec_size = grid.dimensions[0].chunk_size(9)
+        assert original_codec_size == 10
+
+        serialized = serialize_chunk_grid(grid, "rectilinear")
+        parsed = parse_chunk_grid(serialized, (95,))
+
+        roundtripped_codec_size = parsed.dimensions[0].chunk_size(9)
+        assert roundtripped_codec_size == original_codec_size, (
+            f"codec buffer changed from {original_codec_size} to "
+            f"{roundtripped_codec_size} after round-trip"
+        )
+
+    def test_single_chunk_boundary_codec_size_preserved(self) -> None:
+        """shape=7, chunk_size=10: single chunk's codec buffer should stay 10."""
+        grid = ChunkGrid.from_regular((7,), (10,))
+        assert grid.dimensions[0].chunk_size(0) == 10
+
+        serialized = serialize_chunk_grid(grid, "rectilinear")
+        parsed = parse_chunk_grid(serialized, (7,))
+
+        assert parsed.dimensions[0].chunk_size(0) == 10
+
+
 # ---------------------------------------------------------------------------
 # Indexing with rectilinear grids
 # ---------------------------------------------------------------------------
@@ -983,20 +1010,14 @@ class TestEdgeCases:
 
         d = serialize_chunk_grid(g, "rectilinear")
         assert d["name"] == "rectilinear"
-        # Second dim should serialize as edges that sum to 95
+        # Second dim serializes as bare integer (per rectilinear spec,
+        # a bare integer repeats until sum >= extent, preserving full
+        # codec buffer size for boundary chunks).
         config = d["configuration"]
         assert isinstance(config, dict)
         chunk_shapes = config["chunk_shapes"]
         assert isinstance(chunk_shapes, list)
-        # Last edge should be 5, not 10
-        dim1_shapes = chunk_shapes[1]
-        # Expand RLE to check
-        if isinstance(dim1_shapes[0], list):
-            expanded = _expand_rle(dim1_shapes)
-        else:
-            expanded = dim1_shapes
-        assert sum(expanded) == 95  # extent preserved
-        assert expanded[-1] == 5  # boundary chunk
+        assert chunk_shapes[1] == 10  # bare integer shorthand
 
         g2 = parse_chunk_grid(d, (60, 95))
         assert g2.shape == g.shape
@@ -2148,11 +2169,11 @@ class TestMultipleOverflowChunks:
         assert spec.shape == (15, 20)
         assert spec.codec_shape == (30, 40)
 
-    def test_uniform_edges_with_overflow_stays_varying(self) -> None:
-        """Uniform edges with extent < sum(edges) must stay VaryingDimension."""
+    def test_uniform_edges_with_overflow_collapses_to_fixed(self) -> None:
+        """Uniform edges where len == ceildiv(extent, edge) collapse to FixedDimension."""
         g = ChunkGrid.from_rectilinear([[10, 10, 10, 10]], array_shape=(35,))
-        assert isinstance(g.dimensions[0], VaryingDimension)
-        assert not g.is_regular  # can't collapse to FixedDimension
+        assert isinstance(g.dimensions[0], FixedDimension)
+        assert g.is_regular
         assert g.chunk_sizes == ((10, 10, 10, 5),)
         assert g.dimensions[0].nchunks == 4
 

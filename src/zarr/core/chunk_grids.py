@@ -272,19 +272,16 @@ RectilinearDimSpec = int | list[int | list[int]]
 
 
 def _serialize_fixed_dim(dim: FixedDimension) -> RectilinearDimSpec:
-    """Compact rectilinear representation for a fixed-size dimension."""
-    n = dim.nchunks
-    if n == 0:
+    """Compact rectilinear representation for a fixed-size dimension.
+
+    Per the rectilinear spec, a bare integer is repeated until the sum
+    >= extent.  This preserves the full codec buffer size for boundary
+    chunks, matching the regular grid spec ("chunks at the border always
+    have the full chunk size").
+    """
+    if dim.nchunks == 0:
         return []
-    last_data = dim.extent - (n - 1) * dim.size
-    if last_data == dim.size:
-        return dim.size
-    elif n == 1:
-        return [last_data]
-    elif n == 2:
-        return [dim.size, last_data]
-    else:
-        return [[dim.size, n - 1], last_data]
+    return dim.size
 
 
 def _serialize_varying_dim(dim: VaryingDimension) -> RectilinearDimSpec:
@@ -463,10 +460,12 @@ class ChunkGrid:
             if not edges_list:
                 raise ValueError("Each dimension must have at least one chunk")
             edge_sum = sum(edges_list)
-            # Only collapse to FixedDimension when edges are uniform AND
-            # extent equals edge_sum. When extent < edge_sum the explicit
-            # edge count matters (overflow chunks), so use VaryingDimension.
-            if all(e == edges_list[0] for e in edges_list) and extent == edge_sum:
+            # Collapse to FixedDimension when edges are uniform AND either
+            # extent == edge_sum (exact fit) or the number of edges matches
+            # ceildiv(extent, edge) (regular grid with boundary overflow).
+            if all(e == edges_list[0] for e in edges_list) and (
+                extent == edge_sum or len(edges_list) == ceildiv(extent, edges_list[0])
+            ):
                 dims.append(FixedDimension(size=edges_list[0], extent=extent))
             else:
                 dims.append(VaryingDimension(edges_list, extent=extent))
