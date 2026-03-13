@@ -57,9 +57,6 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: MemoryStore) -> None:
         assert store.supports_listing
 
-    async def test_list_prefix(self, store: MemoryStore) -> None:
-        assert True
-
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "int64"])
     @pytest.mark.parametrize("zarr_format", [2, 3])
     async def test_deterministic_size(
@@ -162,9 +159,6 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
 
     def test_store_supports_listing(self, store: GpuMemoryStore) -> None:
         assert store.supports_listing
-
-    async def test_list_prefix(self, store: GpuMemoryStore) -> None:
-        assert True
 
     def test_dict_reference(self, store: GpuMemoryStore) -> None:
         store_dict: dict[str, Any] = {}
