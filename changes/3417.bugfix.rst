@@ -1,0 +1,1 @@
+Allow roundtripping ``BytesCodec`` instances to / from dict.
