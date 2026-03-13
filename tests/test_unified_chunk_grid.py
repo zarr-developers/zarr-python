@@ -50,6 +50,28 @@ def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
 
 
 # ---------------------------------------------------------------------------
+# Index to chunk
+# ---------------------------------------------------------------------------
+
+
+class TestVaryingDimensionIndexToChunkBounds:
+    def test_index_at_extent_raises(self) -> None:
+        """index_to_chunk(extent) should raise since extent is out of bounds."""
+        dim = VaryingDimension([10, 20, 30], extent=60)
+        with pytest.raises(IndexError, match="out of bounds"):
+            dim.index_to_chunk(60)
+
+    def test_index_past_extent_raises(self) -> None:
+        dim = VaryingDimension([10, 20, 30], extent=60)
+        with pytest.raises(IndexError, match="out of bounds"):
+            dim.index_to_chunk(100)
+
+    def test_last_valid_index_works(self) -> None:
+        dim = VaryingDimension([10, 20, 30], extent=60)
+        assert dim.index_to_chunk(59) == 2
+
+
+# ---------------------------------------------------------------------------
 # Feature flag gating
 # ---------------------------------------------------------------------------
 

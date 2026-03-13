@@ -120,6 +120,8 @@ class VaryingDimension:
         return len(self.edges)
 
     def index_to_chunk(self, idx: int) -> int:
+        if idx < 0 or idx >= self.extent:
+            raise IndexError(f"Index {idx} out of bounds for dimension with extent {self.extent}")
         return bisect.bisect_right(self.cumulative, idx)
 
     def chunk_offset(self, chunk_ix: int) -> int:
