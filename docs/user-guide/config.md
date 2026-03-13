@@ -30,7 +30,7 @@ Configuration options include the following:
 - Default Zarr format `default_zarr_version`
 - Default array order in memory `array.order`
 - Whether empty chunks are written to storage `array.write_empty_chunks`
-- Async and threading options, e.g. `async.concurrency` and `threading.max_workers`
+- Threading options, e.g. `threading.max_workers`
 - Selections of implementations of codecs, codec pipelines and buffers
 - Enabling GPU support with `zarr.config.enable_gpu()`. See GPU support for more.
 
