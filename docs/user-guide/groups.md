@@ -133,5 +133,3 @@ Groups also have the [`zarr.Group.tree`][] method, e.g.:
 print(root.tree())
 ```
 
-!!! note
-    [`zarr.Group.tree`][] requires the optional [rich](https://rich.readthedocs.io/en/stable/) dependency. It can be installed with the `[tree]` extra.
