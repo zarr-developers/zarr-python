@@ -75,56 +75,36 @@ class StoreConcurrencyTests(Generic[S, B]):
         assert store.concurrency_limit is None
         assert store._semaphore is None
 
-    async def test_concurrency_limit_enforced(self, store: S) -> None:
-        """Test that the concurrency limit is actually enforced during execution.
+    async def test_concurrency_limit_enforced(self, store_kwargs: dict[str, Any]) -> None:
+        """Test that store operations acquire the semaphore.
 
-        This test verifies that when many operations are submitted concurrently,
-        only up to the concurrency limit are actually executing at once.
+        Exhausts all semaphore slots externally, then verifies that a store
+        operation blocks until a slot is released.
         """
-        semaphore = self._get_semaphore(store)
-        if semaphore is None:
-            pytest.skip("Store has no concurrency limit")
+        if not issubclass(self.store_cls, ConcurrencyLimiter):
+            pytest.skip("Store does not support concurrency limits")
 
-        assert isinstance(store, ConcurrencyLimiter)
-        assert store.concurrency_limit is not None  # type: ignore[unreachable]
-        limit = store.concurrency_limit
+        limit = 3
+        store = self.store_cls(**{**store_kwargs, "concurrency_limit": limit})  # type: ignore[unreachable]
+        await store._ensure_open()
 
-        # We'll monitor the semaphore's available count
-        # When it reaches 0, that means `limit` operations are running
-        min_available = limit
+        sem = store._semaphore
+        assert sem is not None
 
-        async def monitored_operation(key: str, value: B) -> None:
-            nonlocal min_available
-            # Check semaphore state right after we're scheduled
-            await asyncio.sleep(0)  # Yield to ensure we're in the queue
-            available = semaphore._value
-            min_available = min(min_available, available)
+        # Exhaust all slots
+        for _ in range(limit):
+            await sem.acquire()
+        assert sem._value == 0  # type: ignore[attr-defined]
 
-            # Now do the actual operation (which will acquire the semaphore)
-            await store.set(key, value)
+        # A store operation should block because no slots are available
+        buf = self.buffer_cls.from_bytes(b"x")
+        task = asyncio.create_task(store.set("key", buf))
+        await asyncio.sleep(0)  # let the task attempt to acquire
+        assert not task.done()
 
-        # Launch more operations than the limit to ensure contention
-        num_ops = limit * 2
-        items = [
-            (f"limit_test_key_{i}", self.buffer_cls.from_bytes(f"value_{i}".encode()))
-            for i in range(num_ops)
-        ]
-
-        await asyncio.gather(*[monitored_operation(k, v) for k, v in items])
-
-        # The semaphore should have been fully utilized (reached 0 or close to it)
-        # This indicates that `limit` operations were running concurrently
-        assert min_available < limit, (
-            f"Semaphore was never fully utilized. "
-            f"Min available: {min_available}, Limit: {limit}. "
-            f"This suggests operations aren't running concurrently."
-        )
-
-        # Ideally it should reach 0, but allow some slack for timing
-        assert min_available <= 5, (
-            f"Semaphore only reached {min_available} available slots. "
-            f"Expected close to 0 with limit {limit}."
-        )
+        # Release one slot — the task should now complete
+        sem.release()
+        await asyncio.wait_for(task, timeout=5.0)
 
     async def test_batch_write_no_deadlock(self, store: S) -> None:
         """Test that batch writes don't deadlock when exceeding concurrency limit."""

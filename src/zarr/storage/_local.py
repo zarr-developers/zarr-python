@@ -19,7 +19,6 @@ from zarr.abc.store import (
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.storage._utils import ConcurrencyLimiter, with_concurrency_limit
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, Iterator
@@ -86,7 +85,7 @@ def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
         return f.write(view)
 
 
-class LocalStore(Store, ConcurrencyLimiter):
+class LocalStore(Store):
     """
     Store for the local file system.
 
@@ -96,9 +95,6 @@ class LocalStore(Store, ConcurrencyLimiter):
         Directory to use as root of store.
     read_only : bool
         Whether the store is read-only
-    concurrency_limit : int, optional
-        Maximum number of concurrent I/O operations. Default is 100.
-        Set to None for unlimited concurrency.
 
     Attributes
     ----------
@@ -119,7 +115,6 @@ class LocalStore(Store, ConcurrencyLimiter):
         root: Path | str,
         *,
         read_only: bool = False,
-        concurrency_limit: int | None = 100,
     ) -> None:
         if isinstance(root, str):
             root = Path(root)
@@ -127,8 +122,7 @@ class LocalStore(Store, ConcurrencyLimiter):
             raise TypeError(
                 f"'root' must be a string or Path instance. Got an instance of {type(root)} instead."
             )
-        Store.__init__(self, read_only=read_only)
-        ConcurrencyLimiter.__init__(self, concurrency_limit)
+        super().__init__(read_only=read_only)
         self.root = root
 
     def with_read_only(self, read_only: bool = False) -> Self:
@@ -136,7 +130,6 @@ class LocalStore(Store, ConcurrencyLimiter):
         return type(self)(
             root=self.root,
             read_only=read_only,
-            concurrency_limit=self.concurrency_limit,
         )
 
     @classmethod
@@ -199,7 +192,6 @@ class LocalStore(Store, ConcurrencyLimiter):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
 
-    @with_concurrency_limit
     async def get(
         self,
         key: str,
@@ -225,19 +217,8 @@ class LocalStore(Store, ConcurrencyLimiter):
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
-        # We directly call the I/O functions here, wrapped with the semaphore,
-        # to avoid deadlock from calling the decorated get() method.
-
-        async def _get_with_limit(key: str, byte_range: ByteRequest | None) -> Buffer | None:
-            path = self.root / key
-            try:
-                async with self._limit():
-                    return await asyncio.to_thread(_get, path, prototype, byte_range)
-            except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
-                return None
-
         return await asyncio.gather(
-            *[_get_with_limit(key, byte_range) for key, byte_range in key_ranges]
+            *[self.get(key, prototype, byte_range) for key, byte_range in key_ranges]
         )
 
     async def set(self, key: str, value: Buffer) -> None:
@@ -251,7 +232,6 @@ class LocalStore(Store, ConcurrencyLimiter):
         except FileExistsError:
             pass
 
-    @with_concurrency_limit
     async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
         if not self._is_open:
             await self._open()
@@ -264,7 +244,6 @@ class LocalStore(Store, ConcurrencyLimiter):
         path = self.root / key
         await asyncio.to_thread(_put, path, value, exclusive=exclusive)
 
-    @with_concurrency_limit
     async def delete(self, key: str) -> None:
         """
         Remove a key from the store.
