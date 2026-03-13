@@ -858,9 +858,13 @@ def create_array(
     data : np.ndarray, optional
         Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be ``None``.
-    chunks : tuple[int, ...] | Literal["auto"], default="auto"
+    chunks : tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"], default="auto"
         Chunk shape of the array.
         If chunks is "auto", a chunk shape is guessed based on the shape of the array and the dtype.
+        A nested list of per-dimension edge sizes creates a rectilinear grid.
+        Rectilinear chunk grids are experimental and must be explicitly enabled
+        with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+        feature is stabilizing.
     shards : tuple[int, ...], optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec] | Literal["auto"], optional
@@ -1033,6 +1037,9 @@ def from_array(
         - "keep": Retain the chunk grid of the data array if it is a zarr Array.
         - tuple[int, ...]: A tuple of integers representing the chunk shape (regular grid).
         - Sequence[Sequence[int]]: Per-dimension chunk edge lists (rectilinear grid).
+          Rectilinear chunk grids are experimental and must be explicitly enabled
+          with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+          feature is stabilizing.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : tuple[int, ...], optional

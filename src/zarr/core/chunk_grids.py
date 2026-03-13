@@ -431,7 +431,20 @@ class ChunkGrid:
             chunk along each dimension may extend past the array boundary
             (the edge is the codec buffer size; ``data_size`` clips to the
             extent).
+
+        Raises
+        ------
+        ValueError
+            If the ``array.rectilinear_chunks`` config option is not enabled.
         """
+        from zarr.core.config import config
+
+        if not config.get("array.rectilinear_chunks"):
+            raise ValueError(
+                "Rectilinear chunk grids are experimental and disabled by default. "
+                "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
+                "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
+            )
         extents = parse_shapelike(array_shape)
         if len(extents) != len(chunk_shapes):
             raise ValueError(
@@ -623,6 +636,10 @@ def parse_chunk_grid(
 
     This is the primary entry point for constructing a ChunkGrid from serialized
     metadata. It always produces a grid with correct extent values.
+
+    Both ``"regular"`` and ``"rectilinear"`` grid names are supported. Rectilinear
+    grids are experimental and require the ``array.rectilinear_chunks`` config
+    option to be enabled; a ``ValueError`` is raised otherwise.
     """
     if isinstance(data, ChunkGrid):
         # Re-bind extent if array_shape differs from what's stored

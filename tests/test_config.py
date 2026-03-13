@@ -54,6 +54,7 @@ def test_config_defaults_set() -> None:
                     "order": "C",
                     "write_empty_chunks": False,
                     "target_shard_size_bytes": None,
+                    "rectilinear_chunks": False,
                 },
                 "async": {"concurrency": 10, "timeout": None},
                 "threading": {"max_workers": None},

@@ -28,7 +28,15 @@ from zarr.core.chunk_grids import (
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from pathlib import Path
+
+
+@pytest.fixture(autouse=True)
+def _enable_rectilinear_chunks() -> Generator[None, None, None]:
+    """Enable rectilinear chunks for all tests in this module."""
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        yield
 
 
 def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
@@ -39,6 +47,46 @@ def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
     if isinstance(d, VaryingDimension):
         return tuple(d.edges)
     raise TypeError(f"Unexpected dimension type: {type(d)}")
+
+
+# ---------------------------------------------------------------------------
+# Feature flag gating
+# ---------------------------------------------------------------------------
+
+
+class TestRectilinearFeatureFlag:
+    """Test that rectilinear chunks are gated behind the config flag."""
+
+    def test_disabled_by_default(self) -> None:
+        with zarr.config.set({"array.rectilinear_chunks": False}):
+            with pytest.raises(ValueError, match="experimental and disabled by default"):
+                ChunkGrid.from_rectilinear([[10, 20], [25, 25]], array_shape=(30, 50))
+
+    def test_enabled_via_config(self) -> None:
+        with zarr.config.set({"array.rectilinear_chunks": True}):
+            g = ChunkGrid.from_rectilinear([[10, 20], [25, 25]], array_shape=(30, 50))
+            assert g.ndim == 2
+
+    def test_create_array_blocked(self) -> None:
+        with zarr.config.set({"array.rectilinear_chunks": False}):
+            store = MemoryStore()
+            with pytest.raises(ValueError, match="experimental and disabled by default"):
+                zarr.create_array(store, shape=(30,), chunks=[[10, 20]], dtype="int32")
+
+    def test_parse_chunk_grid_blocked(self) -> None:
+        """Opening a rectilinear array from metadata is also gated."""
+        with zarr.config.set({"array.rectilinear_chunks": False}):
+            with pytest.raises(ValueError, match="experimental and disabled by default"):
+                parse_chunk_grid(
+                    {
+                        "name": "rectilinear",
+                        "configuration": {
+                            "kind": "inline",
+                            "chunk_shapes": [[10, 20, 30], [50, 50]],
+                        },
+                    },
+                    array_shape=(60, 100),
+                )
 
 
 # ---------------------------------------------------------------------------

@@ -371,8 +371,9 @@ def rectilinear_arrays(
 
     nparray = np.arange(int(np.prod(shape)), dtype="int32").reshape(shape)
     store = MemoryStore()
-    a = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype="int32")
-    a[:] = nparray
+    with zarr.config.set({"array.rectilinear_chunks": True}):
+        a = zarr.create_array(store=store, shape=shape, chunks=chunk_shapes, dtype="int32")
+        a[:] = nparray
 
     return a
 

@@ -4364,6 +4364,9 @@ async def from_array(
         - "keep": Retain the chunk grid of the data array if it is a zarr Array.
         - tuple[int, ...]: A tuple of integers representing the chunk shape (regular grid).
         - Sequence[Sequence[int]]: Per-dimension chunk edge lists (rectilinear grid).
+          Rectilinear chunk grids are experimental and must be explicitly enabled
+          with ``zarr.config.set({'array.rectilinear_chunks': True})`` while the
+          feature is stabilizing.
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : tuple[int, ...], optional

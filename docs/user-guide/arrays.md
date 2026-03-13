@@ -605,6 +605,18 @@ Without the `shards` argument, there would be 10,000 chunks stored as individual
     Rectilinear chunk grids are an experimental feature and may change in
     future releases. This feature is expected to stabilize in Zarr version 3.3.
 
+    Because the feature is still stabilizing, it is disabled by default and
+    must be explicitly enabled:
+
+    ```python
+    import zarr
+    zarr.config.set({"array.rectilinear_chunks": True})
+    ```
+
+    Or via the environment variable `ZARR_ARRAY__RECTILINEAR_CHUNKS=True`.
+
+    The examples below assume this config has been set.
+
 By default, Zarr arrays use a regular chunk grid where every chunk along a
 given dimension has the same size (except possibly the final boundary chunk).
 Rectilinear chunk grids allow each chunk along a dimension to have a different
@@ -618,6 +630,7 @@ To create an array with rectilinear chunks, pass a nested list to the `chunks`
 parameter where each inner list gives the chunk sizes along one dimension:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
+zarr.config.set({"array.rectilinear_chunks": True})
 z = zarr.create_array(
     store=zarr.storage.MemoryStore(),
     shape=(60, 100),
