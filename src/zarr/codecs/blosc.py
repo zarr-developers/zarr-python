@@ -318,6 +318,8 @@ class BloscCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
+        # Since blosc only support host memory, we convert the input and output of the encoding
+        # between numpy array and buffer
         return chunk_spec.prototype.buffer.from_bytes(
             self._blosc_codec.encode(chunk_bytes.as_numpy_array())
         )
