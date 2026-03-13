@@ -15,6 +15,7 @@ import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 from hypothesis import assume, given, settings
 
+from zarr import Array
 from zarr.abc.store import Store
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -23,6 +24,7 @@ from zarr.testing.strategies import (
     array_metadata,
     arrays,
     basic_indices,
+    chunk_grids,
     numpy_arrays,
     orthogonal_indices,
     simple_arrays,
@@ -107,11 +109,13 @@ def test_array_creates_implicit_groups(array):
 
 
 @pytest.mark.asyncio
-@settings(deadline=None)
+@settings(deadline=None, report_multiple_bugs=False)
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-@given(data=st.data())
-async def test_basic_indexing(data: st.DataObject) -> None:
-    zarray = data.draw(simple_arrays())
+@given(
+    data=st.data(),
+    zarray=simple_arrays(),
+)
+async def test_basic_indexing(data: st.DataObject, zarray: Array) -> None:
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
 
@@ -134,11 +138,13 @@ async def test_basic_indexing(data: st.DataObject) -> None:
 
 
 @pytest.mark.asyncio
-@given(data=st.data())
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-async def test_oindex(data: st.DataObject) -> None:
+@given(
+    data=st.data(),
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray=simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
+)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+async def test_oindex(data: st.DataObject, zarray: Array) -> None:
     nparray = zarray[:]
     zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
 
@@ -166,11 +172,13 @@ async def test_oindex(data: st.DataObject) -> None:
 
 
 @pytest.mark.asyncio
-@given(data=st.data())
-@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
-async def test_vindex(data: st.DataObject) -> None:
+@given(
+    data=st.data(),
     # integer_array_indices can't handle 0-size dimensions.
-    zarray = data.draw(simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    zarray=simple_arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)),
+)
+@pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
+async def test_vindex(data: st.DataObject, zarray: Array) -> None:
     nparray = zarray[:]
     indexer = data.draw(
         npst.integer_array_indices(
@@ -366,3 +374,14 @@ def test_array_metadata_meets_spec(meta: ArrayV2Metadata | ArrayV3Metadata) -> N
         assert serialized_complex_float_is_valid(asdict_dict["fill_value"])
     elif dtype_native.kind in ("M", "m") and np.isnat(meta.fill_value):
         assert asdict_dict["fill_value"] == -9223372036854775808
+
+
+@given(
+    shape=npst.array_shapes(min_dims=1, max_dims=4, min_side=1, max_side=100),
+    data=st.data(),
+)
+@settings(max_examples=200)
+def test_chunk_grid_roundtrip(shape: tuple[int, ...], data: st.DataObject) -> None:
+    grid = data.draw(chunk_grids(shape=shape))
+    roundtripped = type(grid).from_dict(grid.to_dict())
+    assert roundtripped == grid
