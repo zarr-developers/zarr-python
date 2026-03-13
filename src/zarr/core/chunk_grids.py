@@ -279,8 +279,6 @@ def _serialize_fixed_dim(dim: FixedDimension) -> RectilinearDimSpec:
     chunks, matching the regular grid spec ("chunks at the border always
     have the full chunk size").
     """
-    if dim.nchunks == 0:
-        return []
     return dim.size
 
 
@@ -708,6 +706,11 @@ def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
         }
 
     if name == "rectilinear":
+        if any(d.extent == 0 for d in grid.dimensions):
+            raise ValueError(
+                "Cannot serialize a zero-extent grid as 'rectilinear': "
+                "the spec requires all edge lengths to be positive integers."
+            )
         chunk_shapes: list[RectilinearDimSpec] = []
         for dim in grid.dimensions:
             if isinstance(dim, FixedDimension):

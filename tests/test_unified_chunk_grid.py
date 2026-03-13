@@ -487,6 +487,12 @@ class TestSerialization:
         with pytest.raises(ValueError, match="Unknown chunk grid name for serialization"):
             serialize_chunk_grid(g, "hexagonal")
 
+    def test_zero_extent_rectilinear_raises(self) -> None:
+        """Zero-extent grids cannot be serialized as rectilinear (spec requires positive edges)."""
+        grid = ChunkGrid.from_regular((0,), (10,))
+        with pytest.raises(ValueError, match="zero-extent"):
+            serialize_chunk_grid(grid, "rectilinear")
+
 
 class TestSpecCompliance:
     """Tests for compliance with the rectilinear chunk grid extension spec
@@ -1209,8 +1215,8 @@ class TestEdgeCases:
 
     # -- Rectilinear with zero-nchunks FixedDimension in serialize_chunk_grid --
 
-    def test_zero_nchunks_fixed_dim_in_rectilinear_serialize(self) -> None:
-        """A rectilinear grid with a 0-nchunks FixedDimension serializes."""
+    def test_zero_nchunks_fixed_dim_in_rectilinear_serialize_raises(self) -> None:
+        """A rectilinear grid with a 0-extent dimension cannot be serialized."""
         g = ChunkGrid(
             dimensions=(
                 VaryingDimension([10, 20], extent=30),
@@ -1218,8 +1224,8 @@ class TestEdgeCases:
             )
         )
         assert g.shape == (2, 0)
-        d = serialize_chunk_grid(g, "rectilinear")
-        assert d["name"] == "rectilinear"
+        with pytest.raises(ValueError, match="zero-extent"):
+            serialize_chunk_grid(g, "rectilinear")
 
     # -- VaryingDimension data_size --
 
