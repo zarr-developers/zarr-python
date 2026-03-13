@@ -57,6 +57,10 @@ class FixedDimension:
         return ceildiv(self.extent, self.size)
 
     def index_to_chunk(self, idx: int) -> int:
+        if idx < 0:
+            raise IndexError(f"Negative index {idx} is not allowed")
+        if idx >= self.extent:
+            raise IndexError(f"Index {idx} is out of bounds for extent {self.extent}")
         if self.size == 0:
             return 0
         return idx // self.size

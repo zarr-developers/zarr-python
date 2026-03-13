@@ -71,6 +71,23 @@ class TestVaryingDimensionIndexToChunkBounds:
         assert dim.index_to_chunk(59) == 2
 
 
+class TestFixedDimensionIndexToChunkBounds:
+    def test_negative_index_raises(self) -> None:
+        """index_to_chunk(-1) should raise, not silently return -1."""
+        dim = FixedDimension(size=10, extent=95)
+        with pytest.raises(IndexError, match="Negative"):
+            dim.index_to_chunk(-1)
+
+    def test_index_at_extent_raises(self) -> None:
+        dim = FixedDimension(size=10, extent=95)
+        with pytest.raises(IndexError, match="out of bounds"):
+            dim.index_to_chunk(95)
+
+    def test_last_valid_index_works(self) -> None:
+        dim = FixedDimension(size=10, extent=95)
+        assert dim.index_to_chunk(94) == 9
+
+
 # ---------------------------------------------------------------------------
 # Feature flag gating
 # ---------------------------------------------------------------------------
