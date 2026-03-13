@@ -21,7 +21,10 @@ from zarr.core.chunk_grids import (
     FixedDimension,
     VaryingDimension,
     _compress_rle,
+    _decode_dim_spec,
     _expand_rle,
+    _infer_chunk_grid_name,
+    _is_rectilinear_chunks,
     parse_chunk_grid,
     serialize_chunk_grid,
 )
@@ -365,6 +368,40 @@ class TestChunkGridQueries:
         assert coords[0] == (0, 0)
         assert coords[-1] == (2, 1)
 
+    def test_all_chunk_coords_with_origin(self) -> None:
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
+        coords = list(g.all_chunk_coords(origin=(1, 0)))
+        assert len(coords) == 4  # 2 remaining in dim0 * 2 in dim1
+        assert coords[0] == (1, 0)
+        assert coords[-1] == (2, 1)
+
+    def test_all_chunk_coords_with_selection_shape(self) -> None:
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
+        coords = list(g.all_chunk_coords(selection_shape=(2, 1)))
+        assert len(coords) == 2
+        assert coords == [(0, 0), (1, 0)]
+
+    def test_all_chunk_coords_with_origin_and_selection_shape(self) -> None:
+        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
+        coords = list(g.all_chunk_coords(origin=(1, 1), selection_shape=(2, 1)))
+        assert coords == [(1, 1), (2, 1)]
+
+    def test_all_chunk_coords_origin_at_last_chunk(self) -> None:
+        g = ChunkGrid.from_regular((30, 40), (10, 20))
+        coords = list(g.all_chunk_coords(origin=(2, 1)))
+        assert coords == [(2, 1)]
+
+    def test_all_chunk_coords_selection_shape_zero(self) -> None:
+        g = ChunkGrid.from_regular((30, 40), (10, 20))
+        coords = list(g.all_chunk_coords(selection_shape=(0, 0)))
+        assert coords == []
+
+    def test_all_chunk_coords_single_dim_slice(self) -> None:
+        """Origin shifts one dim, selection_shape restricts the other."""
+        g = ChunkGrid.from_regular((60, 80), (20, 20))  # 3x4
+        coords = list(g.all_chunk_coords(origin=(0, 2), selection_shape=(3, 1)))
+        assert coords == [(0, 2), (1, 2), (2, 2)]
+
     def test_get_nchunks(self) -> None:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
         assert g.get_nchunks() == 6
@@ -401,12 +438,141 @@ class TestRLE:
 class TestExpandRleHandlesJsonFloats:
     def test_bare_integer_floats_accepted(self) -> None:
         """JSON parsers may emit 10.0 for the integer 10; _expand_rle should handle it."""
-        result = _expand_rle([10.0, 20.0])  # type: ignore[list-item]
+        result = _expand_rle([10.0, 20.0])
         assert result == [10, 20]
 
     def test_rle_pair_with_float_count(self) -> None:
-        result = _expand_rle([[10, 3.0]])  # type: ignore[list-item]
+        result = _expand_rle([[10, 3.0]])
         assert result == [10, 10, 10]
+
+
+# ---------------------------------------------------------------------------
+# _decode_dim_spec edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestDecodeDimSpec:
+    """Edge cases for _decode_dim_spec: floats, empty lists, negatives, missing extent."""
+
+    def test_bare_integer(self) -> None:
+        assert _decode_dim_spec(10, array_extent=25) == [10, 10, 10]
+
+    def test_bare_integer_exact_fit(self) -> None:
+        assert _decode_dim_spec(5, array_extent=10) == [5, 5]
+
+    def test_bare_integer_no_extent_raises(self) -> None:
+        with pytest.raises(ValueError, match="requires array shape"):
+            _decode_dim_spec(10, array_extent=None)
+
+    def test_bare_integer_zero_raises(self) -> None:
+        with pytest.raises(ValueError, match="must be > 0"):
+            _decode_dim_spec(0, array_extent=10)
+
+    def test_bare_integer_negative_raises(self) -> None:
+        with pytest.raises(ValueError, match="must be > 0"):
+            _decode_dim_spec(-5, array_extent=10)
+
+    def test_bare_float_raises(self) -> None:
+        """A bare float (not in a list) is not int or list — should raise."""
+        with pytest.raises(ValueError, match="Invalid chunk_shapes entry"):
+            _decode_dim_spec(10.0, array_extent=10)
+
+    def test_explicit_integer_list(self) -> None:
+        assert _decode_dim_spec([10, 20, 30]) == [10, 20, 30]
+
+    def test_empty_list(self) -> None:
+        """An empty list has no sub-lists, so it returns an empty explicit list."""
+        assert _decode_dim_spec([]) == []
+
+    def test_list_with_rle(self) -> None:
+        assert _decode_dim_spec([[5, 3], 10]) == [5, 5, 5, 10]
+
+    def test_string_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid chunk_shapes entry"):
+            _decode_dim_spec("auto", array_extent=10)
+
+    def test_none_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid chunk_shapes entry"):
+            _decode_dim_spec(None, array_extent=10)
+
+
+# ---------------------------------------------------------------------------
+# _is_rectilinear_chunks edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestIsRectilinearChunks:
+    """Edge cases for _is_rectilinear_chunks."""
+
+    def test_nested_lists(self) -> None:
+        assert _is_rectilinear_chunks([[10, 20], [5, 5]]) is True
+
+    def test_nested_tuples(self) -> None:
+        assert _is_rectilinear_chunks(((10, 20), (5, 5))) is True
+
+    def test_flat_tuple(self) -> None:
+        assert _is_rectilinear_chunks((10, 20)) is False
+
+    def test_flat_list(self) -> None:
+        assert _is_rectilinear_chunks([10, 20]) is False
+
+    def test_single_int(self) -> None:
+        assert _is_rectilinear_chunks(10) is False
+
+    def test_string(self) -> None:
+        assert _is_rectilinear_chunks("auto") is False
+
+    def test_empty_list(self) -> None:
+        assert _is_rectilinear_chunks([]) is False
+
+    def test_empty_nested_list(self) -> None:
+        """First element is an empty list — it's iterable and not str/int."""
+        assert _is_rectilinear_chunks([[]]) is True
+
+    def test_chunk_grid_instance(self) -> None:
+        g = ChunkGrid.from_regular((10,), (5,))
+        assert _is_rectilinear_chunks(g) is False
+
+    def test_none(self) -> None:
+        assert _is_rectilinear_chunks(None) is False
+
+    def test_float(self) -> None:
+        assert _is_rectilinear_chunks(3.14) is False
+
+
+# ---------------------------------------------------------------------------
+# _infer_chunk_grid_name edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestInferChunkGridName:
+    """Edge cases for _infer_chunk_grid_name."""
+
+    def test_regular_grid(self) -> None:
+        g = ChunkGrid.from_regular((100,), (10,))
+        assert _infer_chunk_grid_name(g, g) == "regular"
+
+    @pytest.fixture(autouse=True)
+    def _enable_rectilinear(self) -> Any:
+        with zarr.config.set({"array.rectilinear_chunks": True}):
+            yield
+
+    def test_rectilinear_grid(self) -> None:
+        g = ChunkGrid.from_rectilinear([[10, 20, 30]], array_shape=(60,))
+        assert _infer_chunk_grid_name(g, g) == "rectilinear"
+
+    def test_dict_with_regular_name(self) -> None:
+        g = ChunkGrid.from_regular((100,), (10,))
+        d: dict[str, Any] = {"name": "regular", "configuration": {"chunk_shape": [10]}}
+        assert _infer_chunk_grid_name(d, g) == "regular"
+
+    def test_dict_with_rectilinear_name(self) -> None:
+        g = ChunkGrid.from_regular((100,), (10,))
+        d: dict[str, Any] = {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [10]},
+        }
+        assert _infer_chunk_grid_name(d, g) == "rectilinear"
 
 
 # ---------------------------------------------------------------------------
@@ -1739,6 +1905,117 @@ def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
             a[tuple(sel)],
             err_msg=f"dim={dim}, block={block_ix}",
         )
+
+
+# ---------------------------------------------------------------------------
+# V2 regression tests
+# ---------------------------------------------------------------------------
+
+
+class TestV2Regression:
+    """Verify V2 arrays still work correctly after the ChunkGrid refactor.
+
+    V2 only supports regular chunks. These tests ensure the V2 metadata
+    round-trip (create → write → read) and chunk_grid property work as
+    expected with the unified ChunkGrid infrastructure.
+    """
+
+    def test_v2_create_and_readback(self, tmp_path: Path) -> None:
+        """Basic V2 array: create, write, read back."""
+        data = np.arange(60, dtype="float64").reshape(6, 10)
+        a = zarr.create_array(
+            store=tmp_path / "v2.zarr",
+            shape=data.shape,
+            chunks=(3, 5),
+            dtype=data.dtype,
+            zarr_format=2,
+        )
+        a[:] = data
+        np.testing.assert_array_equal(a[:], data)
+
+    def test_v2_chunk_grid_is_regular(self, tmp_path: Path) -> None:
+        """V2 metadata.chunk_grid produces a regular ChunkGrid with FixedDimensions."""
+        a = zarr.create_array(
+            store=tmp_path / "v2.zarr",
+            shape=(20, 30),
+            chunks=(10, 15),
+            dtype="int32",
+            zarr_format=2,
+        )
+        grid = a.metadata.chunk_grid
+        assert grid.is_regular
+        assert grid.chunk_shape == (10, 15)
+        assert grid.shape == (2, 2)
+        assert all(isinstance(d, FixedDimension) for d in grid.dimensions)
+
+    def test_v2_boundary_chunks(self, tmp_path: Path) -> None:
+        """V2 boundary chunks: codec buffer size stays full, data is clipped."""
+        a = zarr.create_array(
+            store=tmp_path / "v2.zarr",
+            shape=(25,),
+            chunks=(10,),
+            dtype="int32",
+            zarr_format=2,
+        )
+        grid = a.metadata.chunk_grid
+        assert grid.dimensions[0].nchunks == 3
+        assert grid.dimensions[0].chunk_size(2) == 10  # full codec buffer
+        assert grid.dimensions[0].data_size(2) == 5  # clipped to extent
+
+    def test_v2_slicing_with_boundary(self, tmp_path: Path) -> None:
+        """V2 array slicing across boundary chunks returns correct data."""
+        data = np.arange(25, dtype="int32")
+        a = zarr.create_array(
+            store=tmp_path / "v2.zarr",
+            shape=(25,),
+            chunks=(10,),
+            dtype="int32",
+            zarr_format=2,
+        )
+        a[:] = data
+        np.testing.assert_array_equal(a[18:25], data[18:25])
+        np.testing.assert_array_equal(a[:], data)
+
+    def test_v2_metadata_roundtrip(self, tmp_path: Path) -> None:
+        """V2 metadata survives store close and reopen."""
+        store_path = tmp_path / "v2.zarr"
+        data = np.arange(12, dtype="float32").reshape(3, 4)
+        a = zarr.create_array(
+            store=store_path,
+            shape=data.shape,
+            chunks=(2, 2),
+            dtype=data.dtype,
+            zarr_format=2,
+        )
+        a[:] = data
+
+        # Reopen from store
+        b = zarr.open_array(store=store_path, mode="r")
+        assert b.metadata.zarr_format == 2
+        assert b.chunks == (2, 2)
+        assert b.metadata.chunk_grid.chunk_shape == (2, 2)
+        np.testing.assert_array_equal(b[:], data)
+
+    def test_v2_chunk_spec_via_grid(self, tmp_path: Path) -> None:
+        """ChunkSpec from V2 grid has correct slices and codec_shape."""
+        a = zarr.create_array(
+            store=tmp_path / "v2.zarr",
+            shape=(15, 20),
+            chunks=(10, 10),
+            dtype="int32",
+            zarr_format=2,
+        )
+        grid = a.metadata.chunk_grid
+        # Interior chunk
+        spec = grid[(0, 0)]
+        assert spec is not None
+        assert spec.shape == (10, 10)
+        assert spec.codec_shape == (10, 10)
+        # Boundary chunk
+        spec = grid[(1, 1)]
+        assert spec is not None
+        assert spec.shape == (5, 10)  # clipped data
+        assert spec.codec_shape == (10, 10)  # full buffer
 
 
 # ---------------------------------------------------------------------------
