@@ -15,11 +15,14 @@ class TreeRepr:
     of Zarr's public API.
     """
 
-    def __init__(self, text: str, html: str) -> None:
+    def __init__(self, text: str, html: str, truncated: str = "") -> None:
         self._text = text
         self._html = html
+        self._truncated = truncated
 
     def __repr__(self) -> str:
+        if self._truncated:
+            return self._truncated + self._text
         return self._text
 
     def _repr_mimebundle_(
@@ -28,13 +31,15 @@ class TreeRepr:
         exclude: Sequence[str] | None = None,
         **kwargs: Any,
     ) -> dict[str, str]:
+        text = self._truncated + self._text if self._truncated else self._text
         # For jupyter support.
+        html_body = self._truncated + self._html if self._truncated else self._html
         html = (
             '<pre style="white-space:pre;overflow-x:auto;line-height:normal;'
             "font-family:Menlo,'DejaVu Sans Mono',consolas,'Courier New',monospace\">"
-            f"{self._html}</pre>\n"
+            f"{html_body}</pre>\n"
         )
-        return {"text/plain": self._text, "text/html": html}
+        return {"text/plain": text, "text/html": html}
 
 
 async def group_tree_async(
@@ -64,14 +69,6 @@ async def group_tree_async(
         html_open = "<b>"
         html_close = "</b>"
 
-    if truncated:
-        note = f"Truncated at max_nodes={max_nodes}, some nodes and their children may be missing\n"
-        text_lines = [note, f"{ansi_open}{group.name}{ansi_close}"]
-        html_lines = [note, f"{html_open}{html_escape(group.name)}{html_close}"]
-    else:
-        text_lines = [f"{ansi_open}{group.name}{ansi_close}"]
-        html_lines = [f"{html_open}{html_escape(group.name)}{html_close}"]
-
     # Group members by parent key so we can render the tree level by level.
     nodes: dict[str, list[tuple[str, Any]]] = {}
     for key, node in members:
@@ -84,6 +81,8 @@ async def group_tree_async(
     # Render the tree iteratively (not recursively) to avoid hitting
     # Python's recursion limit on deeply nested hierarchies.
     # Each stack frame is (prefix_string, remaining_children_at_this_level).
+    text_lines = [f"{ansi_open}{group.name}{ansi_close}"]
+    html_lines = [f"{html_open}{html_escape(group.name)}{html_close}"]
     stack = [("", deque(nodes.get("", [])))]
     while stack:
         prefix, remaining = stack[-1]
@@ -126,4 +125,5 @@ async def group_tree_async(
             stack.append((child_prefix, deque(children)))
     text = "\n".join(text_lines) + "\n"
     html = "\n".join(html_lines) + "\n"
-    return TreeRepr(text, html)
+    note = f"Truncated at max_nodes={max_nodes}, some nodes and their children may be missing\n" if truncated else ""
+    return TreeRepr(text, html, truncated=note)
