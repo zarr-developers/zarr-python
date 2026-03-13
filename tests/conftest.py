@@ -379,7 +379,9 @@ def create_array_metadata(
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=dtype_parsed,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=RegularChunkGrid(
+                    chunk_shape=shard_shape_parsed, array_shape=chunk_shape_parsed
+                ),
             )
             codecs_out = (sharding_codec,)
             chunks_out = shard_shape_parsed
@@ -390,7 +392,7 @@ def create_array_metadata(
         return ArrayV3Metadata(
             shape=shape_parsed,
             data_type=dtype_parsed,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunks_out),
+            chunk_grid=RegularChunkGrid(chunk_shape=chunks_out, array_shape=shape_parsed),
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value,
             codecs=codecs_out,

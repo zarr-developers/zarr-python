@@ -160,7 +160,7 @@ def array_metadata(
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape, array_shape=shape),
             fill_value=fill_value,
             attributes=draw(attributes),  # type: ignore[arg-type]
             dimension_names=draw(dimension_names(ndim=ndim)),
