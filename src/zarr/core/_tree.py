@@ -48,7 +48,7 @@ async def group_tree_async(
     max_nodes: int = 500,
     plain: bool = False,
 ) -> TreeRepr:
-    members = []
+    members: list[tuple[str, Any]] = []
     truncated = False
     async for item in group.members(max_depth=max_depth):
         if len(members) == max_nodes:
@@ -125,5 +125,9 @@ async def group_tree_async(
             stack.append((child_prefix, deque(children)))
     text = "\n".join(text_lines) + "\n"
     html = "\n".join(html_lines) + "\n"
-    note = f"Truncated at max_nodes={max_nodes}, some nodes and their children may be missing\n" if truncated else ""
+    note = (
+        f"Truncated at max_nodes={max_nodes}, some nodes and their children may be missing\n"
+        if truncated
+        else ""
+    )
     return TreeRepr(text, html, truncated=note)
