@@ -1077,6 +1077,11 @@ class BlockIndexer(Indexer):
                 if dim_sel < 0:
                     dim_sel = dim_numchunks + dim_sel
 
+                if dim_sel < 0 or dim_sel >= dim_numchunks:
+                    raise BoundsCheckError(
+                        f"block index out of bounds for dimension with {dim_numchunks} chunk(s)"
+                    )
+
                 start = dim_grid.chunk_offset(dim_sel)
                 stop = start + dim_grid.chunk_size(dim_sel)
                 slice_ = slice(start, stop)

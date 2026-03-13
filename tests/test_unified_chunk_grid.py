@@ -25,6 +25,7 @@ from zarr.core.chunk_grids import (
     parse_chunk_grid,
     serialize_chunk_grid,
 )
+from zarr.errors import BoundsCheckError
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
@@ -746,6 +747,13 @@ class TestRectilinearIndexing:
         )
         projections = list(indexer)
         assert len(projections) == 6
+
+    def test_oob_block_raises_bounds_check_error(self) -> None:
+        """Out-of-bounds block index should raise BoundsCheckError, not IndexError."""
+        store = MemoryStore()
+        a = zarr.create_array(store, shape=(30,), chunks=[[10, 20]], dtype="int32")
+        with pytest.raises(BoundsCheckError):
+            a.get_block_selection((2,))
 
 
 # ---------------------------------------------------------------------------
