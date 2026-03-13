@@ -877,7 +877,10 @@ async def open_group(
             overwrite=overwrite,
             attributes=attributes,
         )
-    msg = f"No group found in store {store!r} at path {store_path.path!r}"
+    if zarr_format is not None:
+        msg = f"No Zarr {zarr_format} group found in store {store!r} at path {store_path.path!r}"
+    else:
+        msg = f"No Zarr group found in store {store!r} at path {store_path.path!r}"
     raise GroupNotFoundError(msg)
 
 
@@ -1290,7 +1293,10 @@ async def open_array(
                 overwrite=overwrite,
                 **kwargs,
             )
-        msg = f"No array found in store {store_path.store} at path {store_path.path}"
+        if zarr_format is not None:
+            msg = f"No Zarr {zarr_format} array found in store {store_path.store} at path {store_path.path}"
+        else:
+            msg = f"No Zarr array found in store {store_path.store} at path {store_path.path}"
         raise ArrayNotFoundError(msg) from err
 
 
