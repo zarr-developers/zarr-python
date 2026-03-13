@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from zarr.codecs.blosc import BloscCname, BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec, Endian
+from zarr.codecs.cast_value import CastValue
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.numcodecs import (
@@ -27,6 +28,7 @@ from zarr.codecs.numcodecs import (
     Zlib,
     Zstd,
 )
+from zarr.codecs.scale_offset import ScaleOffset
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
@@ -38,9 +40,11 @@ __all__ = [
     "BloscCodec",
     "BloscShuffle",
     "BytesCodec",
+    "CastValue",
     "Crc32cCodec",
     "Endian",
     "GzipCodec",
+    "ScaleOffset",
     "ShardingCodec",
     "ShardingCodecIndexLocation",
     "TransposeCodec",
@@ -61,6 +65,8 @@ register_codec("zstd", ZstdCodec)
 register_codec("vlen-utf8", VLenUTF8Codec)
 register_codec("vlen-bytes", VLenBytesCodec)
 register_codec("transpose", TransposeCodec)
+register_codec("scale_offset", ScaleOffset)
+register_codec("cast_value", CastValue)
 
 # Register all the codecs formerly contained in numcodecs.zarr3
 
