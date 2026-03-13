@@ -84,6 +84,7 @@ theme:
   name: material
   custom_dir: docs/overrides
   logo: _static/logo_bw.png
+  favicon: _static/favicon-32x32.png
 
   palette:
     # Light mode
