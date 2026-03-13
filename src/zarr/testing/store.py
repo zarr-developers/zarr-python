@@ -442,23 +442,40 @@ class StoreTests(Generic[S, B]):
     async def test_list_prefix(self, store: S) -> None:
         """
         Test that the `list_prefix` method works as intended. Given a prefix, it should return
-        all the keys in storage that start with this prefix.
+        all the keys under that prefix, treating the prefix as a directory path.
         """
-        prefixes = ("", "a/", "a/b/", "a/b/c/")
         data = self.buffer_cls.from_bytes(b"")
-        fname = "zarr.json"
-        store_dict = {p + fname: data for p in prefixes}
-
+        store_dict = {
+            "zarr.json": data,
+            "a/zarr.json": data,
+            "a/b/zarr.json": data,
+            "a/b/c/zarr.json": data,
+            "a_extra/zarr.json": data,
+        }
         await store._set_many(store_dict.items())
+        all_keys = sorted(store_dict.keys())
 
-        for prefix in prefixes:
-            observed = tuple(sorted(await _collect_aiterator(store.list_prefix(prefix))))
-            expected: tuple[str, ...] = ()
-            for key in store_dict:
-                if key.startswith(prefix):
-                    expected += (key,)
-            expected = tuple(sorted(expected))
-            assert observed == expected
+        a_keys = ["a/b/c/zarr.json", "a/b/zarr.json", "a/zarr.json"]
+        ab_keys = ["a/b/c/zarr.json", "a/b/zarr.json"]
+
+        test_cases: dict[str, list[str]] = {
+            "": all_keys,
+            "a/": a_keys,
+            "a/b/": ab_keys,
+            "a/b/c/": ["a/b/c/zarr.json"],
+            "a_extra/": ["a_extra/zarr.json"],
+            "a": a_keys,
+            "a/b": ab_keys,
+            "a/b/c": ["a/b/c/zarr.json"],
+            "a_extra": ["a_extra/zarr.json"],
+            "a_e": [],
+            "b": [],
+            "b/": [],
+        }
+
+        for prefix, expected in test_cases.items():
+            observed = sorted(await _collect_aiterator(store.list_prefix(prefix)))
+            assert observed == expected, f"list_prefix({prefix!r}): {observed} != {expected}"
 
     async def test_list_empty_path(self, store: S) -> None:
         """
