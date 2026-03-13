@@ -38,7 +38,7 @@ We very much welcome ideas and suggestions for how to improve Zarr, but please b
 
 ## AI-assisted contributions
 
-AI coding tools are increasingly common in open source development. These tools are welcome in zarr-python, but the same standards apply to all contributions regardless of how they were produced — whether written by hand, with AI assistance, or generated entirely by an AI tool.
+AI coding tools are increasingly common in open source development. These tools are welcome in Zarr-Python, but the same standards apply to all contributions regardless of how they were produced — whether written by hand, with AI assistance, or generated entirely by an AI tool.
 
 ### You are responsible for your changes
 
