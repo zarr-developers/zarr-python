@@ -128,7 +128,7 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
     # handle dask-style chunks (iterable of iterables)
     if all(isinstance(c, (tuple, list)) for c in chunks):
         for i, c in enumerate(chunks):
-            if len(set(c[:-1])) > 1 or (len(c) > 1 and c[-1] > c[0]):
+            if itertools.pairwise(c[:-2], c[1:-1]).map(lambda x, y: x == y).any()) or (len(c) > 1 and c[-1] > c[0]):
                 raise ValueError(
                     f"Irregular chunk sizes in dimension {i}: {tuple(c)}. "
                     "Only uniform chunks (with an optional smaller final chunk) are supported."
