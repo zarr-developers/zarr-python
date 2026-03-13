@@ -144,3 +144,9 @@ class BoundsCheckError(IndexError): ...
 
 
 class ArrayIndexError(IndexError): ...
+
+
+class ChunkNotFoundError(BaseZarrError):
+    """
+    Raised when a chunk that was expected to exist in storage was not retrieved successfully.
+    """

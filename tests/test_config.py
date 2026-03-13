@@ -23,7 +23,7 @@ from zarr.core.buffer.core import Buffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
-from zarr.errors import ZarrUserWarning
+from zarr.errors import ChunkNotFoundError, ZarrUserWarning
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -53,6 +53,7 @@ def test_config_defaults_set() -> None:
                 "array": {
                     "order": "C",
                     "write_empty_chunks": False,
+                    "fill_missing_chunks": True,
                     "target_shard_size_bytes": None,
                 },
                 "async": {"concurrency": 10, "timeout": None},
@@ -317,6 +318,100 @@ def test_warning_on_missing_codec_config() -> None:
     # no warning if multiple implementations are available and one is selected in the config
     with config.set({"codecs.new_codec": fully_qualified_name(NewCodec)}):
         get_codec_class("new_codec")
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"shards": (4, 4)},
+        {"compressors": None},
+    ],
+    ids=["partial_decode", "full_decode"],
+)
+def test_config_fill_missing_chunks(store: Store, kwargs: dict[str, Any]) -> None:
+    arr = zarr.create_array(
+        store=store,
+        shape=(4, 4),
+        chunks=(2, 2),
+        dtype="int32",
+        fill_value=42,
+        **kwargs,
+    )
+
+    # default behavior: missing chunks are filled with the fill value
+    result = zarr.open_array(store)[:]
+    assert np.array_equal(result, np.full((4, 4), 42, dtype="int32"))
+
+    # with fill_missing_chunks=False, reading missing chunks raises an error
+    with config.set({"array.fill_missing_chunks": False}):
+        with pytest.raises(ChunkNotFoundError):
+            zarr.open_array(store)[:]
+
+    # after writing data, all chunks exist and no error is raised
+    arr[:] = np.arange(16, dtype="int32").reshape(4, 4)
+    with config.set({"array.fill_missing_chunks": False}):
+        result = zarr.open_array(store)[:]
+        assert np.array_equal(result, np.arange(16, dtype="int32").reshape(4, 4))
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_config_fill_missing_chunks_sharded_inner(store: Store) -> None:
+    """Missing inner chunks within a shard are always filled with the array's
+    fill value, even when fill_missing_chunks=False."""
+    arr = zarr.create_array(
+        store=store,
+        shape=(8, 4),
+        chunks=(2, 2),
+        shards=(4, 4),
+        dtype="int32",
+        fill_value=42,
+    )
+
+    # write only one inner chunk in the first shard, leaving the second shard empty
+    arr[0:2, 0:2] = np.ones((2, 2), dtype="int32")
+
+    with config.set({"array.fill_missing_chunks": False}):
+        a = zarr.open_array(store)
+
+        # first shard exists: missing inner chunks are filled, no error
+        result = a[:4]
+        expected = np.full((4, 4), 42, dtype="int32")
+        expected[0:2, 0:2] = 1
+        assert np.array_equal(result, expected)
+
+        # second shard is entirely missing: raises an error
+        with pytest.raises(ChunkNotFoundError):
+            a[4:]
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_config_fill_missing_chunks_write_empty_chunks(store: Store) -> None:
+    """write_empty_chunks=False drops chunks equal to fill_value, which then
+    appear missing to fill_missing_chunks=False."""
+    arr = zarr.create_array(
+        store=store,
+        shape=(4,),
+        chunks=(2,),
+        dtype="int32",
+        fill_value=0,
+        config={"write_empty_chunks": False, "fill_missing_chunks": False},
+    )
+
+    # write non-fill-value data: chunks are stored
+    arr[:] = [1, 2, 3, 4]
+    assert np.array_equal(arr[:], [1, 2, 3, 4])
+
+    # overwrite with fill_value: chunks are dropped by write_empty_chunks=False
+    arr[:] = 0
+    with pytest.raises(ChunkNotFoundError):
+        arr[:]
+
+    # with write_empty_chunks=True, chunks are kept and no error is raised
+    with config.set({"array.write_empty_chunks": True}):
+        arr = zarr.open_array(store)
+        arr[:] = 0
+        assert np.array_equal(arr[:], [0, 0, 0, 0])
 
 
 @pytest.mark.parametrize(

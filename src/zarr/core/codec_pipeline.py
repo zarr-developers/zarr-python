@@ -17,7 +17,7 @@ from zarr.abc.codec import (
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
-from zarr.errors import ZarrUserWarning
+from zarr.errors import ChunkNotFoundError, ZarrUserWarning
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -248,7 +248,9 @@ class BatchedCodecPipeline(CodecPipeline):
 
     async def read_batch(
         self,
-        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        batch_info: Iterable[
+            tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool, str, tuple[int, ...]]
+        ],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
@@ -259,13 +261,17 @@ class BatchedCodecPipeline(CodecPipeline):
                     for byte_getter, chunk_spec, chunk_selection, *_ in batch_info
                 ]
             )
-            for chunk_array, (_, chunk_spec, _, out_selection, _) in zip(
+            for chunk_array, (_, chunk_spec, _, out_selection, _, chunk_key, chunk_coords) in zip(
                 chunk_array_batch, batch_info, strict=False
             ):
                 if chunk_array is not None:
                     out[out_selection] = chunk_array
-                else:
+                elif chunk_spec.config.fill_missing_chunks:
                     out[out_selection] = fill_value_or_default(chunk_spec)
+                else:
+                    raise ChunkNotFoundError(
+                        f"chunk '{chunk_key}' at grid position {chunk_coords} not found in store"
+                    )
         else:
             chunk_bytes_batch = await concurrent_map(
                 [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
@@ -280,16 +286,26 @@ class BatchedCodecPipeline(CodecPipeline):
                     )
                 ],
             )
-            for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
-                chunk_array_batch, batch_info, strict=False
-            ):
+            for chunk_array, (
+                _,
+                chunk_spec,
+                chunk_selection,
+                out_selection,
+                _,
+                chunk_key,
+                chunk_coords,
+            ) in zip(chunk_array_batch, batch_info, strict=False):
                 if chunk_array is not None:
                     tmp = chunk_array[chunk_selection]
                     if drop_axes != ():
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
-                else:
+                elif chunk_spec.config.fill_missing_chunks:
                     out[out_selection] = fill_value_or_default(chunk_spec)
+                else:
+                    raise ChunkNotFoundError(
+                        f"chunk '{chunk_key}' at grid position {chunk_coords} not found in store"
+                    )
 
     def _merge_chunk_array(
         self,
@@ -466,7 +482,9 @@ class BatchedCodecPipeline(CodecPipeline):
 
     async def read(
         self,
-        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        batch_info: Iterable[
+            tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool, str, tuple[int, ...]]
+        ],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:

@@ -430,7 +430,9 @@ class CodecPipeline:
     @abstractmethod
     async def read(
         self,
-        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        batch_info: Iterable[
+            tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool, str, tuple[int, ...]]
+        ],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
@@ -439,12 +441,14 @@ class CodecPipeline:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]]
+        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool, str, tuple[int, ...]]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be fetched.
             The second slice selection determines where in the output array the chunk data will be written.
             The ByteGetter is used to fetch the necessary bytes.
             The chunk spec contains information about the construction of an array from the bytes.
+            The string is the chunk key.
+            The tuple of ints is the chunk's grid coordinates.
 
             If the Store returns ``None`` for a chunk, then the chunk was not
             written and the implementation must set the values of that chunk (or

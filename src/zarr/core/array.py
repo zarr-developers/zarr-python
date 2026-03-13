@@ -5616,11 +5616,13 @@ async def _get_selection(
         await codec_pipeline.read(
             [
                 (
-                    store_path / metadata.encode_chunk_key(chunk_coords),
+                    store_path / (chunk_key := metadata.encode_chunk_key(chunk_coords)),
                     metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
                     chunk_selection,
                     out_selection,
                     is_complete_chunk,
+                    chunk_key,
+                    chunk_coords,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
             ],
