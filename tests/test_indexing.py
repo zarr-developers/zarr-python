@@ -34,6 +34,7 @@ from zarr.storage import MemoryStore, StorePath
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
 
@@ -78,10 +79,25 @@ class CountingDict(MemoryStore):
         self.counter["__getitem__", key_suffix] += 1
         return await super().get(key, prototype, byte_range)
 
-    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(self, key: str, value: Buffer) -> None:
         key_suffix = "/".join(key.split("/")[1:])
         self.counter["__setitem__", key_suffix] += 1
-        return await super().set(key, value, byte_range)
+        return await super().set(key, value)
+
+    def get_sync(
+        self,
+        key: str,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        key_suffix = "/".join(key.split("/")[1:])
+        self.counter["__getitem__", key_suffix] += 1
+        return super().get_sync(key, prototype, byte_range)
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        key_suffix = "/".join(key.split("/")[1:])
+        self.counter["__setitem__", key_suffix] += 1
+        return super().set_sync(key, value)
 
 
 def test_normalize_integer_selection() -> None:

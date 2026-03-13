@@ -16,7 +16,13 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import Buffer, BufferPrototype
 
-__all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = [
+    "ByteGetter",
+    "ByteRangeSetter",
+    "ByteSetter",
+    "Store",
+    "set_or_delete",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -698,6 +704,15 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+@runtime_checkable
+class ByteRangeSetter(Protocol):
+    """Protocol for stores that support writing to a byte range within an existing value."""
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None: ...
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None: ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

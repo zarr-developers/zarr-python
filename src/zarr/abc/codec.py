@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -19,7 +20,7 @@ if TYPE_CHECKING:
     from zarr.core.array_spec import ArraySpec
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
-    from zarr.core.indexing import SelectorTuple
+    from zarr.core.indexing import ChunkProjection, SelectorTuple
     from zarr.core.metadata import ArrayMetadata
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "CodecInput",
     "CodecOutput",
     "CodecPipeline",
+    "PreparedWrite",
     "SupportsSyncCodec",
 ]
 
@@ -204,8 +206,187 @@ class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
 
 
+def _is_complete_selection(selection: Any, shape: tuple[int, ...]) -> bool:
+    """Check whether a chunk selection covers the entire chunk shape."""
+    if not isinstance(selection, tuple):
+        selection = (selection,)
+    for sel, dim_len in zip(selection, shape, strict=False):
+        if isinstance(sel, int):
+            if dim_len != 1:
+                return False
+        elif isinstance(sel, slice):
+            start, stop, step = sel.indices(dim_len)
+            if not (start == 0 and stop == dim_len and step == 1):
+                return False
+        else:
+            return False
+    return True
+
+
+@dataclass
+class PreparedWrite:
+    """Result of prepare_write: existing encoded chunk bytes + selection info."""
+
+    chunk_dict: dict[tuple[int, ...], Buffer | None]
+    inner_codec_chain: Any  # CodecChain
+    inner_chunk_spec: ArraySpec
+    indexer: list[ChunkProjection]
+    value_selection: SelectorTuple | None = None
+    # If not None, slice value with this before using inner out_selections.
+    # For sharding: the outer out_selection from batch_info.
+    # For non-sharded: None (inner out_selection IS the outer out_selection).
+    write_full_shard: bool = True
+    # True when the entire shard blob will be written from scratch (either
+    # because the shard doesn't exist yet or because the selection is complete).
+    # Used by ShardingCodec.finalize_write to decide between set vs set_range.
+    is_complete_shard: bool = False
+    # True when the outer selection covers the entire shard. When True,
+    # the indexer is empty and finalize_write receives the shard value
+    # via shard_data. The codec then encodes the full shard in one shot
+    # rather than iterating over individual inner chunks.
+    shard_data: NDBuffer | None = None
+    # The full shard value for complete-selection writes. Set by the pipeline
+    # when is_complete_shard is True, before calling finalize_write.
+
+
 class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
     """Base class for array-to-bytes codecs."""
+
+    @property
+    def inner_codec_chain(self) -> Any:
+        """The codec chain for decoding inner chunks after deserialization.
+
+        Returns None by default — the pipeline should use its own codec_chain.
+        ShardingCodec overrides to return its inner codec chain.
+        """
+        return None
+
+    def deserialize(
+        self, raw: Buffer | None, chunk_spec: ArraySpec
+    ) -> dict[tuple[int, ...], Buffer | None]:
+        """Pure compute: unpack stored bytes into per-inner-chunk buffers.
+
+        Default implementation: single chunk at (0,).
+        ShardingCodec overrides to decode shard index and slice blob into per-chunk buffers.
+        """
+        return {(0,): raw}
+
+    def serialize(
+        self, chunk_dict: dict[tuple[int, ...], Buffer | None], chunk_spec: ArraySpec
+    ) -> Buffer | None:
+        """Pure compute: pack per-inner-chunk buffers into a storage blob.
+
+        Default implementation: return the single chunk's bytes (or None if absent).
+        ShardingCodec overrides to concatenate chunks + build index.
+        Returns None if all chunks are empty (caller should delete the key).
+        """
+        return chunk_dict.get((0,))
+
+    def prepare_read_sync(
+        self,
+        byte_getter: Any,
+        chunk_spec: ArraySpec,
+        chunk_selection: SelectorTuple,
+        codec_chain: Any,
+        aa_chain: Any,
+        ab_pair: Any,
+        bb_chain: Any,
+    ) -> NDBuffer | None:
+        """IO + full decode for the selected region. Returns decoded sub-array."""
+        raw = byte_getter.get_sync(prototype=chunk_spec.prototype)
+        chunk_array: NDBuffer | None = codec_chain.decode_chunk(
+            raw, chunk_spec, aa_chain, ab_pair, bb_chain
+        )
+        if chunk_array is not None:
+            return chunk_array[chunk_selection]
+        return None
+
+    def prepare_write_sync(
+        self,
+        byte_setter: Any,
+        chunk_spec: ArraySpec,
+        chunk_selection: SelectorTuple,
+        out_selection: SelectorTuple,
+        codec_chain: Any,
+    ) -> PreparedWrite:
+        """IO + deserialize. Returns PreparedWrite for the pipeline to decode/merge/encode."""
+        is_complete = _is_complete_selection(chunk_selection, chunk_spec.shape)
+        existing: Buffer | None = None
+        if not is_complete:
+            existing = byte_setter.get_sync(prototype=chunk_spec.prototype)
+        chunk_dict = self.deserialize(existing, chunk_spec)
+        inner_chain = self.inner_codec_chain or codec_chain
+        return PreparedWrite(
+            chunk_dict=chunk_dict,
+            inner_codec_chain=inner_chain,
+            inner_chunk_spec=chunk_spec,
+            indexer=[((0,), chunk_selection, out_selection, is_complete)],  # type: ignore[list-item]
+        )
+
+    async def prepare_read(
+        self,
+        byte_getter: Any,
+        chunk_spec: ArraySpec,
+        chunk_selection: SelectorTuple,
+        codec_chain: Any,
+        aa_chain: Any,
+        ab_pair: Any,
+        bb_chain: Any,
+    ) -> NDBuffer | None:
+        """Async IO + full decode for the selected region. Returns decoded sub-array."""
+        raw = await byte_getter.get(prototype=chunk_spec.prototype)
+        chunk_array: NDBuffer | None = codec_chain.decode_chunk(
+            raw, chunk_spec, aa_chain, ab_pair, bb_chain
+        )
+        if chunk_array is not None:
+            return chunk_array[chunk_selection]
+        return None
+
+    async def prepare_write(
+        self,
+        byte_setter: Any,
+        chunk_spec: ArraySpec,
+        chunk_selection: SelectorTuple,
+        out_selection: SelectorTuple,
+        codec_chain: Any,
+    ) -> PreparedWrite:
+        """Async IO + deserialize. Returns PreparedWrite for the pipeline to decode/merge/encode."""
+        is_complete = _is_complete_selection(chunk_selection, chunk_spec.shape)
+        existing: Buffer | None = None
+        if not is_complete:
+            existing = await byte_setter.get(prototype=chunk_spec.prototype)
+        chunk_dict = self.deserialize(existing, chunk_spec)
+        inner_chain = self.inner_codec_chain or codec_chain
+        return PreparedWrite(
+            chunk_dict=chunk_dict,
+            inner_codec_chain=inner_chain,
+            inner_chunk_spec=chunk_spec,
+            indexer=[((0,), chunk_selection, out_selection, is_complete)],  # type: ignore[list-item]
+        )
+
+    def finalize_write_sync(
+        self, prepared: PreparedWrite, chunk_spec: ArraySpec, byte_setter: Any
+    ) -> None:
+        """Serialize prepared chunk_dict and write to store.
+
+        Default: serialize to a single blob and call set (or delete if all empty).
+        ShardingCodec overrides this for byte-range writes when inner codecs are fixed-size.
+        """
+        blob = self.serialize(prepared.chunk_dict, chunk_spec)
+        if blob is None:
+            byte_setter.delete_sync()
+        else:
+            byte_setter.set_sync(blob)
+
+    async def finalize_write(
+        self, prepared: PreparedWrite, chunk_spec: ArraySpec, byte_setter: Any
+    ) -> None:
+        """Async version of finalize_write_sync."""
+        blob = self.serialize(prepared.chunk_dict, chunk_spec)
+        if blob is None:
+            await byte_setter.delete()
+        else:
+            await byte_setter.set(blob)
 
 
 class BytesBytesCodec(BaseCodec[Buffer, Buffer]):
@@ -476,6 +657,59 @@ class CodecPipeline:
         value : NDBuffer
         """
         ...
+
+    # -------------------------------------------------------------------
+    # Fully synchronous read/write (opt-in)
+    #
+    # When a CodecPipeline subclass can run the entire read/write path
+    # (store IO + codec compute + buffer scatter) without touching the
+    # event loop, it overrides these methods and sets supports_sync_io
+    # to True. This lets Array selection methods bypass sync() entirely.
+    #
+    # The default implementations raise NotImplementedError.
+    # BatchedCodecPipeline overrides these when all codecs support sync.
+    # -------------------------------------------------------------------
+
+    @property
+    def supports_sync_io(self) -> bool:
+        """Whether this pipeline can run read/write entirely on the calling thread.
+
+        True when:
+        - All codecs implement ``SupportsSyncCodec``
+        - The pipeline's read_sync/write_sync methods are implemented
+
+        Checked by ``Array._can_use_sync_path()`` to decide whether to bypass
+        the ``sync()`` event-loop bridge.
+        """
+        return False
+
+    def read_sync(
+        self,
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        out: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
+    ) -> None:
+        """Synchronous read: fetch bytes from store, decode, scatter into out.
+
+        Runs entirely on the calling thread. Only available when
+        ``supports_sync_io`` is True. Called by ``_get_selection_sync`` in
+        ``array.py`` when the sync bypass is active.
+        """
+        raise NotImplementedError
+
+    def write_sync(
+        self,
+        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
+        value: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
+    ) -> None:
+        """Synchronous write: gather from value, encode, persist to store.
+
+        Runs entirely on the calling thread. Only available when
+        ``supports_sync_io`` is True. Called by ``_set_selection_sync`` in
+        ``array.py`` when the sync bypass is active.
+        """
+        raise NotImplementedError
 
 
 async def _batching_helper(

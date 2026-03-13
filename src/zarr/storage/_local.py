@@ -85,6 +85,13 @@ def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
         return f.write(view)
 
 
+def _put_range(path: Path, value: Buffer, start: int) -> None:
+    view = value.as_buffer_like()
+    with path.open("r+b") as f:
+        f.seek(start)
+        f.write(view)
+
+
 class LocalStore(Store):
     """
     Store for the local file system.
@@ -187,6 +194,74 @@ class LocalStore(Store):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
 
+    # -------------------------------------------------------------------
+    # Synchronous store methods
+    #
+    # LocalStore's async get/set wrap the synchronous helpers _get() and
+    # _put() (defined at module level) in asyncio.to_thread(). These sync
+    # methods call _get/_put directly, removing the thread-hop overhead.
+    #
+    # The open-guard logic is inlined from _open(): create root dir if
+    # writable, check existence, set _is_open. We can't call the async
+    # _open() from a sync context, so we replicate its logic here.
+    # -------------------------------------------------------------------
+
+    def get_sync(
+        self,
+        key: str,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        # Inline open guard: mirrors async _open() but without await.
+        if not self._is_open:
+            if not self.read_only:
+                self.root.mkdir(parents=True, exist_ok=True)
+            if not self.root.exists():
+                raise FileNotFoundError(f"{self.root} does not exist")
+            self._is_open = True
+        assert isinstance(key, str)
+        path = self.root / key
+        try:
+            # Call _get() directly — the async version wraps this same
+            # function in asyncio.to_thread().
+            return _get(path, prototype, byte_range)
+        except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
+            return None
+
+    def set_sync(self, key: str, value: Buffer) -> None:
+        if not self._is_open:
+            if not self.read_only:
+                self.root.mkdir(parents=True, exist_ok=True)
+            if not self.root.exists():
+                raise FileNotFoundError(f"{self.root} does not exist")
+            self._is_open = True
+        self._check_writable()
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
+        path = self.root / key
+        # Call _put() directly — the async version wraps this in
+        # asyncio.to_thread().
+        _put(path, value)
+
+    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
+        self._check_writable()
+        path = self.root / key
+        _put_range(path, value, start)
+
+    def delete_sync(self, key: str) -> None:
+        self._check_writable()
+        path = self.root / key
+        # Same logic as async delete(), but without await.
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+
     async def get(
         self,
         key: str,
@@ -222,6 +297,14 @@ class LocalStore(Store):
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
         return await self._set(key, value)
+
+    async def set_range(self, key: str, value: Buffer, start: int) -> None:
+        # docstring inherited
+        if not self._is_open:
+            await self._open()
+        self._check_writable()
+        path = self.root / key
+        await asyncio.to_thread(_put_range, path, value, start)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited

@@ -19,6 +19,7 @@ from zarr.codecs import (
 )
 from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.storage import StorePath, ZipStore
+from zarr.storage._logging import LoggingStore
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
@@ -236,6 +237,105 @@ def test_sharding_partial_overwrite(
         a[:10, :10, :10] = data
     read_data = a[0:10, 0:10, 0:10]
     assert np.array_equal(data, read_data)
+
+
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+async def test_sharding_subchunk_writes_are_independent(
+    store: Store, index_location: ShardingCodecIndexLocation
+) -> None:
+    """Writing to different inner chunks of a shard in separate operations
+    must preserve all previously written data.
+
+    For uncompressed shards, partial writes should use set_range (byte-range
+    writes) rather than rewriting the entire shard blob.
+    """
+    logging_store = LoggingStore(store)
+    # 1 shard of shape (4, 4) containing 4 inner chunks of shape (2, 2)
+    a = await zarr.api.asynchronous.create_array(
+        StorePath(logging_store),
+        shape=(4, 4),
+        chunks=(2, 2),
+        shards={"shape": (4, 4), "index_location": index_location},
+        compressors=None,
+        dtype="uint16",
+        fill_value=0,
+    )
+
+    # Write each inner chunk separately with distinct values.
+    # First write creates the shard (uses set).
+    logging_store.counter.clear()
+    await _AsyncArrayProxy(a)[0:2, 0:2].set(np.full((2, 2), 1, dtype="uint16"))
+    assert logging_store.counter["set"] == 1, "first write should create shard via set"
+    assert logging_store.counter["set_range"] == 0
+
+    # Subsequent writes to existing shard should use set_range, not set.
+    logging_store.counter.clear()
+    await _AsyncArrayProxy(a)[0:2, 2:4].set(np.full((2, 2), 2, dtype="uint16"))
+    assert logging_store.counter["set"] == 0, "partial write should not use set"
+    assert logging_store.counter["set_range"] >= 1, "partial write should use set_range"
+
+    logging_store.counter.clear()
+    await _AsyncArrayProxy(a)[2:4, 0:2].set(np.full((2, 2), 3, dtype="uint16"))
+    assert logging_store.counter["set"] == 0, "partial write should not use set"
+    assert logging_store.counter["set_range"] >= 1, "partial write should use set_range"
+
+    logging_store.counter.clear()
+    await _AsyncArrayProxy(a)[2:4, 2:4].set(np.full((2, 2), 4, dtype="uint16"))
+    assert logging_store.counter["set"] == 0, "partial write should not use set"
+    assert logging_store.counter["set_range"] >= 1, "partial write should use set_range"
+
+    # Every inner chunk must still contain its value
+    expected = np.array([[1, 1, 2, 2], [1, 1, 2, 2], [3, 3, 4, 4], [3, 3, 4, 4]], dtype="uint16")
+    np.testing.assert_array_equal(await a.getitem(...), expected)
+
+
+@pytest.mark.parametrize("outer_index_location", ["start", "end"])
+@pytest.mark.parametrize("inner_index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_nested_sharding_subchunk_writes_are_independent(
+    store: Store,
+    outer_index_location: ShardingCodecIndexLocation,
+    inner_index_location: ShardingCodecIndexLocation,
+) -> None:
+    """Writing to different leaf chunks of a nested-sharded array in separate
+    operations must preserve all previously written data.
+
+    Layout (1-D for clarity):
+        outer shard shape = 8
+        inner shard shape = 4  (2 inner shards per outer shard)
+        chunk shape        = 2  (2 chunks per inner shard)
+        total shape        = 8  (1 outer shard)
+
+    Four separate writes, one per leaf chunk, then read back the whole array.
+    """
+    a = zarr.create_array(
+        StorePath(store),
+        shape=(8,),
+        dtype="uint16",
+        fill_value=0,
+        serializer=ShardingCodec(
+            chunk_shape=(4,),
+            codecs=[
+                ShardingCodec(
+                    chunk_shape=(2,),
+                    index_location=inner_index_location,
+                ),
+            ],
+            index_location=outer_index_location,
+        ),
+        filters=None,
+        compressors=None,
+    )
+
+    # Write each leaf chunk independently
+    a[0:2] = np.full((2,), 1, dtype="uint16")
+    a[2:4] = np.full((2,), 2, dtype="uint16")
+    a[4:6] = np.full((2,), 3, dtype="uint16")
+    a[6:8] = np.full((2,), 4, dtype="uint16")
+
+    expected = np.array([1, 1, 2, 2, 3, 3, 4, 4], dtype="uint16")
+    np.testing.assert_array_equal(a[:], expected)
 
 
 # Zip storage raises a warning about a duplicate name, which we ignore.

@@ -2259,9 +2259,8 @@ def test_create_array_with_data_num_gets(
         data = zarr.zeros(shape, dtype="int64")
 
     zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)  # type: ignore[arg-type]
-    # one get for the metadata and one per shard.
-    # Note: we don't actually need one get per shard, but this is the current behavior
-    assert store.counter["get"] == 1 + num_shards
+    # one get for the metadata only — complete shard writes skip fetching existing data
+    assert store.counter["get"] == 1
 
 
 @pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])

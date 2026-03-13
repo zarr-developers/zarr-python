@@ -78,19 +78,19 @@ class ZstdCodec(BytesBytesCodec):
     ) -> Buffer:
         return as_numpy_array_wrapper(self._zstd_codec.decode, chunk_bytes, chunk_spec.prototype)
 
-    async def _decode_single(
-        self,
-        chunk_bytes: Buffer,
-        chunk_spec: ArraySpec,
-    ) -> Buffer:
-        return await asyncio.to_thread(self._decode_sync, chunk_bytes, chunk_spec)
-
     def _encode_sync(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
         return as_numpy_array_wrapper(self._zstd_codec.encode, chunk_bytes, chunk_spec.prototype)
+
+    async def _decode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_bytes, chunk_spec)
 
     async def _encode_single(
         self,

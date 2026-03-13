@@ -49,6 +49,11 @@ class GzipCodec(BytesBytesCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "gzip", "configuration": {"level": self.level}}
 
+    # Cache the numcodecs GZip instance. GzipCodec is a frozen dataclass,
+    # so `level` never changes after construction, making this safe.
+    # This matches the pattern used by ZstdCodec._zstd_codec and
+    # BloscCodec._blosc_codec. Without caching, a new GZip(level) was
+    # created on every encode/decode call.
     @cached_property
     def _gzip_codec(self) -> GZip:
         return GZip(self.level)
@@ -58,14 +63,10 @@ class GzipCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
+        # Use the cached codec instance instead of creating GZip(self.level)
+        # each time. The async _decode_single delegates to this method via
+        # asyncio.to_thread, so both paths benefit from the cache.
         return as_numpy_array_wrapper(self._gzip_codec.decode, chunk_bytes, chunk_spec.prototype)
-
-    async def _decode_single(
-        self,
-        chunk_bytes: Buffer,
-        chunk_spec: ArraySpec,
-    ) -> Buffer:
-        return await asyncio.to_thread(self._decode_sync, chunk_bytes, chunk_spec)
 
     def _encode_sync(
         self,
@@ -73,6 +74,13 @@ class GzipCodec(BytesBytesCodec):
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
         return as_numpy_array_wrapper(self._gzip_codec.encode, chunk_bytes, chunk_spec.prototype)
+
+    async def _decode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
+        return await asyncio.to_thread(self._decode_sync, chunk_bytes, chunk_spec)
 
     async def _encode_single(
         self,
