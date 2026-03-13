@@ -1,27 +1,17 @@
 from __future__ import annotations
 
-import itertools
 import math
 import numbers
-import operator
 import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
-from functools import reduce
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
+import numpy.typing as npt
 
 import zarr
 from zarr.abc.metadata import Metadata
-from zarr.core.common import (
-    JSON,
-    NamedConfig,
-    ShapeLike,
-    ceildiv,
-    parse_named_configuration,
-    parse_shapelike,
-)
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
@@ -29,6 +19,141 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.core.array import ShardsLike
+    from zarr.core.common import JSON
+
+
+@dataclass(frozen=True)
+class ChunkGrid(Metadata):
+    @abstractmethod
+    def to_dict(self) -> dict[str, JSON]: ...
+
+    @abstractmethod
+    def update_shape(self, new_shape: tuple[int, ...]) -> Self:
+        pass
+
+    @abstractmethod
+    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
+        pass
+
+    @abstractmethod
+    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
+        pass
+
+    @abstractmethod
+    def get_chunk_shape(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Get the shape of a specific chunk.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        chunk_coord : tuple[int, ...]
+            Coordinates of the chunk in the chunk grid.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Shape of the chunk at the given coordinates.
+        """
+
+    @abstractmethod
+    def get_chunk_start(
+        self, array_shape: tuple[int, ...], chunk_coord: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Get the starting position of a chunk in the array.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        chunk_coord : tuple[int, ...]
+            Coordinates of the chunk in the chunk grid.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Starting position (offset) of the chunk in the array.
+        """
+
+    @abstractmethod
+    def array_index_to_chunk_coord(
+        self, array_shape: tuple[int, ...], array_index: tuple[int, ...]
+    ) -> tuple[int, ...]:
+        """
+        Map an array index to the chunk coordinates that contain it.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        array_index : tuple[int, ...]
+            Index in the array.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Coordinates of the chunk containing the array index.
+        """
+
+    @abstractmethod
+    def array_indices_to_chunk_dim(
+        self, array_shape: tuple[int, ...], dim: int, indices: npt.NDArray[np.intp]
+    ) -> npt.NDArray[np.intp]:
+        """
+        Map an array of indices along one dimension to chunk coordinates (vectorized).
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        dim : int
+            Dimension index.
+        indices : np.ndarray
+            Array of indices along the given dimension.
+
+        Returns
+        -------
+        np.ndarray
+            Array of chunk coordinates, same shape as indices.
+        """
+
+    @abstractmethod
+    def chunks_per_dim(self, array_shape: tuple[int, ...], dim: int) -> int:
+        """
+        Get the number of chunks along a specific dimension.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+        dim : int
+            Dimension index.
+
+        Returns
+        -------
+        int
+            Number of chunks along the dimension.
+        """
+
+    @abstractmethod
+    def get_chunk_grid_shape(self, array_shape: tuple[int, ...]) -> tuple[int, ...]:
+        """
+        Get the shape of the chunk grid (number of chunks along each dimension).
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            Shape of the full array.
+
+        Returns
+        -------
+        tuple[int, ...]
+            Number of chunks along each dimension.
+        """
 
 
 def _guess_chunks(
@@ -151,58 +276,6 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
         raise TypeError("non integer value in chunks")
 
     return tuple(int(c) for c in chunks)
-
-
-@dataclass(frozen=True)
-class ChunkGrid(Metadata):
-    @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
-        if isinstance(data, ChunkGrid):
-            return data
-
-        name_parsed, _ = parse_named_configuration(data)
-        if name_parsed == "regular":
-            return RegularChunkGrid._from_dict(data)
-        raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
-
-    @abstractmethod
-    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-        pass
-
-    @abstractmethod
-    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
-        pass
-
-
-@dataclass(frozen=True)
-class RegularChunkGrid(ChunkGrid):
-    chunk_shape: tuple[int, ...]
-
-    def __init__(self, *, chunk_shape: ShapeLike) -> None:
-        chunk_shape_parsed = parse_shapelike(chunk_shape)
-
-        object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
-
-    @classmethod
-    def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
-        _, configuration_parsed = parse_named_configuration(data, "regular")
-
-        return cls(**configuration_parsed)  # type: ignore[arg-type]
-
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
-
-    def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-        return itertools.product(
-            *(range(ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
-        )
-
-    def get_nchunks(self, array_shape: tuple[int, ...]) -> int:
-        return reduce(
-            operator.mul,
-            itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
-            1,
-        )
 
 
 def _guess_num_chunks_per_axis_shard(
