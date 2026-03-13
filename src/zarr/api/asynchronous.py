@@ -494,7 +494,9 @@ async def save_array(
     if np.isscalar(arr):
         arr = np.array(arr)
     shape = arr.shape
-    chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
+    chunks = kwargs.pop(
+        "chunks", getattr(arr, "chunks", None)
+    )  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
     zarr_dtype = get_data_type_from_native_dtype(arr.dtype)
     new = await AsyncArray._create(
