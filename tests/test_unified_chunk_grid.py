@@ -397,6 +397,17 @@ class TestRLE:
         assert _expand_rle(compressed) == original
 
 
+class TestExpandRleHandlesJsonFloats:
+    def test_bare_integer_floats_accepted(self) -> None:
+        """JSON parsers may emit 10.0 for the integer 10; _expand_rle should handle it."""
+        result = _expand_rle([10.0, 20.0])  # type: ignore[list-item]
+        assert result == [10, 20]
+
+    def test_rle_pair_with_float_count(self) -> None:
+        result = _expand_rle([[10, 3.0]])  # type: ignore[list-item]
+        assert result == [10, 10, 10]
+
+
 # ---------------------------------------------------------------------------
 # Serialization
 # ---------------------------------------------------------------------------

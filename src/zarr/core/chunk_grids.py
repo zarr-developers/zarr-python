@@ -232,10 +232,10 @@ def _expand_rle(data: Sequence[list[int] | int]) -> list[int]:
     """
     result: list[int] = []
     for item in data:
-        if isinstance(item, int):
-            result.append(item)
-        elif len(item) == 2:
-            size, count = item
+        if isinstance(item, (int, float)) and not isinstance(item, bool):
+            result.append(int(item))
+        elif isinstance(item, list) and len(item) == 2:
+            size, count = int(item[0]), int(item[1])
             result.extend([size] * count)
         else:
             raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
