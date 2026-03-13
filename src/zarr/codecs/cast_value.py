@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
 import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
-from zarr.core.array_spec import ArraySpec
 from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.dtype import get_data_type_from_json
 
 if TYPE_CHECKING:
     from typing import Self
 
+    from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
@@ -27,7 +27,11 @@ RoundingMode = Literal[
 
 OutOfRangeMode = Literal["clamp", "wrap"]
 
-ScalarMapJSON = dict[str, list[list[JSON]]]
+
+class ScalarMapJSON(TypedDict):
+    encode: NotRequired[tuple[tuple[object, object]]]
+    decode: NotRequired[tuple[tuple[object, object]]]
+
 
 # Pre-parsed scalar map entry: (source_float, target_float, source_is_nan)
 _MapEntry = tuple[float, float, bool]
@@ -123,8 +127,12 @@ def _cast_array(
                 range_size = hi - lo + 1
                 return ((arr.astype(np.int64) - lo) % range_size + lo).astype(target_dtype)
             else:
+                oor_vals = arr[(arr < lo) | (arr > hi)]
                 raise ValueError(
-                    f"Values out of range for {target_dtype} and no out_of_range policy set"
+                    f"Values out of range for {target_dtype} (valid range: [{lo}, {hi}]), "
+                    f"got values in [{arr_min}, {arr_max}]. "
+                    f"Out-of-range values: {oor_vals.ravel()!r}. "
+                    f"Set out_of_range='clamp' or out_of_range='wrap' to handle this."
                 )
         return arr.astype(target_dtype)
 
@@ -158,8 +166,12 @@ def _cast_array(
                     info.min
                 )
         elif (work.min() < lo) or (work.max() > hi):
+            oor_vals = work[(work < lo) | (work > hi)]
             raise ValueError(
-                f"Values out of range for {target_dtype} and no out_of_range policy set"
+                f"Values out of range for {target_dtype} (valid range: [{lo}, {hi}]), "
+                f"got values in [{work.min()}, {work.max()}]. "
+                f"Out-of-range values: {oor_vals.ravel()!r}. "
+                f"Set out_of_range='clamp' or out_of_range='wrap' to handle this."
             )
 
         return work.astype(target_dtype)
@@ -191,8 +203,12 @@ def _cast_array(
                 oor = (work < lo) | (work > hi)
                 work[oor] = (work[oor] - lo) % range_size + lo
             else:
+                oor_vals = work[(work < lo) | (work > hi)]
                 raise ValueError(
-                    f"Values out of range for {target_dtype} and no out_of_range policy set"
+                    f"Values out of range for {target_dtype} (valid range: [{lo}, {hi}]), "
+                    f"got values in [{w_min}, {w_max}]. "
+                    f"Out-of-range values: {oor_vals.ravel()!r}. "
+                    f"Set out_of_range='clamp' or out_of_range='wrap' to handle this."
                 )
         return work.astype(target_dtype)
 
@@ -222,7 +238,7 @@ def _parse_scalar_map(
 
 
 @dataclass(frozen=True)
-class CastValueCodec(ArrayArrayCodec):
+class CastValue(ArrayArrayCodec):
     """Cast-value array-to-array codec.
 
     Value-converts array elements to a new data type during encoding,

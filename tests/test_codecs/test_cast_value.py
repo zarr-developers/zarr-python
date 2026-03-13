@@ -1,4 +1,4 @@
-"""Tests for scale_offset and cast_value codecs."""
+"""Tests for the cast_value codec."""
 
 from __future__ import annotations
 
@@ -7,164 +7,9 @@ import pytest
 
 import zarr
 from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.cast_value import CastValueCodec
-from zarr.codecs.scale_offset import ScaleOffsetCodec
+from zarr.codecs.cast_value import CastValue
+from zarr.codecs.scale_offset import ScaleOffset
 from zarr.storage import MemoryStore
-
-
-class TestScaleOffsetCodec:
-    """Tests for the scale_offset codec."""
-
-    def test_identity(self) -> None:
-        """Default parameters (offset=0, scale=1) should be a no-op."""
-        store = MemoryStore()
-        data = np.arange(20, dtype="float64").reshape(4, 5)
-        arr = zarr.create(
-            store=store,
-            shape=data.shape,
-            dtype=data.dtype,
-            chunks=(4, 5),
-            codecs=[ScaleOffsetCodec(), BytesCodec()],
-        )
-        arr[:] = data
-        np.testing.assert_array_equal(arr[:], data)
-
-    def test_encode_decode_float64(self) -> None:
-        """Encode/decode round-trip with float64 data."""
-        store = MemoryStore()
-        data = np.array([10.0, 20.0, 30.0, 40.0, 50.0], dtype="float64")
-        arr = zarr.create(
-            store=store,
-            shape=data.shape,
-            dtype=data.dtype,
-            chunks=(5,),
-            codecs=[ScaleOffsetCodec(offset=10, scale=0.1), BytesCodec()],
-        )
-        arr[:] = data
-        result = arr[:]
-        np.testing.assert_allclose(result, data, rtol=1e-10)
-
-    def test_encode_decode_float32(self) -> None:
-        """Round-trip with float32 data."""
-        store = MemoryStore()
-        data = np.array([1.0, 2.0, 3.0], dtype="float32")
-        arr = zarr.create(
-            store=store,
-            shape=data.shape,
-            dtype=data.dtype,
-            chunks=(3,),
-            codecs=[ScaleOffsetCodec(offset=1, scale=2), BytesCodec()],
-        )
-        arr[:] = data
-        result = arr[:]
-        np.testing.assert_allclose(result, data, rtol=1e-6)
-
-    def test_encode_decode_integer(self) -> None:
-        """Round-trip with integer data (uses integer arithmetic semantics)."""
-        store = MemoryStore()
-        data = np.array([10, 20, 30, 40, 50], dtype="int32")
-        arr = zarr.create(
-            store=store,
-            shape=data.shape,
-            dtype=data.dtype,
-            chunks=(5,),
-            codecs=[ScaleOffsetCodec(offset=10, scale=1), BytesCodec()],
-        )
-        arr[:] = data
-        result = arr[:]
-        np.testing.assert_array_equal(result, data)
-
-    def test_offset_only(self) -> None:
-        """Test with only offset (scale=1)."""
-        store = MemoryStore()
-        data = np.array([100.0, 200.0, 300.0], dtype="float64")
-        arr = zarr.create(
-            store=store,
-            shape=data.shape,
-            dtype=data.dtype,
-            chunks=(3,),
-            codecs=[ScaleOffsetCodec(offset=100), BytesCodec()],
-        )
-        arr[:] = data
-        np.testing.assert_allclose(arr[:], data)
-
-    def test_scale_only(self) -> None:
-        """Test with only scale (offset=0)."""
-        store = MemoryStore()
-        data = np.array([1.0, 2.0, 3.0], dtype="float64")
-        arr = zarr.create(
-            store=store,
-            shape=data.shape,
-            dtype=data.dtype,
-            chunks=(3,),
-            codecs=[ScaleOffsetCodec(scale=10), BytesCodec()],
-        )
-        arr[:] = data
-        np.testing.assert_allclose(arr[:], data)
-
-    def test_fill_value_transformed(self) -> None:
-        """Fill value should be transformed through the codec."""
-        store = MemoryStore()
-        arr = zarr.create(
-            store=store,
-            shape=(5,),
-            dtype="float64",
-            chunks=(5,),
-            fill_value=100.0,
-            codecs=[ScaleOffsetCodec(offset=10, scale=2), BytesCodec()],
-        )
-        # Without writing, reading should return the fill value
-        result = arr[:]
-        np.testing.assert_allclose(result, np.full(5, 100.0))
-
-    def test_validate_rejects_complex(self) -> None:
-        """Validate should reject complex dtypes."""
-        with pytest.raises(ValueError, match="only supports integer and floating-point"):
-            zarr.create(
-                store=MemoryStore(),
-                shape=(5,),
-                dtype="complex128",
-                chunks=(5,),
-                codecs=[ScaleOffsetCodec(offset=1, scale=2), BytesCodec()],
-            )
-
-    def test_to_dict_no_config(self) -> None:
-        """Default codec should serialize without configuration."""
-        codec = ScaleOffsetCodec()
-        assert codec.to_dict() == {"name": "scale_offset"}
-
-    def test_to_dict_with_config(self) -> None:
-        """Non-default codec should include configuration."""
-        codec = ScaleOffsetCodec(offset=5, scale=0.1)
-        d = codec.to_dict()
-        assert d == {"name": "scale_offset", "configuration": {"offset": 5, "scale": 0.1}}
-
-    def test_to_dict_offset_only(self) -> None:
-        """Only offset in config when scale is default."""
-        codec = ScaleOffsetCodec(offset=5)
-        d = codec.to_dict()
-        assert d == {"name": "scale_offset", "configuration": {"offset": 5}}
-
-    def test_from_dict_no_config(self) -> None:
-        """Parse codec from JSON with no configuration."""
-        codec = ScaleOffsetCodec.from_dict({"name": "scale_offset"})
-        assert codec.offset == 0
-        assert codec.scale == 1
-
-    def test_from_dict_with_config(self) -> None:
-        """Parse codec from JSON with configuration."""
-        codec = ScaleOffsetCodec.from_dict(
-            {"name": "scale_offset", "configuration": {"offset": 5, "scale": 0.1}}
-        )
-        assert codec.offset == 5
-        assert codec.scale == 0.1
-
-    def test_roundtrip_json(self) -> None:
-        """to_dict -> from_dict should preserve parameters."""
-        original = ScaleOffsetCodec(offset=3.14, scale=2.71)
-        restored = ScaleOffsetCodec.from_dict(original.to_dict())
-        assert restored.offset == original.offset
-        assert restored.scale == original.scale
 
 
 class TestCastValueCodec:
@@ -179,7 +24,7 @@ class TestCastValueCodec:
             shape=data.shape,
             dtype=data.dtype,
             chunks=(3,),
-            codecs=[CastValueCodec(data_type="float32"), BytesCodec()],
+            codecs=[CastValue(data_type="float32"), BytesCodec()],
         )
         arr[:] = data
         result = arr[:]
@@ -194,7 +39,7 @@ class TestCastValueCodec:
             shape=data.shape,
             dtype=data.dtype,
             chunks=(4,),
-            codecs=[CastValueCodec(data_type="int32", rounding="towards-zero"), BytesCodec()],
+            codecs=[CastValue(data_type="int32", rounding="towards-zero"), BytesCodec()],
         )
         arr[:] = data
         result = arr[:]
@@ -212,7 +57,7 @@ class TestCastValueCodec:
             dtype=data.dtype,
             chunks=(4,),
             codecs=[
-                CastValueCodec(data_type="uint8", rounding="nearest-even", out_of_range="clamp"),
+                CastValue(data_type="uint8", rounding="nearest-even", out_of_range="clamp"),
                 BytesCodec(),
             ],
         )
@@ -230,16 +75,13 @@ class TestCastValueCodec:
             dtype=data.dtype,
             chunks=(1,),
             codecs=[
-                CastValueCodec(data_type="int8", rounding="nearest-even", out_of_range="wrap"),
+                CastValue(data_type="int8", rounding="nearest-even", out_of_range="wrap"),
                 BytesCodec(),
             ],
         )
         arr[:] = data
         result = arr[:]
         # 200 wraps in int8 range [-128, 127]: (200 - (-128)) % 256 + (-128) = 328 % 256 - 128 = 72 - 128 = -56
-        expected = np.array([200], dtype="float64")
-        expected_arr = np.array([200], dtype="float64")
-        # Encode: round(200) = 200, wrap: (200+128)%256-128 = 328%256-128 = 72-128 = -56
         # Decode: -56 cast back to float64 = -56.0
         np.testing.assert_array_equal(result, [-56.0])
 
@@ -252,7 +94,7 @@ class TestCastValueCodec:
             shape=data.shape,
             dtype=data.dtype,
             chunks=(1,),
-            codecs=[CastValueCodec(data_type="uint8", out_of_range="clamp"), BytesCodec()],
+            codecs=[CastValue(data_type="uint8", out_of_range="clamp"), BytesCodec()],
         )
         with pytest.raises(ValueError, match="Cannot cast NaN"):
             arr[:] = data
@@ -267,7 +109,7 @@ class TestCastValueCodec:
             dtype=data.dtype,
             chunks=(3,),
             codecs=[
-                CastValueCodec(
+                CastValue(
                     data_type="uint8",
                     out_of_range="clamp",
                     scalar_map={
@@ -294,7 +136,7 @@ class TestCastValueCodec:
             dtype=data.dtype,
             chunks=(4,),
             codecs=[
-                CastValueCodec(data_type="int32", rounding="nearest-even"),
+                CastValue(data_type="int32", rounding="nearest-even"),
                 BytesCodec(),
             ],
         )
@@ -312,7 +154,7 @@ class TestCastValueCodec:
             dtype=data.dtype,
             chunks=(4,),
             codecs=[
-                CastValueCodec(data_type="int32", rounding="towards-positive"),
+                CastValue(data_type="int32", rounding="towards-positive"),
                 BytesCodec(),
             ],
         )
@@ -330,7 +172,7 @@ class TestCastValueCodec:
             dtype=data.dtype,
             chunks=(4,),
             codecs=[
-                CastValueCodec(data_type="int32", rounding="towards-negative"),
+                CastValue(data_type="int32", rounding="towards-negative"),
                 BytesCodec(),
             ],
         )
@@ -348,7 +190,7 @@ class TestCastValueCodec:
             dtype=data.dtype,
             chunks=(4,),
             codecs=[
-                CastValueCodec(data_type="int32", rounding="nearest-away"),
+                CastValue(data_type="int32", rounding="nearest-away"),
                 BytesCodec(),
             ],
         )
@@ -365,7 +207,7 @@ class TestCastValueCodec:
             shape=data.shape,
             dtype=data.dtype,
             chunks=(1,),
-            codecs=[CastValueCodec(data_type="uint8"), BytesCodec()],
+            codecs=[CastValue(data_type="uint8"), BytesCodec()],
         )
         with pytest.raises(ValueError, match="out of range"):
             arr[:] = data
@@ -379,7 +221,7 @@ class TestCastValueCodec:
                 dtype="float64",
                 chunks=(5,),
                 codecs=[
-                    CastValueCodec(data_type="float32", out_of_range="wrap"),
+                    CastValue(data_type="float32", out_of_range="wrap"),
                     BytesCodec(),
                 ],
             )
@@ -392,7 +234,7 @@ class TestCastValueCodec:
                 shape=(5,),
                 dtype="complex128",
                 chunks=(5,),
-                codecs=[CastValueCodec(data_type="float64"), BytesCodec()],
+                codecs=[CastValue(data_type="float64"), BytesCodec()],
             )
 
     def test_int32_to_int16_clamp(self) -> None:
@@ -405,7 +247,7 @@ class TestCastValueCodec:
             dtype=data.dtype,
             chunks=(4,),
             codecs=[
-                CastValueCodec(data_type="int16", out_of_range="clamp"),
+                CastValue(data_type="int16", out_of_range="clamp"),
                 BytesCodec(),
             ],
         )
@@ -415,7 +257,7 @@ class TestCastValueCodec:
 
     def test_to_dict(self) -> None:
         """Serialization to dict."""
-        codec = CastValueCodec(
+        codec = CastValue(
             data_type="uint8",
             rounding="towards-zero",
             out_of_range="clamp",
@@ -433,13 +275,13 @@ class TestCastValueCodec:
 
     def test_to_dict_minimal(self) -> None:
         """Only required fields in dict when defaults are used."""
-        codec = CastValueCodec(data_type="float32")
+        codec = CastValue(data_type="float32")
         d = codec.to_dict()
         assert d == {"name": "cast_value", "configuration": {"data_type": "float32"}}
 
     def test_from_dict(self) -> None:
         """Deserialization from dict."""
-        codec = CastValueCodec.from_dict(
+        codec = CastValue.from_dict(
             {
                 "name": "cast_value",
                 "configuration": {
@@ -455,13 +297,13 @@ class TestCastValueCodec:
 
     def test_roundtrip_json(self) -> None:
         """to_dict -> from_dict should preserve all parameters."""
-        original = CastValueCodec(
+        original = CastValue(
             data_type="int16",
             rounding="towards-negative",
             out_of_range="clamp",
             scalar_map={"encode": [["NaN", 0]]},
         )
-        restored = CastValueCodec.from_dict(original.to_dict())
+        restored = CastValue.from_dict(original.to_dict())
         assert restored.data_type == original.data_type
         assert restored.rounding == original.rounding
         assert restored.out_of_range == original.out_of_range
@@ -476,14 +318,14 @@ class TestCastValueCodec:
             dtype="float64",
             chunks=(5,),
             fill_value=42.0,
-            codecs=[CastValueCodec(data_type="int32"), BytesCodec()],
+            codecs=[CastValue(data_type="int32"), BytesCodec()],
         )
         result = arr[:]
         np.testing.assert_array_equal(result, np.full(5, 42.0))
 
     def test_computed_encoded_size(self) -> None:
         """Encoded size should reflect the target dtype's item size."""
-        codec = CastValueCodec(data_type="uint8")
+        codec = CastValue(data_type="uint8")
         from zarr.core.array_spec import ArrayConfig, ArraySpec
         from zarr.core.buffer.cpu import buffer_prototype
         from zarr.core.dtype import parse_dtype
@@ -513,8 +355,8 @@ class TestScaleOffsetAndCastValueCombined:
             dtype=data.dtype,
             chunks=(5,),
             codecs=[
-                ScaleOffsetCodec(offset=0, scale=10),
-                CastValueCodec(data_type="uint8", out_of_range="clamp"),
+                ScaleOffset(offset=0, scale=10),
+                CastValue(data_type="uint8", out_of_range="clamp"),
                 BytesCodec(),
             ],
         )
@@ -539,8 +381,8 @@ class TestScaleOffsetAndCastValueCombined:
             dtype=data.dtype,
             chunks=(5,),
             codecs=[
-                ScaleOffsetCodec(offset=offset, scale=scale),
-                CastValueCodec(data_type="uint8", out_of_range="clamp"),
+                ScaleOffset(offset=offset, scale=scale),
+                CastValue(data_type="uint8", out_of_range="clamp"),
                 BytesCodec(),
             ],
         )
@@ -560,8 +402,8 @@ class TestScaleOffsetAndCastValueCombined:
             chunks=(3,),
             fill_value=float("nan"),
             codecs=[
-                ScaleOffsetCodec(offset=0, scale=1),
-                CastValueCodec(
+                ScaleOffset(offset=0, scale=1),
+                CastValue(
                     data_type="uint8",
                     out_of_range="clamp",
                     scalar_map={
@@ -581,14 +423,14 @@ class TestScaleOffsetAndCastValueCombined:
     def test_metadata_persistence(self) -> None:
         """Array metadata should be correctly persisted and reloaded."""
         store = MemoryStore()
-        arr = zarr.create(
+        zarr.create(
             store=store,
             shape=(10,),
             dtype="float64",
             chunks=(10,),
             codecs=[
-                ScaleOffsetCodec(offset=5, scale=0.5),
-                CastValueCodec(data_type="int16", out_of_range="clamp"),
+                ScaleOffset(offset=5, scale=0.5),
+                CastValue(data_type="int16", out_of_range="clamp"),
                 BytesCodec(),
             ],
         )
