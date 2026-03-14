@@ -4718,9 +4718,8 @@ async def init_array(
 
     rectilinear_grid: ChunkGrid | None = None
     rectilinear_shards = _is_rectilinear_chunks(shards)
-    rectilinear_chunks = _is_rectilinear_chunks(chunks)
 
-    if rectilinear_chunks:
+    if _is_rectilinear_chunks(chunks):
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
         if shards is not None:
@@ -4729,25 +4728,21 @@ async def init_array(
                 "Use rectilinear shards instead: "
                 "chunks=(inner_size, ...), shards=[[shard_sizes], ...]"
             )
-        rect_chunks = cast("Sequence[Sequence[int]]", chunks)
-        rectilinear_grid = ChunkGrid.from_rectilinear(rect_chunks, array_shape=shape_parsed)
+        rectilinear_grid = ChunkGrid.from_rectilinear(chunks, array_shape=shape_parsed)
         # Use first chunk size per dim as placeholder for _auto_partition
-        chunks_flat: tuple[int, ...] | Literal["auto"] = tuple(
-            dim_edges[0] for dim_edges in rect_chunks
-        )
+        chunks_flat: tuple[int, ...] | Literal["auto"] = tuple(dim_edges[0] for dim_edges in chunks)
     else:
         chunks_flat = cast("tuple[int, ...] | Literal['auto']", chunks)
 
     # Handle rectilinear shards: shards=[[60, 40, 20], [50, 50]]
     # means variable-sized shard boundaries with uniform inner chunks
     shards_for_partition: ShardsLike | None = shards
-    if rectilinear_shards:
+    if _is_rectilinear_chunks(shards):
         if zarr_format == 2:
             raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
-        rect_shards = cast("Sequence[Sequence[int]]", shards)
-        rectilinear_grid = ChunkGrid.from_rectilinear(rect_shards, array_shape=shape_parsed)
+        rectilinear_grid = ChunkGrid.from_rectilinear(shards, array_shape=shape_parsed)
         # Use first shard size per dim as placeholder for _auto_partition
-        shards_for_partition = tuple(dim_edges[0] for dim_edges in rect_shards)
+        shards_for_partition = tuple(dim_edges[0] for dim_edges in shards)
 
     item_size = 1
     if isinstance(zdtype, HasItemSize):

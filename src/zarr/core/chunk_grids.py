@@ -9,7 +9,7 @@ import warnings
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeGuard, cast, runtime_checkable
 
 import numpy as np
 import numpy.typing as npt
@@ -379,7 +379,7 @@ def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[in
 ChunksLike = tuple[int, ...] | list[list[int] | int] | int
 
 
-def _is_rectilinear_chunks(chunks: Any) -> bool:
+def _is_rectilinear_chunks(chunks: Any) -> TypeGuard[Sequence[Sequence[int]]]:
     """Check if chunks is a nested sequence (e.g. [[10, 20], [5, 5]]).
 
     Returns True for inputs like [[10, 20], [5, 5]] or [(10, 20), (5, 5)].
