@@ -133,6 +133,42 @@ class TestRectilinearFeatureFlag:
 
 
 # ---------------------------------------------------------------------------
+# RegularChunkGrid backwards compatibility
+# ---------------------------------------------------------------------------
+
+
+class TestRegularChunkGridCompat:
+    """The deprecated RegularChunkGrid shim should work for common patterns."""
+
+    def test_construction_emits_deprecation_warning(self) -> None:
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+        with pytest.warns(DeprecationWarning, match="RegularChunkGrid is deprecated"):
+            grid = RegularChunkGrid(chunk_shape=(10, 20))
+        assert isinstance(grid, ChunkGrid)
+        assert grid.is_regular
+        assert grid.chunk_shape == (10, 20)
+
+    def test_isinstance_check(self) -> None:
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+        grid = ChunkGrid.from_regular((100, 200), (10, 20))
+        assert isinstance(grid, RegularChunkGrid)
+
+    def test_isinstance_false_for_rectilinear(self) -> None:
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+        grid = ChunkGrid.from_rectilinear([[10, 20], [25, 25]], array_shape=(30, 50))
+        assert not isinstance(grid, RegularChunkGrid)
+
+    def test_isinstance_false_for_unrelated_types(self) -> None:
+        from zarr.core.chunk_grids import RegularChunkGrid
+
+        assert not isinstance("hello", RegularChunkGrid)
+        assert not isinstance(42, RegularChunkGrid)
+
+
+# ---------------------------------------------------------------------------
 # FixedDimension
 # ---------------------------------------------------------------------------
 
@@ -459,11 +495,11 @@ class TestRLE:
 class TestExpandRleHandlesJsonFloats:
     def test_bare_integer_floats_accepted(self) -> None:
         """JSON parsers may emit 10.0 for the integer 10; _expand_rle should handle it."""
-        result = _expand_rle([10.0, 20.0])
+        result = _expand_rle([10.0, 20.0])  # type: ignore[list-item]
         assert result == [10, 20]
 
     def test_rle_pair_with_float_count(self) -> None:
-        result = _expand_rle([[10, 3.0]])
+        result = _expand_rle([[10, 3.0]])  # type: ignore[list-item]
         assert result == [10, 10, 10]
 
 

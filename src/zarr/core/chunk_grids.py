@@ -994,3 +994,39 @@ def _auto_partition(
             _shards_out = cast("tuple[int, ...]", shard_shape)
 
     return _shards_out, _chunks_out
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatibility shim for RegularChunkGrid
+# ---------------------------------------------------------------------------
+
+
+class _RegularChunkGridMeta(type):
+    """Metaclass that makes ``isinstance(obj, RegularChunkGrid)`` work.
+
+    Returns True when *obj* is a ``ChunkGrid`` whose ``is_regular`` flag is set.
+    """
+
+    def __instancecheck__(cls, instance: object) -> bool:
+        return isinstance(instance, ChunkGrid) and instance.is_regular
+
+
+class RegularChunkGrid(metaclass=_RegularChunkGridMeta):
+    """Deprecated compatibility shim.
+
+    .. deprecated:: 3.1
+        Use ``ChunkGrid.from_regular(array_shape, chunk_shape)`` instead.
+        Use ``grid.is_regular`` instead of ``isinstance(grid, RegularChunkGrid)``.
+    """
+
+    def __new__(cls, *, chunk_shape: ShapeLike) -> ChunkGrid:  # type: ignore[misc]
+        warnings.warn(
+            "RegularChunkGrid is deprecated. "
+            "Use ChunkGrid.from_regular(array_shape, chunk_shape) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        # Without array_shape we cannot bind extents, so use chunk_shape as extent.
+        # This matches the old behavior where RegularChunkGrid was shape-unaware.
+        parsed = parse_shapelike(chunk_shape)
+        return ChunkGrid.from_regular(array_shape=parsed, chunk_shape=parsed)
