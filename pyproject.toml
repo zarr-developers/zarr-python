@@ -29,11 +29,11 @@ maintainers = [
     { name = "Tom Augspurger", email = "tom.w.augspurger@gmail.com" },
     { name = "Deepak Cherian" }
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 # If you add a new dependency here, please also add it to .pre-commit-config.yaml
 dependencies = [
     'packaging>=22.0',
-    'numpy>=2.0',
+    'numpy>=2',
     'numcodecs>=0.14',
     'google-crc32c>=1.5',
     'typing_extensions>=4.12',
@@ -52,9 +52,9 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
     'Programming Language :: Python :: 3.13',
+    'Programming Language :: Python :: 3.14',
 ]
 license = "MIT"
 license-files = ["LICENSE.txt"]
@@ -163,7 +163,7 @@ COV_CORE_CONFIG = ".coveragerc"
 COV_CORE_DATAFILE = ".coverage.eager"
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12", "3.13"]
+python = ["3.12", "3.13", "3.14"]
 deps = ["minimal", "optional"]
 
 [tool.hatch.envs.test.overrides]
@@ -194,7 +194,7 @@ extra-dependencies = [
 features = ["gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
-python = ["3.11", "3.12", "3.13"]
+python = ["3.12", "3.13"]
 
 [tool.hatch.envs.gputest.scripts]
 run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=src --cov-report xml --junitxml=junit.xml -o junit_family=legacy --ignore tests/benchmarks"
@@ -202,7 +202,7 @@ run = "run-coverage --no-cov"
 
 [tool.hatch.envs.upstream]
 template = 'test'
-python = "3.13"
+python = "3.14"
 extra-dependencies = [
     'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
@@ -225,7 +225,7 @@ description = """Test environment for minimum supported dependencies
 See Spec 0000 for details and drop schedule: https://scientific-python.org/specs/spec-0000/
 """
 template = "test"
-python = "3.11"
+python = "3.12"
 features = ["remote"]
 dependency-groups = ["remote-tests"]
 extra-dependencies = [
@@ -234,11 +234,14 @@ extra-dependencies = [
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2023.10.0',
     's3fs==2023.10.0',
-    'universal_pathlib==0.0.22',
+    'universal_pathlib==0.2.0',
     'typing_extensions==4.12.*',
     'donfig==0.8.*',
     'obstore==0.5.*',
 ]
+
+[tool.hatch.envs.defaults]
+installer = "uv"
 
 [tool.hatch.envs.docs]
 features = ['remote']
@@ -345,7 +348,7 @@ ignore = [
 "tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 ignore_missing_imports = true
 namespace_packages = false
 
@@ -411,7 +414,7 @@ filterwarnings = [
     # s3fs finalizers can fail during session cleanup when aiobotocore sessions are garbage
     # collected without being entered. This is a known issue in s3fs/aiobotocore, and pytest
     # per-test filterwarnings markers can't catch it (https://github.com/pytest-dev/pytest/issues/14096).
-    "ignore:Exception ignored in[\\s\\S]*Session was never entered:pytest.PytestUnraisableExceptionWarning",
+    "ignore:Exception ignored ((on calling weakref callback)|(in[\\s\\S]*Session was never entered)):pytest.PytestUnraisableExceptionWarning",
 ]
 markers = [
     "asyncio: mark test as asyncio test",

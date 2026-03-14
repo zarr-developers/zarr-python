@@ -211,7 +211,7 @@ def test_roundtrip_v2(source_array_v2: ArrayV2, tmp_path: Path, script_path: Pat
         capture_output=True,
         text=True,
     )
-    assert copy_op.returncode == 0
+    assert copy_op.returncode == 0, "stdout " + copy_op.stdout + "\n stderr" + copy_op.stderr
     out_array = zarr.open_array(store=out_path, mode="r", zarr_format=2)
     assert source_array_v2.metadata.to_dict() == out_array.metadata.to_dict()
     assert np.array_equal(source_array_v2[:], out_array[:])

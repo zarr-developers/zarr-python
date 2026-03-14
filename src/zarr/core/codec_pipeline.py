@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from itertools import islice, pairwise
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 from warnings import warn
 
 from zarr.abc.codec import (
@@ -30,11 +30,8 @@ if TYPE_CHECKING:
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar, ZDType
 
-T = TypeVar("T")
-U = TypeVar("U")
 
-
-def _unzip2(iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
+def _unzip2[T, U](iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
     out0: list[T] = []
     out1: list[U] = []
     for item0, item1 in iterable:
@@ -43,7 +40,7 @@ def _unzip2(iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
     return (out0, out1)
 
 
-def batched(iterable: Iterable[T], n: int) -> Iterable[tuple[T, ...]]:
+def batched[T](iterable: Iterable[T], n: int) -> Iterable[tuple[T, ...]]:
     if n < 1:
         raise ValueError("n must be at least one")
     it = iter(iterable)
