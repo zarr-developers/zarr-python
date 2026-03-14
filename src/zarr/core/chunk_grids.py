@@ -700,12 +700,19 @@ def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
             raise ValueError(
                 "Cannot serialize a non-regular chunk grid as 'regular'. Use 'rectilinear' instead."
             )
+        # The regular grid spec encodes only chunk_shape, not per-axis edges,
+        # so zero-extent dimensions are valid (they simply produce zero chunks).
         return {
             "name": "regular",
             "configuration": {"chunk_shape": tuple(grid.chunk_shape)},
         }
 
     if name == "rectilinear":
+        # Zero-extent dimensions cannot be represented as rectilinear because
+        # the spec requires at least one positive-integer edge length per axis.
+        # This is intentionally asymmetric with the regular grid, which encodes
+        # only chunk_shape (no per-axis edges) and thus handles zero-extent
+        # arrays without issue.
         if any(d.extent == 0 for d in grid.dimensions):
             raise ValueError(
                 "Cannot serialize a zero-extent grid as 'rectilinear': "
