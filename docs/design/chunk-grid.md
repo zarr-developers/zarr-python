@@ -18,12 +18,12 @@ The Zarr V3 spec defines `chunk_grid` as an extension point, but chunk grids are
 
 There is no known chunk grid that is both (a) more general than rectilinear and (b) retains the axis-aligned tessellation properties Zarr assumes. All known grids are special cases:
 
-| Grid type | Description |
-|---|---|
-| Regular | Uniform chunk size, boundary chunks padded with fill_value |
-| Regular-bounded (zarrs) | Uniform chunk size, boundary chunks trimmed to array extent |
-| HPC boundary-padded | Regular interior, larger boundary chunks |
-| Fully variable | Arbitrary per-chunk sizes |
+| Grid type | Description | Example |
+|---|---|---|
+| Regular | Uniform chunk size, boundary chunks padded with fill_value | `[10, 10, 10, 10]` |
+| Regular-bounded (zarrs) | Uniform chunk size, boundary chunks trimmed to array extent | `[10, 10, 10, 5]` |
+| HPC boundary-padded | Regular interior, larger boundary chunks ([VirtualiZarr#217](https://github.com/zarr-developers/VirtualiZarr/issues/217)) | `[10, 8, 8, 8, 10]` |
+| Fully variable | Arbitrary per-chunk sizes | `[5, 12, 3, 20]` |
 
 A registry-based plugin system adds complexity without clear benefit.
 
@@ -411,6 +411,20 @@ There is no known chunk grid outside the rectilinear family that retains the tes
 ### Why a single class instead of a Protocol?
 
 All known grids are special cases of rectilinear. A Protocol-based approach means every caller programs against an abstract interface and adding a grid type requires implementing ~10 methods. A single class is simpler. If a genuinely novel grid type emerges, a Protocol can be extracted.
+
+### Deferred: Tiled/periodic chunk patterns
+
+[#3750 discussion](https://github.com/zarr-developers/zarr-python/issues/3750) identified periodic chunk patterns as a use case not efficiently served by RLE alone. RLE compresses runs of identical values (`np.repeat`), but periodic patterns like days-per-month (`[31, 28, 31, 30, ...]` repeated 30 years) need a tile encoding (`np.tile`). Real-world examples include:
+
+- **Oceanographic models** (ROMS): HPC boundary-padded chunks like `[10, 8, 8, 8, 10]` — handled by RLE
+- **Temporal axes**: days-per-month, hours-per-day — need tile encoding for compact metadata
+- **Temporal-aware grids**: date/time-aware chunk grids that layer over other axes (raised by @LDeakin)
+
+A `TiledDimension` prototype was built ([commit 9c0f582](https://github.com/maxrjones/zarr-python/commit/9c0f582f)) demonstrating that the per-dimension design supports this without changes to indexing or the codec pipeline. However, it was intentionally excluded from this release because:
+
+1. **Metadata format must come first.** Tile encoding requires a new `kind` value in the rectilinear spec (currently only `"inline"` is defined). This should go through [zarr-extensions#25](https://github.com/zarr-developers/zarr-extensions/pull/25), not zarr-python unilaterally.
+2. **The per-dimension architecture doesn't preclude it.** A future `TiledDimension` can implement the `DimensionGrid` protocol alongside `FixedDimension` and `VaryingDimension` with no changes to indexing, codecs, or the `ChunkGrid` class.
+3. **RLE covers the MVP.** Most real-world variable chunk patterns (HPC boundaries, irregular partitions) are efficiently encoded with RLE. Tile encoding is an optimization for a specific (temporal) subset.
 
 ### Deferred: Metadata / Array separation
 
