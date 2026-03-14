@@ -27,9 +27,20 @@ There is no known chunk grid that is both (a) more general than rectilinear and 
 
 A registry-based plugin system adds complexity without clear benefit.
 
+## Goals
+
+1. **Follow the zarr extension proposal.** The implementation should conform to the [rectilinear chunk grid spec](https://github.com/zarr-developers/zarr-extensions/pull/25), not innovate on the metadata format.
+2. **Minimize changes to the public API.** Users creating regular arrays should see no difference. Rectilinear is additive.
+3. **Maintain backwards compatibility.** Existing code using `RegularChunkGrid`, `.chunks`, or `isinstance` checks should continue to work (with deprecation warnings where appropriate).
+4. **Design for future iteration.** The internal architecture should allow refactoring (e.g., metadata/array separation, new dimension types) without breaking the public API.
+5. **Minimize downstream changes.** xarray, VirtualiZarr, Icechunk, Cubed, etc. should need minimal updates.
+6. **Minimize time to stable release.** Ship behind a feature flag, stabilize through real-world usage, promote to stable API.
+7. **The new API should be useful.** `chunk_sizes`, `ChunkGrid.__getitem__`, `is_regular` — these should solve real problems, not just expose internals.
+8. **Extensible for other serialization structures.** The per-dimension design should support future encodings (tile, temporal) without changes to indexing or codecs.
+
 ## Design
 
-### Principles
+### Design choices
 
 1. **A chunk grid is a concrete arrangement of chunks.** Not an abstract tiling pattern — the specific partition of a specific array. The grid stores enough information to answer any question about any chunk without external parameters.
 2. **One implementation, multiple serialization forms.** A single `ChunkGrid` class handles all chunking logic. The serialization format (`"regular"` vs `"rectilinear"`) is chosen by the metadata layer, not the grid.
