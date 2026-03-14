@@ -2739,12 +2739,12 @@ class Array(Generic[T_ArrayMetadata]):
             raise ValueError(msg)
 
         arr = self[...]
-        arr_np = np.array(arr, dtype=dtype)
+        arr_np: NDArrayLike = np.array(arr, dtype=dtype)
 
         if dtype is not None:
             arr_np = arr_np.astype(dtype)
 
-        return cast("NDArrayLike", arr_np)
+        return arr_np
 
     def __getitem__(self, selection: Selection) -> NDArrayLikeOrScalar:
         """Retrieve data for an item or region of the array.
@@ -3759,7 +3759,7 @@ class Array(Generic[T_ArrayMetadata]):
 
         if hasattr(out_array, "shape"):
             # restore shape
-            out_array = cast("NDArrayLikeOrScalar", np.array(out_array).reshape(indexer.sel_shape))
+            out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
 
     def set_coordinate_selection(
