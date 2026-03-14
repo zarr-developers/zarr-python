@@ -427,9 +427,13 @@ The resolution: a single `ChunkGrid` class with an `is_regular` property (O(1), 
 
 A `RegularChunkGrid` deprecation shim preserves `isinstance` checks for existing code — see [Backwards compatibility](#backwards-compatibility).
 
-### Why a single class instead of a Protocol?
+### Why is ChunkGrid a concrete class instead of a Protocol/ABC?
 
-All known grids are special cases of rectilinear. A Protocol-based approach means every caller programs against an abstract interface and adding a grid type requires implementing ~10 methods. A single class is simpler. If a genuinely novel grid type emerges, a Protocol can be extracted.
+The old design had `ChunkGrid` as an ABC with `RegularChunkGrid` as a subclass. #3534 added `RectilinearChunkGrid` as a second subclass. This branch makes `ChunkGrid` a single concrete class instead.
+
+All known grids are special cases of rectilinear, so there's no need for a class hierarchy at the grid level. A `ChunkGrid` Protocol/ABC would mean every caller programs against an abstract interface and adding a grid type requires implementing ~15 methods. A single class is simpler.
+
+Note: the *dimension* types (`FixedDimension`, `VaryingDimension`) do use a `DimensionGrid` Protocol — that's where the polymorphism lives. The grid-level class is concrete; the dimension-level types are polymorphic. If a genuinely novel grid type emerges that can't be expressed as a combination of per-dimension types, a grid-level Protocol can be extracted.
 
 ### Why `.chunks` raises for rectilinear grids
 
