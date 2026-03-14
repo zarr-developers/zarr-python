@@ -489,42 +489,9 @@ The current design stores `chunk_grid: ChunkGrid` and `chunk_grid_name: str` on 
 
 ## Migration
 
-### Plan
-
-1. **Amend and merge #3735.** Keep the `chunk_grids/` module layout. Replace the registry with direct name dispatch. Remove `register_chunk_grid` / `get_chunk_grid_class` and the entrypoint.
-2. **Open a new PR** implementing this prospectus:
-   - `FixedDimension`, `VaryingDimension`, `DimensionGrid` protocol, `ChunkSpec`, and `ChunkGrid` classes.
-   - `parse_chunk_grid(metadata, array_shape)` with `"regular"` and `"rectilinear"` dispatch.
-   - Port RLE helpers, `resolve_chunk_spec`, `ChunksLike`, and validation functions from #3534.
-   - Refactor per-dimension indexers to accept `FixedDimension | VaryingDimension`.
-   - Update `get_chunk_spec` to use `grid[chunk_coords].codec_shape`.
-   - Add `arr.chunk_sizes`. Keep `.chunks` for regular, raise for rectilinear.
-   - Remove the "sharding incompatible with rectilinear" guard.
-   - Adapt tests from #3534.
-3. **Close trial PRs** with credits:
-   - **#3534** — RLE helpers, validation logic, chunk spec resolution, test cases, review discussion.
-   - **#3737** — extent-in-grid idea (adopted per-dimension).
-   - **#1483** — original POC; superseded by V3 implementation.
-   - **#3736** — resolved by storing extent per-dimension.
-4. **Sharding v1.1** (separate PR, after zarr-specs#370) — remove `shard_shape % subchunk_shape == 0` validation.
-
-### Reusable components from #3534
-
-| Component | Disposition |
-|---|---|
-| RLE encode/decode helpers | **Keep** |
-| `_normalize_rectilinear_chunks` / `_parse_chunk_shapes` | **Keep** — feed into `VaryingDimension` |
-| `resolve_chunk_spec` / `ChunksLike` | **Keep** |
-| `_validate_zarr_format_compatibility` | **Keep** — rectilinear is V3-only |
-| `_validate_sharding_compatibility` | **Remove** — sharding is compatible |
-| `RectilinearChunkGrid` class | **Replace** |
-| Indexing changes | **Insufficient** — `isinstance` guards remain |
-
-A **fresh PR** is more practical than adapting #3534's 5700-line diff.
-
 ### Backwards compatibility
 
-A `RegularChunkGrid` shim is provided for downstream code that imports or type-checks against the old class:
+A `RegularChunkGrid` deprecation shim preserves the three common usage patterns:
 
 ```python
 from zarr.core.chunk_grids import RegularChunkGrid  # works (no ImportError)
@@ -540,8 +507,6 @@ The shim uses `chunk_shape` as extent (matching the old shape-unaware behavior).
 
 ### Downstream migration
 
-All four downstream PRs/issues follow the same pattern:
-
 | Two-class pattern | Unified pattern |
 |---|---|
 | `isinstance(cg, RegularChunkGrid)` | `cg.is_regular` (or keep `isinstance` — shim handles it) |
@@ -552,15 +517,59 @@ All four downstream PRs/issues follow the same pattern:
 | `RectilinearChunkGrid(chunk_shapes=...)` | `ChunkGrid.from_rectilinear(edges, shape)` |
 | Feature detection via class import | Version check or `hasattr(ChunkGrid, 'is_regular')` |
 
-**[xarray#10880](https://github.com/pydata/xarray/pull/10880):** Replace `isinstance` checks with `.is_regular`. Write path simplifies with `chunks=[[...]]` API. ~1–2 days.
+**[xarray#10880](https://github.com/pydata/xarray/pull/10880):** Replace `isinstance` checks with `.is_regular`. Write path simplifies with `chunks=[[...]]` API.
 
-**[VirtualiZarr#877](https://github.com/zarr-developers/VirtualiZarr/pull/877):** Drop vendored `_is_nested_sequence`. Replace `isinstance` checks. ~1–2 days.
+**[VirtualiZarr#877](https://github.com/zarr-developers/VirtualiZarr/pull/877):** Drop vendored `_is_nested_sequence`. Replace `isinstance` checks.
 
 **[Icechunk#1338](https://github.com/earth-mover/icechunk/issues/1338):** Minimal impact — format changes driven by spec, not class hierarchy.
 
-**[cubed#876](https://github.com/cubed-dev/cubed/issues/876):** Switch store creation to `ChunkGrid` API. <1 day. @tomwhite confirmed in #3534 that rechunking with variable-sized intermediate chunks works.
+**[cubed#876](https://github.com/cubed-dev/cubed/issues/876):** Switch store creation to `ChunkGrid` API. @tomwhite confirmed in #3534 that rechunking with variable-sized intermediate chunks works.
 
 **HEALPix use case:** @tinaok demonstrated in #3534 that variable-chunked arrays arise naturally when grouping HEALPix cells by parent pixel — the chunk sizes come from `np.unique(parents, return_counts=True)`.
+
+### Credits
+
+This implementation builds on prior work:
+
+- **[#3534](https://github.com/zarr-developers/zarr-python/pull/3534)** (@jhamman) — RLE helpers, validation logic, test cases, and the review discussion that shaped the architecture.
+- **[#3737](https://github.com/zarr-developers/zarr-python/pull/3737)** — extent-in-grid idea (adopted per-dimension).
+- **[#1483](https://github.com/zarr-developers/zarr-python/pull/1483)** — original variable chunking POC.
+- **[#3736](https://github.com/zarr-developers/zarr-python/pull/3736)** — resolved by storing extent per-dimension.
+
+### Suggested PR sequence
+
+If the design is accepted, the POC branch can be split into 5 incremental PRs. PRs 1–2 are where the design decisions are reviewed; PRs 3–5 are mechanical consequences.
+
+**PR 1: Per-dimension types + ChunkSpec** (purely additive)
+- `FixedDimension`, `VaryingDimension`, `DimensionGrid` protocol, `ChunkSpec`
+- RLE helpers (`_expand_rle`, `_compress_rle`, `_decode_dim_spec`)
+- `ChunkGridName` type alias
+- Unit tests for all new types
+- Zero changes to existing code
+
+**PR 2: Unified ChunkGrid class + serialization** (replaces hierarchy)
+- `ChunkGrid` with `from_regular`, `from_rectilinear`, `__getitem__`, `__iter__`, `all_chunk_coords`, `is_regular`, `chunk_shape`, `chunk_sizes`, `unique_edge_lengths`
+- `parse_chunk_grid()`, `serialize_chunk_grid()`, `_infer_chunk_grid_name()`
+- `RegularChunkGrid` deprecation shim
+- `chunk_grid_name: ChunkGridName` on `ArrayV3Metadata`
+- Feature flag (`array.rectilinear_chunks`)
+
+**PR 3: Indexing generalization**
+- Replace `dim_chunk_len: int` with `dim_grid: DimensionGrid` in all per-dimension indexers
+- Vectorized `indices_to_chunks()` in `IntArrayDimIndexer` and `CoordinateIndexer`
+
+**PR 4: Array, codec pipeline, and sharding integration**
+- Wire `ChunkGrid` into `create_array` / `init_array`
+- `get_chunk_spec()` → `grid[chunk_coords].codec_shape`
+- Sharding validation via `dim.unique_edge_lengths`
+- `arr.chunk_sizes`, `from_array` with `chunks="keep"`, resize support
+- Hypothesis strategies for rectilinear grids
+
+**PR 5: End-to-end tests + docs**
+- Full pipeline tests (create → write → read → verify)
+- V2 backwards compatibility regression tests
+- Boundary/overflow/edge case tests
+- Design doc and user guide updates
 
 ## Open questions
 
