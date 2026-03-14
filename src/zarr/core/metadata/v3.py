@@ -26,6 +26,7 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Co
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import (
     ChunkGrid,
+    ChunkGridName,
     _infer_chunk_grid_name,
     parse_chunk_grid,
     serialize_chunk_grid,
@@ -205,7 +206,9 @@ class ArrayV3Metadata(Metadata):
     shape: tuple[int, ...]
     data_type: ZDType[TBaseDType, TBaseScalar]
     chunk_grid: ChunkGrid
-    chunk_grid_name: str
+    chunk_grid_name: (
+        ChunkGridName  # serialization format; tracked internally for round-trip fidelity
+    )
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
     codecs: tuple[Codec, ...]
@@ -227,7 +230,7 @@ class ArrayV3Metadata(Metadata):
         codecs: Iterable[Codec | dict[str, JSON] | NamedConfig[str, Any] | str],
         attributes: dict[str, JSON] | None,
         dimension_names: DimensionNames,
-        chunk_grid_name: str | None = None,
+        chunk_grid_name: ChunkGridName | None = None,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
         extra_fields: Mapping[str, AllowedExtraField] | None = None,
     ) -> None:

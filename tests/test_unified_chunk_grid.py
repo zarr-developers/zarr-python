@@ -709,7 +709,7 @@ class TestSerialization:
     def test_serialize_unknown_name_raises(self) -> None:
         g = ChunkGrid.from_regular((100,), (10,))
         with pytest.raises(ValueError, match="Unknown chunk grid name for serialization"):
-            serialize_chunk_grid(g, "hexagonal")
+            serialize_chunk_grid(g, "hexagonal")  # type: ignore[arg-type]
 
     def test_zero_extent_rectilinear_raises(self) -> None:
         """Zero-extent grids cannot be serialized as rectilinear (spec requires positive edges)."""

@@ -295,6 +295,9 @@ def _compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
 # list of ints (explicit edges), or mixed RLE (e.g. [[10, 3], 5]).
 RectilinearDimSpec = int | list[int | list[int]]
 
+# The serialization format name for a chunk grid.
+ChunkGridName = Literal["regular", "rectilinear"]
+
 
 def _serialize_fixed_dim(dim: FixedDimension) -> RectilinearDimSpec:
     """Compact rectilinear representation for a fixed-size dimension.
@@ -714,7 +717,7 @@ def parse_chunk_grid(
     raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
 
 
-def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
+def serialize_chunk_grid(grid: ChunkGrid, name: ChunkGridName) -> dict[str, JSON]:
     """Serialize a ChunkGrid to a metadata dict using the given format name.
 
     The format choice ("regular" vs "rectilinear") belongs to the metadata layer,
@@ -762,11 +765,11 @@ def serialize_chunk_grid(grid: ChunkGrid, name: str) -> dict[str, JSON]:
 def _infer_chunk_grid_name(
     data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any],
     grid: ChunkGrid,
-) -> str:
+) -> ChunkGridName:
     """Extract or infer the chunk grid serialization name from the input."""
     if isinstance(data, dict):
         name, _ = parse_named_configuration(data)
-        return name
+        return cast("ChunkGridName", name)
     # ChunkGrid passed directly — infer from structure
     return "regular" if grid.is_regular else "rectilinear"
 
