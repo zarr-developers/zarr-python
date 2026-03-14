@@ -6,7 +6,7 @@ import math
 import numbers
 import operator
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Literal, Protocol, cast, runtime_checkable
@@ -87,6 +87,11 @@ class FixedDimension:
             return 0
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
 
+    @property
+    def unique_edge_lengths(self) -> Iterable[int]:
+        """Distinct chunk edge lengths for this dimension."""
+        return (self.size,)
+
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
         if self.size == 0:
             return np.zeros_like(indices)
@@ -149,6 +154,15 @@ class VaryingDimension:
         offset = self.chunk_offset(chunk_ix)
         return max(0, min(self.edges[chunk_ix], self.extent - offset))
 
+    @property
+    def unique_edge_lengths(self) -> Iterable[int]:
+        """Distinct chunk edge lengths for this dimension (lazily deduplicated)."""
+        seen: set[int] = set()
+        for e in self.edges:
+            if e not in seen:
+                seen.add(e)
+                yield e
+
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]:
         return np.searchsorted(self.cumulative, indices, side="right")
 
@@ -194,6 +208,8 @@ class DimensionGrid(Protocol):
     def chunk_size(self, chunk_ix: int) -> int: ...
     def data_size(self, chunk_ix: int) -> int: ...
     def indices_to_chunks(self, indices: npt.NDArray[np.intp]) -> npt.NDArray[np.intp]: ...
+    @property
+    def unique_edge_lengths(self) -> Iterable[int]: ...
     def with_extent(self, new_extent: int) -> DimensionGrid: ...
     def resize(self, new_extent: int) -> DimensionGrid: ...
 

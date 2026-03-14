@@ -404,17 +404,19 @@ class ShardingCodec(
                     f"needs to be divisible by the shard's inner `chunk_shape` (got {self.chunk_shape})."
                 )
         else:
-            # For rectilinear grids, every chunk's dimensions must be divisible
-            # by the inner chunk_shape.
-            for coord in chunk_grid.all_chunk_coords():
-                spec = chunk_grid[coord]
-                if spec is not None and not all(
-                    s % c == 0 for s, c in zip(spec.codec_shape, self.chunk_shape, strict=False)
-                ):
-                    raise ValueError(
-                        f"Chunk at {coord} has shape {spec.codec_shape} which is not "
-                        f"divisible by the shard's inner `chunk_shape` (got {self.chunk_shape})."
-                    )
+            # For rectilinear grids, every unique edge length per dimension
+            # must be divisible by the corresponding inner chunk size.
+            # unique_edge_lengths is a lazy generator that short-circuits
+            # deduplication, and we short-circuit on the first failure.
+            for i, (dim, inner) in enumerate(
+                zip(chunk_grid.dimensions, self.chunk_shape, strict=False)
+            ):
+                for edge in dim.unique_edge_lengths:
+                    if edge % inner != 0:
+                        raise ValueError(
+                            f"Chunk edge length {edge} in dimension {i} is not "
+                            f"divisible by the shard's inner chunk size {inner}."
+                        )
 
     async def _decode_single(
         self,
