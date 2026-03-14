@@ -408,9 +408,39 @@ For `VaryingDimension`, `chunk_size == data_size` when `extent == sum(edges)`. W
 
 There is no known chunk grid outside the rectilinear family that retains the tessellation properties zarr-python assumes. A `match` on the grid name is sufficient.
 
+### Why a single class instead of RegularChunkGrid + RectilinearChunkGrid?
+
+[Discussed in #3534.](https://github.com/zarr-developers/zarr-python/pull/3534) @d-v-b argued that `RegularChunkGrid` is unnecessary since rectilinear is more general; @dcherian argued that downstream libraries need a fast way to detect regular grids without inspecting potentially millions of chunk edges (see [xarray#9808](https://github.com/pydata/xarray/pull/9808)).
+
+The resolution: a single `ChunkGrid` class with an `is_regular` property (O(1), cached at construction). This gives downstream code the fast-path detection @dcherian needed without the class hierarchy complexity @d-v-b wanted to avoid. The metadata document's `name` field (`"regular"` vs `"rectilinear"`) is also available for clients who inspect JSON directly.
+
+A `RegularChunkGrid` deprecation shim preserves `isinstance` checks for existing code — see [Backwards compatibility](#backwards-compatibility).
+
 ### Why a single class instead of a Protocol?
 
 All known grids are special cases of rectilinear. A Protocol-based approach means every caller programs against an abstract interface and adding a grid type requires implementing ~10 methods. A single class is simpler. If a genuinely novel grid type emerges, a Protocol can be extracted.
+
+### Why `.chunks` raises for rectilinear grids
+
+[Debated in #3534.](https://github.com/zarr-developers/zarr-python/pull/3534) @d-v-b suggested making `.chunks` return `tuple[tuple[int, ...], ...]` (dask-style) for all grids. @dcherian strongly objected: every downstream consumer expects `tuple[int, ...]`, and silently returning a different type would be worse than raising. Materializing O(10M) chunk edges into a Python tuple is also a real performance risk ([xarray#8902](https://github.com/pydata/xarray/issues/8902#issuecomment-2546127373)).
+
+The resolution:
+- `.chunks` is retained for regular grids (returns `tuple[int, ...]` as before)
+- `.chunks` raises `NotImplementedError` for rectilinear grids with a message pointing to `.chunk_sizes`
+- `.chunk_sizes` returns `tuple[tuple[int, ...], ...]` (dask convention) for all grids
+
+@maxrjones noted in review that deprecating `.chunks` for regular grids was not desirable. The current branch does not deprecate it.
+
+### User control over grid serialization format
+
+@d-v-b raised in #3534 that users need a way to say "these chunks are regular, but serialize as rectilinear" (e.g., to allow future append/extend workflows without format changes). @jhamman initially made nested-list input always produce `RectilinearChunkGrid`.
+
+The current branch resolves this via `chunk_grid_name: ChunkGridName` on `ArrayV3Metadata`. The name is stored internally for round-trip fidelity and is not part of the Zarr spec metadata. Current inference behavior:
+- `chunks=(10, 20)` (flat tuple) → infers `"regular"`
+- `chunks=[[10, 20], [5, 5]]` (nested lists with varying sizes) → infers `"rectilinear"`
+- `chunks=[[10, 10], [20, 20]]` (nested lists with uniform sizes) → `from_rectilinear` collapses to `FixedDimension`, so `is_regular=True` and infers `"regular"`
+
+**Open question:** Should uniform nested lists preserve `"rectilinear"` to support future append workflows without a format change? This could be addressed by checking the input form before collapsing, or by allowing users to pass `chunk_grid_name` explicitly through the `create_array` API.
 
 ### Deferred: Tiled/periodic chunk patterns
 
@@ -513,13 +543,17 @@ All four downstream PRs/issues follow the same pattern:
 
 **[Icechunk#1338](https://github.com/earth-mover/icechunk/issues/1338):** Minimal impact — format changes driven by spec, not class hierarchy.
 
-**[cubed#876](https://github.com/cubed-dev/cubed/issues/876):** Switch store creation to `ChunkGrid` API. <1 day.
+**[cubed#876](https://github.com/cubed-dev/cubed/issues/876):** Switch store creation to `ChunkGrid` API. <1 day. @tomwhite confirmed in #3534 that rechunking with variable-sized intermediate chunks works.
+
+**HEALPix use case:** @tinaok demonstrated in #3534 that variable-chunked arrays arise naturally when grouping HEALPix cells by parent pixel — the chunk sizes come from `np.unique(parents, return_counts=True)`.
 
 ## Open questions
 
 1. **Resize defaults (deferred):** When growing a rectilinear array, should `resize()` accept an optional `chunks` parameter? See the [Resize section](#resize) for details and open design questions. Regular arrays already stay regular on resize.
 2. **`ChunkSpec` complexity:** `ChunkSpec` carries both `slices` and `codec_shape`. Should the grid expose separate methods for codec vs data queries instead?
 3. **`__getitem__` with slices:** Should `grid[0, :]` or `grid[0:3, :]` return a sub-grid or an iterator of `ChunkSpec`s?
+4. **Uniform nested lists:** Should `chunks=[[10, 10], [20, 20]]` serialize as `"rectilinear"` (preserving user intent for future append) or `"regular"` (current behavior, collapses uniform edges)? See [User control over grid serialization format](#user-control-over-grid-serialization-format).
+5. **`zarr.open` with rectilinear:** @tomwhite noted in #3534 that `zarr.open(mode="w")` doesn't support rectilinear chunks directly. This could be addressed in a follow-up.
 
 ### Resolved
 
