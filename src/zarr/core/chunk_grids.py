@@ -154,7 +154,7 @@ class VaryingDimension:
 
     def with_extent(self, new_extent: int) -> VaryingDimension:
         """Return a copy re-bound to *new_extent*, validating edge coverage."""
-        edge_sum = sum(self.edges)
+        edge_sum = self.cumulative[-1]
         if edge_sum < new_extent:
             raise ValueError(
                 f"VaryingDimension edge sum {edge_sum} is less than new extent {new_extent}"
