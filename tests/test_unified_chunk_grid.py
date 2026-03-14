@@ -182,6 +182,27 @@ class TestFixedDimension:
         assert d.size == 0
         assert d.nchunks == 1  # 0-size with 0-extent = 1 chunk
 
+    def test_chunk_offset_oob_raises(self) -> None:
+        d = FixedDimension(size=10, extent=100)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.chunk_offset(10)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.chunk_offset(-1)
+
+    def test_chunk_size_oob_raises(self) -> None:
+        d = FixedDimension(size=10, extent=100)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.chunk_size(10)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.chunk_size(-1)
+
+    def test_data_size_oob_raises(self) -> None:
+        d = FixedDimension(size=10, extent=100)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(10)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(-1)
+
 
 # ---------------------------------------------------------------------------
 # VaryingDimension
@@ -1151,16 +1172,22 @@ class TestEdgeCases:
         assert d.chunk_size(9) == 10  # codec buffer always full
 
     def test_fixed_dim_data_size_out_of_bounds(self) -> None:
-        """data_size clamps to 0 for out-of-bounds chunk indices."""
+        """data_size raises IndexError for out-of-bounds chunk indices."""
         d = FixedDimension(size=10, extent=100)
-        assert d.data_size(10) == 0  # exactly at boundary
-        assert d.data_size(11) == 0  # past boundary
-        assert d.data_size(999) == 0
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(10)  # exactly at boundary
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(11)  # past boundary
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(999)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(-1)
 
     def test_fixed_dim_data_size_boundary_oob(self) -> None:
-        """data_size for boundary grid, past last chunk."""
+        """data_size raises IndexError past last chunk."""
         d = FixedDimension(size=10, extent=95)
-        assert d.data_size(10) == 0  # past nchunks=10
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(10)  # past nchunks=10
 
     def test_chunk_grid_boundary_getitem(self) -> None:
         """ChunkGrid with boundary FixedDimension via direct construction."""
@@ -1252,14 +1279,19 @@ class TestEdgeCases:
         """FixedDimension(size=0, extent=5) => 0 chunks (can't partition)."""
         d = FixedDimension(size=0, extent=5)
         assert d.nchunks == 0
-        assert d.data_size(0) == 0
-        assert d.chunk_size(0) == 0
+        # No valid chunk index exists on a 0-chunk dimension
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(0)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.chunk_size(0)
 
     def test_zero_extent_nonzero_size(self) -> None:
         """FixedDimension(size=10, extent=0) => 0 chunks."""
         d = FixedDimension(size=10, extent=0)
         assert d.nchunks == 0
-        assert d.data_size(0) == 0
+        # No valid chunk index exists on a 0-chunk dimension
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(0)
 
     # -- 0-d grid --
 

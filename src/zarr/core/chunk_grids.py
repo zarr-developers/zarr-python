@@ -65,15 +65,24 @@ class FixedDimension:
             return 0
         return idx // self.size
 
+    def _check_chunk_ix(self, chunk_ix: int) -> None:
+        if chunk_ix < 0 or chunk_ix >= self.nchunks:
+            raise IndexError(
+                f"Chunk index {chunk_ix} out of bounds for dimension with {self.nchunks} chunks"
+            )
+
     def chunk_offset(self, chunk_ix: int) -> int:
+        self._check_chunk_ix(chunk_ix)
         return chunk_ix * self.size
 
     def chunk_size(self, chunk_ix: int) -> int:
         """Buffer size for codec processing — always uniform."""
+        self._check_chunk_ix(chunk_ix)
         return self.size
 
     def data_size(self, chunk_ix: int) -> int:
         """Valid data region within the buffer — clipped at extent."""
+        self._check_chunk_ix(chunk_ix)
         if self.size == 0:
             return 0
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
