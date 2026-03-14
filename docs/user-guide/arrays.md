@@ -72,7 +72,7 @@ print(z[:, 0])
 print(z[:])
 ```
 
-Read more about NumPy-style indexing can be found in the
+More information about NumPy-style indexing can be found in the
 [NumPy documentation](https://numpy.org/doc/stable/user/basics.indexing.html).
 
 ## Persistent arrays
@@ -224,6 +224,13 @@ print(z.info_complete())
 If you don't specify a compressor, by default Zarr uses the Zstandard
 compressor.
 
+To create an array without any compression, set `compressors=None`:
+
+```python exec="true" session="arrays" source="above" result="ansi"
+z_no_compress = zarr.create_array(store='data/example-uncompressed.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32', compressors=None)
+print(f"Compressors: {z_no_compress.compressors}")
+```
+
 In addition to Blosc and Zstandard, other compression libraries can also be used. For example,
 here is an array using Gzip compression, level 1:
 
@@ -297,7 +304,7 @@ array without loading the entire array into memory.
 Note that although this functionality is similar to some of the advanced
 indexing capabilities available on NumPy arrays and on h5py datasets, **the Zarr
 API for advanced indexing is different from both NumPy and h5py**, so please
-read this section carefully.  For a complete description of the indexing API,
+read this section carefully. For a complete description of the indexing API,
 see the documentation for the [`zarr.Array`][] class.
 
 ### Indexing with coordinate arrays

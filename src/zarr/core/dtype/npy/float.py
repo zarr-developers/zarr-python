@@ -202,6 +202,16 @@ class BaseFloat[
         TypeGuard[FloatLike]
             True if the input is a valid scalar value, False otherwise.
         """
+        if isinstance(data, str):
+            # Only accept strings that are valid float representations (e.g. "NaN", "inf").
+            # Plain strings that cannot be converted should return False so that cast_scalar
+            # raises TypeError rather than a confusing ValueError.
+            try:
+                self.to_native_dtype().type(data)
+            except (ValueError, OverflowError):
+                return False
+            else:
+                return True
         return isinstance(data, FloatLike)
 
     def _cast_scalar_unchecked(self, data: FloatLike) -> Scalar:

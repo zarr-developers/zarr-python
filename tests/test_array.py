@@ -6,7 +6,7 @@ import multiprocessing as mp
 import pickle
 import re
 import sys
-from itertools import accumulate
+from itertools import accumulate, starmap
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
 
@@ -779,6 +779,73 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert isinstance(result, NDArrayLike)
     assert new_shape == z.shape
     assert new_shape == result.shape
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_resize_growing_skips_chunk_enumeration(
+    store: MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    """Growing an array should not enumerate chunk coords for deletion (#3650 mitigation)."""
+    from zarr.core.chunk_grids import RegularChunkGrid
+
+    z = zarr.create(
+        shape=(10, 10),
+        chunks=(5, 5),
+        dtype="i4",
+        fill_value=0,
+        store=store,
+        zarr_format=zarr_format,
+    )
+    z[:] = np.ones((10, 10), dtype="i4")
+
+    # growth only - ensure no chunk coords are enumerated
+    with mock.patch.object(
+        RegularChunkGrid,
+        "all_chunk_coords",
+        wraps=z.metadata.chunk_grid.all_chunk_coords,
+    ) as mock_coords:
+        z.resize((20, 20))
+        mock_coords.assert_not_called()
+
+    assert z.shape == (20, 20)
+    np.testing.assert_array_equal(np.ones((10, 10), dtype="i4"), z[:10, :10])
+    np.testing.assert_array_equal(np.zeros((10, 10), dtype="i4"), z[10:, 10:])
+
+    # shrink - ensure no regression of behaviour
+    with mock.patch.object(
+        RegularChunkGrid,
+        "all_chunk_coords",
+        wraps=z.metadata.chunk_grid.all_chunk_coords,
+    ) as mock_coords:
+        z.resize((5, 5))
+        assert mock_coords.call_count > 0
+
+    assert z.shape == (5, 5)
+    np.testing.assert_array_equal(np.ones((5, 5), dtype="i4"), z[:])
+
+    # mixed: grow dim 0, shrink dim 1 - ensure deletion path runs
+    z2 = zarr.create(
+        shape=(10, 10),
+        chunks=(5, 5),
+        dtype="i4",
+        fill_value=0,
+        store=store,
+        zarr_format=zarr_format,
+        overwrite=True,
+    )
+    z2[:] = np.ones((10, 10), dtype="i4")
+
+    with mock.patch.object(
+        RegularChunkGrid,
+        "all_chunk_coords",
+        wraps=z2.metadata.chunk_grid.all_chunk_coords,
+    ) as mock_coords:
+        z2.resize((20, 5))
+        assert mock_coords.call_count > 0
+
+    assert z2.shape == (20, 5)
+    np.testing.assert_array_equal(np.ones((10, 5), dtype="i4"), z2[:10, :])
+    np.testing.assert_array_equal(np.zeros((10, 5), dtype="i4"), z2[10:, :])
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1997,12 +2064,12 @@ def test_chunk_grid_shape(
             zarr_format=zarr_format,
         )
 
-    chunk_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, chunk_shape, strict=True))
+    chunk_grid_shape = tuple(starmap(ceildiv, zip(array_shape, chunk_shape, strict=True)))
     if shard_shape is None:
         _shard_shape = chunk_shape
     else:
         _shard_shape = shard_shape
-    shard_grid_shape = tuple(ceildiv(a, b) for a, b in zip(array_shape, _shard_shape, strict=True))
+    shard_grid_shape = tuple(starmap(ceildiv, zip(array_shape, _shard_shape, strict=True)))
     assert arr._chunk_grid_shape == chunk_grid_shape
     assert arr.cdata_shape == chunk_grid_shape
     assert arr.async_array.cdata_shape == chunk_grid_shape

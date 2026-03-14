@@ -7,7 +7,7 @@ import operator
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from functools import reduce
+from functools import lru_cache, reduce
 from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
@@ -207,7 +207,7 @@ def _iter_regions(
     # ((slice(0, 1, 1), slice(0, 2, 1)), (slice(1, 2, 1), slice(0, 2, 1)))
     ```
     """
-    grid_shape = tuple(ceildiv(d, s) for d, s in zip(domain_shape, region_shape, strict=True))
+    grid_shape = tuple(itertools.starmap(ceildiv, zip(domain_shape, region_shape, strict=True)))
     for grid_position in _iter_grid(
         grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
     ):
@@ -1447,7 +1447,7 @@ def make_slice_selection(selection: Any) -> list[slice]:
 def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     # Inspired by compressed morton code as implemented in Neuroglancer
     # https://github.com/google/neuroglancer/blob/master/src/neuroglancer/datasource/precomputed/volume.md#compressed-morton-code
-    bits = tuple(math.ceil(math.log2(c)) for c in chunk_shape)
+    bits = tuple((c - 1).bit_length() for c in chunk_shape)
     max_coords_bits = max(bits)
     input_bit = 0
     input_value = z
@@ -1462,16 +1462,104 @@ def decode_morton(z: int, chunk_shape: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(out)
 
 
+def decode_morton_vectorized(
+    z: npt.NDArray[np.intp], chunk_shape: tuple[int, ...]
+) -> npt.NDArray[np.intp]:
+    """Vectorized Morton code decoding for multiple z values.
+
+    Parameters
+    ----------
+    z : ndarray
+        1D array of Morton codes to decode.
+    chunk_shape : tuple of int
+        Shape defining the coordinate space.
+
+    Returns
+    -------
+    ndarray
+        2D array of shape (len(z), len(chunk_shape)) containing decoded coordinates.
+    """
+    n_dims = len(chunk_shape)
+    bits = tuple((c - 1).bit_length() for c in chunk_shape)
+
+    max_coords_bits = max(bits) if bits else 0
+    out = np.zeros((len(z), n_dims), dtype=np.intp)
+
+    input_bit = 0
+    for coord_bit in range(max_coords_bits):
+        for dim in range(n_dims):
+            if coord_bit < bits[dim]:
+                # Extract bit at position input_bit from all z values
+                bit_values = (z >> input_bit) & 1
+                # Place bit at coord_bit position in dimension dim
+                out[:, dim] |= bit_values << coord_bit
+                input_bit += 1
+
+    return out
+
+
+@lru_cache(maxsize=16)
+def _morton_order(chunk_shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
+    n_total = product(chunk_shape)
+    n_dims = len(chunk_shape)
+    if n_total == 0:
+        out = np.empty((0, n_dims), dtype=np.intp)
+        out.flags.writeable = False
+        return out
+
+    # Ceiling hypercube: smallest power-of-2 hypercube whose Morton codes span
+    # all valid coordinates in chunk_shape. (c-1).bit_length() gives the number
+    # of bits needed to index c values (0 for singleton dims). n_z = 2**total_bits
+    # is the size of this hypercube.
+    total_bits = sum((c - 1).bit_length() for c in chunk_shape)
+    n_z = 1 << total_bits if total_bits > 0 else 1
+
+    # Decode all Morton codes in the ceiling hypercube, then filter to valid coords.
+    # This is fully vectorized. For shapes with n_z >> n_total (e.g. (33,33,33):
+    # n_z=262144, n_total=35937), consider the argsort strategy below.
+    order: npt.NDArray[np.intp]
+    if n_z <= 4 * n_total:
+        # Ceiling strategy: decode all n_z codes vectorized, filter in-bounds.
+        # Works well when the overgeneration ratio n_z/n_total is small (≤4).
+        z_values = np.arange(n_z, dtype=np.intp)
+        all_coords = decode_morton_vectorized(z_values, chunk_shape)
+        shape_arr = np.array(chunk_shape, dtype=np.intp)
+        valid_mask = np.all(all_coords < shape_arr, axis=1)
+        order = all_coords[valid_mask]
+    else:
+        # Argsort strategy: enumerate all n_total valid coordinates directly,
+        # encode each to a Morton code, then sort by code. Avoids the 8x or
+        # larger overgeneration penalty for near-miss shapes like (33,33,33).
+        # Cost: O(n_total * bits) encode + O(n_total log n_total) sort,
+        # vs O(n_z * bits) = O(8 * n_total * bits) for ceiling.
+        grids = np.meshgrid(*[np.arange(c, dtype=np.intp) for c in chunk_shape], indexing="ij")
+        all_coords = np.stack([g.ravel() for g in grids], axis=1)
+
+        # Encode all coordinates to Morton codes (vectorized).
+        bits_per_dim = tuple((c - 1).bit_length() for c in chunk_shape)
+        max_coord_bits = max(bits_per_dim)
+        z_codes = np.zeros(n_total, dtype=np.intp)
+        output_bit = 0
+        for coord_bit in range(max_coord_bits):
+            for dim in range(n_dims):
+                if coord_bit < bits_per_dim[dim]:
+                    z_codes |= ((all_coords[:, dim] >> coord_bit) & 1) << output_bit
+                    output_bit += 1
+
+        sort_idx: npt.NDArray[np.intp] = np.argsort(z_codes, kind="stable")
+        order = np.asarray(all_coords[sort_idx], dtype=np.intp)
+
+    order.flags.writeable = False
+    return order
+
+
+@lru_cache(maxsize=16)
+def _morton_order_keys(chunk_shape: tuple[int, ...]) -> tuple[tuple[int, ...], ...]:
+    return tuple(tuple(int(x) for x in row) for row in _morton_order(chunk_shape))
+
+
 def morton_order_iter(chunk_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
-    i = 0
-    order: list[tuple[int, ...]] = []
-    while len(order) < product(chunk_shape):
-        m = decode_morton(i, chunk_shape)
-        if m not in order and all(x < y for x, y in zip(m, chunk_shape, strict=False)):
-            order.append(m)
-        i += 1
-    for j in range(product(chunk_shape)):
-        yield order[j]
+    return iter(_morton_order_keys(tuple(chunk_shape)))
 
 
 def c_order_iter(chunks_per_shard: tuple[int, ...]) -> Iterator[tuple[int, ...]]:

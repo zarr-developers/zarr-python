@@ -20,7 +20,7 @@ so we can improve this guide.
 
 The goals described above necessitated some breaking changes to the API (hence the
 major version update), but where possible we have maintained backwards compatibility
-in the most widely used parts of the API. This in the [`zarr.Array`][] and
+in the most widely used parts of the API. This includes the [`zarr.Array`][] and
 [`zarr.Group`][] classes and the "top-level API" (e.g. [`zarr.open_array`][] and
 [`zarr.open_group`][]).
 

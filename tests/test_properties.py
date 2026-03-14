@@ -1,3 +1,4 @@
+import itertools
 import json
 import numbers
 from typing import Any
@@ -60,7 +61,7 @@ def deep_equal(a: Any, b: Any) -> bool:
     if isinstance(a, np.ndarray) and isinstance(b, np.ndarray):
         if a.shape != b.shape:
             return False
-        return all(deep_equal(x, y) for x, y in zip(a.flat, b.flat, strict=False))
+        return all(itertools.starmap(deep_equal, zip(a.flat, b.flat, strict=False)))
 
     if isinstance(a, dict) and isinstance(b, dict):
         if set(a.keys()) != set(b.keys()):
@@ -70,7 +71,7 @@ def deep_equal(a: Any, b: Any) -> bool:
     if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
         if len(a) != len(b):
             return False
-        return all(deep_equal(x, y) for x, y in zip(a, b, strict=False))
+        return all(itertools.starmap(deep_equal, zip(a, b, strict=False)))
 
     return a == b
 
