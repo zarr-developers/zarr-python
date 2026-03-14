@@ -579,10 +579,6 @@ If the design is accepted, the POC branch can be split into 5 incremental PRs. P
 4. **Uniform nested lists:** Should `chunks=[[10, 10], [20, 20]]` serialize as `"rectilinear"` (preserving user intent for future append) or `"regular"` (current behavior, collapses uniform edges)? See [User control over grid serialization format](#user-control-over-grid-serialization-format).
 5. **`zarr.open` with rectilinear:** @tomwhite noted in #3534 that `zarr.open(mode="w")` doesn't support rectilinear chunks directly. This could be addressed in a follow-up.
 
-### Resolved
-
-4. ~~**Rectilinear + sharding:** The current POC raises `ValueError` for rectilinear chunks with sharding. When should this be relaxed?~~ **Resolved.** Sharding now validates divisibility polymorphically via `dim.unique_edge_lengths`.
-
 ## Proofs of concepts
 
 - Zarr-Python:
@@ -599,42 +595,3 @@ If the design is accepted, the POC branch can be split into 5 incremental PRs. P
     - diff - https://github.com/virtual-zarr/virtual-tiff/compare/main...poc/unified-chunk-grid?expand=1
 - Microbenchmarks:
     - https://github.com/maxrjones/zarr-chunk-grid-tests/tree/unified-chunk-grid
-## Breaking POC into reviewable PRs
-
-### PR 1: Per-dimension grid types and `ChunkSpec` (pure additions)
-
-**Files**: `chunk_grids.py` (new types only)
-**Scope**: Add `FixedDimension`, `VaryingDimension`, `DimensionGrid` protocol, `ChunkSpec`, and RLE helpers (`_expand_rle`, `_compress_rle`). Unit tests for these types. No existing code changes — purely additive.
-
-### PR 2: Unified `ChunkGrid` class (replaces old hierarchy)
-
-**Files**: `chunk_grids.py` (new `ChunkGrid` class + `RegularChunkGrid` deprecation shim)
-**Scope**: New `ChunkGrid` with `from_regular`, `from_rectilinear`, `__getitem__`, `all_chunk_coords()` (no shape arg), `is_regular`, `chunk_shape`, `chunk_sizes`. Add `RegularChunkGrid` deprecation shim (metaclass-based `isinstance` support, `DeprecationWarning` on construction). Add `parse_chunk_grid()`, `serialize_chunk_grid()`, `_infer_chunk_grid_name()`. Tests for the grid class itself.
-
-### PR 3: Indexing generalization
-
-**Files**: `indexing.py`
-**Scope**: Refactor `IntDimIndexer`, `SliceDimIndexer`, `BoolArrayDimIndexer`, `BasicIndexer`, `OrthogonalIndexer`, `CoordinateIndexer` to accept `DimensionGrid` instead of `dim_chunk_len: int`. Replace `get_chunk_shape()` calls with `_get_dim_grids()`. Tests for indexing with both regular and rectilinear grids.
-
-### PR 4: Metadata and array integration
-
-**Files**: `metadata/v3.py`, `metadata/v2.py`, `array.py`, `group.py`, `api/synchronous.py`
-**Scope**: Wire the new `ChunkGrid` into `ArrayV3Metadata` (add `chunk_grid_name`, use `serialize_chunk_grid` in `to_dict`, use `parse_chunk_grid` in constructor). Update `init_array`/`create_array` to accept rectilinear chunks. Update `_resize` to guard against rectilinear grids.
-
-### PR 5: Sharding codec compatibility
-
-**Files**: `codecs/sharding.py`
-**Scope**: Update `ShardingCodec.validate` to handle rectilinear outer grids (validate every chunk is divisible). Replace `RegularChunkGrid(chunk_shape=...)` calls with `ChunkGrid.from_regular(...)`.
-
-### PR 6: End-to-end tests
-
-**Files**: `tests/test_unified_chunk_grid.py`, updates to `tests/test_array.py`, `tests/test_indexing.py`
-**Scope**: Full integration tests — round-trip create/read/write with rectilinear arrays, serialization fidelity, hypothesis strategies.
-
-## Notes
-
-- PRs 1–2 are purely additive and low-risk.
-- PR 3 is the biggest behavioral change.
-- PRs 4–5 wire things together.
-- PR 6 adds comprehensive test coverage.
-- Each PR builds on the previous but is independently reviewable.
