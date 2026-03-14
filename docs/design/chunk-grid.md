@@ -593,5 +593,7 @@ If the design is accepted, the POC branch can be split into 5 incremental PRs. P
 - Virtual TIFF:
     - branch - https://github.com/virtual-zarr/virtual-tiff/tree/poc/unified-chunk-grid
     - diff - https://github.com/virtual-zarr/virtual-tiff/compare/main...poc/unified-chunk-grid?expand=1
+- Cubed:
+    - branch - https://github.com/maxrjones/cubed/tree/poc/unified-chunk-grid
 - Microbenchmarks:
     - https://github.com/maxrjones/zarr-chunk-grid-tests/tree/unified-chunk-grid
