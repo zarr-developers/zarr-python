@@ -7,7 +7,7 @@ import numbers
 import operator
 import warnings
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeGuard, cast, runtime_checkable
 
@@ -43,18 +43,17 @@ class FixedDimension:
 
     size: int  # chunk edge length (>= 0)
     extent: int  # array dimension length
+    nchunks: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.size < 0:
             raise ValueError(f"FixedDimension size must be >= 0, got {self.size}")
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
-
-    @property
-    def nchunks(self) -> int:
         if self.size == 0:
-            return 1 if self.extent == 0 else 0
-        return ceildiv(self.extent, self.size)
+            object.__setattr__(self, "nchunks", 1 if self.extent == 0 else 0)
+        else:
+            object.__setattr__(self, "nchunks", ceildiv(self.extent, self.size))
 
     def index_to_chunk(self, idx: int) -> int:
         if idx < 0:
@@ -64,6 +63,13 @@ class FixedDimension:
         if self.size == 0:
             return 0
         return idx // self.size
+
+    # Bounds checking: all callers (ChunkGrid.__getitem__, indexers) validate
+    # chunk indices before calling these methods, so the checks here are
+    # redundant on the hot path. They are retained for safety when methods
+    # are called directly. If profiling shows this overhead matters, the
+    # checks can be removed — VaryingDimension gets natural IndexError from
+    # tuple indexing, and FixedDimension would silently return wrong values.
 
     def _check_chunk_ix(self, chunk_ix: int) -> None:
         if chunk_ix < 0 or chunk_ix >= self.nchunks:
