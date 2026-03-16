@@ -41,7 +41,7 @@ class TestScaleOffsetCodec:
         )
         arr[:] = data
         result = arr[:]
-        np.testing.assert_allclose(result, data, rtol=1e-10)
+        np.testing.assert_allclose(result, data, rtol=1e-10)  # type: ignore[arg-type]
 
     def test_encode_decode_float32(self) -> None:
         """Round-trip with float32 data."""
@@ -56,7 +56,7 @@ class TestScaleOffsetCodec:
         )
         arr[:] = data
         result = arr[:]
-        np.testing.assert_allclose(result, data, rtol=1e-6)
+        np.testing.assert_allclose(result, data, rtol=1e-6)  # type: ignore[arg-type]
 
     def test_encode_decode_integer(self) -> None:
         """Round-trip with integer data (uses integer arithmetic semantics)."""
@@ -85,7 +85,7 @@ class TestScaleOffsetCodec:
             codecs=[ScaleOffset(offset=100), BytesCodec()],
         )
         arr[:] = data
-        np.testing.assert_allclose(arr[:], data)
+        np.testing.assert_allclose(arr[:], data)  # type: ignore[arg-type]
 
     def test_scale_only(self) -> None:
         """Test with only scale (offset=0)."""
@@ -99,7 +99,7 @@ class TestScaleOffsetCodec:
             codecs=[ScaleOffset(scale=10), BytesCodec()],
         )
         arr[:] = data
-        np.testing.assert_allclose(arr[:], data)
+        np.testing.assert_allclose(arr[:], data)  # type: ignore[arg-type]
 
     def test_fill_value_transformed(self) -> None:
         """Fill value should be transformed through the codec."""
@@ -114,7 +114,7 @@ class TestScaleOffsetCodec:
         )
         # Without writing, reading should return the fill value
         result = arr[:]
-        np.testing.assert_allclose(result, np.full(5, 100.0))
+        np.testing.assert_allclose(result, np.full(5, 100.0))  # type: ignore[arg-type]
 
     def test_validate_rejects_complex(self) -> None:
         """Validate should reject complex dtypes."""
@@ -130,19 +130,19 @@ class TestScaleOffsetCodec:
     def test_to_dict_no_config(self) -> None:
         """Default codec should serialize without configuration."""
         codec = ScaleOffset()
-        assert codec.to_dict() == {"name": "scale_offset"}
+        assert codec.to_dict() == {"name": "scale_offset"}  # type: ignore[comparison-overlap]
 
     def test_to_dict_with_config(self) -> None:
         """Non-default codec should include configuration."""
         codec = ScaleOffset(offset=5, scale=0.1)
         d = codec.to_dict()
-        assert d == {"name": "scale_offset", "configuration": {"offset": 5, "scale": 0.1}}
+        assert d == {"name": "scale_offset", "configuration": {"offset": 5, "scale": 0.1}}  # type: ignore[comparison-overlap]
 
     def test_to_dict_offset_only(self) -> None:
         """Only offset in config when scale is default."""
         codec = ScaleOffset(offset=5)
         d = codec.to_dict()
-        assert d == {"name": "scale_offset", "configuration": {"offset": 5}}
+        assert d == {"name": "scale_offset", "configuration": {"offset": 5}}  # type: ignore[comparison-overlap]
 
     def test_from_dict_no_config(self) -> None:
         """Parse codec from JSON with no configuration."""

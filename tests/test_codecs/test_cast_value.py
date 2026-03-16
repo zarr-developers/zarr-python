@@ -9,6 +9,7 @@ import zarr
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.cast_value import CastValue
 from zarr.codecs.scale_offset import ScaleOffset
+from zarr.core.dtype import get_data_type_from_json
 from zarr.storage import MemoryStore
 
 
@@ -28,7 +29,7 @@ class TestCastValueCodec:
         )
         arr[:] = data
         result = arr[:]
-        np.testing.assert_allclose(result, data)
+        np.testing.assert_allclose(result, data)  # type: ignore[arg-type]
 
     def test_float64_to_int32_towards_zero(self) -> None:
         """Cast float64 to int32 with towards-zero rounding."""
@@ -112,7 +113,7 @@ class TestCastValueCodec:
                 CastValue(
                     data_type="uint8",
                     out_of_range="clamp",
-                    scalar_map={
+                    scalar_map={  # type: ignore[arg-type]
                         "encode": [["NaN", 0]],
                         "decode": [[0, "NaN"]],
                     },
@@ -122,9 +123,91 @@ class TestCastValueCodec:
         )
         arr[:] = data
         result = arr[:]
-        assert result[0] == 1.0  # 1.0 survives round-trip
-        assert np.isnan(result[1])  # NaN -> 0 -> NaN via scalar_map
-        assert result[2] == 3.0
+        assert result[0] == 1.0  # type: ignore[index]
+        assert np.isnan(result[1])  # type: ignore[index]
+        assert result[2] == 3.0  # type: ignore[index]
+
+    def test_hex_nan_scalar_map(self) -> None:
+        """Hex-encoded NaN values in scalar_map should round-trip correctly.
+
+        The hex string encoding is used for preserving specific NaN payloads
+        per the Zarr v3 spec.
+        """
+        import struct
+
+        # 0x7fc00001 is a NaN with a non-default payload in float32
+        hex_nan = "0x7fc00001"
+        nan_bytes = bytes.fromhex("7fc00001")
+        nan_f32 = np.float32(struct.unpack(">f", nan_bytes)[0])
+        assert np.isnan(nan_f32)
+
+        store = MemoryStore()
+        data = np.array([1.0, nan_f32, 3.0], dtype="float32")
+        arr = zarr.create(
+            store=store,
+            shape=data.shape,
+            dtype="float32",
+            chunks=(3,),
+            codecs=[
+                CastValue(
+                    data_type="uint8",
+                    out_of_range="clamp",
+                    scalar_map={  # type: ignore[arg-type]
+                        "encode": [[hex_nan, 255]],
+                        "decode": [[255, hex_nan]],
+                    },
+                ),
+                BytesCodec(),
+            ],
+        )
+        arr[:] = data
+        result = arr[:]
+        assert result[0] == np.float32(1.0)  # type: ignore[index]
+        assert np.isnan(result[1])  # type: ignore[index]
+        assert result[2] == np.float32(3.0)  # type: ignore[index]
+
+        # Verify the NaN payload is preserved by checking the bit pattern
+        result_bytes = struct.pack(">f", result[1])  # type: ignore[index]
+        assert result_bytes == nan_bytes
+
+    def test_int64_to_float64_precision_loss_rejected(self) -> None:
+        """Casting int64 to float64 is rejected because float64 cannot
+        exactly represent all int64 values.
+
+        float64 has a 52-bit mantissa, so it can only exactly represent
+        integers up to 2**52. int64.max is 2**63 - 1, far exceeding this.
+        """
+        store = MemoryStore()
+        with pytest.raises(ValueError, match="may silently lose precision"):
+            zarr.create(
+                store=store,
+                shape=(1,),
+                dtype="int64",
+                chunks=(1,),
+                codecs=[
+                    CastValue(data_type="float64"),
+                    BytesCodec(),
+                ],
+            )
+
+    def test_int32_to_float64_ok(self) -> None:
+        """Casting int32 to float64 is safe because float64 has enough
+        mantissa bits (52) to exactly represent all int32 values (up to 2**31 - 1)."""
+        store = MemoryStore()
+        data = np.array([np.iinfo(np.int32).max, np.iinfo(np.int32).min], dtype="int32")
+        arr = zarr.create(
+            store=store,
+            shape=data.shape,
+            dtype="int32",
+            chunks=(2,),
+            codecs=[
+                CastValue(data_type="float64"),
+                BytesCodec(),
+            ],
+        )
+        arr[:] = data
+        result = arr[:]
+        np.testing.assert_array_equal(result, data)
 
     def test_rounding_nearest_even(self) -> None:
         """nearest-even rounding: 0.5 rounds to 0, 1.5 rounds to 2."""
@@ -261,16 +344,17 @@ class TestCastValueCodec:
             data_type="uint8",
             rounding="towards-zero",
             out_of_range="clamp",
-            scalar_map={"encode": [["NaN", 0]], "decode": [[0, "NaN"]]},
+            scalar_map={"encode": [["NaN", 0]], "decode": [[0, "NaN"]]},  # type: ignore[arg-type]
         )
         d = codec.to_dict()
-        assert d["name"] == "cast_value"
-        assert d["configuration"]["data_type"] == "uint8"
-        assert d["configuration"]["rounding"] == "towards-zero"
-        assert d["configuration"]["out_of_range"] == "clamp"
-        assert d["configuration"]["scalar_map"] == {
-            "encode": [["NaN", 0]],
-            "decode": [[0, "NaN"]],
+        assert d == {
+            "name": "cast_value",
+            "configuration": {
+                "data_type": "uint8",
+                "rounding": "towards-zero",
+                "out_of_range": "clamp",
+                "scalar_map": {"encode": [["NaN", 0]], "decode": [[0, "NaN"]]},
+            },
         }
 
     def test_to_dict_minimal(self) -> None:
@@ -291,7 +375,7 @@ class TestCastValueCodec:
                 },
             }
         )
-        assert codec.data_type == "uint8"
+        assert codec.dtype == get_data_type_from_json("uint8", zarr_format=3)
         assert codec.rounding == "towards-zero"
         assert codec.out_of_range == "clamp"
 
@@ -301,10 +385,10 @@ class TestCastValueCodec:
             data_type="int16",
             rounding="towards-negative",
             out_of_range="clamp",
-            scalar_map={"encode": [["NaN", 0]]},
+            scalar_map={"encode": [["NaN", 0]]},  # type: ignore[arg-type]
         )
         restored = CastValue.from_dict(original.to_dict())
-        assert restored.data_type == original.data_type
+        assert restored.dtype == original.dtype
         assert restored.rounding == original.rounding
         assert restored.out_of_range == original.out_of_range
         assert restored.scalar_map == original.scalar_map
@@ -362,7 +446,7 @@ class TestScaleOffsetAndCastValueCombined:
         )
         arr[:] = data
         result = arr[:]
-        np.testing.assert_allclose(result, data, atol=0.1)
+        np.testing.assert_allclose(result, data, atol=0.1)  # type: ignore[arg-type]
 
     def test_temperature_storage_pattern(self) -> None:
         """Realistic pattern: store temperature data as uint8.
@@ -389,7 +473,7 @@ class TestScaleOffsetAndCastValueCombined:
         arr[:] = data
         result = arr[:]
         # Precision limited by uint8 quantization (~0.22°C step)
-        np.testing.assert_allclose(result, data, atol=0.25)
+        np.testing.assert_allclose(result, data, atol=0.25)  # type: ignore[arg-type]
 
     def test_nan_handling_pipeline(self) -> None:
         """NaN values should be handled via scalar_map in cast_value."""
@@ -406,7 +490,7 @@ class TestScaleOffsetAndCastValueCombined:
                 CastValue(
                     data_type="uint8",
                     out_of_range="clamp",
-                    scalar_map={
+                    scalar_map={  # type: ignore[arg-type]
                         "encode": [["NaN", 0]],
                         "decode": [[0, "NaN"]],
                     },
@@ -416,9 +500,9 @@ class TestScaleOffsetAndCastValueCombined:
         )
         arr[:] = data
         result = arr[:]
-        assert result[0] == 1.0
-        assert np.isnan(result[1])
-        assert result[2] == 3.0
+        assert result[0] == 1.0  # type: ignore[index]
+        assert np.isnan(result[1])  # type: ignore[index]
+        assert result[2] == 3.0  # type: ignore[index]
 
     def test_metadata_persistence(self) -> None:
         """Array metadata should be correctly persisted and reloaded."""

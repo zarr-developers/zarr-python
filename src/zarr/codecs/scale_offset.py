@@ -7,7 +7,7 @@ import numpy as np
 from typing_extensions import TypedDict
 
 from zarr.abc.codec import ArrayArrayCodec
-from zarr.core.common import JSON, NamedConfig
+from zarr.core.common import JSON, NamedConfig, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Self
@@ -39,7 +39,7 @@ class ScaleOffset(ArrayArrayCodec):
 
     All arithmetic uses the input array's data type semantics.
 
-    Parameters
+    Attributes
     ----------
     offset : float
         Value subtracted during encoding. Default is 0.
@@ -54,9 +54,12 @@ class ScaleOffset(ArrayArrayCodec):
 
     @classmethod
     def from_dict(cls, data: ScaleOffsetJSON) -> Self:  # type: ignore[override]
-        scale: float = data.get("configuration", {}).get("scale", 1)  # type: ignore[assignment]
-        offset: float = data.get("configuration", {}).get("offset", 0)  # type: ignore[assignment]
-        return cls(scale=scale, offset=offset)
+        _, configuration_parsed = parse_named_configuration(
+            data, "scale_offset", require_configuration=False
+        )
+        if configuration_parsed is None:
+            return cls()
+        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> ScaleOffsetJSON:  # type: ignore[override]
         if self.offset == 0 and self.scale == 1:
@@ -90,7 +93,7 @@ class ScaleOffset(ArrayArrayCodec):
         native_dtype = chunk_spec.dtype.to_native_dtype()
         fill = chunk_spec.fill_value
         new_fill = (
-            np.dtype(native_dtype).type(fill) - native_dtype.type(self.offset)
+            np.dtype(native_dtype).type(fill) - native_dtype.type(self.offset)  # type: ignore[operator]
         ) * native_dtype.type(self.scale)
         return replace(chunk_spec, fill_value=new_fill)
 
