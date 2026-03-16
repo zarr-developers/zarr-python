@@ -21,7 +21,13 @@ from zarr.core.dtype.npy.bytes import (
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
 from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
-from zarr.core.dtype.npy.structured import Structured, StructuredJSON_V2, StructuredJSON_V3
+from zarr.core.dtype.npy.structured import (
+    Struct,
+    StructJSON_V3,
+    Structured,
+    StructuredJSON_V2,
+    StructuredJSON_V3,
+)
 from zarr.core.dtype.npy.time import (
     DateTime64,
     DateTime64JSON_V2,
@@ -75,6 +81,8 @@ __all__ = [
     "RawBytes",
     "RawBytesJSON_V2",
     "RawBytesJSON_V3",
+    "Struct",
+    "StructJSON_V3",
     "Structured",
     "StructuredJSON_V2",
     "StructuredJSON_V3",
@@ -125,6 +133,7 @@ AnyDType = (
     | StringDType
     | BytesDType
     | Structured
+    | Struct
     | TimeDType
     | VariableLengthBytes
 )
@@ -137,7 +146,7 @@ ANY_DTYPE: Final = (
     *COMPLEX_FLOAT_DTYPE,
     *STRING_DTYPE,
     *BYTES_DTYPE,
-    Structured,
+    Struct,
     *TIME_DTYPE,
     VariableLengthBytes,
 )
@@ -154,6 +163,10 @@ ZDTypeLike: TypeAlias = npt.DTypeLike | ZDType[TBaseDType, TBaseScalar] | Mappin
 for dtype in ANY_DTYPE:
     # mypy does not know that all the elements of ANY_DTYPE are subclasses of ZDType
     data_type_registry.register(dtype._zarr_v3_name, dtype)  # type: ignore[arg-type]
+
+# Register Structured for reading legacy "structured" format JSON, but don't include it in
+# ANY_DTYPE since it doesn't support native dtype matching (use Struct instead).
+data_type_registry.register(Structured._zarr_v3_name, Structured)
 
 
 # TODO: find a better name for this function
@@ -268,7 +281,7 @@ def parse_dtype(
     # First attempt to interpret the input as JSON
     if isinstance(dtype_spec, Mapping | str | Sequence):
         try:
-            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)  # type: ignore[arg-type]
+            return get_data_type_from_json(dtype_spec, zarr_format=zarr_format)
         except ValueError:
             # no data type matched this JSON-like input
             pass
