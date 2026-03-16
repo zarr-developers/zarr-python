@@ -45,6 +45,7 @@ class TreeRepr:
 async def group_tree_async(
     group: AsyncGroup,
     max_depth: int | None = None,
+    *,
     max_nodes: int = 500,
     plain: bool = False,
 ) -> TreeRepr:

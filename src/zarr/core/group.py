@@ -1592,6 +1592,7 @@ class AsyncGroup:
         self,
         expand: bool | None = None,
         level: int | None = None,
+        *,
         max_nodes: int = 500,
         plain: bool = False,
     ) -> Any:
