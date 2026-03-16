@@ -14,7 +14,8 @@ import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.dtype import FixedLengthUTF32, Structured, VariableLengthUTF8
+from zarr.core.dtype import FixedLengthUTF32, VariableLengthUTF8
+from zarr.core.dtype.npy.structured import Struct
 from zarr.core.dtype.npy.bytes import NullTerminatedBytes
 from zarr.core.dtype.wrapper import ZDType
 from zarr.core.group import Group
@@ -283,7 +284,7 @@ def test_structured_dtype_roundtrip(fill_value: float | bytes, tmp_path: Path) -
 def test_parse_structured_fill_value_valid(
     fill_value: Any, dtype: np.dtype[Any], expected_result: Any
 ) -> None:
-    zdtype = Structured.from_native_dtype(dtype)
+    zdtype = Struct.from_native_dtype(dtype)
     result = zdtype.cast_scalar(fill_value)
     assert result.dtype == expected_result.dtype
     assert result == expected_result
