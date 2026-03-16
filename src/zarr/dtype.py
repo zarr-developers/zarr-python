@@ -72,7 +72,6 @@ __all__ = [
     "StructuredJSON_V2",
     "StructuredJSON_V3",
     "TimeDelta64",
-    "TimeDelta64",
     "TimeDelta64JSON_V2",
     "TimeDelta64JSON_V3",
     "UInt8",
@@ -84,7 +83,6 @@ __all__ = [
     "VariableLengthUTF8",
     "VariableLengthUTF8JSON_V2",
     "ZDType",
-    "data_type_registry",
     "data_type_registry",
     "parse_dtype",
 ]
