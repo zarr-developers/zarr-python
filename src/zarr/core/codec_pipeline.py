@@ -265,6 +265,8 @@ class BatchedCodecPipeline(CodecPipeline):
                 chunk_array_batch, batch_info, strict=False
             ):
                 if chunk_array is not None:
+                    if drop_axes:
+                        chunk_array = chunk_array.squeeze(axis=drop_axes)
                     out[out_selection] = chunk_array
                 elif chunk_spec.config.fill_missing_chunks:
                     out[out_selection] = fill_value_or_default(chunk_spec)
@@ -297,7 +299,7 @@ class BatchedCodecPipeline(CodecPipeline):
             ) in zip(chunk_array_batch, batch_info, strict=False):
                 if chunk_array is not None:
                     tmp = chunk_array[chunk_selection]
-                    if drop_axes != ():
+                    if drop_axes:
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
                 elif chunk_spec.config.fill_missing_chunks:
@@ -340,7 +342,7 @@ class BatchedCodecPipeline(CodecPipeline):
         else:
             chunk_value = value[out_selection]
             # handle missing singleton dimensions
-            if drop_axes != ():
+            if drop_axes:
                 item = tuple(
                     None  # equivalent to np.newaxis
                     if idx in drop_axes
