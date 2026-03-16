@@ -63,22 +63,6 @@ class TestChunkTransform:
         decoded = chain.decode_chunk(encoded)
         np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
-    def test_layers_no_aa_codecs(self) -> None:
-        # When there are no ArrayArrayCodecs, layers should be empty.
-        spec = _make_array_spec((100,), np.dtype("float64"))
-        chunk = ChunkTransform(codecs=(BytesCodec(), GzipCodec()), array_spec=spec)
-        assert chunk.layers == ()
-
-    def test_layers_with_transpose(self) -> None:
-        # With one AA codec (TransposeCodec), layers should contain exactly one
-        # entry pairing the codec with its input ArraySpec.
-        spec = _make_array_spec((3, 4), np.dtype("float64"))
-        transpose = TransposeCodec(order=(1, 0))
-        chunk = ChunkTransform(codecs=(transpose, BytesCodec(), ZstdCodec()), array_spec=spec)
-        assert len(chunk.layers) == 1
-        assert chunk.layers[0][0] is transpose
-        assert chunk.layers[0][1] is spec
-
     def test_shape_dtype_no_aa_codecs(self) -> None:
         # Without AA codecs, shape and dtype should match the input ArraySpec
         # (no transforms applied before the AB codec).

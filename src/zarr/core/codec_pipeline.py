@@ -71,15 +71,14 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
 
 @dataclass(slots=True, kw_only=True)
 class ChunkTransform:
-    """A stored chunk, modeled as a layered array.
+    """A synchronous codec chain bound to an ArraySpec.
 
-    Each layer corresponds to one ArrayArrayCodec and the ArraySpec
-    at its input boundary.  ``layers[0]`` is the outermost (user-visible)
-    transform; after the last layer comes the ArrayBytesCodec.
+    Provides ``encode_chunk`` and ``decode_chunk`` for pure-compute
+    codec operations (no IO, no threading, no batching).
 
-    The chunk's ``shape`` and ``dtype`` reflect the representation
-    **after** all ArrayArrayCodec layers have been applied — i.e. the
-    spec that feeds the ArrayBytesCodec.
+    ``shape`` and ``dtype`` reflect the representation **after** all
+    ArrayArrayCodec transforms — i.e. the spec that feeds the
+    ArrayBytesCodec.
 
     All codecs must implement ``SupportsSyncCodec``. Construction will
     raise ``TypeError`` if any codec does not.
@@ -88,8 +87,8 @@ class ChunkTransform:
     codecs: tuple[Codec, ...]
     array_spec: ArraySpec
 
-    # Each element is (ArrayArrayCodec, input_spec_for_that_codec).
-    layers: tuple[tuple[ArrayArrayCodec, ArraySpec], ...] = field(
+    # (ArrayArrayCodec, input_spec) pairs in pipeline order.
+    _aa_codecs: tuple[tuple[ArrayArrayCodec, ArraySpec], ...] = field(
         init=False, repr=False, compare=False
     )
     _ab_codec: ArrayBytesCodec = field(init=False, repr=False, compare=False)
@@ -106,25 +105,25 @@ class ChunkTransform:
 
         aa, ab, bb = codecs_from_list(list(self.codecs))
 
-        layers: tuple[tuple[ArrayArrayCodec, ArraySpec], ...] = ()
+        aa_codecs: tuple[tuple[ArrayArrayCodec, ArraySpec], ...] = ()
         spec = self.array_spec
         for aa_codec in aa:
-            layers = (*layers, (aa_codec, spec))
+            aa_codecs = (*aa_codecs, (aa_codec, spec))
             spec = aa_codec.resolve_metadata(spec)
 
-        self.layers = layers
+        self._aa_codecs = aa_codecs
         self._ab_codec = ab
         self._ab_spec = spec
         self._bb_codecs = bb
 
     @property
     def shape(self) -> tuple[int, ...]:
-        """Shape after all ArrayArrayCodec layers (input to the ArrayBytesCodec)."""
+        """Shape after all ArrayArrayCodec transforms (input to the ArrayBytesCodec)."""
         return self._ab_spec.shape
 
     @property
     def dtype(self) -> ZDType[TBaseDType, TBaseScalar]:
-        """Dtype after all ArrayArrayCodec layers (input to the ArrayBytesCodec)."""
+        """Dtype after all ArrayArrayCodec transforms (input to the ArrayBytesCodec)."""
         return self._ab_spec.dtype
 
     def decode_chunk(
@@ -141,7 +140,7 @@ class ChunkTransform:
 
         ab_out: Any = self._ab_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[attr-defined]
 
-        for aa_codec, spec in reversed(self.layers):
+        for aa_codec, spec in reversed(self._aa_codecs):
             ab_out = aa_codec._decode_sync(ab_out, spec)  # type: ignore[attr-defined]
 
         return ab_out  # type: ignore[no-any-return]
@@ -156,7 +155,7 @@ class ChunkTransform:
         """
         aa_out: Any = chunk_array
 
-        for aa_codec, spec in self.layers:
+        for aa_codec, spec in self._aa_codecs:
             if aa_out is None:
                 return None
             aa_out = aa_codec._encode_sync(aa_out, spec)  # type: ignore[attr-defined]
