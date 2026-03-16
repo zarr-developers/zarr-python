@@ -12,7 +12,9 @@ from zarr.core.dtype import (
     Int32,
     Int64,
     Structured,
+    UInt8,
 )
+from zarr.core.dtype.common import DataTypeValidationError
 
 
 class TestStructured(BaseTestZDType):
@@ -32,29 +34,32 @@ class TestStructured(BaseTestZDType):
     )
     valid_json_v3 = (
         {
-            "name": "structured",
+            "name": "struct",
             "configuration": {
                 "fields": [
-                    ["field1", "int32"],
-                    ["field2", "float64"],
+                    {"name": "field1", "data_type": "int32"},
+                    {"name": "field2", "data_type": "float64"},
                 ]
             },
         },
         {
-            "name": "structured",
+            "name": "struct",
             "configuration": {
                 "fields": [
-                    [
-                        "field1",
-                        {
+                    {
+                        "name": "field1",
+                        "data_type": {
                             "name": "numpy.datetime64",
                             "configuration": {"unit": "s", "scale_factor": 1},
                         },
-                    ],
-                    [
-                        "field2",
-                        {"name": "fixed_length_utf32", "configuration": {"length_bytes": 32}},
-                    ],
+                    },
+                    {
+                        "name": "field2",
+                        "data_type": {
+                            "name": "fixed_length_utf32",
+                            "configuration": {"length_bytes": 32},
+                        },
+                    },
                 ]
             },
         },
@@ -65,7 +70,7 @@ class TestStructured(BaseTestZDType):
     )
     invalid_json_v3 = (
         {
-            "name": "structured",
+            "name": "struct",
             "configuration": {
                 "fields": [
                     ("field1", {"name": "int32", "configuration": {"endianness": "invalid"}}),
@@ -81,8 +86,11 @@ class TestStructured(BaseTestZDType):
         (Structured(fields=(("field1", Float16()), ("field2", Int32()))), "AQAAAAAA"),
     )
     scalar_v3_params = (
-        (Structured(fields=(("field1", Int32()), ("field2", Float64()))), "AQAAAAAAAAAAAPA/"),
-        (Structured(fields=(("field1", Int64()), ("field2", Int32()))), "AQAAAAAAAAAAAPA/"),
+        (
+            Structured(fields=(("field1", Int32()), ("field2", Float64()))),
+            {"field1": 1, "field2": 1.0},
+        ),
+        (Structured(fields=(("field1", Int64()), ("field2", Int32()))), {"field1": 1, "field2": 1}),
     )
 
     cast_value_params = (
@@ -122,3 +130,123 @@ def test_invalid_size() -> None:
     msg = f"must have at least one field. Got {fields!r}"
     with pytest.raises(ValueError, match=msg):
         Structured(fields=fields)
+
+
+@pytest.mark.filterwarnings("ignore::zarr.errors.UnstableSpecificationWarning")
+def test_struct_name_is_primary() -> None:
+    """
+    Test that 'struct' is the primary name written to JSON.
+    """
+    dtype = Structured(fields=(("field1", Int32()), ("field2", Float64())))
+    json_v3 = dtype.to_json(zarr_format=3)
+    assert json_v3["name"] == "struct"
+
+
+def test_structured_legacy_name_with_tuple_format() -> None:
+    """
+    Test that the legacy 'structured' name with tuple field format is accepted.
+    """
+    json_v3 = {
+        "name": "structured",
+        "configuration": {
+            "fields": [
+                ["field1", "int32"],
+                ["field2", "float64"],
+            ]
+        },
+    }
+    dtype = Structured.from_json(json_v3, zarr_format=3)
+    assert dtype.fields[0][0] == "field1"
+    assert dtype.fields[1][0] == "field2"
+
+
+def test_struct_rejects_tuple_format() -> None:
+    """
+    Test that 'struct' dtype rejects the legacy tuple field format.
+    """
+    json_v3 = {
+        "name": "struct",
+        "configuration": {
+            "fields": [
+                ["field1", "int32"],
+                ["field2", "float64"],
+            ]
+        },
+    }
+    with pytest.raises(DataTypeValidationError, match="Invalid field format for 'struct'"):
+        Structured.from_json(json_v3, zarr_format=3)
+
+
+def test_structured_rejects_object_format() -> None:
+    """
+    Test that 'structured' dtype rejects the new object field format.
+    """
+    json_v3 = {
+        "name": "structured",
+        "configuration": {
+            "fields": [
+                {"name": "field1", "data_type": "int32"},
+                {"name": "field2", "data_type": "float64"},
+            ]
+        },
+    }
+    with pytest.raises(DataTypeValidationError, match="Invalid field format for 'structured'"):
+        Structured.from_json(json_v3, zarr_format=3)
+
+
+def test_fill_value_dict_form() -> None:
+    """
+    Test that dict form fill values are properly parsed.
+    """
+    dtype = Structured(fields=(("x", Int32()), ("y", Float64())))
+    fill_value = dtype.from_json_scalar({"x": 42, "y": 3.14}, zarr_format=3)
+    assert fill_value["x"] == 42
+    assert fill_value["y"] == 3.14
+
+
+def test_fill_value_dict_form_missing_fields() -> None:
+    """
+    Test that missing fields in dict form fill values use defaults.
+    """
+    dtype = Structured(fields=(("x", Int32()), ("y", Float64())))
+    fill_value = dtype.from_json_scalar({"x": 42}, zarr_format=3)
+    assert fill_value["x"] == 42
+    assert fill_value["y"] == 0.0
+
+
+def test_fill_value_legacy_base64() -> None:
+    """
+    Test that legacy base64-encoded fill values are still readable.
+    """
+    dtype = Structured(fields=(("field1", Int32()), ("field2", Float64())))
+    fill_value = dtype.from_json_scalar("AQAAAAAAAAAAAPA/", zarr_format=3)
+    assert fill_value["field1"] == 1
+    assert fill_value["field2"] == 1.0
+
+
+def test_fill_value_to_json_dict_form() -> None:
+    """
+    Test that fill values are serialized as dict form.
+    """
+    dtype = Structured(fields=(("x", Int32()), ("y", Float64())))
+    scalar = np.array((42, 3.14), dtype=[("x", np.int32), ("y", np.float64)])[()]
+    json_val = dtype.to_json_scalar(scalar, zarr_format=3)
+    assert isinstance(json_val, dict)
+    assert json_val["x"] == 42
+    assert json_val["y"] == 3.14
+
+
+def test_has_multi_byte_fields_true() -> None:
+    """
+    Test that has_multi_byte_fields returns True for dtypes with multi-byte fields.
+    """
+    dtype = Structured(fields=(("field1", Int32()), ("field2", Float64())))
+    assert dtype.has_multi_byte_fields() is True
+
+
+def test_has_multi_byte_fields_false() -> None:
+    """
+    Test that has_multi_byte_fields returns False for dtypes with only single-byte fields.
+    """
+    dtype = Structured(fields=(("field1", UInt8()), ("field2", UInt8())))
+    assert dtype.has_multi_byte_fields() is False
