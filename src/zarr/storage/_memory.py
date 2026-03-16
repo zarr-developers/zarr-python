@@ -172,26 +172,6 @@ class MemoryStore(Store):
         else:
             self._store_dict[key] = value
 
-    def _set_range_impl(self, key: str, value: Buffer, start: int) -> None:
-        buf = self._store_dict[key]
-        target = buf.as_numpy_array()
-        if start + len(value) > len(target):
-            raise ValueError(
-                f"set_range would write beyond the end of the stored value: "
-                f"start={start}, len(value)={len(value)}, stored size={len(target)}"
-            )
-        if not target.flags.writeable:
-            target = target.copy()
-            self._store_dict[key] = buf.__class__(target)
-        target[start : start + len(value)] = value.as_numpy_array()
-
-    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
-        """Synchronous byte-range write."""
-        self._check_writable()
-        if not self._is_open:
-            self._is_open = True
-        self._set_range_impl(key, value, start)
-
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
