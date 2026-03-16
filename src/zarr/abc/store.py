@@ -22,7 +22,6 @@ __all__ = [
     "Store",
     "SupportsDeleteSync",
     "SupportsGetSync",
-    "SupportsSetRangeSync",
     "SupportsSetSync",
     "SupportsSyncStore",
     "set_or_delete",
@@ -727,19 +726,12 @@ class SupportsSetSync(Protocol):
 
 
 @runtime_checkable
-class SupportsSetRangeSync(Protocol):
-    def set_range_sync(self, key: str, value: Buffer, start: int) -> None: ...
-
-
-@runtime_checkable
 class SupportsDeleteSync(Protocol):
     def delete_sync(self, key: str) -> None: ...
 
 
 @runtime_checkable
-class SupportsSyncStore(
-    SupportsGetSync, SupportsSetSync, SupportsSetRangeSync, SupportsDeleteSync, Protocol
-): ...
+class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol): ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

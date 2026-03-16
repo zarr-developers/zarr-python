@@ -33,10 +33,6 @@ def test_zstd_codec_supports_sync() -> None:
     assert isinstance(ZstdCodec(), SupportsSyncCodec)
 
 
-def test_zstd_is_not_fixed_size() -> None:
-    assert ZstdCodec.is_fixed_size is False
-
-
 def test_zstd_codec_sync_roundtrip() -> None:
     codec = ZstdCodec(level=1)
     arr = np.arange(100, dtype="float64")

@@ -85,19 +85,6 @@ def _put(path: Path, value: Buffer, exclusive: bool = False) -> int:
         return f.write(view)
 
 
-def _put_range(path: Path, value: Buffer, start: int) -> None:
-    view = value.as_buffer_like()
-    file_size = path.stat().st_size
-    if start + len(view) > file_size:
-        raise ValueError(
-            f"set_range would write beyond the end of the stored value: "
-            f"start={start}, len(value)={len(view)}, stored size={file_size}"
-        )
-    with path.open("r+b") as f:
-        f.seek(start)
-        f.write(view)
-
-
 class LocalStore(Store):
     """
     Store for the local file system.
@@ -240,12 +227,6 @@ class LocalStore(Store):
             )
         path = self.root / key
         _put(path, value)
-
-    def set_range_sync(self, key: str, value: Buffer, start: int) -> None:
-        self._ensure_open_sync()
-        self._check_writable()
-        path = self.root / key
-        _put_range(path, value, start)
 
     def delete_sync(self, key: str) -> None:
         self._ensure_open_sync()
