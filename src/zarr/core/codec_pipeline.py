@@ -137,12 +137,12 @@ class ChunkTransform:
         """
         bb_out: Any = chunk_bytes
         for bb_codec in reversed(self._bb_codecs):
-            bb_out = bb_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[union-attr]
+            bb_out = bb_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[attr-defined]
 
-        ab_out: Any = self._ab_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[union-attr]
+        ab_out: Any = self._ab_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[attr-defined]
 
         for aa_codec, spec in reversed(self.layers):
-            ab_out = aa_codec._decode_sync(ab_out, spec)  # type: ignore[union-attr]
+            ab_out = aa_codec._decode_sync(ab_out, spec)  # type: ignore[attr-defined]
 
         return ab_out  # type: ignore[no-any-return]
 
@@ -159,16 +159,16 @@ class ChunkTransform:
         for aa_codec, spec in self.layers:
             if aa_out is None:
                 return None
-            aa_out = aa_codec._encode_sync(aa_out, spec)  # type: ignore[union-attr]
+            aa_out = aa_codec._encode_sync(aa_out, spec)  # type: ignore[attr-defined]
 
         if aa_out is None:
             return None
-        bb_out: Any = self._ab_codec._encode_sync(aa_out, self._ab_spec)  # type: ignore[union-attr]
+        bb_out: Any = self._ab_codec._encode_sync(aa_out, self._ab_spec)  # type: ignore[attr-defined]
 
         for bb_codec in self._bb_codecs:
             if bb_out is None:
                 return None
-            bb_out = bb_codec._encode_sync(bb_out, self._ab_spec)  # type: ignore[union-attr]
+            bb_out = bb_codec._encode_sync(bb_out, self._ab_spec)  # type: ignore[attr-defined]
 
         return bb_out  # type: ignore[no-any-return]
 
