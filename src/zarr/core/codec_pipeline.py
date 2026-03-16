@@ -126,7 +126,7 @@ class ChunkTransform:
         """Dtype after all ArrayArrayCodec transforms (input to the ArrayBytesCodec)."""
         return self._ab_spec.dtype
 
-    def decode_chunk(
+    def decode(
         self,
         chunk_bytes: Buffer,
     ) -> NDBuffer:
@@ -145,7 +145,7 @@ class ChunkTransform:
 
         return ab_out  # type: ignore[no-any-return]
 
-    def encode_chunk(
+    def encode(
         self,
         chunk_array: NDBuffer,
     ) -> Buffer | None:

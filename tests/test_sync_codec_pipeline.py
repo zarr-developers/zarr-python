@@ -58,9 +58,9 @@ class TestChunkTransform:
         chain = ChunkTransform(codecs=(BytesCodec(),), array_spec=spec)
         nd_buf = _make_nd_buffer(arr)
 
-        encoded = chain.encode_chunk(nd_buf)
+        encoded = chain.encode(nd_buf)
         assert encoded is not None
-        decoded = chain.decode_chunk(encoded)
+        decoded = chain.decode(encoded)
         np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
     def test_shape_dtype_no_aa_codecs(self) -> None:
@@ -87,9 +87,9 @@ class TestChunkTransform:
         chain = ChunkTransform(codecs=(BytesCodec(), GzipCodec(level=1)), array_spec=spec)
         nd_buf = _make_nd_buffer(arr)
 
-        encoded = chain.encode_chunk(nd_buf)
+        encoded = chain.encode(nd_buf)
         assert encoded is not None
-        decoded = chain.decode_chunk(encoded)
+        decoded = chain.decode(encoded)
         np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
     def test_encode_decode_roundtrip_with_transpose(self) -> None:
@@ -104,9 +104,9 @@ class TestChunkTransform:
         )
         nd_buf = _make_nd_buffer(arr)
 
-        encoded = chain.encode_chunk(nd_buf)
+        encoded = chain.encode(nd_buf)
         assert encoded is not None
-        decoded = chain.decode_chunk(encoded)
+        decoded = chain.decode(encoded)
         np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
     def test_rejects_non_sync_codec(self) -> None:
@@ -174,9 +174,9 @@ class TestChunkTransform:
         chain = ChunkTransform(codecs=(TransposeCodec(order=(1, 0)), BytesCodec()), array_spec=spec)
         assert chain.compute_encoded_size(96, spec) == 96
 
-    def test_encode_chunk_returns_none_propagation(self) -> None:
+    def test_encode_returns_none_propagation(self) -> None:
         # When an AA codec returns None (signaling "this chunk is the fill value,
-        # don't store it"), encode_chunk must short-circuit and return None
+        # don't store it"), encode must short-circuit and return None
         # instead of passing None into the next codec.
 
         class NoneReturningAACodec(TransposeCodec):
@@ -192,7 +192,7 @@ class TestChunkTransform:
         )
         arr = np.arange(12, dtype="float64").reshape(3, 4)
         nd_buf = _make_nd_buffer(arr)
-        assert chain.encode_chunk(nd_buf) is None
+        assert chain.encode(nd_buf) is None
 
     def test_encode_decode_roundtrip_with_crc32c(self) -> None:
         # Round-trip through BytesCodec + Crc32cCodec. Crc32c appends a checksum
@@ -203,9 +203,9 @@ class TestChunkTransform:
         chain = ChunkTransform(codecs=(BytesCodec(), Crc32cCodec()), array_spec=spec)
         nd_buf = _make_nd_buffer(arr)
 
-        encoded = chain.encode_chunk(nd_buf)
+        encoded = chain.encode(nd_buf)
         assert encoded is not None
-        decoded = chain.decode_chunk(encoded)
+        decoded = chain.decode(encoded)
         np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
     def test_encode_decode_roundtrip_int32(self) -> None:
@@ -216,7 +216,7 @@ class TestChunkTransform:
         chain = ChunkTransform(codecs=(BytesCodec(), ZstdCodec(level=1)), array_spec=spec)
         nd_buf = _make_nd_buffer(arr)
 
-        encoded = chain.encode_chunk(nd_buf)
+        encoded = chain.encode(nd_buf)
         assert encoded is not None
-        decoded = chain.decode_chunk(encoded)
+        decoded = chain.decode(encoded)
         np.testing.assert_array_equal(arr, decoded.as_numpy_array())
