@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from itertools import islice, pairwise
-from typing import TYPE_CHECKING, Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
 
 from zarr.abc.codec import (
@@ -80,6 +80,9 @@ class ChunkTransform:
     The chunk's ``shape`` and ``dtype`` reflect the representation
     **after** all ArrayArrayCodec layers have been applied — i.e. the
     spec that feeds the ArrayBytesCodec.
+
+    All codecs must implement ``SupportsSyncCodec``. Construction will
+    raise ``TypeError`` if any codec does not.
     """
 
     codecs: tuple[Codec, ...]
@@ -92,9 +95,15 @@ class ChunkTransform:
     _ab_codec: ArrayBytesCodec = field(init=False, repr=False, compare=False)
     _ab_spec: ArraySpec = field(init=False, repr=False, compare=False)
     _bb_codecs: tuple[BytesBytesCodec, ...] = field(init=False, repr=False, compare=False)
-    _all_sync: bool = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
+        non_sync = [c for c in self.codecs if not isinstance(c, SupportsSyncCodec)]
+        if non_sync:
+            names = ", ".join(type(c).__name__ for c in non_sync)
+            raise TypeError(
+                f"All codecs must implement SupportsSyncCodec. The following do not: {names}"
+            )
+
         aa, ab, bb = codecs_from_list(list(self.codecs))
 
         layers: tuple[tuple[ArrayArrayCodec, ArraySpec], ...] = ()
@@ -107,7 +116,6 @@ class ChunkTransform:
         self._ab_codec = ab
         self._ab_spec = spec
         self._bb_codecs = bb
-        self._all_sync = all(isinstance(c, SupportsSyncCodec) for c in self.codecs)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -119,26 +127,22 @@ class ChunkTransform:
         """Dtype after all ArrayArrayCodec layers (input to the ArrayBytesCodec)."""
         return self._ab_spec.dtype
 
-    @property
-    def all_sync(self) -> bool:
-        return self._all_sync
-
     def decode_chunk(
         self,
         chunk_bytes: Buffer,
     ) -> NDBuffer:
         """Decode a single chunk through the full codec chain, synchronously.
 
-        Pure compute -- no IO. Only callable when all codecs support sync.
+        Pure compute -- no IO.
         """
         bb_out: Any = chunk_bytes
         for bb_codec in reversed(self._bb_codecs):
-            bb_out = cast("SupportsSyncCodec", bb_codec)._decode_sync(bb_out, self._ab_spec)
+            bb_out = bb_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[union-attr]
 
-        ab_out: Any = cast("SupportsSyncCodec", self._ab_codec)._decode_sync(bb_out, self._ab_spec)
+        ab_out: Any = self._ab_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[union-attr]
 
         for aa_codec, spec in reversed(self.layers):
-            ab_out = cast("SupportsSyncCodec", aa_codec)._decode_sync(ab_out, spec)
+            ab_out = aa_codec._decode_sync(ab_out, spec)  # type: ignore[union-attr]
 
         return ab_out  # type: ignore[no-any-return]
 
@@ -148,23 +152,23 @@ class ChunkTransform:
     ) -> Buffer | None:
         """Encode a single chunk through the full codec chain, synchronously.
 
-        Pure compute -- no IO. Only callable when all codecs support sync.
+        Pure compute -- no IO.
         """
         aa_out: Any = chunk_array
 
         for aa_codec, spec in self.layers:
             if aa_out is None:
                 return None
-            aa_out = cast("SupportsSyncCodec", aa_codec)._encode_sync(aa_out, spec)
+            aa_out = aa_codec._encode_sync(aa_out, spec)  # type: ignore[union-attr]
 
         if aa_out is None:
             return None
-        bb_out: Any = cast("SupportsSyncCodec", self._ab_codec)._encode_sync(aa_out, self._ab_spec)
+        bb_out: Any = self._ab_codec._encode_sync(aa_out, self._ab_spec)  # type: ignore[union-attr]
 
         for bb_codec in self._bb_codecs:
             if bb_out is None:
                 return None
-            bb_out = cast("SupportsSyncCodec", bb_codec)._encode_sync(bb_out, self._ab_spec)
+            bb_out = bb_codec._encode_sync(bb_out, self._ab_spec)  # type: ignore[union-attr]
 
         return bb_out  # type: ignore[no-any-return]
 
