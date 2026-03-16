@@ -132,7 +132,6 @@ AnyDType = (
     | ComplexFloatDType
     | StringDType
     | BytesDType
-    | Structured
     | Struct
     | TimeDType
     | VariableLengthBytes
