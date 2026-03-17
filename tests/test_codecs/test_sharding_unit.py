@@ -1,10 +1,11 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import cast
 
 import numpy as np
 import pytest
 
-from zarr.abc.store import ByteRequest
+from zarr.abc.store import ByteGetter, ByteRequest
 from zarr.codecs.sharding import (
     MAX_UINT_64,
     ShardingCodec,
@@ -344,7 +345,7 @@ class MockByteGetterWithIndex:
 async def test_load_partial_shard_maybe_index_load_fails() -> None:
     """Test _load_partial_shard_maybe returns None when index load fails."""
     codec = ShardingCodec(chunk_shape=(8,))
-    byte_getter = MockByteGetterWithIndex(index_data=None, chunk_data=None)
+    byte_getter = cast(ByteGetter, MockByteGetterWithIndex(index_data=None, chunk_data=None))
 
     chunks_per_shard = (2,)
     all_chunk_coords: set[tuple[int, ...]] = {(0,)}
@@ -381,7 +382,7 @@ async def test_load_partial_shard_maybe_with_empty_chunks(
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
     chunk_data = b"x" * 300
-    byte_getter = MockByteGetter(data=chunk_data)
+    byte_getter = cast(ByteGetter, MockByteGetter(data=chunk_data))
 
     # Request chunks including the empty one
     all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,)}
@@ -417,7 +418,7 @@ async def test_load_partial_shard_maybe_all_chunks_empty(
 
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
-    byte_getter = MockByteGetter(data=b"")
+    byte_getter = cast(ByteGetter, MockByteGetter(data=b""))
 
     # Request some chunks - all will be empty
     all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,)}
@@ -452,7 +453,8 @@ async def test_load_partial_shard_uses_get_partial_values(
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
     chunk_data = b"A" * 100 + b"B" * 100
-    byte_getter = MockByteGetter(data=chunk_data)
+    mock_getter = MockByteGetter(data=chunk_data)
+    byte_getter = cast(ByteGetter, mock_getter)
 
     all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,)}
 
@@ -469,7 +471,7 @@ async def test_load_partial_shard_uses_get_partial_values(
     assert (1,) in result
 
     # get_partial_values should have been called exactly once
-    assert byte_getter.get_partial_values_call_count == 1
+    assert mock_getter.get_partial_values_call_count == 1
 
 
 async def test_load_partial_shard_single_chunk_read(
@@ -490,7 +492,7 @@ async def test_load_partial_shard_single_chunk_read(
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
     chunk_data = b"\x00" * 100 + b"E" * 100
-    byte_getter = MockByteGetter(data=chunk_data)
+    byte_getter = cast(ByteGetter, MockByteGetter(data=chunk_data))
 
     all_chunk_coords: set[tuple[int, ...]] = {(1,)}
 
@@ -527,8 +529,9 @@ async def test_load_partial_shard_chunk_load_returns_none(
 
     monkeypatch.setattr(ShardingCodec, "_load_shard_index_maybe", mock_load_index)
 
-    byte_getter = MockByteGetterWithIndex(
-        index_data=b"", chunk_data=None, return_none_for_chunks=True
+    byte_getter = cast(
+        ByteGetter,
+        MockByteGetterWithIndex(index_data=b"", chunk_data=None, return_none_for_chunks=True),
     )
 
     all_chunk_coords: set[tuple[int, ...]] = {(0,)}
