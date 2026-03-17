@@ -112,9 +112,7 @@ def test_sharding_scalar(
     indirect=["array_fixture"],
 )
 def test_sharding_partial(
-    store: Store,
-    array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -150,9 +148,7 @@ def test_sharding_partial(
     indirect=["array_fixture"],
 )
 def test_sharding_partial_readwrite(
-    store: Store,
-    array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -184,9 +180,7 @@ def test_sharding_partial_readwrite(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_read(
-    store: Store,
-    array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -476,9 +470,7 @@ def test_sharding_partial_shard_read__chunk_load_fails(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 def test_sharding_partial_overwrite(
-    store: Store,
-    array_fixture: npt.NDArray[Any],
-    index_location: ShardingCodecIndexLocation,
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
     data = array_fixture[:10, :10, :10]
     spath = StorePath(store)
@@ -653,6 +645,7 @@ async def test_delete_empty_shards(store: Store) -> None:
         compressors=None,
         fill_value=1,
     )
+    print(a.metadata.to_dict())
     await _AsyncArrayProxy(a)[:, :].set(np.zeros((16, 16)))
     await _AsyncArrayProxy(a)[8:, :].set(np.ones((8, 16)))
     await _AsyncArrayProxy(a)[:, 8:].set(np.ones((16, 8)))
@@ -697,6 +690,7 @@ async def test_sharding_with_empty_inner_chunk(
     )
     data[:4, :4] = fill_value
     await a.setitem(..., data)
+    print("read data")
     data_read = await a.getitem(...)
     assert np.array_equal(data_read, data)
 
@@ -708,9 +702,7 @@ async def test_sharding_with_empty_inner_chunk(
 )
 @pytest.mark.parametrize("chunks_per_shard", [(5, 2), (2, 5), (5, 5)])
 async def test_sharding_with_chunks_per_shard(
-    store: Store,
-    index_location: ShardingCodecIndexLocation,
-    chunks_per_shard: tuple[int],
+    store: Store, index_location: ShardingCodecIndexLocation, chunks_per_shard: tuple[int]
 ) -> None:
     chunk_shape = (2, 1)
     shape = tuple(x * y for x, y in zip(chunks_per_shard, chunk_shape, strict=False))
