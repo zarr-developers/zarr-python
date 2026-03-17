@@ -180,6 +180,94 @@ def test_shard_index_is_dense_with_empty_chunks() -> None:
 
 
 # ============================================================================
+# _ShardingByteGetter.get_partial_values tests
+# ============================================================================
+
+
+async def test_sharding_byte_getter_get_partial_values_returns_slices() -> None:
+    """Test that get_partial_values returns correct slices from the shard dict."""
+    from zarr.codecs.sharding import _ShardingByteGetter
+
+    chunk_data = Buffer.from_bytes(b"AAAABBBB")
+    shard_dict: dict[tuple[int, ...], Buffer | None] = {(0,): chunk_data}
+    getter = _ShardingByteGetter(shard_dict, (0,))
+
+    from zarr.abc.store import RangeByteRequest
+
+    results = await getter.get_partial_values(
+        default_buffer_prototype(),
+        [RangeByteRequest(0, 4), RangeByteRequest(4, 8)],
+    )
+
+    assert len(results) == 2
+    assert results[0] is not None
+    assert results[0].as_numpy_array().tobytes() == b"AAAA"
+    assert results[1] is not None
+    assert results[1].as_numpy_array().tobytes() == b"BBBB"
+
+
+async def test_sharding_byte_getter_get_partial_values_missing_chunk() -> None:
+    """Test that get_partial_values returns None for a missing chunk."""
+    from zarr.codecs.sharding import _ShardingByteGetter
+
+    shard_dict: dict[tuple[int, ...], Buffer | None] = {}
+    getter = _ShardingByteGetter(shard_dict, (0,))
+
+    from zarr.abc.store import RangeByteRequest
+
+    results = await getter.get_partial_values(
+        default_buffer_prototype(),
+        [RangeByteRequest(0, 10)],
+    )
+
+    assert results == [None]
+
+
+# ============================================================================
+# StorePath.get_partial_values tests
+# ============================================================================
+
+
+async def test_store_path_get_partial_values() -> None:
+    """Test that StorePath.get_partial_values delegates to Store.get_partial_values."""
+    from zarr.abc.store import RangeByteRequest
+    from zarr.storage._common import StorePath
+    from zarr.storage._memory import MemoryStore
+
+    store = MemoryStore()
+    await store.set("key", Buffer.from_bytes(b"0123456789"))
+    path = StorePath(store, "key")
+
+    results = await path.get_partial_values(
+        default_buffer_prototype(),
+        [RangeByteRequest(0, 3), RangeByteRequest(7, 10)],
+    )
+
+    assert len(results) == 2
+    assert results[0] is not None
+    assert results[0].as_numpy_array().tobytes() == b"012"
+    assert results[1] is not None
+    assert results[1].as_numpy_array().tobytes() == b"789"
+
+
+async def test_store_path_get_partial_values_missing_key() -> None:
+    """Test that StorePath.get_partial_values returns None for a missing key."""
+    from zarr.abc.store import RangeByteRequest
+    from zarr.storage._common import StorePath
+    from zarr.storage._memory import MemoryStore
+
+    store = MemoryStore()
+    path = StorePath(store, "nonexistent")
+
+    results = await path.get_partial_values(
+        default_buffer_prototype(),
+        [RangeByteRequest(0, 10)],
+    )
+
+    assert results == [None]
+
+
+# ============================================================================
 # Mock ByteGetter for _load_partial_shard_maybe tests
 # ============================================================================
 
@@ -262,7 +350,7 @@ async def test_load_partial_shard_maybe_index_load_fails() -> None:
     all_chunk_coords: set[tuple[int, ...]] = {(0,)}
 
     result = await codec._load_partial_shard_maybe(
-        byte_getter=byte_getter,  # type: ignore[arg-type]  # mypy false positive: identical signatures
+        byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords=all_chunk_coords,
@@ -299,7 +387,7 @@ async def test_load_partial_shard_maybe_with_empty_chunks(
     all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,)}
 
     result = await codec._load_partial_shard_maybe(
-        byte_getter=byte_getter,  # type: ignore[arg-type]  # mypy false positive: identical signatures
+        byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords=all_chunk_coords,
@@ -335,7 +423,7 @@ async def test_load_partial_shard_maybe_all_chunks_empty(
     all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,), (2,)}
 
     result = await codec._load_partial_shard_maybe(
-        byte_getter=byte_getter,  # type: ignore[arg-type]  # mypy false positive: identical signatures
+        byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords=all_chunk_coords,
@@ -369,7 +457,7 @@ async def test_load_partial_shard_uses_get_partial_values(
     all_chunk_coords: set[tuple[int, ...]] = {(0,), (1,)}
 
     result = await codec._load_partial_shard_maybe(
-        byte_getter=byte_getter,  # type: ignore[arg-type]  # mypy false positive: identical signatures
+        byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords=all_chunk_coords,
@@ -407,7 +495,7 @@ async def test_load_partial_shard_single_chunk_read(
     all_chunk_coords: set[tuple[int, ...]] = {(1,)}
 
     result = await codec._load_partial_shard_maybe(
-        byte_getter=byte_getter,  # type: ignore[arg-type]  # mypy false positive: identical signatures
+        byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords=all_chunk_coords,
@@ -446,7 +534,7 @@ async def test_load_partial_shard_chunk_load_returns_none(
     all_chunk_coords: set[tuple[int, ...]] = {(0,)}
 
     result = await codec._load_partial_shard_maybe(
-        byte_getter=byte_getter,  # type: ignore[arg-type]  # mypy false positive: identical signatures
+        byte_getter=byte_getter,
         prototype=default_buffer_prototype(),
         chunks_per_shard=chunks_per_shard,
         all_chunk_coords=all_chunk_coords,
