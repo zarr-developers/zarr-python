@@ -11,7 +11,7 @@ import zarr
 import zarr.api
 import zarr.api.asynchronous
 from zarr import Array
-from zarr.abc.store import RangeByteRequest, Store, SuffixByteRequest
+from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,
     ShardingCodec,
@@ -207,21 +207,14 @@ def test_sharding_partial_read(
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
-@pytest.mark.parametrize("coalesce_reads", [True, False])
 def test_sharding_multiple_chunks_partial_shard_read(
-    store: Store, index_location: ShardingCodecIndexLocation, coalesce_reads: bool
+    store: Store,
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     array_shape = (16, 64)
     shard_shape = (8, 32)
     chunk_shape = (2, 4)
     data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
-
-    if coalesce_reads:
-        # 1MiB, enough to coalesce all chunks within a shard in this example
-        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": 2**20})
-    else:
-        # disable coalescing
-        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": -1})
 
     store_mock = AsyncMock(wraps=store, spec=store.__class__)
     a = zarr.create_array(
@@ -241,57 +234,34 @@ def test_sharding_multiple_chunks_partial_shard_read(
     # for a total of 6 chunks accessed
     assert np.allclose(a[0, 22:42], np.arange(22, 42, dtype="float32"))
 
-    if coalesce_reads:
-        # 2 shard index requests + 2 coalesced chunk data byte ranges (one for each shard)
-        assert store_mock.get.call_count == 4
-    else:
-        # 2 shard index requests + 6 chunks
-        assert store_mock.get.call_count == 8
-
-    for method, args, kwargs in store_mock.method_calls:
-        assert method == "get"
-        assert args[0].startswith("c/")  # get from a chunk
-        assert isinstance(kwargs["byte_range"], (SuffixByteRequest, RangeByteRequest))
+    # 2 shard index reads via store.get() + 2 get_partial_values calls (one per shard)
+    assert store_mock.get.call_count == 2
+    assert store_mock.get_partial_values.call_count == 2
 
     store_mock.reset_mock()
 
     # Reads 4 chunks from both shards along dimension 0 for a total of 8 chunks accessed
     assert np.allclose(a[:, 0], np.arange(0, data.size, array_shape[1], dtype="float32"))
 
-    if coalesce_reads:
-        # 2 shard index requests + 2 coalesced chunk data byte ranges (one for each shard)
-        assert store_mock.get.call_count == 4
-    else:
-        # 2 shard index requests + 8 chunks
-        assert store_mock.get.call_count == 10
-
-    for method, args, kwargs in store_mock.method_calls:
-        assert method == "get"
-        assert args[0].startswith("c/")  # get from a chunk
-        assert isinstance(kwargs["byte_range"], (SuffixByteRequest, RangeByteRequest))
+    # 2 shard index reads via store.get() + 2 get_partial_values calls (one per shard)
+    assert store_mock.get.call_count == 2
+    assert store_mock.get_partial_values.call_count == 2
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
-@pytest.mark.parametrize("coalesce_reads", [True, False])
 def test_sharding_duplicate_read_indexes(
-    store: Store, index_location: ShardingCodecIndexLocation, coalesce_reads: bool
+    store: Store,
+    index_location: ShardingCodecIndexLocation,
 ) -> None:
     """
-    Check that coalesce optimization parses the grouped reads back out correctly
-    when there are multiple reads for the same index.
+    Check that duplicate index reads are handled correctly when
+    using get_partial_values for chunk data.
     """
     array_shape = (15,)
     shard_shape = (8,)
     chunk_shape = (2,)
     data = np.arange(np.prod(array_shape), dtype="float32").reshape(array_shape)
-
-    if coalesce_reads:
-        # 1MiB, enough to coalesce all chunks within a shard in this example
-        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": 2**20})
-    else:
-        # disable coalescing
-        zarr.config.set({"sharding.read.coalesce_max_gap_bytes": -1})
 
     store_mock = AsyncMock(wraps=store, spec=store.__class__)
     a = zarr.create_array(
@@ -307,16 +277,13 @@ def test_sharding_duplicate_read_indexes(
 
     store_mock.reset_mock()  # ignore store calls during array creation
 
-    # Read the same index multiple times, do that from two chunks which can be coalesced
+    # Read the same index multiple times from two chunks
     indexer = [8, 8, 12, 12]
     np.array_equal(a[indexer], data[indexer])
 
-    if coalesce_reads:
-        # 1 shard index request + 1 coalesced read
-        assert store_mock.get.call_count == 2
-    else:
-        # 1 shard index request + 2 chunks
-        assert store_mock.get.call_count == 3
+    # 1 shard index read via store.get() + 1 get_partial_values call
+    assert store_mock.get.call_count == 1
+    assert store_mock.get_partial_values.call_count == 1
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
@@ -484,16 +451,15 @@ def test_sharding_partial_shard_read__chunk_load_fails(
     )
     a[:] = data
 
-    # Set up store mock after array creation to only modify calls during array indexing
-    # Succeed on first call (index load), fail on subsequent calls (chunk loads)
-    async def first_success_then_fail(*args: Any, **kwargs: Any) -> Any:
-        if store_mock.get.call_count == 1:
-            return await store.get(*args, **kwargs)
-        else:
-            return None
+    # Set up store mock after array creation to simulate chunk load failure.
+    # Index loads still succeed (via store.get), but chunk data loads fail
+    # (via store.get_partial_values returning None for each range).
+    store_mock.reset_mock()
 
-    store_mock.get.reset_mock()
-    store_mock.get.side_effect = first_success_then_fail
+    async def fail_chunk_reads(prototype: Any, key_ranges: Any, **kwargs: Any) -> list[None]:
+        return [None] * len(list(key_ranges))
+
+    store_mock.get_partial_values.side_effect = fail_chunk_reads
 
     # Read from one of two chunks in a shard to test the partial shard read path
     assert a[0] == fill_value
