@@ -5,9 +5,10 @@ import pytest
 
 import zarr
 from zarr import Array
-from zarr.abc.codec import Codec
+from zarr.abc.codec import Codec, SupportsSyncCodec
 from zarr.abc.store import Store
 from zarr.codecs import ZstdCodec
+from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.metadata.v3 import ArrayV3Metadata
@@ -62,3 +63,11 @@ def test_vlen_string(
     assert np.array_equal(data, b[:, :])
     assert b.metadata.data_type == get_data_type_from_native_dtype(data.dtype)
     assert a.dtype == data.dtype
+
+
+def test_vlen_utf8_codec_supports_sync() -> None:
+    assert isinstance(VLenUTF8Codec(), SupportsSyncCodec)
+
+
+def test_vlen_bytes_codec_supports_sync() -> None:
+    assert isinstance(VLenBytesCodec(), SupportsSyncCodec)
