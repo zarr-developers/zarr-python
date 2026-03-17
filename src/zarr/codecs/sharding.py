@@ -105,7 +105,8 @@ class _ShardingByteGetter(ByteGetter):
         prototype: BufferPrototype,
         byte_ranges: Iterable[ByteRequest | None],
     ) -> list[Buffer | None]:
-        return [await self.get(prototype, br) for br in byte_ranges]
+        # Concurrency not needed, each .get() is a slice of an in-memory buffer.
+        return [await self.get(prototype, byte_range) for byte_range in byte_ranges]
 
 
 @dataclass(frozen=True)
@@ -482,7 +483,7 @@ class ShardingCodec(
         all_chunk_coords = {chunk_coords for chunk_coords, *_ in indexed_chunks}
 
         # reading bytes of all requested chunks
-        shard_dict_maybe: ShardMapping | None = None
+        shard_dict_maybe: ShardMapping | None
         if self._is_total_shard(all_chunk_coords, chunks_per_shard):
             # read entire shard
             shard_dict_maybe = await self._load_full_shard_maybe(

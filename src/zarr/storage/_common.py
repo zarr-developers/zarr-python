@@ -190,7 +190,7 @@ class StorePath:
             The read bytes for each range, or None for missing keys.
         """
         return await self.store.get_partial_values(
-            prototype, [(self.path, br) for br in byte_ranges]
+            prototype, [(self.path, byte_range) for byte_range in byte_ranges]
         )
 
     async def set(self, value: Buffer) -> None:
