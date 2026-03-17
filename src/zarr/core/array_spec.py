@@ -52,7 +52,7 @@ class ArrayConfig:
     fill_missing_chunks: bool
 
     def __init__(
-        self, order: MemoryOrder, write_empty_chunks: bool, fill_missing_chunks: bool
+        self, order: MemoryOrder, write_empty_chunks: bool, *, fill_missing_chunks: bool = True
     ) -> None:
         order_parsed = parse_order(order)
         write_empty_chunks_parsed = parse_bool(write_empty_chunks)

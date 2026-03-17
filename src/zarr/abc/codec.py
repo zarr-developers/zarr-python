@@ -430,31 +430,36 @@ class CodecPipeline:
     @abstractmethod
     async def read(
         self,
-        batch_info: Iterable[
-            tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool, str, tuple[int, ...]]
-        ],
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
+    ) -> list[int]:
         """Reads chunk data from the store, decodes it and writes it into an output array.
         Partial decoding may be utilized if the codecs and stores support it.
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool, str, tuple[int, ...]]]
+        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be fetched.
             The second slice selection determines where in the output array the chunk data will be written.
             The ByteGetter is used to fetch the necessary bytes.
             The chunk spec contains information about the construction of an array from the bytes.
-            The string is the chunk key.
-            The tuple of ints is the chunk's grid coordinates.
 
-            If the Store returns ``None`` for a chunk, then the chunk was not
-            written and the implementation must set the values of that chunk (or
-            ``out``) to the fill value for the array.
+            If the Store returns ``None`` for a chunk and ``fill_missing_chunks``
+            is True in the chunk spec's config, the implementation fills that
+            chunk with the array's fill value. Otherwise the chunk's index is
+            included in the returned list of missing chunk indices.
 
         out : NDBuffer
+        drop_axes : tuple[int, ...]
+
+        Returns
+        -------
+        list[int]
+            Indices into ``batch_info`` of chunks that were not found in the
+            store and were not filled (i.e. when ``fill_missing_chunks`` is
+            False). An empty list means all chunks were resolved.
         """
         ...
 

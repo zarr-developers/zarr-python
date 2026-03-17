@@ -17,7 +17,7 @@ from zarr.abc.codec import (
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar
-from zarr.errors import ChunkNotFoundError, ZarrUserWarning
+from zarr.errors import ZarrUserWarning
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -248,12 +248,11 @@ class BatchedCodecPipeline(CodecPipeline):
 
     async def read_batch(
         self,
-        batch_info: Iterable[
-            tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool, str, tuple[int, ...]]
-        ],
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
+    ) -> list[int]:
+        missing: list[int] = []
         if self.supports_partial_decode:
             chunk_array_batch = await self.decode_partial_batch(
                 [
@@ -261,8 +260,8 @@ class BatchedCodecPipeline(CodecPipeline):
                     for byte_getter, chunk_spec, chunk_selection, *_ in batch_info
                 ]
             )
-            for chunk_array, (_, chunk_spec, _, out_selection, _, chunk_key, chunk_coords) in zip(
-                chunk_array_batch, batch_info, strict=False
+            for i, (chunk_array, (_, chunk_spec, _, out_selection, _)) in enumerate(
+                zip(chunk_array_batch, batch_info, strict=False)
             ):
                 if chunk_array is not None:
                     if drop_axes:
@@ -271,9 +270,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 elif chunk_spec.config.fill_missing_chunks:
                     out[out_selection] = fill_value_or_default(chunk_spec)
                 else:
-                    raise ChunkNotFoundError(
-                        f"chunk '{chunk_key}' at grid position {chunk_coords} not found in store"
-                    )
+                    missing.append(i)
         else:
             chunk_bytes_batch = await concurrent_map(
                 [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
@@ -288,15 +285,9 @@ class BatchedCodecPipeline(CodecPipeline):
                     )
                 ],
             )
-            for chunk_array, (
-                _,
-                chunk_spec,
-                chunk_selection,
-                out_selection,
-                _,
-                chunk_key,
-                chunk_coords,
-            ) in zip(chunk_array_batch, batch_info, strict=False):
+            for i, (chunk_array, (_, chunk_spec, chunk_selection, out_selection, _)) in enumerate(
+                zip(chunk_array_batch, batch_info, strict=False)
+            ):
                 if chunk_array is not None:
                     tmp = chunk_array[chunk_selection]
                     if drop_axes:
@@ -305,9 +296,8 @@ class BatchedCodecPipeline(CodecPipeline):
                 elif chunk_spec.config.fill_missing_chunks:
                     out[out_selection] = fill_value_or_default(chunk_spec)
                 else:
-                    raise ChunkNotFoundError(
-                        f"chunk '{chunk_key}' at grid position {chunk_coords} not found in store"
-                    )
+                    missing.append(i)
+        return missing
 
     def _merge_chunk_array(
         self,
@@ -484,20 +474,30 @@ class BatchedCodecPipeline(CodecPipeline):
 
     async def read(
         self,
-        batch_info: Iterable[
-            tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool, str, tuple[int, ...]]
-        ],
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
-        await concurrent_map(
-            [
-                (single_batch_info, out, drop_axes)
-                for single_batch_info in batched(batch_info, self.batch_size)
-            ],
+    ) -> list[int]:
+        # Track the global offset of each mini-batch so we can translate
+        # per-batch missing indices back to indices into the original batch_info.
+        all_batches: list[
+            tuple[tuple[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool], ...], int]
+        ] = []
+        offset = 0
+        for single_batch in batched(batch_info, self.batch_size):
+            all_batches.append((single_batch, offset))
+            offset += len(single_batch)
+
+        results = await concurrent_map(
+            [(b, out, drop_axes) for b, _ in all_batches],
             self.read_batch,
             config.get("async.concurrency"),
         )
+
+        missing: list[int] = []
+        for batch_missing, (_, batch_offset) in zip(results, all_batches, strict=False):
+            missing.extend(batch_offset + idx for idx in batch_missing)
+        return missing
 
     async def write(
         self,

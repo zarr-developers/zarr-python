@@ -439,8 +439,6 @@ class ShardingCodec(
                     chunk_selection,
                     out_selection,
                     is_complete_shard,
-                    "/".join(str(c) for c in chunk_coords),
-                    chunk_coords,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
@@ -513,8 +511,6 @@ class ShardingCodec(
                     chunk_selection,
                     out_selection,
                     is_complete_shard,
-                    "/".join(str(c) for c in chunk_coords),
-                    chunk_coords,
                 )
                 for chunk_coords, chunk_selection, out_selection, is_complete_shard in indexer
             ],
@@ -715,7 +711,7 @@ class ShardingCodec(
             dtype=UInt64(endianness="little"),
             fill_value=MAX_UINT_64,
             config=ArrayConfig(
-                order="C", write_empty_chunks=False, fill_missing_chunks=True
+                order="C", write_empty_chunks=False
             ),  # Note: this is hard-coded for simplicity -- it is not surfaced into user code,
             prototype=default_buffer_prototype(),
         )

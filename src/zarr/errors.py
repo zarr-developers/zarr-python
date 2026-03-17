@@ -3,6 +3,7 @@ __all__ = [
     "ArrayNotFoundError",
     "BaseZarrError",
     "BoundsCheckError",
+    "ChunkNotFoundError",
     "ContainsArrayAndGroupError",
     "ContainsArrayError",
     "ContainsGroupError",
