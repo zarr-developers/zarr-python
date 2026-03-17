@@ -35,6 +35,10 @@ def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:
         ((30, None, None), (100, 20, 10), 1, (30, 20, 10)),
         ((30, 20, None), (100, 20, 10), 1, (30, 20, 10)),
         ((30, 20, 10), (100, 20, 10), 1, (30, 20, 10)),
+        # dask-style chunks (uniform with optional smaller final chunk)
+        (((100, 100, 100), (50, 50)), (300, 100), 1, (100, 50)),
+        (((100, 100, 50),), (250,), 1, (100,)),
+        (((100,),), (100,), 1, (100,)),
         # auto chunking
         (None, (100,), 1, (100,)),
         (-1, (100,), 1, (100,)),
@@ -52,3 +56,8 @@ def test_normalize_chunks_errors() -> None:
         normalize_chunks("foo", (100,), 1)
     with pytest.raises(ValueError):
         normalize_chunks((100, 10), (100,), 1)
+    # dask-style irregular chunks should raise
+    with pytest.raises(ValueError, match="Irregular chunk sizes"):
+        normalize_chunks(((10, 20, 30),), (60,), 1)
+    with pytest.raises(ValueError, match="Irregular chunk sizes"):
+        normalize_chunks(((100, 100), (10, 20)), (200, 30), 1)
