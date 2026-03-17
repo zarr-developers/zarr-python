@@ -8,6 +8,7 @@ import pickle
 import re
 import time
 import warnings
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal, get_args
 
 import numpy as np
@@ -61,6 +62,91 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer.core import Buffer
     from zarr.core.common import JSON, ZarrFormat
+
+
+def is_deprecated(method: Callable[..., Any]) -> bool:
+    """Check if a method is marked as deprecated."""
+    # Check for @deprecated decorator
+    return hasattr(method, "__deprecated__") or (
+        hasattr(method, "__wrapped__") and hasattr(method.__wrapped__, "__deprecated__")
+    )
+
+
+def get_method_names(cls: type) -> list[str]:
+    """Extract public method names from a class, excluding deprecated methods."""
+    return [
+        name
+        for name, method in inspect.getmembers(cls, predicate=inspect.isfunction)
+        if not name.startswith("_") and not is_deprecated(method)
+    ]
+
+
+def get_method_signature(cls: type, method_name: str) -> dict[str, Any]:
+    """Get the signature of a method from a class."""
+    method = getattr(cls, method_name)
+    sig = inspect.signature(method)
+    return {name: param for name, param in sig.parameters.items() if name != "self"}
+
+
+# TODO Go one by one through the methods in skipped and fix the mismatches.
+@pytest.mark.parametrize(
+    ("sync_class", "async_class", "skip_methods"),
+    [
+        (
+            Group,
+            AsyncGroup,
+            ["create", "update_attributes_async", "get", "require_array", "require_group"],
+        )
+    ],
+)
+def test_class_method_parameters_match(
+    sync_class: type, async_class: type, skip_methods: list[str]
+) -> None:
+    """
+    Test that methods for classes and their async counterparts match.
+
+    Tests that the parameters for sync and async methods match. This test,
+    tests parameter names, types, and default values.
+    """
+
+    method_names = get_method_names(sync_class)
+    for method in skip_methods:
+        method_names.remove(method)
+
+    for method_name in method_names:
+        assert hasattr(async_class, method_name), (
+            f"Async class {async_class.__name__} missing method '{method_name}'"
+        )
+
+        sync_params = get_method_signature(sync_class, method_name)
+        async_params = get_method_signature(async_class, method_name)
+
+        sync_param_names = set(sync_params.keys())
+        async_param_names = set(async_params.keys())
+
+        assert sync_param_names == async_param_names, (
+            f"Parameter names don't match for '{method_name}'. "
+            f"Sync: {sync_param_names}, Async: {async_param_names}"
+        )
+
+        mismatches = []
+        for param_name in sync_params:
+            sync_param = sync_params[param_name]
+            async_param = async_params[param_name]
+
+            if sync_param.annotation != async_param.annotation:
+                mismatches.append(
+                    f"{param_name}: annotation mismatch "
+                    f"(sync: {sync_param.annotation}, async: {async_param.annotation})"
+                )
+
+            if sync_param.default != async_param.default:
+                mismatches.append(
+                    f"{param_name}: default mismatch "
+                    f"(sync: {sync_param.default}, async: {async_param.default})"
+                )
+
+        assert mismatches == [], f"Parameter mismatches in '{method_name}': {mismatches}"
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
@@ -248,6 +334,163 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
 
     with pytest.raises(ValueError, match="max_depth"):
         members_observed = group.members(max_depth=-1)
+
+
+@pytest.fixture
+def copy_to_test_data(
+    request: pytest.FixtureRequest,
+) -> tuple[Group, np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]], int, bool]:
+    """Fixture that creates test data for copy_to tests."""
+    zarr_format, shards, consolidate_metadata, src_path = request.param
+
+    src_store = MemoryStore()
+    src = zarr.open_group(
+        src_store,
+        path=src_path or None,
+        mode="w",
+        zarr_format=zarr_format,
+        attributes={"root": True},
+    )
+
+    subgroup = src.create_group("subgroup", attributes={"subgroup": True})
+
+    subgroup_arr_data = np.arange(50)
+    subgroup.create_array(
+        "subgroup_dataset",
+        shape=(50,),
+        chunks=(10,),
+        shards=shards,
+        dtype=subgroup_arr_data.dtype,
+    )
+    subgroup["subgroup_dataset"] = subgroup_arr_data
+
+    arr_data = np.arange(100)
+    src.create_array(
+        "dataset",
+        shape=(100,),
+        chunks=(10,),
+        shards=shards,
+        dtype=arr_data.dtype,
+    )
+    src["dataset"] = arr_data
+
+    src = consolidate(src_store, src, consolidate_metadata, zarr_format, path=src_path)
+
+    return src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata
+
+
+def consolidate(
+    src_store: MemoryStore,
+    src: Group,
+    consolidate_metadata: bool,
+    zarr_format: int,
+    path: str = "",
+) -> Group:
+    if consolidate_metadata:
+        subgroup_path = f"{path}/subgroup" if path else "subgroup"
+        if zarr_format == 3:
+            with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
+                src = zarr.consolidate_metadata(src_store, path=path)
+            with pytest.warns(ZarrUserWarning, match="Consolidated metadata is currently"):
+                zarr.consolidate_metadata(src_store, path=subgroup_path)
+        else:
+            src = zarr.consolidate_metadata(src_store, path=path)
+            zarr.consolidate_metadata(src_store, path=subgroup_path)
+    return src
+
+
+def check_consolidated_metadata(
+    dst_store_root: MemoryStore,
+    consolidate_metadata: bool,
+    zarr_format: int,
+    path: str | None = None,
+) -> None:
+    sub_path = "subgroup" if path is None else f"{path}/subgroup"
+    if consolidate_metadata:
+        assert zarr.open_group(dst_store_root, path=path).metadata.consolidated_metadata
+        if zarr_format == 3:
+            assert zarr.open_group(dst_store_root, path=sub_path).metadata.consolidated_metadata
+    else:
+        assert not zarr.open_group(dst_store_root).metadata.consolidated_metadata
+        assert not zarr.open_group(dst_store_root, path=sub_path).metadata.consolidated_metadata
+
+
+@pytest.mark.parametrize(
+    "copy_to_test_data",
+    [
+        (2, None, False, ""),
+        (2, None, True, ""),
+        (3, (50,), False, ""),
+        (3, (50,), True, ""),
+        (3, (50,), False, "nested/source"),
+    ],
+    indirect=True,
+)
+def test_copy_to(
+    copy_to_test_data: tuple[
+        Group, np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]], int, bool
+    ],
+) -> None:
+    src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata = copy_to_test_data
+
+    dst_store = MemoryStore()
+
+    dst = src.copy_to(dst_store, overwrite=True)
+
+    assert dst.attrs.get("root") is True
+
+    subgroup = dst["subgroup"]
+    assert isinstance(subgroup, Group)
+    assert subgroup.attrs.get("subgroup") is True
+
+    copied_arr = dst["dataset"]
+    copied_data = copied_arr[:]
+    assert np.array_equal(copied_data, arr_data)
+
+    copied_subgroup_arr = subgroup["subgroup_dataset"]
+    copied_subgroup_data = copied_subgroup_arr[:]
+    assert np.array_equal(copied_subgroup_data, subgroup_arr_data)
+
+    check_consolidated_metadata(dst_store, consolidate_metadata, zarr_format)
+
+
+@pytest.mark.parametrize(
+    "copy_to_test_data",
+    [
+        (2, None, False, ""),
+        (2, None, True, ""),
+        (3, (50,), False, ""),
+        (3, (50,), True, ""),
+        (3, (50,), False, "nested/source"),
+    ],
+    indirect=True,
+)
+def test_copy_to_with_path(
+    copy_to_test_data: tuple[
+        Group, np.ndarray[Any, np.dtype[Any]], np.ndarray[Any, np.dtype[Any]], int, bool
+    ],
+) -> None:
+    src, arr_data, subgroup_arr_data, zarr_format, consolidate_metadata = copy_to_test_data
+
+    dst_store = MemoryStore()
+    dst = src.copy_to(dst_store, path="sub/snapshot", overwrite=True)
+
+    assert dst.attrs.get("root") is True
+    assert dst.store_path.path == "sub/snapshot"
+
+    subgroup = dst["subgroup"]
+    assert isinstance(subgroup, Group)
+    assert subgroup.attrs.get("subgroup") is True
+
+    copied_arr = dst["dataset"]
+    copied_data = copied_arr[:]
+    assert np.array_equal(copied_data, arr_data)
+
+    copied_subgroup_arr = subgroup["subgroup_dataset"]
+    copied_subgroup_data = copied_subgroup_arr[:]
+    assert np.array_equal(copied_subgroup_data, subgroup_arr_data)
+
+    check_consolidated_metadata(dst_store, consolidate_metadata, zarr_format, path="sub/snapshot")
 
 
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:
