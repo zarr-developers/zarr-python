@@ -1,4 +1,4 @@
-name: Codspeed benchmarks
+name: CodSpeed Benchmarks
 
 on:
   schedule:
