@@ -31,7 +31,7 @@ class Crc32cCodec(BytesBytesCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "crc32c"}
 
-    async def _decode_single(
+    def _decode_sync(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -51,7 +51,14 @@ class Crc32cCodec(BytesBytesCodec):
             )
         return chunk_spec.prototype.buffer.from_array_like(inner_bytes)
 
-    async def _encode_single(
+    async def _decode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
+        return self._decode_sync(chunk_bytes, chunk_spec)
+
+    def _encode_sync(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -63,6 +70,13 @@ class Crc32cCodec(BytesBytesCodec):
         )
         # Append the checksum (as bytes) to the data
         return chunk_spec.prototype.buffer.from_array_like(np.append(data, checksum.view("B")))
+
+    async def _encode_single(
+        self,
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return self._encode_sync(chunk_bytes, chunk_spec)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4

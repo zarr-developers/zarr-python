@@ -11,7 +11,7 @@ default_language_version:
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.14
+    rev: v0.15.4
     hooks:
       - id: ruff-check
         args: ["--fix", "--show-fixes"]
@@ -47,18 +47,22 @@ repos:
           - hypothesis
           - s3fs
   - repo: https://github.com/scientific-python/cookie
-    rev: 2025.11.21
+    rev: 2026.03.02
     hooks:
       - id: sp-repo-review
-  - repo: https://github.com/pre-commit/pygrep-hooks
-    rev: v1.10.0
-    hooks:
-      - id: rst-directive-colons
-      - id: rst-inline-touching-normal
   - repo: https://github.com/numpy/numpydoc
     rev: v1.10.0
     hooks:
       - id: numpydoc-validation
+  - repo: local
+    hooks:
+      - id: ban-lstrip-rstrip
+        name: ban lstrip/rstrip
+        language: pygrep
+        # Matches .lstrip() or .rstrip() where the string argument is 2+ characters.
+        entry: "\\.(lstrip|rstrip)\\([\"'][^\"']{2,}[\"']\\)"
+        types: [python]
+        files: ^(src|tests)/
   - repo: https://github.com/twisted/towncrier
     rev: 25.8.0
     hooks:

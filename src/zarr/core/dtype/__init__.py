@@ -81,7 +81,6 @@ __all__ = [
     "TBaseDType",
     "TBaseScalar",
     "TimeDelta64",
-    "TimeDelta64",
     "TimeDelta64JSON_V2",
     "TimeDelta64JSON_V3",
     "UInt8",
