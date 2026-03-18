@@ -26,7 +26,7 @@ These can be installed using `pip install "zarr[<extra>]"`, e.g. `pip install "z
 - `gpu`: support for GPUs
 - `remote`: support for reading/writing to remote data stores
 
-Additional optional dependencies include `rich`, `universal_pathlib`. These must be installed separately.
+Additional optional dependencies include `universal_pathlib`. These must be installed separately.
 
 ## conda
 
