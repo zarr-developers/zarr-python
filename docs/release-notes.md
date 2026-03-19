@@ -2,6 +2,35 @@
 
 <!-- towncrier release notes start -->
 
+## 3.1.6 (2026-03-19)
+
+### Features
+
+- Exposes the array runtime configuration as an attribute called `config` on the `Array` and
+  `AsyncArray` classes. The previous `AsyncArray._config` attribute is now a deprecated alias for `AsyncArray.config`.
+
+  Adds a method for creating a new `Array` / `AsyncArray` instance with a new runtime configuration, and fixes inaccurate documentation about the `write_empty_chunks` configuration parameter. ([#3668](https://github.com/zarr-developers/zarr-python/issues/3668))
+
+### Bugfixes
+
+- Correct the target bytes number for auto-chunking when auto-sharding. ([#3603](https://github.com/zarr-developers/zarr-python/issues/3603))
+- Fixed a bug in the sharding codec that prevented nested shard reads in certain cases. ([#3655](https://github.com/zarr-developers/zarr-python/issues/3655))
+- Fix obstore _transform_list_dir implementation to correctly relativize paths (removing lstrip usage). ([#3657](https://github.com/zarr-developers/zarr-python/issues/3657))
+- Raise error when trying to encode :class:`numpy.dtypes.StringDType` with `na_object` set. ([#3695](https://github.com/zarr-developers/zarr-python/issues/3695))
+- CacheStore, LoggingStore and LatencyStore now support with_read_only. ([#3700](https://github.com/zarr-developers/zarr-python/issues/3700))
+- Skip chunk coordinate enumeration in resize when the array is only growing, avoiding unbounded memory usage for large arrays. ([#3702](https://github.com/zarr-developers/zarr-python/issues/3702))
+- Fix a performance bug in morton curve generation. ([#3705](https://github.com/zarr-developers/zarr-python/issues/3705))
+- Add a dedicated in-memory cache for byte-range requests to the experimental `CacheStore`. ([#3710](https://github.com/zarr-developers/zarr-python/issues/3710))
+
+### Improved Documentation
+
+- Add documentation example for creating uncompressed arrays in the Compression section of the user guide. ([#3464](https://github.com/zarr-developers/zarr-python/issues/3464))
+
+### Misc
+
+- [#3562](https://github.com/zarr-developers/zarr-python/issues/3562), [#3605](https://github.com/zarr-developers/zarr-python/issues/3605), [#3619](https://github.com/zarr-developers/zarr-python/issues/3619), [#3623](https://github.com/zarr-developers/zarr-python/issues/3623), [#3636](https://github.com/zarr-developers/zarr-python/issues/3636), [#3648](https://github.com/zarr-developers/zarr-python/issues/3648), [#3656](https://github.com/zarr-developers/zarr-python/issues/3656), [#3658](https://github.com/zarr-developers/zarr-python/issues/3658), [#3673](https://github.com/zarr-developers/zarr-python/issues/3673), [#3704](https://github.com/zarr-developers/zarr-python/issues/3704), [#3706](https://github.com/zarr-developers/zarr-python/issues/3706), [#3708](https://github.com/zarr-developers/zarr-python/issues/3708), [#3712](https://github.com/zarr-developers/zarr-python/issues/3712), [#3713](https://github.com/zarr-developers/zarr-python/issues/3713), [#3717](https://github.com/zarr-developers/zarr-python/issues/3717), [#3721](https://github.com/zarr-developers/zarr-python/issues/3721), [#3728](https://github.com/zarr-developers/zarr-python/issues/3728), [#3778](https://github.com/zarr-developers/zarr-python/issues/3778)
+
+
 ## zarr 3.1.5 (2025-11-21)
 
 ## Bugfixes
