@@ -58,13 +58,15 @@ jobs:
     needs: [build_artifacts]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    environment:
+      name: releases
+      url: https://pypi.org/p/zarr
+    permissions:
+      id-token: write
     steps:
       - uses: actions/download-artifact@v7
         with:
           name: releases
           path: dist
-      - uses: pypa/gh-action-pypi-publish@v1.13.0
-        with:
-          user: __token__
-          password: ${{ secrets.pypi_password }}
-          # To test: repository_url: https://test.pypi.org/legacy/
+      - name: Publish package to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.13.0
