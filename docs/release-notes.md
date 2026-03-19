@@ -7,7 +7,7 @@
 ### Features
 
 - Exposes the array runtime configuration as an attribute called `config` on the `Array` and
-  `AsyncArray` classes. The previous `AsyncArray._config` attribute is now a deprecated alias for `AsyncArray.config`.
+  `AsyncArray` classes. The previous `AsyncArray._config` attribute is now a deprecated alias for `AsyncArray.config`. ([#3668](https://github.com/zarr-developers/zarr-python/issues/3668))
 - Adds a method for creating a new `Array` / `AsyncArray` instance with a new runtime configuration, and fixes inaccurate documentation about the `write_empty_chunks` configuration parameter. ([#3668](https://github.com/zarr-developers/zarr-python/issues/3668))
 - Adds synchronous methods to stores that do not benefit from an async event loop. The shape of these methods is defined by protocol classes to support structural subtyping. ([#3725](https://github.com/zarr-developers/zarr-python/pull/3725))
 - Fix near-miss penalty in `_morton_order` with hybrid ceiling+argsort strategy. ([#3718](https://github.com/zarr-developers/zarr-python/pull/3718))
