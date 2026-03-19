@@ -2,7 +2,7 @@
 
 <!-- towncrier release notes start -->
 
-# zarr 3.1.5 (2025-11-21)
+## zarr 3.1.5 (2025-11-21)
 
 ## Bugfixes
 
