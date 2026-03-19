@@ -25,6 +25,7 @@
 ### Improved Documentation
 
 - Add documentation example for creating uncompressed arrays in the Compression section of the user guide. ([#3464](https://github.com/zarr-developers/zarr-python/issues/3464))
+- Add AI-assisted code policy to the contributing guide. ([#3769](https://github.com/zarr-developers/zarr-python/issues/3769))
 
 ### Misc
 
