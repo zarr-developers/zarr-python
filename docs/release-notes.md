@@ -8,8 +8,9 @@
 
 - Exposes the array runtime configuration as an attribute called `config` on the `Array` and
   `AsyncArray` classes. The previous `AsyncArray._config` attribute is now a deprecated alias for `AsyncArray.config`.
-
-  Adds a method for creating a new `Array` / `AsyncArray` instance with a new runtime configuration, and fixes inaccurate documentation about the `write_empty_chunks` configuration parameter. ([#3668](https://github.com/zarr-developers/zarr-python/issues/3668))
+- Adds a method for creating a new `Array` / `AsyncArray` instance with a new runtime configuration, and fixes inaccurate documentation about the `write_empty_chunks` configuration parameter. ([#3668](https://github.com/zarr-developers/zarr-python/issues/3668))
+- Adds synchronous methods to stores that do not benefit from an async event loop. The shape of these methods is defined by protocol classes to support structural subtyping. ([#3725](https://github.com/zarr-developers/zarr-python/pull/3725))
+- Fix near-miss penalty in _morton_order with hybrid ceiling+argsort strategy. ([#3718](https://github.com/zarr-developers/zarr-python/pull/3718))
 
 ### Bugfixes
 
@@ -21,11 +22,16 @@
 - Skip chunk coordinate enumeration in resize when the array is only growing, avoiding unbounded memory usage for large arrays. ([#3702](https://github.com/zarr-developers/zarr-python/issues/3702))
 - Fix a performance bug in morton curve generation. ([#3705](https://github.com/zarr-developers/zarr-python/issues/3705))
 - Add a dedicated in-memory cache for byte-range requests to the experimental `CacheStore`. ([#3710](https://github.com/zarr-developers/zarr-python/issues/3710))
+- BaseFloat._check_scalar rejects invalid string values. ([#3586](https://github.com/zarr-developers/zarr-python/issues/3586))
+- Apply drop_axes squeeze in partial decode path for sharding. ([#3763](https://github.com/zarr-developers/zarr-python/issues/3763))
+- Set copy=False in reshape operation. ([#3649](https://github.com/zarr-developers/zarr-python/issues/3649))
+- Validate that dask-style chunks have regular shapes. ([#3779](https://github.com/zarr-developers/zarr-python/issues/3779))
 
 ### Improved Documentation
 
 - Add documentation example for creating uncompressed arrays in the Compression section of the user guide. ([#3464](https://github.com/zarr-developers/zarr-python/issues/3464))
 - Add AI-assisted code policy to the contributing guide. ([#3769](https://github.com/zarr-developers/zarr-python/issues/3769))
+- Added a glossary. ([#3767](https://github.com/zarr-developers/zarr-python/issues/3767))
 
 ### Misc
 
