@@ -2263,31 +2263,13 @@ def test_create_array_with_data_num_gets(
     assert store.counter["get"] == 1
 
 
-def test_full_shard_write_num_gets() -> None:
+@pytest.mark.parametrize(
+    ("selection", "expected_gets"),
+    [(slice(None), 0), (slice(1, 9), 1)],
+)
+def test_shard_write_num_gets(selection: slice, expected_gets: int) -> None:
     """
-    Test that overwriting a complete shard does not read the existing shard first.
-    """
-    store = LoggingStore(store=MemoryStore())
-    arr = zarr.create_array(
-        store,
-        shape=(10,),
-        chunks=(1,),
-        shards=(10,),
-        dtype="int64",
-        fill_value=-1,
-    )
-    arr[:] = 0
-
-    store.counter.clear()
-
-    arr[:] = np.arange(10, dtype="int64")
-
-    assert store.counter["get"] == 0
-
-
-def test_partial_shard_write_num_gets() -> None:
-    """
-    Test that partial shard writes still read the existing shard to preserve untouched chunks.
+    Test that partial-shard writes read the existing data and full-shard writes don't.
     """
     store = LoggingStore(store=MemoryStore())
     arr = zarr.create_array(
@@ -2302,9 +2284,9 @@ def test_partial_shard_write_num_gets() -> None:
 
     store.counter.clear()
 
-    arr[1:9] = np.arange(8, dtype="int64")
+    arr[selection] = 1
 
-    assert store.counter["get"] == 1
+    assert store.counter["get"] == expected_gets
 
 
 @pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])
