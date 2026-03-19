@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
 
   build_artifacts:
@@ -63,10 +67,16 @@ jobs:
       url: https://pypi.org/p/zarr
     permissions:
       id-token: write
+      attestations: write
+      artifact-metadata: write
     steps:
       - uses: actions/download-artifact@v7
         with:
           name: releases
           path: dist
+      - name: Generate artifact attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@v1.13.0
