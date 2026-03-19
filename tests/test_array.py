@@ -2259,9 +2259,52 @@ def test_create_array_with_data_num_gets(
         data = zarr.zeros(shape, dtype="int64")
 
     zarr.create_array(store, data=data, chunks=chunk_shape, shards=shard_shape, fill_value=-1)  # type: ignore[arg-type]
-    # one get for the metadata and one per shard.
-    # Note: we don't actually need one get per shard, but this is the current behavior
-    assert store.counter["get"] == 1 + num_shards
+    # One get for the metadata; full-shard writes should not read shard payloads.
+    assert store.counter["get"] == 1
+
+
+def test_full_shard_write_num_gets() -> None:
+    """
+    Test that overwriting a complete shard does not read the existing shard first.
+    """
+    store = LoggingStore(store=MemoryStore())
+    arr = zarr.create_array(
+        store,
+        shape=(10,),
+        chunks=(1,),
+        shards=(10,),
+        dtype="int64",
+        fill_value=-1,
+    )
+    arr[:] = 0
+
+    store.counter.clear()
+
+    arr[:] = np.arange(10, dtype="int64")
+
+    assert store.counter["get"] == 0
+
+
+def test_partial_shard_write_num_gets() -> None:
+    """
+    Test that partial shard writes still read the existing shard to preserve untouched chunks.
+    """
+    store = LoggingStore(store=MemoryStore())
+    arr = zarr.create_array(
+        store,
+        shape=(10,),
+        chunks=(1,),
+        shards=(10,),
+        dtype="int64",
+        fill_value=-1,
+    )
+    arr[:] = 0
+
+    store.counter.clear()
+
+    arr[1:9] = np.arange(8, dtype="int64")
+
+    assert store.counter["get"] == 1
 
 
 @pytest.mark.parametrize("config", [{}, {"write_empty_chunks": True}, {"order": "C"}])
