@@ -35,7 +35,7 @@ jobs:
           version: '1.16.5'
       - name: Build wheel and sdist
         run: hatch build
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: releases
           path: dist
@@ -55,7 +55,7 @@ jobs:
           ls dist
 
   upload_pypi:
-    needs: [build_artifacts]
+    needs: [build_artifacts, test_dist_pypi]
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
     environment:
