@@ -315,8 +315,9 @@ class RegularChunkGrid(Metadata):
 
     @classmethod
     def from_dict(cls, data: RegularChunkGridJSON) -> Self:  # type: ignore[override]
-        _, configuration = parse_named_configuration(data, "regular")
-        return cls(chunk_shape=tuple(configuration["chunk_shape"]))
+        parse_named_configuration(data, "regular")  # validate name
+        configuration = data["configuration"]
+        return cls(chunk_shape=_parse_chunk_shape(configuration["chunk_shape"]))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -355,9 +356,28 @@ class RectilinearChunkGrid(Metadata):
             },
         }
 
+    def update_shape(
+        self, old_shape: tuple[int, ...], new_shape: tuple[int, ...]
+    ) -> RectilinearChunkGrid:
+        """Return a new RectilinearChunkGrid with edges adjusted for *new_shape*.
+
+        Grow past existing edges: appends a chunk covering the additional extent.
+        Shrink or grow within existing edges: edges are kept as-is (the spec
+        allows trailing edges beyond the array extent).
+        """
+        new_chunk_shapes: list[tuple[int, ...]] = []
+        for edges, new_ext in zip(self.chunk_shapes, new_shape, strict=True):
+            edge_sum = sum(edges)
+            if new_ext > edge_sum:
+                new_chunk_shapes.append((*edges, new_ext - edge_sum))
+            else:
+                new_chunk_shapes.append(edges)
+        return RectilinearChunkGrid(chunk_shapes=tuple(new_chunk_shapes))
+
     @classmethod
     def from_dict(cls, data: RectilinearChunkGridJSON) -> Self:  # type: ignore[override]
-        _, configuration = parse_named_configuration(data, "rectilinear")
+        parse_named_configuration(data, "rectilinear")  # validate name
+        configuration = data["configuration"]
         _validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
         expanded: list[tuple[int, ...]] = []
@@ -372,7 +392,9 @@ class RectilinearChunkGrid(Metadata):
             elif isinstance(dim_spec, list):
                 expanded.append(tuple(_expand_rle(dim_spec)))
             else:
-                raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
+                raise TypeError(
+                    f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
+                )
         return cls(chunk_shapes=tuple(expanded))
 
 
@@ -509,7 +531,7 @@ class ArrayV3Metadata(Metadata):
         if not isinstance(self.chunk_grid, RegularChunkGrid):
             msg = (
                 "The `chunks` attribute is only defined for arrays using regular chunk grids. "
-                "This array has a rectilinear chunk grid. Use `chunk_sizes` for general access."
+                "This array has a rectilinear chunk grid. Use `read_chunk_sizes` or `write_chunk_sizes` for general access."
             )
             raise NotImplementedError(msg)
 
@@ -634,7 +656,10 @@ class ArrayV3Metadata(Metadata):
         return out_dict
 
     def update_shape(self, shape: tuple[int, ...]) -> Self:
-        return replace(self, shape=shape)
+        chunk_grid = self.chunk_grid
+        if isinstance(chunk_grid, RectilinearChunkGrid):
+            chunk_grid = chunk_grid.update_shape(self.shape, shape)
+        return replace(self, shape=shape, chunk_grid=chunk_grid)
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)

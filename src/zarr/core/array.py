@@ -185,6 +185,18 @@ class DefaultFillValue:
 DEFAULT_FILL_VALUE = DefaultFillValue()
 
 
+def _chunk_sizes_from_shape(
+    array_shape: tuple[int, ...], chunk_shape: tuple[int, ...]
+) -> tuple[tuple[int, ...], ...]:
+    """Compute dask-style chunk sizes from an array shape and uniform chunk shape."""
+    result: list[tuple[int, ...]] = []
+    for s, c in zip(array_shape, chunk_shape, strict=True):
+        nchunks = ceildiv(s, c)
+        sizes = tuple(min(c, s - i * c) for i in range(nchunks))
+        result.append(sizes)
+    return tuple(result)
+
+
 def parse_array_metadata(data: Any) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
@@ -1076,12 +1088,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.metadata.chunks
 
     @property
-    def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
-        """Per-dimension chunk sizes for the array.
+    def read_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension sizes of chunks used for reading.
 
-        Returns the data size of each chunk along every dimension,
-        including the final boundary chunk. Works for both regular
-        and rectilinear chunk grids.
+        When sharding is used, returns the inner chunk sizes.
+        Otherwise, returns the outer chunk sizes (same as ``write_chunk_sizes``).
 
         Returns
         -------
@@ -1091,12 +1102,33 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Examples
         --------
         >>> arr = zarr.create_array(store, shape=(100, 80), chunks=(30, 40))
-        >>> arr.chunk_sizes
+        >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
+        """
+        from zarr.codecs.sharding import ShardingCodec
 
-        >>> arr = zarr.create_array(store, shape=(60, 100), chunks=[[10, 20, 30], [50, 50]])
-        >>> arr.chunk_sizes
-        ((10, 20, 30), (50, 50))
+        codecs: tuple[Codec, ...] = getattr(self.metadata, "codecs", ())
+        if len(codecs) == 1 and isinstance(codecs[0], ShardingCodec):
+            inner_chunk_shape = codecs[0].chunk_shape
+            return _chunk_sizes_from_shape(self.shape, inner_chunk_shape)
+        return self.chunk_grid.chunk_sizes
+
+    @property
+    def write_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension sizes of chunks used for writing (storage chunks).
+
+        Always returns the outer chunk sizes, regardless of sharding.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension containing chunk sizes.
+
+        Examples
+        --------
+        >>> arr = zarr.create_array(store, shape=(100, 80), chunks=(30, 40))
+        >>> arr.write_chunk_sizes
+        ((30, 30, 30, 10), (40, 40))
         """
         return self.chunk_grid.chunk_sizes
 
@@ -2347,12 +2379,11 @@ class Array(Generic[T_ArrayMetadata]):
         return self.async_array.chunks
 
     @property
-    def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
-        """Per-dimension chunk sizes for the array.
+    def read_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension sizes of chunks used for reading.
 
-        Returns the data size of each chunk along every dimension,
-        including the final boundary chunk. Works for both regular
-        and rectilinear chunk grids.
+        When sharding is used, returns the inner chunk sizes.
+        Otherwise, returns the outer chunk sizes (same as ``write_chunk_sizes``).
 
         Returns
         -------
@@ -2362,10 +2393,29 @@ class Array(Generic[T_ArrayMetadata]):
         Examples
         --------
         >>> arr = zarr.open_array(store)
-        >>> arr.chunk_sizes
+        >>> arr.read_chunk_sizes
         ((30, 30, 30, 10), (40, 40))
         """
-        return self.async_array.chunk_sizes
+        return self.async_array.read_chunk_sizes
+
+    @property
+    def write_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
+        """Per-dimension sizes of chunks used for writing (storage chunks).
+
+        Always returns the outer chunk sizes, regardless of sharding.
+
+        Returns
+        -------
+        tuple[tuple[int, ...], ...]
+            One inner tuple per dimension containing chunk sizes.
+
+        Examples
+        --------
+        >>> arr = zarr.open_array(store)
+        >>> arr.write_chunk_sizes
+        ((30, 30, 30, 10), (40, 40))
+        """
+        return self.async_array.write_chunk_sizes
 
     @property
     def shards(self) -> tuple[int, ...] | None:
@@ -5093,7 +5143,7 @@ def _parse_keep_array_attr(
             if data.chunk_grid.is_regular:
                 chunks = data.chunks
             else:
-                chunks = data.chunk_sizes
+                chunks = data.write_chunk_sizes
         if shards == "keep":
             shards = data.shards if data.chunk_grid.is_regular else None
         if zarr_format is None:

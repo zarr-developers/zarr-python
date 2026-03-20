@@ -45,6 +45,7 @@ class FixedDimension:
     size: int  # chunk edge length (>= 0)
     extent: int  # array dimension length
     nchunks: int = field(init=False, repr=False)
+    ngridcells: int = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.size < 0:
@@ -52,9 +53,11 @@ class FixedDimension:
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
         if self.size == 0:
-            object.__setattr__(self, "nchunks", 1 if self.extent == 0 else 0)
+            n = 1 if self.extent == 0 else 0
         else:
-            object.__setattr__(self, "nchunks", ceildiv(self.extent, self.size))
+            n = ceildiv(self.extent, self.size)
+        object.__setattr__(self, "nchunks", n)
+        object.__setattr__(self, "ngridcells", n)
 
     def index_to_chunk(self, idx: int) -> int:
         if idx < 0:
@@ -141,8 +144,16 @@ class VaryingDimension:
         object.__setattr__(self, "extent", extent)
 
     @property
-    def nchunks(self) -> int:
+    def ngridcells(self) -> int:
+        """Total grid cells including those past the array extent."""
         return len(self.edges)
+
+    @property
+    def nchunks(self) -> int:
+        """Number of chunks that contain data (overlap [0, extent))."""
+        if self.extent == 0:
+            return 0
+        return bisect.bisect_left(self.cumulative, self.extent) + 1
 
     def index_to_chunk(self, idx: int) -> int:
         if idx < 0 or idx >= self.extent:
@@ -183,23 +194,19 @@ class VaryingDimension:
         return VaryingDimension(self.edges, extent=new_extent)
 
     def resize(self, new_extent: int) -> VaryingDimension:
-        """Return a copy adjusted for a new array extent (grow/shrink)."""
-        old_extent = self.extent
-        if new_extent == old_extent:
+        """Return a copy adjusted for a new array extent (grow/shrink).
+
+        Grow past existing edges: appends a chunk for the additional extent.
+        Shrink or grow within existing edges: preserves all edges and re-binds
+        the extent. The spec allows trailing edges beyond the array extent.
+        """
+        if new_extent == self.extent:
             return self
-        elif new_extent > old_extent:
-            expanded_edges = list(self.edges) + [new_extent - old_extent]
+        elif new_extent > self.cumulative[-1]:
+            expanded_edges = list(self.edges) + [new_extent - self.cumulative[-1]]
             return VaryingDimension(expanded_edges, extent=new_extent)
         else:
-            # Shrink: keep chunks whose cumulative offset covers new_extent
-            shrunk_edges: list[int] = []
-            total = 0
-            for edge in self.edges:
-                shrunk_edges.append(edge)
-                total += edge
-                if total >= new_extent:
-                    break
-            return VaryingDimension(shrunk_edges, extent=new_extent)
+            return VaryingDimension(self.edges, extent=new_extent)
 
 
 @runtime_checkable
@@ -208,6 +215,8 @@ class DimensionGrid(Protocol):
 
     @property
     def nchunks(self) -> int: ...
+    @property
+    def ngridcells(self) -> int: ...
     @property
     def extent(self) -> int: ...
     def index_to_chunk(self, idx: int) -> int: ...
