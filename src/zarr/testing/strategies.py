@@ -14,11 +14,11 @@ import zarr
 from zarr.abc.store import RangeByteRequest, Store
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import Array
-from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.dtype import get_data_type_from_native_dtype
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v3 import RegularChunkGrid
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
@@ -140,7 +140,7 @@ def array_metadata(
     # separator = draw(st.sampled_from(['/', '\\']))
     shape = draw(array_shapes())
     ndim = len(shape)
-    chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
+    chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim, min_side=1))
     np_dtype = draw(dtypes())
     dtype = get_data_type_from_native_dtype(np_dtype)
     fill_value = draw(npst.from_dtype(np_dtype))
@@ -160,7 +160,7 @@ def array_metadata(
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=ChunkGrid.from_regular(shape, chunk_shape),
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             fill_value=fill_value,
             attributes=draw(attributes),  # type: ignore[arg-type]
             dimension_names=draw(dimension_names(ndim=ndim)),
@@ -194,11 +194,17 @@ def chunk_shapes(draw: st.DrawFn, *, shape: tuple[int, ...]) -> tuple[int, ...]:
     # We want this strategy to shrink towards arrays with smaller number of chunks
     # 1. st.integers() shrinks towards smaller values. So we use that to generate number of chunks
     numchunks = draw(
-        st.tuples(*[st.integers(min_value=0 if size == 0 else 1, max_value=size) for size in shape])
+        st.tuples(
+            *[
+                st.integers(min_value=0 if size == 0 else 1, max_value=max(size, 1))
+                for size in shape
+            ]
+        )
     )
     # 2. and now generate the chunks tuple
+    # Chunk sizes must be >= 1 per spec; for zero-extent dimensions use 1.
     chunks = tuple(
-        size // nchunks if nchunks > 0 else 0
+        max(1, size // nchunks) if nchunks > 0 else 1
         for size, nchunks in zip(shape, numchunks, strict=True)
     )
 
@@ -260,14 +266,14 @@ def arrays(
     nparray = draw(arrays, label="array data")
     chunk_shape = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
     dim_names: None | list[str | None] = None
-    if zarr_format == 3 and all(c > 0 for c in chunk_shape):
-        shard_shape = draw(
-            st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunk_shape),
-            label="shard shape",
-        )
+    shard_shape = None
+    if zarr_format == 3:
         dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
-    else:
-        shard_shape = None
+        if all(s > 0 for s in nparray.shape) and all(c > 0 for c in chunk_shape):
+            shard_shape = draw(
+                st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunk_shape),
+                label="shard shape",
+            )
     # test that None works too.
     fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
     # compressor = draw(compressors)

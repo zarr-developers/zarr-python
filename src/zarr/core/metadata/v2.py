@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable, Sequence
-from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
-from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.dtype import get_data_type_from_json
 from zarr.core.dtype.common import OBJECT_CODEC_IDS, DTypeSpec_V2
 from zarr.errors import ZarrUserWarning
@@ -116,10 +114,6 @@ class ArrayV2Metadata(Metadata):
     @property
     def ndim(self) -> int:
         return len(self.shape)
-
-    @cached_property
-    def chunk_grid(self) -> ChunkGrid:
-        return ChunkGrid.from_regular(self.shape, self.chunks)
 
     @property
     def shards(self) -> tuple[int, ...] | None:

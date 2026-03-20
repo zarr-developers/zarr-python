@@ -52,7 +52,12 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
-from zarr.core.metadata.v3 import parse_codecs
+from zarr.core.metadata.v3 import (
+    ChunkGridMetadata,
+    RectilinearChunkGrid,
+    RegularChunkGrid,
+    parse_codecs,
+)
 from zarr.registry import get_ndbuffer_class, get_pipeline_class
 from zarr.storage._utils import _normalize_byte_range_index
 
@@ -381,16 +386,13 @@ class ShardingCodec(
         *,
         shape: tuple[int, ...],
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_grid: ChunkGrid,
+        chunk_grid: ChunkGridMetadata,
     ) -> None:
         if len(self.chunk_shape) != len(shape):
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
             )
-        # Sharding works with both regular and rectilinear outer chunk grids.
-        # Each shard is self-contained — the ShardingCodec constructs an independent
-        # inner ChunkGrid per shard using the shard shape and subchunk shape.
-        if chunk_grid.is_regular:
+        if isinstance(chunk_grid, RegularChunkGrid):
             if not all(
                 s % c == 0
                 for s, c in zip(
@@ -403,15 +405,13 @@ class ShardingCodec(
                     f"The array's `chunk_shape` (got {chunk_grid.chunk_shape}) "
                     f"needs to be divisible by the shard's inner `chunk_shape` (got {self.chunk_shape})."
                 )
-        else:
+        elif isinstance(chunk_grid, RectilinearChunkGrid):
             # For rectilinear grids, every unique edge length per dimension
             # must be divisible by the corresponding inner chunk size.
-            # unique_edge_lengths is a lazy generator that short-circuits
-            # deduplication, and we short-circuit on the first failure.
-            for i, (dim, inner) in enumerate(
-                zip(chunk_grid.dimensions, self.chunk_shape, strict=False)
+            for i, (edges, inner) in enumerate(
+                zip(chunk_grid.chunk_shapes, self.chunk_shape, strict=False)
             ):
-                for edge in dim.unique_edge_lengths:
+                for edge in set(edges):
                     if edge % inner != 0:
                         raise ValueError(
                             f"Chunk edge length {edge} in dimension {i} is not "

@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr.core.array import ShardsLike
+    from zarr.core.metadata import ArrayMetadata
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +426,26 @@ class ChunkGrid:
         object.__setattr__(
             self, "_is_regular", all(isinstance(d, FixedDimension) for d in dimensions)
         )
+
+    @classmethod
+    def from_metadata(cls, metadata: ArrayMetadata) -> ChunkGrid:
+        """Construct a behavioral ChunkGrid from array metadata.
+
+        For v2 metadata, builds from shape and chunks.
+        For v3 metadata, dispatches on the chunk grid type.
+        """
+        from zarr.core.metadata import ArrayV2Metadata
+        from zarr.core.metadata.v3 import RectilinearChunkGrid, RegularChunkGrid
+
+        if isinstance(metadata, ArrayV2Metadata):
+            return cls.from_regular(metadata.shape, metadata.chunks)
+        chunk_grid_meta = metadata.chunk_grid
+        if isinstance(chunk_grid_meta, RegularChunkGrid):
+            return cls.from_regular(metadata.shape, chunk_grid_meta.chunk_shape)
+        elif isinstance(chunk_grid_meta, RectilinearChunkGrid):
+            return cls.from_rectilinear(chunk_grid_meta.chunk_shapes, metadata.shape)
+        else:
+            raise TypeError(f"Unknown chunk grid metadata type: {type(chunk_grid_meta)}")
 
     @classmethod
     def from_regular(cls, array_shape: ShapeLike, chunk_shape: ShapeLike) -> ChunkGrid:
