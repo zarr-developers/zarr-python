@@ -25,7 +25,7 @@ from zarr.core.array import (
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
 from zarr.core.common import (
     JSON,
-    DimensionNames,
+    DimensionNamesLike,
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
@@ -313,7 +313,7 @@ def create_array_metadata(
     zarr_format: ZarrFormat,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
 ) -> ArrayV2Metadata | ArrayV3Metadata:
     """
     Create array metadata
@@ -452,7 +452,7 @@ def meta_from_array(
     zarr_format: ZarrFormat = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
 ) -> ArrayV3Metadata | ArrayV2Metadata:
     """
     Create array metadata from an array

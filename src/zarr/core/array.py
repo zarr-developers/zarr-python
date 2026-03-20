@@ -53,7 +53,7 @@ from zarr.core.common import (
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
-    DimensionNames,
+    DimensionNamesLike,
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
@@ -389,7 +389,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -417,7 +417,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
@@ -445,7 +445,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -479,7 +479,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -630,7 +630,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -742,7 +742,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
     ) -> ArrayV3Metadata:
         """
@@ -803,7 +803,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
     ) -> AsyncArrayV3:
@@ -1998,7 +1998,7 @@ class Array(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: tuple[int, ...] | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -2142,7 +2142,7 @@ class Array(Generic[T_ArrayMetadata]):
             | None
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         # v2 only
         chunks: tuple[int, ...] | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
@@ -4266,7 +4266,7 @@ async def from_array(
     zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
@@ -4535,7 +4535,7 @@ async def init_array(
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
 ) -> AnyAsyncArray:
@@ -4751,7 +4751,7 @@ async def create_array(
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfigLike | None = None,
@@ -4935,7 +4935,7 @@ def _parse_keep_array_attr(
     order: MemoryOrder | None,
     zarr_format: ZarrFormat | None,
     chunk_key_encoding: ChunkKeyEncodingLike | None,
-    dimension_names: DimensionNames,
+    dimension_names: DimensionNamesLike,
 ) -> tuple[
     tuple[int, ...] | Literal["auto"],
     ShardsLike | None,
@@ -4946,7 +4946,7 @@ def _parse_keep_array_attr(
     MemoryOrder | None,
     ZarrFormat,
     ChunkKeyEncodingLike | None,
-    DimensionNames,
+    DimensionNamesLike,
 ]:
     if isinstance(data, Array):
         if chunks == "keep":
