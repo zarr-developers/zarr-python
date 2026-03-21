@@ -35,8 +35,21 @@ from zarr.api.synchronous import (
     zeros_like,
 )
 from zarr.core.array import Array, AsyncArray
+from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.chunk_key_encodings import (
+    ChunkKeyEncoding,
+    DefaultChunkKeyEncoding,
+    V2ChunkKeyEncoding,
+)
 from zarr.core.config import config
-from zarr.core.group import AsyncGroup, Group
+from zarr.core.group import (
+    AsyncGroup,
+    ConsolidatedMetadata,
+    Group,
+    GroupMetadata,
+    ImplicitGroupMarker,
+)
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")
@@ -144,9 +157,19 @@ def set_format(log_format: str) -> None:
 
 __all__ = [
     "Array",
+    "ArrayV2Metadata",
+    "ArrayV3Metadata",
     "AsyncArray",
     "AsyncGroup",
+    "ChunkGrid",
+    "ChunkKeyEncoding",
+    "ConsolidatedMetadata",
+    "DefaultChunkKeyEncoding",
     "Group",
+    "GroupMetadata",
+    "ImplicitGroupMarker",
+    "RegularChunkGrid",
+    "V2ChunkKeyEncoding",
     "__version__",
     "array",
     "config",

@@ -83,6 +83,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("zarr.group")
 
+__all__ = [
+    "AsyncGroup",
+    "ConsolidatedMetadata",
+    "Group",
+    "GroupMetadata",
+    "ImplicitGroupMarker",
+]
+
 DefaultT = TypeVar("DefaultT")
 
 
