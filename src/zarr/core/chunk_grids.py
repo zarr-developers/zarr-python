@@ -484,8 +484,10 @@ class ChunkGrid:
             # Collapse to FixedDimension when edges are uniform AND either
             # extent == edge_sum (exact fit) or the number of edges matches
             # ceildiv(extent, edge) (regular grid with boundary overflow).
-            if all(e == edges_list[0] for e in edges_list) and (
-                extent == edge_sum or len(edges_list) == ceildiv(extent, edges_list[0])
+            if (
+                edges_list[0] > 0
+                and all(e == edges_list[0] for e in edges_list)
+                and (extent == edge_sum or len(edges_list) == ceildiv(extent, edges_list[0]))
             ):
                 dims.append(FixedDimension(size=edges_list[0], extent=extent))
             else:
