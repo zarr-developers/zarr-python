@@ -417,6 +417,11 @@ class ShardingCodec(
                             f"Chunk edge length {edge} in dimension {i} is not "
                             f"divisible by the shard's inner chunk size {inner}."
                         )
+        else:
+            raise TypeError(
+                f"Sharding is only compatible with regular and rectilinear chunk grids, "
+                f"got {type(chunk_grid)}"
+            )
 
     async def _decode_single(
         self,
