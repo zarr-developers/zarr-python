@@ -659,12 +659,13 @@ print(z[5:25, 0:5])
 
 ### Inspecting chunk sizes
 
-The `.chunk_sizes` property returns the actual data size of each chunk along
-every dimension. It works for both regular and rectilinear arrays and returns
-a tuple of tuples:
+The `.write_chunk_sizes` property returns the actual data size of each storage
+chunk along every dimension. It works for both regular and rectilinear arrays
+and returns a tuple of tuples (matching the dask `Array.chunks` convention).
+When sharding is used, `.read_chunk_sizes` returns the inner chunk sizes instead:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
-print(z.chunk_sizes)
+print(z.write_chunk_sizes)
 ```
 
 For regular arrays, this includes the boundary chunk:
@@ -676,16 +677,18 @@ z_regular = zarr.create_array(
     chunks=(30, 40),
     dtype='int32',
 )
-print(z_regular.chunk_sizes)
+print(z_regular.write_chunk_sizes)
 ```
 
 Note that the `.chunks` property is only available for regular chunk grids. For
-rectilinear arrays, use `.chunk_sizes` instead.
+rectilinear arrays, use `.write_chunk_sizes` (or `.read_chunk_sizes`) instead.
 
 ### Resizing and appending
 
-Rectilinear arrays can be resized. When growing, a new chunk is appended with
-the size of the added region. When shrinking, trailing chunks are dropped:
+Rectilinear arrays can be resized. When growing past the current edge sum, a
+new chunk is appended covering the additional extent. When shrinking, the chunk
+edges are preserved and the extent is re-bound (chunks beyond the new extent
+simply become inactive):
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 z = zarr.create_array(
@@ -695,16 +698,16 @@ z = zarr.create_array(
     dtype='float64',
 )
 z[:] = np.arange(30, dtype='float64')
-print(f"Before resize: chunk_sizes={z.chunk_sizes}")
+print(f"Before resize: chunk_sizes={z.write_chunk_sizes}")
 z.resize((50,))
-print(f"After resize:  chunk_sizes={z.chunk_sizes}")
+print(f"After resize:  chunk_sizes={z.write_chunk_sizes}")
 ```
 
 The `append` method also works with rectilinear arrays:
 
 ```python exec="true" session="arrays" source="above" result="ansi"
 z.append(np.arange(10, dtype='float64'))
-print(f"After append:  shape={z.shape}, chunk_sizes={z.chunk_sizes}")
+print(f"After append:  shape={z.shape}, chunk_sizes={z.write_chunk_sizes}")
 ```
 
 ### Compressors and filters
