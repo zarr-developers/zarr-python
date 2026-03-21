@@ -1,0 +1,104 @@
+name: Test PyPI Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+      - 'test-release-*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_artifacts:
+    name: Build distribution files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        name: Install Python
+        with:
+          python-version: '3.11'
+
+      - name: Install Hatch
+        uses: pypa/hatch@257e27e51a6a5616ed08a39a408a21c35c9931bc
+        with:
+          version: '1.16.5'
+
+      - name: Build wheel and sdist
+        run: hatch build
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: distribution
+          path: dist
+
+  test_testpypi_upload:
+    needs: build_artifacts
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/zarr
+
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: distribution
+          path: dist
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Publish package to TestPyPI
+        uses: pypa/gh-action-pypi-publish@v1.13.0
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          password: ${{ secrets.TESTPYPI_API_TOKEN }}
+
+  test_testpypi_install:
+    needs: test_testpypi_upload
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.11']
+      fail-fast: true
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install from TestPyPI
+        run: |
+          python -m pip install --index-url https://test.pypi.org/simple/ \
+            --extra-index-url https://pypi.org/simple/ \
+            zarr
+
+      - name: Smoke test
+        run: |
+          python -c "
+          import zarr
+          print(f'zarr version: {zarr.__version__}')
+          print(f'zarr location: {zarr.__file__}')
+          
+          # Basic functionality test
+          store = zarr.MemoryStore()
+          root = zarr.open_group(store=store, mode='w')
+          array = root.create_dataset('test', data=[1, 2, 3])
+          assert len(array) == 3, 'Failed to create/read dataset'
+          print('✓ Basic zarr operations work correctly')
+          "
+
+      - name: Print success message
+        run: echo "✓ TestPyPI installation and smoke tests passed!"
