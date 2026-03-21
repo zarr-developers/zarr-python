@@ -1,7 +1,6 @@
 """Tests for scalar indexing (Issue #3741)."""
 
 import numpy as np
-import pytest
 
 import zarr
 
