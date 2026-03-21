@@ -25,6 +25,7 @@ from zarr.core.common import (
     parse_named_configuration,
     parse_shapelike,
     validate_rectilinear_edges,
+    validate_rectilinear_kind,
 )
 from zarr.errors import ZarrUserWarning
 
@@ -316,24 +317,6 @@ def _serialize_varying_dim(dim: VaryingDimension) -> RectilinearDimSpec:
         return rle
     # mypy: list[int] is invariant, so it won't widen to list[int | list[int]]
     return cast("RectilinearDimSpec", edges)
-
-
-def _validate_rectilinear_kind(configuration: dict[str, JSON]) -> None:
-    """Validate the ``kind`` field of a rectilinear chunk grid configuration.
-
-    The spec requires ``kind: "inline"``.
-    """
-    kind = configuration.get("kind")
-    if kind is None:
-        raise ValueError(
-            "Rectilinear chunk grid configuration requires a 'kind' field. "
-            "Only 'inline' is currently supported."
-        )
-    if kind != "inline":
-        raise ValueError(
-            f"Unsupported rectilinear chunk grid kind: {kind!r}. "
-            f"Only 'inline' is currently supported."
-        )
 
 
 def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[int]:
@@ -711,7 +694,7 @@ def parse_chunk_grid(
         return ChunkGrid.from_regular(array_shape, cast("Sequence[int]", chunk_shape_raw))
 
     if name_parsed == "rectilinear":
-        _validate_rectilinear_kind(configuration_parsed)
+        validate_rectilinear_kind(cast("str | None", configuration_parsed.get("kind")))
         chunk_shapes_raw = configuration_parsed.get("chunk_shapes")
         if chunk_shapes_raw is None:
             raise ValueError("Rectilinear chunk grid requires 'chunk_shapes' configuration")

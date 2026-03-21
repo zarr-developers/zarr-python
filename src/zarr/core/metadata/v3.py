@@ -25,6 +25,7 @@ from zarr.core.common import (
     parse_named_configuration,
     parse_shapelike,
     validate_rectilinear_edges,
+    validate_rectilinear_kind,
 )
 from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
@@ -212,20 +213,6 @@ def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
     return as_tup
 
 
-def _validate_rectilinear_kind(kind: str | None) -> None:
-    """The rectilinear spec requires ``kind: "inline"``."""
-    if kind is None:
-        raise ValueError(
-            "Rectilinear chunk grid configuration requires a 'kind' field. "
-            "Only 'inline' is currently supported."
-        )
-    if kind != "inline":
-        raise ValueError(
-            f"Unsupported rectilinear chunk grid kind: {kind!r}. "
-            "Only 'inline' is currently supported."
-        )
-
-
 def _validate_chunk_shapes(
     chunk_shapes: Sequence[Sequence[int]],
 ) -> tuple[tuple[int, ...], ...]:
@@ -342,7 +329,7 @@ class RectilinearChunkGrid(Metadata):
     def from_dict(cls, data: RectilinearChunkGridJSON) -> Self:  # type: ignore[override]
         parse_named_configuration(data, "rectilinear")  # validate name
         configuration = data["configuration"]
-        _validate_rectilinear_kind(configuration.get("kind"))
+        validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
         expanded: list[tuple[int, ...]] = []
         for dim_spec in raw_shapes:

@@ -305,6 +305,23 @@ def compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
     return result
 
 
+def validate_rectilinear_kind(kind: str | None) -> None:
+    """Validate the ``kind`` field of a rectilinear chunk grid configuration.
+
+    The rectilinear spec requires ``kind: "inline"``.
+    """
+    if kind is None:
+        raise ValueError(
+            "Rectilinear chunk grid configuration requires a 'kind' field. "
+            "Only 'inline' is currently supported."
+        )
+    if kind != "inline":
+        raise ValueError(
+            f"Unsupported rectilinear chunk grid kind: {kind!r}. "
+            "Only 'inline' is currently supported."
+        )
+
+
 def validate_rectilinear_edges(
     chunk_shapes: Sequence[Sequence[int]], array_shape: Sequence[int]
 ) -> None:
