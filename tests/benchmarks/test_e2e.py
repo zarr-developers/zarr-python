@@ -80,3 +80,68 @@ def test_read_array(
     )
     arr[:] = 1
     benchmark(getitem, arr, Ellipsis)
+
+
+# Zarr v2 benchmark tests
+
+v2_compressors: dict[CompressorName, NamedConfig[Any, Any] | None] = {
+    None: None,
+    "gzip": {"name": "gzip", "configuration": {"level": 1}},
+}
+
+v2_layouts: tuple[Layout, ...] = (
+    # No shards, just 1000 chunks
+    Layout(shape=(1_000_000,), chunks=(1000,), shards=None),
+    # Larger chunks (v2 doesn't support shards, so we skip the other layouts)
+    Layout(shape=(1_000_000,), chunks=(10000,), shards=None),
+)
+
+
+@pytest.mark.parametrize("compression_name", [None, "gzip"])
+@pytest.mark.parametrize("layout", v2_layouts, ids=str)
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
+def test_read_array_v2(
+    store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
+) -> None:
+    """
+    Test the time required to read a Zarr v2 array
+
+    This benchmark tests reading performance of Zarr v2 format arrays,
+    which only supports traditional chunking without shards.
+    """
+    arr = create_array(
+        store,
+        zarr_format=2,
+        dtype="uint8",
+        shape=layout.shape,
+        chunks=layout.chunks,
+        compressors=v2_compressors[compression_name],  # type: ignore[arg-type]
+        fill_value=0,
+    )
+    arr[:] = 1
+    benchmark(getitem, arr, Ellipsis)
+
+
+@pytest.mark.parametrize("compression_name", [None, "gzip"])
+@pytest.mark.parametrize("layout", v2_layouts, ids=str)
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
+def test_write_array_v2(
+    store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
+) -> None:
+    """
+    Test the time required to write a Zarr v2 array
+
+    This benchmark tests writing performance of Zarr v2 format arrays,
+    which only supports traditional chunking without shards.
+    """
+    arr = create_array(
+        store,
+        zarr_format=2,
+        dtype="uint8",
+        shape=layout.shape,
+        chunks=layout.chunks,
+        compressors=v2_compressors[compression_name],  # type: ignore[arg-type]
+        fill_value=0,
+    )
+
+    benchmark(setitem, arr, Ellipsis, 1)
