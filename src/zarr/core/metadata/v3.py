@@ -171,10 +171,6 @@ def parse_extra_fields(
         return dict(data)
 
 
-# ---------------------------------------------------------------------------
-# Chunk grid metadata types (pure DTOs — no array shape, no behavioral logic)
-# ---------------------------------------------------------------------------
-
 # JSON type for a single dimension's rectilinear spec:
 # bare int (uniform shorthand), or list of ints / [value, count] RLE pairs.
 RectilinearDimSpecJSON = int | list[int | list[int]]

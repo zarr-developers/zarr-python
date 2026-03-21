@@ -53,11 +53,6 @@ def _edges(grid: ChunkGrid, dim: int) -> tuple[int, ...]:
     raise TypeError(f"Unexpected dimension type: {type(d)}")
 
 
-# ---------------------------------------------------------------------------
-# Index to chunk
-# ---------------------------------------------------------------------------
-
-
 class TestVaryingDimensionIndexToChunkBounds:
     def test_index_at_extent_raises(self) -> None:
         """index_to_chunk(extent) should raise since extent is out of bounds."""
@@ -90,11 +85,6 @@ class TestFixedDimensionIndexToChunkBounds:
     def test_last_valid_index_works(self) -> None:
         dim = FixedDimension(size=10, extent=95)
         assert dim.index_to_chunk(94) == 9
-
-
-# ---------------------------------------------------------------------------
-# Feature flag gating
-# ---------------------------------------------------------------------------
 
 
 class TestRectilinearFeatureFlag:
@@ -132,11 +122,6 @@ class TestRectilinearFeatureFlag:
                 )
 
 
-# ---------------------------------------------------------------------------
-# RegularChunkGrid backwards compatibility
-# ---------------------------------------------------------------------------
-
-
 class TestRegularChunkGridCompat:
     """The deprecated RegularChunkGrid shim should work for common patterns."""
 
@@ -166,11 +151,6 @@ class TestRegularChunkGridCompat:
 
         assert not isinstance("hello", RegularChunkGrid)
         assert not isinstance(42, RegularChunkGrid)
-
-
-# ---------------------------------------------------------------------------
-# FixedDimension
-# ---------------------------------------------------------------------------
 
 
 class TestFixedDimension:
@@ -221,11 +201,6 @@ class TestFixedDimension:
     # FixedDimension.chunk_offset/chunk_size/data_size do not bounds-check
     # for performance (callers validate). OOB access is tested via
     # ChunkGrid.__getitem__ which checks before delegating.
-
-
-# ---------------------------------------------------------------------------
-# VaryingDimension
-# ---------------------------------------------------------------------------
 
 
 class TestVaryingDimension:
@@ -279,11 +254,6 @@ class TestVaryingDimension:
             VaryingDimension([10, 0, 5], extent=15)
 
 
-# ---------------------------------------------------------------------------
-# ChunkSpec
-# ---------------------------------------------------------------------------
-
-
 class TestChunkSpec:
     def test_basic(self) -> None:
         spec = ChunkSpec(
@@ -300,11 +270,6 @@ class TestChunkSpec:
         )
         assert spec.shape == (5, 20)
         assert spec.is_boundary
-
-
-# ---------------------------------------------------------------------------
-# ChunkGrid construction
-# ---------------------------------------------------------------------------
 
 
 class TestChunkGridConstruction:
@@ -339,11 +304,6 @@ class TestChunkGridConstruction:
         g = ChunkGrid.from_rectilinear([[10, 10, 10], [25, 25]], array_shape=(30, 50))
         assert g.is_regular
         assert g.chunk_shape == (10, 25)
-
-
-# ---------------------------------------------------------------------------
-# ChunkGrid queries
-# ---------------------------------------------------------------------------
 
 
 class TestChunkGridQueries:
@@ -453,11 +413,6 @@ class TestChunkGridQueries:
         assert all(isinstance(s, ChunkSpec) for s in specs)
 
 
-# ---------------------------------------------------------------------------
-# RLE helpers
-# ---------------------------------------------------------------------------
-
-
 class TestRLE:
     def test_expand(self) -> None:
         assert expand_rle([[10, 3]]) == [10, 10, 10]
@@ -502,17 +457,12 @@ class TestRLE:
 class TestExpandRleHandlesJsonFloats:
     def test_bare_integer_floats_accepted(self) -> None:
         """JSON parsers may emit 10.0 for the integer 10; expand_rle should handle it."""
-        result = expand_rle([10.0, 20.0])
+        result = expand_rle([10.0, 20.0])  # type: ignore[list-item]
         assert result == [10, 20]
 
     def test_rle_pair_with_float_count(self) -> None:
-        result = expand_rle([[10, 3.0]])
+        result = expand_rle([[10, 3.0]])  # type: ignore[list-item]
         assert result == [10, 10, 10]
-
-
-# ---------------------------------------------------------------------------
-# _decode_dim_spec edge cases
-# ---------------------------------------------------------------------------
 
 
 class TestDecodeDimSpec:
@@ -560,11 +510,6 @@ class TestDecodeDimSpec:
             _decode_dim_spec(None, array_extent=10)
 
 
-# ---------------------------------------------------------------------------
-# _is_rectilinear_chunks edge cases
-# ---------------------------------------------------------------------------
-
-
 class TestIsRectilinearChunks:
     """Edge cases for _is_rectilinear_chunks."""
 
@@ -604,11 +549,6 @@ class TestIsRectilinearChunks:
         assert _is_rectilinear_chunks(3.14) is False
 
 
-# ---------------------------------------------------------------------------
-# _infer_chunk_grid_name edge cases
-# ---------------------------------------------------------------------------
-
-
 class TestInferChunkGridName:
     """Edge cases for _infer_chunk_grid_name."""
 
@@ -637,11 +577,6 @@ class TestInferChunkGridName:
             "configuration": {"kind": "inline", "chunk_shapes": [10]},
         }
         assert _infer_chunk_grid_name(d, g) == "rectilinear"
-
-
-# ---------------------------------------------------------------------------
-# Serialization
-# ---------------------------------------------------------------------------
 
 
 class TestSerialization:
@@ -710,7 +645,7 @@ class TestSerialization:
             "name": "rectilinear",
             "configuration": {"kind": "inline", "chunk_shapes": [10, [20, 30]]},
         }
-        meta = RectilinearChunkGrid.from_dict(data)
+        meta = RectilinearChunkGrid.from_dict(data)  # type: ignore[arg-type]
         out = meta.to_dict()
         # Dim 0 was bare int — should stay bare int
         assert out["configuration"]["chunk_shapes"][0] == 10
@@ -729,7 +664,7 @@ class TestSerialization:
     def test_serialize_unknown_name_raises(self) -> None:
         g = ChunkGrid.from_regular((100,), (10,))
         with pytest.raises(ValueError, match="Unknown chunk grid name for serialization"):
-            serialize_chunk_grid(g, "hexagonal")
+            serialize_chunk_grid(g, "hexagonal")  # type: ignore[arg-type]
 
     def test_zero_extent_rectilinear_raises(self) -> None:
         """Zero-extent grids cannot be serialized as rectilinear (spec requires positive edges)."""
@@ -924,11 +859,6 @@ class TestRectilinearRoundTripPreservesCodecShape:
         assert parsed.dimensions[0].chunk_size(0) == 10
 
 
-# ---------------------------------------------------------------------------
-# Indexing with rectilinear grids
-# ---------------------------------------------------------------------------
-
-
 class TestRectilinearIndexing:
     """Test that the indexing pipeline works with VaryingDimension."""
 
@@ -997,11 +927,6 @@ class TestRectilinearIndexing:
         a = zarr.create_array(store, shape=(30,), chunks=[[10, 20]], dtype="int32")
         with pytest.raises(BoundsCheckError):
             a.get_block_selection((2,))
-
-
-# ---------------------------------------------------------------------------
-# End-to-end: array creation with rectilinear chunks
-# ---------------------------------------------------------------------------
 
 
 class TestEndToEnd:
@@ -1158,11 +1083,6 @@ class TestEndToEnd:
         assert spec2.shape == (30, 50)
 
 
-# ---------------------------------------------------------------------------
-# Sharding compatibility
-# ---------------------------------------------------------------------------
-
-
 class TestShardingCompat:
     def test_sharding_accepts_rectilinear_outer_grid(self) -> None:
         """ShardingCodec.validate should not reject rectilinear outer grids."""
@@ -1178,11 +1098,6 @@ class TestShardingCompat:
             dtype=Float32(),
             chunk_grid=grid_meta,
         )
-
-
-# ---------------------------------------------------------------------------
-# Edge cases
-# ---------------------------------------------------------------------------
 
 
 class TestEdgeCases:
@@ -1562,11 +1477,6 @@ class TestShardingValidationRectilinear:
         )
 
 
-# ---------------------------------------------------------------------------
-# Full-pipeline read/write tests with rectilinear grids
-# ---------------------------------------------------------------------------
-
-
 class TestFullPipelineRectilinear:
     """End-to-end read/write tests through the full Array pipeline."""
 
@@ -1900,10 +1810,6 @@ class TestFullPipelineRectilinear:
         assert z.chunk_grid.get_nchunks() == 12
 
 
-# ---------------------------------------------------------------------------
-# Hypothesis property-based tests
-# ---------------------------------------------------------------------------
-
 pytest.importorskip("hypothesis")
 
 import hypothesis.strategies as st  # noqa: E402
@@ -1976,11 +1882,6 @@ def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
             a[tuple(sel)],
             err_msg=f"dim={dim}, block={block_ix}",
         )
-
-
-# ---------------------------------------------------------------------------
-# V2 regression tests
-# ---------------------------------------------------------------------------
 
 
 class TestV2Regression:
@@ -2089,11 +1990,6 @@ class TestV2Regression:
         assert spec.codec_shape == (10, 10)  # full buffer
 
 
-# ---------------------------------------------------------------------------
-# .read_chunk_sizes / .write_chunk_sizes properties
-# ---------------------------------------------------------------------------
-
-
 class TestChunkSizes:
     """Tests for ChunkGrid.chunk_sizes and Array.read_chunk_sizes / write_chunk_sizes."""
 
@@ -2145,11 +2041,6 @@ class TestChunkSizes:
         assert arr.write_chunk_sizes == ((120,), (80,))
 
 
-# ---------------------------------------------------------------------------
-# .info display for rectilinear grids
-# ---------------------------------------------------------------------------
-
-
 def test_info_display_rectilinear() -> None:
     """Array.info should not crash for rectilinear grids."""
     store = zarr.storage.MemoryStore()
@@ -2164,11 +2055,6 @@ def test_info_display_rectilinear() -> None:
     text = repr(info)
     assert "<variable>" in text
     assert "Array" in text
-
-
-# ---------------------------------------------------------------------------
-# Resize / append for rectilinear grids
-# ---------------------------------------------------------------------------
 
 
 class TestUpdateShape:
@@ -2452,11 +2338,6 @@ class TestAppendRectilinear:
         assert g.chunk_shape == (10, 20)
         assert g.grid_shape == (10, 10)
         assert g.get_nchunks() == 100
-
-
-# ---------------------------------------------------------------------------
-# Boundary chunk tests
-# ---------------------------------------------------------------------------
 
 
 class TestVaryingDimensionBoundary:

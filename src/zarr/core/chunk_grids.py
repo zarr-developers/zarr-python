@@ -36,11 +36,6 @@ if TYPE_CHECKING:
     from zarr.core.metadata import ArrayMetadata
 
 
-# ---------------------------------------------------------------------------
-# Per-dimension grid types
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class FixedDimension:
     """Uniform chunk size. Boundary chunks contain less data but are
@@ -256,11 +251,6 @@ class DimensionGrid(Protocol):
     def resize(self, new_extent: int) -> DimensionGrid: ...
 
 
-# ---------------------------------------------------------------------------
-# ChunkSpec
-# ---------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class ChunkSpec:
     """Specification of a single chunk's location and size.
@@ -283,11 +273,6 @@ class ChunkSpec:
     @property
     def is_boundary(self) -> bool:
         return self.shape != self.codec_shape
-
-
-# ---------------------------------------------------------------------------
-# RLE helpers (ported from #3534)
-# ---------------------------------------------------------------------------
 
 
 # A single dimension's rectilinear chunk spec: bare int (uniform shorthand),
@@ -351,10 +336,6 @@ def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[in
             return [int(e) for e in dim_spec]
     raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
 
-
-# ---------------------------------------------------------------------------
-# Unified ChunkGrid
-# ---------------------------------------------------------------------------
 
 # Type alias for what users can pass as chunks to create_array
 ChunksLike = tuple[int, ...] | list[list[int] | int] | int
@@ -771,11 +752,6 @@ def _infer_chunk_grid_name(
     return "regular" if grid.is_regular else "rectilinear"
 
 
-# ---------------------------------------------------------------------------
-# Chunk guessing / normalization (unchanged)
-# ---------------------------------------------------------------------------
-
-
 def _guess_chunks(
     shape: tuple[int, ...] | int,
     typesize: int,
@@ -997,11 +973,6 @@ def _auto_partition(
             _shards_out = cast("tuple[int, ...]", shard_shape)
 
     return _shards_out, _chunks_out
-
-
-# ---------------------------------------------------------------------------
-# Backwards-compatibility shim for RegularChunkGrid
-# ---------------------------------------------------------------------------
 
 
 class _RegularChunkGridMeta(type):
