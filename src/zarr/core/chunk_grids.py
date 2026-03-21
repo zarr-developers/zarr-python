@@ -6,7 +6,7 @@ import numbers
 import operator
 import warnings
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -177,14 +177,17 @@ class ChunkGrid(Metadata):
         pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class RegularChunkGrid(ChunkGrid):
     chunk_shape: tuple[int, ...]
+    array_shape: tuple[int, ...] | None
 
-    def __init__(self, *, chunk_shape: ShapeLike) -> None:
+    def __init__(self, *, chunk_shape: ShapeLike, array_shape: ShapeLike | None = None) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
+        array_shape_parsed = parse_shapelike(array_shape) if array_shape is not None else None
 
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
+        object.__setattr__(self, "array_shape", array_shape_parsed)
 
     @classmethod
     def _from_dict(cls, data: dict[str, JSON] | NamedConfig[str, Any]) -> Self:
@@ -194,6 +197,21 @@ class RegularChunkGrid(ChunkGrid):
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
+
+    def with_array_shape(self, array_shape: tuple[int, ...]) -> Self:
+        """Return a new RegularChunkGrid with the given array_shape set.
+
+        Parameters
+        ----------
+        array_shape : tuple[int, ...]
+            The shape of the array associated with this chunk grid.
+
+        Returns
+        -------
+        RegularChunkGrid
+            A new RegularChunkGrid instance with the array_shape attribute set.
+        """
+        return replace(self, array_shape=array_shape)
 
     def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
         return itertools.product(

@@ -1,9 +1,9 @@
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
-from zarr.core.chunk_grids import _guess_chunks, normalize_chunks
+from zarr.core.chunk_grids import RegularChunkGrid, _guess_chunks, normalize_chunks
 
 
 @pytest.mark.parametrize(
@@ -61,3 +61,53 @@ def test_normalize_chunks_errors() -> None:
         normalize_chunks(((10, 20, 30),), (60,), 1)
     with pytest.raises(ValueError, match="Irregular chunk sizes"):
         normalize_chunks(((100, 100), (10, 20)), (200, 30), 1)
+
+
+def test_chunk_grid_array_shape_tracking() -> None:
+    """Test that ChunkGrid can track the array shape it's associated with."""
+    chunk_shape = (10, 20)
+    array_shape = (100, 200)
+
+    # Create a ChunkGrid without array_shape
+    chunk_grid = RegularChunkGrid(chunk_shape=chunk_shape)
+    assert chunk_grid.array_shape is None
+
+    # Create a ChunkGrid with array_shape
+    chunk_grid_with_shape = RegularChunkGrid(chunk_shape=chunk_shape, array_shape=array_shape)
+    assert chunk_grid_with_shape.array_shape == array_shape
+
+
+def test_chunk_grid_with_array_shape_method() -> None:
+    """Test the with_array_shape method for setting array shape on existing ChunkGrid."""
+    chunk_shape = (10, 20)
+    array_shape = (100, 200)
+
+    # Create initial ChunkGrid without shape
+    chunk_grid = RegularChunkGrid(chunk_shape=chunk_shape)
+    assert chunk_grid.array_shape is None
+
+    # Use with_array_shape to get a new ChunkGrid with shape set
+    chunk_grid_with_shape = chunk_grid.with_array_shape(array_shape)
+    assert chunk_grid_with_shape.array_shape == array_shape
+    assert chunk_grid_with_shape.chunk_shape == chunk_shape
+
+    # Original should still be None
+    assert chunk_grid.array_shape is None
+
+
+def test_chunk_grid_array_shape_serialization() -> None:
+    """Test that array_shape is not included in serialization (backward compatibility)."""
+    chunk_shape = (10, 20)
+    array_shape = (100, 200)
+
+    # Create a ChunkGrid with array_shape
+    chunk_grid = RegularChunkGrid(chunk_shape=chunk_shape, array_shape=array_shape)
+
+    # Serialize to dict
+    chunk_dict = chunk_grid.to_dict()
+
+    # Verify that array_shape is not in the serialized form
+    assert "array_shape" not in chunk_dict
+    # Verify that chunk_shape is still there
+    config = cast(dict[str, Any], chunk_dict.get("configuration"))
+    assert config["chunk_shape"] == chunk_shape
