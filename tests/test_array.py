@@ -2311,7 +2311,7 @@ def test_array_len_dimensioned(shape: tuple[int, ...]) -> None:
 @pytest.mark.parametrize("shape", [(10,), (5, 10), (3, 4, 5)])
 async def test_array_len_dimensioned_async(shape: tuple[int, ...]) -> None:
     """Test __len__ for async dimensioned arrays returns shape[0]."""
-    arr = await AsyncArray.create({}, shape=shape, dtype="uint8")
+    arr = await zarr.api.asynchronous.create_array({}, shape=shape, dtype="uint8")
     assert len(arr) == shape[0]
 
 
@@ -2324,6 +2324,6 @@ def test_array_len_0d_raises() -> None:
 
 async def test_array_len_0d_raises_async() -> None:
     """Test __len__ raises TypeError for async 0-dimensional arrays."""
-    arr = await AsyncArray.create({}, shape=(), dtype="uint8")
+    arr = await zarr.api.asynchronous.create_array({}, shape=(), dtype="uint8")
     with pytest.raises(TypeError, match="len\\(\\) of unsized object"):
         len(arr)
