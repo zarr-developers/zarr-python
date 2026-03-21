@@ -20,6 +20,8 @@ from zarr.core.common import (
     NamedConfig,
     ShapeLike,
     ceildiv,
+    compress_rle,
+    expand_rle,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -264,49 +266,6 @@ class ChunkSpec:
 # ---------------------------------------------------------------------------
 
 
-def _expand_rle(data: Sequence[list[int] | int]) -> list[int]:
-    """Expand a mixed array of bare integers and RLE pairs.
-
-    Per the rectilinear chunk grid spec, each element can be:
-    - a bare integer (an explicit edge length)
-    - a two-element array ``[value, count]`` (run-length encoded)
-    """
-    result: list[int] = []
-    for item in data:
-        if isinstance(item, (int, float)) and not isinstance(item, bool):
-            result.append(int(item))
-        elif isinstance(item, list) and len(item) == 2:
-            size, count = int(item[0]), int(item[1])
-            result.extend([size] * count)
-        else:
-            raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
-    return result
-
-
-def _compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
-    """Compress chunk sizes to mixed RLE format per the rectilinear spec.
-
-    Runs of length > 1 are emitted as ``[value, count]`` pairs; runs of
-    length 1 are emitted as bare integers::
-
-        [10, 10, 10, 5] -> [[10, 3], 5]
-    """
-    if not sizes:
-        return []
-    result: list[int | list[int]] = []
-    current = sizes[0]
-    count = 1
-    for s in sizes[1:]:
-        if s == current:
-            count += 1
-        else:
-            result.append([current, count] if count > 1 else current)
-            current = s
-            count = 1
-    result.append([current, count] if count > 1 else current)
-    return result
-
-
 # A single dimension's rectilinear chunk spec: bare int (uniform shorthand),
 # list of ints (explicit edges), or mixed RLE (e.g. [[10, 3], 5]).
 RectilinearDimSpec = int | list[int | list[int]]
@@ -329,7 +288,7 @@ def _serialize_fixed_dim(dim: FixedDimension) -> RectilinearDimSpec:
 def _serialize_varying_dim(dim: VaryingDimension) -> RectilinearDimSpec:
     """RLE-compressed rectilinear representation for a varying dimension."""
     edges = list(dim.edges)
-    rle = _compress_rle(edges)
+    rle = compress_rle(edges)
     if len(rle) < len(edges):
         return rle
     # mypy: list[int] is invariant, so it won't widen to list[int | list[int]]
@@ -380,7 +339,7 @@ def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[in
         # Check if the list contains any sub-lists (RLE pairs) or is all bare ints
         has_sublists = any(isinstance(e, list) for e in dim_spec)
         if has_sublists:
-            return _expand_rle(dim_spec)
+            return expand_rle(dim_spec)
         else:
             # All bare integers — explicit edge lengths
             return [int(e) for e in dim_spec]

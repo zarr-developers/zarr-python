@@ -20,6 +20,8 @@ from zarr.core.common import (
     DimensionNames,
     NamedConfig,
     NamedRequiredConfig,
+    compress_rle,
+    expand_rle,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -223,49 +225,6 @@ def _validate_rectilinear_kind(kind: str | None) -> None:
         )
 
 
-def _expand_rle(data: Sequence[int | list[int]]) -> list[int]:
-    """Expand a mixed array of bare integers and RLE pairs.
-
-    Per the rectilinear chunk grid spec, each element can be:
-    - a bare integer (an explicit edge length)
-    - a two-element array ``[value, count]`` (run-length encoded)
-    """
-    result: list[int] = []
-    for item in data:
-        if isinstance(item, (int, float)) and not isinstance(item, bool):
-            result.append(int(item))
-        elif isinstance(item, list) and len(item) == 2:
-            size, count = int(item[0]), int(item[1])
-            result.extend([size] * count)
-        else:
-            raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")
-    return result
-
-
-def _compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
-    """Compress chunk sizes to mixed RLE format per the rectilinear spec.
-
-    Runs of length > 1 are emitted as ``[value, count]`` pairs; runs of
-    length 1 are emitted as bare integers::
-
-        [10, 10, 10, 5] -> [[10, 3], 5]
-    """
-    if not sizes:
-        return []
-    result: list[int | list[int]] = []
-    current = sizes[0]
-    count = 1
-    for s in sizes[1:]:
-        if s == current:
-            count += 1
-        else:
-            result.append([current, count] if count > 1 else current)
-            current = s
-            count = 1
-    result.append([current, count] if count > 1 else current)
-    return result
-
-
 def _validate_chunk_shapes(
     chunk_shapes: Sequence[Sequence[int]],
 ) -> tuple[tuple[int, ...], ...]:
@@ -342,7 +301,7 @@ class RectilinearChunkGrid(Metadata):
     def to_dict(self) -> RectilinearChunkGridJSON:  # type: ignore[override]
         serialized_dims: list[RectilinearDimSpecJSON] = []
         for edges in self.chunk_shapes:
-            rle = _compress_rle(edges)
+            rle = compress_rle(edges)
             # Use RLE only if it's actually shorter
             if len(rle) < len(edges):
                 serialized_dims.append(rle)
@@ -390,7 +349,7 @@ class RectilinearChunkGrid(Metadata):
                     raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
                 expanded.append((dim_spec,))
             elif isinstance(dim_spec, list):
-                expanded.append(tuple(_expand_rle(dim_spec)))
+                expanded.append(tuple(expand_rle(dim_spec)))
             else:
                 raise TypeError(
                     f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"

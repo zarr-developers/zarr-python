@@ -20,14 +20,13 @@ from zarr.core.chunk_grids import (
     ChunkSpec,
     FixedDimension,
     VaryingDimension,
-    _compress_rle,
     _decode_dim_spec,
-    _expand_rle,
     _infer_chunk_grid_name,
     _is_rectilinear_chunks,
     parse_chunk_grid,
     serialize_chunk_grid,
 )
+from zarr.core.common import compress_rle, expand_rle
 from zarr.errors import BoundsCheckError
 from zarr.storage import MemoryStore
 
@@ -477,29 +476,29 @@ class TestChunkGridQueries:
 
 class TestRLE:
     def test_expand(self) -> None:
-        assert _expand_rle([[10, 3]]) == [10, 10, 10]
-        assert _expand_rle([[10, 2], [20, 1]]) == [10, 10, 20]
+        assert expand_rle([[10, 3]]) == [10, 10, 10]
+        assert expand_rle([[10, 2], [20, 1]]) == [10, 10, 20]
 
     def test_compress(self) -> None:
-        assert _compress_rle([10, 10, 10]) == [[10, 3]]
-        assert _compress_rle([10, 10, 20]) == [[10, 2], 20]
-        assert _compress_rle([5]) == [5]
-        assert _compress_rle([10, 20, 30]) == [10, 20, 30]
+        assert compress_rle([10, 10, 10]) == [[10, 3]]
+        assert compress_rle([10, 10, 20]) == [[10, 2], 20]
+        assert compress_rle([5]) == [5]
+        assert compress_rle([10, 20, 30]) == [10, 20, 30]
 
     def test_roundtrip(self) -> None:
         original = [10, 10, 10, 20, 20, 30]
-        compressed = _compress_rle(original)
-        assert _expand_rle(compressed) == original
+        compressed = compress_rle(original)
+        assert expand_rle(compressed) == original
 
 
 class TestExpandRleHandlesJsonFloats:
     def test_bare_integer_floats_accepted(self) -> None:
-        """JSON parsers may emit 10.0 for the integer 10; _expand_rle should handle it."""
-        result = _expand_rle([10.0, 20.0])  # type: ignore[list-item]
+        """JSON parsers may emit 10.0 for the integer 10; expand_rle should handle it."""
+        result = expand_rle([10.0, 20.0])  # type: ignore[list-item]
         assert result == [10, 20]
 
     def test_rle_pair_with_float_count(self) -> None:
-        result = _expand_rle([[10, 3.0]])  # type: ignore[list-item]
+        result = expand_rle([[10, 3.0]])  # type: ignore[list-item]
         assert result == [10, 10, 10]
 
 
