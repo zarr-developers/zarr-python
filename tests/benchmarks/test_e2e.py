@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.common import NamedConfig
+
 from operator import getitem, setitem
 from typing import Any, Literal
 
@@ -21,12 +22,12 @@ import pytest
 from zarr import create_array
 
 CompressorName = Literal["gzip"] | None
+ZarrFormat = Literal[2, 3]
 
 compressors: dict[CompressorName, NamedConfig[Any, Any] | None] = {
     None: None,
     "gzip": {"name": "gzip", "configuration": {"level": 1}},
 }
-
 
 layouts: tuple[Layout, ...] = (
     # No shards, just 1000 chunks
@@ -38,17 +39,28 @@ layouts: tuple[Layout, ...] = (
 )
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("compression_name", [None, "gzip"])
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_write_array(
-    store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
+    store: Store,
+    layout: Layout,
+    compression_name: CompressorName,
+    zarr_format: ZarrFormat,
+    benchmark: BenchmarkFixture,
 ) -> None:
     """
-    Test the time required to fill an array with a single value
+    Test the time required to fill an array with a single value.
+    Parametrized to benchmark both Zarr v2 and v3 formats.
     """
+    # Skip v2 tests with sharding (not supported in v2)
+    if zarr_format == 2 and layout.shards is not None:
+        pytest.skip("Sharding not supported in Zarr v2")
+
     arr = create_array(
         store,
+        zarr_format=zarr_format,
         dtype="uint8",
         shape=layout.shape,
         chunks=layout.chunks,
@@ -60,17 +72,28 @@ def test_write_array(
     benchmark(setitem, arr, Ellipsis, 1)
 
 
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("compression_name", [None, "gzip"])
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_read_array(
-    store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
+    store: Store,
+    layout: Layout,
+    compression_name: CompressorName,
+    zarr_format: ZarrFormat,
+    benchmark: BenchmarkFixture,
 ) -> None:
     """
-    Test the time required to fill an array with a single value
+    Test the time required to read an array.
+    Parametrized to benchmark both Zarr v2 and v3 formats.
     """
+    # Skip v2 tests with sharding (not supported in v2)
+    if zarr_format == 2 and layout.shards is not None:
+        pytest.skip("Sharding not supported in Zarr v2")
+
     arr = create_array(
         store,
+        zarr_format=zarr_format,
         dtype="uint8",
         shape=layout.shape,
         chunks=layout.chunks,
