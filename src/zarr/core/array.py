@@ -2827,11 +2827,17 @@ class Array(Generic[T_ArrayMetadata]):
         """
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
-            return self.vindex[cast("CoordinateSelection | MaskSelection", selection)]
+            result = self.vindex[cast("CoordinateSelection | MaskSelection", selection)]
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
-            return self.get_orthogonal_selection(pure_selection, fields=fields)
+            result = self.get_orthogonal_selection(pure_selection, fields=fields)
         else:
-            return self.get_basic_selection(cast("BasicSelection", pure_selection), fields=fields)
+            result = self.get_basic_selection(cast("BasicSelection", pure_selection), fields=fields)
+        
+        # Convert 0-d ndarray to numpy scalar for scalar indexing
+        # This matches numpy behavior where a[0] returns a scalar, not a 0-d array
+        if isinstance(result, np.ndarray) and result.ndim == 0:
+            return result[()]
+        return result
 
     def __setitem__(self, selection: Selection, value: npt.ArrayLike) -> None:
         """Modify data for an item or region of the array.
