@@ -216,7 +216,7 @@ class TestFixedDimension:
     def test_zero_size_allowed(self) -> None:
         d = FixedDimension(size=0, extent=0)
         assert d.size == 0
-        assert d.nchunks == 1  # 0-size with 0-extent = 1 chunk
+        assert d.nchunks == 0  # zero-sized chunks can't hold data
 
     def test_chunk_offset_oob_raises(self) -> None:
         d = FixedDimension(size=10, extent=100)
@@ -1314,11 +1314,13 @@ class TestEdgeCases:
     # -- Zero-size and zero-extent --
 
     def test_zero_size_zero_extent(self) -> None:
-        """FixedDimension(size=0, extent=0) => 1 chunk of size 0."""
+        """FixedDimension(size=0, extent=0) => 0 chunks (consistent with size=0, extent=5)."""
         d = FixedDimension(size=0, extent=0)
-        assert d.nchunks == 1
-        assert d.chunk_size(0) == 0
-        assert d.data_size(0) == 0
+        assert d.nchunks == 0
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.chunk_size(0)
+        with pytest.raises(IndexError, match="out of bounds"):
+            d.data_size(0)
 
     def test_zero_size_nonzero_extent(self) -> None:
         """FixedDimension(size=0, extent=5) => 0 chunks (can't partition)."""

@@ -56,7 +56,7 @@ class FixedDimension:
         if self.extent < 0:
             raise ValueError(f"FixedDimension extent must be >= 0, got {self.extent}")
         if self.size == 0:
-            n = 1 if self.extent == 0 else 0
+            n = 0
         else:
             n = ceildiv(self.extent, self.size)
         object.__setattr__(self, "nchunks", n)
