@@ -357,7 +357,7 @@ class CacheStore(WrapperStore[Store]):
         else:
             return await self._get_try_cache(key, prototype, byte_range)
 
-    async def set(self, key: str, value: Buffer) -> None:
+    async def set(self, key: str, value: Buffer | bytes) -> None:
         """
         Store data in the underlying store and optionally in cache.
 
@@ -365,10 +365,13 @@ class CacheStore(WrapperStore[Store]):
         ----------
         key : str
             The key to store under
-        value : Buffer
-            The data to store
+        value : Buffer or bytes
+            The data to store. If bytes are provided, they will be converted
+            to a Buffer internally.
         """
         await super().set(key, value)
+        # Ensure value is a Buffer for caching
+        value = self._ensure_buffer(value)
         # Invalidate all cached byte-range entries (source data changed)
         async with self._state.lock:
             self._invalidate_range_entries(key)

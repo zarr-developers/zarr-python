@@ -187,6 +187,26 @@ class Store(ABC):
         if self.read_only:
             raise ValueError("store was opened in read-only mode and does not support writing")
 
+    def _ensure_buffer(self, value: Buffer | bytes) -> Buffer:
+        """Convert bytes to Buffer if needed.
+
+        Parameters
+        ----------
+        value : Buffer or bytes
+            The value to ensure is a Buffer.
+
+        Returns
+        -------
+        Buffer
+            The input value if it's already a Buffer, or a new Buffer created from bytes.
+        """
+        # avoid circular import
+        from zarr.core.buffer import Buffer
+
+        if isinstance(value, bytes):
+            return Buffer.from_bytes(value)
+        return value
+
     @abstractmethod
     def __eq__(self, value: object) -> bool:
         """Equality comparison."""
@@ -465,24 +485,28 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set(self, key: str, value: Buffer) -> None:
+    async def set(self, key: str, value: Buffer | bytes) -> None:
         """Store a (key, value) pair.
 
         Parameters
         ----------
         key : str
-        value : Buffer
+        value : Buffer or bytes
+            The value to store. If bytes are provided, they will be converted
+            to a Buffer internally.
         """
         ...
 
-    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer | bytes) -> None:
         """
         Store a key to ``value`` if the key is not already present.
 
         Parameters
         ----------
         key : str
-        value : Buffer
+        value : Buffer or bytes
+            The value to store. If bytes are provided, they will be converted
+            to a Buffer internally.
         """
         # Note for implementers: the default implementation provided here
         # is not safe for concurrent writers. There's a race condition between
@@ -491,7 +515,7 @@ class Store(ABC):
         if not await self.exists(key):
             await self.set(key, value)
 
-    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+    async def _set_many(self, values: Iterable[tuple[str, Buffer | bytes]]) -> None:
         """
         Insert multiple (key, value) pairs into storage.
         """

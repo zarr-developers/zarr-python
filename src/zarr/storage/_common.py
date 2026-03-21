@@ -173,14 +173,14 @@ class StorePath:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: Buffer) -> None:
+    async def set(self, value: Buffer | bytes) -> None:
         """
         Write bytes to the store.
 
         Parameters
         ----------
-        value : Buffer
-            The buffer to write.
+        value : Buffer or bytes
+            The buffer or bytes to write.
         """
         await self.store.set(self.path, value)
 
@@ -201,14 +201,14 @@ class StorePath:
         """
         await self.store.delete_dir(self.path)
 
-    async def set_if_not_exists(self, default: Buffer) -> None:
+    async def set_if_not_exists(self, default: Buffer | bytes) -> None:
         """
         Store a key to ``value`` if the key is not already present.
 
         Parameters
         ----------
-        default : Buffer
-            The buffer to store if the key is not already present.
+        default : Buffer or bytes
+            The buffer or bytes to store if the key is not already present.
         """
         await self.store.set_if_not_exists(self.path, default)
 

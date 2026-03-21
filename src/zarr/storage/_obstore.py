@@ -166,20 +166,21 @@ class ObjectStore(Store, Generic[T_Store]):
         # docstring inherited
         return True
 
-    async def set(self, key: str, value: Buffer) -> None:
+    async def set(self, key: str, value: Buffer | bytes) -> None:
         # docstring inherited
         import obstore as obs
 
         self._check_writable()
-
+        value = self._ensure_buffer(value)
         buf = value.as_buffer_like()
         await obs.put_async(self.store, key, buf)
 
-    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer | bytes) -> None:
         # docstring inherited
         import obstore as obs
 
         self._check_writable()
+        value = self._ensure_buffer(value)
         buf = value.as_buffer_like()
         with contextlib.suppress(obs.exceptions.AlreadyExistsError):
             await obs.put_async(self.store, key, buf, mode="create")

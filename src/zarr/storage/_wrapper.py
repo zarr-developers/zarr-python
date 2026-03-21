@@ -108,13 +108,13 @@ class WrapperStore(Store, Generic[T_Store]):
     async def exists(self, key: str) -> bool:
         return await self._store.exists(key)
 
-    async def set(self, key: str, value: Buffer) -> None:
+    async def set(self, key: str, value: Buffer | bytes) -> None:
         await self._store.set(key, value)
 
-    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer | bytes) -> None:
         return await self._store.set_if_not_exists(key, value)
 
-    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+    async def _set_many(self, values: Iterable[tuple[str, Buffer | bytes]]) -> None:
         await self._store._set_many(values)
 
     @property

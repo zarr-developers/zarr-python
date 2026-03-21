@@ -156,15 +156,12 @@ class MemoryStore(Store):
         # docstring inherited
         return key in self._store_dict
 
-    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(self, key: str, value: Buffer | bytes, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
         assert isinstance(key, str)
-        if not isinstance(value, Buffer):
-            raise TypeError(
-                f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
-            )
+        value = self._ensure_buffer(value)
         if byte_range is not None:
             buf = self._store_dict[key]
             buf[byte_range[0] : byte_range[1]] = value
@@ -172,10 +169,11 @@ class MemoryStore(Store):
         else:
             self._store_dict[key] = value
 
-    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer | bytes) -> None:
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
+        value = self._ensure_buffer(value)
         self._store_dict.setdefault(key, value)
 
     async def delete(self, key: str) -> None:
@@ -506,14 +504,11 @@ class GpuMemoryStore(MemoryStore):
         gpu_store_dict = {k: gpu.Buffer.from_buffer(v) for k, v in store_dict.items()}
         return cls(gpu_store_dict)
 
-    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(self, key: str, value: Buffer | bytes, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
         self._check_writable()
         assert isinstance(key, str)
-        if not isinstance(value, Buffer):
-            raise TypeError(
-                f"GpuMemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
-            )
+        value = self._ensure_buffer(value)
         # Convert to gpu.Buffer
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)

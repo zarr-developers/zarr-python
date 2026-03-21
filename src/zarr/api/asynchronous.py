@@ -621,6 +621,16 @@ async def array(data: npt.ArrayLike | AnyArray, **kwargs: Any) -> AnyAsyncArray:
     if isinstance(data, Array):
         return await from_array(data=data, **kwargs)
 
+    # Handle masked arrays by converting to filled array
+    if isinstance(data, np.ma.MaskedArray):
+        warnings.warn(
+            "Masked arrays are not fully supported in Zarr. The mask will not be preserved. "
+            "Consider using zarr's structured dtype or a separate array for the mask if you need to preserve it.",
+            UserWarning,
+            stacklevel=2,
+        )
+        data = cast(np.ndarray, data.filled())
+
     # ensure data is array-like
     if not hasattr(data, "shape") or not hasattr(data, "dtype"):
         data = np.asanyarray(data)

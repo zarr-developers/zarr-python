@@ -318,17 +318,14 @@ class FsspecStore(Store):
     async def set(
         self,
         key: str,
-        value: Buffer,
+        value: Buffer | bytes,
         byte_range: tuple[int, int] | None = None,
     ) -> None:
         # docstring inherited
         if not self._is_open:
             await self._open()
         self._check_writable()
-        if not isinstance(value, Buffer):
-            raise TypeError(
-                f"FsspecStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
-            )
+        value = self._ensure_buffer(value)
         path = _dereference_path(self.path, key)
         # write data
         if byte_range:

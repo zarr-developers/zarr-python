@@ -207,21 +207,19 @@ class ZipStore(Store):
             keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
         self._zf.writestr(keyinfo, value.to_bytes())
 
-    async def set(self, key: str, value: Buffer) -> None:
+    async def set(self, key: str, value: Buffer | bytes) -> None:
         # docstring inherited
         self._check_writable()
         if not self._is_open:
             self._sync_open()
         assert isinstance(key, str)
-        if not isinstance(value, Buffer):
-            raise TypeError(
-                f"ZipStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
-            )
+        value = self._ensure_buffer(value)
         with self._lock:
             self._set(key, value)
 
-    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer | bytes) -> None:
         self._check_writable()
+        value = self._ensure_buffer(value)
         with self._lock:
             members = self._zf.namelist()
             if key not in members:

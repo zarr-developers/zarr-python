@@ -269,26 +269,23 @@ class LocalStore(Store):
             args.append((_get, path, prototype, byte_range))
         return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
-    async def set(self, key: str, value: Buffer) -> None:
+    async def set(self, key: str, value: Buffer | bytes) -> None:
         # docstring inherited
         return await self._set(key, value)
 
-    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer | bytes) -> None:
         # docstring inherited
         try:
             return await self._set(key, value, exclusive=True)
         except FileExistsError:
             pass
 
-    async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
+    async def _set(self, key: str, value: Buffer | bytes, exclusive: bool = False) -> None:
         if not self._is_open:
             await self._open()
         self._check_writable()
         assert isinstance(key, str)
-        if not isinstance(value, Buffer):
-            raise TypeError(
-                f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
-            )
+        value = self._ensure_buffer(value)
         path = self.root / key
         await asyncio.to_thread(_put, path, value, exclusive=exclusive)
 
