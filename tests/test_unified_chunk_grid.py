@@ -1723,6 +1723,23 @@ class TestFullPipelineRectilinear:
         a[0:30, 25:75] = val
         np.testing.assert_array_equal(z[:], a)
 
+    def test_block_selection_slice_stop_at_nchunks(self, tmp_path: Path) -> None:
+        """Block slice with stop == nchunks exercises the dim_len fallback
+        in BlockIndexer (``chunk_offset(stop) if stop < nchunks else dim_len``).
+        """
+        z, a = self._make_1d(tmp_path)
+        # nchunks == 3; stop=3 hits the `else dim_len` path
+        np.testing.assert_array_equal(z.blocks[1:3], a[5:30])
+        # stop > nchunks should also produce the full remainder
+        np.testing.assert_array_equal(z.blocks[0:10], a[:])
+
+    def test_block_selection_slice_stop_at_nchunks_2d(self, tmp_path: Path) -> None:
+        """Same fallback test for 2D rectilinear arrays."""
+        z, a = self._make_2d(tmp_path)
+        # dim0 nchunks=3, dim1 nchunks=4
+        np.testing.assert_array_equal(z.blocks[2:3, 3:4], a[30:60, 75:100])
+        np.testing.assert_array_equal(z.blocks[0:99, 0:99], a[:, :])
+
     # --- Set coordinate selection ---
 
     def test_set_coordinate_selection_1d(self, tmp_path: Path) -> None:
