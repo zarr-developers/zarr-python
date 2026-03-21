@@ -108,11 +108,20 @@ class FixedDimension:
         return indices // self.size
 
     def with_extent(self, new_extent: int) -> FixedDimension:
-        """Return a copy re-bound to *new_extent*."""
+        """Re-bind to *new_extent* without modifying edges.
+
+        Used when constructing a grid from existing metadata where edges
+        are already correct (e.g. ``parse_chunk_grid``). Raises on
+        ``VaryingDimension`` if edges don't cover the new extent.
+        """
         return FixedDimension(size=self.size, extent=new_extent)
 
     def resize(self, new_extent: int) -> FixedDimension:
-        """Return a copy adjusted for a new array extent (same as with_extent for fixed)."""
+        """Adapt for a user-initiated array resize, growing edges if needed.
+
+        For ``FixedDimension`` this is identical to ``with_extent`` since
+        regular grids don't store explicit edges.
+        """
         return FixedDimension(size=self.size, extent=new_extent)
 
 
@@ -195,7 +204,12 @@ class VaryingDimension:
         return np.searchsorted(self.cumulative, indices, side="right")
 
     def with_extent(self, new_extent: int) -> VaryingDimension:
-        """Return a copy re-bound to *new_extent*, validating edge coverage."""
+        """Re-bind to *new_extent* without modifying edges.
+
+        Used when constructing a grid from existing metadata where edges
+        are already correct (e.g. ``parse_chunk_grid``). Raises if the
+        existing edges don't cover *new_extent*.
+        """
         edge_sum = self.cumulative[-1]
         if edge_sum < new_extent:
             raise ValueError(
@@ -204,11 +218,12 @@ class VaryingDimension:
         return VaryingDimension(self.edges, extent=new_extent)
 
     def resize(self, new_extent: int) -> VaryingDimension:
-        """Return a copy adjusted for a new array extent (grow/shrink).
+        """Adapt for a user-initiated array resize, growing edges if needed.
 
-        Grow past existing edges: appends a chunk for the additional extent.
-        Shrink or grow within existing edges: preserves all edges and re-binds
-        the extent. The spec allows trailing edges beyond the array extent.
+        Unlike ``with_extent``, this never fails — if *new_extent* exceeds
+        the current edge sum, a new chunk is appended to cover the gap.
+        Shrinking preserves all edges (the spec allows trailing edges
+        beyond the array extent).
         """
         if new_extent == self.extent:
             return self
