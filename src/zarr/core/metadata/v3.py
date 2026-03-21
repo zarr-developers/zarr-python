@@ -302,12 +302,16 @@ class RectilinearChunkGrid(Metadata):
     def to_dict(self) -> RectilinearChunkGridJSON:  # type: ignore[override]
         serialized_dims: list[RectilinearDimSpecJSON] = []
         for edges in self.chunk_shapes:
-            rle = compress_rle(edges)
-            # Use RLE only if it's actually shorter
-            if len(rle) < len(edges):
-                serialized_dims.append(rle)
+            if len(edges) == 1:
+                # Bare int shorthand: single edge length repeated until sum >= extent
+                serialized_dims.append(edges[0])
             else:
-                serialized_dims.append(list(edges))
+                rle = compress_rle(edges)
+                # Use RLE only if it's actually shorter
+                if len(rle) < len(edges):
+                    serialized_dims.append(rle)
+                else:
+                    serialized_dims.append(list(edges))
         return {
             "name": "rectilinear",
             "configuration": {

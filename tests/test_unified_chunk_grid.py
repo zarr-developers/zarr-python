@@ -27,6 +27,7 @@ from zarr.core.chunk_grids import (
     serialize_chunk_grid,
 )
 from zarr.core.common import compress_rle, expand_rle
+from zarr.core.metadata.v3 import RectilinearChunkGrid
 from zarr.errors import BoundsCheckError
 from zarr.storage import MemoryStore
 
@@ -719,6 +720,19 @@ class TestSerialization:
         d2 = json.loads(json_str)
         g2 = parse_chunk_grid(d2, (60, 100))
         assert g2.grid_shape == (3, 2)
+
+    def test_bare_int_roundtrip(self) -> None:
+        """Bare-integer shorthand in chunk_shapes round-trips as bare int, not [int]."""
+        data: dict[str, Any] = {
+            "name": "rectilinear",
+            "configuration": {"kind": "inline", "chunk_shapes": [10, [20, 30]]},
+        }
+        meta = RectilinearChunkGrid.from_dict(data)  # type: ignore[arg-type]
+        out = meta.to_dict()
+        # Dim 0 was bare int — should stay bare int
+        assert out["configuration"]["chunk_shapes"][0] == 10
+        # Dim 1 was explicit list — should stay list
+        assert out["configuration"]["chunk_shapes"][1] == [20, 30]
 
     def test_unknown_name_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown chunk grid"):
