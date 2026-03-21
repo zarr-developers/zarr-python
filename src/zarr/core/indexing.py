@@ -340,11 +340,6 @@ def get_chunk_shape(chunk_grid: ChunkGrid) -> tuple[int, ...]:
     return chunk_grid.chunk_shape
 
 
-def _get_dim_grids(chunk_grid: ChunkGrid) -> tuple[DimensionGrid, ...]:
-    """Extract per-dimension grid objects from a ChunkGrid."""
-    return chunk_grid.dimensions
-
-
 def normalize_integer_selection(dim_sel: int, dim_len: int) -> int:
     # normalize type to int
     dim_sel = int(dim_sel)
@@ -595,7 +590,7 @@ class BasicIndexer(Indexer):
         shape: tuple[int, ...],
         chunk_grid: ChunkGrid,
     ) -> None:
-        dim_grids = _get_dim_grids(chunk_grid)
+        dim_grids = chunk_grid.dimensions
         # handle ellipsis
         selection_normalized = replace_ellipsis(selection, shape)
 
@@ -922,7 +917,7 @@ class OrthogonalIndexer(Indexer):
     drop_axes: tuple[int, ...]
 
     def __init__(self, selection: Selection, shape: tuple[int, ...], chunk_grid: ChunkGrid) -> None:
-        dim_grids = _get_dim_grids(chunk_grid)
+        dim_grids = chunk_grid.dimensions
 
         # handle ellipsis
         selection = replace_ellipsis(selection, shape)
@@ -1060,7 +1055,7 @@ class BlockIndexer(Indexer):
     def __init__(
         self, selection: BasicSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
-        dim_grids = _get_dim_grids(chunk_grid)
+        dim_grids = chunk_grid.dimensions
 
         # handle ellipsis
         selection_normalized = replace_ellipsis(selection, shape)
@@ -1190,7 +1185,7 @@ class CoordinateIndexer(Indexer):
     def __init__(
         self, selection: CoordinateSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
     ) -> None:
-        dim_grids = _get_dim_grids(chunk_grid)
+        dim_grids = chunk_grid.dimensions
 
         cdata_shape: tuple[int, ...]
         if shape == ():
