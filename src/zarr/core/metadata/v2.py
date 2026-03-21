@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable, Sequence
+from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
@@ -114,6 +116,24 @@ class ArrayV2Metadata(Metadata):
     @property
     def ndim(self) -> int:
         return len(self.shape)
+
+    @cached_property
+    def chunk_grid(self) -> ChunkGrid:
+        """Backwards-compatible chunk grid property.
+
+        .. deprecated::
+            Access the chunk grid via the array layer instead.
+            This property will be removed in a future release.
+        """
+        from zarr.core.chunk_grids import ChunkGrid
+
+        warnings.warn(
+            "ArrayV2Metadata.chunk_grid is deprecated. "
+            "Use ChunkGrid.from_metadata(metadata) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return ChunkGrid.from_regular(self.shape, self.chunks)
 
     @property
     def shards(self) -> tuple[int, ...] | None:

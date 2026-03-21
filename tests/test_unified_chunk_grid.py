@@ -365,15 +365,15 @@ class TestChunkGridConstruction:
 class TestChunkGridQueries:
     def test_regular_shape(self) -> None:
         g = ChunkGrid.from_regular((100, 200), (10, 20))
-        assert g.shape == (10, 10)
+        assert g.grid_shape == (10, 10)
 
     def test_regular_shape_boundary(self) -> None:
         g = ChunkGrid.from_regular((95, 200), (10, 20))
-        assert g.shape == (10, 10)  # ceildiv(95, 10) == 10
+        assert g.grid_shape == (10, 10)  # ceildiv(95, 10) == 10
 
     def test_rectilinear_shape(self) -> None:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]], array_shape=(60, 100))
-        assert g.shape == (3, 4)
+        assert g.grid_shape == (3, 4)
 
     def test_regular_getitem(self) -> None:
         g = ChunkGrid.from_regular((100, 200), (10, 20))
@@ -718,7 +718,7 @@ class TestSerialization:
         json_str = json.dumps(d)
         d2 = json.loads(json_str)
         g2 = parse_chunk_grid(d2, (60, 100))
-        assert g2.shape == (3, 2)
+        assert g2.grid_shape == (3, 2)
 
     def test_unknown_name_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown chunk grid"):
@@ -866,7 +866,7 @@ class TestParseChunkGridValidation:
             "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [25, 25]]},
         }
         g = parse_chunk_grid(data, (60, 50))
-        assert g.shape == (3, 2)
+        assert g.grid_shape == (3, 2)
 
     def test_rectilinear_ndim_mismatch_raises(self) -> None:
         data: dict[str, Any] = {
@@ -884,7 +884,7 @@ class TestParseChunkGridValidation:
         }
         # sum = 50 and 50 — match (50, 50)
         g = parse_chunk_grid(data, (50, 50))
-        assert g.shape == (5, 2)
+        assert g.grid_shape == (5, 2)
         # mismatch
         with pytest.raises(ValueError, match="sum to 50 but array shape extent is 100"):
             parse_chunk_grid(data, (100, 50))
@@ -1042,7 +1042,7 @@ class TestEndToEnd:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
         d = serialize_chunk_grid(g, "rectilinear")
         g2 = parse_chunk_grid(d, (60, 100))
-        assert g2.shape == g.shape
+        assert g2.grid_shape == g.grid_shape
         for coord in g.all_chunk_coords():
             orig_spec = g[coord]
             new_spec = g2[coord]
@@ -1243,7 +1243,7 @@ class TestEdgeCases:
     def test_chunk_grid_boundary_shape(self) -> None:
         """shape property with boundary extent."""
         g = ChunkGrid(dimensions=(FixedDimension(10, 95),))
-        assert g.shape == (10,)  # ceildiv(95, 10) = 10
+        assert g.grid_shape == (10,)  # ceildiv(95, 10) = 10
 
     # -- Boundary FixedDimension in rectilinear serialization --
 
@@ -1255,7 +1255,7 @@ class TestEdgeCases:
                 FixedDimension(size=10, extent=95),
             )
         )
-        assert g.shape == (3, 10)
+        assert g.grid_shape == (3, 10)
 
         d = serialize_chunk_grid(g, "rectilinear")
         assert d["name"] == "rectilinear"
@@ -1269,7 +1269,7 @@ class TestEdgeCases:
         assert chunk_shapes[1] == 10  # bare integer shorthand
 
         g2 = parse_chunk_grid(d, (60, 95))
-        assert g2.shape == g.shape
+        assert g2.grid_shape == g.grid_shape
         # Round-tripped grid should have correct extent
         for coord in g.all_chunk_coords():
             orig = g[coord]
@@ -1288,7 +1288,7 @@ class TestEdgeCases:
         )
         d = serialize_chunk_grid(g, "rectilinear")
         g2 = parse_chunk_grid(d, (30, 100))
-        assert g2.shape == g.shape
+        assert g2.grid_shape == g.grid_shape
         # All chunks should be uniform
         for coord in g.all_chunk_coords():
             orig = g[coord]
@@ -1377,7 +1377,7 @@ class TestEdgeCases:
         g2 = parse_chunk_grid(g, (50, 100))
         assert isinstance(g2.dimensions[0], FixedDimension)
         assert g2.dimensions[0].extent == 50  # re-bound
-        assert g2.shape == (5, 5)
+        assert g2.grid_shape == (5, 5)
 
     # -- ChunkGrid.__getitem__ validation --
 
@@ -1460,7 +1460,7 @@ class TestEdgeCases:
                 FixedDimension(size=10, extent=0),
             )
         )
-        assert g.shape == (2, 0)
+        assert g.grid_shape == (2, 0)
         with pytest.raises(ValueError, match="zero-extent"):
             serialize_chunk_grid(g, "rectilinear")
 
@@ -2010,7 +2010,7 @@ class TestV2Regression:
         grid = a.chunk_grid
         assert grid.is_regular
         assert grid.chunk_shape == (10, 15)
-        assert grid.shape == (2, 2)
+        assert grid.grid_shape == (2, 2)
         assert all(isinstance(d, FixedDimension) for d in grid.dimensions)
 
     def test_v2_boundary_chunks(self, tmp_path: Path) -> None:
@@ -2444,7 +2444,7 @@ class TestAppendRectilinear:
         g = parse_chunk_grid(d, (100, 200))
         assert g.is_regular
         assert g.chunk_shape == (10, 20)
-        assert g.shape == (10, 10)
+        assert g.grid_shape == (10, 10)
         assert g.get_nchunks() == 100
 
 

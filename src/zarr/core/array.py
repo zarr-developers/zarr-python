@@ -1345,7 +1345,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             # When sharding, count inner chunks across the whole array
             chunk_shape = codecs[0].chunk_shape
             return tuple(starmap(ceildiv, zip(self.shape, chunk_shape, strict=True)))
-        return self.chunk_grid.shape
+        return self.chunk_grid.grid_shape
 
     @property
     def _shard_grid_shape(self) -> tuple[int, ...]:

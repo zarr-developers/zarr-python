@@ -24,6 +24,7 @@ from zarr.core.common import (
     expand_rle,
     parse_named_configuration,
     parse_shapelike,
+    validate_rectilinear_edges,
 )
 from zarr.core.config import config
 from zarr.core.dtype import VariableLengthUTF8, ZDType, get_data_type_from_json
@@ -465,6 +466,8 @@ class ArrayV3Metadata(Metadata):
     def _validate_metadata(self) -> None:
         if len(self.shape) != self.chunk_grid.ndim:
             raise ValueError("`chunk_grid` and `shape` need to have the same number of dimensions.")
+        if isinstance(self.chunk_grid, RectilinearChunkGrid):
+            validate_rectilinear_edges(self.chunk_grid.chunk_shapes, self.shape)
         if self.dimension_names is not None and len(self.shape) != len(self.dimension_names):
             raise ValueError(
                 "`dimension_names` and `shape` need to have the same number of dimensions."

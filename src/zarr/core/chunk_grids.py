@@ -24,6 +24,7 @@ from zarr.core.common import (
     expand_rle,
     parse_named_configuration,
     parse_shapelike,
+    validate_rectilinear_edges,
 )
 from zarr.errors import ZarrUserWarning
 
@@ -127,6 +128,8 @@ class VaryingDimension:
     edges: tuple[int, ...]  # per-chunk edge lengths (all > 0)
     cumulative: tuple[int, ...]  # prefix sums for O(log n) lookup
     extent: int  # array dimension length (may be < sum(edges) after resize)
+    nchunks: int = field(init=False, repr=False)  # cached at construction
+    ngridcells: int = field(init=False, repr=False)  # cached at construction
 
     def __init__(self, edges: Sequence[int], extent: int) -> None:
         edges_tuple = tuple(edges)
@@ -144,34 +147,38 @@ class VaryingDimension:
         object.__setattr__(self, "edges", edges_tuple)
         object.__setattr__(self, "cumulative", cumulative)
         object.__setattr__(self, "extent", extent)
-
-    @property
-    def ngridcells(self) -> int:
-        """Total grid cells including those past the array extent."""
-        return len(self.edges)
-
-    @property
-    def nchunks(self) -> int:
-        """Number of chunks that contain data (overlap [0, extent))."""
-        if self.extent == 0:
-            return 0
-        return bisect.bisect_left(self.cumulative, self.extent) + 1
+        # Cache nchunks: number of chunks that overlap [0, extent)
+        if extent == 0:
+            n = 0
+        else:
+            n = bisect.bisect_left(cumulative, extent) + 1
+        object.__setattr__(self, "nchunks", n)
+        object.__setattr__(self, "ngridcells", len(edges_tuple))
 
     def index_to_chunk(self, idx: int) -> int:
         if idx < 0 or idx >= self.extent:
             raise IndexError(f"Index {idx} out of bounds for dimension with extent {self.extent}")
         return bisect.bisect_right(self.cumulative, idx)
 
+    def _check_chunk_ix(self, chunk_ix: int) -> None:
+        if chunk_ix < 0 or chunk_ix >= len(self.edges):
+            raise IndexError(
+                f"Chunk index {chunk_ix} out of bounds for dimension with {len(self.edges)} grid cells"
+            )
+
     def chunk_offset(self, chunk_ix: int) -> int:
+        self._check_chunk_ix(chunk_ix)
         return self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
 
     def chunk_size(self, chunk_ix: int) -> int:
         """Buffer size for codec processing."""
+        self._check_chunk_ix(chunk_ix)
         return self.edges[chunk_ix]
 
     def data_size(self, chunk_ix: int) -> int:
         """Valid data region within the buffer — clipped at extent."""
-        offset = self.chunk_offset(chunk_ix)
+        self._check_chunk_ix(chunk_ix)
+        offset = self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
         return max(0, min(self.edges[chunk_ix], self.extent - offset))
 
     @property
@@ -505,7 +512,7 @@ class ChunkGrid:
         return self._is_regular
 
     @property
-    def shape(self) -> tuple[int, ...]:
+    def grid_shape(self) -> tuple[int, ...]:
         """Number of chunks per dimension."""
         return tuple(d.nchunks for d in self.dimensions)
 
@@ -589,7 +596,7 @@ class ChunkGrid:
             origin_parsed = tuple(origin)
         if selection_shape is None:
             selection_shape_parsed = tuple(
-                g - o for o, g in zip(origin_parsed, self.shape, strict=True)
+                g - o for o, g in zip(origin_parsed, self.grid_shape, strict=True)
             )
         else:
             selection_shape_parsed = tuple(selection_shape)
@@ -702,13 +709,7 @@ def parse_chunk_grid(
         decoded: list[list[int]] = []
         for dim_spec, extent in zip(chunk_shapes_raw, array_shape, strict=True):
             decoded.append(_decode_dim_spec(dim_spec, array_extent=extent))
-        for i, (edges, extent) in enumerate(zip(decoded, array_shape, strict=True)):
-            edge_sum = sum(edges)
-            if edge_sum < extent:
-                raise ValueError(
-                    f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
-                    f"but array shape extent is {extent} (edge sum must be >= extent)"
-                )
+        validate_rectilinear_edges(decoded, array_shape)
         return ChunkGrid.from_rectilinear(decoded, array_shape=array_shape)
 
     raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
