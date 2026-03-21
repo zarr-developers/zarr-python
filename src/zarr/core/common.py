@@ -303,3 +303,20 @@ def compress_rle(sizes: Sequence[int]) -> list[int | list[int]]:
             count = 1
     result.append([current, count] if count > 1 else current)
     return result
+
+
+def validate_rectilinear_edges(
+    chunk_shapes: Sequence[Sequence[int]], array_shape: Sequence[int]
+) -> None:
+    """Validate that rectilinear chunk edges cover the array extent per dimension.
+
+    Raises ValueError if any dimension's edge sum is less than the corresponding
+    array extent.
+    """
+    for i, (edges, extent) in enumerate(zip(chunk_shapes, array_shape, strict=True)):
+        edge_sum = sum(edges)
+        if edge_sum < extent:
+            raise ValueError(
+                f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "
+                f"but array shape extent is {extent} (edge sum must be >= extent)"
+            )
