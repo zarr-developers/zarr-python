@@ -290,11 +290,14 @@ class LocalStore(Store):
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
+        # Use string prefix matching to be consistent with MemoryStore behavior.
+        # The prefix should match keys as strings, not as filesystem paths.
         to_strip = self.root.as_posix() + "/"
-        prefix = prefix.rstrip("/")
-        for p in (self.root / prefix).rglob("*"):
+        for p in list(self.root.rglob("*")):
             if p.is_file():
-                yield p.as_posix().replace(to_strip, "")
+                key = p.as_posix().replace(to_strip, "")
+                if key.startswith(prefix):
+                    yield key
 
     async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
