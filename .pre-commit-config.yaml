@@ -54,6 +54,15 @@ repos:
     rev: v1.10.0
     hooks:
       - id: numpydoc-validation
+  - repo: local
+    hooks:
+      - id: ban-lstrip-rstrip
+        name: ban lstrip/rstrip
+        language: pygrep
+        # Matches .lstrip() or .rstrip() where the string argument is 2+ characters.
+        entry: "\\.(lstrip|rstrip)\\([\"'][^\"']{2,}[\"']\\)"
+        types: [python]
+        files: ^(src|tests)/
   - repo: https://github.com/twisted/towncrier
     rev: 25.8.0
     hooks:
