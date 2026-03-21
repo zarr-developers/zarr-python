@@ -1,3 +1,4 @@
+---
 name: Test PyPI Release
 
 on:
@@ -91,7 +92,7 @@ jobs:
           import zarr
           print(f'zarr version: {zarr.__version__}')
           print(f'zarr location: {zarr.__file__}')
-          
+
           # Basic functionality test
           store = zarr.MemoryStore()
           root = zarr.open_group(store=store, mode='w')
