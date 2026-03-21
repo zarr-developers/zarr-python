@@ -155,16 +155,6 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
 
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
-    @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
-        if isinstance(data, ChunkGrid):
-            return data
-
-        name_parsed, _ = parse_named_configuration(data)
-        if name_parsed == "regular":
-            return RegularChunkGrid._from_dict(data)
-        raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
-
     @abstractmethod
     def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
         pass
@@ -203,6 +193,39 @@ class RegularChunkGrid(ChunkGrid):
             itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
             1,
         )
+
+
+def parse_chunk_grid(data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]) -> ChunkGrid:
+    """
+    Take an implicit specification of a chunk grid and parse it into a ChunkGrid object.
+
+    This function handles the deserialization of chunk grid configurations, dispatching
+    to the appropriate ChunkGrid subclass based on the `name` field.
+
+    Parameters
+    ----------
+    data : dict[str, JSON] | ChunkGrid | NamedConfig[str, Any]
+        The chunk grid specification. Can be:
+        - A ChunkGrid instance (returned as-is)
+        - A dict or NamedConfig with a "name" field specifying the type
+
+    Returns
+    -------
+    ChunkGrid
+        The parsed ChunkGrid instance.
+
+    Raises
+    ------
+    ValueError
+        If the chunk grid type is unknown.
+    """
+    if isinstance(data, ChunkGrid):
+        return data
+
+    name_parsed, _ = parse_named_configuration(data)
+    if name_parsed == "regular":
+        return RegularChunkGrid._from_dict(data)
+    raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
 
 
 def _guess_num_chunks_per_axis_shard(
