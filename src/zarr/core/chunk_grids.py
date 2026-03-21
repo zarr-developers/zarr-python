@@ -327,12 +327,10 @@ def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[in
         n = ceildiv(array_extent, dim_spec)
         return [dim_spec] * n
     if isinstance(dim_spec, list):
-        # Check if the list contains any sub-lists (RLE pairs) or is all bare ints
         has_sublists = any(isinstance(e, list) for e in dim_spec)
         if has_sublists:
             return expand_rle(dim_spec)
         else:
-            # All bare integers — explicit edge lengths
             return [int(e) for e in dim_spec]
     raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
 
@@ -504,11 +502,7 @@ class ChunkGrid:
                 "chunk_shape is only available for regular chunk grids. "
                 "Use grid[coords] for per-chunk sizes."
             )
-        return tuple(
-            d.size
-            for d in self.dimensions
-            if isinstance(d, FixedDimension)  # guaranteed by is_regular
-        )
+        return tuple(d.size for d in self.dimensions if isinstance(d, FixedDimension))
 
     @property
     def chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
@@ -748,7 +742,6 @@ def _infer_chunk_grid_name(
     if isinstance(data, dict):
         name, _ = parse_named_configuration(data)
         return cast("ChunkGridName", name)
-    # ChunkGrid passed directly — infer from structure
     return "regular" if grid.is_regular else "rectilinear"
 
 

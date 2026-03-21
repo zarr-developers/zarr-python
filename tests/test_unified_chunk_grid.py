@@ -168,7 +168,6 @@ class TestFixedDimension:
         # chunk_size is always uniform (codec buffer)
         assert d.chunk_size(0) == 10
         assert d.chunk_size(9) == 10
-        # data_size clips at boundary
         assert d.data_size(0) == 10
         assert d.data_size(9) == 10
         assert d.nchunks == 10
@@ -176,8 +175,8 @@ class TestFixedDimension:
     def test_boundary_data_size(self) -> None:
         d = FixedDimension(size=10, extent=95)
         assert d.nchunks == 10
-        assert d.chunk_size(9) == 10  # codec buffer always full
-        assert d.data_size(9) == 5  # only 5 valid elements at boundary
+        assert d.chunk_size(9) == 10
+        assert d.data_size(9) == 5
 
     def test_vectorized(self) -> None:
         d = FixedDimension(size=10, extent=100)
@@ -196,7 +195,7 @@ class TestFixedDimension:
     def test_zero_size_allowed(self) -> None:
         d = FixedDimension(size=0, extent=0)
         assert d.size == 0
-        assert d.nchunks == 0  # zero-sized chunks can't hold data
+        assert d.nchunks == 0
 
     # FixedDimension.chunk_offset/chunk_size/data_size do not bounds-check
     # for performance (callers validate). OOB access is tested via
@@ -234,7 +233,6 @@ class TestVaryingDimension:
 
     def test_data_size(self) -> None:
         d = VaryingDimension([10, 20, 30], extent=60)
-        # data_size == chunk_size when extent == sum(edges) (no boundary)
         assert d.data_size(0) == 10
         assert d.data_size(1) == 20
         assert d.data_size(2) == 30
@@ -313,7 +311,7 @@ class TestChunkGridQueries:
 
     def test_regular_shape_boundary(self) -> None:
         g = ChunkGrid.from_regular((95, 200), (10, 20))
-        assert g.grid_shape == (10, 10)  # ceildiv(95, 10) == 10
+        assert g.grid_shape == (10, 10)
 
     def test_rectilinear_shape(self) -> None:
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]], array_shape=(60, 100))
@@ -2347,29 +2345,28 @@ class TestVaryingDimensionBoundary:
     def test_extent_parameter(self) -> None:
         d = VaryingDimension([10, 20, 30], extent=50)
         assert d.extent == 50
-        assert d.chunk_size(2) == 30  # codec buffer: full edge
-        assert d.data_size(2) == 20  # valid data: clipped to extent
+        assert d.chunk_size(2) == 30
+        assert d.data_size(2) == 20
 
     def test_extent_equals_sum_no_clipping(self) -> None:
         d = VaryingDimension([10, 20, 30], extent=60)
         assert d.extent == 60
-        assert d.data_size(2) == 30  # no clipping when extent == sum(edges)
+        assert d.data_size(2) == 30
 
     def test_data_size_interior_chunks_unaffected(self) -> None:
         d = VaryingDimension([10, 20, 30], extent=50)
-        assert d.data_size(0) == 10  # fully within extent
-        assert d.data_size(1) == 20  # fully within extent (offset 10, ends at 30)
+        assert d.data_size(0) == 10
+        assert d.data_size(1) == 20
 
     def test_data_size_at_exact_boundary(self) -> None:
         d = VaryingDimension([10, 20, 30], extent=60)
-        # extent == sum(edges), so no clipping
         assert d.data_size(2) == 30
 
     def test_data_size_single_element_boundary(self) -> None:
         d = VaryingDimension([10, 20, 30], extent=31)
         assert d.data_size(0) == 10
         assert d.data_size(1) == 20
-        assert d.data_size(2) == 1  # only 1 element in last chunk
+        assert d.data_size(2) == 1
 
     def test_extent_exceeds_sum_rejected(self) -> None:
         with pytest.raises(ValueError, match="exceeds sum of edges"):
@@ -2384,8 +2381,8 @@ class TestVaryingDimensionBoundary:
         g = ChunkGrid(dimensions=(VaryingDimension([10, 20, 30], extent=50),))
         spec = g[(2,)]
         assert spec is not None
-        assert spec.codec_shape == (30,)  # full edge
-        assert spec.shape == (20,)  # clipped to extent
+        assert spec.codec_shape == (30,)
+        assert spec.shape == (20,)
         assert spec.is_boundary is True
 
     def test_chunk_spec_interior_varying(self) -> None:
@@ -2404,12 +2401,12 @@ class TestMultipleOverflowChunks:
         """Edges past extent are structural; nchunks counts active only."""
         g = ChunkGrid.from_rectilinear([[10, 20, 30, 40]], array_shape=(50,))
         d = g.dimensions[0]
-        assert d.ngridcells == 4  # structural: all edges
-        assert d.nchunks == 3  # active: chunks overlapping [0, 50)
-        assert d.data_size(0) == 10  # fully within
-        assert d.data_size(1) == 20  # fully within
-        assert d.data_size(2) == 20  # partial: 50 - 30 = 20
-        assert d.chunk_size(2) == 30  # codec buffer: full edge
+        assert d.ngridcells == 4
+        assert d.nchunks == 3
+        assert d.data_size(0) == 10
+        assert d.data_size(1) == 20
+        assert d.data_size(2) == 20
+        assert d.chunk_size(2) == 30
 
     def test_chunk_spec_past_extent_is_oob(self) -> None:
         """Chunk entirely past the extent is out of bounds (not active)."""
