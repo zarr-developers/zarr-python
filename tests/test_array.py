@@ -2299,3 +2299,31 @@ def test_with_config_polymorphism() -> None:
     arr_source_config_dict = arr.with_config(source_config_dict)
 
     assert arr_source_config.config == arr_source_config_dict.config
+
+
+@pytest.mark.parametrize("shape", [(10,), (5, 10), (3, 4, 5), (2, 3, 4, 5)])
+def test_array_len_dimensioned(shape: tuple[int, ...]) -> None:
+    """Test __len__ for dimensioned arrays returns shape[0]."""
+    arr = zarr.create_array({}, shape=shape, dtype="uint8")
+    assert len(arr) == shape[0]
+
+
+@pytest.mark.parametrize("shape", [(10,), (5, 10), (3, 4, 5)])
+async def test_array_len_dimensioned_async(shape: tuple[int, ...]) -> None:
+    """Test __len__ for async dimensioned arrays returns shape[0]."""
+    arr = await AsyncArray.create({}, shape=shape, dtype="uint8")
+    assert len(arr) == shape[0]
+
+
+def test_array_len_0d_raises() -> None:
+    """Test __len__ raises TypeError for 0-dimensional arrays."""
+    arr = zarr.create_array({}, shape=(), dtype="uint8")
+    with pytest.raises(TypeError, match="len\\(\\) of unsized object"):
+        len(arr)
+
+
+async def test_array_len_0d_raises_async() -> None:
+    """Test __len__ raises TypeError for async 0-dimensional arrays."""
+    arr = await AsyncArray.create({}, shape=(), dtype="uint8")
+    with pytest.raises(TypeError, match="len\\(\\) of unsized object"):
+        len(arr)

@@ -1039,6 +1039,38 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         return self.metadata.shape
 
+    def __len__(self) -> int:
+        """Return the length of the first dimension.
+
+        Matches numpy behavior: returns shape[0] for dimensioned arrays,
+        raises TypeError for 0-dimensional arrays.
+
+        Returns
+        -------
+        int
+            The size of the first dimension.
+
+        Raises
+        ------
+        TypeError
+            If the array is 0-dimensional (empty shape).
+
+        Examples
+        --------
+        >>> import zarr
+        >>> a = zarr.zeros((5, 10))
+        >>> len(a)
+        5
+        >>> b = zarr.zeros(())
+        >>> len(b)  # doctest: +SKIP
+        Traceback (most recent call last):
+            ...
+        TypeError: len() of unsized object
+        """
+        if self.ndim == 0:
+            raise TypeError("len() of unsized object")
+        return self.shape[0]
+
     @property
     def chunks(self) -> tuple[int, ...]:
         """Returns the chunk shape of the Array.
@@ -2262,6 +2294,36 @@ class Array(Generic[T_ArrayMetadata]):
     def shape(self, value: tuple[int, ...]) -> None:
         """Sets the shape of the array by calling resize."""
         self.resize(value)
+
+    def __len__(self) -> int:
+        """Return the length of the first dimension.
+
+        Matches numpy behavior: returns shape[0] for dimensioned arrays,
+        raises TypeError for 0-dimensional arrays.
+
+        Returns
+        -------
+        int
+            The size of the first dimension.
+
+        Raises
+        ------
+        TypeError
+            If the array is 0-dimensional (empty shape).
+
+        Examples
+        --------
+        >>> import zarr
+        >>> a = zarr.zeros((5, 10))
+        >>> len(a)
+        5
+        >>> b = zarr.zeros(())
+        >>> len(b)  # doctest: +SKIP
+        Traceback (most recent call last):
+            ...
+        TypeError: len() of unsized object
+        """
+        return self.async_array.__len__()
 
     @property
     def chunks(self) -> tuple[int, ...]:
