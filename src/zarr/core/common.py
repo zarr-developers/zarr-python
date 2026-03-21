@@ -264,9 +264,16 @@ def expand_rle(data: Sequence[int | list[int]]) -> list[int]:
     result: list[int] = []
     for item in data:
         if isinstance(item, (int, float)) and not isinstance(item, bool):
-            result.append(int(item))
+            val = int(item)
+            if val < 1:
+                raise ValueError(f"Chunk edge length must be >= 1, got {val}")
+            result.append(val)
         elif isinstance(item, list) and len(item) == 2:
             size, count = int(item[0]), int(item[1])
+            if size < 1:
+                raise ValueError(f"Chunk edge length must be >= 1, got {size}")
+            if count < 1:
+                raise ValueError(f"RLE repeat count must be >= 1, got {count}")
             result.extend([size] * count)
         else:
             raise ValueError(f"RLE entries must be an integer or [size, count], got {item}")

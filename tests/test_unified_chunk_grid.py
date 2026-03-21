@@ -490,6 +490,30 @@ class TestRLE:
         compressed = compress_rle(original)
         assert expand_rle(compressed) == original
 
+    def test_expand_rejects_zero_edge(self) -> None:
+        with pytest.raises(ValueError, match="Chunk edge length must be >= 1"):
+            expand_rle([0])
+
+    def test_expand_rejects_negative_edge(self) -> None:
+        with pytest.raises(ValueError, match="Chunk edge length must be >= 1"):
+            expand_rle([-5])
+
+    def test_expand_rejects_zero_rle_size(self) -> None:
+        with pytest.raises(ValueError, match="Chunk edge length must be >= 1"):
+            expand_rle([[0, 3]])
+
+    def test_expand_rejects_negative_rle_size(self) -> None:
+        with pytest.raises(ValueError, match="Chunk edge length must be >= 1"):
+            expand_rle([[-10, 2]])
+
+    def test_expand_rejects_zero_rle_count(self) -> None:
+        with pytest.raises(ValueError, match="RLE repeat count must be >= 1"):
+            expand_rle([[5, 0]])
+
+    def test_expand_rejects_negative_rle_count(self) -> None:
+        with pytest.raises(ValueError, match="RLE repeat count must be >= 1"):
+            expand_rle([[5, -1]])
+
 
 class TestExpandRleHandlesJsonFloats:
     def test_bare_integer_floats_accepted(self) -> None:
