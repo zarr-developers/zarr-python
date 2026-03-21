@@ -484,7 +484,7 @@ class ArrayV3Metadata(Metadata):
         if not isinstance(self.chunk_grid, RegularChunkGrid):
             msg = (
                 "The `chunks` attribute is only defined for arrays using regular chunk grids. "
-                "This array has a rectilinear chunk grid. Use `read_chunk_sizes` or `write_chunk_sizes` for general access."
+                "This array has a rectilinear chunk grid. Use `read_chunk_sizes` for general access."
             )
             raise NotImplementedError(msg)
 
@@ -496,12 +496,15 @@ class ArrayV3Metadata(Metadata):
 
     @property
     def shards(self) -> tuple[int, ...] | None:
-        if not isinstance(self.chunk_grid, RegularChunkGrid):
-            return None
-
         from zarr.codecs.sharding import ShardingCodec
 
         if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+            if not isinstance(self.chunk_grid, RegularChunkGrid):
+                msg = (
+                    "The `shards` attribute is only defined for arrays using regular chunk grids. "
+                    "This array has a rectilinear chunk grid. Use `write_chunk_sizes` for general access."
+                )
+                raise NotImplementedError(msg)
             return self.chunk_grid.chunk_shape
         return None
 
