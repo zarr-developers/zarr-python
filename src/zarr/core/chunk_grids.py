@@ -71,31 +71,28 @@ class FixedDimension:
             return 0
         return idx // self.size
 
-    # Bounds checking: all callers (ChunkGrid.__getitem__, indexers) validate
-    # chunk indices before calling these methods, so the checks here are
-    # redundant on the hot path. They are retained for safety when methods
-    # are called directly. If profiling shows this overhead matters, the
-    # checks can be removed — VaryingDimension gets natural IndexError from
-    # tuple indexing, and FixedDimension would silently return wrong values.
-
-    def _check_chunk_ix(self, chunk_ix: int) -> None:
-        if chunk_ix < 0 or chunk_ix >= self.nchunks:
-            raise IndexError(
-                f"Chunk index {chunk_ix} out of bounds for dimension with {self.nchunks} chunks"
-            )
-
     def chunk_offset(self, chunk_ix: int) -> int:
-        self._check_chunk_ix(chunk_ix)
+        """Byte-aligned start position of chunk *chunk_ix* in array coordinates.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
         return chunk_ix * self.size
 
     def chunk_size(self, chunk_ix: int) -> int:
-        """Buffer size for codec processing — always uniform."""
-        self._check_chunk_ix(chunk_ix)
+        """Buffer size for codec processing — always uniform.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
         return self.size
 
     def data_size(self, chunk_ix: int) -> int:
-        """Valid data region within the buffer — clipped at extent."""
-        self._check_chunk_ix(chunk_ix)
+        """Valid data region within the buffer — clipped at extent.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, nchunks)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
         if self.size == 0:
             return 0
         return max(0, min(self.size, self.extent - chunk_ix * self.size))
@@ -160,24 +157,28 @@ class VaryingDimension:
             raise IndexError(f"Index {idx} out of bounds for dimension with extent {self.extent}")
         return bisect.bisect_right(self.cumulative, idx)
 
-    def _check_chunk_ix(self, chunk_ix: int) -> None:
-        if chunk_ix < 0 or chunk_ix >= len(self.edges):
-            raise IndexError(
-                f"Chunk index {chunk_ix} out of bounds for dimension with {len(self.edges)} grid cells"
-            )
-
     def chunk_offset(self, chunk_ix: int) -> int:
-        self._check_chunk_ix(chunk_ix)
+        """Start position of chunk *chunk_ix* in array coordinates.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
         return self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
 
     def chunk_size(self, chunk_ix: int) -> int:
-        """Buffer size for codec processing."""
-        self._check_chunk_ix(chunk_ix)
+        """Buffer size for codec processing.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
         return self.edges[chunk_ix]
 
     def data_size(self, chunk_ix: int) -> int:
-        """Valid data region within the buffer — clipped at extent."""
-        self._check_chunk_ix(chunk_ix)
+        """Valid data region within the buffer — clipped at extent.
+
+        Does not validate *chunk_ix* — callers must ensure it is in
+        ``[0, ngridcells)``. Use ``ChunkGrid.__getitem__`` for safe access.
+        """
         offset = self.cumulative[chunk_ix - 1] if chunk_ix > 0 else 0
         return max(0, min(self.edges[chunk_ix], self.extent - offset))
 

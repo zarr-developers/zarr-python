@@ -218,26 +218,9 @@ class TestFixedDimension:
         assert d.size == 0
         assert d.nchunks == 0  # zero-sized chunks can't hold data
 
-    def test_chunk_offset_oob_raises(self) -> None:
-        d = FixedDimension(size=10, extent=100)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.chunk_offset(10)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.chunk_offset(-1)
-
-    def test_chunk_size_oob_raises(self) -> None:
-        d = FixedDimension(size=10, extent=100)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.chunk_size(10)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.chunk_size(-1)
-
-    def test_data_size_oob_raises(self) -> None:
-        d = FixedDimension(size=10, extent=100)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(10)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(-1)
+    # FixedDimension.chunk_offset/chunk_size/data_size do not bounds-check
+    # for performance (callers validate). OOB access is tested via
+    # ChunkGrid.__getitem__ which checks before delegating.
 
 
 # ---------------------------------------------------------------------------
@@ -1216,23 +1199,8 @@ class TestEdgeCases:
         assert d.data_size(9) == 5  # 95 - 9*10 = 5
         assert d.chunk_size(9) == 10  # codec buffer always full
 
-    def test_fixed_dim_data_size_out_of_bounds(self) -> None:
-        """data_size raises IndexError for out-of-bounds chunk indices."""
-        d = FixedDimension(size=10, extent=100)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(10)  # exactly at boundary
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(11)  # past boundary
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(999)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(-1)
-
-    def test_fixed_dim_data_size_boundary_oob(self) -> None:
-        """data_size raises IndexError past last chunk."""
-        d = FixedDimension(size=10, extent=95)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(10)  # past nchunks=10
+    # FixedDimension.data_size does not bounds-check for performance.
+    # OOB access is tested via ChunkGrid.__getitem__.
 
     def test_chunk_grid_boundary_getitem(self) -> None:
         """ChunkGrid with boundary FixedDimension via direct construction."""
@@ -1317,28 +1285,23 @@ class TestEdgeCases:
         """FixedDimension(size=0, extent=0) => 0 chunks (consistent with size=0, extent=5)."""
         d = FixedDimension(size=0, extent=0)
         assert d.nchunks == 0
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.chunk_size(0)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(0)
+        # OOB access tested via ChunkGrid.__getitem__, not direct method calls
+        g = ChunkGrid(dimensions=(d,))
+        assert g[0] is None
 
     def test_zero_size_nonzero_extent(self) -> None:
         """FixedDimension(size=0, extent=5) => 0 chunks (can't partition)."""
         d = FixedDimension(size=0, extent=5)
         assert d.nchunks == 0
-        # No valid chunk index exists on a 0-chunk dimension
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(0)
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.chunk_size(0)
+        g = ChunkGrid(dimensions=(d,))
+        assert g[0] is None
 
     def test_zero_extent_nonzero_size(self) -> None:
         """FixedDimension(size=10, extent=0) => 0 chunks."""
         d = FixedDimension(size=10, extent=0)
         assert d.nchunks == 0
-        # No valid chunk index exists on a 0-chunk dimension
-        with pytest.raises(IndexError, match="out of bounds"):
-            d.data_size(0)
+        g = ChunkGrid(dimensions=(d,))
+        assert g[0] is None
 
     # -- 0-d grid --
 
