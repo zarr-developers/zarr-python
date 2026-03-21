@@ -34,7 +34,9 @@ def _build_parents(store_path: StorePath, zarr_format: ZarrFormat) -> dict[str, 
 
 
 async def save_metadata(
-    store_path: StorePath, metadata: ArrayMetadata | GroupMetadata, ensure_parents: bool = False
+    store_path: StorePath,
+    metadata: ArrayMetadata | GroupMetadata,
+    ensure_parents: bool = False,
 ) -> None:
     """Asynchronously save the array or group metadata.
 

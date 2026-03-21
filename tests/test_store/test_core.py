@@ -9,7 +9,14 @@ from _pytest.compat import LEGACY_PATH
 import zarr
 from zarr import Group
 from zarr.core.common import AccessModeLiteral, ZarrFormat
-from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, ZipStore
+from zarr.storage import (
+    FsspecStore,
+    LocalStore,
+    MemoryStore,
+    StoreLike,
+    StorePath,
+    ZipStore,
+)
 from zarr.storage._common import contains_array, contains_group, make_store_path
 from zarr.storage._utils import (
     _join_paths,
@@ -21,7 +28,14 @@ from zarr.storage._utils import (
 
 
 @pytest.fixture(
-    params=["none", "temp_dir_str", "temp_dir_path", "store_path", "memory_store", "dict"]
+    params=[
+        "none",
+        "temp_dir_str",
+        "temp_dir_path",
+        "store_path",
+        "memory_store",
+        "dict",
+    ]
 )
 def store_like(
     request: pytest.FixtureRequest,
@@ -148,7 +162,7 @@ async def test_store_path_invalid_mode_raises(
         await StorePath.open(
             LocalStore(str(tmp_path), read_only=modes[0]),
             path="",
-            mode=modes[1],  # type:ignore[arg-type]
+            mode=modes[1],  # type: ignore[arg-type]
         )
 
 

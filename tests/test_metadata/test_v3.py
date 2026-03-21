@@ -458,6 +458,10 @@ def test_group_to_dict(use_consolidated: bool, attributes: None | dict[str, Any]
         }
     else:
         meta = group.metadata
-        expect = {"node_type": "group", "zarr_format": 3, "attributes": expect_attributes}
+        expect = {
+            "node_type": "group",
+            "zarr_format": 3,
+            "attributes": expect_attributes,
+        }
 
     assert meta.to_dict() == expect

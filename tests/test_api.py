@@ -477,7 +477,9 @@ def test_open_with_mode_w_minus(tmp_path: Path) -> None:
 @pytest.mark.parametrize("order", ["C", "F", None])
 @pytest.mark.parametrize("config", [{"order": "C"}, {"order": "F"}, {}], ids=["C", "F", "None"])
 def test_array_order(
-    order: MemoryOrder | None, config: dict[str, MemoryOrder | None], zarr_format: ZarrFormat
+    order: MemoryOrder | None,
+    config: dict[str, MemoryOrder | None],
+    zarr_format: ZarrFormat,
 ) -> None:
     """
     Check that:
@@ -523,7 +525,8 @@ def test_array_order(
 
 async def test_init_order_warns() -> None:
     with pytest.warns(
-        RuntimeWarning, match="The `order` keyword argument has no effect for Zarr format 3 arrays"
+        RuntimeWarning,
+        match="The `order` keyword argument has no effect for Zarr format 3 arrays",
     ):
         await init_array(
             store_path=StorePath(store=MemoryStore()),
@@ -605,7 +608,7 @@ def test_tree() -> None:
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
-    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.tree instead\."):  # noqa: PT031
+    with pytest.warns(ZarrDeprecationWarning, match=r"Group\.tree instead\."):
         assert repr(zarr.tree(g1)) == repr(g1.tree())
         assert str(zarr.tree(g1)) == str(g1.tree())
 
@@ -1440,7 +1443,11 @@ def test_v2_with_v3_compressor() -> None:
         match="Cannot use a BytesBytesCodec as a compressor for zarr v2 arrays. Use a numcodecs codec directly instead.",
     ):
         zarr.create(
-            store={}, shape=(1), dtype="uint8", zarr_format=2, compressor=zarr.codecs.BloscCodec()
+            store={},
+            shape=(1),
+            dtype="uint8",
+            zarr_format=2,
+            compressor=zarr.codecs.BloscCodec(),
         )
 
 
@@ -1452,7 +1459,7 @@ def add_empty_file(path: Path) -> Path:
 
 @pytest.mark.parametrize("create_function", [create_array, from_array])
 @pytest.mark.parametrize("overwrite", [True, False])
-def test_no_overwrite_array(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type:ignore[type-arg]
+def test_no_overwrite_array(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type: ignore[type-arg]
     store = zarr.storage.LocalStore(tmp_path)
     existing_fpath = add_empty_file(tmp_path)
 
@@ -1466,7 +1473,7 @@ def test_no_overwrite_array(tmp_path: Path, create_function: Callable, overwrite
 
 @pytest.mark.parametrize("create_function", [create_group, group])
 @pytest.mark.parametrize("overwrite", [True, False])
-def test_no_overwrite_group(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type:ignore[type-arg]
+def test_no_overwrite_group(tmp_path: Path, create_function: Callable, overwrite: bool) -> None:  # type: ignore[type-arg]
     store = zarr.storage.LocalStore(tmp_path)
     existing_fpath = add_empty_file(tmp_path)
 
@@ -1480,7 +1487,7 @@ def test_no_overwrite_group(tmp_path: Path, create_function: Callable, overwrite
 
 @pytest.mark.parametrize("open_func", [zarr.open, open_group])
 @pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
-def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> None:  # type:ignore[type-arg]
+def test_no_overwrite_open(tmp_path: Path, open_func: Callable, mode: str) -> None:  # type: ignore[type-arg]
     store = zarr.storage.LocalStore(tmp_path)
     existing_fpath = add_empty_file(tmp_path)
 
@@ -1533,7 +1540,13 @@ def test_auto_chunks(f: Callable[..., AnyArray]) -> None:
         kwargs["fill_value"] = 0
     if f in [zarr.array]:
         kwargs["data"] = array
-    if f in [zarr.empty_like, zarr.full_like, zarr.empty_like, zarr.ones_like, zarr.zeros_like]:
+    if f in [
+        zarr.empty_like,
+        zarr.full_like,
+        zarr.empty_like,
+        zarr.ones_like,
+        zarr.zeros_like,
+    ]:
         kwargs["a"] = array
     if f in [zarr.create_array]:
         kwargs["store"] = store

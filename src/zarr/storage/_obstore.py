@@ -98,7 +98,10 @@ class ObjectStore(Store, Generic[T_Store]):
         self.__dict__.update(state)
 
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         import obstore as obs
@@ -123,7 +126,9 @@ class ObjectStore(Store, Generic[T_Store]):
                 # manually request the byte range at the end.
                 try:
                     resp = await obs.get_async(
-                        self.store, key, options={"range": {"suffix": byte_range.suffix}}
+                        self.store,
+                        key,
+                        options={"range": {"suffix": byte_range.suffix}},
                     )
                     return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
                 except obs.exceptions.NotSupportedError:
@@ -256,7 +261,8 @@ class ObjectStore(Store, Generic[T_Store]):
 
 
 async def _transform_list_dir(
-    list_result_coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]], prefix: str
+    list_result_coroutine: Coroutine[Any, Any, ListResult[Sequence[ObjectMeta]]],
+    prefix: str,
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list_with_delimiter into an async generator of paths.
@@ -468,7 +474,11 @@ async def _get_partial_values(
             )
         elif isinstance(byte_range, RangeByteRequest):
             per_file_bounded_requests[path].append(
-                {"original_request_index": idx, "start": byte_range.start, "end": byte_range.end}
+                {
+                    "original_request_index": idx,
+                    "start": byte_range.start,
+                    "end": byte_range.end,
+                }
             )
         elif isinstance(byte_range, OffsetByteRequest):
             other_requests.append(
@@ -498,10 +508,10 @@ async def _get_partial_values(
         )
 
     for request in other_requests:
-        futs.append(_make_other_request(store, request, prototype, semaphore=semaphore))  # noqa: PERF401
+        futs.append(_make_other_request(store, request, prototype, semaphore=semaphore))
 
     for suffix_request in suffix_requests:
-        futs.append(_make_suffix_request(store, suffix_request, prototype, semaphore=semaphore))  # noqa: PERF401
+        futs.append(_make_suffix_request(store, suffix_request, prototype, semaphore=semaphore))
 
     buffers: list[Buffer | None] = [None] * len(key_ranges)
 

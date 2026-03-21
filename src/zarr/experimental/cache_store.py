@@ -292,7 +292,10 @@ class CacheStore(WrapperStore[Store]):
                             del self._state.range_cache[key]
 
     async def _get_try_cache(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """Try to get data from cache first, falling back to source store."""
         if byte_range is None:
@@ -320,7 +323,10 @@ class CacheStore(WrapperStore[Store]):
         return result
 
     async def _get_no_cache(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """Get data directly from source store and update cache."""
         self._state.misses += 1
@@ -401,9 +407,9 @@ class CacheStore(WrapperStore[Store]):
         """Return information about the cache state."""
         return {
             "cache_store_type": type(self._cache).__name__,
-            "max_age_seconds": "infinity"
-            if self.max_age_seconds == "infinity"
-            else self.max_age_seconds,
+            "max_age_seconds": (
+                "infinity" if self.max_age_seconds == "infinity" else self.max_age_seconds
+            ),
             "max_size": self.max_size,
             "current_size": self._state.current_size,
             "cache_set_data": self.cache_set_data,

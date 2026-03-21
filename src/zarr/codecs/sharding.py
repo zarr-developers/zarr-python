@@ -244,7 +244,9 @@ class _ShardReader(ShardMapping):
 
     @classmethod
     def create_empty(
-        cls, chunks_per_shard: tuple[int, ...], buffer_prototype: BufferPrototype | None = None
+        cls,
+        chunks_per_shard: tuple[int, ...],
+        buffer_prototype: BufferPrototype | None = None,
     ) -> _ShardReader:
         if buffer_prototype is None:
             buffer_prototype = default_buffer_prototype()
@@ -297,7 +299,9 @@ class _ShardReader(ShardMapping):
 
 @dataclass(frozen=True)
 class ShardingCodec(
-    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
+    ArrayBytesCodec,
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
 ):
     """Sharding codec"""
 
@@ -312,7 +316,7 @@ class ShardingCodec(
         chunk_shape: ShapeLike,
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
-        index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
+        index_location: (ShardingCodecIndexLocation | str) = ShardingCodecIndexLocation.end,
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
@@ -585,7 +589,9 @@ class ShardingCodec(
 
         indexer = list(
             get_indexer(
-                selection, shape=shard_shape, chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape)
+                selection,
+                shape=shard_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             )
         )
 
@@ -701,7 +707,8 @@ class ShardingCodec(
             get_pipeline_class()
             .from_codecs(self.index_codecs)
             .compute_encoded_size(
-                16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
+                16 * product(chunks_per_shard),
+                self._get_index_chunk_spec(chunks_per_shard),
             )
         )
 
@@ -746,7 +753,8 @@ class ShardingCodec(
             )
         else:
             index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(), byte_range=SuffixByteRequest(shard_index_size)
+                prototype=numpy_buffer_prototype(),
+                byte_range=SuffixByteRequest(shard_index_size),
             )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)
@@ -760,7 +768,10 @@ class ShardingCodec(
         ) or _ShardIndex.create_empty(chunks_per_shard)
 
     async def _load_full_shard_maybe(
-        self, byte_getter: ByteGetter, prototype: BufferPrototype, chunks_per_shard: tuple[int, ...]
+        self,
+        byte_getter: ByteGetter,
+        prototype: BufferPrototype,
+        chunks_per_shard: tuple[int, ...],
     ) -> _ShardReader | None:
         shard_bytes = await byte_getter.get(prototype=prototype)
 

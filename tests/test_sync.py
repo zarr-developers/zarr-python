@@ -70,7 +70,9 @@ def test_sync_timeout() -> None:
         sync(foo(), timeout=duration / 10)
 
 
-def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None) -> None:
+def test_sync_raises_if_no_coroutine(
+    sync_loop: asyncio.AbstractEventLoop | None,
+) -> None:
     def foo() -> str:
         return "foo"
 

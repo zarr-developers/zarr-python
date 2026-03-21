@@ -783,7 +783,10 @@ class RawBytes(ZDType[np.dtypes.VoidDType[int], np.void], HasLength, HasItemSize
             return {"name": self.to_native_dtype().str, "object_codec_id": None}
         elif zarr_format == 3:
             v3_unstable_dtype_warning(self)
-            return {"name": self._zarr_v3_name, "configuration": {"length_bytes": self.length}}
+            return {
+                "name": self._zarr_v3_name,
+                "configuration": {"length_bytes": self.length},
+            }
         raise ValueError(f"zarr_format must be 2 or 3, got {zarr_format}")  # pragma: no cover
 
     def _check_scalar(self, data: object) -> TypeGuard[np.bytes_ | str | bytes | np.void]:

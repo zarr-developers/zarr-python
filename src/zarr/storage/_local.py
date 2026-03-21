@@ -129,7 +129,11 @@ class LocalStore(Store):
 
     @classmethod
     async def open(
-        cls, root: Path | str, *, read_only: bool = False, mode: AccessModeLiteral | None = None
+        cls,
+        root: Path | str,
+        *,
+        read_only: bool = False,
+        mode: AccessModeLiteral | None = None,
     ) -> Self:
         """
         Create and open the store.

@@ -62,7 +62,9 @@ def err_too_many_indices(selection: Any, shape: tuple[int, ...]) -> None:
     raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
 
 
-def _zarr_array_to_int_or_bool_array(arr: AnyArray) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
+def _zarr_array_to_int_or_bool_array(
+    arr: AnyArray,
+) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
     if arr.dtype.kind in ("i", "b"):
         return np.asarray(arr)
     else:
@@ -211,7 +213,10 @@ def _iter_regions(
     """
     grid_shape = tuple(itertools.starmap(ceildiv, zip(domain_shape, region_shape, strict=True)))
     for grid_position in _iter_grid(
-        grid_shape=grid_shape, origin=origin, selection_shape=selection_shape, order=order
+        grid_shape=grid_shape,
+        origin=origin,
+        selection_shape=selection_shape,
+        order=order,
     ):
         out: list[slice] = []
         for g_pos, r_shape, d_shape in zip(grid_position, region_shape, domain_shape, strict=True):
@@ -855,11 +860,13 @@ def ix_(selection: Any, shape: tuple[int, ...]) -> npt.NDArray[np.intp]:
 
     # replace slice and int as these are not supported by numpy.ix_
     selection = [
-        slice_to_range(dim_sel, dim_len)
-        if isinstance(dim_sel, slice)
-        else [dim_sel]
-        if is_integer(dim_sel)
-        else dim_sel
+        (
+            slice_to_range(dim_sel, dim_len)
+            if isinstance(dim_sel, slice)
+            else [dim_sel]
+            if is_integer(dim_sel)
+            else dim_sel
+        )
         for dim_sel, dim_len in zip(selection, shape, strict=True)
     ]
 
@@ -1161,7 +1168,10 @@ class CoordinateIndexer(Indexer):
     drop_axes: tuple[int, ...]
 
     def __init__(
-        self, selection: CoordinateSelection, shape: tuple[int, ...], chunk_grid: ChunkGrid
+        self,
+        selection: CoordinateSelection,
+        shape: tuple[int, ...],
+        chunk_grid: ChunkGrid,
     ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
@@ -1429,7 +1439,8 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
         fields = fields[0] if len(fields) == 1 else fields
         selection_tuple = tuple(s for s in selection if not isinstance(s, str))
         selection = cast(
-            "Selection", selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
+            "Selection",
+            selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple,
         )
         return fields, selection
 

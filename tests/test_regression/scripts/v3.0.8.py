@@ -12,6 +12,7 @@ import argparse
 import zarr
 from zarr.abc.store import Store
 
+
 def copy_group(
     *, node: zarr.Group, store: Store, path: str, overwrite: bool
 ) -> zarr.Group:
@@ -20,7 +21,8 @@ def copy_group(
         path=path,
         overwrite=overwrite,
         attributes=node.attrs.asdict(),
-        zarr_format=node.metadata.zarr_format)
+        zarr_format=node.metadata.zarr_format,
+    )
     for key, child in node.members():
         child_path = f"{path}/{key}"
         if isinstance(child, zarr.Group):
@@ -51,7 +53,9 @@ def cli() -> None:
         description="Copy a zarr hierarchy from one location to another"
     )
     parser.add_argument("source", type=str, help="Path to the source zarr hierarchy")
-    parser.add_argument("destination", type=str, help="Path to the destination zarr hierarchy")
+    parser.add_argument(
+        "destination", type=str, help="Path to the destination zarr hierarchy"
+    )
     args = parser.parse_args()
 
     src, dst = args.source, args.destination

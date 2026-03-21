@@ -163,13 +163,15 @@ class StoreTests(Generic[S, B]):
 
         # set
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
 
         # delete
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await store.delete("foo")
 
@@ -180,7 +182,8 @@ class StoreTests(Generic[S, B]):
 
         # Test that you cannot write to a read-only store
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
 
@@ -205,11 +208,13 @@ class StoreTests(Generic[S, B]):
         # Test that you cannot write to the original store
         assert store.read_only
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await store.delete("foo")
 
@@ -217,11 +222,13 @@ class StoreTests(Generic[S, B]):
         reader = store.with_read_only(read_only=True)
         assert reader.read_only
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await reader.set("foo", self.buffer_cls.from_bytes(b"bar"))
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await reader.delete("foo")
 
@@ -433,7 +440,9 @@ class StoreTests(Generic[S, B]):
     async def test_is_empty(self, store: S) -> None:
         assert await store.is_empty("")
         await self.set(
-            store, "foo/bar", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
+            store,
+            "foo/bar",
+            self.buffer_cls.from_bytes(bytes("something", encoding="utf-8")),
         )
         assert not await store.is_empty("")
         assert await store.is_empty("fo")
@@ -443,7 +452,9 @@ class StoreTests(Generic[S, B]):
 
     async def test_clear(self, store: S) -> None:
         await self.set(
-            store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
+            store,
+            "key",
+            self.buffer_cls.from_bytes(bytes("something", encoding="utf-8")),
         )
         await store.clear()
         assert await store.is_empty("")
@@ -688,7 +699,10 @@ class LatencyStore(WrapperStore[Store]):
         await self._store.set(key, value)
 
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """
         Add latency to the ``get`` method.

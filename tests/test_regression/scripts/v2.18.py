@@ -13,7 +13,11 @@ from zarr._storage.store import BaseStore
 
 
 def copy_group(
-    *, node: zarr.hierarchy.Group, store: zarr.storage.BaseStore, path: str, overwrite: bool
+    *,
+    node: zarr.hierarchy.Group,
+    store: zarr.storage.BaseStore,
+    path: str,
+    overwrite: bool,
 ) -> zarr.hierarchy.Group:
     result = zarr.group(store=store, path=path, overwrite=overwrite)
     result.attrs.put(node.attrs.asdict())
@@ -48,7 +52,10 @@ def copy_array(
 
 
 def copy_node(
-    node: zarr.hierarchy.Group | zarr.core.Array, store: BaseStore, path: str, overwrite: bool
+    node: zarr.hierarchy.Group | zarr.core.Array,
+    store: BaseStore,
+    path: str,
+    overwrite: bool,
 ) -> zarr.hierarchy.Group | zarr.core.Array:
     if isinstance(node, zarr.hierarchy.Group):
         return copy_group(node=node, store=store, path=path, overwrite=overwrite)
@@ -63,12 +70,16 @@ def cli() -> None:
         description="Copy a zarr hierarchy from one location to another"
     )
     parser.add_argument("source", type=str, help="Path to the source zarr hierarchy")
-    parser.add_argument("destination", type=str, help="Path to the destination zarr hierarchy")
+    parser.add_argument(
+        "destination", type=str, help="Path to the destination zarr hierarchy"
+    )
     args = parser.parse_args()
 
     src, dst = args.source, args.destination
     root_src = zarr.open(src, mode="r")
-    result = copy_node(node=root_src, store=zarr.NestedDirectoryStore(dst), path="", overwrite=True)
+    result = copy_node(
+        node=root_src, store=zarr.NestedDirectoryStore(dst), path="", overwrite=True
+    )
 
     print(f"successfully created {result} at {dst}")
 

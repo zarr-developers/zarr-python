@@ -155,7 +155,9 @@ def test_replace_ellipsis() -> None:
     [
         (42, "uint8"),
         pytest.param(
-            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+            (b"aaa", 1, 4.2),
+            [("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+            marks=pytest.mark.xfail,
         ),
     ],
 )
@@ -462,7 +464,13 @@ Index = list[int] | tuple[slice | int | list[int], ...]
     ("index", "expected_result"),
     [
         # Single iterable of integers
-        ([0, 1], [[[0, 1, 2], [3, 4, 5], [6, 7, 8]], [[9, 10, 11], [12, 13, 14], [15, 16, 17]]]),
+        (
+            [0, 1],
+            [
+                [[0, 1, 2], [3, 4, 5], [6, 7, 8]],
+                [[9, 10, 11], [12, 13, 14], [15, 16, 17]],
+            ],
+        ),
         # One slice, two integers
         ((slice(0, 2), 1, 1), [4, 13]),
         # One integer, two slices
@@ -546,7 +554,9 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath) -> No
     [
         (42, "uint8"),
         pytest.param(
-            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+            (b"aaa", 1, 4.2),
+            [("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+            marks=pytest.mark.xfail,
         ),
     ],
 )
@@ -787,7 +797,10 @@ def test_orthogonal_indexing_edge_cases(store: StorePath) -> None:
 
 
 def _test_set_orthogonal_selection(
-    v: npt.NDArray[np.int_], a: npt.NDArray[Any], z: Array, selection: OrthogonalSelection
+    v: npt.NDArray[np.int_],
+    a: npt.NDArray[Any],
+    z: Array,
+    selection: OrthogonalSelection,
 ) -> None:
     for value in 42, oindex(v, selection), oindex(v, selection).tolist():
         if isinstance(value, list) and value == []:
@@ -1084,16 +1097,16 @@ def test_get_coordinate_selection_2d(store: StorePath) -> None:
 
     selection = slice(5, 15), [1, 2, 3]
     with pytest.raises(IndexError):
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+        z.get_coordinate_selection(selection)  # type: ignore[arg-type]
     selection = [1, 2, 3], slice(5, 15)
     with pytest.raises(IndexError):
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+        z.get_coordinate_selection(selection)  # type: ignore[arg-type]
     selection = Ellipsis, [1, 2, 3]
     with pytest.raises(IndexError):
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+        z.get_coordinate_selection(selection)  # type: ignore[arg-type]
     selection = Ellipsis
     with pytest.raises(IndexError):
-        z.get_coordinate_selection(selection)  # type:ignore[arg-type]
+        z.get_coordinate_selection(selection)  # type: ignore[arg-type]
 
 
 def _test_set_coordinate_selection(
@@ -1132,9 +1145,9 @@ def test_set_coordinate_selection_1d(store: StorePath) -> None:
 
     for selection in coordinate_selections_1d_bad:
         with pytest.raises(IndexError):
-            z.set_coordinate_selection(selection, 42)  # type:ignore[arg-type]
+            z.set_coordinate_selection(selection, 42)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
-            z.vindex[selection] = 42  # type:ignore[index]
+            z.vindex[selection] = 42  # type: ignore[index]
 
 
 def test_set_coordinate_selection_2d(store: StorePath) -> None:
@@ -1242,9 +1255,9 @@ def test_get_block_selection_1d(store: StorePath) -> None:
 
     for selection_bad in bad_selections:
         with pytest.raises(IndexError):
-            z.get_block_selection(selection_bad)  # type:ignore[arg-type]
+            z.get_block_selection(selection_bad)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
-            z.blocks[selection_bad]  # type:ignore[index]
+            z.blocks[selection_bad]  # type: ignore[index]
 
 
 block_selections_2d: list[BasicSelection] = [
@@ -1333,9 +1346,9 @@ def test_set_block_selection_1d(store: StorePath) -> None:
 
     for selection_bad in block_selections_1d_bad:
         with pytest.raises(IndexError):
-            z.set_block_selection(selection_bad, 42)  # type:ignore[arg-type]
+            z.set_block_selection(selection_bad, 42)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
-            z.blocks[selection_bad] = 42  # type:ignore[index]
+            z.blocks[selection_bad] = 42  # type: ignore[index]
 
 
 def test_set_block_selection_2d(store: StorePath) -> None:
@@ -1407,7 +1420,7 @@ def test_get_mask_selection_1d(store: StorePath) -> None:
         with pytest.raises(IndexError):
             z.get_mask_selection(selection)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
-            z.vindex[selection]  # type:ignore[index]
+            z.vindex[selection]  # type: ignore[index]
 
 
 # noinspection PyStatementEffect
@@ -1782,7 +1795,9 @@ def test_numpy_int_indexing(store: StorePath) -> None:
     ],
 )
 async def test_accessed_chunks(
-    shape: tuple[int, ...], chunks: tuple[int, ...], ops: list[tuple[str, tuple[slice, ...]]]
+    shape: tuple[int, ...],
+    chunks: tuple[int, ...],
+    ops: list[tuple[str, tuple[slice, ...]]],
 ) -> None:
     # Test that only the required chunks are accessed during basic selection operations
     # shape: array shape

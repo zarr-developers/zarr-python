@@ -219,7 +219,11 @@ class Store(ABC):
         ...
 
     async def _get_bytes(
-        self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
         Retrieve raw bytes from the store asynchronously.
@@ -267,7 +271,11 @@ class Store(ABC):
         return buffer.to_bytes()
 
     def _get_bytes_sync(
-        self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str = "",
+        *,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> bytes:
         """
         Retrieve raw bytes from the store synchronously.
@@ -318,7 +326,11 @@ class Store(ABC):
         return sync(self._get_bytes(key, prototype=prototype, byte_range=byte_range))
 
     async def _get_json(
-        self, key: str, *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> Any:
         """
         Retrieve and parse JSON data from the store asynchronously.
@@ -368,7 +380,11 @@ class Store(ABC):
         return json.loads(await self._get_bytes(key, prototype=prototype, byte_range=byte_range))
 
     def _get_json_sync(
-        self, key: str = "", *, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str = "",
+        *,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> Any:
         """
         Retrieve and parse JSON data from the store synchronously.

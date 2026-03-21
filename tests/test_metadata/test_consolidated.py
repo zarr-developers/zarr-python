@@ -425,7 +425,8 @@ class TestConsolidated:
             "air": metadata.metadata["air"],
             "lat": metadata.metadata["lat"],
             "child": GroupMetadata(
-                attributes={"key": "child"}, consolidated_metadata=ConsolidatedMetadata(metadata={})
+                attributes={"key": "child"},
+                consolidated_metadata=ConsolidatedMetadata(metadata={}),
             ),
             "child/array": metadata.metadata["child"].consolidated_metadata.metadata["array"],  # type: ignore[union-attr]
             "child/grandchild": GroupMetadata(
@@ -444,9 +445,7 @@ class TestConsolidated:
         payload: dict[str, JSON] = {
             "kind": "inline",
             "must_understand": False,
-            "metadata": {
-                "foo": [1, 2, 3]  # invalid
-            },
+            "metadata": {"foo": [1, 2, 3]},  # invalid
         }
 
         with pytest.raises(TypeError, match="key='foo', type='list'"):

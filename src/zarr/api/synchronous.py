@@ -266,7 +266,12 @@ def save(
     """
     return sync(
         async_api.save(
-            store, *args, zarr_version=zarr_version, zarr_format=zarr_format, path=path, **kwargs
+            store,
+            *args,
+            zarr_version=zarr_version,
+            zarr_format=zarr_format,
+            path=path,
+            **kwargs,
         )
     )
 

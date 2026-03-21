@@ -26,7 +26,8 @@ async def test_latency_store_with_read_only_round_trip() -> None:
 
     # Cannot write through the read-only wrapper
     with pytest.raises(
-        ValueError, match="store was opened in read-only mode and does not support writing"
+        ValueError,
+        match="store was opened in read-only mode and does not support writing",
     ):
         await latency_ro.set("key", buf)
 
@@ -49,7 +50,8 @@ async def test_latency_store_with_read_only_round_trip() -> None:
     assert isinstance(reader, LatencyStore)
     assert reader.read_only
     with pytest.raises(
-        ValueError, match="store was opened in read-only mode and does not support writing"
+        ValueError,
+        match="store was opened in read-only mode and does not support writing",
     ):
         await reader.set("other", buf)
 

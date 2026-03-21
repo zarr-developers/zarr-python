@@ -233,7 +233,10 @@ def test_cpu_buffer_as_scalar() -> None:
 @pytest.mark.parametrize("dtype", ["int32", "float64"])
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_empty(
-    prototype: BufferPrototype, shape: tuple[int, ...], dtype: str, order: Literal["C", "F"]
+    prototype: BufferPrototype,
+    shape: tuple[int, ...],
+    dtype: str,
+    order: Literal["C", "F"],
 ) -> None:
     buf = prototype.nd_buffer.empty(shape=shape, dtype=dtype, order=order)
     result = buf.as_ndarray_like()

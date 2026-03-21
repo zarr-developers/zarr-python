@@ -14,7 +14,14 @@ from zarr.core.dtype.npy.string import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import StorePath
 
-numpy_str_dtypes: list[type | str | None] = [None, str, "str", np.dtypes.StrDType, "S", "U"]
+numpy_str_dtypes: list[type | str | None] = [
+    None,
+    str,
+    "str",
+    np.dtypes.StrDType,
+    "S",
+    "U",
+]
 expected_array_string_dtype: np.dtype[Any]
 if _NUMPY_SUPPORTS_VLEN_STRING:
     numpy_str_dtypes.append(np.dtypes.StringDType)
@@ -29,7 +36,10 @@ else:
 @pytest.mark.parametrize("as_object_array", [False, True])
 @pytest.mark.parametrize("compressor", [None, ZstdCodec()])
 def test_vlen_string(
-    store: Store, dtype: np.dtype[Any] | None, as_object_array: bool, compressor: Codec | None
+    store: Store,
+    dtype: np.dtype[Any] | None,
+    as_object_array: bool,
+    compressor: Codec | None,
 ) -> None:
     strings = ["hello", "world", "this", "is", "a", "test"]
     data = np.array(strings, dtype=dtype).reshape((2, 3))

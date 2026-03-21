@@ -144,7 +144,14 @@ if TYPE_CHECKING:
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.dtype.wrapper import TBaseDType, TBaseScalar
     from zarr.storage import StoreLike
-    from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
+    from zarr.types import (
+        AnyArray,
+        AnyAsyncArray,
+        ArrayV2,
+        ArrayV3,
+        AsyncArrayV2,
+        AsyncArrayV3,
+    )
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -459,7 +466,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AnyAsyncArray: ...
 
     @classmethod
-    @deprecated("Use zarr.api.asynchronous.create_array instead.", category=ZarrDeprecationWarning)
+    @deprecated(
+        "Use zarr.api.asynchronous.create_array instead.",
+        category=ZarrDeprecationWarning,
+    )
     async def create(
         cls,
         store: StoreLike,
@@ -1419,7 +1429,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return await _nbytes_stored(self.store_path)
 
     def _iter_chunk_coords(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[int, ...]]:
         """
         Create an iterator over the coordinates of chunks in chunk grid space.
@@ -1449,7 +1462,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     def _iter_shard_coords(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[int, ...]]:
         """
         Create an iterator over the coordinates of shards in shard grid space.
@@ -1483,7 +1499,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     def _iter_shard_keys(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[str]:
         """
         Iterate over the keys of the stored objects supporting this array.
@@ -1512,7 +1531,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     def _iter_chunk_regions(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each chunk.
@@ -1536,7 +1558,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
 
     def _iter_shard_regions(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each shard.
@@ -1778,14 +1803,16 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def oindex(self) -> AsyncOIndex[T_ArrayMetadata]:
         """Shortcut for orthogonal (outer) indexing, see [get_orthogonal_selection][zarr.Array.get_orthogonal_selection] and
-        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection] for documentation and examples."""
+        [set_orthogonal_selection][zarr.Array.set_orthogonal_selection] for documentation and examples.
+        """
         return AsyncOIndex(self)
 
     @property
     def vindex(self) -> AsyncVIndex[T_ArrayMetadata]:
         """Shortcut for vectorized (inner) indexing, see [get_coordinate_selection][zarr.Array.get_coordinate_selection],
         [set_coordinate_selection][zarr.Array.set_coordinate_selection], [get_mask_selection][zarr.Array.get_mask_selection] and
-        [set_mask_selection][zarr.Array.set_mask_selection] for documentation and examples."""
+        [set_mask_selection][zarr.Array.set_mask_selection] for documentation and examples.
+        """
         return AsyncVIndex(self)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
@@ -1924,7 +1951,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return await _info_complete(self)
 
     def _info(
-        self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
+        self,
+        count_chunks_initialized: int | None = None,
+        count_bytes_stored: int | None = None,
     ) -> Any:
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
@@ -2544,7 +2573,9 @@ class Array(Generic[T_ArrayMetadata]):
         return sync(self.async_array.nbytes_stored())
 
     def _iter_shard_keys(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[str]:
         """
         Iterate over the storage keys of each shard, relative to an optional origin, and optionally
@@ -2569,7 +2600,9 @@ class Array(Generic[T_ArrayMetadata]):
         return self.async_array._iter_shard_keys(origin=origin, selection_shape=selection_shape)
 
     def _iter_chunk_coords(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[int, ...]]:
         """
         Create an iterator over the coordinates of chunks in chunk grid space.
@@ -2595,7 +2628,10 @@ class Array(Generic[T_ArrayMetadata]):
         return self.async_array._iter_chunk_coords(origin=origin, selection_shape=selection_shape)
 
     def _iter_shard_coords(
-        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        *,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[int, ...]]:
         """
         Create an iterator over the coordinates of shards in shard grid space.
@@ -2621,7 +2657,9 @@ class Array(Generic[T_ArrayMetadata]):
         return self.async_array._iter_shard_coords(origin=origin, selection_shape=selection_shape)
 
     def _iter_chunk_regions(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each chunk.
@@ -2641,7 +2679,9 @@ class Array(Generic[T_ArrayMetadata]):
         return self.async_array._iter_chunk_regions(origin=origin, selection_shape=selection_shape)
 
     def _iter_shard_regions(
-        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+        self,
+        origin: Sequence[int] | None = None,
+        selection_shape: Sequence[int] | None = None,
     ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each shard or chunk if no shard is present.
@@ -4702,7 +4742,9 @@ async def init_array(
             if index_location is None:
                 index_location = ShardingCodecIndexLocation.end
             sharding_codec = ShardingCodec(
-                chunk_shape=chunk_shape_parsed, codecs=sub_codecs, index_location=index_location
+                chunk_shape=chunk_shape_parsed,
+                codecs=sub_codecs,
+                index_location=index_location,
             )
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
@@ -4986,7 +5028,10 @@ def _parse_keep_array_attr(
 
         if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
             if isinstance(data.metadata, ArrayV2Metadata):
-                chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
+                chunk_key_encoding = {
+                    "name": "v2",
+                    "separator": data.metadata.dimension_separator,
+                }
             elif isinstance(data.metadata, ArrayV3Metadata):
                 chunk_key_encoding = data.metadata.chunk_key_encoding
         if dimension_names is None and data.metadata.zarr_format == 3:
@@ -5237,7 +5282,9 @@ def _parse_chunk_encoding_v3(
 
 
 def _parse_deprecated_compressor(
-    compressor: CompressorLike | None, compressors: CompressorsLike, zarr_format: int = 3
+    compressor: CompressorLike | None,
+    compressors: CompressorsLike,
+    zarr_format: int = 3,
 ) -> CompressorsLike | None:
     if compressor != "auto":
         if compressors != "auto":
@@ -5431,7 +5478,11 @@ def _iter_shard_regions(
         shard_shape = array.shards
 
     return _iter_regions(
-        array.shape, shard_shape, origin=origin, selection_shape=selection_shape, trim_excess=True
+        array.shape,
+        shard_shape,
+        origin=origin,
+        selection_shape=selection_shape,
+        trim_excess=True,
     )
 
 
@@ -5462,7 +5513,11 @@ def _iter_chunk_regions(
     """
 
     return _iter_regions(
-        array.shape, array.chunks, origin=origin, selection_shape=selection_shape, trim_excess=True
+        array.shape,
+        array.chunks,
+        origin=origin,
+        selection_shape=selection_shape,
+        trim_excess=True,
     )
 
 
@@ -5977,7 +6032,13 @@ async def _setitem(
         chunk_grid=metadata.chunk_grid,
     )
     return await _set_selection(
-        store_path, metadata, codec_pipeline, config, indexer, value, prototype=prototype
+        store_path,
+        metadata,
+        codec_pipeline,
+        config,
+        indexer,
+        value,
+        prototype=prototype,
     )
 
 

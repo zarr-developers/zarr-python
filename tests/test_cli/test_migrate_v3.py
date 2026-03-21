@@ -186,7 +186,13 @@ async def test_remove_v2_metadata_option_separate_location(
 
     result = runner.invoke(
         cli.app,
-        ["migrate", "v3", str(input_zarr_path), str(output_zarr_path), "--remove-v2-metadata"],
+        [
+            "migrate",
+            "v3",
+            str(input_zarr_path),
+            str(output_zarr_path),
+            "--remove-v2-metadata",
+        ],
     )
     assert result.exit_code == 0
 
@@ -240,7 +246,14 @@ async def test_overwrite_option_separate_location(
     # re-run with --overwrite option
     result = runner.invoke(
         cli.app,
-        ["migrate", "v3", str(input_zarr_path), str(output_zarr_path), "--overwrite", "--force"],
+        [
+            "migrate",
+            "v3",
+            str(input_zarr_path),
+            str(output_zarr_path),
+            "--overwrite",
+            "--force",
+        ],
     )
     assert result.exit_code == 0
 
@@ -465,7 +478,11 @@ def test_migrate_v3(local_store: LocalStore, node_type: str) -> None:
 
     if node_type == "array":
         zarr.create_array(
-            store=local_store, shape=(10, 10), chunks=(10, 10), zarr_format=3, dtype="uint16"
+            store=local_store,
+            shape=(10, 10),
+            chunks=(10, 10),
+            zarr_format=3,
+            dtype="uint16",
         )
     else:
         zarr.create_group(store=local_store, zarr_format=3)
@@ -575,14 +592,17 @@ def test_remove_metadata_fails_without_force(
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_remove_metadata_succeeds_with_force(
-    local_store: LocalStore, zarr_format: ZarrFormat, expected_paths_no_metadata: list[Path]
+    local_store: LocalStore,
+    zarr_format: ZarrFormat,
+    expected_paths_no_metadata: list[Path],
 ) -> None:
     """Test removing metadata (when no alternate metadata is present) succeeds with --force."""
 
     create_nested_zarr(local_store, zarr_format=zarr_format)
 
     result = runner.invoke(
-        cli.app, ["remove-metadata", f"v{zarr_format}", str(local_store.root), "--force"]
+        cli.app,
+        ["remove-metadata", f"v{zarr_format}", str(local_store.root), "--force"],
     )
     assert result.exit_code == 0
 
@@ -652,11 +672,20 @@ def test_dry_run(
 
     if cli_command == "migrate":
         result = runner.invoke(
-            cli.app, ["migrate", "v3", str(local_store.root), "--overwrite", "--force", "--dry-run"]
+            cli.app,
+            [
+                "migrate",
+                "v3",
+                str(local_store.root),
+                "--overwrite",
+                "--force",
+                "--dry-run",
+            ],
         )
     else:
         result = runner.invoke(
-            cli.app, ["remove-metadata", "v2", str(local_store.root), "--force", "--dry-run"]
+            cli.app,
+            ["remove-metadata", "v2", str(local_store.root), "--force", "--dry-run"],
         )
 
     assert result.exit_code == 0

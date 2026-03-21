@@ -173,7 +173,8 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     register_pipeline(MockEnvCodecPipeline)  # type: ignore[type-abstract]
 
     with mock.patch.dict(
-        os.environ, {"ZARR_CODEC_PIPELINE__PATH": fully_qualified_name(MockEnvCodecPipeline)}
+        os.environ,
+        {"ZARR_CODEC_PIPELINE__PATH": fully_qualified_name(MockEnvCodecPipeline)},
     ):
         assert get_pipeline_class(reload_config=True) == MockEnvCodecPipeline
 
@@ -274,7 +275,10 @@ def test_config_buffer_backwards_compatibility() -> None:
     # This should warn once zarr.core is private
     # https://github.com/zarr-developers/zarr-python/issues/2621
     with zarr.config.set(
-        {"buffer": "zarr.core.buffer.cpu.Buffer", "ndbuffer": "zarr.core.buffer.cpu.NDBuffer"}
+        {
+            "buffer": "zarr.core.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+        }
     ):
         get_buffer_class()
         get_ndbuffer_class()
@@ -285,7 +289,10 @@ def test_config_buffer_backwards_compatibility_gpu() -> None:
     # This should warn once zarr.core is private
     # https://github.com/zarr-developers/zarr-python/issues/2621
     with zarr.config.set(
-        {"buffer": "zarr.core.buffer.gpu.Buffer", "ndbuffer": "zarr.core.buffer.gpu.NDBuffer"}
+        {
+            "buffer": "zarr.core.buffer.gpu.Buffer",
+            "ndbuffer": "zarr.core.buffer.gpu.NDBuffer",
+        }
     ):
         get_buffer_class()
         get_ndbuffer_class()

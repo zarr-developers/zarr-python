@@ -388,7 +388,8 @@ def orthogonal_indices(
     for axis, size in enumerate(shape):
         if size != 0:
             strategy = npst.integer_array_indices(
-                shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
+                shape=(size,),
+                result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1),
             ) | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
         else:
             strategy = basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)

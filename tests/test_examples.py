@@ -70,7 +70,8 @@ def test_script_paths() -> None:
 
 
 @pytest.mark.skipif(
-    sys.platform == "win32", reason="This test fails for unknown reasons on Windows in CI."
+    sys.platform == "win32",
+    reason="This test fails for unknown reasons on Windows in CI.",
 )
 @pytest.mark.parametrize("script_path", script_paths)
 def test_scripts_can_run(script_path: Path, tmp_path: Path) -> None:

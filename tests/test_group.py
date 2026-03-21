@@ -478,7 +478,9 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
         else:
             group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
         object.__setattr__(
-            subgroup.metadata, "consolidated_metadata", ConsolidatedMetadata(metadata={})
+            subgroup.metadata,
+            "consolidated_metadata",
+            ConsolidatedMetadata(metadata={}),
         )
 
     assert group["subgroup"] == subgroup
@@ -1765,10 +1767,16 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
     ("a_func", "b_func"),
     [
         (zarr.core.group.AsyncGroup.create_array, zarr.core.group.Group.create_array),
-        (zarr.core.group.AsyncGroup.create_hierarchy, zarr.core.group.Group.create_hierarchy),
+        (
+            zarr.core.group.AsyncGroup.create_hierarchy,
+            zarr.core.group.Group.create_hierarchy,
+        ),
         (zarr.core.group.create_hierarchy, zarr.core.sync_group.create_hierarchy),
         (zarr.core.group.create_nodes, zarr.core.sync_group.create_nodes),
-        (zarr.core.group.create_rooted_hierarchy, zarr.core.sync_group.create_rooted_hierarchy),
+        (
+            zarr.core.group.create_rooted_hierarchy,
+            zarr.core.sync_group.create_rooted_hierarchy,
+        ),
         (zarr.core.group.get_node, zarr.core.sync_group.get_node),
     ],
 )
@@ -1802,7 +1810,10 @@ def test_consistent_signatures(
 @pytest.mark.parametrize("overwrite", [True, False])
 @pytest.mark.parametrize("impl", ["async", "sync"])
 async def test_create_hierarchy(
-    impl: Literal["async", "sync"], store: Store, overwrite: bool, zarr_format: ZarrFormat
+    impl: Literal["async", "sync"],
+    store: Store,
+    overwrite: bool,
+    zarr_format: ZarrFormat,
 ) -> None:
     """
     Test that ``create_hierarchy`` can create a complete Zarr hierarchy, even if the input describes
@@ -1815,7 +1826,9 @@ async def test_create_hierarchy(
             np.arange(3), attributes={"path": "group/array_0"}, zarr_format=zarr_format
         ),
         "group/subgroup/array_0": meta_from_array(
-            np.arange(4), attributes={"path": "group/subgroup/array_0"}, zarr_format=zarr_format
+            np.arange(4),
+            attributes={"path": "group/subgroup/array_0"},
+            zarr_format=zarr_format,
         ),
     }
     pre_existing_nodes = {
@@ -2052,7 +2065,10 @@ def test_group_create_hierarchy_invalid_mixed_zarr_format(
 @pytest.mark.parametrize("defect", ["array/array", "array/group"])
 @pytest.mark.parametrize("impl", ["async", "sync"])
 async def test_create_hierarchy_invalid_nested(
-    impl: Literal["async", "sync"], store: Store, defect: tuple[str, str], zarr_format: ZarrFormat
+    impl: Literal["async", "sync"],
+    store: Store,
+    defect: tuple[str, str],
+    zarr_format: ZarrFormat,
 ) -> None:
     """
     Test that create_hierarchy will not create a Zarr array that contains a Zarr group

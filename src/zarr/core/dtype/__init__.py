@@ -20,8 +20,21 @@ from zarr.core.dtype.npy.bytes import (
 )
 from zarr.core.dtype.npy.complex import Complex64, Complex128
 from zarr.core.dtype.npy.float import Float16, Float32, Float64
-from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
-from zarr.core.dtype.npy.structured import Structured, StructuredJSON_V2, StructuredJSON_V3
+from zarr.core.dtype.npy.int import (
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+)
+from zarr.core.dtype.npy.structured import (
+    Structured,
+    StructuredJSON_V2,
+    StructuredJSON_V3,
+)
 from zarr.core.dtype.npy.time import (
     DateTime64,
     DateTime64JSON_V2,
@@ -157,7 +170,9 @@ for dtype in ANY_DTYPE:
 
 
 # TODO: find a better name for this function
-def get_data_type_from_native_dtype(dtype: npt.DTypeLike) -> ZDType[TBaseDType, TBaseScalar]:
+def get_data_type_from_native_dtype(
+    dtype: npt.DTypeLike,
+) -> ZDType[TBaseDType, TBaseScalar]:
     """
     Get a data type wrapper (an instance of ``ZDType``) from a native data type, e.g. a numpy dtype.
     """

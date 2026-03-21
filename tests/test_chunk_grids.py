@@ -7,7 +7,17 @@ from zarr.core.chunk_grids import _guess_chunks, normalize_chunks
 
 
 @pytest.mark.parametrize(
-    "shape", [(0,), (0,) * 2, (1, 2, 0, 4, 5), (10, 0), (10,), (100,) * 3, (1000000,), (10000,) * 2]
+    "shape",
+    [
+        (0,),
+        (0,) * 2,
+        (1, 2, 0, 4, 5),
+        (10, 0),
+        (10,),
+        (100,) * 3,
+        (1000000,),
+        (10000,) * 2,
+    ],
 )
 @pytest.mark.parametrize("itemsize", [1, 2, 4])
 def test_guess_chunks(shape: tuple[int, ...], itemsize: int) -> None:

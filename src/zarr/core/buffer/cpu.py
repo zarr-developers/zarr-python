@@ -161,7 +161,10 @@ class NDBuffer(core.NDBuffer):
 
     @classmethod
     def empty(
-        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+        cls,
+        shape: tuple[int, ...],
+        dtype: npt.DTypeLike,
+        order: Literal["C", "F"] = "C",
     ) -> Self:
         return cls(np.empty(shape=shape, dtype=dtype, order=order))
 
@@ -192,7 +195,9 @@ class NDBuffer(core.NDBuffer):
 
 
 def as_numpy_array_wrapper(
-    func: Callable[[npt.NDArray[Any]], bytes], buf: core.Buffer, prototype: core.BufferPrototype
+    func: Callable[[npt.NDArray[Any]], bytes],
+    buf: core.Buffer,
+    prototype: core.BufferPrototype,
 ) -> core.Buffer:
     """Converts the input of `func` to a numpy array and the output back to `Buffer`.
 

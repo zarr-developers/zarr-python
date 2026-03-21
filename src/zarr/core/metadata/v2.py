@@ -228,7 +228,10 @@ class ArrayV2Metadata(Metadata):
         return zarray_dict
 
     def get_chunk_spec(
-        self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
+        self,
+        _chunk_coords: tuple[int, ...],
+        array_config: ArrayConfig,
+        prototype: BufferPrototype,
     ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunks,

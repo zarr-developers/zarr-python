@@ -62,7 +62,10 @@ else:
             "invalid",
         )
         invalid_json_v3 = (
-            {"name": "numpy.variable_length_utf8", "configuration": {"invalid_key": "value"}},
+            {
+                "name": "numpy.variable_length_utf8",
+                "configuration": {"invalid_key": "value"},
+            },
             {"name": "invalid_name"},
         )
 
@@ -101,10 +104,16 @@ class TestFixedLengthUTF32(BaseTestZDType):
     )
     invalid_json_v3 = (
         {"name": "fixed_length_utf32", "configuration": {"length_bits": 0}},
-        {"name": "numpy.fixed_length_utf32", "configuration": {"length_bits": "invalid"}},
+        {
+            "name": "numpy.fixed_length_utf32",
+            "configuration": {"length_bits": "invalid"},
+        },
     )
 
-    scalar_v2_params = ((FixedLengthUTF32(length=1), ""), (FixedLengthUTF32(length=2), "hi"))
+    scalar_v2_params = (
+        (FixedLengthUTF32(length=1), ""),
+        (FixedLengthUTF32(length=2), "hi"),
+    )
     scalar_v3_params = (
         (FixedLengthUTF32(length=1), ""),
         (FixedLengthUTF32(length=2), "hi"),

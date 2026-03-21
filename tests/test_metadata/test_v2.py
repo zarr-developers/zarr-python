@@ -96,7 +96,8 @@ def test_filters_empty_tuple_warns() -> None:
         "fill_value": 0,
     }
     with pytest.warns(
-        ZarrUserWarning, match="Found an empty list of filters in the array metadata document."
+        ZarrUserWarning,
+        match="Found an empty list of filters in the array metadata document.",
     ):
         meta = ArrayV2Metadata.from_dict(metadata_dict)
     assert meta.filters is None
@@ -164,7 +165,8 @@ class TestConsolidated:
         }
         store = zarr.storage.MemoryStore()
         await store.set(
-            ".zattrs", cpu.Buffer.from_bytes(json.dumps({"Conventions": "COARDS"}).encode())
+            ".zattrs",
+            cpu.Buffer.from_bytes(json.dumps({"Conventions": "COARDS"}).encode()),
         )
         await store.set(".zgroup", cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode()))
         await store.set(".zmetadata", cpu.Buffer.from_bytes(json.dumps(zmetadata).encode()))
@@ -187,10 +189,12 @@ class TestConsolidated:
 
         # and a nested group for fun
         await store.set(
-            "nested/.zattrs", cpu.Buffer.from_bytes(json.dumps({"key": "value"}).encode())
+            "nested/.zattrs",
+            cpu.Buffer.from_bytes(json.dumps({"key": "value"}).encode()),
         )
         await store.set(
-            "nested/.zgroup", cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode())
+            "nested/.zgroup",
+            cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode()),
         )
         await store.set(
             "nested/array/.zarray",
@@ -220,7 +224,10 @@ class TestConsolidated:
                     shape=(730,),
                     fill_value=0,
                     chunks=(730,),
-                    attributes={"_ARRAY_DIMENSIONS": ["time"], "dataset": "NMC Reanalysis"},
+                    attributes={
+                        "_ARRAY_DIMENSIONS": ["time"],
+                        "dataset": "NMC Reanalysis",
+                    },
                     dtype=Int16(),
                     order="C",
                     filters=None,

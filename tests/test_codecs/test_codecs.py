@@ -309,7 +309,8 @@ async def test_dimension_names(store: Store) -> None:
     )
 
     assert isinstance(
-        meta := (await zarr.api.asynchronous.open_array(store=spath)).metadata, ArrayV3Metadata
+        meta := (await zarr.api.asynchronous.open_array(store=spath)).metadata,
+        ArrayV3Metadata,
     )
     assert meta.dimension_names == (
         "x",

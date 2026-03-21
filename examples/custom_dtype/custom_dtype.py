@@ -220,7 +220,11 @@ data_type_registry.register(Int2._zarr_v3_name, Int2)
 def test_custom_dtype(tmp_path: Path, zarr_format: ZarrFormat) -> None:
     # create array and write values
     z_w = zarr.create_array(
-        store=tmp_path, shape=(4,), dtype="int2", zarr_format=zarr_format, compressors=None
+        store=tmp_path,
+        shape=(4,),
+        dtype="int2",
+        zarr_format=zarr_format,
+        compressors=None,
     )
     z_w[:] = [-1, -2, 0, 1]
 

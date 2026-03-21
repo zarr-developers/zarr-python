@@ -164,7 +164,9 @@ def _convert_group(zarr_v2: Group, output_path: StorePath, dry_run: bool) -> Non
 
     # write group's converted metadata
     group_metadata_v3 = GroupMetadata(
-        attributes=zarr_v2.metadata.attributes, zarr_format=3, consolidated_metadata=None
+        attributes=zarr_v2.metadata.attributes,
+        zarr_format=3,
+        consolidated_metadata=None,
     )
     sync(_save_v3_metadata(group_metadata_v3, output_path, dry_run=dry_run))
 
@@ -282,7 +284,9 @@ def _find_numcodecs_zarr3(numcodecs_codec: numcodecs.abc.Codec) -> Codec:
 
 
 async def _save_v3_metadata(
-    metadata_v3: ArrayV3Metadata | GroupMetadata, output_path: StorePath, dry_run: bool = False
+    metadata_v3: ArrayV3Metadata | GroupMetadata,
+    output_path: StorePath,
+    dry_run: bool = False,
 ) -> None:
     zarr_json_path = output_path / ZARR_JSON
     if await zarr_json_path.exists():

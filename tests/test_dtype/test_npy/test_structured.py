@@ -53,7 +53,10 @@ class TestStructured(BaseTestZDType):
                     ],
                     [
                         "field2",
-                        {"name": "fixed_length_utf32", "configuration": {"length_bytes": 32}},
+                        {
+                            "name": "fixed_length_utf32",
+                            "configuration": {"length_bytes": 32},
+                        },
                     ],
                 ]
             },
@@ -68,8 +71,14 @@ class TestStructured(BaseTestZDType):
             "name": "structured",
             "configuration": {
                 "fields": [
-                    ("field1", {"name": "int32", "configuration": {"endianness": "invalid"}}),
-                    ("field2", {"name": "float64", "configuration": {"endianness": "big"}}),
+                    (
+                        "field1",
+                        {"name": "int32", "configuration": {"endianness": "invalid"}},
+                    ),
+                    (
+                        "field2",
+                        {"name": "float64", "configuration": {"endianness": "big"}},
+                    ),
                 ]
             },
         },
@@ -77,12 +86,21 @@ class TestStructured(BaseTestZDType):
     )
 
     scalar_v2_params = (
-        (Structured(fields=(("field1", Int32()), ("field2", Float64()))), "AQAAAAAAAAAAAPA/"),
+        (
+            Structured(fields=(("field1", Int32()), ("field2", Float64()))),
+            "AQAAAAAAAAAAAPA/",
+        ),
         (Structured(fields=(("field1", Float16()), ("field2", Int32()))), "AQAAAAAA"),
     )
     scalar_v3_params = (
-        (Structured(fields=(("field1", Int32()), ("field2", Float64()))), "AQAAAAAAAAAAAPA/"),
-        (Structured(fields=(("field1", Int64()), ("field2", Int32()))), "AQAAAAAAAAAAAPA/"),
+        (
+            Structured(fields=(("field1", Int32()), ("field2", Float64()))),
+            "AQAAAAAAAAAAAPA/",
+        ),
+        (
+            Structured(fields=(("field1", Int64()), ("field2", Int32()))),
+            "AQAAAAAAAAAAAPA/",
+        ),
     )
 
     cast_value_params = (
@@ -104,8 +122,14 @@ class TestStructured(BaseTestZDType):
     )
 
     invalid_scalar_params = (
-        (Structured(fields=(("field1", Int32()), ("field2", Float64()))), "i am a string"),
-        (Structured(fields=(("field1", Int32()), ("field2", Float64()))), {"type": "dict"}),
+        (
+            Structured(fields=(("field1", Int32()), ("field2", Float64()))),
+            "i am a string",
+        ),
+        (
+            Structured(fields=(("field1", Int32()), ("field2", Float64()))),
+            {"type": "dict"},
+        ),
     )
 
     def scalar_equals(self, scalar1: Any, scalar2: Any) -> bool:

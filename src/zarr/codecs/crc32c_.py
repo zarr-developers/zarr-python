@@ -66,7 +66,8 @@ class Crc32cCodec(BytesBytesCodec):
         data = chunk_bytes.as_numpy_array()
         # Calculate the checksum and "cast" it to a numpy array
         checksum = np.array(
-            [google_crc32c.value(cast("typing_extensions.Buffer", data))], dtype=np.uint32
+            [google_crc32c.value(cast("typing_extensions.Buffer", data))],
+            dtype=np.uint32,
         )
         # Append the checksum (as bytes) to the data
         return chunk_spec.prototype.buffer.from_array_like(np.append(data, checksum.view("B")))

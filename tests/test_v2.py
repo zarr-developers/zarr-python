@@ -75,7 +75,12 @@ async def test_v2_encode_decode(
     store = zarr.storage.MemoryStore()
     g = zarr.group(store=store, zarr_format=2)
     g.create_array(
-        name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
+        name="foo",
+        shape=(3,),
+        chunks=(3,),
+        dtype=dtype,
+        fill_value=fill_value,
+        compressor=None,
     )
 
     result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
@@ -153,7 +158,12 @@ def test_create_array_defaults(store: Store) -> None:
     assert not (arr.filters)
     with pytest.raises(ValueError):
         g.create_array(
-            "four", dtype="i8", shape=(1,), chunks=(1,), compressor=None, compressors=None
+            "four",
+            dtype="i8",
+            shape=(1,),
+            chunks=(1,),
+            compressor=None,
+            compressors=None,
         )
 
 

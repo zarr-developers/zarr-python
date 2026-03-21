@@ -328,9 +328,11 @@ class BatchedCodecPipeline(CodecPipeline):
             # handle missing singleton dimensions
             if drop_axes:
                 item = tuple(
-                    None  # equivalent to np.newaxis
-                    if idx in drop_axes
-                    else slice(None)
+                    (
+                        None  # equivalent to np.newaxis
+                        if idx in drop_axes
+                        else slice(None)
+                    )
                     for idx in range(chunk_spec.ndim)
                 )
                 chunk_value = chunk_value[item]
