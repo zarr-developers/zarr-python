@@ -502,11 +502,11 @@ class TestRLE:
 class TestExpandRleHandlesJsonFloats:
     def test_bare_integer_floats_accepted(self) -> None:
         """JSON parsers may emit 10.0 for the integer 10; expand_rle should handle it."""
-        result = expand_rle([10.0, 20.0])  # type: ignore[list-item]
+        result = expand_rle([10.0, 20.0])
         assert result == [10, 20]
 
     def test_rle_pair_with_float_count(self) -> None:
-        result = expand_rle([[10, 3.0]])  # type: ignore[list-item]
+        result = expand_rle([[10, 3.0]])
         assert result == [10, 10, 10]
 
 
@@ -710,7 +710,7 @@ class TestSerialization:
             "name": "rectilinear",
             "configuration": {"kind": "inline", "chunk_shapes": [10, [20, 30]]},
         }
-        meta = RectilinearChunkGrid.from_dict(data)  # type: ignore[arg-type]
+        meta = RectilinearChunkGrid.from_dict(data)
         out = meta.to_dict()
         # Dim 0 was bare int — should stay bare int
         assert out["configuration"]["chunk_shapes"][0] == 10
@@ -729,7 +729,7 @@ class TestSerialization:
     def test_serialize_unknown_name_raises(self) -> None:
         g = ChunkGrid.from_regular((100,), (10,))
         with pytest.raises(ValueError, match="Unknown chunk grid name for serialization"):
-            serialize_chunk_grid(g, "hexagonal")  # type: ignore[arg-type]
+            serialize_chunk_grid(g, "hexagonal")
 
     def test_zero_extent_rectilinear_raises(self) -> None:
         """Zero-extent grids cannot be serialized as rectilinear (spec requires positive edges)."""
@@ -1476,9 +1476,11 @@ class TestOrthogonalIndexerRectilinear:
         assert chunk_coords == [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (2, 1)]
 
     def test_orthogonal_bool_array_selection_rectilinear(self) -> None:
-        """Boolean array selection with rectilinear grid."""
+        """Boolean array selection with rectilinear grid produces correct chunk projections."""
         from zarr.core.indexing import OrthogonalIndexer
 
+        # chunks: dim0 = [10, 20, 30], dim1 = [50, 50]
+        # mask selects: idx 5 (chunk 0), idx 15 (chunk 1), idx 35 (chunk 2)
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
         mask = np.zeros(60, dtype=bool)
         mask[5] = True
@@ -1490,7 +1492,15 @@ class TestOrthogonalIndexerRectilinear:
             chunk_grid=g,
         )
         projections = list(indexer)
-        assert len(projections) > 0
+        # 3 chunks touched in dim0 x 2 chunks in dim1 = 6 projections
+        assert len(projections) == 6
+        chunk_coords = [p.chunk_coords for p in projections]
+        assert (0, 0) in chunk_coords
+        assert (1, 0) in chunk_coords
+        assert (2, 0) in chunk_coords
+        assert (0, 1) in chunk_coords
+        assert (1, 1) in chunk_coords
+        assert (2, 1) in chunk_coords
 
     def test_orthogonal_advanced_indexing_produces_correct_projections(self) -> None:
         """Verify OrthogonalIndexer produces correct chunk projections
