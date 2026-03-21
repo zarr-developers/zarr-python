@@ -17,7 +17,7 @@ from zarr.core.chunk_key_encodings import (
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
-    DimensionNames,
+    DimensionNamesLike,
     NamedConfig,
     NamedRequiredConfig,
     compress_rle,
@@ -421,7 +421,7 @@ class ArrayV3Metadata(Metadata):
         fill_value: object,
         codecs: Iterable[Codec | dict[str, JSON] | NamedConfig[str, Any] | str],
         attributes: dict[str, JSON] | None,
-        dimension_names: DimensionNames,
+        dimension_names: DimensionNamesLike,
         storage_transformers: Iterable[dict[str, JSON]] | None = None,
         extra_fields: Mapping[str, AllowedExtraField] | None = None,
     ) -> None:

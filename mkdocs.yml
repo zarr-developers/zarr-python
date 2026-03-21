@@ -27,6 +27,7 @@ nav:
       - user-guide/gpu.md
       - user-guide/consolidated_metadata.md
       - user-guide/experimental.md
+      - user-guide/glossary.md
   - Examples:
       - user-guide/examples/custom_dtype.md
   - API Reference:
@@ -86,6 +87,7 @@ theme:
   name: material
   custom_dir: docs/overrides
   logo: _static/logo_bw.png
+  favicon: _static/favicon-96x96.png
 
   palette:
     # Light mode
