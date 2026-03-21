@@ -24,15 +24,34 @@ jobs:
       - name: Check distributions
         run: twine check dist/*
 
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: testpypi-dist
+          path: dist/
+          retention-days: 1
+
+  publish-testpypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/zarr
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: testpypi-dist
+          path: dist
+
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
           repository-url: https://test.pypi.org/legacy/
-          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
-          skip_existing: true
 
   test-install:
-    needs: build
+    needs: publish-testpypi
     runs-on: ubuntu-latest
     strategy:
       matrix:
