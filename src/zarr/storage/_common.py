@@ -5,7 +5,13 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self, TypeAlias
 
-from zarr.abc.store import ByteRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    Store,
+    SupportsDeleteSync,
+    SupportsGetSync,
+    SupportsSetSync,
+)
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import (
     ANY_ACCESS_MODE,
@@ -227,6 +233,37 @@ class StorePath:
             True if no keys exist in the store with the given prefix, False otherwise.
         """
         return await self.store.is_empty(self.path)
+
+    # -------------------------------------------------------------------
+    # Synchronous IO delegation
+    # -------------------------------------------------------------------
+
+    def get_sync(
+        self,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None:
+        """Synchronous read — delegates to ``self.store.get_sync(self.path, ...)``."""
+        if not isinstance(self.store, SupportsGetSync):
+            raise TypeError(f"Store {type(self.store).__name__} does not support synchronous get.")
+        if prototype is None:
+            prototype = default_buffer_prototype()
+        return self.store.get_sync(self.path, prototype=prototype, byte_range=byte_range)
+
+    def set_sync(self, value: Buffer) -> None:
+        """Synchronous write — delegates to ``self.store.set_sync(self.path, value)``."""
+        if not isinstance(self.store, SupportsSetSync):
+            raise TypeError(f"Store {type(self.store).__name__} does not support synchronous set.")
+        self.store.set_sync(self.path, value)
+
+    def delete_sync(self) -> None:
+        """Synchronous delete — delegates to ``self.store.delete_sync(self.path)``."""
+        if not isinstance(self.store, SupportsDeleteSync):
+            raise TypeError(
+                f"Store {type(self.store).__name__} does not support synchronous delete."
+            )
+        self.store.delete_sync(self.path)
 
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
