@@ -125,3 +125,6 @@ conda install -c conda-forge zarr
 ```
 
 For more details, including how to install from source, see the [installation documentation](https://zarr.readthedocs.io/en/stable/index.html#installation).
+
+
+<!-- fix-issue-2215: Zarr-Python V3 Doc Sprint → 9/30 and 10/1 — Come join us! 🏃🏻 -->
