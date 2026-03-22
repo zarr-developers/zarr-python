@@ -40,7 +40,11 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
-from zarr.errors import MetadataValidationError, NodeTypeValidationError, UnknownCodecError
+from zarr.errors import (
+    MetadataValidationError,
+    NodeTypeValidationError,
+    UnknownCodecError,
+)
 from zarr.registry import get_codec_class
 
 
@@ -329,7 +333,10 @@ class ArrayV3Metadata(Metadata):
         return self.codecs
 
     def get_chunk_spec(
-        self, _chunk_coords: tuple[int, ...], array_config: ArrayConfig, prototype: BufferPrototype
+        self,
+        _chunk_coords: tuple[int, ...],
+        array_config: ArrayConfig,
+        prototype: BufferPrototype,
     ) -> ArraySpec:
         assert isinstance(self.chunk_grid, RegularChunkGrid), (
             "Currently, only regular chunk grid is supported"

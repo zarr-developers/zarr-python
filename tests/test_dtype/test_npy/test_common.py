@@ -208,7 +208,9 @@ def test_complex_to_json_v3(
 
 @pytest.mark.parametrize(("json_expected", "float_data"), json_float_v3_cases)
 def test_complex_float_to_json(
-    float_data: float | np.floating[Any], json_expected: JSONFloatV2, zarr_format: ZarrFormat
+    float_data: float | np.floating[Any],
+    json_expected: JSONFloatV2,
+    zarr_format: ZarrFormat,
 ) -> None:
     """
     Test that complex numbers are correctly converted to JSON in v2 or v3 formats, depending

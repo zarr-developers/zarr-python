@@ -79,7 +79,8 @@ class TestWrapperStore(StoreTests[WrapperStore[Any], Buffer]):
         Test that a user cannot change `_is_open` without opening the underlying store.
         """
         with pytest.raises(
-            NotImplementedError, match="WrapperStore must be opened via the `_open` method"
+            NotImplementedError,
+            match="WrapperStore must be opened via the `_open` method",
         ):
             store._is_open = True
 
@@ -111,7 +112,10 @@ async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> 
     # define a class that prints when it sets
     class NoisyGetter(WrapperStore[Any]):
         async def get(
-            self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+            self,
+            key: str,
+            prototype: BufferPrototype,
+            byte_range: ByteRequest | None = None,
         ) -> None:
             print(f"getting {key}")
             await super().get(key, prototype=prototype, byte_range=byte_range)

@@ -183,7 +183,10 @@ class NDBuffer(core.NDBuffer):
 
     @classmethod
     def empty(
-        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+        cls,
+        shape: tuple[int, ...],
+        dtype: npt.DTypeLike,
+        order: Literal["C", "F"] = "C",
     ) -> Self:
         return cls(cp.empty(shape=shape, dtype=dtype, order=order))
 

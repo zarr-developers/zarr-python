@@ -103,7 +103,9 @@ class TestRegistry:
     @staticmethod
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     @pytest.mark.parametrize("zdtype", zdtype_examples)
-    def test_registered_dtypes_match_dtype(zdtype: ZDType[TBaseDType, TBaseScalar]) -> None:
+    def test_registered_dtypes_match_dtype(
+        zdtype: ZDType[TBaseDType, TBaseScalar],
+    ) -> None:
         """
         Test that the registered dtypes can be retrieved from the registry.
         """
@@ -168,7 +170,9 @@ def test_entrypoint_dtype(zarr_format: ZarrFormat) -> None:
 @pytest.mark.parametrize("data_type", zdtype_examples, ids=str)
 @pytest.mark.parametrize("json_style", [(2, "internal"), (2, "metadata"), (3, None)], ids=str)
 @pytest.mark.parametrize(
-    "dtype_parser_func", [parse_dtype, parse_data_type], ids=["parse_dtype", "parse_data_type"]
+    "dtype_parser_func",
+    [parse_dtype, parse_data_type],
+    ids=["parse_dtype", "parse_data_type"],
 )
 def test_parse_data_type(
     data_type: ZDType[Any, Any],

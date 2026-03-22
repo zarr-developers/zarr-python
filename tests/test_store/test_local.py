@@ -81,7 +81,8 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
     @pytest.mark.parametrize("ndim", [0, 1, 3])
     @pytest.mark.parametrize(
-        "destination", ["destination", "foo/bar/destintion", pathlib.Path("foo/bar/destintion")]
+        "destination",
+        ["destination", "foo/bar/destintion", pathlib.Path("foo/bar/destintion")],
     )
     async def test_move(
         self, tmp_path: pathlib.Path, ndim: int, destination: pathlib.Path | str
@@ -110,7 +111,8 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
         store2 = await LocalStore.open(root=origin)
         with pytest.raises(
-            FileExistsError, match=re.escape(f"Destination root {destination} already exists")
+            FileExistsError,
+            match=re.escape(f"Destination root {destination} already exists"),
         ):
             await store2.move(destination)
 

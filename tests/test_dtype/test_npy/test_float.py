@@ -120,7 +120,11 @@ class TestFloat32(_BaseTestFloat):
         (Float32(), {"set!"}),
         (Float32(), "not_a_float"),
     )
-    hex_string_params = (("0x7fc00000", np.nan), ("0x7fc00001", np.nan), ("0x3f800000", 1.0))
+    hex_string_params = (
+        ("0x7fc00000", np.nan),
+        ("0x7fc00001", np.nan),
+        ("0x3f800000", 1.0),
+    )
     item_size_params = (Float32(),)
 
 

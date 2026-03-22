@@ -145,7 +145,10 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             # before fsspec==2024.3.1
             from fsspec.core import url_to_fs
         fs, path = url_to_fs(
-            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=True
+            f"s3://{test_bucket_name}",
+            endpoint_url=endpoint_url,
+            anon=False,
+            asynchronous=True,
         )
         return {"fs": fs, "path": path}
 
@@ -156,14 +159,20 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     async def get(self, store: FsspecStore, key: str) -> Buffer:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code
         new_fs = fsspec.filesystem(
-            "s3", endpoint_url=store.fs.endpoint_url, anon=store.fs.anon, asynchronous=False
+            "s3",
+            endpoint_url=store.fs.endpoint_url,
+            anon=store.fs.anon,
+            asynchronous=False,
         )
         return self.buffer_cls.from_bytes(new_fs.cat(f"{store.path}/{key}"))
 
     async def set(self, store: FsspecStore, key: str, value: Buffer) -> None:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code
         new_fs = fsspec.filesystem(
-            "s3", endpoint_url=store.fs.endpoint_url, anon=store.fs.anon, asynchronous=False
+            "s3",
+            endpoint_url=store.fs.endpoint_url,
+            anon=store.fs.anon,
+            asynchronous=False,
         )
         new_fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
 
@@ -207,7 +216,8 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
         )
         group = await zarr.api.asynchronous.open_group(
-            store=f"s3://{test_bucket_name}/directory-2", storage_options=storage_options
+            store=f"s3://{test_bucket_name}/directory-2",
+            storage_options=storage_options,
         )
         assert dict(group.attrs) == {"key": "value-2"}
 
@@ -221,7 +231,9 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
         )
         group = await zarr.api.asynchronous.open_group(
-            store=f"s3://{test_bucket_name}", path="directory-3", storage_options=storage_options
+            store=f"s3://{test_bucket_name}",
+            path="directory-3",
+            storage_options=storage_options,
         )
         assert dict(group.attrs) == {"key": "value-3"}
 
@@ -249,7 +261,10 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             # before fsspec==2024.3.1
             from fsspec.core import url_to_fs
         fs, path = url_to_fs(
-            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=False
+            f"s3://{test_bucket_name}",
+            endpoint_url=endpoint_url,
+            anon=False,
+            asynchronous=False,
         )
         store_kwargs = {"fs": fs, "path": path}
         with pytest.warns(ZarrUserWarning, match=r".* was not created with `asynchronous=True`.*"):
@@ -320,7 +335,11 @@ def test_no_wrap_async_filesystem() -> None:
 
     store = FsspecStore.from_url(
         f"s3://{test_bucket_name}/foo/spam/",
-        storage_options={"endpoint_url": endpoint_url, "anon": False, "asynchronous": True},
+        storage_options={
+            "endpoint_url": endpoint_url,
+            "anon": False,
+            "asynchronous": True,
+        },
         read_only=False,
     )
     assert not isinstance(store.fs, AsyncFileSystemWrapper)
@@ -378,7 +397,8 @@ def test_open_s3map_raises() -> None:
     s3_filesystem = s3fs.S3FileSystem(asynchronous=True, endpoint_url=endpoint_url, anon=False)
     mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/map/foo/")
     with pytest.raises(
-        ValueError, match="'path' was provided but is not used for FSMap store_like objects"
+        ValueError,
+        match="'path' was provided but is not used for FSMap store_like objects",
     ):
         zarr.open(store=mapper, path="bar", mode="w", shape=(3, 3))
     with pytest.raises(

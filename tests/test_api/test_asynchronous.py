@@ -59,7 +59,10 @@ def test_get_shape_chunks(
 @pytest.mark.parametrize(
     ("observed", "expected"),
     [
-        (np.arange(10, dtype=np.dtype("int64")), {"shape": (10,), "dtype": np.dtype("int64")}),
+        (
+            np.arange(10, dtype=np.dtype("int64")),
+            {"shape": (10,), "dtype": np.dtype("int64")},
+        ),
         (WithChunks(shape=(1, 2), chunks=(1, 2)), {"chunks": (1, 2), "shape": (1, 2)}),
         (
             create_array(
@@ -83,10 +86,9 @@ def test_get_shape_chunks(
     ],
 )
 def test_like_args(
-    observed: AsyncArray[ArrayV2Metadata]
-    | AsyncArray[ArrayV3Metadata]
-    | AnyArray
-    | npt.NDArray[Any],
+    observed: (
+        AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AnyArray | npt.NDArray[Any]
+    ),
     expected: object,
 ) -> None:
     """

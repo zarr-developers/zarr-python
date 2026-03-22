@@ -50,7 +50,8 @@ class TestCacheStore:
 
         # Cannot write through the read-only cache store
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await cached_ro.set("foo", buf)
 
@@ -73,7 +74,8 @@ class TestCacheStore:
         # The original cache store remains read-only
         assert cached_ro.read_only
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await cached_ro.set("bar", buf)
 
@@ -82,7 +84,8 @@ class TestCacheStore:
         assert isinstance(reader, CacheStore)
         assert reader.read_only
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await reader.set("baz", buf)
 
@@ -889,7 +892,10 @@ class TestCacheStore:
         source_store = MemoryStore()
         cache_store = MemoryStore()
         cached_store = CacheStore(
-            store=source_store, cache_store=cache_store, max_age_seconds=60, max_size=1024
+            store=source_store,
+            cache_store=cache_store,
+            max_age_seconds=60,
+            max_size=1024,
         )
 
         repr_str = repr(cached_store)

@@ -42,7 +42,10 @@ layouts: tuple[Layout, ...] = (
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_write_array(
-    store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
+    store: Store,
+    layout: Layout,
+    compression_name: CompressorName,
+    benchmark: BenchmarkFixture,
 ) -> None:
     """
     Test the time required to fill an array with a single value
@@ -64,7 +67,10 @@ def test_write_array(
 @pytest.mark.parametrize("layout", layouts, ids=str)
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 def test_read_array(
-    store: Store, layout: Layout, compression_name: CompressorName, benchmark: BenchmarkFixture
+    store: Store,
+    layout: Layout,
+    compression_name: CompressorName,
+    benchmark: BenchmarkFixture,
 ) -> None:
     """
     Test the time required to fill an array with a single value

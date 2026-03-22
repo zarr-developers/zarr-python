@@ -174,7 +174,8 @@ async def test_vindex(data: st.DataObject) -> None:
     nparray = zarray[:]
     indexer = data.draw(
         npst.integer_array_indices(
-            shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
+            shape=nparray.shape,
+            result_shape=npst.array_shapes(min_side=1, max_dims=None),
         )
     )
 

@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Generic,
+    Protocol,
+    TypeGuard,
+    TypeVar,
+    runtime_checkable,
+)
 
 from typing_extensions import ReadOnly, TypedDict
 

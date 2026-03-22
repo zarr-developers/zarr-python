@@ -535,7 +535,10 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @rule(data=st.data())
     def get_partial_values(self, data: DataObject) -> None:
         key_range = data.draw(
-            key_ranges(keys=st.sampled_from(sorted(self.model.keys())), max_size=MAX_BINARY_SIZE)
+            key_ranges(
+                keys=st.sampled_from(sorted(self.model.keys())),
+                max_size=MAX_BINARY_SIZE,
+            )
         )
         note(f"(get partial) {key_range=}")
         obs_maybe = self.store.get_partial_values(key_range, self.prototype)

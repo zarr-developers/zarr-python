@@ -71,7 +71,10 @@ class NDArrayLike(Protocol):
     def __array__(self) -> npt.NDArray[Any]: ...
 
     def reshape(
-        self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = ...
+        self,
+        shape: tuple[int, ...] | Literal[-1],
+        *,
+        order: Literal["A", "C", "F"] = ...,
     ) -> Self: ...
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
@@ -381,7 +384,10 @@ class NDBuffer:
 
     @classmethod
     def empty(
-        cls, shape: tuple[int, ...], dtype: npt.DTypeLike, order: Literal["C", "F"] = "C"
+        cls,
+        shape: tuple[int, ...],
+        dtype: npt.DTypeLike,
+        order: Literal["C", "F"] = "C",
     ) -> Self:
         """
         Create an empty buffer with the given shape, dtype, and order.
@@ -544,9 +550,9 @@ class NDBuffer:
         return np.array_equal(
             _data,
             other,
-            equal_nan=equal_nan
-            if self._data.dtype.kind not in ("U", "S", "T", "O", "V")
-            else False,
+            equal_nan=(
+                equal_nan if self._data.dtype.kind not in ("U", "S", "T", "O", "V") else False
+            ),
         )
 
     def fill(self, value: Any) -> None:

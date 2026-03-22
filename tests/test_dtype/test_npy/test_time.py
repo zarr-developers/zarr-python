@@ -28,7 +28,11 @@ class _TestTimeBase(BaseTestZDType):
 
 class TestDateTime64(_TestTimeBase):
     test_cls = DateTime64
-    valid_dtype = (np.dtype("datetime64[10ns]"), np.dtype("datetime64[us]"), np.dtype("datetime64"))
+    valid_dtype = (
+        np.dtype("datetime64[10ns]"),
+        np.dtype("datetime64[us]"),
+        np.dtype("datetime64"),
+    )
     invalid_dtype = (
         np.dtype(np.int8),
         np.dtype(np.float64),
@@ -41,8 +45,14 @@ class TestDateTime64(_TestTimeBase):
         {"name": "<M8[10us]", "object_codec_id": None},
     )
     valid_json_v3 = (
-        {"name": "numpy.datetime64", "configuration": {"unit": "ns", "scale_factor": 10}},
-        {"name": "numpy.datetime64", "configuration": {"unit": "us", "scale_factor": 1}},
+        {
+            "name": "numpy.datetime64",
+            "configuration": {"unit": "ns", "scale_factor": 10},
+        },
+        {
+            "name": "numpy.datetime64",
+            "configuration": {"unit": "us", "scale_factor": 1},
+        },
     )
     invalid_json_v2 = (
         "datetime64",
@@ -65,7 +75,11 @@ class TestDateTime64(_TestTimeBase):
 
     cast_value_params = (
         (DateTime64(unit="Y", scale_factor=1), "1", np.datetime64("1", "Y")),
-        (DateTime64(unit="s", scale_factor=1), "2005-02-25", np.datetime64("2005-02-25", "s")),
+        (
+            DateTime64(unit="s", scale_factor=1),
+            "2005-02-25",
+            np.datetime64("2005-02-25", "s"),
+        ),
         (DateTime64(unit="ns", scale_factor=1), "NaT", np.datetime64("NaT")),
     )
     invalid_scalar_params = (
@@ -91,8 +105,14 @@ class TestTimeDelta64(_TestTimeBase):
         {"name": "<m8[10us]", "object_codec_id": None},
     )
     valid_json_v3 = (
-        {"name": "numpy.timedelta64", "configuration": {"unit": "ns", "scale_factor": 10}},
-        {"name": "numpy.timedelta64", "configuration": {"unit": "us", "scale_factor": 1}},
+        {
+            "name": "numpy.timedelta64",
+            "configuration": {"unit": "ns", "scale_factor": 10},
+        },
+        {
+            "name": "numpy.timedelta64",
+            "configuration": {"unit": "us", "scale_factor": 1},
+        },
     )
     invalid_json_v2 = (
         "timedelta64",

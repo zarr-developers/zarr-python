@@ -434,14 +434,22 @@ async def test_nchunks_initialized(
     [((10,), None, (1,)), ((10,), (1,), (1,)), ((40,), (20,), (5,))],
 )
 async def test_chunks_initialized(
-    path: str, shape: tuple[int, ...], shard_shape: tuple[int, ...], chunk_shape: tuple[int, ...]
+    path: str,
+    shape: tuple[int, ...],
+    shard_shape: tuple[int, ...],
+    chunk_shape: tuple[int, ...],
 ) -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
     store = MemoryStore()
     arr = zarr.create_array(
-        store, name=path, shape=shape, shards=shard_shape, chunks=chunk_shape, dtype="i1"
+        store,
+        name=path,
+        shape=shape,
+        shards=shard_shape,
+        chunks=chunk_shape,
+        dtype="i1",
     )
 
     chunks_accumulated = tuple(
@@ -665,7 +673,12 @@ class TestInfo:
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     z = zarr.create(
-        shape=105, chunks=10, dtype="i4", fill_value=0, store=store, zarr_format=zarr_format
+        shape=105,
+        chunks=10,
+        dtype="i4",
+        fill_value=0,
+        store=store,
+        zarr_format=zarr_format,
     )
     a = np.arange(105, dtype="i4")
     z[:] = a
@@ -881,7 +894,11 @@ def test_append_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 def test_append_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z = zarr.create(
-        shape=a.shape, chunks=(10, 10), dtype=a.dtype, store=store, zarr_format=zarr_format
+        shape=a.shape,
+        chunks=(10, 10),
+        dtype=a.dtype,
+        store=store,
+        zarr_format=zarr_format,
     )
     z[:] = a
     assert a.shape == z.shape
@@ -904,7 +921,11 @@ def test_append_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 def test_append_2d_axis(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z = zarr.create(
-        shape=a.shape, chunks=(10, 10), dtype=a.dtype, store=store, zarr_format=zarr_format
+        shape=a.shape,
+        chunks=(10, 10),
+        dtype=a.dtype,
+        store=store,
+        zarr_format=zarr_format,
     )
     z[:] = a
     assert a.shape == z.shape
@@ -935,7 +956,10 @@ def test_append_bad_shape(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
 @pytest.mark.parametrize("fill_value", [0, 5])
 def test_write_empty_chunks_behavior(
-    zarr_format: ZarrFormat, store: MemoryStore, write_empty_chunks: bool, fill_value: int
+    zarr_format: ZarrFormat,
+    store: MemoryStore,
+    write_empty_chunks: bool,
+    fill_value: int,
 ) -> None:
     """
     Check that the write_empty_chunks value of the config is applied correctly. We expect that
@@ -1044,7 +1068,11 @@ async def test_nbytes(
             id="2d_chunking_max_byes_does_not_evenly_divide",
         ),
         pytest.param(
-            (256, 256), (32, 32), 64 * 64, (64, 64), id="2d_chunking_max_byes_evenly_divides"
+            (256, 256),
+            (32, 32),
+            64 * 64,
+            (64, 64),
+            id="2d_chunking_max_byes_evenly_divides",
         ),
         pytest.param(
             (256, 256),
@@ -1196,7 +1224,12 @@ class TestCreateArray:
         Zarr Format 3, and to null for Zarr Format 2
         """
         a = zarr.create_array(
-            store, shape=(5,), chunks=(5,), dtype=dtype, fill_value=None, zarr_format=zarr_format
+            store,
+            shape=(5,),
+            chunks=(5,),
+            dtype=dtype,
+            fill_value=None,
+            zarr_format=zarr_format,
         )
         if zarr_format == 3:
             if isinstance(dtype, DateTime64 | TimeDelta64) and np.isnat(a.fill_value):
@@ -1215,7 +1248,12 @@ class TestCreateArray:
         """
         skip_object_dtype(dtype)
         a = zarr.create_array(
-            store, name="a", shape=(5,), chunks=(5,), dtype=dtype, zarr_format=zarr_format
+            store,
+            name="a",
+            shape=(5,),
+            chunks=(5,),
+            dtype=dtype,
+            zarr_format=zarr_format,
         )
 
         b = zarr.create_array(
@@ -1351,7 +1389,10 @@ class TestCreateArray:
     @pytest.mark.parametrize("name", ["v2", "default", "invalid"])
     @pytest.mark.parametrize("separator", [".", "/"])
     async def test_chunk_key_encoding(
-        name: str, separator: Literal[".", "/"], zarr_format: ZarrFormat, store: MemoryStore
+        name: str,
+        separator: Literal[".", "/"],
+        zarr_format: ZarrFormat,
+        store: MemoryStore,
     ) -> None:
         chunk_key_encoding = ChunkKeyEncodingParams(name=name, separator=separator)  # type: ignore[typeddict-item]
         error_msg = ""
@@ -1385,8 +1426,14 @@ class TestCreateArray:
     @pytest.mark.parametrize(
         ("kwargs", "error_msg"),
         [
-            ({"serializer": "bytes"}, "Zarr format 2 arrays do not support `serializer`."),
-            ({"dimension_names": ["test"]}, "Zarr format 2 arrays do not support dimension names."),
+            (
+                {"serializer": "bytes"},
+                "Zarr format 2 arrays do not support `serializer`.",
+            ),
+            (
+                {"dimension_names": ["test"]},
+                "Zarr format 2 arrays do not support dimension names.",
+            ),
         ],
     )
     async def test_create_array_invalid_v2_arguments(
@@ -1394,7 +1441,12 @@ class TestCreateArray:
     ) -> None:
         with pytest.raises(ValueError, match=re.escape(error_msg)):
             await zarr.api.asynchronous.create_array(
-                store=store, dtype="uint8", shape=(10,), chunks=(1,), zarr_format=2, **kwargs
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                chunks=(1,),
+                zarr_format=2,
+                **kwargs,
             )
 
     @staticmethod
@@ -1420,7 +1472,12 @@ class TestCreateArray:
     ) -> None:
         with pytest.raises(ValueError, match=re.escape(error_msg)):
             await zarr.api.asynchronous.create(
-                store=store, dtype="uint8", shape=(10,), chunks=(1,), zarr_format=2, **kwargs
+                store=store,
+                dtype="uint8",
+                shape=(10,),
+                chunks=(1,),
+                zarr_format=2,
+                **kwargs,
             )
 
     @staticmethod
@@ -1468,7 +1525,10 @@ class TestCreateArray:
         "filters", ["auto", None, numcodecs.GZip(level=1), (numcodecs.GZip(level=1),)]
     )
     async def test_v2_chunk_encoding(
-        store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
+        store: MemoryStore,
+        compressors: CompressorsLike,
+        filters: FiltersLike,
+        dtype: str,
     ) -> None:
         if dtype == "str" and filters != "auto":
             pytest.skip("Only the auto filters are compatible with str dtype in this test.")
@@ -1481,7 +1541,9 @@ class TestCreateArray:
             filters=filters,
         )
         filters_expected, compressor_expected = _parse_chunk_encoding_v2(
-            filters=filters, compressor=compressors, dtype=parse_dtype(dtype, zarr_format=2)
+            filters=filters,
+            compressor=compressors,
+            dtype=parse_dtype(dtype, zarr_format=2),
         )
         assert arr.metadata.zarr_format == 2  # guard for mypy
         assert arr.metadata.compressor == compressor_expected
@@ -1498,7 +1560,9 @@ class TestCreateArray:
     @pytest.mark.parametrize("dtype", [UInt8(), Float32(), VariableLengthUTF8()])
     @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
     async def test_default_filters_compressors(
-        store: MemoryStore, dtype: UInt8 | Float32 | VariableLengthUTF8, zarr_format: ZarrFormat
+        store: MemoryStore,
+        dtype: UInt8 | Float32 | VariableLengthUTF8,
+        zarr_format: ZarrFormat,
     ) -> None:
         """
         Test that the default ``filters`` and ``compressors`` are used when ``create_array`` is invoked with ``filters`` and ``compressors`` unspecified.
@@ -1606,18 +1670,21 @@ class TestCreateArray:
         """
         data = np.arange(10)
         with pytest.raises(
-            ValueError, match="The data parameter was used, but the shape parameter was also used."
+            ValueError,
+            match="The data parameter was used, but the shape parameter was also used.",
         ):
             await create_array(store, data=data, shape=data.shape, dtype=None, overwrite=True)
 
         # we catch shape first, so specifying a dtype should raise the same warning as before
         with pytest.raises(
-            ValueError, match="The data parameter was used, but the shape parameter was also used."
+            ValueError,
+            match="The data parameter was used, but the shape parameter was also used.",
         ):
             await create_array(store, data=data, shape=data.shape, dtype=data.dtype, overwrite=True)
 
         with pytest.raises(
-            ValueError, match="The data parameter was used, but the dtype parameter was also used."
+            ValueError,
+            match="The data parameter was used, but the dtype parameter was also used.",
         ):
             await create_array(store, data=data, shape=None, dtype=data.dtype, overwrite=True)
 
@@ -1650,7 +1717,10 @@ class TestCreateArray:
         # test that implicit groups were created
         path_parts = expected_path.split("/")
         if len(path_parts) > 1:
-            *parents, _ = ["", *accumulate(path_parts, lambda x, y: "/".join([x, y]))]  # noqa: FLY002
+            *parents, _ = [
+                "",
+                *accumulate(path_parts, lambda x, y: "/".join([x, y])),
+            ]
             for parent_path in parents:
                 # this will raise if these groups were not created
                 _ = await zarr.api.asynchronous.open_group(
@@ -1695,7 +1765,11 @@ async def test_creation_from_other_zarr_format(
 ) -> None:
     if src_format == 2:
         src = zarr.create(
-            (50, 50), chunks=(10, 10), store=store, zarr_format=src_format, dimension_separator="/"
+            (50, 50),
+            chunks=(10, 10),
+            store=store,
+            zarr_format=src_format,
+            dimension_separator="/",
         )
     else:
         src = zarr.create(
@@ -1885,7 +1959,8 @@ def _index_array(arr: AnyArray, index: Any) -> Any:
         pytest.param(
             "fork",
             marks=pytest.mark.skipif(
-                sys.platform in ("win32", "darwin"), reason="fork not supported on Windows or OSX"
+                sys.platform in ("win32", "darwin"),
+                reason="fork not supported on Windows or OSX",
             ),
         ),
         "spawn",
@@ -1900,7 +1975,9 @@ def _index_array(arr: AnyArray, index: Any) -> Any:
 @pytest.mark.parametrize("store", ["local"], indirect=True)
 @pytest.mark.parametrize("shards", [None, (20,)])
 def test_multiprocessing(
-    store: Store, method: Literal["fork", "spawn", "forkserver"], shards: tuple[int, ...] | None
+    store: Store,
+    method: Literal["fork", "spawn", "forkserver"],
+    shards: tuple[int, ...] | None,
 ) -> None:
     """
     Test that arrays can be pickled and indexed in child processes
@@ -2078,7 +2155,8 @@ def test_chunk_grid_shape(
 
 
 @pytest.mark.parametrize(
-    ("array_shape", "shard_shape", "chunk_shape"), [((10,), None, (1,)), ((30, 10), None, (2, 5))]
+    ("array_shape", "shard_shape", "chunk_shape"),
+    [((10,), None, (1,)), ((30, 10), None, (2, 5))],
 )
 def test_iter_chunk_coords(
     array_shape: tuple[int, ...],
@@ -2211,7 +2289,8 @@ def test_iter_shard_regions(
 
 
 @pytest.mark.parametrize(
-    ("array_shape", "shard_shape", "chunk_shape"), [((10,), None, (1,)), ((30, 10), None, (2, 5))]
+    ("array_shape", "shard_shape", "chunk_shape"),
+    [((10,), None, (1,)), ((30, 10), None, (2, 5))],
 )
 def test_iter_chunk_regions(
     array_shape: tuple[int, ...],

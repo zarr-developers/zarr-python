@@ -21,7 +21,11 @@ from zarr.core.common import (
     AccessModeLiteral,
     ZarrFormat,
 )
-from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
+from zarr.errors import (
+    ContainsArrayAndGroupError,
+    ContainsArrayError,
+    ContainsGroupError,
+)
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
@@ -525,7 +529,9 @@ async def ensure_no_existing_node(
             raise ValueError(msg)
 
 
-async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", "nothing"]:
+async def _contains_node_v3(
+    store_path: StorePath,
+) -> Literal["array", "group", "nothing"]:
     """
     Check if a store_path contains nothing, an array, or a group. This function
     returns the string "array", "group", or "nothing" to denote containing an array, a group, or
@@ -558,7 +564,9 @@ async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", 
     return result
 
 
-async def _contains_node_v2(store_path: StorePath) -> Literal["array", "group", "nothing"]:
+async def _contains_node_v2(
+    store_path: StorePath,
+) -> Literal["array", "group", "nothing"]:
     """
     Check if a store_path contains nothing, an array, a group, or both. If both an array and a
     group are detected, a `ContainsArrayAndGroup` exception is raised. Otherwise, this function

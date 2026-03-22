@@ -82,7 +82,8 @@ class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
     def test_is_open_setter_raises(self, store: LoggingStore[LocalStore]) -> None:
         "Test that a user cannot change `_is_open` without opening the underlying store."
         with pytest.raises(
-            NotImplementedError, match="LoggingStore must be opened via the `_open` method"
+            NotImplementedError,
+            match="LoggingStore must be opened via the `_open` method",
         ):
             store._is_open = True
 
@@ -101,7 +102,8 @@ class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
 
         # Cannot write through the read-only wrapper
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await wrapped_ro.set("foo", buf)
 
@@ -122,7 +124,8 @@ class TestLoggingStore(StoreTests[LoggingStore[LocalStore], cpu.Buffer]):
         # The original wrapper remains read-only
         assert wrapped_ro.read_only
         with pytest.raises(
-            ValueError, match="store was opened in read-only mode and does not support writing"
+            ValueError,
+            match="store was opened in read-only mode and does not support writing",
         ):
             await wrapped_ro.set("bar", buf)
 

@@ -94,7 +94,10 @@ class WrapperStore(Store, Generic[T_Store]):
         return f"WrapperStore({self._store.__class__.__name__}, '{self._store}')"
 
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         return await self._store.get(key, prototype, byte_range)
 

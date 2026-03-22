@@ -83,7 +83,9 @@ register_codec(
 register_codec("numcodecs.fletcher32", Fletcher32, qualname="zarr.codecs.numcodecs.Fletcher32")
 register_codec("numcodecs.gzip", GZip, qualname="zarr.codecs.numcodecs.GZip")
 register_codec(
-    "numcodecs.jenkins_lookup3", JenkinsLookup3, qualname="zarr.codecs.numcodecs.JenkinsLookup3"
+    "numcodecs.jenkins_lookup3",
+    JenkinsLookup3,
+    qualname="zarr.codecs.numcodecs.JenkinsLookup3",
 )
 register_codec("numcodecs.pcodec", PCodec, qualname="zarr.codecs.numcodecs.PCodec")
 register_codec("numcodecs.packbits", PackBits, qualname="zarr.codecs.numcodecs.PackBits")

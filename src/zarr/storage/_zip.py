@@ -131,7 +131,10 @@ class ZipStore(Store):
             self._zf.close()
             os.remove(self.path)
             self._zf = zipfile.ZipFile(
-                self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
+                self.path,
+                mode="w",
+                compression=self.compression,
+                allowZip64=self.allowZip64,
             )
 
     def __str__(self) -> str:

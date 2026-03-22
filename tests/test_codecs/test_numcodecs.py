@@ -112,7 +112,9 @@ def test_docstring(codec_class: type[_numcodecs._NumcodecsCodec]) -> None:
         _numcodecs.Shuffle,
     ],
 )
-def test_generic_compressor(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec]) -> None:
+def test_generic_compressor(
+    codec_class: type[_numcodecs._NumcodecsBytesBytesCodec],
+) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
@@ -248,7 +250,9 @@ def test_generic_filter_packbits() -> None:
         _numcodecs.JenkinsLookup3,
     ],
 )
-def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec]) -> None:
+def test_generic_checksum(
+    codec_class: type[_numcodecs._NumcodecsBytesBytesCodec],
+) -> None:
     # Check if the codec is available in numcodecs
     try:
         with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
@@ -276,7 +280,9 @@ def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec
 
 
 @pytest.mark.parametrize("codec_class", [_numcodecs.PCodec, _numcodecs.ZFPY])
-def test_generic_bytes_codec(codec_class: type[_numcodecs._NumcodecsArrayBytesCodec]) -> None:
+def test_generic_bytes_codec(
+    codec_class: type[_numcodecs._NumcodecsArrayBytesCodec],
+) -> None:
     try:
         with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
             codec_class()._codec  # noqa: B018

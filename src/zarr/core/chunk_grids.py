@@ -193,7 +193,10 @@ class RegularChunkGrid(ChunkGrid):
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
+        return {
+            "name": "regular",
+            "configuration": {"chunk_shape": tuple(self.chunk_shape)},
+        }
 
     def all_chunk_coords(self, array_shape: tuple[int, ...]) -> Iterator[tuple[int, ...]]:
         return itertools.product(
@@ -209,7 +212,10 @@ class RegularChunkGrid(ChunkGrid):
 
 
 def _guess_num_chunks_per_axis_shard(
-    chunk_shape: tuple[int, ...], item_size: int, max_bytes: int, array_shape: tuple[int, ...]
+    chunk_shape: tuple[int, ...],
+    item_size: int,
+    max_bytes: int,
+    array_shape: tuple[int, ...],
 ) -> int:
     """Generate the number of chunks per axis to hit a target max byte size for a shard.
 

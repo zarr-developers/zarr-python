@@ -85,7 +85,10 @@ class TestDataType(Bool):
 
     @classmethod
     def from_json(cls, data: DTypeJSON, *, zarr_format: ZarrFormat) -> Self:
-        if zarr_format == 2 and data == {"name": cls._zarr_v3_name, "object_codec_id": None}:
+        if zarr_format == 2 and data == {
+            "name": cls._zarr_v3_name,
+            "object_codec_id": None,
+        }:
             return cls()
         if zarr_format == 3 and data == cls._zarr_v3_name:
             return cls()

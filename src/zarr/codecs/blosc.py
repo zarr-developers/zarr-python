@@ -12,7 +12,12 @@ from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, NamedRequiredConfig, parse_enum, parse_named_configuration
+from zarr.core.common import (
+    JSON,
+    NamedRequiredConfig,
+    parse_enum,
+    parse_named_configuration,
+)
 from zarr.core.dtype.common import HasItemSize
 
 if TYPE_CHECKING:

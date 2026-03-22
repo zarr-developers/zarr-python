@@ -157,8 +157,7 @@ class TestMaskedArrays:
             zarr_array = zarr.array(regular_array)
 
             # No warning should be issued for regular arrays
-            masked_warnings = [warning for warning in w
-                             if "Masked arrays" in str(warning.message)]
+            masked_warnings = [warning for warning in w if "Masked arrays" in str(warning.message)]
             assert len(masked_warnings) == 0
 
         result = zarr_array[:]

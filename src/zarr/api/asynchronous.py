@@ -108,7 +108,9 @@ def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     return mode in _OVERWRITE_MODES
 
 
-def _get_shape_chunks(a: ArrayLike | Any) -> tuple[tuple[int, ...] | None, tuple[int, ...] | None]:
+def _get_shape_chunks(
+    a: ArrayLike | Any,
+) -> tuple[tuple[int, ...] | None, tuple[int, ...] | None]:
     """Helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
@@ -179,7 +181,9 @@ def _handle_zarr_version_or_format(
         )
     if zarr_version is not None:
         warnings.warn(
-            "zarr_version is deprecated, use zarr_format", ZarrDeprecationWarning, stacklevel=2
+            "zarr_version is deprecated, use zarr_format",
+            ZarrDeprecationWarning,
+            stacklevel=2,
         )
         return zarr_version
     return zarr_format
@@ -386,7 +390,9 @@ async def open(
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(
-                    store_path=store_path, metadata=_metadata_dict, config=kwargs.get("config")
+                    store_path=store_path,
+                    metadata=_metadata_dict,
+                    config=kwargs.get("config"),
                 )
         except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass

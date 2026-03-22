@@ -35,7 +35,21 @@ IntLike = SupportsInt | SupportsIndex | bytes | str
 FloatLike = SupportsIndex | SupportsFloat | bytes | str
 ComplexLike = SupportsFloat | SupportsIndex | SupportsComplex | bytes | str | None
 DateTimeUnit = Literal[
-    "Y", "M", "W", "D", "h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as", "generic"
+    "Y",
+    "M",
+    "W",
+    "D",
+    "h",
+    "m",
+    "s",
+    "ms",
+    "us",
+    "μs",
+    "ns",
+    "ps",
+    "fs",
+    "as",
+    "generic",
 ]
 DATETIME_UNIT: Final = (
     "Y",
@@ -77,7 +91,9 @@ TFloatScalar_co = TypeVar(
 )
 
 TComplexDType_co = TypeVar(
-    "TComplexDType_co", bound=np.dtypes.Complex64DType | np.dtypes.Complex128DType, covariant=True
+    "TComplexDType_co",
+    bound=np.dtypes.Complex64DType | np.dtypes.Complex128DType,
+    covariant=True,
 )
 TComplexScalar_co = TypeVar("TComplexScalar_co", bound=np.complex64 | np.complex128, covariant=True)
 
@@ -414,7 +430,9 @@ def check_json_float_v3(data: JSON) -> TypeGuard[JSONFloatV3]:
     return check_json_float_v2(data) or (isinstance(data, str) and data.startswith("0x"))
 
 
-def check_json_complex_float_v2(data: JSON) -> TypeGuard[tuple[JSONFloatV2, JSONFloatV2]]:
+def check_json_complex_float_v2(
+    data: JSON,
+) -> TypeGuard[tuple[JSONFloatV2, JSONFloatV2]]:
     """
     Check if a JSON value represents a complex float, as per the behavior of zarr-python 2.x
 
@@ -437,7 +455,9 @@ def check_json_complex_float_v2(data: JSON) -> TypeGuard[tuple[JSONFloatV2, JSON
     )
 
 
-def check_json_complex_float_v3(data: JSON) -> TypeGuard[tuple[JSONFloatV3, JSONFloatV3]]:
+def check_json_complex_float_v3(
+    data: JSON,
+) -> TypeGuard[tuple[JSONFloatV3, JSONFloatV3]]:
     """
     Check if a JSON value represents a complex float, as per the zarr v3 spec
 

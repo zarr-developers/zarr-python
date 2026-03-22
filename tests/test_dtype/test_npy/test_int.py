@@ -3,7 +3,16 @@ from __future__ import annotations
 import numpy as np
 
 from tests.test_dtype.test_wrapper import BaseTestZDType
-from zarr.core.dtype.npy.int import Int8, Int16, Int32, Int64, UInt8, UInt16, UInt32, UInt64
+from zarr.core.dtype.npy.int import (
+    Int8,
+    Int16,
+    Int32,
+    Int64,
+    UInt8,
+    UInt16,
+    UInt32,
+    UInt64,
+)
 
 
 class TestInt8(BaseTestZDType):

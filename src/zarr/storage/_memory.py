@@ -156,7 +156,9 @@ class MemoryStore(Store):
         # docstring inherited
         return key in self._store_dict
 
-    async def set(self, key: str, value: Buffer | bytes, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(
+        self, key: str, value: Buffer | bytes, byte_range: tuple[int, int] | None = None
+    ) -> None:
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
@@ -504,7 +506,9 @@ class GpuMemoryStore(MemoryStore):
         gpu_store_dict = {k: gpu.Buffer.from_buffer(v) for k, v in store_dict.items()}
         return cls(gpu_store_dict)
 
-    async def set(self, key: str, value: Buffer | bytes, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(
+        self, key: str, value: Buffer | bytes, byte_range: tuple[int, int] | None = None
+    ) -> None:
         # docstring inherited
         self._check_writable()
         assert isinstance(key, str)

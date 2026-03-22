@@ -46,7 +46,19 @@ class ArrayParams:
 
 
 basic_codecs: tuple[Numcodec, ...] = GZip(), Blosc(), LZ4(), LZMA(), Zstd()
-basic_dtypes = "|b", ">i2", ">i4", ">f4", ">f8", "<f4", "<f8", ">c8", "<c8", ">c16", "<c16"
+basic_dtypes = (
+    "|b",
+    ">i2",
+    ">i4",
+    ">f4",
+    ">f8",
+    "<f4",
+    "<f8",
+    ">c8",
+    "<c8",
+    ">c16",
+    "<c16",
+)
 datetime_dtypes = "<M8[10ns]", ">M8[10us]", "<m8[2ms]", ">m8[4ps]"
 string_dtypes = "<U1", ">U4"
 bytes_dtypes = ">S1", "<S4", ">V10", "<V4"
@@ -195,7 +207,10 @@ script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
 
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
 @pytest.mark.parametrize(
-    "source_array_v2", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
+    "source_array_v2",
+    array_cases_v2_18,
+    indirect=True,
+    ids=tuple(map(str, array_cases_v2_18)),
 )
 @pytest.mark.parametrize("script_path", script_paths)
 def test_roundtrip_v2(source_array_v2: ArrayV2, tmp_path: Path, script_path: Path) -> None:
@@ -220,7 +235,10 @@ def test_roundtrip_v2(source_array_v2: ArrayV2, tmp_path: Path, script_path: Pat
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
 @pytest.mark.filterwarnings("ignore::zarr.core.dtype.common.UnstableSpecificationWarning")
 @pytest.mark.parametrize(
-    "source_array_v3", array_cases_v3_08, indirect=True, ids=tuple(map(str, array_cases_v3_08))
+    "source_array_v3",
+    array_cases_v3_08,
+    indirect=True,
+    ids=tuple(map(str, array_cases_v3_08)),
 )
 def test_roundtrip_v3(source_array_v3: ArrayV3, tmp_path: Path) -> None:
     script_path = Path(__file__).resolve().parent / "scripts" / "v3.0.8.py"

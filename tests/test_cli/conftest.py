@@ -117,7 +117,9 @@ def expected_paths_no_metadata(
 
 @pytest.fixture
 def expected_paths_v3_metadata(
-    expected_paths: list[Path], expected_chunks: list[Path], expected_v3_metadata: list[Path]
+    expected_paths: list[Path],
+    expected_chunks: list[Path],
+    expected_v3_metadata: list[Path],
 ) -> list[Path]:
     return sorted(expected_paths + expected_chunks + expected_v3_metadata)
 
@@ -131,7 +133,9 @@ def expected_paths_v3_metadata_no_chunks(
 
 @pytest.fixture
 def expected_paths_v2_metadata(
-    expected_paths: list[Path], expected_chunks: list[Path], expected_v2_metadata: list[Path]
+    expected_paths: list[Path],
+    expected_chunks: list[Path],
+    expected_v2_metadata: list[Path],
 ) -> list[Path]:
     return sorted(expected_paths + expected_chunks + expected_v2_metadata)
 

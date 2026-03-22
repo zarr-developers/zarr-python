@@ -79,7 +79,14 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
     from zarr.core.dtype import ZDTypeLike
-    from zarr.types import AnyArray, AnyAsyncArray, ArrayV2, ArrayV3, AsyncArrayV2, AsyncArrayV3
+    from zarr.types import (
+        AnyArray,
+        AnyAsyncArray,
+        ArrayV2,
+        ArrayV3,
+        AsyncArrayV2,
+        AsyncArrayV3,
+    )
 
 logger = logging.getLogger("zarr.group")
 
@@ -284,7 +291,9 @@ class ConsolidatedMetadata:
             )
 
     @property
-    def flattened_metadata(self) -> dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]:
+    def flattened_metadata(
+        self,
+    ) -> dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]:
         """
         Return the flattened representation of Consolidated Metadata.
 
@@ -604,7 +613,10 @@ class AsyncGroup:
                 maybe_consolidated_metadata_bytes = None
 
             return cls._from_bytes_v2(
-                store_path, zgroup_bytes, zattrs_bytes, maybe_consolidated_metadata_bytes
+                store_path,
+                zgroup_bytes,
+                zattrs_bytes,
+                maybe_consolidated_metadata_bytes,
             )
         else:
             # V3 groups are comprised of a zarr.json object
@@ -738,7 +750,9 @@ class AsyncGroup:
             return self._getitem_consolidated(store_path, key, prefix=self.name)
         try:
             return await get_node(
-                store=store_path.store, path=store_path.path, zarr_format=self.metadata.zarr_format
+                store=store_path.store,
+                path=store_path.path,
+                zarr_format=self.metadata.zarr_format,
             )
         except FileNotFoundError as e:
             raise KeyError(key) from e
@@ -900,7 +914,8 @@ class AsyncGroup:
         return self._info(members=members)
 
     def _info(
-        self, members: list[ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] | None = None
+        self,
+        members: list[ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] | None = None,
     ) -> Any:
         kwargs = {}
         if members is not None:
@@ -1384,7 +1399,8 @@ class AsyncGroup:
         if max_depth is not None and max_depth < 0:
             raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
         async for item in self._members(
-            max_depth=max_depth, use_consolidated_for_children=use_consolidated_for_children
+            max_depth=max_depth,
+            use_consolidated_for_children=use_consolidated_for_children,
         ):
             yield item
 
@@ -1684,7 +1700,12 @@ class AsyncGroup:
         return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def full(
-        self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
+        self,
+        *,
+        name: str,
+        shape: tuple[int, ...],
+        fill_value: Any | None,
+        **kwargs: Any,
     ) -> AnyAsyncArray:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
@@ -2889,7 +2910,12 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
     def full(
-        self, *, name: str, shape: tuple[int, ...], fill_value: Any | None, **kwargs: Any
+        self,
+        *,
+        name: str,
+        shape: tuple[int, ...],
+        fill_value: Any | None,
+        **kwargs: Any,
     ) -> AnyArray:
         """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
 
@@ -3755,7 +3781,10 @@ def _build_node(*, store: Store, path: str, metadata: GroupMetadata) -> AsyncGro
 
 
 def _build_node(
-    *, store: Store, path: str, metadata: ArrayV3Metadata | ArrayV2Metadata | GroupMetadata
+    *,
+    store: Store,
+    path: str,
+    metadata: ArrayV3Metadata | ArrayV2Metadata | GroupMetadata,
 ) -> AnyAsyncArray | AsyncGroup:
     """
     Take a metadata object and return a node (AsyncArray or AsyncGroup).

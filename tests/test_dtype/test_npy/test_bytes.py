@@ -28,7 +28,10 @@ class TestNullTerminatedBytes(BaseTestZDType):
     )
     invalid_json_v3 = (
         {"name": "fixed_length_ascii", "configuration": {"length_bits": 0}},
-        {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": "invalid"}},
+        {
+            "name": "numpy.fixed_length_ascii",
+            "configuration": {"length_bits": "invalid"},
+        },
     )
 
     scalar_v2_params = (
@@ -118,7 +121,10 @@ class TestVariableLengthBytes(BaseTestZDType):
     )
     invalid_json_v3 = (
         {"name": "fixed_length_ascii", "configuration": {"length_bits": 0}},
-        {"name": "numpy.fixed_length_ascii", "configuration": {"length_bits": "invalid"}},
+        {
+            "name": "numpy.fixed_length_ascii",
+            "configuration": {"length_bits": "invalid"},
+        },
     )
 
     scalar_v2_params = (
@@ -148,7 +154,8 @@ def test_vlen_bytes_alias() -> None:
 
 
 @pytest.mark.parametrize(
-    "zdtype", [NullTerminatedBytes(length=10), RawBytes(length=10), VariableLengthBytes()]
+    "zdtype",
+    [NullTerminatedBytes(length=10), RawBytes(length=10), VariableLengthBytes()],
 )
 def test_unstable_dtype_warning(
     zdtype: NullTerminatedBytes | RawBytes | VariableLengthBytes,

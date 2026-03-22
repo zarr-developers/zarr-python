@@ -64,7 +64,10 @@ class ZstdCodec(BytesBytesCodec):
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
+        return {
+            "name": "zstd",
+            "configuration": {"level": self.level, "checksum": self.checksum},
+        }
 
     @cached_property
     def _zstd_codec(self) -> Zstd:

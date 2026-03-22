@@ -29,7 +29,14 @@ JSONFloatV3 = float | SpecialFloatStrings | str
 
 ObjectCodecID = Literal["vlen-utf8", "vlen-bytes", "vlen-array", "pickle", "json2", "msgpack2"]
 # These are the ids of the known object codecs for zarr v2.
-OBJECT_CODEC_IDS: Final = ("vlen-utf8", "vlen-bytes", "vlen-array", "pickle", "json2", "msgpack2")
+OBJECT_CODEC_IDS: Final = (
+    "vlen-utf8",
+    "vlen-bytes",
+    "vlen-array",
+    "pickle",
+    "json2",
+    "msgpack2",
+)
 
 # This is a wider type than our standard JSON type because we need
 # to work with typeddict objects which are assignable to Mapping[str, object]
@@ -89,7 +96,9 @@ def check_structured_dtype_v2_inner(data: object) -> TypeGuard[StructuredName_V2
     return False
 
 
-def check_structured_dtype_name_v2(data: Sequence[object]) -> TypeGuard[StructuredName_V2]:
+def check_structured_dtype_name_v2(
+    data: Sequence[object],
+) -> TypeGuard[StructuredName_V2]:
     """
     Check that all the elements of a sequence are valid zarr v2 structured dtype identifiers
     """
