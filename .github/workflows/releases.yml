@@ -21,7 +21,26 @@ concurrency:
 
 jobs:
 
+  validate_tag:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate tag format
+        run: |
+          if [[ ! "${{ inputs.tag }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([a-z]+[0-9]*)?$ ]]; then
+            echo "::error::Invalid tag format '${{ inputs.tag }}'. Expected format: v1.2.3, v1.2.3a1, v1.2.3rc1"
+            exit 1
+          fi
+      - name: Verify tag exists
+        run: |
+          git ls-remote --tags "${{ github.server_url }}/${{ github.repository }}" "${{ inputs.tag }}" | grep -q "${{ inputs.tag }}" || {
+            echo "::error::Tag '${{ inputs.tag }}' does not exist in the repository"
+            exit 1
+          }
+
   build_artifacts:
+    needs: [validate_tag]
+    if: always() && (needs.validate_tag.result == 'success' || needs.validate_tag.result == 'skipped')
     name: Build wheel on ubuntu-latest
     runs-on: ubuntu-latest
     strategy:
@@ -69,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >-
       (github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v'))
-      || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'workflow_dispatch' && startsWith(inputs.tag, 'v'))
     environment:
       name: releases
       url: https://pypi.org/p/zarr
