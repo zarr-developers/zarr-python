@@ -128,3 +128,6 @@ For more details, including how to install from source, see the [installation do
 
 
 <!-- fix-issue-2215: Zarr-Python V3 Doc Sprint → 9/30 and 10/1 — Come join us! 🏃🏻 -->
+
+
+<!-- fix-issue-2215: Zarr-Python V3 Doc Sprint → 9/30 and 10/1 — Come join us! 🏃🏻 -->
