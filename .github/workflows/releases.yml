@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to build and publish (e.g. v3.1.6)'
+        required: true
+        type: string
+      test_pypi:
+        description: 'Publish to Test PyPI instead of PyPI'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -25,6 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          ref: ${{ inputs.tag || github.ref }}
           submodules: true
           fetch-depth: 0
 
@@ -61,10 +72,12 @@ jobs:
   upload_pypi:
     needs: [build_artifacts, test_dist_pypi]
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v')
+    if: >-
+      (github.event_name == 'push' && startsWith(github.event.ref, 'refs/tags/v'))
+      || github.event_name == 'workflow_dispatch'
     environment:
       name: releases
-      url: https://pypi.org/p/zarr
+      url: ${{ (github.event_name == 'workflow_dispatch' && inputs.test_pypi) && 'https://test.pypi.org/p/zarr' || 'https://pypi.org/p/zarr' }}
     permissions:
       id-token: write
       attestations: write
@@ -80,3 +93,10 @@ jobs:
           subject-path: dist/*
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@v1.13.0
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.test_pypi) }}
+
+      - name: Publish package to Test PyPI
+        uses: pypa/gh-action-pypi-publish@v1.13.0
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test_pypi }}
+        with:
+          repository-url: https://test.pypi.org/legacy/
