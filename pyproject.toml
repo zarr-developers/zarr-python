@@ -445,7 +445,8 @@ checks = [
 directory = 'changes'
 filename = "docs/release-notes.md"
 underlines = ["", "", ""]
-issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues{issue})"
+title_format = "## {version} ({project_date})"
+issue_format = "[#{issue}](https://github.com/zarr-developers/zarr-python/issues/{issue})"
 start_string = "<!-- towncrier release notes start -->\n"
 
 [tool.codespell]
