@@ -1,6 +1,6 @@
 import pickle
 import re
-from typing import Any
+from typing import Any, get_args
 
 import numpy as np
 import numpy.typing as npt
@@ -562,7 +562,7 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
 
 @pytest.mark.parametrize(
     "subchunk_write_order",
-    list(SubchunkWriteOrder),
+    get_args(SubchunkWriteOrder),
 )
 async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteOrder) -> None:
     """Subchunks must be physically laid out in the shard in the order specified by
@@ -611,14 +611,12 @@ async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteO
     # The physical write order is recovered by sorting coordinates by start offset.
     actual_order = [coord for _, coord in sorted(offset_to_coord.items())]
     expected_order = list(codec._subchunk_order_iter(chunks_per_shard))
-    assert (actual_order == expected_order) == (
-        subchunk_write_order != SubchunkWriteOrder.unordered
-    )
+    assert (actual_order == expected_order) == (subchunk_write_order != "unordered")
 
 
 @pytest.mark.parametrize(
     "subchunk_write_order",
-    list(SubchunkWriteOrder),
+    get_args(SubchunkWriteOrder),
 )
 @pytest.mark.parametrize("do_partial", [True, False], ids=["partial", "complete"])
 def test_subchunk_write_order_roundtrip(
