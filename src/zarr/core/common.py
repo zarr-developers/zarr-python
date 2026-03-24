@@ -50,7 +50,6 @@ ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
 DimensionNamesLike = Iterable[str | None] | None
 DimensionNames = DimensionNamesLike  # for backwards compatibility
 
-
 TName = TypeVar("TName", bound=str)
 TConfig = TypeVar("TConfig", bound=Mapping[str, object])
 
