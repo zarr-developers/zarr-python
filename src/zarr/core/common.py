@@ -45,7 +45,8 @@ JSON = str | int | float | bool | Mapping[str, "JSON"] | Sequence["JSON"] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 ANY_ACCESS_MODE: Final = "r", "r+", "a", "w", "w-"
-DimensionNames = Iterable[str | None] | None
+DimensionNamesLike = Iterable[str | None] | None
+DimensionNames = DimensionNamesLike  # for backwards compatibility
 
 
 class NamedConfig[TName: str, TConfig: Mapping[str, object]](TypedDict):

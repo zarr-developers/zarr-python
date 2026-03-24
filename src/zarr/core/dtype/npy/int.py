@@ -1072,6 +1072,28 @@ class UInt32(BaseInt[np.dtypes.UInt32DType, np.uint32], HasEndianness):
     _zarr_v2_names: ClassVar[tuple[Literal[">u4"], Literal["<u4"]]] = (">u4", "<u4")
 
     @classmethod
+    def _check_native_dtype(cls: type[Self], dtype: TBaseDType) -> TypeGuard[np.dtypes.UInt32DType]:
+        """
+        A type guard that checks if the input is assignable to the type of ``cls.dtype_class``
+
+        This method is overridden for this particular data type because of a Windows-specific issue
+        where ``np.array([1], dtype=np.uint32) & 1`` creates an instance of ``np.dtypes.UIntDType``,
+        rather than an instance of ``np.dtypes.UInt32DType``, even though both represent 32-bit
+        unsigned integers. (In contrast to ``np.dtype('i')``, ``np.dtype('u')`` raises an error.)
+
+        Parameters
+        ----------
+        dtype : TDType
+            The dtype to check.
+
+        Returns
+        -------
+        Bool
+            True if the dtype matches, False otherwise.
+        """
+        return super()._check_native_dtype(dtype) or dtype == np.dtypes.UInt32DType()
+
+    @classmethod
     def from_native_dtype(cls, dtype: TBaseDType) -> Self:
         """
         Create a UInt32 from an np.dtype('uint32') instance.
