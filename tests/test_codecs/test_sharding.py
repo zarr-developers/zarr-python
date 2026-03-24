@@ -564,9 +564,7 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     "subchunk_write_order",
     list(SubchunkWriteOrder),
 )
-async def test_encoded_subchunk_write_order(
-    subchunk_write_order: SubchunkWriteOrder,
-) -> None:
+async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteOrder) -> None:
     """Subchunks must be physically laid out in the shard in the order specified by
     ``subchunk_write_order``.  We verify this by decoding the shard index and sorting
     the chunk coordinates by their byte offset."""
@@ -612,7 +610,7 @@ async def test_encoded_subchunk_write_order(
 
     # The physical write order is recovered by sorting coordinates by start offset.
     actual_order = [coord for _, coord in sorted(offset_to_coord.items())]
-    expected_order = list(codec._subchunk_iter(chunks_per_shard))
+    expected_order = list(codec._subchunk_order_iter(chunks_per_shard))
     assert (actual_order == expected_order) == (
         subchunk_write_order != SubchunkWriteOrder.unordered
     )
@@ -622,13 +620,15 @@ async def test_encoded_subchunk_write_order(
     "subchunk_write_order",
     list(SubchunkWriteOrder),
 )
-def test_subchunk_write_order_roundtrip(subchunk_write_order: SubchunkWriteOrder) -> None:
+@pytest.mark.parametrize("do_partial", [True, False], ids=["partial", "complete"])
+def test_subchunk_write_order_roundtrip(
+    subchunk_write_order: SubchunkWriteOrder, do_partial: bool
+) -> None:
     """Data written with any ``subchunk_write_order`` must round-trip correctly."""
     chunks_per_shard = (3, 2)
     chunk_shape = (4, 4)
     shard_shape = tuple(c * s for c, s in zip(chunks_per_shard, chunk_shape, strict=True))
     data = np.arange(np.prod(shard_shape), dtype="uint16").reshape(shard_shape)
-
     arr = zarr.create_array(
         StorePath(MemoryStore()),
         shape=shard_shape,
@@ -643,5 +643,10 @@ def test_subchunk_write_order_roundtrip(subchunk_write_order: SubchunkWriteOrder
         compressors=None,
         fill_value=0,
     )
-    arr[:] = data
+    if do_partial:
+        sub_data = data[: (shard_shape[0] // 2)]
+        arr[: (shard_shape[0] // 2)] = data[: (shard_shape[0] // 2)]
+        data = np.vstack([sub_data, np.zeros_like(sub_data)])
+    else:
+        arr[:] = data
     np.testing.assert_array_equal(arr[:], data)
