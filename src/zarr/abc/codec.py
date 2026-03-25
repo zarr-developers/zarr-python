@@ -480,7 +480,7 @@ class CodecPipeline:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]]
+        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be encoded.
             The second slice selection determines where in the value array the chunk data is located.
