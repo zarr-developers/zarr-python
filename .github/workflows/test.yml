@@ -45,11 +45,12 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         fetch-depth: 0  # grab all branches and tags
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -68,9 +69,11 @@ jobs:
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+        # CODECOV_TOKEN is a low-sensitivity upload token, not a deploy key.
+        # Using an environment would gate every test run behind approval/deployment UI.
+        token: ${{ secrets.CODECOV_TOKEN }} # zizmor: ignore[secrets-outside-env]
         verbose: true # optional (default = false)
 
   test-upstream-and-min-deps:
@@ -87,11 +90,12 @@ jobs:
           - python-version: "3.11"
             dependency-set: upstream
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         fetch-depth: 0
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -107,20 +111,23 @@ jobs:
       run: |
         hatch env run --env ${{ matrix.dependency-set }} run-coverage
     - name: Upload coverage
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+        # CODECOV_TOKEN is a low-sensitivity upload token, not a deploy key.
+        # Using an environment would gate every test run behind approval/deployment UI.
+        token: ${{ secrets.CODECOV_TOKEN }} # zizmor: ignore[secrets-outside-env]
         verbose: true # optional (default = false)
 
   doctests:
     name: doctests
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       with:
         fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
+        persist-credentials: false
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: '3.13'
         cache: 'pip'

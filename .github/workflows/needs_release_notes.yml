@@ -1,12 +1,14 @@
 name: "Pull Request Labeler"
 
 on:
-  pull_request_target:
+  # pull_request_target is needed to label PRs from forks.
+  # This workflow only runs actions/labeler (no code checkout), so it's safe.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
     types: [opened, reopened, synchronize]
 
 jobs:
   labeler:
-    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }} && ${{ github.event.pull_request.user.login != 'pre-commit-ci[bot]' }}
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'pre-commit-ci[bot]' }}
     permissions:
       contents: read
       pull-requests: write

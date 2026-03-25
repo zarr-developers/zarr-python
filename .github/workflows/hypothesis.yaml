@@ -30,7 +30,9 @@ jobs:
         dependency-set: ["optional"]
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        persist-credentials: false
     - name: Set HYPOTHESIS_PROFILE based on trigger
       run: |
         if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -39,7 +41,7 @@ jobs:
           echo "HYPOTHESIS_PROFILE=ci" >> $GITHUB_ENV
         fi
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -54,7 +56,7 @@ jobs:
     # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
     - name: Restore cached hypothesis directory
       id: restore-hypothesis-cache
-      uses: actions/cache/restore@v5
+      uses: actions/cache/restore@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: .hypothesis/
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
@@ -72,15 +74,17 @@ jobs:
     - name: Save cached hypothesis directory
       id: save-hypothesis-cache
       if: always() && steps.status.outcome != 'skipped'
-      uses: actions/cache/save@v5
+      uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
       with:
         path: .hypothesis/
         key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
 
     - name: Upload coverage
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+        # CODECOV_TOKEN is a low-sensitivity upload token, not a deploy key.
+        # Using an environment would gate every test run behind approval/deployment UI.
+        token: ${{ secrets.CODECOV_TOKEN }} # zizmor: ignore[secrets-outside-env]
         verbose: true # optional (default = false)
 
     - name: Generate and publish the report
@@ -89,7 +93,7 @@ jobs:
         && steps.status.outcome == 'failure'
         && github.event_name == 'schedule'
         && github.repository_owner == 'zarr-developers'
-      uses: scientific-python/issue-from-pytest-log-action@v1
+      uses: scientific-python/issue-from-pytest-log-action@8e905db353437cda1d6a773de245343fbfc940dd # v1.5.0
       with:
         log-path: output-${{ matrix.python-version }}-log.jsonl
         issue-title: "Nightly Hypothesis tests failed"
