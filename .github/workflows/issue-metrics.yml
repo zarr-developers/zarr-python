@@ -7,13 +7,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: issue metrics
     runs-on: ubuntu-latest
     permissions:
-      issues: write
-      pull-requests: read
+      issues: write # Required to create the metrics report issue
+      pull-requests: read # Required to read PR metrics
     steps:
     - name: Get dates for last month
       shell: bash

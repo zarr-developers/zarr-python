@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   FORCE_COLOR: 3
 
@@ -34,8 +38,10 @@ jobs:
       with:
         persist-credentials: false
     - name: Set HYPOTHESIS_PROFILE based on trigger
+      env:
+        EVENT_NAME: ${{ github.event_name }}
       run: |
-        if [[ "${{ github.event_name }}" == "schedule" || "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+        if [[ "$EVENT_NAME" == "schedule" || "$EVENT_NAME" == "workflow_dispatch" ]]; then
           echo "HYPOTHESIS_PROFILE=nightly" >> $GITHUB_ENV
         else
           echo "HYPOTHESIS_PROFILE=ci" >> $GITHUB_ENV
@@ -50,9 +56,11 @@ jobs:
       with:
         version: '1.16.5'
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
     - name: Restore cached hypothesis directory
       id: restore-hypothesis-cache
@@ -66,9 +74,11 @@ jobs:
     - name: Run slow Hypothesis tests
       if: success()
       id: status
+      env:
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
         echo "Using Hypothesis profile: $HYPOTHESIS_PROFILE"
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-hypothesis
+        hatch env run --env "$HATCH_ENV" run-hypothesis
 
     # explicitly save the cache so it gets updated, also do this even if it fails.
     - name: Save cached hypothesis directory

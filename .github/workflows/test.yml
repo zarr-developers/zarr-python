@@ -59,14 +59,17 @@ jobs:
       with:
         version: '1.16.5'
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     - name: Run Tests
       env:
         HYPOTHESIS_PROFILE: ci
+        HATCH_ENV: test.py${{ matrix.python-version }}-${{ matrix.dependency-set }}
       run: |
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.dependency-set }} run-coverage
+        hatch env run --env "$HATCH_ENV" run-coverage
     - name: Upload coverage
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
@@ -104,12 +107,16 @@ jobs:
       with:
         version: '1.16.5'
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: ${{ matrix.dependency-set }}
       run: |
-        hatch env create ${{ matrix.dependency-set }}
-        hatch env run -e ${{ matrix.dependency-set }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     - name: Run Tests
+      env:
+        HATCH_ENV: ${{ matrix.dependency-set }}
       run: |
-        hatch env run --env ${{ matrix.dependency-set }} run-coverage
+        hatch env run --env "$HATCH_ENV" run-coverage
     - name: Upload coverage
       uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:

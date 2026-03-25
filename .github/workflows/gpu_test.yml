@@ -62,12 +62,16 @@ jobs:
       with:
         version: '1.16.5'
     - name: Set Up Hatch Env
+      env:
+        HATCH_ENV: gputest.py${{ matrix.python-version }}
       run: |
-        hatch env create gputest.py${{ matrix.python-version }}
-        hatch env run -e gputest.py${{ matrix.python-version }} list-env
+        hatch env create "$HATCH_ENV"
+        hatch env run -e "$HATCH_ENV" list-env
     - name: Run Tests
+      env:
+        HATCH_ENV: gputest.py${{ matrix.python-version }}
       run: |
-        hatch env run --env gputest.py${{ matrix.python-version }} run-coverage
+        hatch env run --env "$HATCH_ENV" run-coverage
 
     - name: Upload coverage
       uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
