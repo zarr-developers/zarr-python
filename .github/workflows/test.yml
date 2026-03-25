@@ -20,6 +20,9 @@ concurrency:
 jobs:
   test:
     name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, deps=${{ matrix.dependency-set }}
+    defaults:
+      run:
+        shell: bash
 
     strategy:
       matrix:
