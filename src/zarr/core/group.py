@@ -40,7 +40,7 @@ from zarr.core.common import (
     ZATTRS_JSON,
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
-    DimensionNames,
+    DimensionNamesLike,
     NodeType,
     ShapeLike,
     ZarrFormat,
@@ -1032,7 +1032,7 @@ class AsyncGroup:
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
@@ -1585,11 +1585,16 @@ class AsyncGroup:
         async for _, array in self.arrays():
             yield array
 
-    async def tree(self, expand: bool | None = None, level: int | None = None) -> Any:
+    async def tree(
+        self,
+        expand: bool | None = None,
+        level: int | None = None,
+        *,
+        max_nodes: int = 500,
+        plain: bool = False,
+    ) -> Any:
         """
         Return a tree-like representation of a hierarchy.
-
-        This requires the optional ``rich`` dependency.
 
         Parameters
         ----------
@@ -1598,6 +1603,12 @@ class AsyncGroup:
             it's used.
         level : int, optional
             The maximum depth below this Group to display in the tree.
+        max_nodes : int
+            Maximum number of nodes to display before truncating. Default is 500.
+        plain : bool, optional
+            If True, return a plain-text tree without ANSI styling. This is
+            useful when the output will be consumed by an LLM or written to a
+            file. Default is False.
 
         Returns
         -------
@@ -1608,7 +1619,7 @@ class AsyncGroup:
 
         if expand is not None:
             raise NotImplementedError("'expand' is not yet implemented.")
-        return await group_tree_async(self, max_depth=level)
+        return await group_tree_async(self, max_depth=level, max_nodes=max_nodes, plain=plain)
 
     async def empty(self, *, name: str, shape: tuple[int, ...], **kwargs: Any) -> AnyAsyncArray:
         """Create an empty array with the specified shape in this Group. The contents will
@@ -2368,11 +2379,16 @@ class Group(SyncMixin):
         for _, array in self.arrays():
             yield array
 
-    def tree(self, expand: bool | None = None, level: int | None = None) -> Any:
+    def tree(
+        self,
+        expand: bool | None = None,
+        level: int | None = None,
+        *,
+        max_nodes: int = 500,
+        plain: bool = False,
+    ) -> Any:
         """
         Return a tree-like representation of a hierarchy.
-
-        This requires the optional ``rich`` dependency.
 
         Parameters
         ----------
@@ -2381,13 +2397,21 @@ class Group(SyncMixin):
             it's used.
         level : int, optional
             The maximum depth below this Group to display in the tree.
+        max_nodes : int
+            Maximum number of nodes to display before truncating. Default is 500.
+        plain : bool, optional
+            If True, return a plain-text tree without ANSI styling. This is
+            useful when the output will be consumed by an LLM or written to a
+            file. Default is False.
 
         Returns
         -------
         TreeRepr
             A pretty-printable object displaying the hierarchy.
         """
-        return self._sync(self._async_group.tree(expand=expand, level=level))
+        return self._sync(
+            self._async_group.tree(expand=expand, level=level, max_nodes=max_nodes, plain=plain)
+        )
 
     def create_group(self, name: str, **kwargs: Any) -> Group:
         """Create a sub-group.
@@ -2456,7 +2480,7 @@ class Group(SyncMixin):
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
@@ -2600,7 +2624,7 @@ class Group(SyncMixin):
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,
@@ -2998,7 +3022,7 @@ class Group(SyncMixin):
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
-        dimension_names: DimensionNames = None,
+        dimension_names: DimensionNamesLike = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfigLike | None = None,

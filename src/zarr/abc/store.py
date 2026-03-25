@@ -16,7 +16,16 @@ if TYPE_CHECKING:
 
     from zarr.core.buffer import Buffer, BufferPrototype
 
-__all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = [
+    "ByteGetter",
+    "ByteSetter",
+    "Store",
+    "SupportsDeleteSync",
+    "SupportsGetSync",
+    "SupportsSetSync",
+    "SupportsSyncStore",
+    "set_or_delete",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -693,6 +702,31 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
     async def set_if_not_exists(self, default: Buffer) -> None: ...
+
+
+@runtime_checkable
+class SupportsGetSync(Protocol):
+    def get_sync(
+        self,
+        key: str,
+        *,
+        prototype: BufferPrototype | None = None,
+        byte_range: ByteRequest | None = None,
+    ) -> Buffer | None: ...
+
+
+@runtime_checkable
+class SupportsSetSync(Protocol):
+    def set_sync(self, key: str, value: Buffer) -> None: ...
+
+
+@runtime_checkable
+class SupportsDeleteSync(Protocol):
+    def delete_sync(self, key: str) -> None: ...
+
+
+@runtime_checkable
+class SupportsSyncStore(SupportsGetSync, SupportsSetSync, SupportsDeleteSync, Protocol): ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
