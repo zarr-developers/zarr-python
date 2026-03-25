@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import pickle
-import warnings
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -18,7 +17,6 @@ except ImportError:
 from zarr import config, create_array, open_array
 from zarr.abc.numcodec import _is_numcodec, _is_numcodec_cls
 from zarr.codecs import numcodecs as _numcodecs
-from zarr.errors import ZarrUserWarning
 from zarr.registry import get_codec_class, get_numcodec
 
 if TYPE_CHECKING:
@@ -77,8 +75,6 @@ def test_is_numcodec_cls() -> None:
     assert _is_numcodec_cls(GZip)
 
 
-EXPECTED_WARNING_STR = "Numcodecs codecs are not in the Zarr version 3.*"
-
 ALL_CODECS = tuple(
     filter(
         lambda v: issubclass(v, _numcodecs._NumcodecsCodec) and hasattr(v, "codec_name"),
@@ -116,15 +112,14 @@ def test_docstring(codec_class: type[_numcodecs._NumcodecsCodec]) -> None:
 def test_generic_compressor(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec]) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            compressors=[codec_class()],
-        )
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        compressors=[codec_class()],
+    )
 
     a[:, :] = data.copy()
     np.testing.assert_array_equal(data, a[:, :])
@@ -151,17 +146,16 @@ def test_generic_filter(
 ) -> None:
     data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            filters=[
-                codec_class(**codec_config),
-            ],
-        )
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[
+            codec_class(**codec_config),
+        ],
+    )
 
     a[:, :] = data.copy()
     with codec_conf():
@@ -172,15 +166,14 @@ def test_generic_filter(
 def test_generic_filter_bitround() -> None:
     data = np.linspace(0, 1, 256, dtype="float32").reshape((16, 16))
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            filters=[_numcodecs.BitRound(keepbits=3)],
-        )
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[_numcodecs.BitRound(keepbits=3)],
+    )
 
     a[:, :] = data.copy()
     b = open_array(a.store, mode="r")
@@ -190,15 +183,14 @@ def test_generic_filter_bitround() -> None:
 def test_generic_filter_quantize() -> None:
     data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            filters=[_numcodecs.Quantize(digits=3)],
-        )
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[_numcodecs.Quantize(digits=3)],
+    )
 
     a[:, :] = data.copy()
     b = open_array(a.store, mode="r")
@@ -209,15 +201,14 @@ def test_generic_filter_packbits() -> None:
     data = np.zeros((16, 16), dtype="bool")
     data[0:4, :] = True
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            filters=[_numcodecs.PackBits()],
-        )
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[_numcodecs.PackBits()],
+    )
 
     a[:, :] = data.copy()
     b = open_array(a.store, mode="r")
@@ -253,15 +244,14 @@ def test_generic_checksum(codec_class: type[_numcodecs._NumcodecsBytesBytesCodec
 
     data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            compressors=[codec_class()],
-        )
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        compressors=[codec_class()],
+    )
 
     a[:, :] = data.copy()
     with codec_conf():
@@ -283,15 +273,14 @@ def test_generic_bytes_codec(codec_class: type[_numcodecs._NumcodecsArrayBytesCo
 
     data = np.arange(0, 256, dtype="float32").reshape((16, 16))
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            serializer=codec_class(),
-        )
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        serializer=codec_class(),
+    )
 
     a[:, :] = data.copy()
     np.testing.assert_array_equal(data, a[:, :])
@@ -300,17 +289,16 @@ def test_generic_bytes_codec(codec_class: type[_numcodecs._NumcodecsArrayBytesCo
 def test_delta_astype() -> None:
     data = np.linspace(0, 10, 256, dtype="i8").reshape((16, 16))
 
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            filters=[
-                _numcodecs.Delta(dtype="i8", astype="i2"),
-            ],
-        )
+    a = create_array(
+        {},
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+        filters=[
+            _numcodecs.Delta(dtype="i8", astype="i2"),
+        ],
+    )
 
     a[:, :] = data.copy()
     with codec_conf():
@@ -325,36 +313,7 @@ def test_repr() -> None:
 
 def test_to_dict() -> None:
     codec = _numcodecs.LZ4(level=5)
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        assert codec.to_dict() == {"name": "numcodecs.lz4", "configuration": {"level": 5}}
-
-
-def test_warn_on_write_not_read() -> None:
-    data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
-
-    with pytest.warns(ZarrUserWarning, match=EXPECTED_WARNING_STR):
-        a = create_array(
-            {},
-            shape=data.shape,
-            chunks=(16, 16),
-            dtype=data.dtype,
-            fill_value=0,
-            compressors=[_numcodecs.Zstd(level=1)],
-        )
-
-    a[:, :] = data.copy()
-    with codec_conf():
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            b = open_array(a.store, mode="r")
-
-    np.testing.assert_array_equal(data, b[:, :])
-    assert not [
-        warning
-        for warning in caught
-        if issubclass(warning.category, ZarrUserWarning)
-        and "Numcodecs codecs are not in the Zarr version 3 specification" in str(warning.message)
-    ]
+    assert codec.to_dict() == {"name": "numcodecs.lz4", "configuration": {"level": 5}}
 
 
 @pytest.mark.parametrize(
