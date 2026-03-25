@@ -102,12 +102,6 @@ class _NumcodecsCodec(Metadata):
             )  # pragma: no cover
 
         object.__setattr__(self, "codec_config", codec_config)
-        warn(
-            "Numcodecs codecs are not in the Zarr version 3 specification and "
-            "may not be supported by other zarr implementations.",
-            category=ZarrUserWarning,
-            stacklevel=2,
-        )
 
     @cached_property
     def _codec(self) -> Numcodec:
@@ -119,6 +113,12 @@ class _NumcodecsCodec(Metadata):
         return cls(**codec_config)
 
     def to_dict(self) -> dict[str, JSON]:
+        warn(
+            "Numcodecs codecs are not in the Zarr version 3 specification and "
+            "may not be supported by other zarr implementations.",
+            category=ZarrUserWarning,
+            stacklevel=2,
+        )
         codec_config = self.codec_config.copy()
         codec_config.pop("id", None)
         return {

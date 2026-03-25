@@ -524,8 +524,7 @@ def test_migrate_incorrect_filter(local_store: LocalStore) -> None:
         fill_value=0,
     )
 
-    with pytest.warns(UserWarning, match=NUMCODECS_USER_WARNING):
-        result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
@@ -548,8 +547,7 @@ def test_migrate_incorrect_compressor(local_store: LocalStore) -> None:
         fill_value=0,
     )
 
-    with pytest.warns(UserWarning, match=NUMCODECS_USER_WARNING):
-        result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
+    result = runner.invoke(cli.app, ["migrate", "v3", str(local_store.root)])
 
     assert result.exit_code == 1
     assert isinstance(result.exception, TypeError)
