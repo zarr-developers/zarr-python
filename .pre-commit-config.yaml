@@ -63,6 +63,10 @@ repos:
         entry: "\\.(lstrip|rstrip)\\([\"'][^\"']{2,}[\"']\\)"
         types: [python]
         files: ^(src|tests)/
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.23.1
+    hooks:
+      - id: zizmor
   - repo: https://github.com/twisted/towncrier
     rev: 25.8.0
     hooks:
