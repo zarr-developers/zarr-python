@@ -16,6 +16,7 @@ concurrency:
 jobs:
   build_and_upload_nightly:
     name: Build and upload nightly wheels
+    environment: nightly-wheel-upload
     runs-on: ubuntu-latest
 
     steps:
@@ -42,6 +43,4 @@ jobs:
         uses: scientific-python/upload-nightly-action@5748273c71e2d8d3a61f3a11a16421c8954f9ecf
         with:
           artifacts_path: dist
-          # ANACONDA_ORG_UPLOAD_TOKEN is scoped to nightly uploads only.
-          # Using an environment would add unnecessary approval gates to scheduled builds.
-          anaconda_nightly_upload_token: ${{ secrets.ANACONDA_ORG_UPLOAD_TOKEN }} # zizmor: ignore[secrets-outside-env]
+          anaconda_nightly_upload_token: ${{ secrets.ANACONDA_ORG_UPLOAD_TOKEN }}

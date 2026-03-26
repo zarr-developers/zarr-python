@@ -23,6 +23,7 @@ concurrency:
 jobs:
   test:
     name: py=${{ matrix.python-version }}
+    environment: codecov-upload
 
     runs-on: gpu-runner
     strategy:
@@ -76,7 +77,5 @@ jobs:
     - name: Upload coverage
       uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
       with:
-        # CODECOV_TOKEN is a low-sensitivity upload token, not a deploy key.
-        # Using an environment would gate every test run behind approval/deployment UI.
-        token: ${{ secrets.CODECOV_TOKEN }} # zizmor: ignore[secrets-outside-env]
+        token: ${{ secrets.CODECOV_TOKEN }}
         verbose: true # optional (default = false)
