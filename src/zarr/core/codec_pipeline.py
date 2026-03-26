@@ -13,6 +13,7 @@ from zarr.abc.codec import (
     BytesBytesCodec,
     Codec,
     CodecPipeline,
+    GetResult,
 )
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
@@ -251,29 +252,36 @@ class BatchedCodecPipeline(CodecPipeline):
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> list[int]:
-        missing: list[int] = []
+    ) -> tuple[GetResult, ...]:
+        results: list[GetResult] = []
         if self.supports_partial_decode:
+            batch_info_list = list(batch_info)
             chunk_array_batch = await self.decode_partial_batch(
                 [
                     (byte_getter, chunk_selection, chunk_spec)
-                    for byte_getter, chunk_spec, chunk_selection, *_ in batch_info
+                    for byte_getter, chunk_spec, chunk_selection, *_ in batch_info_list
                 ]
             )
-            for i, (chunk_array, (_, chunk_spec, _, out_selection, _)) in enumerate(
-                zip(chunk_array_batch, batch_info, strict=False)
+            for chunk_array, (_, chunk_spec, _, out_selection, _) in zip(
+                chunk_array_batch, batch_info_list, strict=False
             ):
                 if chunk_array is not None:
                     if drop_axes:
                         chunk_array = chunk_array.squeeze(axis=drop_axes)
                     out[out_selection] = chunk_array
-                elif chunk_spec.config.fill_missing_chunks:
-                    out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="present"))
                 else:
-                    missing.append(i)
+                    if chunk_spec.config.fill_missing_chunks:
+                        out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="missing"))
+
         else:
+            batch_info_list = list(batch_info)
             chunk_bytes_batch = await concurrent_map(
-                [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
+                [
+                    (byte_getter, array_spec.prototype)
+                    for byte_getter, array_spec, *_ in batch_info_list
+                ],
                 lambda byte_getter, prototype: byte_getter.get(prototype),
                 config.get("async.concurrency"),
             )
@@ -281,23 +289,24 @@ class BatchedCodecPipeline(CodecPipeline):
                 [
                     (chunk_bytes, chunk_spec)
                     for chunk_bytes, (_, chunk_spec, *_) in zip(
-                        chunk_bytes_batch, batch_info, strict=False
+                        chunk_bytes_batch, batch_info_list, strict=False
                     )
                 ],
             )
-            for i, (chunk_array, (_, chunk_spec, chunk_selection, out_selection, _)) in enumerate(
-                zip(chunk_array_batch, batch_info, strict=False)
+            for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
+                chunk_array_batch, batch_info_list, strict=False
             ):
                 if chunk_array is not None:
                     tmp = chunk_array[chunk_selection]
                     if drop_axes:
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
-                elif chunk_spec.config.fill_missing_chunks:
-                    out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="present"))
                 else:
-                    missing.append(i)
-        return missing
+                    if chunk_spec.config.fill_missing_chunks:
+                        out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="missing"))
+        return tuple(results)
 
     def _merge_chunk_array(
         self,
@@ -477,22 +486,19 @@ class BatchedCodecPipeline(CodecPipeline):
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> list[int]:
-        # Track the global offset of each mini-batch so we can translate
-        # per-batch missing indices back to indices into the original batch_info.
-        all_batches: list[
-            tuple[tuple[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool], ...], int]
-        ] = []
-        offset = 0
-        for single_batch in batched(batch_info, self.batch_size):
-            all_batches.append((single_batch, offset))
-            offset += len(single_batch)
-
-        results = await concurrent_map(
-            [(b, out, drop_axes) for b, _ in all_batches],
+    ) -> tuple[GetResult, ...]:
+        batch_results = await concurrent_map(
+            [
+                (single_batch_info, out, drop_axes)
+                for single_batch_info in batched(batch_info, self.batch_size)
+            ],
             self.read_batch,
             config.get("async.concurrency"),
         )
+        results: list[GetResult] = []
+        for batch in batch_results:
+            results.extend(batch)
+        return tuple(results)
 
         missing: list[int] = []
         for batch_missing, (_, batch_offset) in zip(results, all_batches, strict=False):

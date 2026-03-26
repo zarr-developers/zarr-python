@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Generic, Literal, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -32,8 +32,16 @@ __all__ = [
     "CodecInput",
     "CodecOutput",
     "CodecPipeline",
+    "GetResult",
     "SupportsSyncCodec",
 ]
+
+
+class GetResult(TypedDict):
+    """Metadata about a store get operation."""
+
+    status: Literal["present", "missing"]
+
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
@@ -433,7 +441,7 @@ class CodecPipeline:
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> list[int]:
+    ) -> tuple[GetResult, ...]:
         """Reads chunk data from the store, decodes it and writes it into an output array.
         Partial decoding may be utilized if the codecs and stores support it.
 
@@ -452,14 +460,11 @@ class CodecPipeline:
             included in the returned list of missing chunk indices.
 
         out : NDBuffer
-        drop_axes : tuple[int, ...]
 
         Returns
         -------
-        list[int]
-            Indices into ``batch_info`` of chunks that were not found in the
-            store and were not filled (i.e. when ``fill_missing_chunks`` is
-            False). An empty list means all chunks were resolved.
+        tuple[GetResult, ...]
+            One result per chunk in ``batch_info``.
         """
         ...
 
