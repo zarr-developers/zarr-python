@@ -220,9 +220,6 @@ The following features (corresponding to function arguments to functions in
 The following features that were supported by Zarr-Python 2 have not been ported
   to Zarr-Python 3 yet:
 
-- Structured arrays / dtypes ([issue #2134](https://github.com/zarr-developers/zarr-python/issues/2134))
-- Fixed-length string dtypes ([issue #2347](https://github.com/zarr-developers/zarr-python/issues/2347))
-- Datetime and timedelta dtypes ([issue #2616](https://github.com/zarr-developers/zarr-python/issues/2616))
 - Object dtypes ([issue #2616](https://github.com/zarr-developers/zarr-python/issues/2616))
 - Ragged arrays ([issue #2618](https://github.com/zarr-developers/zarr-python/issues/2618))
 - Groups and Arrays do not implement `__enter__` and `__exit__` protocols ([issue #2619](https://github.com/zarr-developers/zarr-python/issues/2619))
