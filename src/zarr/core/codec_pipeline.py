@@ -271,7 +271,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     out[out_selection] = chunk_array
                     results.append(GetResult(status="present"))
                 else:
-                    if chunk_spec.config.fill_missing_chunks:
+                    if chunk_spec.config.read_missing_chunks:
                         out[out_selection] = fill_value_or_default(chunk_spec)
                     results.append(GetResult(status="missing"))
 
@@ -303,7 +303,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     out[out_selection] = tmp
                     results.append(GetResult(status="present"))
                 else:
-                    if chunk_spec.config.fill_missing_chunks:
+                    if chunk_spec.config.read_missing_chunks:
                         out[out_selection] = fill_value_or_default(chunk_spec)
                     results.append(GetResult(status="missing"))
         return tuple(results)

@@ -5638,7 +5638,7 @@ async def _get_selection(
             chunks_str = "\n".join(missing_info)
             raise ChunkNotFoundError(
                 f"{len(missing)} chunk(s) not found in store '{store_path}'.\n"
-                f"Set the 'array.fill_missing_chunks' config to True to fill "
+                f"Set the 'array.read_missing_chunks' config to True to fill "
                 f"missing chunks with the fill value.\n"
                 f"Missing chunks:\n{chunks_str}"
             )

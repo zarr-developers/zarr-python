@@ -53,7 +53,7 @@ def test_config_defaults_set() -> None:
                 "array": {
                     "order": "C",
                     "write_empty_chunks": False,
-                    "fill_missing_chunks": True,
+                    "read_missing_chunks": True,
                     "target_shard_size_bytes": None,
                 },
                 "async": {"concurrency": 10, "timeout": None},
@@ -329,7 +329,7 @@ def test_warning_on_missing_codec_config() -> None:
     ],
     ids=["partial_decode", "full_decode"],
 )
-def test_config_fill_missing_chunks(store: Store, kwargs: dict[str, Any]) -> None:
+def test_config_read_missing_chunks(store: Store, kwargs: dict[str, Any]) -> None:
     arr = zarr.create_array(
         store=store,
         shape=(4, 4),
@@ -343,22 +343,22 @@ def test_config_fill_missing_chunks(store: Store, kwargs: dict[str, Any]) -> Non
     result = zarr.open_array(store)[:]
     assert np.array_equal(result, np.full((4, 4), 42, dtype="int32"))
 
-    # with fill_missing_chunks=False, reading missing chunks raises an error
-    with config.set({"array.fill_missing_chunks": False}):
+    # with read_missing_chunks=False, reading missing chunks raises an error
+    with config.set({"array.read_missing_chunks": False}):
         with pytest.raises(ChunkNotFoundError):
             zarr.open_array(store)[:]
 
     # after writing data, all chunks exist and no error is raised
     arr[:] = np.arange(16, dtype="int32").reshape(4, 4)
-    with config.set({"array.fill_missing_chunks": False}):
+    with config.set({"array.read_missing_chunks": False}):
         result = zarr.open_array(store)[:]
         assert np.array_equal(result, np.arange(16, dtype="int32").reshape(4, 4))
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_config_fill_missing_chunks_sharded_inner(store: Store) -> None:
+def test_config_read_missing_chunks_sharded_inner(store: Store) -> None:
     """Missing inner chunks within a shard are always filled with the array's
-    fill value, even when fill_missing_chunks=False."""
+    fill value, even when read_missing_chunks=False."""
     arr = zarr.create_array(
         store=store,
         shape=(8, 4),
@@ -371,7 +371,7 @@ def test_config_fill_missing_chunks_sharded_inner(store: Store) -> None:
     # write only one inner chunk in the first shard, leaving the second shard empty
     arr[0:2, 0:2] = np.ones((2, 2), dtype="int32")
 
-    with config.set({"array.fill_missing_chunks": False}):
+    with config.set({"array.read_missing_chunks": False}):
         a = zarr.open_array(store)
 
         # first shard exists: missing inner chunks are filled, no error
@@ -386,16 +386,16 @@ def test_config_fill_missing_chunks_sharded_inner(store: Store) -> None:
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_config_fill_missing_chunks_write_empty_chunks(store: Store) -> None:
+def test_config_read_missing_chunks_write_empty_chunks(store: Store) -> None:
     """write_empty_chunks=False drops chunks equal to fill_value, which then
-    appear missing to fill_missing_chunks=False."""
+    appear missing to read_missing_chunks=False."""
     arr = zarr.create_array(
         store=store,
         shape=(4,),
         chunks=(2,),
         dtype="int32",
         fill_value=0,
-        config={"write_empty_chunks": False, "fill_missing_chunks": False},
+        config={"write_empty_chunks": False, "read_missing_chunks": False},
     )
 
     # write non-fill-value data: chunks are stored

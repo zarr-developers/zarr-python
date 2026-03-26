@@ -28,7 +28,7 @@ class ArrayConfigParams(TypedDict):
 
     order: NotRequired[MemoryOrder]
     write_empty_chunks: NotRequired[bool]
-    fill_missing_chunks: NotRequired[bool]
+    read_missing_chunks: NotRequired[bool]
 
 
 @dataclass(frozen=True)
@@ -42,25 +42,25 @@ class ArrayConfig:
         The memory layout of the arrays returned when reading data from the store.
     write_empty_chunks : bool
         If True, empty chunks will be written to the store.
-    fill_missing_chunks : bool
+    read_missing_chunks : bool
         If True, missing chunks will be filled with the array's fill value on read.
         If False, reading missing chunks will raise a ``ChunkNotFoundError``.
     """
 
     order: MemoryOrder
     write_empty_chunks: bool
-    fill_missing_chunks: bool
+    read_missing_chunks: bool
 
     def __init__(
-        self, order: MemoryOrder, write_empty_chunks: bool, *, fill_missing_chunks: bool = True
+        self, order: MemoryOrder, write_empty_chunks: bool, *, read_missing_chunks: bool = True
     ) -> None:
         order_parsed = parse_order(order)
         write_empty_chunks_parsed = parse_bool(write_empty_chunks)
-        fill_missing_chunks_parsed = parse_bool(fill_missing_chunks)
+        read_missing_chunks_parsed = parse_bool(read_missing_chunks)
 
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "write_empty_chunks", write_empty_chunks_parsed)
-        object.__setattr__(self, "fill_missing_chunks", fill_missing_chunks_parsed)
+        object.__setattr__(self, "read_missing_chunks", read_missing_chunks_parsed)
 
     @classmethod
     def from_dict(cls, data: ArrayConfigParams) -> Self:
@@ -72,7 +72,7 @@ class ArrayConfig:
         kwargs_out: ArrayConfigParams = {}
         for f in fields(ArrayConfig):
             field_name = cast(
-                "Literal['order', 'write_empty_chunks', 'fill_missing_chunks']", f.name
+                "Literal['order', 'write_empty_chunks', 'read_missing_chunks']", f.name
             )
             if field_name not in data:
                 kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
@@ -87,7 +87,7 @@ class ArrayConfig:
         return {
             "order": self.order,
             "write_empty_chunks": self.write_empty_chunks,
-            "fill_missing_chunks": self.fill_missing_chunks,
+            "read_missing_chunks": self.read_missing_chunks,
         }
 
 
