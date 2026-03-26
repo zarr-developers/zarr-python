@@ -139,6 +139,24 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert isinstance(group := zipped["foo"], Group)
         assert list(group.keys()) == list(group.keys())
 
+    async def test_exists_without_explicit_open(self, tmp_path: Path) -> None:
+        """Regression test for https://github.com/zarr-developers/zarr-python/issues/3588.
+
+        ZipStore.exists() must not raise AttributeError when the store has not
+        been explicitly opened beforehand (i.e. _sync_open() was not yet called).
+        """
+        zip_path = tmp_path / "test.zip"
+        # Create a zip file with one entry so exists() can return True
+        with zipfile.ZipFile(zip_path, mode="w") as zf:
+            zf.writestr("zarr.json", b"{}")
+
+        # Instantiate without calling .open() — this is the scenario from the issue
+        store = ZipStore(zip_path, mode="r")
+        # Before the fix this raised AttributeError: '_lock' attribute not found
+        assert await store.exists("zarr.json") is True
+        assert await store.exists("nonexistent") is False
+        store.close()
+
     async def test_move(self, tmp_path: Path) -> None:
         origin = tmp_path / "origin.zip"
         destination = tmp_path / "some_folder" / "destination.zip"

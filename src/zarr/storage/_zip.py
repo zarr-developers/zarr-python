@@ -245,6 +245,8 @@ class ZipStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
+        if not self._is_open:
+            self._sync_open()
         with self._lock:
             try:
                 self._zf.getinfo(key)
