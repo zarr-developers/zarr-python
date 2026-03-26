@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import lru_cache
@@ -45,6 +45,7 @@ from zarr.core.common import (
 from zarr.core.dtype.npy.int import UInt64
 from zarr.core.indexing import (
     BasicIndexer,
+    ChunkProjection,
     SelectorTuple,
     _morton_order,
     _morton_order_keys,
@@ -574,20 +575,25 @@ class ShardingCodec(
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
 
-        shard_reader = await self._load_full_shard_maybe(
-            byte_getter=byte_setter,
-            prototype=chunk_spec.prototype,
-            chunks_per_shard=chunks_per_shard,
-        )
-        shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
-        # Use vectorized lookup for better performance
-        shard_dict = shard_reader.to_dict_vectorized(np.asarray(_morton_order(chunks_per_shard)))
-
         indexer = list(
             get_indexer(
                 selection, shape=shard_shape, chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape)
             )
         )
+
+        if self._is_complete_shard_write(indexer, chunks_per_shard):
+            shard_dict = dict.fromkeys(morton_order_iter(chunks_per_shard))
+        else:
+            shard_reader = await self._load_full_shard_maybe(
+                byte_getter=byte_setter,
+                prototype=chunk_spec.prototype,
+                chunks_per_shard=chunks_per_shard,
+            )
+            shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
+            # Use vectorized lookup for better performance
+            shard_dict = shard_reader.to_dict_vectorized(
+                np.asarray(_morton_order(chunks_per_shard))
+            )
 
         await self.codec_pipeline.write(
             [
@@ -659,6 +665,16 @@ class ShardingCodec(
     ) -> bool:
         return len(all_chunk_coords) == product(chunks_per_shard) and all(
             chunk_coords in all_chunk_coords for chunk_coords in c_order_iter(chunks_per_shard)
+        )
+
+    def _is_complete_shard_write(
+        self,
+        indexed_chunks: Sequence[ChunkProjection],
+        chunks_per_shard: tuple[int, ...],
+    ) -> bool:
+        all_chunk_coords = {chunk_coords for chunk_coords, *_ in indexed_chunks}
+        return self._is_total_shard(all_chunk_coords, chunks_per_shard) and all(
+            is_complete_chunk for *_, is_complete_chunk in indexed_chunks
         )
 
     async def _decode_shard_index(
