@@ -1,13 +1,10 @@
 name: CodSpeed Benchmarks
 
 on:
-  push:
-    branches:
-      - "main"
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9am UTC
   pull_request:
-    types: [labeled, synchronize]
-  # `workflow_dispatch` allows CodSpeed to trigger backtest
-  # performance analysis in order to generate initial data.
+    types: [labeled]
   workflow_dispatch:
 
 permissions:
@@ -17,15 +14,14 @@ jobs:
   benchmarks:
     name: Run benchmarks
     runs-on: codspeed-macro
-    # Only run benchmarks for: pushes to main, manual triggers, or PRs with 'benchmark' label
     if: |
-      github.event_name == 'push' ||
+      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'benchmark'))
     steps:
     - uses: actions/checkout@v6
       with:
-        fetch-depth: 0  # grab all branches and tags
+        fetch-depth: 0
     - name: Set up Python
       uses: actions/setup-python@v6
       with:

@@ -13,6 +13,7 @@ from zarr.abc.codec import (
     BytesBytesCodec,
     Codec,
     CodecPipeline,
+    GetResult,
 )
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
@@ -251,24 +252,34 @@ class BatchedCodecPipeline(CodecPipeline):
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
+    ) -> tuple[GetResult, ...]:
+        results: list[GetResult] = []
         if self.supports_partial_decode:
+            batch_info_list = list(batch_info)
             chunk_array_batch = await self.decode_partial_batch(
                 [
                     (byte_getter, chunk_selection, chunk_spec)
-                    for byte_getter, chunk_spec, chunk_selection, *_ in batch_info
+                    for byte_getter, chunk_spec, chunk_selection, *_ in batch_info_list
                 ]
             )
             for chunk_array, (_, chunk_spec, _, out_selection, _) in zip(
-                chunk_array_batch, batch_info, strict=False
+                chunk_array_batch, batch_info_list, strict=False
             ):
                 if chunk_array is not None:
+                    if drop_axes:
+                        chunk_array = chunk_array.squeeze(axis=drop_axes)
                     out[out_selection] = chunk_array
+                    results.append(GetResult(status="present"))
                 else:
                     out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="missing"))
         else:
+            batch_info_list = list(batch_info)
             chunk_bytes_batch = await concurrent_map(
-                [(byte_getter, array_spec.prototype) for byte_getter, array_spec, *_ in batch_info],
+                [
+                    (byte_getter, array_spec.prototype)
+                    for byte_getter, array_spec, *_ in batch_info_list
+                ],
                 lambda byte_getter, prototype: byte_getter.get(prototype),
                 config.get("async.concurrency"),
             )
@@ -276,20 +287,23 @@ class BatchedCodecPipeline(CodecPipeline):
                 [
                     (chunk_bytes, chunk_spec)
                     for chunk_bytes, (_, chunk_spec, *_) in zip(
-                        chunk_bytes_batch, batch_info, strict=False
+                        chunk_bytes_batch, batch_info_list, strict=False
                     )
                 ],
             )
             for chunk_array, (_, chunk_spec, chunk_selection, out_selection, _) in zip(
-                chunk_array_batch, batch_info, strict=False
+                chunk_array_batch, batch_info_list, strict=False
             ):
                 if chunk_array is not None:
                     tmp = chunk_array[chunk_selection]
-                    if drop_axes != ():
+                    if drop_axes:
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
+                    results.append(GetResult(status="present"))
                 else:
                     out[out_selection] = fill_value_or_default(chunk_spec)
+                    results.append(GetResult(status="missing"))
+        return tuple(results)
 
     def _merge_chunk_array(
         self,
@@ -324,7 +338,7 @@ class BatchedCodecPipeline(CodecPipeline):
         else:
             chunk_value = value[out_selection]
             # handle missing singleton dimensions
-            if drop_axes != ():
+            if drop_axes:
                 item = tuple(
                     None  # equivalent to np.newaxis
                     if idx in drop_axes
@@ -469,8 +483,8 @@ class BatchedCodecPipeline(CodecPipeline):
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
-        await concurrent_map(
+    ) -> tuple[GetResult, ...]:
+        batch_results = await concurrent_map(
             [
                 (single_batch_info, out, drop_axes)
                 for single_batch_info in batched(batch_info, self.batch_size)
@@ -478,6 +492,10 @@ class BatchedCodecPipeline(CodecPipeline):
             self.read_batch,
             config.get("async.concurrency"),
         )
+        results: list[GetResult] = []
+        for batch in batch_results:
+            results.extend(batch)
+        return tuple(results)
 
     async def write(
         self,
