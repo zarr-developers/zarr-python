@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Generic, Protocol, TypeGuard, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Generic, Literal, Protocol, TypeGuard, TypeVar, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -32,8 +32,16 @@ __all__ = [
     "CodecInput",
     "CodecOutput",
     "CodecPipeline",
+    "GetResult",
     "SupportsSyncCodec",
 ]
+
+
+class GetResult(TypedDict):
+    """Metadata about a store get operation."""
+
+    status: Literal["present", "missing"]
+
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
@@ -433,13 +441,13 @@ class CodecPipeline:
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]],
         out: NDBuffer,
         drop_axes: tuple[int, ...] = (),
-    ) -> None:
+    ) -> tuple[GetResult, ...]:
         """Reads chunk data from the store, decodes it and writes it into an output array.
         Partial decoding may be utilized if the codecs and stores support it.
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]]
+        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple, bool]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be fetched.
             The second slice selection determines where in the output array the chunk data will be written.
@@ -451,6 +459,11 @@ class CodecPipeline:
             ``out``) to the fill value for the array.
 
         out : NDBuffer
+
+        Returns
+        -------
+        tuple[GetResult, ...]
+            One result per chunk in ``batch_info``.
         """
         ...
 
@@ -467,7 +480,7 @@ class CodecPipeline:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]]
+        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple, bool]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be encoded.
             The second slice selection determines where in the value array the chunk data is located.
