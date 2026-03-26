@@ -20,7 +20,6 @@ concurrency:
 jobs:
   test:
     name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, deps=${{ matrix.dependency-set }}
-    environment: codecov-upload
     defaults:
       run:
         shell: bash
@@ -78,13 +77,11 @@ jobs:
       if: ${{ matrix.dependency-set == 'optional' && matrix.os == 'ubuntu-latest' }}
       uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+        token: ${{ secrets.CODECOV_TOKEN }} # zizmor: ignore[secrets-outside-env]
         verbose: true # optional (default = false)
 
   test-upstream-and-min-deps:
     name: py=${{ matrix.python-version }}-${{ matrix.dependency-set }}
-    environment: codecov-upload
-
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -123,7 +120,7 @@ jobs:
     - name: Upload coverage
       uses: codecov/codecov-action@1af58845a975a7985b0beb0cbe6fbbb71a41dbad # v5.5.3
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+        token: ${{ secrets.CODECOV_TOKEN }} # zizmor: ignore[secrets-outside-env]
         verbose: true # optional (default = false)
 
   doctests:

@@ -23,8 +23,6 @@ concurrency:
 jobs:
   test:
     name: py=${{ matrix.python-version }}
-    environment: codecov-upload
-
     runs-on: gpu-runner
     strategy:
       matrix:
@@ -77,5 +75,5 @@ jobs:
     - name: Upload coverage
       uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
       with:
-        token: ${{ secrets.CODECOV_TOKEN }}
+        token: ${{ secrets.CODECOV_TOKEN }} # zizmor: ignore[secrets-outside-env]
         verbose: true # optional (default = false)
