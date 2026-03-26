@@ -357,8 +357,16 @@ def test_config_read_missing_chunks(store: Store, kwargs: dict[str, Any]) -> Non
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_read_missing_chunks_sharded_inner(store: Store) -> None:
-    """Missing inner chunks within a shard are always filled with the array's
-    fill value, even when read_missing_chunks=False."""
+    """Because the shard index and inner chunks should be stored
+    together in a single storage object (read: a file or blob),
+    we delegate to the shard index the responsibility of determining
+    what chunks should be present.
+
+    Thus, `read_missing_chunks` raises an error only if the entire *shard*
+    is missing. Missing inner chunks are filled with the array's fill value
+    and do not raise an error, even if `read_missing_chunks=False` at the
+    array level.
+    """
     arr = zarr.create_array(
         store=store,
         shape=(8, 4),

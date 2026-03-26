@@ -733,16 +733,11 @@ class ShardingCodec(
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
-        # Because the shard index and inner chunks should be stored
-        # together, we detect missing data via the shard index.
-        # The inner chunks defined here are thus allowed to return
-        # None, even if read_missing_chunks=False at the array level.
-        config = replace(shard_spec.config, read_missing_chunks=True)
         return ArraySpec(
             shape=self.chunk_shape,
             dtype=shard_spec.dtype,
             fill_value=shard_spec.fill_value,
-            config=config,
+            config=shard_spec.config,
             prototype=shard_spec.prototype,
         )
 

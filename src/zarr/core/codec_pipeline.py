@@ -271,10 +271,8 @@ class BatchedCodecPipeline(CodecPipeline):
                     out[out_selection] = chunk_array
                     results.append(GetResult(status="present"))
                 else:
-                    if chunk_spec.config.read_missing_chunks:
-                        out[out_selection] = fill_value_or_default(chunk_spec)
+                    out[out_selection] = fill_value_or_default(chunk_spec)
                     results.append(GetResult(status="missing"))
-
         else:
             batch_info_list = list(batch_info)
             chunk_bytes_batch = await concurrent_map(
@@ -303,8 +301,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     out[out_selection] = tmp
                     results.append(GetResult(status="present"))
                 else:
-                    if chunk_spec.config.read_missing_chunks:
-                        out[out_selection] = fill_value_or_default(chunk_spec)
+                    out[out_selection] = fill_value_or_default(chunk_spec)
                     results.append(GetResult(status="missing"))
         return tuple(results)
 
@@ -499,11 +496,6 @@ class BatchedCodecPipeline(CodecPipeline):
         for batch in batch_results:
             results.extend(batch)
         return tuple(results)
-
-        missing: list[int] = []
-        for batch_missing, (_, batch_offset) in zip(results, all_batches, strict=False):
-            missing.extend(batch_offset + idx for idx in batch_missing)
-        return missing
 
     async def write(
         self,

@@ -454,10 +454,9 @@ class CodecPipeline:
             The ByteGetter is used to fetch the necessary bytes.
             The chunk spec contains information about the construction of an array from the bytes.
 
-            If the Store returns ``None`` for a chunk and ``read_missing_chunks``
-            is True in the chunk spec's config, the implementation fills that
-            chunk with the array's fill value. Otherwise the chunk's index is
-            included in the returned list of missing chunk indices.
+            If the Store returns ``None`` for a chunk, then the chunk was not
+            written and the implementation must set the values of that chunk (or
+            ``out``) to the fill value for the array.
 
         out : NDBuffer
 
