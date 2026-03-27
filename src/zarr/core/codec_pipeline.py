@@ -132,6 +132,8 @@ class ChunkTransform:
 
         Pure compute -- no IO.
         """
+        # All codecs are verified to implement SupportsSyncCodec in __post_init__,
+        # but the stored types (ArrayArrayCodec, etc.) don't reflect this statically.
         bb_out: Any = chunk_bytes
         for bb_codec in reversed(self._bb_codecs):
             bb_out = bb_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[attr-defined]
