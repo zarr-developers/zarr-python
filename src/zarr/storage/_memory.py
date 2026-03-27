@@ -193,7 +193,15 @@ class MemoryStore(Store):
 
     async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
-        # note: we materialize all dict keys into a list here so we can mutate the dict in-place (e.g. in delete_prefix)
+        # Normalise prefix to use directory-boundary semantics consistent with LocalStore:
+        # list_prefix("0") must match "0/zarr.json" but NOT "0_c/zarr.json".
+        # We strip any trailing "/" then re-add it so the startswith check only
+        # matches at a path separator, not mid-name.
+        # note: we materialise all dict keys into a list here so we can mutate
+        # the dict in-place (e.g. in delete_prefix)
+        prefix = prefix.rstrip("/")
+        if prefix:
+            prefix = prefix + "/"
         for key in list(self._store_dict):
             if key.startswith(prefix):
                 yield key
