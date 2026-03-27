@@ -47,7 +47,6 @@ from zarr.core.indexing import (
     BasicIndexer,
     ChunkProjection,
     SelectorTuple,
-    _morton_order_keys,
     c_order_iter,
     get_indexer,
     morton_order_iter,
@@ -235,6 +234,7 @@ class _ShardIndex(NamedTuple):
 class _ShardReader(ShardMapping):
     buf: Buffer
     index: _ShardIndex
+    order: SubchunkWriteOrder
 
     @classmethod
     async def from_bytes(
@@ -291,15 +291,13 @@ class _ShardReader(ShardMapping):
         dict mapping chunk coordinate tuples to Buffer or None
         """
         starts, ends, valid = self.index.get_chunk_slices_vectorized(chunk_coords_array)
-        chunks_per_shard = tuple(self.index.offsets_and_lengths.shape[:-1])
-        chunk_coords_keys = _morton_order_keys(chunks_per_shard)
 
         result: dict[tuple[int, ...], Buffer | None] = {}
-        for i, coords in enumerate(chunk_coords_keys):
+        for i, coords in enumerate(chunk_coords_array):
             if valid[i]:
-                result[coords] = self.buf[int(starts[i]) : int(ends[i])]
+                result[tuple(coords.ravel())] = self.buf[int(starts[i]) : int(ends[i])]
             else:
-                result[coords] = None
+                result[tuple(coords.ravel())] = None
 
         return result
 
@@ -575,7 +573,11 @@ class ShardingCodec(
                 chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             )
         )
-        shard_builder = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard))
+        shard_builder = dict.fromkeys(np.array(list(np.ndindex(chunks_per_shard))))
+        assert (
+            shard_builder.keys()
+            == dict.fromkeys(self._subchunk_order_iter(chunks_per_shard)).keys()
+        )
 
         await self.codec_pipeline.write(
             [
