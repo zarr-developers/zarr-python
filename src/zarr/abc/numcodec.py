@@ -1,6 +1,4 @@
-from typing import Any, Self, TypeGuard
-
-from typing_extensions import Protocol
+from typing import Any, Protocol, Self, TypeGuard
 
 
 class Numcodec(Protocol):
