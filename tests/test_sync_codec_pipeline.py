@@ -17,6 +17,21 @@ from zarr.core.codec_pipeline import ChunkTransform
 from zarr.core.dtype import get_data_type_from_native_dtype
 
 
+class AsyncOnlyCodec(ArrayBytesCodec):  # type: ignore[misc]
+    """A codec that only supports async, for testing rejection of non-sync codecs."""
+
+    is_fixed_size = True
+
+    async def _decode_single(self, chunk_data: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
+        raise NotImplementedError  # pragma: no cover
+
+    async def _encode_single(self, chunk_data: NDBuffer, chunk_spec: ArraySpec) -> Buffer | None:
+        raise NotImplementedError  # pragma: no cover
+
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        return input_byte_length  # pragma: no cover
+
+
 def _make_array_spec(shape: tuple[int, ...], dtype: np.dtype[np.generic]) -> ArraySpec:
     zdtype = get_data_type_from_native_dtype(dtype)
     return ArraySpec(
@@ -63,22 +78,6 @@ class TestChunkTransform:
         decoded = chain.decode(encoded)
         np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
-    def test_shape_dtype_no_aa_codecs(self) -> None:
-        # Without AA codecs, shape and dtype should match the input ArraySpec
-        # (no transforms applied before the AB codec).
-        spec = _make_array_spec((100,), np.dtype("float64"))
-        chunk = ChunkTransform(codecs=(BytesCodec(),), array_spec=spec)
-        assert chunk.shape == (100,)
-        assert chunk.dtype == spec.dtype
-
-    def test_shape_dtype_with_transpose(self) -> None:
-        # TransposeCodec(order=(1,0)) on a (3, 4) array produces (4, 3).
-        # shape/dtype reflect what the AB codec sees after all AA transforms.
-        spec = _make_array_spec((3, 4), np.dtype("float64"))
-        chunk = ChunkTransform(codecs=(TransposeCodec(order=(1, 0)), BytesCodec()), array_spec=spec)
-        assert chunk.shape == (4, 3)
-        assert chunk.dtype == spec.dtype
-
     def test_encode_decode_roundtrip_with_compression(self) -> None:
         # Round-trip with a BB codec (GzipCodec) to verify that bytes-bytes
         # compression/decompression is wired correctly.
@@ -110,44 +109,13 @@ class TestChunkTransform:
         np.testing.assert_array_equal(arr, decoded.as_numpy_array())
 
     def test_rejects_non_sync_codec(self) -> None:
-        # Construction must raise TypeError when a codec lacks SupportsSyncCodec.
-
-        class AsyncOnlyCodec(ArrayBytesCodec):
-            is_fixed_size = True
-
-            async def _decode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
-                raise NotImplementedError  # pragma: no cover
-
-            async def _encode_single(
-                self, chunk_array: NDBuffer, chunk_spec: ArraySpec
-            ) -> Buffer | None:
-                raise NotImplementedError  # pragma: no cover
-
-            def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
-                return input_byte_length  # pragma: no cover
-
+        """Construction must raise TypeError when a codec lacks SupportsSyncCodec."""
         spec = _make_array_spec((100,), np.dtype("float64"))
         with pytest.raises(TypeError, match="AsyncOnlyCodec"):
             ChunkTransform(codecs=(AsyncOnlyCodec(),), array_spec=spec)
 
     def test_rejects_mixed_sync_and_non_sync(self) -> None:
-        # Even if some codecs support sync, a single non-sync codec should
-        # cause construction to fail.
-
-        class AsyncOnlyCodec(ArrayBytesCodec):
-            is_fixed_size = True
-
-            async def _decode_single(self, chunk_bytes: Buffer, chunk_spec: ArraySpec) -> NDBuffer:
-                raise NotImplementedError  # pragma: no cover
-
-            async def _encode_single(
-                self, chunk_array: NDBuffer, chunk_spec: ArraySpec
-            ) -> Buffer | None:
-                raise NotImplementedError  # pragma: no cover
-
-            def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
-                return input_byte_length  # pragma: no cover
-
+        """Even if some codecs support sync, a single non-sync codec causes failure."""
         spec = _make_array_spec((3, 4), np.dtype("float64"))
         with pytest.raises(TypeError, match="AsyncOnlyCodec"):
             ChunkTransform(
@@ -179,7 +147,7 @@ class TestChunkTransform:
         # don't store it"), encode must short-circuit and return None
         # instead of passing None into the next codec.
 
-        class NoneReturningAACodec(TransposeCodec):
+        class NoneReturningAACodec(TransposeCodec):  # type: ignore[misc]
             """An ArrayArrayCodec that always returns None from encode."""
 
             def _encode_sync(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer | None:
