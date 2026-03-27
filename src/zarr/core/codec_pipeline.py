@@ -74,10 +74,6 @@ class ChunkTransform:
     Provides `encode` and `decode` for pure-compute codec operations
     (no IO, no threading, no batching).
 
-    `shape` and `dtype` reflect the representation **after** all
-    ArrayArrayCodec transforms -- i.e. the spec that feeds the
-    ArrayBytesCodec.
-
     All codecs must implement `SupportsSyncCodec`. Construction will
     raise `TypeError` if any codec does not.
     """
@@ -121,16 +117,6 @@ class ChunkTransform:
             assert isinstance(bb_codec, SupportsSyncCodec)
             bb_sync.append(bb_codec)
         self._bb_codecs = tuple(bb_sync)
-
-    @property
-    def shape(self) -> tuple[int, ...]:
-        """Shape after all ArrayArrayCodec transforms (input to the ArrayBytesCodec)."""
-        return self._ab_spec.shape
-
-    @property
-    def dtype(self) -> ZDType[TBaseDType, TBaseScalar]:
-        """Dtype after all ArrayArrayCodec transforms (input to the ArrayBytesCodec)."""
-        return self._ab_spec.dtype
 
     def decode(
         self,
