@@ -970,7 +970,7 @@ class OrthogonalIndexer(Indexer):
                 # which preserves full slices and avoids an
                 # unnecessary advanced-indexing copy. Integer-indexed
                 # dimensions still need the ix_ path for downstream squeezing.
-                # Example: we skip `ix_` for array[:, :, [1, 2, 3]] 
+                # Example: we skip `ix_` for array[:, :, [1, 2, 3]]
                 n_array_dims = sum(isinstance(sel, np.ndarray) for sel in chunk_selection)
 
                 if n_array_dims > 1 or self.drop_axes:
