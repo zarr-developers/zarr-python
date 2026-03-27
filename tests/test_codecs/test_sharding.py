@@ -649,7 +649,6 @@ async def test_unordered_can_be_seeded() -> None:
             subchunk_write_order="unordered",
             rng=np.random.default_rng(seed=seed),
         )
-        # The physical write order is recovered by sorting coordinates by start offset.
         orders.append(await stored_data_and_get_order(codec, chunks_per_shard))
     assert all(orders[0] == o for o in orders)
 

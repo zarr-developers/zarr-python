@@ -574,7 +574,7 @@ class ShardingCodec(
                 chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             )
         )
-        shard_builder = dict.fromkeys(np.array(list(np.ndindex(chunks_per_shard))))
+        shard_builder = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard, "lexicographic"))
 
         await self.codec_pipeline.write(
             [
