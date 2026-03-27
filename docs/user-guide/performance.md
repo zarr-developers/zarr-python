@@ -115,7 +115,7 @@ filters (e.g., byte-shuffle) have been applied.
 
 ### Subchunk memory layout
 
-The order of chunks **within each shard** can be changed via the `subchunk_write_order` parameter of the `ShardingCodec` using the `SubchunkWriteOrder` enum or a corresponding string.
+The order of chunks **within each shard** can be changed via the `subchunk_write_order` parameter of the `ShardingCodec`. That parameter is a string which must be one of `["morton", "lexicographic", "colexicographic", "unordered"]`.
 
 By default [`morton`](https://en.wikipedia.org/wiki/Z-order_curve) order provides good spatial locality however [`lexicographic` (i.e., row-major)](https://en.wikipedia.org/wiki/Row-_and_column-major_order), for example, may be better suited to "batched" workflows where some form of sequential reading through a fixed number of outer dimensions is desired. The options are `lexicographic`, `morton`, `unordered` (i.e., random), and `colexicographic`.
 
