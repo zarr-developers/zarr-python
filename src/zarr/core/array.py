@@ -10,9 +10,7 @@ from logging import getLogger
 from typing import (
     TYPE_CHECKING,
     Any,
-    Generic,
     Literal,
-    TypeAlias,
     TypedDict,
     cast,
     overload,
@@ -111,7 +109,6 @@ from zarr.core.metadata import (
     ArrayV2Metadata,
     ArrayV2MetadataDict,
     ArrayV3Metadata,
-    T_ArrayMetadata,
 )
 from zarr.core.metadata.io import save_metadata
 from zarr.core.metadata.v2 import (
@@ -300,7 +297,7 @@ async def get_array_metadata(
 
 
 @dataclass(frozen=True)
-class AsyncArray(Generic[T_ArrayMetadata]):
+class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
     An asynchronous array class representing a chunked array stored in a Zarr store.
 
@@ -2042,7 +2039,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
 @dataclass(frozen=False)
-class Array(Generic[T_ArrayMetadata]):
+class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     """
     A Zarr array.
     """
@@ -4359,7 +4356,7 @@ async def _shards_initialized(
     )
 
 
-FiltersLike: TypeAlias = (
+type FiltersLike = (
     Iterable[dict[str, JSON] | ArrayArrayCodec | Numcodec]
     | ArrayArrayCodec
     | Iterable[Numcodec]
@@ -4368,9 +4365,9 @@ FiltersLike: TypeAlias = (
     | None
 )
 # Union of acceptable types for users to pass in for both v2 and v3 compressors
-CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | Numcodec | Literal["auto"] | None
+type CompressorLike = dict[str, JSON] | BytesBytesCodec | Numcodec | Literal["auto"] | None
 
-CompressorsLike: TypeAlias = (
+type CompressorsLike = (
     Iterable[dict[str, JSON] | BytesBytesCodec | Numcodec]
     | Mapping[str, JSON]
     | BytesBytesCodec
@@ -4378,7 +4375,7 @@ CompressorsLike: TypeAlias = (
     | Literal["auto"]
     | None
 )
-SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
+type SerializerLike = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
@@ -4386,7 +4383,7 @@ class ShardsConfigParam(TypedDict):
     index_location: ShardingCodecIndexLocation | None
 
 
-ShardsLike: TypeAlias = (
+type ShardsLike = (
     tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]
 )
 

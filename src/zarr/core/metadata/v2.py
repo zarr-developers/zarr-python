@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.numcodec import Numcodec, _is_numcodec
@@ -22,8 +22,6 @@ if TYPE_CHECKING:
     from zarr.core.dtype.wrapper import (
         TBaseDType,
         TBaseScalar,
-        TDType_co,
-        TScalar_co,
         ZDType,
     )
 
@@ -55,7 +53,7 @@ class ArrayV2MetadataDict(TypedDict):
 
 
 # Union of acceptable types for v2 compressors
-CompressorLikev2: TypeAlias = dict[str, JSON] | Numcodec | None
+type CompressorLikev2 = dict[str, JSON] | Numcodec | None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -75,7 +73,7 @@ class ArrayV2Metadata(Metadata):
         self,
         *,
         shape: tuple[int, ...],
-        dtype: ZDType[TDType_co, TScalar_co],
+        dtype: ZDType[TBaseDType, TBaseScalar],
         chunks: tuple[int, ...],
         fill_value: Any,
         order: MemoryOrder,
