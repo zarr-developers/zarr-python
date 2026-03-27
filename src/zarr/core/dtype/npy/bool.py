@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING, ClassVar, Literal, Self, TypeGuard, overload
 import numpy as np
 
 from zarr.core.dtype.common import (
-    DataTypeValidationError,
     DTypeConfig_V2,
     DTypeJSON,
     HasItemSize,
     check_dtype_spec_v2,
 )
 from zarr.core.dtype.wrapper import TBaseDType, ZDType
+from zarr.errors import DataTypeValidationError
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
