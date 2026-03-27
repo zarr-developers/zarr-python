@@ -12,13 +12,10 @@ from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
     Any,
-    Generic,
     Literal,
     NamedTuple,
     Protocol,
-    TypeAlias,
     TypeGuard,
-    TypeVar,
     cast,
     runtime_checkable,
 )
@@ -27,7 +24,8 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.common import ceildiv, product
-from zarr.core.metadata import T_ArrayMetadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.errors import (
     ArrayIndexError,
     BoundsCheckError,
@@ -79,7 +77,7 @@ class Indexer(Protocol):
     def __iter__(self) -> Iterator[ChunkProjection]: ...
 
 
-_ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
+type _ArrayIndexingOrder = Literal["lexicographic"]
 
 
 def _iter_grid(
@@ -520,9 +518,6 @@ def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
     return tuple(
         np.asarray(dim_sel) if isinstance(dim_sel, list) else dim_sel for dim_sel in selection
     )
-
-
-T = TypeVar("T")
 
 
 def ensure_tuple(v: Any) -> SelectionNormalized:
@@ -966,15 +961,22 @@ class OrthogonalIndexer(Indexer):
 
             # handle advanced indexing arrays orthogonally
             if self.is_advanced:
-                # N.B., numpy doesn't support orthogonal indexing directly as yet,
-                # so need to work around via np.ix_. Also np.ix_ does not support a
-                # mixture of arrays and slices or integers, so need to convert slices
-                # and integers into ranges.
-                chunk_selection = ix_(chunk_selection, self.chunk_shape)
+                # NumPy can handle a single array-indexed dimension directly,
+                # which preserves full slices and avoids an
+                # unnecessary advanced-indexing copy. Integer-indexed
+                # dimensions still need the ix_ path for downstream squeezing.
+                # Example: we skip `ix_` for array[:, :, [1, 2, 3]]
+                n_array_dims = sum(isinstance(sel, np.ndarray) for sel in chunk_selection)
 
-                # special case for non-monotonic indices
-                if not is_basic_selection(out_selection):
-                    out_selection = ix_(out_selection, self.shape)
+                if n_array_dims > 1 or self.drop_axes:
+                    # N.B., numpy doesn't support orthogonal indexing directly
+                    # for multiple array-indexed dimensions, so we need to
+                    # convert the orthogonal selection into coordinate arrays.
+                    chunk_selection = ix_(chunk_selection, self.chunk_shape)
+
+                    # special case for non-monotonic indices
+                    if not is_basic_selection(out_selection):
+                        out_selection = ix_(out_selection, self.shape)
 
             is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
@@ -1009,7 +1011,7 @@ class OIndex:
 
 
 @dataclass(frozen=True)
-class AsyncOIndex(Generic[T_ArrayMetadata]):
+class AsyncOIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     array: AsyncArray[T_ArrayMetadata]
 
     async def getitem(self, selection: OrthogonalSelection | AnyArray) -> NDArrayLikeOrScalar:
@@ -1349,7 +1351,7 @@ class VIndex:
 
 
 @dataclass(frozen=True)
-class AsyncVIndex(Generic[T_ArrayMetadata]):
+class AsyncVIndex[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     array: AsyncArray[T_ArrayMetadata]
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
