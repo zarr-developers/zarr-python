@@ -58,7 +58,36 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         assert store.supports_listing
 
     async def test_list_prefix(self, store: MemoryStore) -> None:
+        """Stub – full regression test is below."""
         assert True
+
+    async def test_list_prefix_path_boundary(self, store: MemoryStore) -> None:
+        """list_prefix("0") must NOT return keys from a sibling path like "0_c/...".
+
+        Regression test for https://github.com/zarr-developers/zarr-python/issues/3773.
+        Previously MemoryStore.list_prefix did a raw ``str.startswith`` check,
+        so prefix "0" matched "0_c/zarr.json" as well as "0/zarr.json".
+        LocalStore uses filesystem directory semantics and correctly returns only
+        items under the "0/" directory; MemoryStore must behave consistently.
+        """
+        await self.set(store, "0/zarr.json", self.buffer_cls.from_bytes(b"{}"))
+        await self.set(store, "0_c/zarr.json", self.buffer_cls.from_bytes(b"{}"))
+        await self.set(store, "1/zarr.json", self.buffer_cls.from_bytes(b"{}"))
+
+        # list_prefix("0") must only return keys strictly under "0/"
+        result = sorted([k async for k in store.list_prefix("0")])
+        assert result == ["0/zarr.json"], (
+            f"Expected ['0/zarr.json'], got {result!r}. "
+            "list_prefix('0') must not match sibling paths starting with '0'."
+        )
+
+        # Trailing slash should produce the same result
+        result_slash = sorted([k async for k in store.list_prefix("0/")])
+        assert result_slash == ["0/zarr.json"]
+
+        # list_prefix("") / list_prefix("/") should return all keys
+        result_all = sorted([k async for k in store.list_prefix("")])
+        assert result_all == ["0/zarr.json", "0_c/zarr.json", "1/zarr.json"]
 
     @pytest.mark.parametrize("dtype", ["uint8", "float32", "int64"])
     @pytest.mark.parametrize("zarr_format", [2, 3])
