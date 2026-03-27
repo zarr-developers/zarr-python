@@ -71,27 +71,29 @@ def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
 class ChunkTransform:
     """A synchronous codec chain bound to an ArraySpec.
 
-    Provides ``encode_chunk`` and ``decode_chunk`` for pure-compute
-    codec operations (no IO, no threading, no batching).
+    Provides `encode` and `decode` for pure-compute codec operations
+    (no IO, no threading, no batching).
 
-    ``shape`` and ``dtype`` reflect the representation **after** all
-    ArrayArrayCodec transforms — i.e. the spec that feeds the
+    `shape` and `dtype` reflect the representation **after** all
+    ArrayArrayCodec transforms -- i.e. the spec that feeds the
     ArrayBytesCodec.
 
-    All codecs must implement ``SupportsSyncCodec``. Construction will
-    raise ``TypeError`` if any codec does not.
+    All codecs must implement `SupportsSyncCodec`. Construction will
+    raise `TypeError` if any codec does not.
     """
 
     codecs: tuple[Codec, ...]
     array_spec: ArraySpec
 
-    # (ArrayArrayCodec, input_spec) pairs in pipeline order.
-    _aa_codecs: tuple[tuple[ArrayArrayCodec, ArraySpec], ...] = field(
+    # (sync codec, input_spec) pairs in pipeline order.
+    _aa_codecs: tuple[tuple[SupportsSyncCodec[NDBuffer, NDBuffer], ArraySpec], ...] = field(
         init=False, repr=False, compare=False
     )
-    _ab_codec: ArrayBytesCodec = field(init=False, repr=False, compare=False)
+    _ab_codec: SupportsSyncCodec[NDBuffer, Buffer] = field(init=False, repr=False, compare=False)
     _ab_spec: ArraySpec = field(init=False, repr=False, compare=False)
-    _bb_codecs: tuple[BytesBytesCodec, ...] = field(init=False, repr=False, compare=False)
+    _bb_codecs: tuple[SupportsSyncCodec[Buffer, Buffer], ...] = field(
+        init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         non_sync = [c for c in self.codecs if not isinstance(c, SupportsSyncCodec)]
@@ -103,16 +105,22 @@ class ChunkTransform:
 
         aa, ab, bb = codecs_from_list(list(self.codecs))
 
-        aa_codecs: tuple[tuple[ArrayArrayCodec, ArraySpec], ...] = ()
+        aa_codecs: list[tuple[SupportsSyncCodec[NDBuffer, NDBuffer], ArraySpec]] = []
         spec = self.array_spec
         for aa_codec in aa:
-            aa_codecs = (*aa_codecs, (aa_codec, spec))
+            assert isinstance(aa_codec, SupportsSyncCodec)
+            aa_codecs.append((aa_codec, spec))
             spec = aa_codec.resolve_metadata(spec)
 
-        self._aa_codecs = aa_codecs
+        self._aa_codecs = tuple(aa_codecs)
+        assert isinstance(ab, SupportsSyncCodec)
         self._ab_codec = ab
         self._ab_spec = spec
-        self._bb_codecs = bb
+        bb_sync: list[SupportsSyncCodec[Buffer, Buffer]] = []
+        for bb_codec in bb:
+            assert isinstance(bb_codec, SupportsSyncCodec)
+            bb_sync.append(bb_codec)
+        self._bb_codecs = tuple(bb_sync)
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -132,18 +140,16 @@ class ChunkTransform:
 
         Pure compute -- no IO.
         """
-        # All codecs are verified to implement SupportsSyncCodec in __post_init__,
-        # but the stored types (ArrayArrayCodec, etc.) don't reflect this statically.
-        bb_out: Any = chunk_bytes
+        data: Buffer = chunk_bytes
         for bb_codec in reversed(self._bb_codecs):
-            bb_out = bb_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[attr-defined]
+            data = bb_codec._decode_sync(data, self._ab_spec)
 
-        ab_out: Any = self._ab_codec._decode_sync(bb_out, self._ab_spec)  # type: ignore[attr-defined]
+        chunk_array: NDBuffer = self._ab_codec._decode_sync(data, self._ab_spec)
 
         for aa_codec, spec in reversed(self._aa_codecs):
-            ab_out = aa_codec._decode_sync(ab_out, spec)  # type: ignore[attr-defined]
+            chunk_array = aa_codec._decode_sync(chunk_array, spec)
 
-        return ab_out  # type: ignore[no-any-return]
+        return chunk_array
 
     def encode(
         self,
@@ -153,23 +159,25 @@ class ChunkTransform:
 
         Pure compute -- no IO.
         """
-        aa_out: Any = chunk_array
-
+        aa_data: NDBuffer = chunk_array
         for aa_codec, spec in self._aa_codecs:
-            if aa_out is None:
+            aa_result = aa_codec._encode_sync(aa_data, spec)
+            if aa_result is None:
                 return None
-            aa_out = aa_codec._encode_sync(aa_out, spec)  # type: ignore[attr-defined]
+            aa_data = aa_result
 
-        if aa_out is None:
+        ab_result = self._ab_codec._encode_sync(aa_data, self._ab_spec)
+        if ab_result is None:
             return None
-        bb_out: Any = self._ab_codec._encode_sync(aa_out, self._ab_spec)  # type: ignore[attr-defined]
 
+        bb_data: Buffer = ab_result
         for bb_codec in self._bb_codecs:
-            if bb_out is None:
+            bb_result = bb_codec._encode_sync(bb_data, self._ab_spec)
+            if bb_result is None:
                 return None
-            bb_out = bb_codec._encode_sync(bb_out, self._ab_spec)  # type: ignore[attr-defined]
+            bb_data = bb_result
 
-        return bb_out  # type: ignore[no-any-return]
+        return bb_data
 
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
         for codec in self.codecs:
