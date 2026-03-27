@@ -234,7 +234,6 @@ class _ShardIndex(NamedTuple):
 class _ShardReader(ShardMapping):
     buf: Buffer
     index: _ShardIndex
-    order: SubchunkWriteOrder
 
     @classmethod
     async def from_bytes(
@@ -540,8 +539,10 @@ class ShardingCodec(
         else:
             return out
 
-    def _subchunk_order_iter(self, chunks_per_shard: tuple[int, ...]) -> Iterable[tuple[int, ...]]:
-        match self.subchunk_write_order:
+    def _subchunk_order_iter(
+        self, chunks_per_shard: tuple[int, ...], subchunk_write_order: SubchunkWriteOrder
+    ) -> Iterable[tuple[int, ...]]:
+        match subchunk_write_order:
             case "morton":
                 subchunk_iter = morton_order_iter(chunks_per_shard)
             case "lexicographic":
@@ -574,10 +575,6 @@ class ShardingCodec(
             )
         )
         shard_builder = dict.fromkeys(np.array(list(np.ndindex(chunks_per_shard))))
-        assert (
-            shard_builder.keys()
-            == dict.fromkeys(self._subchunk_order_iter(chunks_per_shard)).keys()
-        )
 
         await self.codec_pipeline.write(
             [
@@ -618,7 +615,7 @@ class ShardingCodec(
         )
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
-            shard_dict = dict.fromkeys(np.ndindex(chunks_per_shard))
+            shard_dict = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard, "lexicographic"))
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,
@@ -628,7 +625,7 @@ class ShardingCodec(
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
             # Use vectorized lookup for better performance
             shard_dict = shard_reader.to_dict_vectorized(
-                np.array(list(np.ndindex(chunks_per_shard)))
+                np.array(list(self._subchunk_order_iter(chunks_per_shard, "lexicographic")))
             )
 
         await self.codec_pipeline.write(
@@ -667,7 +664,7 @@ class ShardingCodec(
 
         template = buffer_prototype.buffer.create_zero_length()
         chunk_start = 0
-        for chunk_coords in self._subchunk_order_iter(chunks_per_shard):
+        for chunk_coords in self._subchunk_order_iter(chunks_per_shard, self.subchunk_write_order):
             value = map.get(chunk_coords)
             if value is None:
                 continue

@@ -619,7 +619,7 @@ async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteO
 
     actual_order = await stored_data_and_get_order(codec, chunks_per_shard)
     if subchunk_write_order != "unordered":
-        expected_order = list(codec._subchunk_order_iter(chunks_per_shard))
+        expected_order = list(codec._subchunk_order_iter(chunks_per_shard, subchunk_write_order))
         assert actual_order == expected_order
     else:
         same_order_same_seed = list(
@@ -630,7 +630,7 @@ async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteO
                 index_location=ShardingCodecIndexLocation.end,
                 subchunk_write_order=subchunk_write_order,
                 rng=np.random.default_rng(seed=seed),
-            )._subchunk_order_iter(chunks_per_shard)
+            )._subchunk_order_iter(chunks_per_shard, subchunk_write_order)
         )
         assert actual_order == same_order_same_seed
 
