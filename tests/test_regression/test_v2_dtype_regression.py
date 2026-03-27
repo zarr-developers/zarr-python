@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
@@ -193,6 +194,10 @@ def source_array_v3(tmp_path: Path, request: pytest.FixtureRequest) -> ArrayV3:
 script_paths = [Path(__file__).resolve().parent / "scripts" / "v2.18.py"]
 
 
+@pytest.mark.skipif(
+    sys.platform == "darwin" and sys.version_info >= (3, 14),
+    reason="Numcodecs pinned to 0.15 does not build on newer macos installations with newer python versions: see discussion https://github.com/zarr-developers/zarr-python/pull/3564#issuecomment-4081145034",
+)
 @pytest.mark.skipif(not runner_installed(), reason="no python script runner installed")
 @pytest.mark.parametrize(
     "source_array_v2", array_cases_v2_18, indirect=True, ids=tuple(map(str, array_cases_v2_18))
@@ -211,7 +216,7 @@ def test_roundtrip_v2(source_array_v2: ArrayV2, tmp_path: Path, script_path: Pat
         capture_output=True,
         text=True,
     )
-    assert copy_op.returncode == 0
+    assert copy_op.returncode == 0, "stdout " + copy_op.stdout + "\n stderr" + copy_op.stderr
     out_array = zarr.open_array(store=out_path, mode="r", zarr_format=2)
     assert source_array_v2.metadata.to_dict() == out_array.metadata.to_dict()
     assert np.array_equal(source_array_v2[:], out_array[:])
