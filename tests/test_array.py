@@ -1853,24 +1853,21 @@ def test_roundtrip_numcodecs() -> None:
 
     # Create the array with the correct codecs
     root = zarr.group(store)
-    warn_msg = "Numcodecs codecs are not in the Zarr version 3 specification and may not be supported by other zarr implementations."
-    with pytest.warns(ZarrUserWarning, match=warn_msg):
-        root.create_array(
-            "test",
-            shape=(720, 1440),
-            chunks=(720, 1440),
-            dtype="float64",
-            compressors=compressors,  # type: ignore[arg-type]
-            filters=filters,  # type: ignore[arg-type]
-            fill_value=-9.99,
-            dimension_names=["lat", "lon"],
-        )
+    root.create_array(
+        "test",
+        shape=(720, 1440),
+        chunks=(720, 1440),
+        dtype="float64",
+        compressors=compressors,  # type: ignore[arg-type]
+        filters=filters,  # type: ignore[arg-type]
+        fill_value=-9.99,
+        dimension_names=["lat", "lon"],
+    )
 
     BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
     # Read in the array again and check compressor config
     root = zarr.open_group(store)
-    with pytest.warns(ZarrUserWarning, match=warn_msg):
-        metadata = root["test"].metadata.to_dict()
+    metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
 

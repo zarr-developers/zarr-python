@@ -4383,9 +4383,7 @@ class ShardsConfigParam(TypedDict):
     index_location: ShardingCodecIndexLocation | None
 
 
-type ShardsLike = (
-    tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]
-)
+type ShardsLike = tuple[int, ...] | Sequence[Sequence[int]] | ShardsConfigParam | Literal["auto"]
 
 
 async def from_array(
