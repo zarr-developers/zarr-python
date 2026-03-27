@@ -560,26 +560,10 @@ def test_sharding_mixed_integer_list_indexing(store: Store) -> None:
     np.testing.assert_array_equal(c3, s3)
 
 
-@pytest.mark.parametrize(
-    "subchunk_write_order",
-    get_args(SubchunkWriteOrder),
-)
-async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteOrder) -> None:
-    """Subchunks must be physically laid out in the shard in the order specified by
-    ``subchunk_write_order``.  We verify this by decoding the shard index and sorting
-    the chunk coordinates by their byte offset."""
-    # Use a non-square chunks_per_shard so all three orderings are distinguishable.
-    chunks_per_shard = (3, 2)
-    chunk_shape = (4, 4)
-    shard_shape = tuple(c * s for c, s in zip(chunks_per_shard, chunk_shape, strict=True))
-
-    codec = ShardingCodec(
-        chunk_shape=chunk_shape,
-        codecs=[BytesCodec()],
-        index_codecs=[BytesCodec(), Crc32cCodec()],
-        index_location=ShardingCodecIndexLocation.end,
-        subchunk_write_order=subchunk_write_order,
-    )
+async def stored_data_and_get_order(
+    codec: ShardingCodec, chunks_per_shard: tuple[int, ...]
+) -> list[tuple[int, ...]]:
+    shard_shape = tuple(c * s for c, s in zip(chunks_per_shard, codec.chunk_shape, strict=True))
     store = MemoryStore()
     arr = zarr.create_array(
         StorePath(store),
@@ -609,9 +593,65 @@ async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteO
     )
 
     # The physical write order is recovered by sorting coordinates by start offset.
-    actual_order = [coord for _, coord in sorted(offset_to_coord.items())]
-    expected_order = list(codec._subchunk_order_iter(chunks_per_shard))
-    assert (actual_order == expected_order) == (subchunk_write_order != "unordered")
+    return [coord for _, coord in sorted(offset_to_coord.items())]
+
+
+@pytest.mark.parametrize(
+    "subchunk_write_order",
+    get_args(SubchunkWriteOrder),
+)
+async def test_encoded_subchunk_write_order(subchunk_write_order: SubchunkWriteOrder) -> None:
+    """Subchunks must be physically laid out in the shard in the order specified by
+    ``subchunk_write_order``.  We verify this by decoding the shard index and sorting
+    the chunk coordinates by their byte offset."""
+    # Use a non-square chunks_per_shard so all three orderings are distinguishable.
+    chunks_per_shard = (3, 2)
+    chunk_shape = (4, 4)
+    seed = 0
+    codec = ShardingCodec(
+        chunk_shape=chunk_shape,
+        codecs=[BytesCodec()],
+        index_codecs=[BytesCodec(), Crc32cCodec()],
+        index_location=ShardingCodecIndexLocation.end,
+        subchunk_write_order=subchunk_write_order,
+        rng=np.random.default_rng(seed=seed),
+    )
+
+    actual_order = await stored_data_and_get_order(codec, chunks_per_shard)
+    if subchunk_write_order != "unordered":
+        expected_order = list(codec._subchunk_order_iter(chunks_per_shard))
+        assert actual_order == expected_order
+    else:
+        same_order_same_seed = list(
+            ShardingCodec(
+                chunk_shape=chunk_shape,
+                codecs=[BytesCodec()],
+                index_codecs=[BytesCodec(), Crc32cCodec()],
+                index_location=ShardingCodecIndexLocation.end,
+                subchunk_write_order=subchunk_write_order,
+                rng=np.random.default_rng(seed=seed),
+            )._subchunk_order_iter(chunks_per_shard)
+        )
+        assert actual_order == same_order_same_seed
+
+
+async def test_unordered_can_be_seeded() -> None:
+    orders = []
+    chunks_per_shard = (3, 2)
+    chunk_shape = (4, 4)
+    seed = 0
+    for _ in range(4):
+        codec = ShardingCodec(
+            chunk_shape=chunk_shape,
+            codecs=[BytesCodec()],
+            index_codecs=[BytesCodec(), Crc32cCodec()],
+            index_location=ShardingCodecIndexLocation.end,
+            subchunk_write_order="unordered",
+            rng=np.random.default_rng(seed=seed),
+        )
+        # The physical write order is recovered by sorting coordinates by start offset.
+        orders.append(await stored_data_and_get_order(codec, chunks_per_shard))
+    assert all(orders[0] == o for o in orders)
 
 
 @pytest.mark.parametrize(

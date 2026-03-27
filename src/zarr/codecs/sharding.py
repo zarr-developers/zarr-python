@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum
@@ -48,7 +47,6 @@ from zarr.core.indexing import (
     BasicIndexer,
     ChunkProjection,
     SelectorTuple,
-    _morton_order,
     _morton_order_keys,
     c_order_iter,
     get_indexer,
@@ -315,6 +313,7 @@ class ShardingCodec(
     chunk_shape: tuple[int, ...]
     codecs: tuple[Codec, ...]
     index_codecs: tuple[Codec, ...]
+    rng: np.random.Generator | None
     index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
     subchunk_write_order: SubchunkWriteOrder = "morton"
 
@@ -326,6 +325,7 @@ class ShardingCodec(
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
         subchunk_write_order: SubchunkWriteOrder = "morton",
+        rng: np.random.Generator | None = None,
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
@@ -341,6 +341,7 @@ class ShardingCodec(
         object.__setattr__(self, "index_codecs", index_codecs_parsed)
         object.__setattr__(self, "index_location", index_location_parsed)
         object.__setattr__(self, "subchunk_write_order", subchunk_write_order)
+        object.__setattr__(self, "rng", rng)
 
         # Use instance-local lru_cache to avoid memory leaks
 
@@ -353,7 +354,7 @@ class ShardingCodec(
 
     # todo: typedict return type
     def __getstate__(self) -> dict[str, Any]:
-        return self.to_dict()
+        return {"rng": self.rng, **self.to_dict()}
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         config = state["configuration"]
@@ -361,6 +362,7 @@ class ShardingCodec(
         object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
         object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
         object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
+        object.__setattr__(self, "rng", state["rng"])
 
         # Use instance-local lru_cache to avoid memory leaks
         # object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
@@ -550,20 +552,11 @@ class ShardingCodec(
                 subchunk_iter = (c[::-1] for c in np.ndindex(chunks_per_shard[::-1]))
             case "unordered":
                 subchunk_list = list(np.ndindex(chunks_per_shard))
-                random.shuffle(subchunk_list)
+                (self.rng if self.rng is not None else np.random.default_rng()).shuffle(
+                    subchunk_list
+                )
                 subchunk_iter = iter(subchunk_list)
         return subchunk_iter
-
-    def _subchunk_order_vectorized(self, chunks_per_shard: tuple[int, ...]) -> npt.NDArray[np.intp]:
-        match self.subchunk_write_order:
-            case "morton":
-                subchunk_order_vectorized = _morton_order(chunks_per_shard)
-            case _:
-                subchunk_order_vectorized = np.fromiter(
-                    self._subchunk_order_iter(chunks_per_shard),
-                    dtype=np.dtype((int, len(chunks_per_shard))),
-                )
-        return subchunk_order_vectorized
 
     async def _encode_single(
         self,
@@ -623,7 +616,7 @@ class ShardingCodec(
         )
 
         if self._is_complete_shard_write(indexer, chunks_per_shard):
-            shard_dict = dict.fromkeys(self._subchunk_order_iter(chunks_per_shard))
+            shard_dict = dict.fromkeys(np.ndindex(chunks_per_shard))
         else:
             shard_reader = await self._load_full_shard_maybe(
                 byte_getter=byte_setter,
@@ -633,7 +626,7 @@ class ShardingCodec(
             shard_reader = shard_reader or _ShardReader.create_empty(chunks_per_shard)
             # Use vectorized lookup for better performance
             shard_dict = shard_reader.to_dict_vectorized(
-                self._subchunk_order_vectorized(chunks_per_shard)
+                np.array(list(np.ndindex(chunks_per_shard)))
             )
 
         await self.codec_pipeline.write(
