@@ -13,7 +13,9 @@ from hypothesis.strategies import SearchStrategy
 import zarr
 from zarr.abc.store import RangeByteRequest, Store
 from zarr.codecs.bytes import BytesCodec
-from zarr.core.array import Array
+from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.codecs.sharding import SUBCHUNK_WRITE_ORDER, ShardingCodec, SubchunkWriteOrder
+from zarr.core.array import Array, CompressorsLike, SerializerLike
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import JSON, ZarrFormat
@@ -126,6 +128,9 @@ array_shapes = npst.array_shapes(max_dims=4, min_side=3, max_side=5) | npst.arra
 def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | str] | None:
     simple_text = st.text(zarr_key_chars, min_size=0)
     return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[arg-type]
+
+
+subchunk_write_orders: st.SearchStrategy[SubchunkWriteOrder] = st.sampled_from(SUBCHUNK_WRITE_ORDER)
 
 
 @st.composite
@@ -249,6 +254,7 @@ def arrays(
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
     zarr_formats: st.SearchStrategy = zarr_formats,
+    subchunk_write_orders: SearchStrategy[SubchunkWriteOrder] = subchunk_write_orders,
 ) -> AnyArray:
     store = draw(stores, label="store")
     path = draw(paths, label="array parent")
@@ -260,12 +266,22 @@ def arrays(
     nparray = draw(arrays, label="array data")
     chunk_shape = draw(chunk_shapes(shape=nparray.shape), label="chunk shape")
     dim_names: None | list[str | None] = None
+    serializer: SerializerLike = "auto"
+    compressors_unsearched: CompressorsLike = "auto"
     if zarr_format == 3 and all(c > 0 for c in chunk_shape):
         shard_shape = draw(
             st.none() | shard_shapes(shape=nparray.shape, chunk_shape=chunk_shape),
             label="shard shape",
         )
         dim_names = draw(dimension_names(ndim=nparray.ndim), label="dimension names")
+        subchunk_write_order = draw(subchunk_write_orders)
+        serializer = ShardingCodec(
+            subchunk_write_order=subchunk_write_order,
+            codecs=[BytesCodec()],
+            index_codecs=[BytesCodec(), Crc32cCodec()],
+            chunk_shape=chunk_shape,
+        )
+        compressors_unsearched = None
     else:
         shard_shape = None
     # test that None works too.
@@ -284,9 +300,10 @@ def arrays(
         shards=shard_shape,
         dtype=nparray.dtype,
         attributes=attributes,
-        # compressor=compressor,  # FIXME
+        compressors=compressors_unsearched,  # FIXME
         fill_value=fill_value,
         dimension_names=dim_names,
+        serializer=serializer,
     )
 
     assert isinstance(a, Array)
@@ -298,7 +315,8 @@ def arrays(
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunk_shape == a.chunks
-    assert shard_shape == a.shards
+    if shard_shape is not None:
+        assert shard_shape == a.shards
     assert a.basename == name, (a.basename, name)
     assert dict(a.attrs) == expected_attrs
 
