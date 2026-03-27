@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Protocol, TypeGuard, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, TypeGuard, runtime_checkable
 
 from typing_extensions import ReadOnly, TypedDict
 
@@ -35,6 +35,13 @@ __all__ = [
     "GetResult",
     "SupportsSyncCodec",
 ]
+
+
+class GetResult(TypedDict):
+    """Metadata about a store get operation."""
+
+    status: Literal["present", "missing"]
+
 
 type CodecInput = NDBuffer | Buffer
 type CodecOutput = NDBuffer | Buffer
