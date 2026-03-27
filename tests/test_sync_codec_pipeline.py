@@ -17,7 +17,7 @@ from zarr.core.codec_pipeline import ChunkTransform
 from zarr.core.dtype import get_data_type_from_native_dtype
 
 
-class AsyncOnlyCodec(ArrayBytesCodec):  # type: ignore[misc]
+class AsyncOnlyCodec(ArrayBytesCodec):
     """A codec that only supports async, for testing rejection of non-sync codecs."""
 
     is_fixed_size = True
@@ -129,7 +129,7 @@ def test_compute_encoded_size(
 def test_encode_returns_none_propagation() -> None:
     """When an AA codec returns None, encode short-circuits and returns None."""
 
-    class NoneReturningAACodec(TransposeCodec):  # type: ignore[misc]
+    class NoneReturningAACodec(TransposeCodec):
         """An ArrayArrayCodec that always returns None from encode."""
 
         def _encode_sync(self, chunk_array: NDBuffer, chunk_spec: ArraySpec) -> NDBuffer | None:
