@@ -33,7 +33,7 @@ from zarr.core.dtype.npy.common import (
     endianness_to_numpy_str,
     get_endianness_from_numpy_dtype,
 )
-from zarr.core.dtype.wrapper import TDType_co, ZDType
+from zarr.core.dtype.wrapper import ZDType
 
 if TYPE_CHECKING:
     from zarr.core.common import JSON, ZarrFormat
@@ -453,7 +453,7 @@ class VariableLengthUTF8JSON_V2(DTypeConfig_V2[Literal["|O"], Literal["vlen-utf8
 # If NumPy 2 is installed, then VariableLengthUTF8 is defined with the NumPy variable length
 # string dtype as the native dtype. Otherwise, VariableLengthUTF8 is defined with the NumPy object
 # dtype as the native dtype.
-class UTF8Base(ZDType[TDType_co, str], HasObjectCodec):
+class UTF8Base[DType: TBaseDType](ZDType[DType, str], HasObjectCodec):
     """
     A base class for variable-length UTF-8 string data types.
 
@@ -740,7 +740,7 @@ if _NUMPY_SUPPORTS_VLEN_STRING:
             The object codec ID for this data type.
         """
 
-        dtype_cls = np.dtypes.StringDType
+        dtype_cls = np.dtypes.StringDType  # type: ignore[assignment]
 
         @classmethod
         def from_native_dtype(cls, dtype: TBaseDType) -> Self:

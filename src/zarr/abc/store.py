@@ -12,7 +12,7 @@ from zarr.core.sync import sync
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
     from types import TracebackType
-    from typing import Any, Self, TypeAlias
+    from typing import Any, Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
 
@@ -54,7 +54,7 @@ class SuffixByteRequest:
     """The number of bytes from the suffix to request."""
 
 
-ByteRequest: TypeAlias = RangeByteRequest | OffsetByteRequest | SuffixByteRequest
+type ByteRequest = RangeByteRequest | OffsetByteRequest | SuffixByteRequest
 
 
 class Store(ABC):
