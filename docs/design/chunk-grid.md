@@ -2,6 +2,8 @@
 
 Version: 6
 
+Design document for adding rectilinear (variable) chunk grid support to **zarr-python**, conforming to the [rectilinear chunk grid extension spec](https://github.com/zarr-developers/zarr-extensions/pull/25).
+
 **Related:**
 
 - [#3750](https://github.com/zarr-developers/zarr-python/issues/3750) (single ChunkGrid proposal)
@@ -14,9 +16,7 @@ Version: 6
 
 ## Problem
 
-The Zarr V3 spec defines `chunk_grid` as an extension point, but chunk grids are fundamentally different from codecs. Codecs are independent — supporting `zstd` tells you nothing about `gzip`. Chunk grids form a hierarchy — the rectilinear grid is strictly more general than the regular grid. Any regular grid is expressible as a rectilinear grid.
-
-There is no known chunk grid that is both (a) more general than rectilinear and (b) retains the axis-aligned tessellation properties Zarr assumes. All known grids are special cases:
+Chunk grids form a hierarchy — the rectilinear grid is strictly more general than the regular grid. Any regular grid is expressible as a rectilinear grid. There is no known chunk grid that is both (a) more general than rectilinear and (b) retains the axis-aligned tessellation properties Zarr assumes. All known grids are special cases:
 
 | Grid type | Description | Example |
 |---|---|---|
@@ -25,7 +25,7 @@ There is no known chunk grid that is both (a) more general than rectilinear and 
 | HPC boundary-padded | Regular interior, larger boundary chunks ([VirtualiZarr#217](https://github.com/zarr-developers/VirtualiZarr/issues/217)) | `[10, 8, 8, 8, 10]` |
 | Fully variable | Arbitrary per-chunk sizes | `[5, 12, 3, 20]` |
 
-A registry-based plugin system adds complexity without clear benefit.
+Prior iterations on the chunk grid design were based on the Zarr V3 spec's definition of chunk grids as an extension point alongside codecs, dtypes, etc. Therefore, we started designing the chunk grid implementation following a similar registry based approach. However, in practice chunk grids are fundamentally different than codecs. Codecs are independent; supporting `zstd` tells you nothing about `gzip`. Chunk grids are not: every regular grid is a valid rectilinear grid. A registry-based plugin system makes sense for codecs but adds complexity without clear benefit for chunk grids. Here we start from some basic goals and propose a more fitting design for supporting different chunk grids in zarr-python.
 
 ## Goals
 
@@ -42,7 +42,7 @@ A registry-based plugin system adds complexity without clear benefit.
 
 ### Design choices
 
-1. **A chunk grid is a concrete arrangement of chunks.** Not an abstract tiling pattern — the specific partition of a specific array. The grid stores enough information to answer any question about any chunk without external parameters.
+1. **A chunk grid is a concrete arrangement of chunks.** Not an abstract tiling pattern. This means that the chunk grid is bound to specific array dimensions, which enables the chunk grid to answer any question about any chunk (offset, size, count) without external parameters.
 2. **One implementation, multiple serialization forms.** A single `ChunkGrid` class handles all chunking logic. The serialization format (`"regular"` vs `"rectilinear"`) is chosen by the metadata layer, not the grid.
 3. **No chunk grid registry.** Simple name-based dispatch in `parse_chunk_grid()`.
 4. **Fixed vs Varying per dimension.** `FixedDimension(size, extent)` for uniform chunks; `VaryingDimension(edges, extent)` for per-chunk edge lengths with precomputed prefix sums. Avoids expanding regular dimensions into lists of identical values.
