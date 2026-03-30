@@ -461,7 +461,7 @@
 - Test that a `ValueError` is raised for invalid byte range syntax in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Separate instantiating and opening a store in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Add a test for using Stores as a context managers in `StoreTests`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
-- Implemented `LogingStore.open()`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
+- Implemented `LoggingStore.open()`. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - `LoggingStore` is now a generic class. ([#2693](https://github.com/zarr-developers/zarr-python/issues/2693))
 - Change StoreTest's `test_store_repr`, `test_store_supports_writes`,
   `test_store_supports_partial_writes`, and `test_store_supports_listing`
