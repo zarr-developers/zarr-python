@@ -131,45 +131,6 @@ def test_rectilinear_feature_flag_enabled() -> None:
 
 
 # ---------------------------------------------------------------------------
-# RegularChunkGrid compatibility tests
-# ---------------------------------------------------------------------------
-
-
-def test_regular_chunk_grid_compat_construction_emits_deprecation_warning() -> None:
-    """Constructing RegularChunkGrid emits a DeprecationWarning and returns a ChunkGrid"""
-    from zarr.core.chunk_grids import RegularChunkGrid
-
-    with pytest.warns(DeprecationWarning, match="RegularChunkGrid is deprecated"):
-        grid = RegularChunkGrid(chunk_shape=(10, 20))
-    assert isinstance(grid, ChunkGrid)
-    assert grid.is_regular
-    assert grid.chunk_shape == (10, 20)
-
-
-@pytest.mark.parametrize(
-    ("grid", "expected"),
-    [
-        (ChunkGrid.from_sizes((100, 200), (10, 20)), True),
-        (ChunkGrid.from_sizes((30, 50), [[10, 20], [25, 25]]), False),
-    ],
-    ids=["regular-is-instance", "rectilinear-is-not-instance"],
-)
-def test_regular_chunk_grid_isinstance(grid: ChunkGrid, expected: bool) -> None:
-    """isinstance check against RegularChunkGrid matches only regular grids"""
-    from zarr.core.chunk_grids import RegularChunkGrid
-
-    assert isinstance(grid, RegularChunkGrid) == expected
-
-
-@pytest.mark.parametrize("obj", ["hello", 42], ids=["string", "int"])
-def test_regular_chunk_grid_isinstance_false_for_unrelated_types(obj: Any) -> None:
-    """Unrelated types are not instances of RegularChunkGrid"""
-    from zarr.core.chunk_grids import RegularChunkGrid
-
-    assert not isinstance(obj, RegularChunkGrid)
-
-
-# ---------------------------------------------------------------------------
 # FixedDimension tests
 # ---------------------------------------------------------------------------
 
