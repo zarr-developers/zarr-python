@@ -6,10 +6,23 @@ coverage:
         informational: true
     project:
       default:
-        target: auto
-        threshold: 0.1
+        target: 90%
+        threshold: 1%
+        flags:
+          - tests
+flags:
+  tests:
+    paths:
+      - src/
+    carryforward: true
+  gpu:
+    paths:
+      - src/
+    carryforward: true
 codecov:
   notify:
+    # 6 = test.yml: 3 (optional+ubuntu) + 2 (upstream + min_deps), hypothesis: 1
+    after_n_builds: 6
     wait_for_ci: yes
 comment:
   layout: "diff, files"
