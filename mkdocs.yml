@@ -30,6 +30,7 @@ nav:
       - user-guide/glossary.md
   - Examples:
       - user-guide/examples/custom_dtype.md
+      - user-guide/examples/rectilinear_chunks.ipynb
   - API Reference:
       - api/zarr/index.md
       - api/zarr/array.md
@@ -134,6 +135,11 @@ extra_css:
 plugins:
   - autorefs
   - search
+  - mkdocs-jupyter:
+      include: ["docs/user-guide/examples/*.ipynb"]
+      execute: false
+      ignore_h1_titles: true
+      show_input: true
   - markdown-exec
   - mkdocstrings:
       enable_inventory: true
