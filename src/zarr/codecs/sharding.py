@@ -394,35 +394,21 @@ class ShardingCodec(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
             )
         if isinstance(chunk_grid, RegularChunkGrid):
-            if not all(
-                s % c == 0
-                for s, c in zip(
-                    chunk_grid.chunk_shape,
-                    self.chunk_shape,
-                    strict=False,
-                )
-            ):
-                raise ValueError(
-                    f"The array's `chunk_shape` (got {chunk_grid.chunk_shape}) "
-                    f"needs to be divisible by the shard's inner `chunk_shape` (got {self.chunk_shape})."
-                )
+            edges_per_dim: tuple[tuple[int, ...], ...] = tuple((s,) for s in chunk_grid.chunk_shape)
         elif isinstance(chunk_grid, RectilinearChunkGrid):
-            # For rectilinear grids, every unique edge length per dimension
-            # must be divisible by the corresponding inner chunk size.
-            for i, (edges, inner) in enumerate(
-                zip(chunk_grid.chunk_shapes, self.chunk_shape, strict=False)
-            ):
-                for edge in set(edges):
-                    if edge % inner != 0:
-                        raise ValueError(
-                            f"Chunk edge length {edge} in dimension {i} is not "
-                            f"divisible by the shard's inner chunk size {inner}."
-                        )
+            edges_per_dim = chunk_grid.chunk_shapes
         else:
             raise TypeError(
                 f"Sharding is only compatible with regular and rectilinear chunk grids, "
                 f"got {type(chunk_grid)}"
             )
+        for i, (edges, inner) in enumerate(zip(edges_per_dim, self.chunk_shape, strict=False)):
+            for edge in set(edges):
+                if edge % inner != 0:
+                    raise ValueError(
+                        f"Chunk edge length {edge} in dimension {i} is not "
+                        f"divisible by the shard's inner chunk size {inner}."
+                    )
 
     async def _decode_single(
         self,
