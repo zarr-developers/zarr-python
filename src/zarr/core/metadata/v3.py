@@ -193,43 +193,43 @@ ChunkGridJSON = RegularChunkGridJSON | RectilinearChunkGridJSON
 
 
 def _parse_chunk_shape(chunk_shape: Iterable[int]) -> tuple[int, ...]:
-    """Validate and normalize a regular chunk shape. All elements must be >= 1.
+    """Validate and normalize a regular chunk shape.
 
-    The spec defines chunk indexing via modular arithmetic with the chunk
-    edge length, so zero is not a valid edge length.
+    Delegates to ``_validate_chunk_shapes`` — a regular chunk shape is just
+    a sequence of bare ints (one per dimension), each of which must be >= 1.
     """
-    as_tup = tuple(chunk_shape)
-    problems = [idx for idx, val in enumerate(as_tup) if val < 1]
-    if len(problems) == 1:
-        idx = problems[0]
-        raise ValueError(f"Invalid chunk shape {as_tup[idx]} at index {idx}.")
-    elif len(problems) > 1:
-        raise ValueError(
-            f"Invalid chunk shapes {[as_tup[idx] for idx in problems]} at indices {problems}."
-        )
-    return as_tup
+    result = _validate_chunk_shapes(tuple(chunk_shape))
+    # Regular grids only have bare ints — cast is safe after validation
+    return cast(tuple[int, ...], result)
 
 
 def _validate_chunk_shapes(
-    chunk_shapes: Sequence[Sequence[int]],
-) -> tuple[tuple[int, ...], ...]:
-    """Validate expanded per-dimension edge lists. All edges must be >= 1.
+    chunk_shapes: Sequence[int | Sequence[int]],
+) -> tuple[int | tuple[int, ...], ...]:
+    """Validate per-dimension chunk specifications.
 
-    Unlike regular grids, rectilinear grids list explicit per-chunk edges,
-    so zero-sized edges are not meaningful.
+    Each element is either a bare ``int`` (regular step size, must be >= 1)
+    or a sequence of explicit edge lengths (all must be >= 1, non-empty).
     """
-    result: list[tuple[int, ...]] = []
-    for dim_idx, edges in enumerate(chunk_shapes):
-        edges_tup = tuple(edges)
-        if not edges_tup:
-            raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
-        bad = [i for i, e in enumerate(edges_tup) if e < 1]
-        if bad:
-            raise ValueError(
-                f"Dimension {dim_idx} has invalid edge lengths at indices {bad}: "
-                f"{[edges_tup[i] for i in bad]}"
-            )
-        result.append(edges_tup)
+    result: list[int | tuple[int, ...]] = []
+    for dim_idx, dim_spec in enumerate(chunk_shapes):
+        if isinstance(dim_spec, int):
+            if dim_spec < 1:
+                raise ValueError(
+                    f"Dimension {dim_idx}: integer chunk edge length must be >= 1, got {dim_spec}"
+                )
+            result.append(dim_spec)
+        else:
+            edges = tuple(dim_spec)
+            if not edges:
+                raise ValueError(f"Dimension {dim_idx} has no chunk edges.")
+            bad = [i for i, e in enumerate(edges) if e < 1]
+            if bad:
+                raise ValueError(
+                    f"Dimension {dim_idx} has invalid edge lengths at indices {bad}: "
+                    f"{[edges[i] for i in bad]}"
+                )
+            result.append(edges)
     return tuple(result)
 
 
@@ -268,16 +268,30 @@ class RegularChunkGrid(Metadata):
 class RectilinearChunkGrid(Metadata):
     """Metadata-only description of a rectilinear chunk grid.
 
-    Stores the per-dimension chunk edge lengths as expanded integer tuples
-    (no RLE). Serialization re-compresses to RLE via ``to_dict``.
-    This is what lives on ``ArrayV3Metadata.chunk_grid``.
+    Each element of ``chunk_shapes`` is either:
+
+    - A bare ``int`` — a regular step size that repeats to cover the axis
+      (the spec's single-integer shorthand).
+    - A ``tuple[int, ...]`` — explicit per-chunk edge lengths (already
+      expanded from any RLE encoding).
+
+    This distinction matters for faithful round-tripping: a bare int
+    serializes back as a bare int, while a single-element tuple serializes
+    as a list.
     """
 
-    chunk_shapes: tuple[tuple[int, ...], ...]
+    chunk_shapes: tuple[int | tuple[int, ...], ...]
 
     def __post_init__(self) -> None:
-        chunk_shapes_parsed = _validate_chunk_shapes(self.chunk_shapes)
-        object.__setattr__(self, "chunk_shapes", chunk_shapes_parsed)
+        from zarr.core.config import config
+
+        if not config.get("array.rectilinear_chunks"):
+            raise ValueError(
+                "Rectilinear chunk grids are experimental and disabled by default. "
+                "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
+                "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
+            )
+        object.__setattr__(self, "chunk_shapes", _validate_chunk_shapes(self.chunk_shapes))
 
     @property
     def ndim(self) -> int:
@@ -285,17 +299,17 @@ class RectilinearChunkGrid(Metadata):
 
     def to_dict(self) -> RectilinearChunkGridJSON:  # type: ignore[override]
         serialized_dims: list[RectilinearDimSpecJSON] = []
-        for edges in self.chunk_shapes:
-            if len(edges) == 1:
-                # Bare int shorthand: single edge length repeated until sum >= extent
-                serialized_dims.append(edges[0])
+        for dim_spec in self.chunk_shapes:
+            if isinstance(dim_spec, int):
+                # Bare int shorthand — serialize as-is
+                serialized_dims.append(dim_spec)
             else:
-                rle = compress_rle(edges)
+                rle = compress_rle(dim_spec)
                 # Use RLE only if it's actually shorter
-                if len(rle) < len(edges):
+                if len(rle) < len(dim_spec):
                     serialized_dims.append(rle)
                 else:
-                    serialized_dims.append(list(edges))
+                    serialized_dims.append(list(dim_spec))
         return {
             "name": "rectilinear",
             "configuration": {
@@ -309,17 +323,23 @@ class RectilinearChunkGrid(Metadata):
     ) -> RectilinearChunkGrid:
         """Return a new RectilinearChunkGrid with edges adjusted for *new_shape*.
 
-        Grow past existing edges: appends a chunk covering the additional extent.
-        Shrink or grow within existing edges: edges are kept as-is (the spec
-        allows trailing edges beyond the array extent).
+        - Bare-int dimensions stay as bare ints (they cover any extent).
+        - Explicit-edge dimensions: if the new extent exceeds the sum of
+          edges, a new chunk is appended to cover the additional extent.
+          Otherwise edges are kept as-is (the spec allows trailing edges
+          beyond the array extent).
         """
-        new_chunk_shapes: list[tuple[int, ...]] = []
-        for edges, new_ext in zip(self.chunk_shapes, new_shape, strict=True):
-            edge_sum = sum(edges)
-            if new_ext > edge_sum:
-                new_chunk_shapes.append((*edges, new_ext - edge_sum))
+        new_chunk_shapes: list[int | tuple[int, ...]] = []
+        for dim_spec, new_ext in zip(self.chunk_shapes, new_shape, strict=True):
+            if isinstance(dim_spec, int):
+                # Bare int covers any extent — no change needed
+                new_chunk_shapes.append(dim_spec)
             else:
-                new_chunk_shapes.append(edges)
+                edge_sum = sum(dim_spec)
+                if new_ext > edge_sum:
+                    new_chunk_shapes.append((*dim_spec, new_ext - edge_sum))
+                else:
+                    new_chunk_shapes.append(dim_spec)
         return RectilinearChunkGrid(chunk_shapes=tuple(new_chunk_shapes))
 
     @classmethod
@@ -328,22 +348,19 @@ class RectilinearChunkGrid(Metadata):
         configuration = data["configuration"]
         validate_rectilinear_kind(configuration.get("kind"))
         raw_shapes = configuration["chunk_shapes"]
-        expanded: list[tuple[int, ...]] = []
+        parsed: list[int | tuple[int, ...]] = []
         for dim_spec in raw_shapes:
             if isinstance(dim_spec, int):
-                # Bare int shorthand — uniform edge length for this dimension.
-                # The DTO stores the single edge length; the behavioral ChunkGrid
-                # will repeat it to match the array extent when constructed.
                 if dim_spec < 1:
                     raise ValueError(f"Integer chunk edge length must be >= 1, got {dim_spec}")
-                expanded.append((dim_spec,))
+                parsed.append(dim_spec)
             elif isinstance(dim_spec, list):
-                expanded.append(tuple(expand_rle(dim_spec)))
+                parsed.append(tuple(expand_rle(dim_spec)))
             else:
                 raise TypeError(
                     f"Invalid chunk_shapes entry: expected int or list, got {type(dim_spec)}"
                 )
-        return cls(chunk_shapes=tuple(expanded))
+        return cls(chunk_shapes=tuple(parsed))
 
 
 ChunkGridMetadata = RegularChunkGrid | RectilinearChunkGrid
@@ -360,6 +377,9 @@ def resolve_chunks(
     Flat inputs like ``(10, 10)`` or a scalar ``int`` produce a ``RegularChunkGrid``
     after normalization via :func:`~zarr.core.chunk_grids.normalize_chunks`.
 
+    See Also
+    --------
+    parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
     from zarr.core.chunk_grids import _is_rectilinear_chunks, normalize_chunks
 

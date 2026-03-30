@@ -423,7 +423,7 @@ class ShardingCodec(
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_grid=ChunkGrid.from_regular(shard_shape, chunk_shape),
+            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
         )
 
         # setup output array
@@ -469,7 +469,7 @@ class ShardingCodec(
         indexer = get_indexer(
             selection,
             shape=shard_shape,
-            chunk_grid=ChunkGrid.from_regular(shard_shape, chunk_shape),
+            chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
         )
 
         # setup output array
@@ -544,7 +544,7 @@ class ShardingCodec(
             BasicIndexer(
                 tuple(slice(0, s) for s in shard_shape),
                 shape=shard_shape,
-                chunk_grid=ChunkGrid.from_regular(shard_shape, chunk_shape),
+                chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
 
@@ -586,7 +586,7 @@ class ShardingCodec(
             get_indexer(
                 selection,
                 shape=shard_shape,
-                chunk_grid=ChunkGrid.from_regular(shard_shape, chunk_shape),
+                chunk_grid=ChunkGrid.from_sizes(shard_shape, chunk_shape),
             )
         )
 

@@ -312,15 +312,17 @@ def validate_rectilinear_kind(kind: str | None) -> None:
 
 
 def validate_rectilinear_edges(
-    chunk_shapes: Sequence[Sequence[int]], array_shape: Sequence[int]
+    chunk_shapes: Sequence[int | Sequence[int]], array_shape: Sequence[int]
 ) -> None:
     """Validate that rectilinear chunk edges cover the array extent per dimension.
 
-    Raises ValueError if any dimension's edge sum is less than the corresponding
-    array extent.
+    Bare-int dimensions (regular step) always cover any extent, so they are
+    skipped. Explicit edge lists must sum to at least the array extent.
     """
-    for i, (edges, extent) in enumerate(zip(chunk_shapes, array_shape, strict=True)):
-        edge_sum = sum(edges)
+    for i, (dim_spec, extent) in enumerate(zip(chunk_shapes, array_shape, strict=True)):
+        if isinstance(dim_spec, int):
+            continue
+        edge_sum = sum(dim_spec)
         if edge_sum < extent:
             raise ValueError(
                 f"Rectilinear chunk edges for dimension {i} sum to {edge_sum} "

@@ -267,6 +267,10 @@ class ChunkSpec:
         return self.shape != self.codec_shape
 
 
+# A single dimension's rectilinear chunk spec: bare int (uniform shorthand),
+# list of ints (explicit edges), or mixed RLE (e.g. [[10, 3], 5]).
+
+
 def _is_rectilinear_chunks(chunks: Any) -> TypeGuard[Sequence[Sequence[int]]]:
     """Check if chunks is a nested sequence (e.g. [[10, 20], [5, 5]]).
 
@@ -319,92 +323,58 @@ class ChunkGrid:
         from zarr.core.metadata.v3 import RectilinearChunkGrid, RegularChunkGrid
 
         if isinstance(metadata, ArrayV2Metadata):
-            return cls.from_regular(metadata.shape, metadata.chunks)
+            return cls.from_sizes(metadata.shape, tuple(metadata.chunks))
         chunk_grid_meta = metadata.chunk_grid
         if isinstance(chunk_grid_meta, RegularChunkGrid):
-            return cls.from_regular(metadata.shape, chunk_grid_meta.chunk_shape)
+            return cls.from_sizes(metadata.shape, tuple(chunk_grid_meta.chunk_shape))
         elif isinstance(chunk_grid_meta, RectilinearChunkGrid):
-            return cls.from_rectilinear(chunk_grid_meta.chunk_shapes, metadata.shape)
+            return cls.from_sizes(metadata.shape, chunk_grid_meta.chunk_shapes)
         else:
             raise TypeError(f"Unknown chunk grid metadata type: {type(chunk_grid_meta)}")
 
     @classmethod
-    def from_regular(cls, array_shape: ShapeLike, chunk_shape: ShapeLike) -> ChunkGrid:
-        """Create a ChunkGrid where all dimensions are fixed (regular)."""
-        shape_parsed = parse_shapelike(array_shape)
-        chunks_parsed = parse_shapelike(chunk_shape)
-        if len(shape_parsed) != len(chunks_parsed):
-            raise ValueError(
-                f"array_shape and chunk_shape must have same ndim, "
-                f"got {len(shape_parsed)} vs {len(chunks_parsed)}"
-            )
-        dims = tuple(
-            FixedDimension(size=c, extent=s)
-            for s, c in zip(shape_parsed, chunks_parsed, strict=True)
-        )
-        return cls(dimensions=dims)
-
-    @classmethod
-    def from_rectilinear(
+    def from_sizes(
         cls,
-        chunk_shapes: Sequence[Sequence[int]],
         array_shape: ShapeLike,
+        chunk_sizes: Sequence[int | Sequence[int]],
     ) -> ChunkGrid:
-        """Create a ChunkGrid with per-dimension edge lists.
-
-        Each element of chunk_shapes is a sequence of chunk sizes for that dimension.
-        If all sizes in a dimension are identical *and* the extent equals
-        ``sum(edges)``, the dimension is stored as ``FixedDimension``.
-        Otherwise it is stored as ``VaryingDimension``, preserving the
-        explicit edge count (important when the last chunk extends past
-        the array boundary).
+        """Create a ChunkGrid from per-dimension chunk size specifications.
 
         Parameters
         ----------
-        chunk_shapes
-            Per-dimension sequences of chunk edge lengths.
         array_shape
-            The array shape to bind as the extent per dimension. The last
-            chunk along each dimension may extend past the array boundary
-            (the edge is the codec buffer size; ``data_size`` clips to the
-            extent).
+            The array shape (one extent per dimension).
+        chunk_sizes
+            Per-dimension chunk sizes. Each element is either:
 
-        Raises
-        ------
-        ValueError
-            If the ``array.rectilinear_chunks`` config option is not enabled.
+            - An ``int`` — regular (fixed) chunk size for that dimension.
+            - A ``Sequence[int]`` — explicit per-chunk edge lengths. If all
+              edges are identical and cover the extent, the dimension is
+              stored as ``FixedDimension``; otherwise as ``VaryingDimension``.
         """
-        from zarr.core.config import config
-
-        if not config.get("array.rectilinear_chunks"):
-            raise ValueError(
-                "Rectilinear chunk grids are experimental and disabled by default. "
-                "Enable them with: zarr.config.set({'array.rectilinear_chunks': True}) "
-                "or set the environment variable ZARR_ARRAY__RECTILINEAR_CHUNKS=True"
-            )
         extents = parse_shapelike(array_shape)
-        if len(extents) != len(chunk_shapes):
+        if len(extents) != len(chunk_sizes):
             raise ValueError(
-                f"array_shape has {len(extents)} dimensions but chunk_shapes "
-                f"has {len(chunk_shapes)} dimensions"
+                f"array_shape has {len(extents)} dimensions but chunk_sizes "
+                f"has {len(chunk_sizes)} dimensions"
             )
         dims: list[DimensionGrid] = []
-        for edges, extent in zip(chunk_shapes, extents, strict=True):
-            edges_list = list(edges)
-            if not edges_list:
-                raise ValueError("Each dimension must have at least one chunk")
-            edge_sum = sum(edges_list)
-            # Collapse to FixedDimension when edges are uniform AND either
-            # extent == edge_sum (exact fit) or the number of edges matches
-            # ceildiv(extent, edge) (regular grid with boundary overflow).
-            if (
-                edges_list[0] > 0
-                and all(e == edges_list[0] for e in edges_list)
-                and (extent == edge_sum or len(edges_list) == ceildiv(extent, edges_list[0]))
-            ):
-                dims.append(FixedDimension(size=edges_list[0], extent=extent))
+        for dim_spec, extent in zip(chunk_sizes, extents, strict=True):
+            if isinstance(dim_spec, int):
+                dims.append(FixedDimension(size=dim_spec, extent=extent))
             else:
-                dims.append(VaryingDimension(edges_list, extent=extent))
+                edges_list = list(dim_spec)
+                if not edges_list:
+                    raise ValueError("Each dimension must have at least one chunk")
+                edge_sum = sum(edges_list)
+                if (
+                    edges_list[0] > 0
+                    and all(e == edges_list[0] for e in edges_list)
+                    and (extent == edge_sum or len(edges_list) == ceildiv(extent, edges_list[0]))
+                ):
+                    dims.append(FixedDimension(size=edges_list[0], extent=extent))
+                else:
+                    dims.append(VaryingDimension(edges_list, extent=extent))
         return cls(dimensions=tuple(dims))
 
     # -- Properties --
@@ -798,18 +768,18 @@ class RegularChunkGrid(metaclass=_RegularChunkGridMeta):
     """Deprecated compatibility shim.
 
     .. deprecated:: 3.1
-        Use ``ChunkGrid.from_regular(array_shape, chunk_shape)`` instead.
+        Use ``ChunkGrid.from_sizes(array_shape, chunk_sizes)`` instead.
         Use ``grid.is_regular`` instead of ``isinstance(grid, RegularChunkGrid)``.
     """
 
     def __new__(cls, *, chunk_shape: ShapeLike) -> ChunkGrid:  # type: ignore[misc]
         warnings.warn(
             "RegularChunkGrid is deprecated. "
-            "Use ChunkGrid.from_regular(array_shape, chunk_shape) instead.",
+            "Use ChunkGrid.from_sizes(array_shape, chunk_sizes) instead.",
             DeprecationWarning,
             stacklevel=2,
         )
         # Without array_shape we cannot bind extents, so use chunk_shape as extent.
         # This matches the old behavior where RegularChunkGrid was shape-unaware.
         parsed = parse_shapelike(chunk_shape)
-        return ChunkGrid.from_regular(array_shape=parsed, chunk_shape=parsed)
+        return ChunkGrid.from_sizes(array_shape=parsed, chunk_sizes=tuple(parsed))

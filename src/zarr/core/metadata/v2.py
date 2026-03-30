@@ -131,7 +131,7 @@ class ArrayV2Metadata(Metadata):
             DeprecationWarning,
             stacklevel=2,
         )
-        return ChunkGrid.from_regular(self.shape, self.chunks)
+        return ChunkGrid.from_sizes(self.shape, tuple(self.chunks))
 
     @property
     def shards(self) -> tuple[int, ...] | None:
