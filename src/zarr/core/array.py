@@ -55,6 +55,7 @@ from zarr.core.common import (
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
+    ChunksLike,
     DimensionNamesLike,
     MemoryOrder,
     ShapeLike,
@@ -2828,7 +2829,7 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             raise ValueError(msg)
 
         arr = self[...]
-        arr_np: NDArrayLike = np.array(arr, dtype=dtype)
+        arr_np = np.array(arr, dtype=dtype)
 
         if dtype is not None:
             arr_np = arr_np.astype(dtype)
@@ -4411,7 +4412,7 @@ async def from_array(
     data: AnyArray | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
-    chunks: Literal["auto", "keep"] | tuple[int, ...] | Sequence[Sequence[int]] = "keep",
+    chunks: ChunksLike | Literal["auto", "keep"] = "keep",
     shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
@@ -4684,7 +4685,7 @@ async def init_array(
     store_path: StorePath,
     shape: ShapeLike,
     dtype: ZDTypeLike,
-    chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
+    chunks: ChunksLike | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -4821,6 +4822,9 @@ async def init_array(
         # Use first chunk size per dim as placeholder for _auto_partition
         chunks_flat: tuple[int, ...] | Literal["auto"] = tuple(dim_edges[0] for dim_edges in chunks)
     else:
+        # Normalize scalar int to per-dimension tuple (e.g. chunks=100000 for a 1D array)
+        if isinstance(chunks, int):
+            chunks = tuple(chunks for _ in shape_parsed)
         chunks_flat = cast("tuple[int, ...] | Literal['auto']", chunks)
 
     # Handle rectilinear shards: shards=[[60, 40, 20], [50, 50]]
@@ -4945,7 +4949,7 @@ async def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
+    chunks: ChunksLike | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -5134,7 +5138,7 @@ async def create_array(
 
 def _parse_keep_array_attr(
     data: AnyArray | npt.ArrayLike,
-    chunks: Literal["auto", "keep"] | tuple[int, ...] | Sequence[Sequence[int]],
+    chunks: ChunksLike | Literal["auto", "keep"],
     shards: ShardsLike | None | Literal["keep"],
     filters: FiltersLike | Literal["keep"],
     compressors: CompressorsLike | Literal["keep"],
@@ -5145,7 +5149,7 @@ def _parse_keep_array_attr(
     chunk_key_encoding: ChunkKeyEncodingLike | None,
     dimension_names: DimensionNamesLike,
 ) -> tuple[
-    tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"],
+    ChunksLike | Literal["auto"],
     ShardsLike | None,
     FiltersLike,
     CompressorsLike,
@@ -5215,8 +5219,10 @@ def _parse_keep_array_attr(
             compressors = "auto"
         if serializer == "keep":
             serializer = "auto"
+    # After resolving "keep" above, chunks is never "keep" at this point.
+    chunks_out: ChunksLike | Literal["auto"] = chunks  # type: ignore[assignment]
     return (
-        chunks,
+        chunks_out,
         shards,
         filters,
         compressors,

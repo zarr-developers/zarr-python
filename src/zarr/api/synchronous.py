@@ -13,7 +13,7 @@ from zarr.core.sync_group import create_hierarchy
 from zarr.errors import ZarrDeprecationWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sequence
+    from collections.abc import Iterable
 
     import numpy as np
     import numpy.typing as npt
@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from zarr.core.common import (
         JSON,
         AccessModeLiteral,
+        ChunksLike,
         DimensionNamesLike,
         MemoryOrder,
         ShapeLike,
@@ -822,7 +823,7 @@ def create_array(
     shape: ShapeLike | None = None,
     dtype: ZDTypeLike | None = None,
     data: np.ndarray[Any, np.dtype[Any]] | None = None,
-    chunks: tuple[int, ...] | Sequence[Sequence[int]] | Literal["auto"] = "auto",
+    chunks: ChunksLike | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
     compressors: CompressorsLike = "auto",
@@ -997,7 +998,7 @@ def from_array(
     data: AnyArray | npt.ArrayLike,
     write_data: bool = True,
     name: str | None = None,
-    chunks: Literal["auto", "keep"] | tuple[int, ...] | Sequence[Sequence[int]] = "keep",
+    chunks: ChunksLike | Literal["auto", "keep"] = "keep",
     shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
