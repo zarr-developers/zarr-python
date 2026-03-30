@@ -428,6 +428,8 @@ class SliceDimIndexer:
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         # figure out the range of chunks we need to visit
+        if self.start >= self.stop:
+            return  # empty slice
         g = self.dim_grid
         dim_chunk_ix_from = g.index_to_chunk(self.start) if self.start > 0 else 0
         dim_chunk_ix_to = g.index_to_chunk(self.stop - 1) + 1 if self.stop > 0 else 0

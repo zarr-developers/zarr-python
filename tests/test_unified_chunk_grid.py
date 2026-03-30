@@ -2556,6 +2556,21 @@ class TestBoundaryIndexing:
         assert isinstance(sel, np.ndarray)
         np.testing.assert_array_equal(sel, [1])
 
+    def test_slice_indexer_empty_slice_at_boundary(self) -> None:
+        """SliceDimIndexer yields no projections for an empty slice at the dimension boundary."""
+        from zarr.core.indexing import SliceDimIndexer
+
+        dim = FixedDimension(size=2, extent=10)
+        # slice(10, 10) is empty — start equals extent
+        indexer = SliceDimIndexer(slice(10, 10), 10, dim)
+        projections = list(indexer)
+        assert len(projections) == 0
+
+        # also works for VaryingDimension
+        dim_v = VaryingDimension([5, 5], extent=10)
+        indexer_v = SliceDimIndexer(slice(10, 10), 10, dim_v)
+        assert list(indexer_v) == []
+
     def test_orthogonal_indexer_varying_boundary_advanced(self) -> None:
         """OrthogonalIndexer with advanced indexing uses per-chunk chunk_size
         for ix_() conversion, not a precomputed max."""
