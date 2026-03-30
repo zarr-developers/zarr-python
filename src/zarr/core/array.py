@@ -1087,7 +1087,11 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def read_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
-        """Per-dimension sizes of chunks used for reading.
+        """Per-dimension data sizes of chunks used for reading, clipped to the array extent.
+
+        Boundary chunks that extend past the array shape are clipped, so
+        the last size along a dimension may be smaller than the declared
+        chunk size.  This matches the dask ``Array.chunks`` convention.
 
         When sharding is used, returns the inner chunk sizes.
         Otherwise, returns the outer chunk sizes (same as ``write_chunk_sizes``).
@@ -1095,7 +1099,8 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Returns
         -------
         tuple[tuple[int, ...], ...]
-            One inner tuple per dimension containing chunk sizes.
+            One inner tuple per dimension containing the data size of each
+            chunk (not the encoded buffer size).
 
         Examples
         --------
@@ -1113,14 +1118,18 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def write_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
-        """Per-dimension sizes of chunks used for writing (storage chunks).
+        """Per-dimension data sizes of storage chunks, clipped to the array extent.
 
         Always returns the outer chunk sizes, regardless of sharding.
+        Boundary chunks that extend past the array shape are clipped, so
+        the last size along a dimension may be smaller than the declared
+        chunk size.  This matches the dask ``Array.chunks`` convention.
 
         Returns
         -------
         tuple[tuple[int, ...], ...]
-            One inner tuple per dimension containing chunk sizes.
+            One inner tuple per dimension containing the data size of each
+            chunk (not the encoded buffer size).
 
         Examples
         --------
@@ -2378,7 +2387,11 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def read_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
-        """Per-dimension sizes of chunks used for reading.
+        """Per-dimension data sizes of chunks used for reading, clipped to the array extent.
+
+        Boundary chunks that extend past the array shape are clipped, so
+        the last size along a dimension may be smaller than the declared
+        chunk size.  This matches the dask ``Array.chunks`` convention.
 
         When sharding is used, returns the inner chunk sizes.
         Otherwise, returns the outer chunk sizes (same as ``write_chunk_sizes``).
@@ -2386,7 +2399,8 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         Returns
         -------
         tuple[tuple[int, ...], ...]
-            One inner tuple per dimension containing chunk sizes.
+            One inner tuple per dimension containing the data size of each
+            chunk (not the encoded buffer size).
 
         Examples
         --------
@@ -2398,14 +2412,18 @@ class Array[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
 
     @property
     def write_chunk_sizes(self) -> tuple[tuple[int, ...], ...]:
-        """Per-dimension sizes of chunks used for writing (storage chunks).
+        """Per-dimension data sizes of storage chunks, clipped to the array extent.
 
         Always returns the outer chunk sizes, regardless of sharding.
+        Boundary chunks that extend past the array shape are clipped, so
+        the last size along a dimension may be smaller than the declared
+        chunk size.  This matches the dask ``Array.chunks`` convention.
 
         Returns
         -------
         tuple[tuple[int, ...], ...]
-            One inner tuple per dimension containing chunk sizes.
+            One inner tuple per dimension containing the data size of each
+            chunk (not the encoded buffer size).
 
         Examples
         --------
