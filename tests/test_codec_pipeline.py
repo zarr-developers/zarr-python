@@ -43,7 +43,7 @@ async def test_read_returns_get_results(
     indexer = BasicIndexer(
         read_slice,
         shape=metadata.shape,
-        chunk_grid=async_arr.chunk_grid,
+        chunk_grid=async_arr._chunk_grid,
     )
 
     out_buffer = prototype.nd_buffer.empty(
@@ -56,7 +56,7 @@ async def test_read_returns_get_results(
         [
             (
                 async_arr.store_path / metadata.encode_chunk_key(chunk_coords),
-                _get_chunk_spec(metadata, async_arr.chunk_grid, chunk_coords, config, prototype),
+                _get_chunk_spec(metadata, async_arr._chunk_grid, chunk_coords, config, prototype),
                 chunk_selection,
                 out_selection,
                 is_complete_chunk,

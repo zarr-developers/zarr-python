@@ -1236,8 +1236,8 @@ def test_get_block_selection_1d(store: StorePath) -> None:
         _test_get_block_selection(a, z, selection, expected_idx)
 
     bad_selections = block_selections_1d_bad + [
-        z.chunk_grid.get_nchunks() + 1,  # out of bounds
-        -(z.chunk_grid.get_nchunks() + 1),  # out of bounds
+        z._chunk_grid.get_nchunks() + 1,  # out of bounds
+        -(z._chunk_grid.get_nchunks() + 1),  # out of bounds
     ]
 
     for selection_bad in bad_selections:

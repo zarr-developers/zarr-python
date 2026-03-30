@@ -939,7 +939,7 @@ class TestEndToEnd:
             chunks=(10, 20),
             dtype="float32",
         )
-        assert arr.chunk_grid.is_regular
+        assert arr._chunk_grid.is_regular
         assert arr.chunks == (10, 20)
 
     def test_create_rectilinear_array(self, tmp_path: Path) -> None:
@@ -954,8 +954,8 @@ class TestEndToEnd:
         )
         assert isinstance(arr.metadata, ArrayV3Metadata)
         assert isinstance(arr.metadata.chunk_grid, RectilinearChunkGrid)
-        assert not arr.chunk_grid.is_regular
-        assert arr.chunk_grid.ndim == 2
+        assert not arr._chunk_grid.is_regular
+        assert arr._chunk_grid.ndim == 2
 
     def test_rectilinear_metadata_serialization(self, tmp_path: Path) -> None:
         """Verify metadata round-trips through JSON."""
@@ -1717,7 +1717,7 @@ class TestFullPipelineRectilinear:
     def test_persistence_roundtrip(self, tmp_path: Path) -> None:
         _, a = self._make_2d(tmp_path)
         z2 = zarr.open_array(store=tmp_path / "arr2d.zarr", mode="r")
-        assert not z2.chunk_grid.is_regular
+        assert not z2._chunk_grid.is_regular
         np.testing.assert_array_equal(z2[:], a)
 
     # --- Highly irregular chunks ---
@@ -1805,7 +1805,7 @@ class TestFullPipelineRectilinear:
 
     def test_nchunks(self, tmp_path: Path) -> None:
         z, _ = self._make_2d(tmp_path)
-        assert z.chunk_grid.get_nchunks() == 12
+        assert z._chunk_grid.get_nchunks() == 12
 
 
 pytest.importorskip("hypothesis")
@@ -1863,7 +1863,7 @@ def rectilinear_arrays_st(draw: st.DrawFn) -> tuple[zarr.Array[Any], np.ndarray[
 def test_property_block_indexing_rectilinear(data: st.DataObject) -> None:
     """Property test: block indexing on rectilinear arrays matches numpy."""
     z, a = data.draw(rectilinear_arrays_st())
-    grid = z.chunk_grid
+    grid = z._chunk_grid
 
     # Pick a random block per dimension and verify it matches the expected slice
     for dim in range(a.ndim):
@@ -1912,7 +1912,7 @@ class TestV2Regression:
             dtype="int32",
             zarr_format=2,
         )
-        grid = a.chunk_grid
+        grid = a._chunk_grid
         assert grid.is_regular
         assert grid.chunk_shape == (10, 15)
         assert grid.grid_shape == (2, 2)
@@ -1927,7 +1927,7 @@ class TestV2Regression:
             dtype="int32",
             zarr_format=2,
         )
-        grid = a.chunk_grid
+        grid = a._chunk_grid
         assert grid.dimensions[0].nchunks == 3
         assert grid.dimensions[0].chunk_size(2) == 10  # full codec buffer
         assert grid.dimensions[0].data_size(2) == 5  # clipped to extent
@@ -1963,7 +1963,7 @@ class TestV2Regression:
         b = zarr.open_array(store=store_path, mode="r")
         assert b.metadata.zarr_format == 2
         assert b.chunks == (2, 2)
-        assert b.chunk_grid.chunk_shape == (2, 2)
+        assert b._chunk_grid.chunk_shape == (2, 2)
         np.testing.assert_array_equal(b[:], data)
 
     def test_v2_chunk_spec_via_grid(self, tmp_path: Path) -> None:
@@ -1975,7 +1975,7 @@ class TestV2Regression:
             dtype="int32",
             zarr_format=2,
         )
-        grid = a.chunk_grid
+        grid = a._chunk_grid
         # Interior chunk
         spec = grid[(0, 0)]
         assert spec is not None
@@ -2137,7 +2137,7 @@ class TestUpdateShape:
         z[:] = np.arange(100, dtype="int32")
         z.resize(50)
         assert z.shape == (50,)
-        assert z.chunk_grid.dimensions[0].extent == 50
+        assert z._chunk_grid.dimensions[0].extent == 50
 
 
 class TestResizeRectilinear:
@@ -2157,8 +2157,8 @@ class TestResizeRectilinear:
 
         await arr.resize((50, 60))
         assert arr.shape == (50, 60)
-        assert _edges(arr.chunk_grid, 0) == (10, 20, 20)
-        assert _edges(arr.chunk_grid, 1) == (20, 20, 20)
+        assert _edges(arr._chunk_grid, 0) == (10, 20, 20)
+        assert _edges(arr._chunk_grid, 1) == (20, 20, 20)
         result = await arr.getitem((slice(0, 30), slice(0, 40)))
         np.testing.assert_array_equal(result, data)
 

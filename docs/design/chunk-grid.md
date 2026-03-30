@@ -200,7 +200,7 @@ arr = zarr.create_array(shape=(100, 200), chunks=(10, 20))                      
 arr = zarr.create_array(shape=(60, 100), chunks=[[10, 20, 30], [25, 25, 25, 25]])   # rectilinear
 
 # ChunkGrid as a collection
-grid = arr.chunk_grid             # behavioral ChunkGrid (bound to array shape)
+grid = arr._chunk_grid            # behavioral ChunkGrid (bound to array shape)
 grid.grid_shape                   # (10, 10) — number of chunks per dimension
 grid.ndim                         # 2
 grid.is_regular                   # True if all dimensions are Fixed
@@ -351,7 +351,7 @@ new = zarr.from_array(data=src, store=new_store, chunks="keep")
 # Preserves rectilinear structure: new.write_chunk_sizes == ((10, 20, 30), (50, 50))
 ```
 
-When `chunks="keep"`, the logic checks `data.chunk_grid.is_regular`:
+When `chunks="keep"`, the logic checks `data._chunk_grid.is_regular`:
 - Regular: extracts `data.chunks` (flat tuple) and preserves shards
 - Rectilinear: extracts `data.write_chunk_sizes` (nested tuples) and forces shards to None
 
@@ -372,7 +372,7 @@ Today, `get_chunk_spec()` returns the same `ArraySpec(shape=chunk_grid.chunk_sha
 
 ```python
 def get_chunk_spec(self, chunk_coords, array_config, prototype) -> ArraySpec:
-    spec = self.chunk_grid[chunk_coords]
+    spec = self._chunk_grid[chunk_coords]
     return ArraySpec(shape=spec.codec_shape, ...)
 ```
 
