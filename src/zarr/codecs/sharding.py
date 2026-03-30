@@ -396,7 +396,9 @@ class ShardingCodec(
         if isinstance(chunk_grid, RegularChunkGrid):
             edges_per_dim: tuple[tuple[int, ...], ...] = tuple((s,) for s in chunk_grid.chunk_shape)
         elif isinstance(chunk_grid, RectilinearChunkGrid):
-            edges_per_dim = chunk_grid.chunk_shapes
+            edges_per_dim = tuple(
+                (s,) if isinstance(s, int) else s for s in chunk_grid.chunk_shapes
+            )
         else:
             raise TypeError(
                 f"Sharding is only compatible with regular and rectilinear chunk grids, "
