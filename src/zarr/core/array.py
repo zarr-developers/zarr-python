@@ -122,6 +122,7 @@ from zarr.core.metadata.v3 import (
     RectilinearChunkGrid,
     RegularChunkGrid,
     parse_node_type_array,
+    resolve_chunks,
 )
 from zarr.core.sync import sync
 from zarr.errors import (
@@ -676,28 +677,9 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-        # detect rectilinear (dask-style) chunks before normalize_chunks flattens them
         from zarr.core.chunk_grids import _is_rectilinear_chunks
 
         _raw_chunks = chunks if chunks is not None else chunk_shape
-        _rectilinear_chunk_grid: ChunkGridMetadata | None = None
-        _chunks: tuple[int, ...] | None = None
-        if _is_rectilinear_chunks(_raw_chunks):
-            from zarr.core.metadata.v3 import (
-                RectilinearChunkGrid as RectilinearChunkGridMeta,
-            )
-
-            _rectilinear_chunk_grid = RectilinearChunkGridMeta(
-                chunk_shapes=tuple(tuple(c) for c in _raw_chunks)
-            )
-        else:
-            item_size = 1
-            if isinstance(dtype_parsed, HasItemSize):
-                item_size = dtype_parsed.item_size
-            if chunks:
-                _chunks = normalize_chunks(chunks, shape, item_size)
-            else:
-                _chunks = normalize_chunks(chunk_shape, shape, item_size)
 
         config_parsed = parse_array_config(config)
 
@@ -719,11 +701,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
             if order is not None:
                 _warn_order_kwarg()
 
+            item_size = 1
+            if isinstance(dtype_parsed, HasItemSize):
+                item_size = dtype_parsed.item_size
+            chunk_grid = resolve_chunks(_raw_chunks, shape, item_size)
             result = await cls._create_v3(
                 store_path,
                 shape=shape,
                 dtype=dtype_parsed,
-                chunk_shape=_chunks,
                 fill_value=fill_value,
                 chunk_key_encoding=chunk_key_encoding,
                 codecs=codecs,
@@ -731,7 +716,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 attributes=attributes,
                 overwrite=overwrite,
                 config=config_parsed,
-                chunk_grid=_rectilinear_chunk_grid,
+                chunk_grid=chunk_grid,
             )
         elif zarr_format == 2:
             if codecs is not None:
@@ -744,9 +729,16 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with zarr_format 2.")
-            if _rectilinear_chunk_grid is not None:
+            if _is_rectilinear_chunks(_raw_chunks):
                 raise ValueError("Zarr format 2 does not support rectilinear chunk grids.")
-            assert _chunks is not None
+
+            item_size = 1
+            if isinstance(dtype_parsed, HasItemSize):
+                item_size = dtype_parsed.item_size
+            if chunks:
+                _chunks = normalize_chunks(chunks, shape, item_size)
+            else:
+                _chunks = normalize_chunks(chunk_shape, shape, item_size)
 
             if order is None:
                 order_parsed = config_parsed.order
@@ -781,23 +773,14 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
     def _create_metadata_v3(
         shape: ShapeLike,
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_shape: tuple[int, ...] | None = None,
+        chunk_grid: ChunkGridMetadata,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
-        chunk_grid: ChunkGridMetadata | None = None,
     ) -> ArrayV3Metadata:
-        """
-        Create an instance of ArrayV3Metadata.
-
-        Exactly one of ``chunk_shape`` or ``chunk_grid`` must be provided.
-        """
-        if chunk_shape is not None and chunk_grid is not None:
-            raise ValueError("Only one of chunk_shape or chunk_grid can be provided.")
-        if chunk_shape is None and chunk_grid is None:
-            raise ValueError("One of chunk_shape or chunk_grid must be provided.")
+        """Create an instance of ArrayV3Metadata."""
         filters: tuple[ArrayArrayCodec, ...]
         compressors: tuple[BytesBytesCodec, ...]
 
@@ -824,16 +807,10 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         else:
             fill_value_parsed = fill_value
 
-        chunk_grid_meta: ChunkGridMetadata
-        if chunk_grid is not None:
-            chunk_grid_meta = chunk_grid
-        else:
-            assert chunk_shape is not None  # validated above
-            chunk_grid_meta = RegularChunkGrid(chunk_shape=parse_shapelike(chunk_shape))
         return ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=chunk_grid_meta,
+            chunk_grid=chunk_grid,
             chunk_key_encoding=chunk_key_encoding_parsed,
             fill_value=fill_value_parsed,
             codecs=codecs_parsed,  # type: ignore[arg-type]
@@ -848,7 +825,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         *,
         shape: ShapeLike,
         dtype: ZDType[TBaseDType, TBaseScalar],
-        chunk_shape: tuple[int, ...] | None = None,
+        chunk_grid: ChunkGridMetadata,
         config: ArrayConfig,
         fill_value: Any | None = DEFAULT_FILL_VALUE,
         chunk_key_encoding: (
@@ -861,12 +838,7 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         dimension_names: DimensionNamesLike = None,
         attributes: dict[str, JSON] | None = None,
         overwrite: bool = False,
-        chunk_grid: ChunkGridMetadata | None = None,
     ) -> AsyncArrayV3:
-        if chunk_shape is not None and chunk_grid is not None:
-            raise ValueError("Only one of chunk_shape or chunk_grid can be provided.")
-        if chunk_shape is None and chunk_grid is None:
-            raise ValueError("One of chunk_shape or chunk_grid must be provided.")
         if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
@@ -885,13 +857,12 @@ class AsyncArray[T_ArrayMetadata: (ArrayV2Metadata, ArrayV3Metadata)]:
         metadata = cls._create_metadata_v3(
             shape=shape,
             dtype=dtype,
-            chunk_shape=chunk_shape,
+            chunk_grid=chunk_grid,
             fill_value=fill_value,
             chunk_key_encoding=chunk_key_encoding,
             codecs=codecs,
             dimension_names=dimension_names,
             attributes=attributes,
-            chunk_grid=chunk_grid,
         )
 
         array = cls(metadata=metadata, store_path=store_path, config=config)
@@ -4930,16 +4901,20 @@ async def init_array(
         if order is not None:
             _warn_order_kwarg()
 
+        grid: ChunkGridMetadata
+        if rectilinear_meta is not None:
+            grid = rectilinear_meta
+        else:
+            grid = RegularChunkGrid(chunk_shape=chunks_out)
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
             dtype=zdtype,
             fill_value=fill_value,
-            chunk_shape=chunks_out if rectilinear_meta is None else None,
+            chunk_grid=grid,
             chunk_key_encoding=chunk_key_encoding_parsed,
             codecs=codecs_out,
             dimension_names=dimension_names,
             attributes=attributes,
-            chunk_grid=rectilinear_meta,
         )
 
     arr = AsyncArray(metadata=meta, store_path=store_path, config=config)

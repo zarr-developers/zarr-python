@@ -17,6 +17,7 @@ from zarr.core.chunk_key_encodings import (
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
+    ChunksLike,
     DimensionNamesLike,
     NamedConfig,
     NamedRequiredConfig,
@@ -348,10 +349,38 @@ class RectilinearChunkGrid(Metadata):
 ChunkGridMetadata = RegularChunkGrid | RectilinearChunkGrid
 
 
+def resolve_chunks(
+    chunks: ChunksLike,
+    shape: tuple[int, ...],
+    typesize: int,
+) -> ChunkGridMetadata:
+    """Construct a chunk grid from user-facing input (e.g. ``create_array(chunks=...)``).
+
+    Nested sequences like ``[[10, 20], [5, 5]]`` produce a ``RectilinearChunkGrid``.
+    Flat inputs like ``(10, 10)`` or a scalar ``int`` produce a ``RegularChunkGrid``
+    after normalization via :func:`~zarr.core.chunk_grids.normalize_chunks`.
+
+    See Also
+    --------
+    parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
+    """
+    from zarr.core.chunk_grids import _is_rectilinear_chunks, normalize_chunks
+
+    if _is_rectilinear_chunks(chunks):
+        return RectilinearChunkGrid(chunk_shapes=tuple(tuple(c) for c in chunks))
+
+    return RegularChunkGrid(chunk_shape=normalize_chunks(chunks, shape, typesize))
+
+
 def parse_chunk_grid(
     data: dict[str, JSON] | ChunkGridMetadata | NamedConfig[str, Any],
 ) -> ChunkGridMetadata:
-    """Parse a chunk grid from a metadata dict or pass through an existing instance."""
+    """Deserialize a chunk grid from stored JSON metadata or pass through an existing instance.
+
+    See Also
+    --------
+    resolve_chunks : Construct a chunk grid from user-facing input.
+    """
     if isinstance(data, (RegularChunkGrid, RectilinearChunkGrid)):
         return data
 

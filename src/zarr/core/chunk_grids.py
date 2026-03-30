@@ -335,10 +335,6 @@ def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[in
     raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
 
 
-# Type alias for what users can pass as chunks to create_array
-ChunksLike = tuple[int, ...] | list[list[int] | int] | int
-
-
 def _is_rectilinear_chunks(chunks: Any) -> TypeGuard[Sequence[Sequence[int]]]:
     """Check if chunks is a nested sequence (e.g. [[10, 20], [5, 5]]).
 
