@@ -157,7 +157,7 @@ dependency-groups = ["test"]
 [tool.hatch.envs.test.env-vars]
 # Required to test with a pytest plugin; see https://pytest-cov.readthedocs.io/en/latest/plugins.html
 COV_CORE_SOURCE = "src"
-COV_CORE_CONFIG = ".coveragerc"
+COV_CORE_CONFIG = "pyproject.toml"
 COV_CORE_DATAFILE = ".coverage.eager"
 
 [[tool.hatch.envs.test.matrix]]
@@ -175,8 +175,8 @@ matrix.deps.dependency-groups = [
 ]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-append --cov-report html"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=src --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=src --cov-report html"
 run = "run-coverage --no-cov --ignore tests/benchmarks"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"

@@ -10,7 +10,6 @@ coverage:
         threshold: 0.1
 codecov:
   notify:
-    after_n_builds: 10 # Wait for all 10 reports before updating the status
     wait_for_ci: yes
 comment:
   layout: "diff, files"
