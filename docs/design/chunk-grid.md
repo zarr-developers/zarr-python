@@ -44,7 +44,7 @@ Prior iterations on the chunk grid design were based on the Zarr V3 spec's defin
 
 1. **A chunk grid is a concrete arrangement of chunks.** Not an abstract tiling pattern. This means that the chunk grid is bound to specific array dimensions, which enables the chunk grid to answer any question about any chunk (offset, size, count) without external parameters.
 2. **One implementation, multiple serialization forms.** A single `ChunkGrid` class handles all chunking logic. The serialization format (`"regular"` vs `"rectilinear"`) is chosen by the metadata layer, not the grid.
-3. **No chunk grid registry.** Simple name-based dispatch in `parse_chunk_grid()`.
+3. **No chunk grid registry.** Simple name-based dispatch in the metadata layer's `parse_chunk_grid()`.
 4. **Fixed vs Varying per dimension.** `FixedDimension(size, extent)` for uniform chunks; `VaryingDimension(edges, extent)` for per-chunk edge lengths with precomputed prefix sums. Avoids expanding regular dimensions into lists of identical values.
 5. **Transparent transitions.** Operations like `resize()` can move an array from regular to rectilinear chunking.
 
@@ -274,15 +274,15 @@ When `extent < sum(edges)`, the dimension is always stored as `VaryingDimension`
 {"name": "rectilinear", "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [[25, 4]]]}}
 ```
 
-Both names deserialize to the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is passed to `parse_chunk_grid()` at construction time.
+Both names deserialize to the same `ChunkGrid` class. The serialized form does not include the array extent — that comes from `shape` in array metadata and is combined with the chunk grid when constructing a behavioral `ChunkGrid` via `ChunkGrid.from_metadata()`.
 
-**The `ChunkGrid` does not serialize itself.** The format choice (`"regular"` vs `"rectilinear"`) belongs to `ArrayV3Metadata`. The name is inferred from the chunk grid metadata DTO type (`RegularChunkGrid` → `"regular"`, `RectilinearChunkGrid` → `"rectilinear"`) or from `grid.is_regular` when a behavioral `ChunkGrid` is passed directly.
+**The `ChunkGrid` does not serialize itself.** The format choice (`"regular"` vs `"rectilinear"`) belongs to `ArrayV3Metadata`. Serialization and deserialization are handled by the metadata-layer chunk grid classes (`RegularChunkGrid` and `RectilinearChunkGrid` in `metadata/v3.py`), which provide `to_dict()` and `from_dict()` methods.
 
 For `create_array`, the format is inferred from the `chunks` argument: a flat tuple produces `"regular"`, a nested list produces `"rectilinear"`. The `_is_rectilinear_chunks()` helper detects nested sequences like `[[10, 20], [5, 5]]`.
 
 ##### Rectilinear spec compliance
 
-The rectilinear format requires `"kind": "inline"` (validated by `_validate_rectilinear_kind()`). Per the spec, each element of `chunk_shapes` can be:
+The rectilinear format requires `"kind": "inline"` (validated by `validate_rectilinear_kind()`). Per the spec, each element of `chunk_shapes` can be:
 
 - A bare integer `m`: repeated until `sum >= array_extent`
 - A list of bare integers: explicit per-chunk sizes
@@ -291,13 +291,13 @@ The rectilinear format requires `"kind": "inline"` (validated by `_validate_rect
 RLE compression is used when serializing: runs of identical sizes become `[value, count]` pairs, singletons stay as bare integers.
 
 ```python
-# _compress_rle([10, 10, 10, 5]) -> [[10, 3], 5]
-# _expand_rle([[10, 3], 5])      -> [10, 10, 10, 5]
+# compress_rle([10, 10, 10, 5]) -> [[10, 3], 5]
+# expand_rle([[10, 3], 5])      -> [10, 10, 10, 5]
 ```
 
-For `FixedDimension` serialized as rectilinear, `_serialize_fixed_dim()` returns the bare integer `dim.size`. Per the rectilinear spec, a bare integer is repeated until the sum >= extent, preserving the full codec buffer size for boundary chunks.
+For a single-element `chunk_shapes` tuple like `(10,)`, `RectilinearChunkGrid.to_dict()` serializes it as a bare integer `10`. Per the rectilinear spec, a bare integer is repeated until the sum >= extent, preserving the full codec buffer size for boundary chunks.
 
-**Zero-extent handling:** Regular grids serialize zero-extent dimensions without issue (the format encodes only `chunk_shape`, no edges). Rectilinear grids reject zero-extent dimensions because the spec requires at least one positive-integer edge length per axis. This asymmetry is intentional and spec-compliant — documented in `serialize_chunk_grid()`.
+**Zero-extent handling:** Regular grids serialize zero-extent dimensions without issue (the format encodes only `chunk_shape`, no edges). Rectilinear grids cannot represent zero-extent dimensions because the spec requires at least one positive-integer edge length per axis.
 
 #### read_chunk_sizes / write_chunk_sizes
 
@@ -418,7 +418,7 @@ Level 3 — Shard index: ceil(shard_dim / subchunk_dim) entries per dimension
 
 The chunk grid is a concrete arrangement, not an abstract tiling pattern. A finite collection naturally has an extent. Storing it enables `__getitem__`, eliminates `dim_len` parameters from every method, and makes the grid self-describing.
 
-This does *not* mean `ArrayV3Metadata.shape` should delegate to the grid. The array shape remains an independent field in metadata. The extent is passed into the grid at construction time so it can answer boundary questions without external parameters. It is **not** serialized as part of the chunk grid JSON — it comes from the `shape` field in array metadata and is passed to `parse_chunk_grid()`.
+This does *not* mean `ArrayV3Metadata.shape` should delegate to the grid. The array shape remains an independent field in metadata. The extent is passed into the grid at construction time so it can answer boundary questions without external parameters. It is **not** serialized as part of the chunk grid JSON — it comes from the `shape` field in array metadata and is combined with the chunk grid configuration in `ChunkGrid.from_metadata()`.
 
 ### Why distinguish chunk_size from data_size?
 
@@ -466,7 +466,7 @@ The resolution:
 
 @d-v-b raised in #3534 that users need a way to say "these chunks are regular, but serialize as rectilinear" (e.g., to allow future append/extend workflows without format changes). @jhamman initially made nested-list input always produce `RectilinearChunkGrid`.
 
-The current branch resolves this via `_infer_chunk_grid_name()`, which extracts or infers the serialization name from the chunk grid input. When metadata is deserialized, the original name (from `{"name": "regular"}` or `{"name": "rectilinear"}`) flows through to `serialize_chunk_grid()` at write time. When a `ChunkGrid` is passed directly, the name is inferred from `grid.is_regular`. Current inference behavior:
+The current branch resolves this via the metadata-layer chunk grid classes. When metadata is deserialized, the original name (from `{"name": "regular"}` or `{"name": "rectilinear"}`) determines which metadata class is instantiated (`RegularChunkGrid` or `RectilinearChunkGrid`), and that class handles serialization via `to_dict()`. Current inference behavior for `create_array`:
 - `chunks=(10, 20)` (flat tuple) → infers `"regular"`
 - `chunks=[[10, 20], [5, 5]]` (nested lists with varying sizes) → infers `"rectilinear"`
 - `chunks=[[10, 10], [20, 20]]` (nested lists with uniform sizes) → `from_rectilinear` collapses to `FixedDimension`, so `is_regular=True` and infers `"regular"`
@@ -498,7 +498,7 @@ The current implementation partially realizes this separation:
 
 This means `ArrayV3Metadata.chunk_grid` is now a `ChunkGridMetadata` (the DTO union type), **not** the behavioral `ChunkGrid`. Code that previously accessed behavioral methods on `metadata.chunk_grid` (e.g., `all_chunk_coords()`, `__getitem__`) must now use the behavioral grid from the array layer instead.
 
-The name controls serialization format; `serialize_chunk_grid()` is called by `ArrayV3Metadata.to_dict()`. The behavioral grid handles all runtime queries.
+The name controls serialization format; each metadata DTO class provides its own `to_dict()` method for serialization. The behavioral grid handles all runtime queries.
 
 ## Prior art
 
@@ -569,10 +569,9 @@ If the design is accepted, the POC branch can be split into 5 incremental PRs. P
 - Zero changes to existing code
 
 **PR 2: Unified ChunkGrid class + serialization** (replaces hierarchy)
-- `ChunkGrid` with `from_regular`, `from_rectilinear`, `__getitem__`, `__iter__`, `all_chunk_coords`, `is_regular`, `chunk_shape`, `chunk_sizes`, `unique_edge_lengths`
-- `parse_chunk_grid()`, `serialize_chunk_grid()`, `_infer_chunk_grid_name()`
+- `ChunkGrid` with `from_regular`, `from_rectilinear`, `from_metadata`, `__getitem__`, `__iter__`, `all_chunk_coords`, `is_regular`, `chunk_shape`, `chunk_sizes`, `unique_edge_lengths`
 - `RegularChunkGrid` deprecation shim
-- `_infer_chunk_grid_name()` for serialization format inference
+- Metadata-layer serialization via `RegularChunkGrid.to_dict()`/`RectilinearChunkGrid.to_dict()`
 - Feature flag (`array.rectilinear_chunks`)
 
 **PR 3: Indexing generalization**

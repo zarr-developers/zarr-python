@@ -8,7 +8,6 @@ and end-to-end array creation + read/write.
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -20,11 +19,7 @@ from zarr.core.chunk_grids import (
     ChunkSpec,
     FixedDimension,
     VaryingDimension,
-    _decode_dim_spec,
-    _infer_chunk_grid_name,
     _is_rectilinear_chunks,
-    parse_chunk_grid,
-    serialize_chunk_grid,
 )
 from zarr.core.common import compress_rle, expand_rle
 from zarr.core.metadata.v3 import RectilinearChunkGrid
@@ -105,21 +100,6 @@ class TestRectilinearFeatureFlag:
             store = MemoryStore()
             with pytest.raises(ValueError, match="experimental and disabled by default"):
                 zarr.create_array(store, shape=(30,), chunks=[[10, 20]], dtype="int32")
-
-    def test_parse_chunk_grid_blocked(self) -> None:
-        """Opening a rectilinear array from metadata is also gated."""
-        with zarr.config.set({"array.rectilinear_chunks": False}):
-            with pytest.raises(ValueError, match="experimental and disabled by default"):
-                parse_chunk_grid(
-                    {
-                        "name": "rectilinear",
-                        "configuration": {
-                            "kind": "inline",
-                            "chunk_shapes": [[10, 20, 30], [50, 50]],
-                        },
-                    },
-                    array_shape=(60, 100),
-                )
 
 
 class TestRegularChunkGridCompat:
@@ -463,51 +443,6 @@ class TestExpandRleHandlesJsonFloats:
         assert result == [10, 10, 10]
 
 
-class TestDecodeDimSpec:
-    """Edge cases for _decode_dim_spec: floats, empty lists, negatives, missing extent."""
-
-    def test_bare_integer(self) -> None:
-        assert _decode_dim_spec(10, array_extent=25) == [10, 10, 10]
-
-    def test_bare_integer_exact_fit(self) -> None:
-        assert _decode_dim_spec(5, array_extent=10) == [5, 5]
-
-    def test_bare_integer_no_extent_raises(self) -> None:
-        with pytest.raises(ValueError, match="requires array shape"):
-            _decode_dim_spec(10, array_extent=None)
-
-    def test_bare_integer_zero_raises(self) -> None:
-        with pytest.raises(ValueError, match="must be > 0"):
-            _decode_dim_spec(0, array_extent=10)
-
-    def test_bare_integer_negative_raises(self) -> None:
-        with pytest.raises(ValueError, match="must be > 0"):
-            _decode_dim_spec(-5, array_extent=10)
-
-    def test_bare_float_raises(self) -> None:
-        """A bare float (not in a list) is not int or list — should raise."""
-        with pytest.raises(ValueError, match="Invalid chunk_shapes entry"):
-            _decode_dim_spec(10.0, array_extent=10)
-
-    def test_explicit_integer_list(self) -> None:
-        assert _decode_dim_spec([10, 20, 30]) == [10, 20, 30]
-
-    def test_empty_list(self) -> None:
-        """An empty list has no sub-lists, so it returns an empty explicit list."""
-        assert _decode_dim_spec([]) == []
-
-    def test_list_with_rle(self) -> None:
-        assert _decode_dim_spec([[5, 3], 10]) == [5, 5, 5, 10]
-
-    def test_string_raises(self) -> None:
-        with pytest.raises(ValueError, match="Invalid chunk_shapes entry"):
-            _decode_dim_spec("auto", array_extent=10)
-
-    def test_none_raises(self) -> None:
-        with pytest.raises(ValueError, match="Invalid chunk_shapes entry"):
-            _decode_dim_spec(None, array_extent=10)
-
-
 class TestIsRectilinearChunks:
     """Edge cases for _is_rectilinear_chunks."""
 
@@ -545,316 +480,6 @@ class TestIsRectilinearChunks:
 
     def test_float(self) -> None:
         assert _is_rectilinear_chunks(3.14) is False
-
-
-class TestInferChunkGridName:
-    """Edge cases for _infer_chunk_grid_name."""
-
-    def test_regular_grid(self) -> None:
-        g = ChunkGrid.from_regular((100,), (10,))
-        assert _infer_chunk_grid_name(g, g) == "regular"
-
-    @pytest.fixture(autouse=True)
-    def _enable_rectilinear(self) -> Any:
-        with zarr.config.set({"array.rectilinear_chunks": True}):
-            yield
-
-    def test_rectilinear_grid(self) -> None:
-        g = ChunkGrid.from_rectilinear([[10, 20, 30]], array_shape=(60,))
-        assert _infer_chunk_grid_name(g, g) == "rectilinear"
-
-    def test_dict_with_regular_name(self) -> None:
-        g = ChunkGrid.from_regular((100,), (10,))
-        d: dict[str, Any] = {"name": "regular", "configuration": {"chunk_shape": [10]}}
-        assert _infer_chunk_grid_name(d, g) == "regular"
-
-    def test_dict_with_rectilinear_name(self) -> None:
-        g = ChunkGrid.from_regular((100,), (10,))
-        d: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [10]},
-        }
-        assert _infer_chunk_grid_name(d, g) == "rectilinear"
-
-
-class TestSerialization:
-    def test_regular_roundtrip(self) -> None:
-        g = ChunkGrid.from_regular((100, 200), (10, 20))
-        d = serialize_chunk_grid(g, "regular")
-        assert d["name"] == "regular"
-        config = d["configuration"]
-        assert isinstance(config, dict)
-        assert tuple(config["chunk_shape"]) == (10, 20)
-        g2 = parse_chunk_grid(d, (100, 200))
-        assert g2.is_regular
-        assert g2.chunk_shape == (10, 20)
-
-    def test_rectilinear_roundtrip(self) -> None:
-        g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]], array_shape=(60, 100))
-        d = serialize_chunk_grid(g, "rectilinear")
-        assert d["name"] == "rectilinear"
-        g2 = parse_chunk_grid(d, (60, 100))
-        assert not g2.is_regular
-        # Verify the reconstructed grid has same dimensions
-        spec0 = g2[(0, 0)]
-        assert spec0 is not None
-        assert spec0.shape == (10, 25)
-        spec1 = g2[(1, 0)]
-        assert spec1 is not None
-        assert spec1.shape == (20, 25)
-
-    def test_rectilinear_rle_serialization(self) -> None:
-        """RLE should be used when it actually compresses."""
-        g = ChunkGrid.from_rectilinear([[100] * 10, [25, 25, 25, 25]], array_shape=(1000, 100))
-        # All uniform, but name is chosen by the metadata layer, not the grid.
-        # Serializing as "regular" works because is_regular is True.
-        d = serialize_chunk_grid(g, "regular")
-        assert d["name"] == "regular"
-
-    def test_rectilinear_uniform_stays_rectilinear(self) -> None:
-        """A rectilinear grid with uniform edges stays rectilinear if the name says so."""
-        g = ChunkGrid.from_rectilinear([[100] * 10, [25, 25, 25, 25]], array_shape=(1000, 100))
-        d = serialize_chunk_grid(g, "rectilinear")
-        assert d["name"] == "rectilinear"
-
-    def test_rectilinear_rle_with_varying(self) -> None:
-        g = ChunkGrid.from_rectilinear(
-            [[100, 100, 100, 50], [25, 25, 25, 25]], array_shape=(350, 100)
-        )
-        d = serialize_chunk_grid(g, "rectilinear")
-        assert d["name"] == "rectilinear"
-        config = d["configuration"]
-        assert isinstance(config, dict)
-        chunk_shapes = config["chunk_shapes"]
-        assert isinstance(chunk_shapes, list)
-        assert chunk_shapes[0] == [[100, 3], 50]
-
-    def test_json_roundtrip(self) -> None:
-        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
-        d = serialize_chunk_grid(g, "rectilinear")
-        json_str = json.dumps(d)
-        d2 = json.loads(json_str)
-        g2 = parse_chunk_grid(d2, (60, 100))
-        assert g2.grid_shape == (3, 2)
-
-    def test_bare_int_roundtrip(self) -> None:
-        """Bare-integer shorthand in chunk_shapes round-trips as bare int, not [int]."""
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [10, [20, 30]]},
-        }
-        meta = RectilinearChunkGrid.from_dict(data)  # type: ignore[arg-type]
-        out = meta.to_dict()
-        # Dim 0 was bare int — should stay bare int
-        assert out["configuration"]["chunk_shapes"][0] == 10
-        # Dim 1 was explicit list — should stay list
-        assert out["configuration"]["chunk_shapes"][1] == [20, 30]
-
-    def test_unknown_name_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown chunk grid"):
-            parse_chunk_grid({"name": "hexagonal", "configuration": {}}, (10,))
-
-    def test_serialize_non_regular_as_regular_raises(self) -> None:
-        g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25, 25, 25]], array_shape=(60, 100))
-        with pytest.raises(ValueError, match="Cannot serialize a non-regular chunk grid"):
-            serialize_chunk_grid(g, "regular")
-
-    def test_serialize_unknown_name_raises(self) -> None:
-        g = ChunkGrid.from_regular((100,), (10,))
-        with pytest.raises(ValueError, match="Unknown chunk grid name for serialization"):
-            serialize_chunk_grid(g, "hexagonal")  # type: ignore[arg-type]
-
-    def test_zero_extent_rectilinear_raises(self) -> None:
-        """Zero-extent grids cannot be serialized as rectilinear (spec requires positive edges)."""
-        grid = ChunkGrid.from_regular((0,), (10,))
-        with pytest.raises(ValueError, match="zero-extent"):
-            serialize_chunk_grid(grid, "rectilinear")
-
-
-class TestSpecCompliance:
-    """Tests for compliance with the rectilinear chunk grid extension spec
-    (zarr-extensions PR #25)."""
-
-    def test_kind_inline_required_on_deserialize(self) -> None:
-        """Deserialization requires kind: 'inline'."""
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"chunk_shapes": [[10, 20], [15, 15]]},
-        }
-        with pytest.raises(ValueError, match="requires a 'kind' field"):
-            parse_chunk_grid(data, (30, 30))
-
-    def test_kind_unknown_rejected(self) -> None:
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "reference", "chunk_shapes": [[10, 20], [15, 15]]},
-        }
-        with pytest.raises(ValueError, match="Unsupported rectilinear chunk grid kind"):
-            parse_chunk_grid(data, (30, 30))
-
-    def test_kind_inline_in_serialized_output(self) -> None:
-        """Serialization includes kind: 'inline'."""
-        g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25]], array_shape=(60, 50))
-        d = serialize_chunk_grid(g, "rectilinear")
-        config = d["configuration"]
-        assert isinstance(config, dict)
-        assert config["kind"] == "inline"
-
-    def test_integer_shorthand_per_dimension(self) -> None:
-        """A bare integer in chunk_shapes means repeat until >= extent."""
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [4, [1, 2, 3]]},
-        }
-        g = parse_chunk_grid(data, (6, 6))
-        # 4 repeated: ceildiv(6, 4) = 2 → [4, 4]
-        assert _edges(g, 0) == (4, 4)
-        assert _edges(g, 1) == (1, 2, 3)
-
-    def test_mixed_rle_and_bare_integers(self) -> None:
-        """An array can mix bare integers and [value, count] RLE pairs."""
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [[[1, 3], 3]]},
-        }
-        # [[1, 3], 3] → [1, 1, 1, 3] → sum = 6
-        g = parse_chunk_grid(data, (6,))
-        assert _edges(g, 0) == (1, 1, 1, 3)
-
-    def test_overflow_chunks_allowed(self) -> None:
-        """Edge sum >= extent is valid (overflow chunks permitted)."""
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [[4, 4, 4]]},
-        }
-        # sum = 12 > extent = 6 — allowed per spec
-        g = parse_chunk_grid(data, (6,))
-        assert _edges(g, 0) == (4, 4, 4)
-
-    def test_spec_example(self) -> None:
-        """The full example from the spec README."""
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {
-                "kind": "inline",
-                "chunk_shapes": [
-                    4,  # integer shorthand → [4, 4]
-                    [1, 2, 3],  # explicit list
-                    [[4, 2]],  # pure RLE → [4, 4]
-                    [[1, 3], 3],  # mixed RLE + bare → [1, 1, 1, 3]
-                    [4, 4, 4],  # explicit list with overflow
-                ],
-            },
-        }
-        g = parse_chunk_grid(data, (6, 6, 6, 6, 6))
-        assert _edges(g, 0) == (4, 4)
-        assert _edges(g, 1) == (1, 2, 3)
-        assert _edges(g, 2) == (4, 4)
-        assert _edges(g, 3) == (1, 1, 1, 3)
-        assert _edges(g, 4) == (4, 4, 4)
-
-
-class TestParseChunkGridValidation:
-    def test_varying_extent_mismatch_raises(self) -> None:
-        from zarr.core.chunk_grids import parse_chunk_grid
-
-        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
-        # VaryingDimension extent is 60, but array_shape says 100
-        with pytest.raises(ValueError, match="extent"):
-            parse_chunk_grid(g, (100, 100))
-
-    def test_varying_extent_match_ok(self) -> None:
-        from zarr.core.chunk_grids import parse_chunk_grid
-
-        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
-        # Matching extents should work fine
-        g2 = parse_chunk_grid(g, (60, 100))
-        assert g2.dimensions[0].extent == 60
-
-    def test_rectilinear_extent_mismatch_raises(self) -> None:
-        """sum(edges) must match the array shape for each dimension."""
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [25, 25]]},
-        }
-        # sum([10,20,30])=60, sum([25,25])=50 — array shape (100, 50) mismatches dim 0
-        with pytest.raises(ValueError, match="sum to 60 but array shape extent is 100"):
-            parse_chunk_grid(data, (100, 50))
-
-    def test_rectilinear_extent_mismatch_second_dim(self) -> None:
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [[50, 50], [10, 20]]},
-        }
-        # dim 0 OK (100), dim 1: sum([10,20])=30 != 50
-        with pytest.raises(ValueError, match="dimension 1 sum to 30 but array shape extent is 50"):
-            parse_chunk_grid(data, (100, 50))
-
-    def test_rectilinear_extent_match_passes(self) -> None:
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30], [25, 25]]},
-        }
-        g = parse_chunk_grid(data, (60, 50))
-        assert g.grid_shape == (3, 2)
-
-    def test_rectilinear_ndim_mismatch_raises(self) -> None:
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [[10, 20], [25, 25]]},
-        }
-        with pytest.raises(ValueError, match="2 dimensions but array shape has 3"):
-            parse_chunk_grid(data, (30, 50, 100))
-
-    def test_rectilinear_rle_extent_validated(self) -> None:
-        """RLE-encoded edges are expanded before validation."""
-        data: dict[str, Any] = {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [[[10, 5]], [[25, 2]]]},
-        }
-        # sum = 50 and 50 — match (50, 50)
-        g = parse_chunk_grid(data, (50, 50))
-        assert g.grid_shape == (5, 2)
-        # mismatch
-        with pytest.raises(ValueError, match="sum to 50 but array shape extent is 100"):
-            parse_chunk_grid(data, (100, 50))
-
-    def test_varying_dimension_extent_mismatch_on_chunkgrid_input(self) -> None:
-        """When passing a ChunkGrid directly, VaryingDimension extent is validated.
-
-        After resize, extent >= array_shape is allowed (last chunk extends past
-        boundary). But extent < array_shape is still an error.
-        """
-        g = ChunkGrid.from_rectilinear([[10, 20, 30], [25, 25]], array_shape=(60, 50))
-        with pytest.raises(ValueError, match="less than"):
-            parse_chunk_grid(g, (100, 50))
-
-
-class TestRectilinearRoundTripPreservesCodecShape:
-    def test_boundary_chunk_codec_size_preserved(self) -> None:
-        """Round-tripping through rectilinear should not change codec buffer sizes."""
-        grid = ChunkGrid.from_regular((95,), (10,))
-        original_codec_size = grid.dimensions[0].chunk_size(9)
-        assert original_codec_size == 10
-
-        serialized = serialize_chunk_grid(grid, "rectilinear")
-        parsed = parse_chunk_grid(serialized, (95,))
-
-        roundtripped_codec_size = parsed.dimensions[0].chunk_size(9)
-        assert roundtripped_codec_size == original_codec_size, (
-            f"codec buffer changed from {original_codec_size} to "
-            f"{roundtripped_codec_size} after round-trip"
-        )
-
-    def test_single_chunk_boundary_codec_size_preserved(self) -> None:
-        """shape=7, chunk_size=10: single chunk's codec buffer should stay 10."""
-        grid = ChunkGrid.from_regular((7,), (10,))
-        assert grid.dimensions[0].chunk_size(0) == 10
-
-        serialized = serialize_chunk_grid(grid, "rectilinear")
-        parsed = parse_chunk_grid(serialized, (7,))
-
-        assert parsed.dimensions[0].chunk_size(0) == 10
 
 
 class TestRectilinearIndexing:
@@ -944,7 +569,7 @@ class TestEndToEnd:
 
     def test_create_rectilinear_array(self, tmp_path: Path) -> None:
         """Create an array with a rectilinear chunk grid via metadata."""
-        from zarr.core.metadata.v3 import ArrayV3Metadata, RectilinearChunkGrid
+        from zarr.core.metadata.v3 import ArrayV3Metadata
 
         arr = zarr.create_array(
             store=tmp_path / "rect.zarr",
@@ -959,9 +584,13 @@ class TestEndToEnd:
 
     def test_rectilinear_metadata_serialization(self, tmp_path: Path) -> None:
         """Verify metadata round-trips through JSON."""
-        g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
-        d = serialize_chunk_grid(g, "rectilinear")
-        g2 = parse_chunk_grid(d, (60, 100))
+        from zarr.core.metadata.v3 import RectilinearChunkGrid as RectilinearChunkGridMeta
+
+        meta = RectilinearChunkGridMeta(chunk_shapes=((10, 20, 30), (50, 50)))
+        d = meta.to_dict()
+        meta2 = RectilinearChunkGridMeta.from_dict(d)
+        g = ChunkGrid.from_rectilinear(list(meta.chunk_shapes), array_shape=(60, 100))
+        g2 = ChunkGrid.from_rectilinear(list(meta2.chunk_shapes), array_shape=(60, 100))
         assert g2.grid_shape == g.grid_shape
         for coord in g.all_chunk_coords():
             orig_spec = g[coord]
@@ -989,7 +618,7 @@ class TestEndToEnd:
 
     def test_chunk_grid_serializes_rectilinear(self, tmp_path: Path) -> None:
         """Rectilinear arrays serialize with name='rectilinear'."""
-        from zarr.core.metadata.v3 import ArrayV3Metadata, RectilinearChunkGrid
+        from zarr.core.metadata.v3 import ArrayV3Metadata
 
         arr = zarr.create_array(
             store=tmp_path / "rect.zarr",
@@ -1006,7 +635,7 @@ class TestEndToEnd:
 
     def test_chunk_grid_name_roundtrip_preserves_rectilinear(self, tmp_path: Path) -> None:
         """A rectilinear grid with uniform edges stays 'rectilinear' through to_dict/from_dict."""
-        from zarr.core.metadata.v3 import ArrayV3Metadata, RectilinearChunkGrid
+        from zarr.core.metadata.v3 import ArrayV3Metadata
 
         meta_dict: dict[str, Any] = {
             "zarr_format": 3,
@@ -1086,7 +715,6 @@ class TestShardingCompat:
         """ShardingCodec.validate should not reject rectilinear outer grids."""
         from zarr.codecs.sharding import ShardingCodec
         from zarr.core.dtype import Float32
-        from zarr.core.metadata.v3 import RectilinearChunkGrid
 
         codec = ShardingCodec(chunk_shape=(5, 5))
         grid_meta = RectilinearChunkGrid(chunk_shapes=((10, 20, 30), (50, 50)))
@@ -1142,8 +770,8 @@ class TestEdgeCases:
 
     # -- Boundary FixedDimension in rectilinear serialization --
 
-    def test_boundary_fixed_dim_rectilinear_roundtrip(self) -> None:
-        """A rectilinear grid with a boundary FixedDimension preserves extent."""
+    def test_boundary_fixed_dim_mixed_grid(self) -> None:
+        """A grid mixing VaryingDimension and boundary FixedDimension works correctly."""
         g = ChunkGrid(
             dimensions=(
                 VaryingDimension([10, 20, 30], extent=60),
@@ -1151,46 +779,26 @@ class TestEdgeCases:
             )
         )
         assert g.grid_shape == (3, 10)
+        # Boundary chunk along dim 1 has clipped data size
+        spec = g[(0, 9)]
+        assert spec is not None
+        assert spec.shape == (10, 5)
+        assert spec.codec_shape == (10, 10)
 
-        d = serialize_chunk_grid(g, "rectilinear")
-        assert d["name"] == "rectilinear"
-        # Second dim serializes as bare integer (per rectilinear spec,
-        # a bare integer repeats until sum >= extent, preserving full
-        # codec buffer size for boundary chunks).
-        config = d["configuration"]
-        assert isinstance(config, dict)
-        chunk_shapes = config["chunk_shapes"]
-        assert isinstance(chunk_shapes, list)
-        assert chunk_shapes[1] == 10  # bare integer shorthand
-
-        g2 = parse_chunk_grid(d, (60, 95))
-        assert g2.grid_shape == g.grid_shape
-        # Round-tripped grid should have correct extent
-        for coord in g.all_chunk_coords():
-            orig = g[coord]
-            new = g2[coord]
-            assert orig is not None
-            assert new is not None
-            assert orig.shape == new.shape
-
-    def test_exact_extent_fixed_dim_rectilinear_roundtrip(self) -> None:
-        """No boundary: extent == size * nchunks round-trips cleanly."""
+    def test_exact_extent_fixed_dim_mixed_grid(self) -> None:
+        """No boundary: extent == size * nchunks."""
         g = ChunkGrid(
             dimensions=(
                 VaryingDimension([10, 20], extent=30),
                 FixedDimension(size=25, extent=100),
             )
         )
-        d = serialize_chunk_grid(g, "rectilinear")
-        g2 = parse_chunk_grid(d, (30, 100))
-        assert g2.grid_shape == g.grid_shape
-        # All chunks should be uniform
-        for coord in g.all_chunk_coords():
-            orig = g[coord]
-            new = g2[coord]
-            assert orig is not None
-            assert new is not None
-            assert orig.shape == new.shape
+        assert g.grid_shape == (2, 4)
+        # All chunks along dim 1 have full size
+        for i in range(4):
+            spec = g[(0, i)]
+            assert spec is not None
+            assert spec.shape[1] == 25
 
     # -- Zero-size and zero-extent --
 
@@ -1243,33 +851,26 @@ class TestEdgeCases:
         g = ChunkGrid.from_regular((), ())
         assert g.get_nchunks() == 1
 
-    # -- parse_chunk_grid edge cases --
+    # -- with_extent edge cases --
 
-    def test_parse_chunk_grid_preserves_varying_extent(self) -> None:
-        """parse_chunk_grid does not overwrite VaryingDimension extent."""
-        from zarr.core.chunk_grids import parse_chunk_grid
-
+    def test_with_extent_preserves_varying_extent(self) -> None:
+        """with_extent on VaryingDimension preserves extent when unchanged."""
         g = ChunkGrid.from_rectilinear([[10, 20, 30], [50, 50]], array_shape=(60, 100))
-        # VaryingDimension extent is 60 (sum of edges)
         assert isinstance(g.dimensions[0], VaryingDimension)
         assert g.dimensions[0].extent == 60
 
-        # Re-binding with a different array shape should not change VaryingDimension
-        g2 = parse_chunk_grid(g, (60, 100))
-        assert isinstance(g2.dimensions[0], VaryingDimension)
-        assert g2.dimensions[0].extent == 60  # unchanged
+        d2 = g.dimensions[0].with_extent(60)
+        assert isinstance(d2, VaryingDimension)
+        assert d2.extent == 60
 
-    def test_parse_chunk_grid_rebinds_fixed_extent(self) -> None:
-        """parse_chunk_grid updates FixedDimension extent from array shape."""
-        from zarr.core.chunk_grids import parse_chunk_grid
-
+    def test_with_extent_rebinds_fixed_extent(self) -> None:
+        """with_extent on FixedDimension updates the extent."""
         g = ChunkGrid.from_regular((100, 200), (10, 20))
         assert g.dimensions[0].extent == 100
 
-        g2 = parse_chunk_grid(g, (50, 100))
-        assert isinstance(g2.dimensions[0], FixedDimension)
-        assert g2.dimensions[0].extent == 50  # re-bound
-        assert g2.grid_shape == (5, 5)
+        d2 = g.dimensions[0].with_extent(50)
+        assert isinstance(d2, FixedDimension)
+        assert d2.extent == 50
 
     # -- ChunkGrid.__getitem__ validation --
 
@@ -1341,20 +942,6 @@ class TestEdgeCases:
         )
         assert spec.shape == (10, 5)
         assert spec.is_boundary  # second dim differs
-
-    # -- Rectilinear with zero-nchunks FixedDimension in serialize_chunk_grid --
-
-    def test_zero_nchunks_fixed_dim_in_rectilinear_serialize_raises(self) -> None:
-        """A rectilinear grid with a 0-extent dimension cannot be serialized."""
-        g = ChunkGrid(
-            dimensions=(
-                VaryingDimension([10, 20], extent=30),
-                FixedDimension(size=10, extent=0),
-            )
-        )
-        assert g.grid_shape == (2, 0)
-        with pytest.raises(ValueError, match="zero-extent"):
-            serialize_chunk_grid(g, "rectilinear")
 
     # -- VaryingDimension data_size --
 
@@ -1445,7 +1032,6 @@ class TestShardingValidationRectilinear:
         """Rectilinear shard sizes not divisible by inner chunk_shape should raise."""
         from zarr.codecs.sharding import ShardingCodec
         from zarr.core.dtype import Float32
-        from zarr.core.metadata.v3 import RectilinearChunkGrid
 
         codec = ShardingCodec(chunk_shape=(5, 5))
         # 17 is not divisible by 5
@@ -1462,7 +1048,6 @@ class TestShardingValidationRectilinear:
         """Rectilinear shard sizes all divisible by inner chunk_shape should pass."""
         from zarr.codecs.sharding import ShardingCodec
         from zarr.core.dtype import Float32
-        from zarr.core.metadata.v3 import RectilinearChunkGrid
 
         codec = ShardingCodec(chunk_shape=(5, 5))
         grid_meta = RectilinearChunkGrid(chunk_shapes=((10, 20, 30), (50, 50)))
@@ -2328,15 +1913,6 @@ class TestAppendRectilinear:
         result = await arr.getitem((slice(20, 23), slice(None)))
         np.testing.assert_array_equal(result, small)
 
-    def test_parse_chunk_grid_regular_from_dict(self) -> None:
-        """parse_chunk_grid constructs a regular grid from a metadata dict."""
-        d: dict[str, Any] = {"name": "regular", "configuration": {"chunk_shape": [10, 20]}}
-        g = parse_chunk_grid(d, (100, 200))
-        assert g.is_regular
-        assert g.chunk_shape == (10, 20)
-        assert g.grid_shape == (10, 10)
-        assert g.get_nchunks() == 100
-
 
 class TestVaryingDimensionBoundary:
     """VaryingDimension with extent < sum(edges), mirroring how FixedDimension
@@ -2449,14 +2025,17 @@ class TestMultipleOverflowChunks:
         assert g.dimensions[0].nchunks == 4
 
     def test_serialization_roundtrip_overflow(self) -> None:
-        """Overflow chunks survive serialization round-trip."""
-        g = ChunkGrid.from_rectilinear([[10, 20, 30, 40]], array_shape=(50,))
-        serialized = serialize_chunk_grid(g, "rectilinear")
-        assert serialized == {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": [[10, 20, 30, 40]]},
-        }
-        g2 = parse_chunk_grid(serialized, (50,))
+        """Overflow chunks survive metadata serialization round-trip."""
+        from zarr.core.metadata.v3 import RectilinearChunkGrid as RectilinearChunkGridMeta
+
+        meta = RectilinearChunkGridMeta(chunk_shapes=((10, 20, 30, 40),))
+        d = meta.to_dict()
+        assert d["name"] == "rectilinear"
+        dim0 = d["configuration"]["chunk_shapes"][0]
+        assert isinstance(dim0, (list, tuple))
+        assert list(dim0) == [10, 20, 30, 40]
+        meta2 = RectilinearChunkGridMeta.from_dict(d)
+        g2 = ChunkGrid.from_rectilinear(list(meta2.chunk_shapes), array_shape=(50,))
         assert g2.dimensions[0].ngridcells == 4
         assert g2.dimensions[0].nchunks == 3
         assert g2.chunk_sizes == ((10, 20, 20),)
@@ -2629,12 +2208,11 @@ class TestUpdateShapeBoundary:
         assert spec.shape == (15,)
         assert spec.is_boundary is True
 
-    def test_parse_chunk_grid_rebinds_extent(self) -> None:
-        """parse_chunk_grid re-binds VaryingDimension extent to array shape."""
+    def test_with_extent_rebinds_varying_extent(self) -> None:
+        """with_extent re-binds VaryingDimension extent."""
         g = ChunkGrid.from_rectilinear([[10, 20, 30]], array_shape=(60,))
-        # sum(edges)=60, array_shape=50 → re-bind extent
-        g2 = parse_chunk_grid(g, (50,))
-        dim = g2.dimensions[0]
+        # sum(edges)=60, new extent=50 → re-bind
+        dim = g.dimensions[0].with_extent(50)
         assert isinstance(dim, VaryingDimension)
         assert dim.extent == 50
         assert dim.data_size(2) == 20  # 50 - 30 = 20

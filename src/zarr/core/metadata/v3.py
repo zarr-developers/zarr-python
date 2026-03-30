@@ -360,9 +360,6 @@ def resolve_chunks(
     Flat inputs like ``(10, 10)`` or a scalar ``int`` produce a ``RegularChunkGrid``
     after normalization via :func:`~zarr.core.chunk_grids.normalize_chunks`.
 
-    See Also
-    --------
-    parse_chunk_grid : Deserialize a chunk grid from stored JSON metadata.
     """
     from zarr.core.chunk_grids import _is_rectilinear_chunks, normalize_chunks
 

@@ -6,7 +6,6 @@ import math
 import numbers
 import operator
 import warnings
-from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Literal, Protocol, TypeGuard, cast, runtime_checkable
@@ -16,21 +15,14 @@ import numpy.typing as npt
 
 import zarr
 from zarr.core.common import (
-    JSON,
-    NamedConfig,
     ShapeLike,
     ceildiv,
-    compress_rle,
-    expand_rle,
-    parse_named_configuration,
     parse_shapelike,
-    validate_rectilinear_edges,
-    validate_rectilinear_kind,
 )
 from zarr.errors import ZarrUserWarning
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterable, Iterator, Sequence
 
     from zarr.core.array import ShardsLike
     from zarr.core.metadata import ArrayMetadata
@@ -107,7 +99,7 @@ class FixedDimension:
         """Re-bind to *new_extent* without modifying edges.
 
         Used when constructing a grid from existing metadata where edges
-        are already correct (e.g. ``parse_chunk_grid``). Raises on
+        are already correct. Raises on
         ``VaryingDimension`` if edges don't cover the new extent.
         """
         return FixedDimension(size=self.size, extent=new_extent)
@@ -203,7 +195,7 @@ class VaryingDimension:
         """Re-bind to *new_extent* without modifying edges.
 
         Used when constructing a grid from existing metadata where edges
-        are already correct (e.g. ``parse_chunk_grid``). Raises if the
+        are already correct. Raises if the
         existing edges don't cover *new_extent*.
         """
         edge_sum = self.cumulative[-1]
@@ -273,66 +265,6 @@ class ChunkSpec:
     @property
     def is_boundary(self) -> bool:
         return self.shape != self.codec_shape
-
-
-# A single dimension's rectilinear chunk spec: bare int (uniform shorthand),
-# list of ints (explicit edges), or mixed RLE (e.g. [[10, 3], 5]).
-RectilinearDimSpec = int | list[int | list[int]]
-
-# The serialization format name for a chunk grid.
-ChunkGridName = Literal["regular", "rectilinear"]
-
-
-def _serialize_fixed_dim(dim: FixedDimension) -> RectilinearDimSpec:
-    """Compact rectilinear representation for a fixed-size dimension.
-
-    Per the rectilinear spec, a bare integer is repeated until the sum
-    >= extent.  This preserves the full codec buffer size for boundary
-    chunks, matching the regular grid spec ("chunks at the border always
-    have the full chunk size").
-    """
-    return dim.size
-
-
-def _serialize_varying_dim(dim: VaryingDimension) -> RectilinearDimSpec:
-    """RLE-compressed rectilinear representation for a varying dimension."""
-    edges = list(dim.edges)
-    rle = compress_rle(edges)
-    if len(rle) < len(edges):
-        return rle
-    # mypy: list[int] is invariant, so it won't widen to list[int | list[int]]
-    return cast("RectilinearDimSpec", edges)
-
-
-def _decode_dim_spec(dim_spec: JSON, array_extent: int | None = None) -> list[int]:
-    """Decode a single dimension's chunk edge specification per the rectilinear spec.
-
-    Per the spec, each element of ``chunk_shapes`` can be:
-    - a bare integer ``m``: repeat ``m`` until the sum >= array extent
-    - an array of bare integers and/or ``[value, count]`` RLE pairs
-
-    Parameters
-    ----------
-    dim_spec
-        The raw JSON value for one dimension's chunk edges.
-    array_extent
-        Array length along this dimension. Required when *dim_spec* is a bare
-        integer (to know how many repetitions).
-    """
-    if isinstance(dim_spec, int):
-        if array_extent is None:
-            raise ValueError("Integer chunk_shapes shorthand requires array shape to expand.")
-        if dim_spec <= 0:
-            raise ValueError(f"Integer chunk edge length must be > 0, got {dim_spec}")
-        n = ceildiv(array_extent, dim_spec)
-        return [dim_spec] * n
-    if isinstance(dim_spec, list):
-        has_sublists = any(isinstance(e, list) for e in dim_spec)
-        if has_sublists:
-            return expand_rle(dim_spec)
-        else:
-            return [int(e) for e in dim_spec]
-    raise ValueError(f"Invalid chunk_shapes entry: {dim_spec}")
 
 
 def _is_rectilinear_chunks(chunks: Any) -> TypeGuard[Sequence[Sequence[int]]]:
@@ -627,118 +559,6 @@ class ChunkGrid:
             for dim, new_extent in zip(self.dimensions, new_shape, strict=True)
         )
         return ChunkGrid(dimensions=dims)
-
-    # ChunkGrid does not serialize itself. The format choice ("regular" vs
-    # "rectilinear") belongs to the metadata layer. Use serialize_chunk_grid()
-    # for output and parse_chunk_grid() for input.
-
-
-def parse_chunk_grid(
-    data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any],
-    array_shape: tuple[int, ...],
-) -> ChunkGrid:
-    """Create a ChunkGrid from a metadata dict or existing grid, binding array shape.
-
-    This is the primary entry point for constructing a ChunkGrid from serialized
-    metadata. It always produces a grid with correct extent values.
-
-    Both ``"regular"`` and ``"rectilinear"`` grid names are supported. Rectilinear
-    grids are experimental and require the ``array.rectilinear_chunks`` config
-    option to be enabled; a ``ValueError`` is raised otherwise.
-    """
-    if isinstance(data, ChunkGrid):
-        # Re-bind extent if array_shape differs from what's stored
-        dims = tuple(
-            dim.with_extent(extent)
-            for dim, extent in zip(data.dimensions, array_shape, strict=True)
-        )
-        return ChunkGrid(dimensions=dims)
-
-    name_parsed, configuration_parsed = parse_named_configuration(data)
-
-    if name_parsed == "regular":
-        chunk_shape_raw = configuration_parsed.get("chunk_shape")
-        if chunk_shape_raw is None:
-            raise ValueError("Regular chunk grid requires 'chunk_shape' configuration")
-        if not isinstance(chunk_shape_raw, Sequence):
-            raise TypeError(f"chunk_shape must be a sequence, got {type(chunk_shape_raw)}")
-        return ChunkGrid.from_regular(array_shape, cast("Sequence[int]", chunk_shape_raw))
-
-    if name_parsed == "rectilinear":
-        validate_rectilinear_kind(cast("str | None", configuration_parsed.get("kind")))
-        chunk_shapes_raw = configuration_parsed.get("chunk_shapes")
-        if chunk_shapes_raw is None:
-            raise ValueError("Rectilinear chunk grid requires 'chunk_shapes' configuration")
-        if not isinstance(chunk_shapes_raw, Sequence):
-            raise TypeError(f"chunk_shapes must be a sequence, got {type(chunk_shapes_raw)}")
-        if len(chunk_shapes_raw) != len(array_shape):
-            raise ValueError(
-                f"chunk_shapes has {len(chunk_shapes_raw)} dimensions but array shape "
-                f"has {len(array_shape)} dimensions"
-            )
-        decoded: list[list[int]] = []
-        for dim_spec, extent in zip(chunk_shapes_raw, array_shape, strict=True):
-            decoded.append(_decode_dim_spec(dim_spec, array_extent=extent))
-        validate_rectilinear_edges(decoded, array_shape)
-        return ChunkGrid.from_rectilinear(decoded, array_shape=array_shape)
-
-    raise ValueError(f"Unknown chunk grid name: {name_parsed!r}")
-
-
-def serialize_chunk_grid(grid: ChunkGrid, name: ChunkGridName) -> dict[str, JSON]:
-    """Serialize a ChunkGrid to a metadata dict using the given format name.
-
-    The format choice ("regular" vs "rectilinear") belongs to the metadata layer,
-    not the grid itself. This function is called by ArrayV3Metadata.to_dict().
-    """
-    if name == "regular":
-        if not grid.is_regular:
-            raise ValueError(
-                "Cannot serialize a non-regular chunk grid as 'regular'. Use 'rectilinear' instead."
-            )
-        # The regular grid spec encodes only chunk_shape, not per-axis edges,
-        # so zero-extent dimensions are valid (they simply produce zero chunks).
-        return {
-            "name": "regular",
-            "configuration": {"chunk_shape": tuple(grid.chunk_shape)},
-        }
-
-    if name == "rectilinear":
-        # Zero-extent dimensions cannot be represented as rectilinear because
-        # the spec requires at least one positive-integer edge length per axis.
-        # This is intentionally asymmetric with the regular grid, which encodes
-        # only chunk_shape (no per-axis edges) and thus handles zero-extent
-        # arrays without issue.
-        if any(d.extent == 0 for d in grid.dimensions):
-            raise ValueError(
-                "Cannot serialize a zero-extent grid as 'rectilinear': "
-                "the spec requires all edge lengths to be positive integers."
-            )
-        chunk_shapes: list[RectilinearDimSpec] = []
-        for dim in grid.dimensions:
-            if isinstance(dim, FixedDimension):
-                chunk_shapes.append(_serialize_fixed_dim(dim))
-            elif isinstance(dim, VaryingDimension):
-                chunk_shapes.append(_serialize_varying_dim(dim))
-            else:
-                raise TypeError(f"Unexpected dimension type: {type(dim)}")
-        return {
-            "name": "rectilinear",
-            "configuration": {"kind": "inline", "chunk_shapes": chunk_shapes},
-        }
-
-    raise ValueError(f"Unknown chunk grid name for serialization: {name!r}")
-
-
-def _infer_chunk_grid_name(
-    data: dict[str, JSON] | ChunkGrid | NamedConfig[str, Any],
-    grid: ChunkGrid,
-) -> ChunkGridName:
-    """Extract or infer the chunk grid serialization name from the input."""
-    if isinstance(data, dict):
-        name, _ = parse_named_configuration(data)
-        return cast("ChunkGridName", name)
-    return "regular" if grid.is_regular else "rectilinear"
 
 
 def _guess_chunks(
