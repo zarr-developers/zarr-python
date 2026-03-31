@@ -135,7 +135,7 @@ class ZipStore(Store):
         *last* (most recent) entry for every filename so that the on-disk central
         directory is clean.
         """
-        if not self._zf.mode in ("w", "a", "x"):
+        if self._zf.mode not in ("w", "a", "x"):
             return
         seen: set[str] = set()
         deduped: list[zipfile.ZipInfo] = []
