@@ -27,7 +27,7 @@ jobs:
     runs-on: gpu-runner
     strategy:
       matrix:
-        python-version: ['3.11']
+        python-version: ['3.12']
 
     steps:
     - uses: actions/checkout@v6
@@ -72,4 +72,5 @@ jobs:
       uses: codecov/codecov-action@13ce06bfc6bbe3ecf90edbbf1bc32fe5978ca1d3  # v5.3.1
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        flags: gpu
         verbose: true # optional (default = false)

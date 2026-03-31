@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, NotRequired, TypedDict, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -24,7 +24,7 @@ from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
-    DimensionNames,
+    DimensionNamesLike,
     MemoryOrder,
     ZarrFormat,
     _default_zarr_format,
@@ -61,7 +61,7 @@ if TYPE_CHECKING:
     from zarr.types import AnyArray, AnyAsyncArray
 
     # TODO: this type could use some more thought
-    ArrayLike: TypeAlias = AnyAsyncArray | AnyArray | npt.NDArray[Any]
+    type ArrayLike = AnyAsyncArray | AnyArray | npt.NDArray[Any]
     PathLike = str
 
 __all__ = [
@@ -914,7 +914,7 @@ async def create(
         | None
     ) = None,
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-    dimension_names: DimensionNames = None,
+    dimension_names: DimensionNamesLike = None,
     storage_options: dict[str, Any] | None = None,
     config: ArrayConfigLike | None = None,
     **kwargs: Any,
