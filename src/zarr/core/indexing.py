@@ -329,15 +329,6 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
     )
 
 
-def get_chunk_shape(chunk_grid: ChunkGrid) -> tuple[int, ...]:
-    if not chunk_grid.is_regular:
-        raise ValueError(
-            "get_chunk_shape only works with regular chunk grids. "
-            "Use chunk_grid.dimensions for rectilinear grids."
-        )
-    return chunk_grid.chunk_shape
-
-
 def normalize_integer_selection(dim_sel: int, dim_len: int) -> int:
     # normalize type to int
     dim_sel = int(dim_sel)
