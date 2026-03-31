@@ -443,7 +443,6 @@ def test_orthogonal_indexing_fallback_on_getitem_2d(
     np.testing.assert_array_equal(z[index], expected_result)
 
 
-@pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
 def test_setitem_zarr_array_as_value() -> None:
     # Regression test for https://github.com/zarr-developers/zarr-python/issues/3611
     # Assigning a zarr Array as the value used to raise
@@ -462,6 +461,7 @@ def test_setitem_zarr_array_as_value() -> None:
     assert_array_equal(dst2[2:7], np.arange(2, 7))
 
 
+@pytest.mark.skip(reason="fails on ubuntu, windows; numpy=2.2; in CI")
 def test_setitem_repeated_index():
     array = zarr.array(data=np.zeros((4,)), chunks=(1,))
     indexer = np.array([-1, -1, 0, 0])
