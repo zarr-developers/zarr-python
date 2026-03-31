@@ -4,6 +4,7 @@ import os
 import shutil
 import threading
 import time
+import warnings
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -235,7 +236,12 @@ class ZipStore(Store):
             keyinfo.external_attr |= 0x10  # MS-DOS directory flag
         else:
             keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
-        self._zf.writestr(keyinfo, value.to_bytes())
+        # ZIP files are append-only; writing an existing key creates a second entry.
+        # We intentionally allow this and remove duplicates in _dedup_central_directory()
+        # when the store is closed.
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            self._zf.writestr(keyinfo, value.to_bytes())
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
